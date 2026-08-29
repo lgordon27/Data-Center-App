@@ -1,0 +1,57 @@
+Add a new landing home page as the default route (#home or root /). This is the first thing anyone sees. Follow "Don't Make Me Think" UX principles: self-evident, zero learning curve, visually immediate, no walls of text. The user should understand what this tool does within 5 seconds.
+
+The current Screen 1 (Case Brief) should NOT be the entry point. The home page captures attention first.
+
+STRUCTURE:
+
+HERO SECTION (above the fold, full viewport):
+
+A single bold headline, large type, centered:
+"$725 billion is being invested in AI infrastructure this year. How much of it is built on verified evidence?"
+
+One visual underneath: a simplified animated or static version of the signature interaction. A single evidence item like "Grid Interconnection Timeline" with its classification badge changing from "Verified" to "Missing Evidence," and an IRR number visibly dropping next to it. Illustrative, not the full tool. The visual IS the explanation.
+
+Below the visual, a secondary line in slightly smaller but still prominent type:
+"This is the largest technology infrastructure investment in human history. It exceeds the GDP of Switzerland. It is nearly six times what was spent in 2022. And there is a decent chance your portfolio is exposed."
+
+One button: "Open the Workbench" linking to #brief.
+
+A subtle third line below the button: "Analyzing Stargate Abilene: OpenAI's $500B flagship project that hit the evidence wall"
+
+CONTEXT STRIP (just below the fold, compact):
+
+Four data points as large numbers with short labels, side by side:
+- "$725B" / "Hyperscaler AI infrastructure spending in 2026 alone"
+- "$130B" / "In projects paused or blocked in Q1 2026"
+- "474 GW" / "Requested in the Texas grid queue, 5x peak demand"
+- "1.6%" / "Of requested capacity actually operating"
+
+PURPOSE STRIP (two lines max):
+
+"Sustainable investors helped capitalize the AI revolution. The companies in your values-aligned funds are the ones writing the checks. This tool applies evidence standards to the infrastructure their capital is building."
+
+FOUR ENTRY POINTS (card layout, visual, clickable):
+
+Card 1: "The Workbench" - Subtitle: "Analyze the evidence behind the largest AI project on Earth." Links to #brief.
+
+Card 2: "The AI Chain" - Subtitle: "See where your portfolio connects to the $725B buildout." Links to #value-chain.
+
+Card 3: "How It Works" - Subtitle: "Plain-English tour of every screen and method." Links to #how-it-works.
+
+Card 4: "Advisor Lens" - Subtitle: "What this means for your clients Monday morning." Links to #advisor.
+
+FOOTER STRIP:
+"Built by LeAndrew Gordon | SafeLoc | Growth for Impact Conference, November 2026"
+
+DESIGN:
+- Dark theme consistent with the workbench
+- Maximum whitespace. Every element earns its space.
+- No paragraphs. Sentences only. Longest text block is two lines.
+- Hero visual is the most eye-catching element.
+- Typography large and confident. This is a billboard not a document.
+- Premium product launch feel.
+- Mobile responsive: stack vertically, two viewports max on mobile.
+- The entire home page is one viewport on desktop with minimal scroll.
+- No hamburger menu needed. The four cards ARE the navigation.
+
+Update header navigation to include Home. Update default route so landing with no hash shows this page.

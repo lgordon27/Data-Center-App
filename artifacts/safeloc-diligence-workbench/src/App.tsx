@@ -56,6 +56,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import {
+  getAdvisorQuestionPresentation,
+  getGovernanceIRRGap,
+  getRiskTier,
+  prioritizeAdvisorQuestions,
+  type RiskTier,
+} from "@/model/advisorLens";
 
 type Screen = "brief" | "evidence" | "materiality" | "decision" | "advisor";
 
@@ -131,28 +138,11 @@ function ClassificationBadge({ value, compact = false }: { value: Classification
     </span>
   );
 }
-type RiskTier = "HIGH" | "MODERATE" | "LOW";
-
-const classificationStrength: Record<Classification, number> = {
-  "Missing Evidence": 0,
-  "User Assumption": 1,
-  "Model Inference": 2,
-  "Management Assertion": 3,
-  "Verified Evidence": 4,
-};
-
 const riskMeta: Record<RiskTier, { color: string; bg: string; border: string }> = {
   HIGH: { color: "#ba2f45", bg: "#fde8eb", border: "#efabb8" },
   MODERATE: { color: "#8a6400", bg: "#fff6c7", border: "#e6cf70" },
   LOW: { color: "#0b7a63", bg: "#e0f4ed", border: "#9bd8c5" },
 };
-
-function getRiskTier(verifiedCount: number): RiskTier {
-  if (verifiedCount < 4) return "HIGH";
-  if (verifiedCount <= 8) return "MODERATE";
-  return "LOW";
-}
-
 function RiskIndicator({ tier, testId }: { tier: RiskTier; testId: string }) {
   const meta = riskMeta[tier];
   return (
@@ -1157,62 +1147,14 @@ function DecisionReview({ onNavigate }: { onNavigate: (screen: Screen) => void }
 }
 */
 
-type AdvisorQuestion = {
-  id: string;
-  question: string;
-  evidenceId: string;
-  activeDetail: string;
-};
-
-const advisorQuestions: AdvisorQuestion[] = [
-  {
-    id: "water-rights",
-    question: "What evidence would make the water allocation risk investable rather than merely disclosed?",
-    evidenceId: "water_rights",
-    activeDetail: "Missing evidence: request allocation seniority, drought curtailment terms, and a legal rights opinion before treating this risk as investable.",
-  },
-  {
-    id: "energization",
-    question: "How does the manager price a 9–12 month energization slip into the underwriting hurdle?",
-    evidenceId: "grid_interconnection",
-    activeDetail: "Grid interconnection is not verified: ask for the utility queue position, milestone evidence, and downside case for a delayed energization date.",
-  },
-  {
-    id: "renewable-procurement",
-    question: "Is 100% renewable procurement a physical PPA, a bundled certificate, or an aspiration?",
-    evidenceId: "renewable_percentage",
-    activeDetail: "Clarify the provenance of the renewable claim and distinguish physical delivery from certificate-based coverage.",
-  },
-  {
-    id: "customer-concentration",
-    question: "Where does customer concentration become a public-market governance signal?",
-    evidenceId: "customer_concentration",
-    activeDetail: "Revenue concentration is an evidence gap: request the lease schedule and renewal terms before assessing the governance signal.",
-  },
-];
-
 function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
   const { evidence, metrics } = useDiligence();
   const verifiedCount = Object.values(evidence).filter((item) => item.classification === "Verified Evidence").length;
   const riskTier = getRiskTier(verifiedCount);
   const currentIRR = metrics.projectIRR ?? null;
   const baseIRR = metrics.baseIRR ?? null;
-  const governanceGap = currentIRR === null || baseIRR === null ? null : Number((baseIRR - currentIRR).toFixed(1));
-  const prioritizedQuestions = useMemo(
-    () =>
-      advisorQuestions
-        .map((question, index) => ({
-          ...question,
-          index,
-          classification: evidence[question.evidenceId]?.classification,
-        }))
-        .sort((a, b) => {
-          const aStrength = a.classification === undefined ? -1 : classificationStrength[a.classification];
-          const bStrength = b.classification === undefined ? -1 : classificationStrength[b.classification];
-          return aStrength - bStrength || a.index - b.index;
-        }),
-    [evidence],
-  );
+  const governanceGap = getGovernanceIRRGap(baseIRR, currentIRR);
+  const prioritizedQuestions = useMemo(() => prioritizeAdvisorQuestions(evidence), [evidence]);
   return (
     <div>
       <PageIntro
@@ -1262,17 +1204,23 @@ function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
           <h2 className="text-[19px] font-semibold tracking-[-0.025em] text-[#122232]">Take these into the next meeting.</h2>
           <div className="mt-4 divide-y divide-[#e5eae8]">
             {prioritizedQuestions.map((question, index) => {
-              const isWaterGap = question.evidenceId === "water_rights" && question.classification !== "Verified Evidence";
-              const isEnergizationGap = question.evidenceId === "grid_interconnection" && question.classification !== "Verified Evidence";
+              const classification = question.classification;
+              const { isActiveGap, isWaterGap, isEnergizationGap, showDetail } = getAdvisorQuestionPresentation(question.id, classification);
               return (
-                <div key={question.id} data-testid={`advisor-question-${question.id}`} className="flex gap-4 py-4">
-                  <span className="font-mono text-[10px] font-bold text-[#b9d43a] [text-shadow:0_0_0_#122232]">{String(index + 1).padStart(2, "0")}</span>
+                <div
+                  key={question.id}
+                  data-testid={`advisor-question-${question.id}`}
+                  className={`rounded-lg px-3 py-4 transition-colors ${isWaterGap ? "my-2 border-2 border-[#efabb8] bg-[#fff3f4]" : isEnergizationGap ? "my-2 border border-[#f1cb8b] bg-[#fff8e9]" : isActiveGap ? "bg-[#fffaf0]" : ""}`}
+                >
+                  <div className="flex gap-4">
+                  <span className={`font-mono text-[10px] font-bold ${isActiveGap ? "text-[#ba2f45]" : "text-[#b9d43a]"} [text-shadow:0_0_0_#122232]`}>{String(index + 1).padStart(2, "0")}</span>
                   <div className="min-w-0 flex-1">
-                    <p className="text-[12px] font-medium leading-5 text-[#344550]">{question.question}</p>
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <ClassificationBadge value={question.classification ?? "Missing Evidence"} compact />
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <p className={`text-[12px] font-medium leading-5 ${isActiveGap ? "font-semibold text-[#243844]" : "text-[#344550]"}`}>{question.question}</p>
+                      {classification && <ClassificationBadge value={classification} compact />}
                     </div>
-                    {(isWaterGap || isEnergizationGap) && <p data-testid={`advisor-question-detail-${question.id}`} className={`mt-3 border-t pt-3 text-[10px] font-medium leading-4 ${isWaterGap ? "border-[#efabb8] text-[#96525d]" : "border-[#ecd39d] text-[#806d51]"}`}>{question.activeDetail}</p>}
+                    {showDetail && <p data-testid={`advisor-question-detail-${question.id}`} className={`mt-3 border-t pt-3 text-[10px] font-medium leading-4 ${question.id === "water-rights" ? "border-[#efabb8] text-[#96525d]" : "border-[#ecd39d] text-[#806d51]"}`}>{question.activeDetail}</p>}
+                  </div>
                   </div>
                 </div>
               );

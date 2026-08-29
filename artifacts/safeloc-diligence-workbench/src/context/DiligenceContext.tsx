@@ -41,7 +41,7 @@ type DiligenceState = {
 };
 
 export const CURRENT_SESSION_STORAGE_KEY = 'safeloc:diligence:current-session:v1';
-const INITIAL_EVIDENCE: Record<string, EvidenceItem> = {
+export const INITIAL_EVIDENCE: Record<string, EvidenceItem> = {
   electricity_cost: { id: 'electricity_cost', label: 'Electricity Cost / MWh', value: 45, unit: '$/MWh', classification: 'Verified Evidence', citation: 'APS 2025 Utility Rate Filing', description: 'Blended rate across off-peak and peak.' },
   water_consumption: { id: 'water_consumption', label: 'Annual Cooling Water', value: 2.3, unit: 'M gal / yr', classification: 'Verified Evidence', citation: "Ceres 'Drained by Data' 2025", description: 'Evaporative cooling requirement.' },
   grid_interconnection: { id: 'grid_interconnection', label: 'Grid Interconnection Timeline', value: 14, unit: 'Months', classification: 'Management Assertion', citation: 'Developer Interconnection Claim', description: 'Time from application to energization.' },

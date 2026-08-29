@@ -3,7 +3,6 @@ import {
   calculateCashFlowModel,
   Classification,
 } from '@/model/cashFlowEngine';
-import type { CashFlowModel } from '@/model/cashFlowEngine';
 
 export type { Classification } from '@/model/cashFlowEngine';
 

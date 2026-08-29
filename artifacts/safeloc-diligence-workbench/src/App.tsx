@@ -106,6 +106,43 @@ function ClassificationBadge({ value, compact = false }: { value: Classification
   );
 }
 
+type RiskTier = "HIGH" | "MODERATE" | "LOW";
+
+const classificationStrength: Record<Classification, number> = {
+  "Missing Evidence": 0,
+  "User Assumption": 1,
+  "Model Inference": 2,
+  "Management Assertion": 3,
+  "Verified Evidence": 4,
+};
+
+const riskMeta: Record<RiskTier, { color: string; bg: string; border: string }> = {
+  HIGH: { color: "#ba2f45", bg: "#fde8eb", border: "#efabb8" },
+  MODERATE: { color: "#8a6400", bg: "#fff6c7", border: "#e6cf70" },
+  LOW: { color: "#0b7a63", bg: "#e0f4ed", border: "#9bd8c5" },
+};
+
+function getRiskTier(verifiedCount: number): RiskTier {
+  if (verifiedCount < 4) return "HIGH";
+  if (verifiedCount <= 8) return "MODERATE";
+  return "LOW";
+}
+
+function RiskIndicator({ tier, testId }: { tier: RiskTier; testId: string }) {
+  const meta = riskMeta[tier];
+  return (
+    <span
+      data-testid={testId}
+      aria-label={`${tier} unverified exposure risk`}
+      className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[9px] font-bold tracking-[0.1em]"
+      style={{ color: meta.color, backgroundColor: meta.bg, borderColor: meta.border }}
+    >
+      <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: meta.color }} />
+      {tier}
+    </span>
+  );
+}
+
 function SectionKicker({ children, tone = "default" }: { children: ReactNode; tone?: "default" | "warning" | "lime" }) {
   return (
     <div className={`mb-3 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.22em] ${tone === "warning" ? "text-[#ba2f45]" : tone === "lime" ? "text-[#607500]" : "text-[#60707d]"}`}>
@@ -662,13 +699,63 @@ function DecisionReview({ onNavigate }: { onNavigate: (screen: Screen) => void }
   );
 }
 
+type AdvisorQuestion = {
+  id: string;
+  question: string;
+  evidenceId: string;
+  activeDetail: string;
+};
+
+const advisorQuestions: AdvisorQuestion[] = [
+  {
+    id: "water-rights",
+    question: "What evidence would make the water allocation risk investable rather than merely disclosed?",
+    evidenceId: "water_rights",
+    activeDetail: "Missing evidence: request allocation seniority, drought curtailment terms, and a legal rights opinion before treating this risk as investable.",
+  },
+  {
+    id: "energization",
+    question: "How does the manager price a 9–12 month energization slip into the underwriting hurdle?",
+    evidenceId: "grid_interconnection",
+    activeDetail: "Grid interconnection is not verified: ask for the utility queue position, milestone evidence, and downside case for a delayed energization date.",
+  },
+  {
+    id: "renewable-procurement",
+    question: "Is 100% renewable procurement a physical PPA, a bundled certificate, or an aspiration?",
+    evidenceId: "renewable_percentage",
+    activeDetail: "Clarify the provenance of the renewable claim and distinguish physical delivery from certificate-based coverage.",
+  },
+  {
+    id: "customer-concentration",
+    question: "Where does customer concentration become a public-market governance signal?",
+    evidenceId: "customer_concentration",
+    activeDetail: "Revenue concentration is an evidence gap: request the lease schedule and renewal terms before assessing the governance signal.",
+  },
+];
+
 function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
-  const questions = [
-    ["01", "What evidence would make the water allocation risk investable rather than merely disclosed?"],
-    ["02", "How does the manager price a 9–12 month energization slip into the underwriting hurdle?"],
-    ["03", "Is 100% renewable procurement a physical PPA, a bundled certificate, or an aspiration?"],
-    ["04", "Where does customer concentration become a public-market governance signal?"],
-  ];
+  const { evidence, metrics } = useDiligence();
+  const verifiedCount = Object.values(evidence).filter((item) => item.classification === "Verified Evidence").length;
+  const riskTier = getRiskTier(verifiedCount);
+  const currentIRR = metrics.projectIRR ?? null;
+  const baseIRR = metrics.baseIRR ?? null;
+  const governanceGap = currentIRR === null || baseIRR === null ? null : Number((baseIRR - currentIRR).toFixed(1));
+  const prioritizedQuestions = useMemo(
+    () =>
+      advisorQuestions
+        .map((question, index) => ({
+          ...question,
+          index,
+          classification: evidence[question.evidenceId]?.classification,
+        }))
+        .sort((a, b) => {
+          const aStrength = a.classification === undefined ? -1 : classificationStrength[a.classification];
+          const bStrength = b.classification === undefined ? -1 : classificationStrength[b.classification];
+          return aStrength - bStrength || a.index - b.index;
+        }),
+    [evidence],
+  );
+
   return (
     <div>
       <PageIntro
@@ -677,14 +764,24 @@ function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
         description="For SRI and ESG advisors, the question is how a local evidence gap can travel from a private data center project into public-market exposure, stewardship priorities, and reputational risk."
         right={<div className="flex items-center gap-2 rounded-md border border-[#cbb7ec] bg-[#eee7fa] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#7049b7]"><Leaf className="h-3.5 w-3.5" /> Public-market transmission</div>}
       />
+      <section data-testid="text-advisor-summary" aria-live="polite" className="mb-5 rounded-xl border border-[#cbd8d4] bg-[#f9faf8] p-5 md:p-6">
+        <SectionKicker>Live evidence posture</SectionKicker>
+        <p className="max-w-4xl text-[18px] font-semibold leading-7 tracking-[-0.025em] text-[#122232] md:text-[21px]">
+          Based on current evidence quality, {verifiedCount} of 12 inputs are verified. Data center exposure in common ESG funds carries {riskTier} unverified risk.
+        </p>
+        <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-[#e1e8e5] pt-4">
+          <RiskIndicator tier={riskTier} testId="badge-advisor-summary-risk" />
+          <span className="text-[10px] text-[#6b7882]">Tier thresholds: HIGH &lt; 4 verified · MODERATE 4–8 · LOW 9+</span>
+        </div>
+      </section>
       <div className="grid gap-5 xl:grid-cols-[0.92fr_1.08fr]">
         <section className="rounded-xl bg-[#122232] p-6 text-white md:p-7">
           <SectionKicker tone="lime">Public-market exposure</SectionKicker>
           <h2 className="max-w-md text-[25px] font-semibold leading-tight tracking-[-0.035em]">The facility is private. The consequences may not be.</h2>
           <p className="mt-3 max-w-lg text-[11px] leading-5 text-[#afbdc4]">Data center demand, chip concentration, power procurement, and resource intensity can transmit into listed companies and the funds that hold them.</p>
           <div className="mt-7 space-y-3">
-            <div className="rounded-lg border border-white/10 bg-white/5 p-4"><div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded bg-[#e9e0f7] text-[#482873]"><Landmark className="h-4 w-4" /></div><div><div className="text-[11px] font-bold">iShares ESG Advanced MSCI USA ETF</div><div className="mt-1 text-[10px] text-[#9dafb8]">Public equity exposure · ESG-screened broad market</div></div></div></div>
-            <div className="rounded-lg border border-white/10 bg-white/5 p-4"><div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded bg-[#d4e86b] text-[#314207]"><BarChart3 className="h-4 w-4" /></div><div><div className="text-[11px] font-bold">MSCI KLD 400 Social Index</div><div className="mt-1 text-[10px] text-[#9dafb8]">Socially screened benchmark · stewardship reference</div></div></div></div>
+             <div data-testid="card-fund-ishares" className="rounded-lg border border-white/10 bg-white/5 p-4"><div className="flex items-start gap-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-[#e9e0f7] text-[#482873]"><Landmark className="h-4 w-4" /></div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center justify-between gap-2"><div className="text-[11px] font-bold">iShares ESG Advanced MSCI USA ETF</div><RiskIndicator tier={riskTier} testId="badge-fund-ishares-risk" /></div><div className="mt-1 text-[10px] text-[#9dafb8]">Public equity exposure · ESG-screened broad market</div></div></div></div>
+             <div data-testid="card-fund-msci" className="rounded-lg border border-white/10 bg-white/5 p-4"><div className="flex items-start gap-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-[#d4e86b] text-[#314207]"><BarChart3 className="h-4 w-4" /></div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center justify-between gap-2"><div className="text-[11px] font-bold">MSCI KLD 400 Social Index</div><RiskIndicator tier={riskTier} testId="badge-fund-msci-risk" /></div><div className="mt-1 text-[10px] text-[#9dafb8]">Socially screened benchmark · stewardship reference</div></div></div></div>
           </div>
           <div className="mt-7 flex items-center gap-3 border-t border-white/15 pt-5"><div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#f5ddd5] font-mono text-[10px] font-bold text-[#ba2f45]">NVDA</div><div><div className="text-[10px] uppercase tracking-[0.13em] text-[#9dafb8]">Largest holding signal</div><div className="mt-1 text-sm font-semibold text-[#f5ddd5]">NVIDIA</div></div><ArrowUpRight className="ml-auto h-4 w-4 text-[#b9d43a]" /></div>
         </section>
@@ -707,7 +804,30 @@ function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
           <SectionKicker>Fund-manager questions</SectionKicker>
           <h2 className="text-[19px] font-semibold tracking-[-0.025em] text-[#122232]">Take these into the next meeting.</h2>
           <div className="mt-4 divide-y divide-[#e5eae8]">
-            {questions.map(([number, question]) => <div key={number} className="flex gap-4 py-4"><span className="font-mono text-[10px] font-bold text-[#b9d43a] [text-shadow:0_0_0_#122232]">{number}</span><p className="text-[12px] font-medium leading-5 text-[#344550]">{question}</p></div>)}
+             {prioritizedQuestions.map((question, index) => {
+               const classification = question.classification;
+               const isWaterGap = question.id === "water-rights" && classification === "Missing Evidence";
+               const isEnergizationGap = question.id === "energization" && classification !== "Verified Evidence";
+               const isActiveGap = isWaterGap || isEnergizationGap || classification === "Missing Evidence";
+               return (
+                 <div
+                   key={question.id}
+                   data-testid={`advisor-question-${question.id}`}
+                   className={`rounded-lg px-3 py-4 transition-colors ${isWaterGap ? "my-2 border-2 border-[#efabb8] bg-[#fff3f4]" : isEnergizationGap ? "my-2 border border-[#f1cb8b] bg-[#fff8e9]" : isActiveGap ? "bg-[#fffaf0]" : ""}`}
+                 >
+                   <div className="flex gap-4">
+                     <span className={`font-mono text-[10px] font-bold ${isActiveGap ? "text-[#ba2f45]" : "text-[#b9d43a]"} [text-shadow:0_0_0_#122232]`}>{String(index + 1).padStart(2, "0")}</span>
+                     <div className="min-w-0 flex-1">
+                       <div className="flex flex-wrap items-start justify-between gap-2">
+                         <p className={`text-[12px] font-medium leading-5 ${isActiveGap ? "font-semibold text-[#243844]" : "text-[#344550]"}`}>{question.question}</p>
+                         {classification && <ClassificationBadge value={classification} compact />}
+                       </div>
+                       {(isWaterGap || isEnergizationGap) && <p data-testid={`advisor-question-detail-${question.id}`} className={`mt-3 border-t pt-3 text-[10px] font-medium leading-4 ${isWaterGap ? "border-[#efabb8] text-[#96525d]" : "border-[#ecd39d] text-[#806d51]"}`}>{question.activeDetail}</p>}
+                     </div>
+                   </div>
+                 </div>
+               );
+             })}
           </div>
         </section>
         <section className="rounded-xl border border-[#d9e0e4] bg-[#fff8e9] p-5 md:p-6">
@@ -717,6 +837,21 @@ function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
           <div className="mt-5 border-t border-[#ecd39d] pt-4"><div className="flex gap-3"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#a65a00]" /><p className="text-[11px] font-semibold leading-5 text-[#6f460e]">Silent AI reclassification is not diligence.</p></div><p className="mt-2 pl-7 text-[10px] leading-4 text-[#806d51]">Any automated change to evidence provenance must be reviewable, attributable, and explicitly approved. Model assistance cannot silently convert uncertainty into fact.</p></div>
         </section>
       </div>
+       <section data-testid="section-governance-gap" className="mt-5 rounded-xl border border-[#cbb7ec] bg-[#f8f4fd] p-5 md:p-6">
+         <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+           <div className="max-w-2xl">
+             <SectionKicker>Governance gap</SectionKicker>
+             <h2 className="text-[19px] font-semibold leading-tight tracking-[-0.025em] text-[#122232]">What evidence classification prevents the model from hiding.</h2>
+             <p className="mt-3 text-[11px] leading-5 text-[#5e5870]">Without evidence classification, an AI screening tool would treat all 12 inputs as equivalent. Here is what that hides:</p>
+           </div>
+           <div className="shrink-0 rounded-lg border border-[#cbb7ec] bg-white px-5 py-4 md:max-w-[320px]">
+             <div data-testid="text-governance-irr-gap" className="font-mono text-[16px] font-bold leading-6 text-[#482873]">
+               The difference between assuming everything and verifying everything: {governanceGap === null ? "N/M" : `${governanceGap.toFixed(1)} percentage points`} of IRR.
+             </div>
+             {governanceGap === null && <div className="mt-2 text-[10px] leading-4 text-[#706681]">The return gap is unavailable because one or both IRR calculations are non-numeric.</div>}
+           </div>
+         </div>
+       </section>
       <div className="mt-5 flex flex-col gap-4 rounded-xl border border-[#cbd8d4] bg-[#eef2f1] p-5 md:flex-row md:items-center md:justify-between md:p-6"><div><SectionKicker>Close the loop</SectionKicker><h2 className="text-[19px] font-semibold tracking-[-0.025em] text-[#122232]">Return to the decision with the full context.</h2><p className="mt-1 text-[11px] text-[#65737d]">The evidence record and derived return remain live as you move through the workbench.</p></div><button data-testid="button-return-decision" onClick={() => onNavigate("decision")} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-md bg-[#122232] px-4 py-2.5 text-[10px] font-bold uppercase tracking-[0.14em] text-[#d4e86b] hover:-translate-y-0.5"><ClipboardCheck className="h-3.5 w-3.5" /> Return to decision review</button></div>
       <BottomNav screen="advisor" onNavigate={onNavigate} />
     </div>

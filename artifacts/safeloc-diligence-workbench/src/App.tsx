@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode, RefObject } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -28,6 +28,7 @@ import {
   TrendingDown,
   TrendingUp,
   TriangleAlert,
+  X,
   Zap,
 } from "lucide-react";
 import {
@@ -147,9 +148,9 @@ function RiskIndicator({ tier, testId }: { tier: RiskTier; testId: string }) {
   );
 }
 
-function SectionKicker({ children, tone = "default" }: { children: ReactNode; tone?: "default" | "warning" | "lime" }) {
+function SectionKicker({ children, tone = "default", className = "" }: { children: ReactNode; tone?: "default" | "warning" | "lime"; className?: string }) {
   return (
-    <div className={`mb-3 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.22em] ${tone === "warning" ? "text-[#ba2f45]" : tone === "lime" ? "text-[#607500]" : "text-[#60707d]"}`}>
+    <div className={`mb-3 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.22em] ${tone === "warning" ? "text-[#ba2f45]" : tone === "lime" ? "text-[#607500]" : "text-[#60707d]"} ${className}`}>
       <span className={`h-1.5 w-1.5 rounded-full ${tone === "warning" ? "bg-[#ba2f45]" : tone === "lime" ? "bg-[#b9d43a]" : "bg-[#255bb7]"}`} />
       {children}
     </div>
@@ -186,11 +187,11 @@ function ProgressNav({ current, onNavigate }: { current: Screen; onNavigate: (sc
   return (
     <div className="border-b border-[#d9e0e4] bg-[#f9faf8]/90 px-4 backdrop-blur-md md:px-8">
       <div className="mx-auto flex max-w-[1480px] items-center justify-between">
-        <div className="hidden items-center gap-2 py-3 text-[10px] font-bold uppercase tracking-[0.17em] text-[#6b7882] md:flex">
+        <div className="hidden items-center gap-2 py-3 text-[10px] font-bold uppercase tracking-[0.17em] text-[#52616b] md:flex">
           <span className="font-mono text-[#122232]">WORKBENCH /</span>
           <span>CASE 24-017</span>
         </div>
-        <div className="flex w-full items-stretch justify-between gap-1 md:w-auto md:gap-2">
+        <nav aria-label="Diligence progress" className="flex w-full items-stretch justify-between gap-1 md:w-auto md:gap-2">
           {screens.map((screen, index) => {
             const Icon = screen.icon;
             const isActive = screen.id === current;
@@ -199,37 +200,52 @@ function ProgressNav({ current, onNavigate }: { current: Screen; onNavigate: (sc
               <button
                 key={screen.id}
                 data-testid={`button-navigate-${screen.id}`}
+                type="button"
+                aria-label={`Step ${index + 1}: ${screen.label}`}
+                aria-current={isActive ? "step" : undefined}
                 onClick={() => onNavigate(screen.id)}
-                className={`group relative flex min-w-0 items-center gap-2 border-b-2 px-2 py-3.5 text-left transition-colors md:min-w-[132px] md:px-3 ${isActive ? "border-[#b9d43a] text-[#122232]" : "border-transparent text-[#8a969e] hover:border-[#c8d5dd] hover:text-[#42515d]"}`}
+                className={`group relative flex min-w-0 items-center gap-2 border-b-2 px-2 py-3.5 text-left transition-colors md:min-w-[132px] md:px-3 ${isActive ? "border-[#b9d43a] text-[#122232]" : "border-transparent text-[#52616b] hover:border-[#c8d5dd] hover:text-[#122232]"}`}
               >
-                <span className={`hidden h-6 w-6 items-center justify-center rounded-full font-mono text-[9px] font-bold md:flex ${isActive ? "bg-[#122232] text-[#d4e86b]" : isDone ? "bg-[#e0f4ed] text-[#0b7a63]" : "bg-[#e7ecef] text-[#7a8790]"}`}>
+                <span className={`hidden h-6 w-6 items-center justify-center rounded-full font-mono text-[9px] font-bold md:flex ${isActive ? "bg-[#122232] text-[#d4e86b]" : isDone ? "bg-[#e0f4ed] text-[#0b7a63]" : "bg-[#e7ecef] text-[#52616b]"}`}>
                   {isDone ? <Check className="h-3 w-3" /> : screen.number}
                 </span>
-                <Icon className="h-3.5 w-3.5 md:hidden" />
-                <span className="min-w-0">
+                <span className="flex items-center gap-1.5 md:hidden">
+                  <Icon aria-hidden="true" className="h-3.5 w-3.5" />
+                  <span className="font-mono text-[10px] font-bold">{index + 1}</span>
+                </span>
+                <span className="hidden min-w-0 md:block">
                   <span className="block truncate text-[10px] font-bold uppercase tracking-[0.11em]">{screen.label}</span>
-                  <span className="hidden text-[10px] opacity-60 md:block">{screen.short}</span>
+                  <span className="text-[10px] text-[#52616b]">{screen.short}</span>
                 </span>
               </button>
             );
           })}
-        </div>
+        </nav>
         <div className="hidden items-center gap-2 py-3 md:flex">
-          <span className="h-2 w-2 animate-pulse rounded-full bg-[#0b7a63]" />
-          <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#63717a]">Local model · live</span>
+          <span className="h-2 w-2 animate-pulse rounded-full bg-[#0b7a63]" aria-hidden="true" />
+          <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#52616b]">Local model · live</span>
         </div>
       </div>
     </div>
   );
 }
 
-function Header({ onMenu }: { onMenu: () => void }) {
+function Header({ onMenu, mobileOpen, menuButtonRef }: { onMenu: () => void; mobileOpen: boolean; menuButtonRef: RefObject<HTMLButtonElement | null> }) {
   return (
     <header className="border-b border-[#d9e0e4] bg-[#122232] px-4 py-4 text-[#f6f7f2] md:px-8 md:py-5">
       <div className="mx-auto flex max-w-[1480px] items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <button data-testid="button-open-menu" onClick={onMenu} className="rounded-md p-2 text-[#d4e86b] hover:bg-white/10 md:hidden">
-            <Menu className="h-5 w-5" />
+          <button
+            ref={menuButtonRef}
+            data-testid="button-open-menu"
+            type="button"
+            aria-label="Navigation menu"
+            aria-expanded={mobileOpen}
+            aria-controls="mobile-navigation"
+            onClick={onMenu}
+            className="rounded-md p-2 text-[#d4e86b] hover:bg-white/10 md:hidden"
+          >
+            {mobileOpen ? <X aria-hidden="true" className="h-5 w-5" /> : <Menu aria-hidden="true" className="h-5 w-5" />}
           </button>
           <div className="relative flex h-9 w-9 items-center justify-center rounded border border-[#d4e86b]/50 bg-[#d4e86b] text-[#122232]">
             <span className="absolute h-4 w-4 rounded-sm border-2 border-[#122232]" />
@@ -261,7 +277,7 @@ function ShellAside({ screen, metrics, onNavigate }: { screen: Screen; metrics: 
       <SectionKicker>Active mandate</SectionKicker>
       <div className="mb-7">
         <div className="font-mono text-[11px] font-bold text-[#122232]">SW-DC / PHX-24-017</div>
-        <div className="mt-1 text-xs leading-5 text-[#6b7882]">Southwest digital infrastructure platform</div>
+         <div className="mt-1 text-xs leading-5 text-[#52616b]">Southwest digital infrastructure platform</div>
       </div>
       <div className="mb-8 rounded-lg border border-[#cbd8d4] bg-[#f9faf8] p-3.5">
         <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#60707d]">
@@ -269,7 +285,7 @@ function ShellAside({ screen, metrics, onNavigate }: { screen: Screen; metrics: 
         </div>
         <div className="mt-3 h-px bg-[#dfe6e3]" />
         <div className="mt-3 flex justify-between text-[10px]">
-          <span className="text-[#7a8790]">Screen</span>
+          <span className="text-[#52616b]">Screen</span>
           <span className="font-mono font-bold text-[#122232]">{screens.findIndex((item) => item.id === screen) + 1} / 5</span>
         </div>
       </div>
@@ -280,8 +296,11 @@ function ShellAside({ screen, metrics, onNavigate }: { screen: Screen; metrics: 
             <button
               key={item.id}
               data-testid={`aside-navigate-${item.id}`}
-              onClick={() => onNavigate(item.id)}
-              className={`flex w-full items-center gap-3 rounded-md px-2.5 py-2.5 text-left transition-colors ${active ? "bg-[#122232] text-[#d4e86b]" : "text-[#65737d] hover:bg-white hover:text-[#122232]"}`}
+               type="button"
+               aria-current={active ? "step" : undefined}
+               aria-label={`Step ${index + 1}: ${item.label}`}
+               onClick={() => onNavigate(item.id)}
+               className={`flex w-full items-center gap-3 rounded-md px-2.5 py-2.5 text-left transition-colors ${active ? "bg-[#122232] text-[#d4e86b]" : "text-[#52616b] hover:bg-white hover:text-[#122232]"}`}
             >
               <span className="font-mono text-[10px] opacity-70">0{index + 1}</span>
               <span className="text-[11px] font-semibold">{item.label}</span>
@@ -292,13 +311,13 @@ function ShellAside({ screen, metrics, onNavigate }: { screen: Screen; metrics: 
       </div>
       <div className="mt-auto pt-16">
         <div className="mb-2 flex items-end justify-between">
-          <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#60707d]">Evidence confidence</span>
-          <span data-testid="text-aside-confidence" className="font-mono text-sm font-bold text-[#122232]">{metrics.confidenceScore}%</span>
+           <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#52616b]">Evidence confidence</span>
+           <span data-testid="text-aside-confidence" className="font-mono text-sm font-bold text-[#122232]">{metrics.confidenceScore}%</span>
         </div>
-        <div className="h-1.5 overflow-hidden rounded-full bg-[#d9e2df]">
-          <div className="h-full rounded-full bg-[#b9d43a] transition-all duration-500" style={{ width: `${metrics.confidenceScore}%` }} />
+           <div className="h-1.5 overflow-hidden rounded-full bg-[#d9e2df]" role="progressbar" aria-label="Evidence confidence" aria-valuemin={0} aria-valuemax={100} aria-valuenow={metrics.confidenceScore}>
+           <div className="motion-bar h-full rounded-full bg-[#b9d43a] transition-all duration-500" style={{ width: `${metrics.confidenceScore}%` }} />
         </div>
-        <div className="mt-2 text-[10px] leading-4 text-[#829099]">Weighted by source quality and recency.</div>
+         <div className="mt-2 text-[10px] leading-4 text-[#52616b]">Weighted by source quality and recency.</div>
       </div>
     </aside>
   );
@@ -329,7 +348,7 @@ function BottomNav({ screen, onNavigate }: { screen: Screen; onNavigate: (screen
       >
         <ArrowLeft className="h-3.5 w-3.5" /> Previous
       </button>
-      <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-[#9aa5ab]">SafeLoc / private working paper</div>
+      <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-[#52616b]">SafeLoc / private working paper</div>
       <button
         data-testid="button-next-screen"
         onClick={() => index < screens.length - 1 && onNavigate(screens[index + 1].id)}
@@ -338,6 +357,25 @@ function BottomNav({ screen, onNavigate }: { screen: Screen; onNavigate: (screen
       >
         {index === screens.length - 1 ? "Review complete" : "Continue"} <ArrowRight className="h-3.5 w-3.5" />
       </button>
+    </div>
+  );
+}
+
+function DiligenceLiveRegions({ metrics }: { metrics: ReturnType<typeof useDiligence>["metrics"] }) {
+  return (
+    <div className="sr-only" aria-label="Diligence metric updates">
+      <div data-testid="live-confidence" aria-live="polite" aria-atomic="true">
+        Evidence confidence is now {metrics.confidenceScore} percent.
+      </div>
+      <div data-testid="live-current-irr" aria-live="polite" aria-atomic="true">
+        Current IRR is now {formatIRR(metrics.projectIRR)}.
+      </div>
+      <div data-testid="live-recommendation" aria-live="polite" aria-atomic="true">
+        Recommendation status is now {metrics.recommendationStatus}.
+      </div>
+      <div data-testid="live-material-gaps" aria-live="polite" aria-atomic="true">
+        Material evidence gap count is now {metrics.missingMaterialCount}.
+      </div>
     </div>
   );
 }
@@ -383,7 +421,7 @@ function CaseBrief({ metrics, onNavigate }: { metrics: ReturnType<typeof useDili
               ["Tension", "Water rights seniority and community response are unresolved."],
               ["Underwrite", "Returns hold only if energization lands inside the 24-month plan."],
             ].map(([key, value]) => (
-              <div key={key} className="grid grid-cols-[76px_1fr] gap-3 text-[11px]"><span className="font-mono uppercase tracking-[0.1em] text-[#7f8b92]">{key}</span><span className="font-medium leading-4 text-[#344550]">{value}</span></div>
+              <div key={key} className="grid grid-cols-[76px_1fr] gap-3 text-[11px]"><span className="font-mono uppercase tracking-[0.1em] text-[#52616b]">{key}</span><span className="font-medium leading-4 text-[#344550]">{value}</span></div>
             ))}
           </div>
         </section>
@@ -418,11 +456,11 @@ function CaseBrief({ metrics, onNavigate }: { metrics: ReturnType<typeof useDili
         ].map(([label, value, detail, color]) => (
           <div key={label} className="rounded-xl border border-[#d9e0e4] bg-white p-4">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#7d898f]">{label}</span>
+              <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#52616b]">{label}</span>
               <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
             </div>
             <div className="mt-3 font-mono text-lg font-bold text-[#122232]">{value}</div>
-            <div className="mt-1 text-[10px] leading-4 text-[#7d898f]">{detail}</div>
+            <div className="mt-1 text-[10px] leading-4 text-[#52616b]">{detail}</div>
           </div>
         ))}
       </div>
@@ -442,9 +480,9 @@ function CaseBrief({ metrics, onNavigate }: { metrics: ReturnType<typeof useDili
             ["Cooling type", "Hybrid", "Closed-loop + evaporative trim"],
           ].map(([label, value, detail]) => (
             <div key={label} className="border-l-2 border-[#d4e86b] pl-3">
-              <div className="text-[9px] font-bold uppercase tracking-[0.13em] text-[#7d898f]">{label}</div>
+              <div className="text-[9px] font-bold uppercase tracking-[0.13em] text-[#52616b]">{label}</div>
               <div className="mt-1 font-mono text-[15px] font-bold text-[#122232]">{value}</div>
-              <div className="mt-1 text-[10px] text-[#87939a]">{detail}</div>
+              <div className="mt-1 text-[10px] text-[#52616b]">{detail}</div>
             </div>
           ))}
         </div>
@@ -463,13 +501,14 @@ function EvidenceRow({ item, onChange }: { item: EvidenceItem; onChange: (id: st
           <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: meta.color }} />
           <span className="text-[12px] font-semibold text-[#243844]">{item.label}</span>
         </div>
-        <div className="mt-1 pl-3.5 text-[10px] leading-4 text-[#87939a]">{item.description}</div>
+        <div className="mt-1 pl-3.5 text-[10px] leading-4 text-[#52616b]">{item.description}</div>
       </div>
-      <div className="pl-3.5 md:pl-0"><span className="font-mono text-[13px] font-bold text-[#122232]">{item.value}</span> <span className="text-[10px] text-[#7e8b92]">{item.unit}</span></div>
-      <div className="pl-3.5 md:pl-0"><div className="flex items-start gap-1.5 text-[10px] leading-4 text-[#66757e]"><ExternalLink className="mt-0.5 h-3 w-3 shrink-0 text-[#9aa5ab]" /><span>{item.citation}</span></div></div>
+      <div className="pl-3.5 md:pl-0"><span className="font-mono text-[13px] font-bold text-[#122232]">{item.value}</span> <span className="text-[10px] text-[#52616b]">{item.unit}</span></div>
+      <div className="pl-3.5 md:pl-0"><div className="flex items-start gap-1.5 text-[10px] leading-4 text-[#52616b]"><ExternalLink className="mt-0.5 h-3 w-3 shrink-0 text-[#52616b]" /><span>{item.citation}</span></div></div>
       <div className="relative pl-3.5 md:pl-0">
         <select
           data-testid={`select-classification-${item.id}`}
+           aria-label={`Classification for ${item.label}`}
           value={item.classification}
           onChange={(event) => onChange(item.id, event.target.value as Classification)}
           className="w-full appearance-none rounded-md border bg-white py-2 pl-3 pr-8 text-[10px] font-semibold text-[#243844] outline-none transition-shadow focus:ring-2 focus:ring-[#b9d43a]/50"
@@ -477,7 +516,7 @@ function EvidenceRow({ item, onChange }: { item: EvidenceItem; onChange: (id: st
         >
           {classifications.map((classification) => <option key={classification} value={classification}>{classification}</option>)}
         </select>
-        <ChevronDown className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-[#7a8790]" />
+        <ChevronDown className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-[#52616b]" />
       </div>
     </div>
   );
@@ -493,7 +532,7 @@ function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => void }) 
         eyebrow="02 / source the conviction"
         title="Evidence is not a footnote. It is an active model input."
         description="Twelve diligence inputs are classified by provenance. Change a classification to test what the return looks like when an assertion becomes an assumption, or when missing evidence is finally verified."
-        right={<div data-testid="text-evidence-count" className="rounded-lg border border-[#cbd8d4] bg-[#f9faf8] px-4 py-3 text-right"><div className="font-mono text-xl font-bold text-[#122232]">{items.length}<span className="text-[#9aa5ab]"> / 12</span></div><div className="text-[9px] uppercase tracking-[0.14em] text-[#7a8790]">Inputs registered</div></div>}
+        right={<div data-testid="text-evidence-count" className="rounded-lg border border-[#cbd8d4] bg-[#f9faf8] px-4 py-3 text-right"><div className="font-mono text-xl font-bold text-[#122232]">{items.length}<span className="text-[#52616b]"> / 12</span></div><div className="text-[9px] uppercase tracking-[0.14em] text-[#52616b]">Inputs registered</div></div>}
       />
       <div className="mb-5 grid gap-3 sm:grid-cols-5">
         {counts.map(({ classification, count }) => {
@@ -502,7 +541,7 @@ function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => void }) 
         })}
       </div>
       <div className="overflow-hidden rounded-xl border border-[#d9e0e4] bg-white">
-        <div className="hidden grid-cols-[1.55fr_0.7fr_1.1fr_1.55fr] gap-3 border-b border-[#d9e0e4] bg-[#f1f5f3] px-5 py-3 text-[9px] font-bold uppercase tracking-[0.16em] text-[#7d898f] md:grid">
+        <div className="hidden grid-cols-[1.55fr_0.7fr_1.1fr_1.55fr] gap-3 border-b border-[#d9e0e4] bg-[#f1f5f3] px-5 py-3 text-[9px] font-bold uppercase tracking-[0.16em] text-[#52616b] md:grid">
           <span>Evidence variable</span><span>Current value</span><span>Citation / provenance</span><span>Classification · editable</span>
         </div>
         {items.map((item) => <EvidenceRow key={item.id} item={item} onChange={updateClassification} />)}
@@ -547,7 +586,7 @@ function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => 
         </div>
       )}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <MetricCard testId="metric-project-irr" label="Project IRR" value={formatIRR(currentIRR)} detail={`${irrDelta === null ? "N/M" : `${irrDelta >= 0 ? "+" : ""}${irrDelta.toFixed(1)} pts`} vs verified baseline`} accent="lime" />
+         <MetricCard testId="metric-project-irr" label="Project IRR" value={formatIRR(currentIRR)} detail={`${irrDelta === null ? "N/M" : `${irrDelta >= 0 ? "+" : ""}${irrDelta.toFixed(1)} pts`} vs verified baseline`} accent="lime" />
         <MetricCard testId="metric-moic" label="MOIC" value={`${metrics.moic}x`} detail="5-year hold period" accent="navy" />
         <MetricCard testId="metric-coc" label="Cash-on-cash" value={`${metrics.cashOnCash}%`} detail="Stabilized year 3" accent="violet" />
         <MetricCard testId="metric-payback" label="Payback" value={formatPayback(metrics.payback)} detail="Cumulative equity breakeven" accent="coral" />
@@ -555,13 +594,13 @@ function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => 
       </div>
       <div className="mt-5 grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
         <section className="rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-6">
-          <div className="flex items-end justify-between border-b border-[#e5eae8] pb-4"><div><SectionKicker>Evidence → financial materiality</SectionKicker><h2 className="text-[19px] font-semibold tracking-[-0.025em] text-[#122232]">Where the model feels the uncertainty</h2></div><span className="font-mono text-[10px] text-[#87939a]">Δ IRR / variable</span></div>
+          <div className="flex items-end justify-between border-b border-[#e5eae8] pb-4"><div><SectionKicker>Evidence → financial materiality</SectionKicker><h2 className="text-[19px] font-semibold tracking-[-0.025em] text-[#122232]">Where the model feels the uncertainty</h2></div><span className="font-mono text-[10px] text-[#52616b]">Δ IRR / variable</span></div>
           <div className="mt-2 divide-y divide-[#e5eae8]">
             {impacts.map((impact) => {
               const item = evidence[impact.id];
               const effectTone = impact.deltaIRR < 0 ? "text-[#ba2f45]" : impact.deltaIRR > 0 ? "text-[#0b7a63]" : "text-[#63717a]";
               return <div key={impact.id} data-testid={`row-materiality-${impact.id}`} className="grid grid-cols-[1fr_auto] gap-4 py-4 sm:grid-cols-[1.2fr_0.9fr_0.75fr_0.5fr] sm:items-center">
-                <div><div className="text-[12px] font-semibold text-[#243844]">{item.label}</div><div className="mt-1 text-[10px] text-[#87939a]">{impact.driver}</div></div>
+                <div><div className="text-[12px] font-semibold text-[#243844]">{item.label}</div><div className="mt-1 text-[10px] text-[#52616b]">{impact.driver}</div></div>
                 <div className="sm:col-auto"><ClassificationBadge value={item.classification} compact /></div>
                 <div className="text-right font-mono text-[11px] font-bold text-[#4d5c65] sm:text-left">{formatLineItemValue(impact.value, impact.unit)}</div>
                 <div className={`hidden text-right font-mono text-[12px] font-bold sm:block ${effectTone}`}>{impact.deltaIRR > 0 ? "+" : ""}{impact.deltaIRR.toFixed(1)} pts</div>
@@ -570,13 +609,19 @@ function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => 
           </div>
         </section>
         <section className="rounded-xl bg-[#122232] p-5 text-white md:p-6">
-          <div className="flex items-start justify-between"><div><SectionKicker tone="lime">Return path</SectionKicker><h2 className="text-[19px] font-semibold tracking-[-0.025em]">Verified baseline → current case</h2></div>{irrDelta !== null && irrDelta < 0 ? <TrendingDown className="h-5 w-5 text-[#f5ddd5]" /> : <TrendingUp className="h-5 w-5 text-[#d4e86b]" />}</div>
+          <div className="flex items-start justify-between"><div><SectionKicker tone="lime" className="!text-[#d4e86b]">Return path</SectionKicker><h2 className="text-[19px] font-semibold tracking-[-0.025em]">Verified baseline → current case</h2></div>{irrDelta !== null && irrDelta < 0 ? <TrendingDown className="h-5 w-5 text-[#f5ddd5]" /> : <TrendingUp className="h-5 w-5 text-[#d4e86b]" />}</div>
           {lowConfidence && <div className="mt-4"><LowConfidenceWarning testId="warning-low-confidence-materiality-return" /></div>}
           <div className="mt-8 flex items-end gap-5">
             <div><div className="font-mono text-[9px] uppercase tracking-[0.15em] text-[#9dafb8]">Verified IRR</div><div className="mt-2 font-mono text-3xl font-bold text-[#b9d43a]">{formatIRR(baseIRR)}</div></div>
             <ArrowRight className="mb-2 h-5 w-5 text-[#7c909d]" />
             <div><div className="font-mono text-[9px] uppercase tracking-[0.15em] text-[#9dafb8]">Current IRR</div><div data-testid="text-current-irr-materiality" className="mt-2 font-mono text-3xl font-bold text-[#f5ddd5]">{formatIRR(currentIRR)}</div></div>
           </div>
+          {metrics.lastChange && metrics.lastChange.from !== metrics.lastChange.to && (
+            <div className="mt-3 flex items-center gap-2 font-mono text-[10px] text-[#f5ddd5]">
+              <span className="line-through opacity-60">{metrics.lastChange.from}% prior</span>
+              <span className="rounded bg-[#f5ddd5] px-2 py-1 font-bold text-[#ba2f45]">{metrics.lastChange.delta > 0 ? "+" : ""}{metrics.lastChange.delta.toFixed(1)} pts since reclassification</span>
+            </div>
+          )}
           <div className="mt-7 h-28 border-b border-l border-white/20 px-3 pb-2 pt-3">
             <div className="relative h-full">
               <svg viewBox="0 0 500 72" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible">
@@ -592,13 +637,13 @@ function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => 
           </div>
         </section>
       </div>
-      <section className="mt-5 rounded-xl border border-[#d9e0e4] bg-[#eef2f1] p-5 md:p-6">
+       <section className="mt-5 rounded-xl border border-[#d9e0e4] bg-[#eef2f1] p-5 md:p-6">
         <div className="flex items-end justify-between border-b border-[#d6e0dc] pb-4">
           <div>
             <SectionKicker>Project-level return model</SectionKicker>
             <h2 className="text-[18px] font-semibold tracking-[-0.025em] text-[#122232]">A transparent bridge from operations to returns.</h2>
           </div>
-          <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#7d898f]">5-year / client-side</span>
+          <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#52616b]">5-year / client-side</span>
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {[
@@ -610,17 +655,17 @@ function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => 
             ["Equity cash flows", `${formatCurrency(metrics.equityInvested)} invested`, `${formatCurrency(metrics.totalDistributions)} total distributions · true equity returns`],
           ].map(([label, value, detail]) => (
             <div key={label} className="rounded-lg border border-[#d9e0e4] bg-white p-4">
-              <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#7d898f]">{label}</div>
+              <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#52616b]">{label}</div>
               <div className="mt-2 font-mono text-[12px] font-bold text-[#122232]">{value}</div>
-              <div className="mt-1 text-[10px] leading-4 text-[#87939a]">{detail}</div>
+              <div className="mt-1 text-[10px] leading-4 text-[#52616b]">{detail}</div>
             </div>
           ))}
-        </div>
-        {lowConfidence && <div className="mt-5"><LowConfidenceWarning testId="warning-low-confidence-materiality-model" /></div>}
+         </div>
+         {lowConfidence && <div className="mt-5"><LowConfidenceWarning testId="warning-low-confidence-materiality-model" /></div>}
         <div className="mt-5 overflow-x-auto rounded-lg border border-[#d9e0e4] bg-white">
           <table className="w-full min-w-[760px] border-collapse text-left">
             <caption className="sr-only">Five-year annual project cash-flow schedule</caption>
-            <thead className="bg-[#f1f5f3] text-[9px] font-bold uppercase tracking-[0.13em] text-[#7d898f]">
+            <thead className="bg-[#f1f5f3] text-[9px] font-bold uppercase tracking-[0.13em] text-[#52616b]">
               <tr><th className="px-3 py-3">Year</th><th className="px-3 py-3">Revenue</th><th className="px-3 py-3">NOI</th><th className="px-3 py-3">Debt service</th><th className="px-3 py-3">Terminal value</th><th className="px-3 py-3">Net equity CF</th><th className="px-3 py-3">Cumulative CF</th></tr>
             </thead>
             <tbody className="divide-y divide-[#e5eae8] font-mono text-[10px] text-[#344550]">
@@ -654,11 +699,6 @@ function DecisionReview({ onNavigate }: { onNavigate: (screen: Screen) => void }
     CONDITIONAL: { color: "#a65a00", bg: "#fff0d6", border: "#f1cb8b" },
     "READY FOR REVIEW": { color: "#0b7a63", bg: "#e0f4ed", border: "#9bd8c5" },
   }[metrics.recommendationStatus];
-  const disputed = items.filter((item) => item.classification === "Management Assertion" || item.classification === "Missing Evidence");
-  const grouped = classifications.map((classification) => ({
-    classification,
-    items: items.filter((item) => item.classification === classification),
-  }));
   const decisionCopy = {
     BLOCKED: {
       title: "Do not advance on return alone.",
@@ -676,6 +716,17 @@ function DecisionReview({ onNavigate }: { onNavigate: (screen: Screen) => void }
       icon: <ShieldCheck className="h-5 w-5" />,
     },
   }[metrics.recommendationStatus];
+  const [flash, setFlash] = useState(false);
+  useEffect(() => {
+    if (metrics.lastChange && metrics.lastChange.from !== metrics.lastChange.to) {
+      setFlash(true);
+      const timer = window.setTimeout(() => setFlash(false), 1800);
+      return () => window.clearTimeout(timer);
+    }
+    return undefined;
+  }, [metrics.lastChange]);
+  const grouped = classifications.map((classification) => ({ classification, items: items.filter((item) => item.classification === classification) })).filter((group) => group.items.length);
+  const disputed = items.filter((item) => item.classification === "Management Assertion" || item.classification === "Missing Evidence");
   return (
     <div>
       <PageIntro
@@ -688,11 +739,12 @@ function DecisionReview({ onNavigate }: { onNavigate: (screen: Screen) => void }
       {metrics.recommendationStatus === "CONDITIONAL" && <div data-testid="banner-recommendation-conditional" className="mb-5 flex items-start gap-3 rounded-xl border-2 border-[#a65a00] bg-[#fff8e9] px-5 py-4 text-[#6f460e]"><CircleAlert className="mt-0.5 h-5 w-5 shrink-0" /><div><div className="font-mono text-[12px] font-bold tracking-[0.08em]">CONDITIONAL: {metrics.materialUnverifiedCount} material assumptions depend on unverified evidence</div><div className="mt-1 text-[11px] leading-5 text-[#806d51]">Name the evidence owners and carry these conditions into review.</div></div></div>}
       {metrics.recommendationStatus === "READY FOR REVIEW" && <div data-testid="banner-recommendation-ready" className="mb-5 flex items-start gap-3 rounded-xl border-2 border-[#0b7a63] bg-[#f0faf5] px-5 py-4 text-[#0b6351]"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0" /><div><div className="font-mono text-[12px] font-bold tracking-[0.08em]">READY FOR REVIEW: all material evidence is supported</div><div className="mt-1 text-[11px] leading-5 text-[#4b756b]">The return is ready for an IC discussion with its provenance preserved.</div></div></div>}
       <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
-        <section className="rounded-xl border border-[#d9e0e4] bg-[#122232] p-6 text-white" data-testid="panel-decision-return">
-          <div className="flex items-start justify-between"><div><SectionKicker tone="lime">Prominent base return</SectionKicker><div className="mt-2 text-[10px] uppercase tracking-[0.17em] text-[#a4b4bd]">Evidence-adjusted project IRR</div></div><Gauge className="h-5 w-5 text-[#b9d43a]" /></div>
+        <section className={`motion-scale rounded-xl border border-[#d9e0e4] bg-[#122232] p-6 text-white transition-transform ${flash ? "scale-[1.01]" : ""}`} data-testid="panel-decision-return">
+          <div className="flex items-start justify-between"><div><SectionKicker tone="lime" className="!text-[#d4e86b]">Prominent base return</SectionKicker><div className="mt-2 text-[10px] uppercase tracking-[0.17em] text-[#a4b4bd]">Evidence-adjusted project IRR</div></div><Gauge className="h-5 w-5 text-[#b9d43a]" /></div>
           {lowConfidence && <div className="mt-4"><LowConfidenceWarning testId="warning-low-confidence-decision" /></div>}
           <div className="mt-5 flex items-end justify-between gap-3">
             <div data-testid="text-decision-irr" className="font-mono text-[64px] font-bold leading-none tracking-[-0.08em] text-[#d4e86b]">{formatIRR(metrics.projectIRR)}</div>
+            {metrics.lastChange && metrics.lastChange.from !== metrics.lastChange.to && <div className={`mb-1 flex flex-col items-end gap-1 rounded px-2 py-1 font-mono text-[10px] font-bold ${metrics.lastChange.delta < 0 ? "bg-[#f5ddd5] text-[#ba2f45]" : "bg-[#e0f4ed] text-[#0b7a63]"}`}><span className="opacity-60 line-through">{metrics.lastChange.from}% prior</span><span>{metrics.lastChange.delta > 0 ? "+" : ""}{metrics.lastChange.delta.toFixed(1)} pts</span></div>}
           </div>
           <div className="mt-5 border-t border-white/15 pt-4 text-[11px] leading-5 text-[#afbdc4]">Verified underwriting: <span className="font-mono text-white">{formatIRR(metrics.baseIRR ?? null)}</span>. The current return reflects evidence quality, timeline drag, and infrastructure risk.</div>
           <div className="mt-6 grid grid-cols-3 gap-2">
@@ -702,50 +754,21 @@ function DecisionReview({ onNavigate }: { onNavigate: (screen: Screen) => void }
           </div>
         </section>
         <section className="rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-6">
-          <div className="flex items-end justify-between border-b border-[#e5eae8] pb-4"><div><SectionKicker>Evidence quality mix</SectionKicker><h2 className="text-[19px] font-semibold tracking-[-0.025em] text-[#122232]">What is carrying the case?</h2></div><span className="font-mono text-[10px] text-[#87939a]">{metrics.confidenceScore}% weighted</span></div>
+          <div className="flex items-end justify-between border-b border-[#e5eae8] pb-4"><div><SectionKicker>Evidence quality mix</SectionKicker><h2 className="text-[19px] font-semibold tracking-[-0.025em] text-[#122232]">What is carrying the case?</h2></div><span className="font-mono text-[10px] text-[#52616b]">{metrics.confidenceScore}% weighted</span></div>
           <div className="mt-4 space-y-3">
-            {grouped.map((group) => <div key={group.classification} data-testid={`group-quality-${classMeta[group.classification].short.toLowerCase()}`} className="flex items-center gap-3"><ClassificationBadge value={group.classification} compact /><div className="h-2 flex-1 overflow-hidden rounded-full bg-[#edf1ef]"><div className="h-full rounded-full transition-all duration-500" style={{ width: `${(group.items.length / 12) * 100}%`, backgroundColor: classMeta[group.classification].color }} /></div><span className="w-5 text-right font-mono text-[11px] font-bold text-[#52616b]">{group.items.length}</span></div>)}
+            {grouped.map((group) => <div key={group.classification} data-testid={`group-quality-${classMeta[group.classification].short.toLowerCase()}`} className="flex items-center gap-3"><ClassificationBadge value={group.classification} compact /><div className="h-2 flex-1 overflow-hidden rounded-full bg-[#edf1ef]"><div className="motion-bar h-full rounded-full transition-all duration-500" style={{ width: `${(group.items.length / 12) * 100}%`, backgroundColor: classMeta[group.classification].color }} /></div><span className="w-5 text-right font-mono text-[11px] font-bold text-[#52616b]">{group.items.length}</span></div>)}
           </div>
           <div className="mt-6 grid gap-3 border-t border-[#e5eae8] pt-5 sm:grid-cols-2">
-            <div><div className="text-[9px] font-bold uppercase tracking-[0.13em] text-[#7d898f]">Disputed / unverified</div><div className="mt-2 font-mono text-2xl font-bold text-[#ba2f45]">{disputed.length}</div><div className="mt-1 text-[10px] text-[#87939a]">Assertions or missing source</div></div>
-            <div><div className="text-[9px] font-bold uppercase tracking-[0.13em] text-[#7d898f]">Material gap count</div><div className="mt-2 font-mono text-2xl font-bold text-[#a65a00]">{metrics.missingMaterialCount}</div><div className="mt-1 text-[10px] text-[#87939a]">Missing material evidence</div></div>
+            <div><div className="text-[9px] font-bold uppercase tracking-[0.13em] text-[#52616b]">Disputed / unverified</div><div className="mt-2 font-mono text-2xl font-bold text-[#ba2f45]">{disputed.length}</div><div className="mt-1 text-[10px] text-[#52616b]">Assertions or missing source</div></div>
+            <div><div className="text-[9px] font-bold uppercase tracking-[0.13em] text-[#52616b]">Material gap count</div><div className="mt-2 font-mono text-2xl font-bold text-[#a65a00]">{metrics.missingMaterialCount}</div><div className="mt-1 text-[10px] text-[#52616b]">Blocking the recommendation</div></div>
           </div>
         </section>
       </div>
-      <section data-testid="decision-evidence-groups" className="mt-5 space-y-4">
-        {grouped.map(({ classification, items: groupItems }) => {
-          const meta = classMeta[classification];
-          return (
-            <section key={classification} data-testid={`section-evidence-${meta.short.toLowerCase()}`} className="overflow-hidden rounded-xl border border-[#d9e0e4] bg-white">
-              <div className="flex flex-col gap-3 border-b border-[#e5eae8] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-3"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: meta.color }} /><h2 className="text-[17px] font-semibold tracking-[-0.025em] text-[#122232]">{classification}</h2></div>
-                <span className="font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-[#7d898f]">{groupItems.length} {groupItems.length === 1 ? "item" : "items"}</span>
-              </div>
-              {groupItems.length > 0 ? (
-                <div className="divide-y divide-[#e5eae8]">
-                  {groupItems.map((item) => {
-                    const impact = metrics.lineItems[item.id];
-                    const effectTone = impact.deltaIRR < 0 ? "text-[#ba2f45]" : impact.deltaIRR > 0 ? "text-[#0b7a63]" : "text-[#63717a]";
-                    return (
-                      <div key={item.id} data-testid={`row-decision-evidence-${item.id}`} className="grid gap-4 px-5 py-4 md:grid-cols-[1.15fr_0.85fr_1.1fr_0.95fr] md:items-center">
-                        <div><div className="text-[12px] font-semibold text-[#243844]">{item.label}</div><div className="mt-1 text-[10px] leading-4 text-[#87939a]">{item.description}</div></div>
-                        <div><div className="text-[9px] font-bold uppercase tracking-[0.12em] text-[#7d898f]">Recorded value</div><div className="mt-1 font-mono text-[12px] font-bold text-[#122232]">{formatRecordedValue(item.value)} <span className="font-sans text-[10px] font-medium text-[#7e8b92]">{item.unit}</span></div></div>
-                        <div><div className="text-[9px] font-bold uppercase tracking-[0.12em] text-[#7d898f]">Provenance / context</div><div className="mt-1 text-[10px] leading-4 text-[#66757e]">{item.citation}</div></div>
-                        <div className="rounded-md bg-[#f5f7f5] p-3"><div className="text-[9px] font-bold uppercase tracking-[0.12em] text-[#7d898f]">Model driver</div><div className="mt-1 text-[10px] font-semibold text-[#344550]">{impact.driver}</div><div className="mt-2 text-[9px] text-[#87939a]">Modeled {formatLineItemValue(impact.value, impact.unit)}</div><div className={`mt-1 font-mono text-[11px] font-bold ${effectTone}`}>{impact.deltaIRR > 0 ? "+" : ""}{impact.deltaIRR.toFixed(1)} pts IRR vs verified</div></div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : <div data-testid={`empty-evidence-${meta.short.toLowerCase()}`} className="px-5 py-5 text-[11px] italic text-[#87939a]">No {classification.toLowerCase()} items are currently recorded.</div>}
-            </section>
-          );
-        })}
-      </section>
       <div className="mt-5 grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
         <section className="rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-6">
           <div className="flex items-center justify-between"><div><SectionKicker tone="warning">Material evidence gaps</SectionKicker><h2 className="text-[18px] font-semibold tracking-[-0.025em] text-[#122232]">Items that need a named owner</h2></div><CircleAlert className="h-5 w-5 text-[#ba2f45]" /></div>
           <div className="mt-4 divide-y divide-[#e5eae8]">
-            {items.filter((item) => item.classification === "Missing Evidence").map((item) => <div key={item.id} className="flex items-center justify-between gap-4 py-3"><div><div className="text-[11px] font-semibold text-[#344550]">{item.label}</div><div className="mt-1 text-[10px] text-[#87939a]">{item.citation}</div></div><span className="shrink-0 rounded bg-[#fde8eb] px-2 py-1 text-[9px] font-bold uppercase tracking-[0.11em] text-[#ba2f45]">Resolve</span></div>)}
+            {items.filter((item) => item.classification === "Missing Evidence").map((item) => <div key={item.id} className="flex items-center justify-between gap-4 py-3"><div><div className="text-[11px] font-semibold text-[#344550]">{item.label}</div><div className="mt-1 text-[10px] text-[#52616b]">{item.citation}</div></div><span className="shrink-0 rounded bg-[#fde8eb] px-2 py-1 text-[9px] font-bold uppercase tracking-[0.11em] text-[#ba2f45]">Resolve</span></div>)}
             {items.filter((item) => item.classification === "Missing Evidence").length === 0 && <div className="rounded-md bg-[#e0f4ed] p-3 text-[11px] text-[#0b7a63]">No missing evidence items. The recommendation can move to review.</div>}
           </div>
         </section>
@@ -825,7 +848,7 @@ function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
         description="For SRI and ESG advisors, the question is how a local evidence gap can travel from a private data center project into public-market exposure, stewardship priorities, and reputational risk."
         right={<div className="flex items-center gap-2 rounded-md border border-[#cbb7ec] bg-[#eee7fa] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#7049b7]"><Leaf className="h-3.5 w-3.5" /> Public-market transmission</div>}
       />
-      <section data-testid="text-advisor-summary" aria-live="polite" className="mb-5 rounded-xl border border-[#cbd8d4] bg-[#f9faf8] p-5 md:p-6">
+       <section data-testid="text-advisor-summary" className="mb-5 rounded-xl border border-[#cbd8d4] bg-[#f9faf8] p-5 md:p-6">
         <SectionKicker>Live evidence posture</SectionKicker>
         <p className="max-w-4xl text-[18px] font-semibold leading-7 tracking-[-0.025em] text-[#122232] md:text-[21px]">
           Based on current evidence quality, {verifiedCount} of 12 inputs are verified. Data center exposure in common ESG funds carries {riskTier} unverified risk.
@@ -837,7 +860,7 @@ function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
       </section>
       <div className="grid gap-5 xl:grid-cols-[0.92fr_1.08fr]">
         <section className="rounded-xl bg-[#122232] p-6 text-white md:p-7">
-          <SectionKicker tone="lime">Public-market exposure</SectionKicker>
+           <SectionKicker tone="lime" className="!text-[#d4e86b]">Public-market exposure</SectionKicker>
           <h2 className="max-w-md text-[25px] font-semibold leading-tight tracking-[-0.035em]">The facility is private. The consequences may not be.</h2>
           <p className="mt-3 max-w-lg text-[11px] leading-5 text-[#afbdc4]">Data center demand, chip concentration, power procurement, and resource intensity can transmit into listed companies and the funds that hold them.</p>
           <div className="mt-7 space-y-3">
@@ -923,6 +946,9 @@ function AppShell() {
   const [screen, setScreen] = useState<Screen>("brief");
   const [mobileOpen, setMobileOpen] = useState(false);
   const diligence = useDiligence();
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLElement>(null);
+  const menuWasOpen = useRef(false);
   useEffect(() => {
     if (!diligence.metrics.lastChange) return undefined;
     const timer = window.setTimeout(diligence.clearLastChange, 8000);
@@ -932,13 +958,105 @@ function AppShell() {
     if (next !== screen) diligence.clearLastChange();
     setScreen(next);
     setMobileOpen(false);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false;
+    window.scrollTo({ top: 0, behavior: prefersReducedMotion ? "auto" : "smooth" });
   };
+
+  useEffect(() => {
+    if (!mobileOpen) {
+      if (menuWasOpen.current) {
+        menuWasOpen.current = false;
+        menuButtonRef.current?.focus();
+      }
+      return undefined;
+    }
+
+    menuWasOpen.current = true;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const menu = menuRef.current;
+    const getFocusableElements = () =>
+      menu
+        ? Array.from(menu.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'))
+        : [];
+    const focusTimer = window.setTimeout(() => getFocusableElements()[0]?.focus(), 0);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMobileOpen(false);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = getFocusableElements();
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (menu && !menu.contains(document.activeElement)) {
+        event.preventDefault();
+        first.focus();
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!menu?.contains(target) && !menuButtonRef.current?.contains(target)) {
+        event.preventDefault();
+        setMobileOpen(false);
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [mobileOpen]);
+
   return (
     <div className="min-h-[100dvh] bg-[#f4f6f4] text-[#122232]">
-      <Header onMenu={() => setMobileOpen((value) => !value)} />
+      <Header
+        onMenu={() => setMobileOpen((value) => !value)}
+        mobileOpen={mobileOpen}
+        menuButtonRef={menuButtonRef}
+      />
       <ProgressNav current={screen} onNavigate={go} />
-      {mobileOpen && <div className="fixed inset-x-4 top-[76px] z-30 rounded-lg border border-[#cbd8d4] bg-[#f9faf8] p-2 shadow-lg md:hidden">{screens.map((item) => <button key={item.id} data-testid={`mobile-navigate-${item.id}`} onClick={() => go(item.id)} className={`flex w-full items-center gap-3 rounded px-3 py-3 text-left text-[11px] font-semibold ${screen === item.id ? "bg-[#122232] text-[#d4e86b]" : "text-[#52616b]"}`}><item.icon className="h-4 w-4" /> {item.label}</button>)}</div>}
+      {mobileOpen && (
+        <>
+          <div
+            data-testid="mobile-menu-backdrop"
+            aria-hidden="true"
+            onClick={() => setMobileOpen(false)}
+            className="fixed inset-0 z-20 bg-[#122232]/60 md:hidden"
+          />
+          <nav
+            ref={menuRef}
+            id="mobile-navigation"
+            aria-label="Mobile navigation"
+            className="fixed inset-x-4 top-[76px] z-30 max-h-[calc(100dvh-92px)] overflow-y-auto rounded-lg border border-[#cbd8d4] bg-[#f9faf8] p-2 shadow-lg md:hidden"
+          >
+            {screens.map((item, index) => (
+              <button
+                key={item.id}
+                data-testid={`mobile-navigate-${item.id}`}
+                type="button"
+                aria-current={screen === item.id ? "step" : undefined}
+                aria-label={`Step ${index + 1}: ${item.label}`}
+                onClick={() => go(item.id)}
+                className={`flex w-full items-center gap-3 rounded px-3 py-3 text-left text-[11px] font-semibold ${screen === item.id ? "bg-[#122232] text-[#d4e86b]" : "text-[#52616b]"}`}
+              >
+                <item.icon aria-hidden="true" className="h-4 w-4" /> {item.label}
+              </button>
+            ))}
+          </nav>
+        </>
+      )}
       {diligence.metrics.lastChange && (
         <div data-testid="toast-reclassification" role="status" aria-live="polite" className="fixed bottom-5 right-4 z-40 w-[min(360px,calc(100vw-2rem))] rounded-lg border border-[#cbd8d4] bg-[#122232] p-4 text-white shadow-xl md:bottom-7 md:right-7">
           <div className="flex items-start justify-between gap-4">
@@ -963,8 +1081,9 @@ function AppShell() {
           </div>
         </main>
       </div>
+      <DiligenceLiveRegions metrics={diligence.metrics} />
       <footer className="border-t border-[#d9e0e4] bg-[#eef2f1] px-4 py-6 md:px-8">
-        <div className="mx-auto flex max-w-[1480px] flex-col justify-between gap-3 text-[9px] uppercase tracking-[0.12em] text-[#7b888f] sm:flex-row sm:items-center"><span>SafeLoc Diligence Workbench</span><span>Proof of Concept | Transaction assumptions are synthetic | Environmental and infrastructure data from public sources</span><span className="font-mono">2024 / 24-017</span></div>
+        <div className="mx-auto flex max-w-[1480px] flex-col justify-between gap-3 text-[9px] uppercase tracking-[0.12em] text-[#52616b] sm:flex-row sm:items-center"><span>SafeLoc Diligence Workbench</span><span>Proof of Concept | Transaction assumptions are synthetic | Environmental and infrastructure data from public sources</span><span className="font-mono">2024 / 24-017</span></div>
       </footer>
     </div>
   );

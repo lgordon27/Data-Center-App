@@ -8,6 +8,8 @@ const routes = [
   ["advisor", "Advisor Lens"],
 ] as const;
 
+    const visual = page.getByTestId("home-evidence-visual");
+
 test.describe("hash routing and browser history", () => {
   test("supports all direct links and normalizes invalid hashes", async ({ page }) => {
     for (const [route, label] of routes) {
@@ -237,3 +239,7 @@ test.describe("hash routing and browser history", () => {
     await expect(page).toHaveURL(/#decision$/);
   });
 });
+
+    const viewportWidth = page.viewportSize()?.width ?? 0;
+
+      const documentWidth = await page.evaluate(() => document.documentElement.scrollWidth);

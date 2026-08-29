@@ -1197,16 +1197,61 @@ function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
   const baseIRR = metrics.baseIRR ?? null;
   const governanceGap = getGovernanceIRRGap(baseIRR, currentIRR);
   const prioritizedQuestions = useMemo(() => prioritizeAdvisorQuestions(evidence), [evidence]);
+  const exposureChain = [
+    { label: "Client Portfolio", detail: "Retirement, managed, or values-aligned allocation", tone: "neutral" },
+    { label: "ESG Fund", detail: "Screened fund or benchmark exposure", tone: "blue" },
+    { label: "NVIDIA", detail: "20%+ of iShares ESG Advanced", tone: "coral" },
+    { label: "GPU Orders", detail: "Demand for accelerated computing", tone: "lime" },
+    { label: "Hyperscaler CAPEX", detail: "$650B committed", tone: "violet" },
+    { label: "Data Center Buildout", detail: "Power, water, cooling, and grid dependencies", tone: "amber" },
+    { label: "Stargate Abilene", detail: "The project just analyzed", tone: "navy" },
+  ] as const;
+  const exposureTone: Record<(typeof exposureChain)[number]["tone"], { background: string; border: string; color: string }> = {
+    neutral: { background: "#f1f5f3", border: "#cbd8d4", color: "#344550" },
+    blue: { background: "#e5efff", border: "#aac6f4", color: "#255bb7" },
+    coral: { background: "#fde8eb", border: "#efabb8", color: "#ba2f45" },
+    lime: { background: "#eef5cd", border: "#c9db70", color: "#506600" },
+    violet: { background: "#eee7fa", border: "#cbb7ec", color: "#7049b7" },
+    amber: { background: "#fff0d6", border: "#f1cb8b", color: "#a65a00" },
+    navy: { background: "#122232", border: "#122232", color: "#d4e86b" },
+  };
+  const conversations = [
+    {
+      number: "01",
+      topic: "ESG-fund quality",
+      question: "Is my ESG fund still a good investment?",
+      framework: "The question is not about the rating. It is about whether the fund manager is conducting site-level diligence on the infrastructure assumptions driving top holdings' earnings.",
+      action: "Ask your fund manager what site-level evidence standards they apply to AI infrastructure holdings.",
+      accent: "blue",
+    },
+    {
+      number: "02",
+      topic: "AI risk in the portfolio",
+      question: "Should I be worried about AI risk in my portfolio?",
+      framework: "The risk is not AI itself. The risk is that the physical infrastructure build is outrunning the evidence base. $130B in projects were blocked not because technology failed but because assumptions were not verified.",
+      action: "Review your portfolio's concentration in AI infrastructure-dependent holdings.",
+      accent: "coral",
+    },
+    {
+      number: "03",
+      topic: "The client’s next step",
+      question: "What should I do?",
+      framework: "Not sell. Ask better questions. The advisor is the person who looks at evidence quality behind holdings and decides whether exposure to unverified assumptions is acceptable for the client's risk tolerance, time horizon, and values.",
+      action: "Use the governance gap number from this tool in your next client review.",
+      accent: "lime",
+    },
+  ] as const;
   return (
     <div>
       <PageIntro
-        eyebrow="05 / broaden the lens"
-        title="Infrastructure risk does not stay inside the asset."
-        description="For SRI and ESG advisors, the question is how a local evidence gap can travel from a private data center project into public-market exposure, stewardship priorities, and reputational risk."
-        right={<div className="flex items-center gap-2 rounded-md border border-[#cbb7ec] bg-[#eee7fa] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#7049b7]"><Leaf className="h-3.5 w-3.5" /> Public-market transmission</div>}
+        eyebrow="05 / advisor handoff"
+        title="Turn evidence quality into a client conversation."
+        description="A practical handoff for advisors reviewing how Stargate Abilene’s physical infrastructure assumptions may connect to public-market exposure. Use the live evidence posture, not a generic ESG label, to frame the next question."
+        right={<div className="flex items-center gap-2 rounded-md border border-[#cbb7ec] bg-[#eee7fa] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#7049b7]"><Leaf className="h-3.5 w-3.5" /> Advisor handoff</div>}
       />
-       <section data-testid="text-advisor-summary" className="mb-5 rounded-xl border border-[#cbd8d4] bg-[#f9faf8] p-5 md:p-6">
+      <section data-testid="text-advisor-summary" className="mb-5 rounded-xl border border-[#cbd8d4] bg-[#f9faf8] p-5 md:p-6" aria-labelledby="advisor-live-posture-heading">
         <SectionKicker>Live evidence posture</SectionKicker>
+         <h2 id="advisor-live-posture-heading" className="sr-only">Live evidence posture</h2>
         <p className="max-w-4xl text-[18px] font-semibold leading-7 tracking-[-0.025em] text-[#122232] md:text-[21px]">
           Based on current evidence quality, {verifiedCount} of {evidenceCount} inputs are verified. Data center exposure in common ESG funds carries {riskTier} unverified risk.
         </p>
@@ -1215,31 +1260,143 @@ function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
           <span className="text-[10px] text-[#6b7882]">Tier thresholds: HIGH &lt; 4 verified · MODERATE 4–8 · LOW 9+</span>
         </div>
       </section>
-      <div className="grid gap-5 xl:grid-cols-[0.92fr_1.08fr]">
-        <section className="rounded-xl bg-[#122232] p-6 text-white md:p-7">
-           <SectionKicker tone="lime" className="!text-[#d4e86b]">Public-market exposure</SectionKicker>
-          <h2 className="max-w-md text-[25px] font-semibold leading-tight tracking-[-0.035em]">The facility is private. The consequences may not be.</h2>
-          <p className="mt-3 max-w-lg text-[11px] leading-5 text-[#afbdc4]">Data center demand, chip concentration, power procurement, resource intensity, and site-level climate hazard exposure can transmit operating disruption and adaptation CAPEX into listed companies and the funds that hold them.</p>
-          <div className="mt-7 space-y-3">
-             <div data-testid="card-fund-ishares" className="rounded-lg border border-white/10 bg-white/5 p-4"><div className="flex items-start gap-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-[#e9e0f7] text-[#482873]"><Landmark className="h-4 w-4" /></div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center justify-between gap-2"><div className="text-[11px] font-bold">iShares ESG Advanced MSCI USA ETF</div><RiskIndicator tier={riskTier} testId="badge-fund-ishares-risk" /></div><div className="mt-1 text-[10px] text-[#9dafb8]">Public equity exposure · ESG-screened broad market</div></div></div></div>
-             <div data-testid="card-fund-msci" className="rounded-lg border border-white/10 bg-white/5 p-4"><div className="flex items-start gap-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-[#d4e86b] text-[#314207]"><BarChart3 className="h-4 w-4" /></div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center justify-between gap-2"><div className="text-[11px] font-bold">MSCI KLD 400 Social Index</div><RiskIndicator tier={riskTier} testId="badge-fund-msci-risk" /></div><div className="mt-1 text-[10px] text-[#9dafb8]">Socially screened benchmark · stewardship reference</div></div></div></div>
+      <section data-testid="section-client-exposure" className="rounded-xl bg-[#122232] p-5 text-white md:p-7" aria-labelledby="client-exposure-heading">
+        <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
+          <div>
+            <SectionKicker tone="lime" className="!text-[#d4e86b]">Section 1 / client exposure</SectionKicker>
+            <h2 id="client-exposure-heading" className="max-w-2xl text-[26px] font-semibold leading-tight tracking-[-0.035em] md:text-[31px]">Your Clients Own This</h2>
+            <p className="mt-3 max-w-3xl text-[11px] leading-5 text-[#afbdc4]">The facility is private. The demand, capital spending, and listed-company exposure around it may already be present in a client portfolio. This is a transmission path for questions—not a claim that every link is fully verified.</p>
           </div>
-           <div className="mt-7 flex items-center gap-3 border-t border-white/15 pt-5"><div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#f5ddd5] font-mono text-[10px] font-bold text-[#ba2f45]">NVDA</div><div><div className="text-[10px] uppercase tracking-[0.13em] text-[#9dafb8]">Largest holding signal</div><div className="mt-1 text-sm font-semibold text-[#f5ddd5]">NVIDIA</div></div></div>
-        </section>
-        <section className="rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-7">
-          <SectionKicker>Risk transmission map</SectionKicker>
-          <h2 className="text-[20px] font-semibold tracking-[-0.03em] text-[#122232]">From basin constraint to portfolio conversation</h2>
-          <div className="mt-7 flex flex-wrap items-center gap-2.5">
-            {[
-              ["Climate hazard / water resilience", "Asset exposure", "#fde8eb", "#ba2f45"],
-              ["Disruption OPEX / adaptation CAPEX", "Return", "#fff0d6", "#a65a00"],
-              ["Operator credibility", "Engagement", "#eee7fa", "#7049b7"],
-              ["Fund exposure", "Stewardship", "#e5efff", "#255bb7"],
-            ].map(([title, label, bg, color], index) => <div key={title} className="flex items-center gap-2.5"><div className="rounded-md border px-3 py-2.5" style={{ backgroundColor: bg, borderColor: `${color}55`, color }}><div className="text-[10px] font-bold">{title}</div><div className="mt-1 font-mono text-[9px] uppercase tracking-[0.11em] opacity-75">{label}</div></div>{index < 3 && <ArrowRight className="h-4 w-4 shrink-0 text-[#a0adb3]" />}</div>)}
+          <div className="flex shrink-0 items-center gap-2 rounded-md border border-white/15 bg-white/5 px-3 py-2 text-[9px] font-bold uppercase tracking-[0.13em] text-[#c4d0d6]"><Network className="h-3.5 w-3.5 text-[#d4e86b]" /> Exposure chain</div>
+        </div>
+        <div className="mt-7 flex flex-col items-stretch gap-2 md:flex-row md:items-center md:gap-1.5" aria-label="Client exposure chain">
+          {exposureChain.map((node, index) => {
+            const tone = exposureTone[node.tone];
+            return (
+              <div key={node.label} className="flex min-w-0 flex-1 items-center gap-2 md:block">
+                <div data-testid={`exposure-node-${index + 1}`} className="min-h-[78px] flex-1 rounded-lg border p-3" style={{ backgroundColor: tone.background, borderColor: tone.border, color: tone.color }}>
+                  <div className="font-mono text-[9px] font-bold uppercase tracking-[0.08em] opacity-70">0{index + 1}</div>
+                  <div className="mt-1 text-[12px] font-bold leading-4">{node.label}</div>
+                  <div className="mt-1 text-[9px] leading-3.5 opacity-80">{node.detail}</div>
+                </div>
+                {index < exposureChain.length - 1 && <ArrowRight aria-hidden="true" className="mx-auto h-4 w-4 shrink-0 rotate-90 text-[#7f919b] md:my-8 md:rotate-0" />}
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-6 grid gap-3 md:grid-cols-3">
+          <div data-testid="advisor-risk-stat-paused" className="rounded-lg border border-white/10 bg-white/5 p-4">
+            <div className="font-mono text-[24px] font-bold tracking-[-0.05em] text-[#f5ddd5]">$130B</div>
+            <div className="mt-1 text-[10px] font-bold uppercase tracking-[0.1em] text-[#c4d0d6]">Projects paused</div>
+            <p className="mt-2 text-[10px] leading-4 text-[#9dafb8]">Reported aggregate context for projects paused in Q1 2026.</p>
           </div>
-           <div className="mt-7 rounded-lg bg-[#f1f5f3] p-4"><div className="flex gap-3"><CloudLightning className="mt-0.5 h-4 w-4 shrink-0 text-[#255bb7]" /><p className="text-[11px] leading-5 text-[#52616b]">The relevant ESG question is not whether a fund owns this exact campus. It is whether portfolio holdings carry unpriced drought, extreme-heat, downtime, and adaptation exposure while those risks remain invisible in the diligence chain.</p></div></div>
-        </section>
-      </div>
+          <div data-testid="advisor-risk-stat-revenue" className="rounded-lg border border-white/10 bg-white/5 p-4">
+            <div className="font-mono text-[24px] font-bold tracking-[-0.05em] text-[#d4e86b]">$8B</div>
+            <div className="mt-1 text-[10px] font-bold uppercase tracking-[0.1em] text-[#c4d0d6]">Estimated revenue loss</div>
+            <p className="mt-2 text-[10px] leading-4 text-[#9dafb8]">BloombergNEF estimate for data-center revenue losses by Q1 2027.</p>
+          </div>
+          <div data-testid="advisor-risk-stat-earnings" className="rounded-lg border border-white/10 bg-white/5 p-4">
+            <div className="font-mono text-[24px] font-bold tracking-[-0.05em] text-[#cbb7ec]">22.8% → 6.4%</div>
+            <div className="mt-1 text-[10px] font-bold uppercase tracking-[0.1em] text-[#c4d0d6]">Mag 7 earnings growth</div>
+            <p className="mt-2 text-[10px] leading-4 text-[#9dafb8]">Brief context: NVIDIA is the single largest contributor to S&amp;P 500 earnings growth; without it, the Mag 7 comparison drops from 22.8% to 6.4%.</p>
+          </div>
+        </div>
+        <div className="mt-5 rounded-lg border border-[#b9d43a]/35 bg-[#d4e86b] p-4 text-[#1c2a16] md:p-5">
+          <div className="flex items-start gap-3">
+            <CircleAlert aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#607500]" />
+            <div>
+              <div className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#607500]">The epistemic gap</div>
+              <p data-testid="text-epistemic-gap" className="mt-2 text-[12px] font-semibold leading-5">MSCI gave NVIDIA an AAA ESG rating based on corporate disclosures. This tool tests whether the physical infrastructure that rating depends on has been independently verified. Those are two different questions.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section data-testid="section-client-fund-indicators" className="mt-5 grid gap-5 xl:grid-cols-[1.1fr_0.9fr]" aria-labelledby="fund-indicators-heading">
+        <div className="rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-6">
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <SectionKicker>Live fund indicators</SectionKicker>
+              <h2 id="fund-indicators-heading" className="text-[20px] font-semibold tracking-[-0.03em] text-[#122232]">Carry the current posture into stewardship.</h2>
+            </div>
+            <span className="hidden font-mono text-[9px] uppercase tracking-[0.12em] text-[#60707d] sm:block">Updates with evidence</span>
+          </div>
+          <p className="mt-3 max-w-2xl text-[11px] leading-5 text-[#63717a]">These indicators show the live unverified-exposure tier for funds and benchmarks that may carry AI infrastructure dependence. They are not a claim about fund quality by themselves.</p>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <div data-testid="card-fund-ishares" className="rounded-lg border border-[#d9e0e4] bg-[#f9faf8] p-4"><div className="flex items-start gap-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-[#e9e0f7] text-[#482873]"><Landmark aria-hidden="true" className="h-4 w-4" /></div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-start justify-between gap-2"><div className="text-[11px] font-bold text-[#122232]">iShares ESG Advanced MSCI USA ETF</div><RiskIndicator tier={riskTier} testId="badge-fund-ishares-risk" /></div><div className="mt-1 text-[10px] text-[#6b7882]">Public equity exposure · ESG-screened broad market</div></div></div></div>
+            <div data-testid="card-fund-msci" className="rounded-lg border border-[#d9e0e4] bg-[#f9faf8] p-4"><div className="flex items-start gap-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-[#d4e86b] text-[#314207]"><BarChart3 aria-hidden="true" className="h-4 w-4" /></div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-start justify-between gap-2"><div className="text-[11px] font-bold text-[#122232]">MSCI KLD 400 Social Index</div><RiskIndicator tier={riskTier} testId="badge-fund-msci-risk" /></div><div className="mt-1 text-[10px] text-[#6b7882]">Socially screened benchmark · stewardship reference</div></div></div></div>
+          </div>
+        </div>
+        <div className="rounded-xl border border-[#d9e0e4] bg-[#f1f5f3] p-5 md:p-6">
+          <SectionKicker>What the chain means</SectionKicker>
+          <h2 className="text-[20px] font-semibold leading-tight tracking-[-0.03em] text-[#122232]">Ask where the evidence changes quality.</h2>
+          <p className="mt-3 text-[11px] leading-5 text-[#52616b]">The relevant ESG question is not whether a fund owns this exact campus. It is whether portfolio holdings carry unpriced drought, extreme-heat, downtime, and adaptation exposure while those risks remain invisible in the diligence chain.</p>
+          <div className="mt-5 flex items-start gap-3 border-t border-[#d9e0e4] pt-4"><CloudLightning aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#255bb7]" /><p className="text-[10px] font-medium leading-4 text-[#344550]">A rating based on corporate disclosures and a site-level infrastructure review can both be valid—and still answer different questions.</p></div>
+        </div>
+      </section>
+      <section data-testid="section-client-conversations" className="mt-5" aria-labelledby="client-conversations-heading">
+        <div className="mb-5 flex flex-col justify-between gap-3 border-b border-[#d9e0e4] pb-5 md:flex-row md:items-end">
+          <div>
+            <SectionKicker>Section 2 / client conversations</SectionKicker>
+            <h2 id="client-conversations-heading" className="text-[26px] font-semibold tracking-[-0.035em] text-[#122232] md:text-[31px]">How to Talk to Your Client</h2>
+          </div>
+          <p className="max-w-md text-[11px] leading-5 text-[#63717a]">Three pre-framed conversations turn the diligence record into a useful review without reducing uncertainty to a buy-or-sell signal.</p>
+        </div>
+        <div className="grid gap-4 xl:grid-cols-3">
+          {conversations.map((conversation) => {
+            const accent = conversation.accent === "blue" ? { border: "#aac6f4", label: "#255bb7", background: "#f7faff" } : conversation.accent === "coral" ? { border: "#efabb8", label: "#ba2f45", background: "#fff9f9" } : { border: "#c9db70", label: "#607500", background: "#fbfdf1" };
+            return (
+              <article key={conversation.number} data-testid={`client-conversation-${conversation.number}`} className="flex flex-col rounded-xl border bg-white p-5" style={{ borderColor: accent.border }}>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-mono text-[10px] font-bold tracking-[0.14em]" style={{ color: accent.label }}>CONVERSATION {conversation.number}</span>
+                  <span className="rounded-full px-2 py-1 text-[9px] font-bold uppercase tracking-[0.1em]" style={{ backgroundColor: accent.background, color: accent.label }}>{conversation.topic}</span>
+                </div>
+                <div className="mt-5 text-[9px] font-bold uppercase tracking-[0.14em] text-[#60707d]">Client asks</div>
+                <h3 className="mt-2 text-[18px] font-semibold leading-6 tracking-[-0.025em] text-[#122232]">“{conversation.question}”</h3>
+                <div className="mt-5 border-t border-[#e5eae8] pt-4">
+                  <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#60707d]">Advisor response framework</div>
+                  <p className="mt-2 text-[11px] leading-5 text-[#52616b]">{conversation.framework}</p>
+                </div>
+                <div className="mt-auto pt-5">
+                  <div className="rounded-lg bg-[#122232] p-4 text-white">
+                    <div className="flex items-center gap-2 text-[9px] font-bold uppercase tracking-[0.14em] text-[#d4e86b]"><ArrowRight aria-hidden="true" className="h-3 w-3" /> Specific action</div>
+                    <p className="mt-2 text-[11px] font-semibold leading-5 text-[#f6f7f2]">{conversation.action}</p>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+      <section data-testid="section-practice-value" className="mt-5 rounded-xl bg-[#d4e86b] p-5 text-[#1c2a16] md:p-7" aria-labelledby="practice-value-heading">
+        <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
+          <div>
+            <SectionKicker tone="lime" className="!text-[#607500]">Section 3 / advisor value</SectionKicker>
+            <h2 id="practice-value-heading" className="max-w-2xl text-[26px] font-semibold leading-tight tracking-[-0.035em] md:text-[31px]">Why This Matters to Your Practice</h2>
+          </div>
+          <div className="rounded-md border border-[#607500]/25 bg-white/35 px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-[#607500]">Trust is human judgment</div>
+        </div>
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            ["79%", "trust advisors", "Gallup / Edward Jones"],
+            ["3%", "trust AI with high confidence", "Gallup / Edward Jones"],
+            ["4x", "more likely to use an advisor", "Financially fulfilled adults"],
+            ["0", "AI confidence has zero association with financial fulfillment", "Gallup / Edward Jones"],
+          ].map(([value, label, source]) => (
+            <div key={label} data-testid={`practice-stat-${value}`} className="rounded-lg border border-[#607500]/20 bg-white/45 p-4">
+              <div className="font-mono text-[26px] font-bold tracking-[-0.06em]">{value}</div>
+              <div className="mt-1 text-[11px] font-bold leading-4">{label}</div>
+              <div className="mt-2 font-mono text-[8px] uppercase tracking-[0.1em] opacity-65">{source}</div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-5 grid gap-4 border-t border-[#607500]/25 pt-5 md:grid-cols-[1fr_1.2fr]">
+          <div>
+            <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#607500]">The defensible role</div>
+            <p className="mt-2 max-w-xl text-[16px] font-semibold leading-6 tracking-[-0.02em]">The advisor who can interpret evidence quality, ask questions a screening tool cannot ask, and make judgment calls about unverified assumptions has the most defensible value proposition in the industry.</p>
+          </div>
+          <p className="text-[11px] leading-5 text-[#3f501d]">This tool demonstrates what that role looks like: separate verified evidence from assertion and inference, make uncertainty visible, then decide whether the remaining exposure is acceptable for a client’s risk tolerance, time horizon, and values. The output supports judgment; it does not replace it.</p>
+        </div>
+      </section>
       <div className="mt-5 grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
         <section className="rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-6">
           <SectionKicker>Fund-manager questions</SectionKicker>

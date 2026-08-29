@@ -1234,13 +1234,12 @@ function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
   const governanceGap = getGovernanceIRRGap(baseIRR, currentIRR);
   const prioritizedQuestions = useMemo(() => prioritizeAdvisorQuestions(evidence), [evidence]);
   const exposureChain = [
-    { label: "Client Portfolio", detail: "Retirement, managed, or values-aligned allocation", tone: "neutral" },
-    { label: "Values-Aligned Fund", detail: "Screened fund or benchmark exposure", tone: "blue" },
-    { label: "NVIDIA", detail: "20%+ of iShares ESG Advanced", tone: "coral" },
-    { label: "GPU Orders", detail: "Demand for accelerated computing", tone: "lime" },
-    { label: "Hyperscaler CAPEX", detail: "$650B committed", tone: "violet" },
-    { label: "Data Center Buildout", detail: "Power, water, cooling, and grid dependencies", tone: "amber" },
-    { label: "Stargate Abilene", detail: "The project just analyzed", tone: "navy" },
+    { label: "Client’s Values-Aligned Portfolio", detail: "The allocation expresses the client’s values", tone: "neutral" },
+    { label: "Sustainable Investment Fund", detail: "The fund screens for values-aligned exposure", tone: "blue" },
+    { label: "NVIDIA", detail: "20%+ of the iShares fund", tone: "coral" },
+    { label: "GPU Orders", detail: "Forward demand for accelerated computing", tone: "lime" },
+    { label: "Hyperscaler CAPEX", detail: "$650B in planned spending", tone: "violet" },
+    { label: "Stargate Abilene", detail: "Physical infrastructure under diligence", tone: "navy" },
   ] as const;
   const exposureTone: Record<(typeof exposureChain)[number]["tone"], { background: string; border: string; color: string }> = {
     neutral: { background: "#f1f5f3", border: "#cbd8d4", color: "#344550" },
@@ -1248,32 +1247,31 @@ function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
     coral: { background: "#fde8eb", border: "#efabb8", color: "#ba2f45" },
     lime: { background: "#eef5cd", border: "#c9db70", color: "#506600" },
     violet: { background: "#eee7fa", border: "#cbb7ec", color: "#7049b7" },
-    amber: { background: "#fff0d6", border: "#f1cb8b", color: "#a65a00" },
     navy: { background: "#122232", border: "#122232", color: "#d4e86b" },
   };
   const conversations = [
     {
       number: "01",
-      topic: "ESG-fund quality",
-      question: "Is my values-aligned fund still a good investment?",
-      framework: "The question is not about the rating. It is about whether the fund manager is conducting site-level diligence on the infrastructure assumptions driving top holdings' earnings.",
+      topic: "Fund alignment",
+      question: "Is my fund still aligned with my values?",
+      framework: "The question is not about the rating. It is about whether the fund manager is applying evidence standards to the infrastructure assumptions driving the fund’s largest holding. The screening selected NVIDIA. The question is whether anyone verified what happens downstream.",
       action: "Ask your fund manager what site-level evidence standards they apply to AI infrastructure holdings.",
       accent: "blue",
     },
     {
       number: "02",
       topic: "AI risk in the portfolio",
-      question: "Should I be worried about AI risk in my portfolio?",
-      framework: "The risk is not AI itself. The risk is that the physical infrastructure build is outrunning the evidence base. $130B in projects were blocked not because technology failed but because assumptions were not verified.",
-      action: "Review your portfolio's concentration in AI infrastructure-dependent holdings.",
+        question: "Should I be worried about AI risk?",
+        framework: "The risk is not AI itself. The risk is that the infrastructure build is outrunning the evidence base. Public reporting describes $130B in projects blocked—not because technology failed, but because water, power, and community assumptions were not verified.",
+        action: "Review concentration in AI infrastructure-dependent holdings and the evidence quality behind them.",
       accent: "coral",
     },
     {
       number: "03",
       topic: "The client’s next step",
       question: "What should I do?",
-      framework: "Not sell. Ask better questions. The advisor is the person who looks at evidence quality behind holdings and decides whether exposure to unverified assumptions is acceptable for the client's risk tolerance, time horizon, and values.",
-      action: "Use the governance gap number from this tool in your next client review.",
+        framework: "Not sell. Engage. The sustainability community helped build this. Walking away forfeits the standing to steer it. The advisor’s role is to interpret evidence quality, ask questions no screening tool asks, and decide whether unverified assumptions are acceptable for the client’s values, risk tolerance, and time horizon.",
+        action: "Use the governance gap from this tool in your next client review as a conversation starter.",
       accent: "lime",
     },
   ] as const;
@@ -1300,8 +1298,12 @@ function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
         <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
           <div>
             <SectionKicker tone="lime" className="!text-[#d4e86b]">Section 1 / client exposure</SectionKicker>
-            <h2 id="client-exposure-heading" className="max-w-2xl text-[26px] font-semibold leading-tight tracking-[-0.035em] md:text-[31px]">Your Clients Own This</h2>
-            <p className="mt-3 max-w-3xl text-[11px] leading-5 text-[#afbdc4]">The facility is private. The demand, capital spending, and listed-company exposure around it may already be present in a client portfolio. This is a transmission path for questions—not a claim that every link is fully verified.</p>
+            <h2 id="client-exposure-heading" className="max-w-2xl text-[26px] font-semibold leading-tight tracking-[-0.035em] md:text-[31px]">Your Clients’ Values Are Invested Here</h2>
+            <div className="mt-3 max-w-4xl space-y-3 text-[11px] leading-5 text-[#afbdc4]">
+              <p>Your client chose a values-aligned fund because they believe in responsible corporate behavior. The largest holding in that fund is NVIDIA. Every dollar of NVIDIA’s forward revenue depends on data centers being built. Those data centers are being built on assumptions about water, power, and community impact that have not been independently verified.</p>
+              <p>The sustainability rating tells your client what NVIDIA reported. This tool tests whether the physical infrastructure that rating depends on has been verified. Those are two different questions. And only one of them protects your client’s values and their returns.</p>
+              <p className="font-semibold text-[#d4e86b]">This chain is a transmission path for diligence questions—not proof that every link or statistic is independently verified.</p>
+            </div>
           </div>
           <div className="flex shrink-0 items-center gap-2 rounded-md border border-white/15 bg-white/5 px-3 py-2 text-[9px] font-bold uppercase tracking-[0.13em] text-[#c4d0d6]"><Network className="h-3.5 w-3.5 text-[#d4e86b]" /> Exposure chain</div>
         </div>
@@ -1324,17 +1326,17 @@ function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
           <div data-testid="advisor-risk-stat-paused" className="rounded-lg border border-white/10 bg-white/5 p-4">
             <div className="font-mono text-[24px] font-bold tracking-[-0.05em] text-[#f5ddd5]">$130B</div>
             <div className="mt-1 text-[10px] font-bold uppercase tracking-[0.1em] text-[#c4d0d6]">Projects paused</div>
-            <p className="mt-2 text-[10px] leading-4 text-[#9dafb8]">Reported aggregate context for projects paused in Q1 2026.</p>
+            <p className="mt-2 text-[10px] leading-4 text-[#9dafb8]">Reported aggregate context: $130B in AI projects paused in Q1 2026.</p>
           </div>
           <div data-testid="advisor-risk-stat-revenue" className="rounded-lg border border-white/10 bg-white/5 p-4">
             <div className="font-mono text-[24px] font-bold tracking-[-0.05em] text-[#d4e86b]">$8B</div>
             <div className="mt-1 text-[10px] font-bold uppercase tracking-[0.1em] text-[#c4d0d6]">Estimated revenue loss</div>
-            <p className="mt-2 text-[10px] leading-4 text-[#9dafb8]">BloombergNEF estimate for data-center revenue losses by Q1 2027.</p>
+            <p className="mt-2 text-[10px] leading-4 text-[#9dafb8]">Estimated BloombergNEF context for data-center revenue losses by Q1 2027.</p>
           </div>
           <div data-testid="advisor-risk-stat-earnings" className="rounded-lg border border-white/10 bg-white/5 p-4">
             <div className="font-mono text-[24px] font-bold tracking-[-0.05em] text-[#cbb7ec]">22.8% → 6.4%</div>
-            <div className="mt-1 text-[10px] font-bold uppercase tracking-[0.1em] text-[#c4d0d6]">Mag 7 earnings growth</div>
-            <p className="mt-2 text-[10px] leading-4 text-[#9dafb8]">Brief context: NVIDIA is the single largest contributor to S&amp;P 500 earnings growth; without it, the Mag 7 comparison drops from 22.8% to 6.4%.</p>
+            <div className="mt-1 text-[10px] font-bold uppercase tracking-[0.1em] text-[#c4d0d6]">S&amp;P 500 earnings context</div>
+            <p className="mt-2 text-[10px] leading-4 text-[#9dafb8]">Reported market comparison: NVIDIA is the single largest contributor to S&amp;P 500 earnings growth; without NVIDIA’s AI leadership, the other 493 S&amp;P companies trail. This is market context, not a facility fact or modeled return.</p>
           </div>
         </div>
         <div className="mt-5 rounded-lg border border-[#b9d43a]/35 bg-[#d4e86b] p-4 text-[#1c2a16] md:p-5">
@@ -1342,7 +1344,7 @@ function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
             <CircleAlert aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#607500]" />
             <div>
               <div className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#607500]">The epistemic gap</div>
-              <p data-testid="text-epistemic-gap" className="mt-2 text-[12px] font-semibold leading-5">MSCI gave NVIDIA an AAA ESG rating based on corporate disclosures. This tool tests whether the physical infrastructure that rating depends on has been independently verified. Those are two different questions.</p>
+              <p data-testid="text-epistemic-gap" className="mt-2 text-[12px] font-semibold leading-5">The sustainability rating tells your client what NVIDIA reported: MSCI’s AAA ESG rating is based on corporate disclosures. This tool tests whether the physical infrastructure that rating depends on has been independently verified. Those are two different questions.</p>
             </div>
           </div>
         </div>
@@ -1407,16 +1409,16 @@ function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
         <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
           <div>
             <SectionKicker tone="lime" className="!text-[#607500]">Section 3 / advisor value</SectionKicker>
-            <h2 id="practice-value-heading" className="max-w-2xl text-[26px] font-semibold leading-tight tracking-[-0.035em] md:text-[31px]">Why This Matters to Your Practice</h2>
+            <h2 id="practice-value-heading" className="max-w-2xl text-[26px] font-semibold leading-tight tracking-[-0.035em] md:text-[31px]">Why This Is Your Role</h2>
           </div>
           <div className="rounded-md border border-[#607500]/25 bg-white/35 px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-[#607500]">Trust is human judgment</div>
         </div>
         <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {[
             ["79%", "trust advisors", "Gallup / Edward Jones"],
-            ["3%", "trust AI with high confidence", "Gallup / Edward Jones"],
-            ["4x", "more likely to use an advisor", "Financially fulfilled adults"],
-            ["0", "AI confidence has zero association with financial fulfillment", "Gallup / Edward Jones"],
+            ["3%", "trust AI", "Gallup / Edward Jones"],
+            ["4x", "more likely to use a professional advisor", "Financially fulfilled adults"],
+            ["0", "AI confidence has zero statistical association with financial fulfillment", "Gallup / Edward Jones"],
           ].map(([value, label, source]) => (
             <div key={label} data-testid={`practice-stat-${value}`} className="rounded-lg border border-[#607500]/20 bg-white/45 p-4">
               <div className="font-mono text-[26px] font-bold tracking-[-0.06em]">{value}</div>
@@ -1428,9 +1430,9 @@ function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
         <div className="mt-5 grid gap-4 border-t border-[#607500]/25 pt-5 md:grid-cols-[1fr_1.2fr]">
           <div>
             <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#607500]">The defensible role</div>
-            <p className="mt-2 max-w-xl text-[16px] font-semibold leading-6 tracking-[-0.02em]">The advisor who can interpret evidence quality, ask questions a screening tool cannot ask, and make judgment calls about unverified assumptions has the most defensible value proposition in the industry.</p>
+            <p className="mt-2 max-w-xl text-[16px] font-semibold leading-6 tracking-[-0.02em]">If the advisor’s job is screening funds and rebalancing portfolios, AI replaces that. If the advisor’s job is interpreting evidence quality at the infrastructure level, asking the questions a screening algorithm cannot ask, and making judgment calls about whether unverified assumptions are acceptable for a specific client, that role is structurally irreplaceable.</p>
           </div>
-          <p className="text-[11px] leading-5 text-[#3f501d]">This tool demonstrates what that role looks like: separate verified evidence from assertion and inference, make uncertainty visible, then decide whether the remaining exposure is acceptable for a client’s risk tolerance, time horizon, and values. The output supports judgment; it does not replace it.</p>
+          <p className="text-[11px] leading-5 text-[#3f501d]">Your clients chose you because they want an advisor who understands both their values and their returns. The Gallup/Edward Jones data is static editorial context—not a Stargate facility finding—and confirms the trust gap: 79% of Americans trust financial advisors, 3% trust AI, financially fulfilled adults are four times more likely to use a professional advisor, and confidence in AI has zero statistical association with financial fulfillment. The sustainability community helped birth the AI economy. This tool demonstrates what the sustainability advisor role looks like: separate verified evidence from assertion and inference, make uncertainty visible, ask what screening tools cannot ask, then decide whether the remaining exposure is acceptable for a client’s values, risk tolerance, and time horizon. The output supports judgment; it does not replace it.</p>
         </div>
       </section>
       <div className="mt-5 grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">

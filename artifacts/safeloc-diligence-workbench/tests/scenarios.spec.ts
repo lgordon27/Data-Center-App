@@ -15,6 +15,10 @@ const evidenceIds = [
   "permitting_timeline",
   "customer_concentration",
   "water_rights",
+  "site_hazard_exposure",
+  "backup_power_capacity",
+  "water_source_resilience",
+  "downtime_cost",
 ] as const;
 
 async function saveScenario(page: Page, name: string) {

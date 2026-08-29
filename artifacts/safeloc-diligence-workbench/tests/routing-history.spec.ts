@@ -127,4 +127,56 @@ test.describe("hash routing and browser history", () => {
     await expect(page.getByTestId("value-chain-stage-client-facing-ai-applications")).toContainText("portfolio screeners");
     await expect(page.getByTestId("value-chain-stage-client-facing-ai-applications")).toContainText("robo-advisors");
   });
+
+  test("renders the SRI thesis, live evidence posture, and advisor handoff", async ({ page }) => {
+    await page.goto("/#advisor");
+
+    await expect(page.getByRole("heading", { name: "Your Clients’ Values Are Invested Here" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "How to Talk to Your Client" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Why This Is Your Role" })).toBeVisible();
+
+    const chain = page.getByLabel("Client exposure chain");
+    await expect(chain.locator("[data-testid^='exposure-node-']")).toHaveCount(6);
+    await expect(chain.locator("[data-testid^='exposure-node-']")).toHaveText([
+      /Client’s Values-Aligned Portfolio/,
+      /Sustainable Investment Fund/,
+      /NVIDIA/,
+      /GPU Orders/,
+      /Hyperscaler CAPEX/,
+      /Stargate Abilene/,
+    ]);
+
+    await expect(page.getByTestId("section-client-exposure")).toContainText("transmission path for diligence questions");
+    await expect(page.getByTestId("text-epistemic-gap")).toContainText("two different questions");
+    await expect(page.getByTestId("advisor-risk-stat-paused")).toContainText("$130B");
+    await expect(page.getByTestId("advisor-risk-stat-revenue")).toContainText("$8B");
+    await expect(page.getByTestId("advisor-risk-stat-earnings")).toContainText("other 493 S&P companies");
+
+    const conversations = page.getByTestId("section-client-conversations");
+    await expect(conversations).toContainText("Is my fund still aligned with my values?");
+    await expect(conversations).toContainText("Should I be worried about AI risk?");
+    await expect(conversations).toContainText("What should I do?");
+    await expect(page.getByTestId("client-conversation-01")).toContainText("Ask your fund manager");
+    await expect(page.getByTestId("client-conversation-02")).toContainText("Review concentration in AI infrastructure-dependent holdings");
+    await expect(page.getByTestId("client-conversation-03")).toContainText("Not sell. Engage.");
+    await expect(page.getByTestId("client-conversation-03")).toContainText("governance gap");
+
+    await expect(page.getByTestId("section-practice-value")).toContainText("79%");
+    await expect(page.getByTestId("section-practice-value")).toContainText("3%");
+    await expect(page.getByTestId("section-practice-value")).toContainText("four times more likely to use a professional advisor");
+    await expect(page.getByTestId("section-practice-value")).toContainText("zero statistical association with financial fulfillment");
+    await expect(page.getByTestId("text-governance-irr-gap")).toContainText("percentage points of IRR");
+    await expect(page.getByTestId("card-fund-ishares")).toBeVisible();
+    await expect(page.getByTestId("advisor-question-water-rights")).toBeVisible();
+
+    const initialGap = await page.getByTestId("text-governance-irr-gap").textContent();
+    await page.goto("/#evidence");
+    await page.getByTestId("select-classification-water_rights").selectOption("Verified Evidence");
+    await page.goto("/#advisor");
+    await expect(page.getByTestId("advisor-question-water-rights")).not.toHaveClass(/border-2/);
+    await expect(page.getByTestId("text-governance-irr-gap")).not.toHaveText(initialGap ?? "");
+    await expect(page.getByTestId("button-return-decision")).toBeVisible();
+    await page.getByTestId("button-return-decision").click();
+    await expect(page).toHaveURL(/#decision$/);
+  });
 });

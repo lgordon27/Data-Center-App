@@ -1,0 +1,46 @@
+PHASE 7: CRVA-Derived Climate Risk Integration.
+
+Add 4 new evidence items to the Evidence Room (Screen 2), bringing the total from 12 to 16. These are derived from ISO 14091 Climate Risk and Vulnerability Assessment methodology. Each new item follows the same pattern as existing evidence: a value, an evidence classification dropdown (Verified/Management Assertion/Model Inference/User Assumption/Missing Evidence), a source citation, and a direct link to the financial model.
+
+NEW EVIDENCE ITEMS:
+
+13. Site Hazard Exposure Profile
+Value: "High" (composite rating: Drought - Extreme, Extreme Heat - High, Flooding - Moderate, Wildfire - Low)
+Initial classification: Model Inference
+Citation: "FEMA National Risk Index / NOAA Climate Normals / Arizona State Climate Office"
+Financial link: Drives a disruption probability factor applied to annual revenue. High = 5% annual disruption probability (roughly 18 days/year of degraded or interrupted operations), Moderate = 2%, Low = 0.5%. Revenue in each year of the cash flow model is reduced by (disruption probability x downtime cost per day x estimated disruption days). When evidence quality is lower, use more conservative (higher) disruption probability.
+
+14. Backup Power Capacity
+Value: "48 hours (diesel generation)"
+Initial classification: Management Assertion
+Citation: "Facility Operations Summary - Developer Provided"
+Financial link: Determines maximum self-sustained uptime during grid failure. Feeds into downtime cost calculation: if backup capacity is less than 72 hours AND grid interconnection is not Verified, add incremental CAPEX for extended backup generation ($3-5M depending on evidence quality) and increase annual insurance/maintenance OPEX by $200K. If Missing Evidence, assume no backup exists and model full exposure to grid disruption.
+
+15. Water Source Resilience
+Value: "Municipal (City of Goodyear) - single source, no backup"
+Initial classification: Verified Evidence
+Citation: "City of Goodyear 2024 Water Resources Plan / ADWR Groundwater Basin Report"
+Financial link: Single-source municipal water with no backup in a High water stress region creates cooling conversion risk. If water source resilience is anything less than Verified and water rights are also not Verified, add $8-15M CAPEX contingency for potential conversion to air-cooled or hybrid systems. Affects water OPEX escalation rate: single source in stressed region uses 1.5x the base water cost escalation rate. If Missing Evidence, model assumes water curtailment requiring full cooling system conversion.
+
+16. Estimated Downtime Cost
+Value: "$285,000/day"
+Initial classification: User Assumption
+Citation: "Analyst estimate based on contracted capacity and lease structure"
+Financial link: This is the multiplier for the hazard disruption model. Annual disruption cost = downtime cost/day x disruption probability x 365. This flows directly into OPEX as a risk-adjusted operating cost line. It also affects terminal value: buyers at exit will discount NOI if downtime risk is not mitigated. When evidence quality is lower, use higher downtime cost estimates (1.25x for Management Assertion, 1.5x for Model Inference, 2x for User Assumption, use $500K/day floor for Missing Evidence).
+
+UPDATE THE FINANCIAL MODEL to incorporate these four new inputs:
+- Add a "Climate Disruption Cost" line to annual OPEX calculated from hazard profile x downtime cost x disruption days
+- Add backup power CAPEX contingency to the CAPEX schedule when conditions are met
+- Add water source resilience CAPEX contingency for cooling conversion risk
+- Adjust the water OPEX escalation multiplier based on water source resilience classification
+- These should cascade through IRR, NPV, MOIC, and payback calculations like all other evidence items
+
+UPDATE SCREEN 3 (Financial Materiality) to show the new variables and their calculated financial effects alongside the original 12.
+
+UPDATE SCREEN 4 (Decision Review) to include the new items in the grouped assumption list and in the material evidence gap assessment. Backup power and water source resilience should be considered material items for recommendation blocking purposes.
+
+UPDATE SCREEN 5 (Advisor Lens) to reference climate hazard exposure as a dimension of fund-level risk. Add a fifth fund-manager question: "What site-level climate hazard assessment has been conducted for facilities in water-stressed or extreme-heat regions, and what adaptation investments are planned?"
+
+Add a subtle label on Screen 1 (Case Brief) in the site context section: "Climate risk methodology: ISO 14091 CRVA framework" to signal the analytical standard being applied.
+
+Update the evidence summary counts on Screen 2 to reflect 16 total items instead of 12. Update confidence calculation denominator accordingly.

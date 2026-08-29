@@ -44,11 +44,11 @@ test("initial advisor posture prioritizes missing evidence and expands water rig
   const questions = prioritizeAdvisorQuestions(INITIAL_EVIDENCE);
 
   assert.equal(Object.keys(INITIAL_EVIDENCE).length, 16);
-  assert.equal(verifiedCount, 4);
+  assert.equal(verifiedCount, 5);
   assert.equal(getRiskTier(verifiedCount), "MODERATE");
   assert.deepEqual(
     questions.slice(0, 2).map((question) => question.id),
-    ["water-rights", "customer-concentration"],
+    ["water-rights", "climate-hazard"],
   );
   const waterPresentation = getAdvisorQuestionPresentation(
     "water-rights",

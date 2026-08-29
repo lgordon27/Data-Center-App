@@ -1,0 +1,25 @@
+Rebuild Screen 5 (Advisor Lens) with three operational sections plus the existing governance gap calculation.
+
+SECTION 1: YOUR CLIENTS OWN THIS
+Show the exposure chain visually: Client Portfolio -> ESG Fund -> NVIDIA (20%+ of iShares ESG Advanced) -> GPU Orders -> Hyperscaler CAPEX ($650B committed) -> Data Center Buildout -> Stargate Abilene (the project just analyzed).
+
+Show aggregate risk data: $130B in projects paused Q1 2026. Bloomberg NEF estimates $8B in data center revenue losses by Q1 2027. NVIDIA is the single largest contributor to S&P 500 earnings growth; without it, Mag 7 drops from 22.8% to 6.4%.
+
+Then the epistemic gap: "MSCI gave NVIDIA an AAA ESG rating based on corporate disclosures. This tool tests whether the physical infrastructure that rating depends on has been independently verified. Those are two different questions."
+
+SECTION 2: HOW TO TALK TO YOUR CLIENT
+Three pre-framed client conversations, each with the client question, the advisor response framework, and a specific action:
+
+Conversation 1 - Client asks "Is my ESG fund still a good investment?"
+Frame: The question is not about the rating. It is about whether the fund manager is conducting site-level diligence on the infrastructure assumptions driving top holdings' earnings. Action: Ask your fund manager what site-level evidence standards they apply to AI infrastructure holdings.
+
+Conversation 2 - Client asks "Should I be worried about AI risk in my portfolio?"
+Frame: The risk is not AI itself. The risk is that the physical infrastructure build is outrunning the evidence base. $130B in projects blocked not because technology failed but because assumptions were not verified. Action: Review your portfolio's concentration in AI infrastructure-dependent holdings.
+
+Conversation 3 - Client asks "What should I do?"
+Frame: Not sell. Ask better questions. The advisor is the person who looks at evidence quality behind holdings and decides whether exposure to unverified assumptions is acceptable for the client's risk tolerance, time horizon, and values. Action: Use the governance gap number from this tool in your next client review.
+
+SECTION 3: WHY THIS MATTERS TO YOUR PRACTICE
+Anchor in Gallup/Edward Jones data: 79% trust advisors, 3% trust AI with high confidence. Financially fulfilled adults 4x more likely to use advisor. Confidence in AI has zero association with financial fulfillment. Frame: The advisor who can interpret evidence quality, ask questions a screening tool cannot ask, and make judgment calls about unverified assumptions has the most defensible value proposition in the industry. This tool demonstrates what that role looks like.
+
+Keep the existing dynamic governance gap calculation and adaptive fund-manager questions. These should remain and update based on evidence state.

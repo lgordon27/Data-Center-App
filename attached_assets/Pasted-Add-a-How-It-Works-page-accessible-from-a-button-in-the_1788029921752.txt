@@ -1,0 +1,25 @@
+Add a "How It Works" page accessible from a button in the header navigation, routed at #how-it-works. This should feel like a polished product tour, not a help document.
+
+SECTION 1: WHY THIS EXISTS
+Open with prominent text: "In Q1 2026, $130 billion worth of AI data center projects were blocked or delayed across the United States. On August 3, 2026, Texas Governor Greg Abbott ordered a moratorium on all new data center grid connections until ERCOT completes a comprehensive audit of energy and water usage. The ERCOT interconnection queue holds 474 GW of requests, more than five times Texas record peak demand, with 90% from data centers. Traditional ESG scorecards grade companies on what they reported last year. This tool tests whether the forward-looking assumptions behind a specific project are actually verified. That is the difference between a rating and diligence."
+
+Add a visual timeline showing: 2025 full year $156B blocked, Q1 2026 $130B blocked, May 2025 Sanders-AOC moratorium bill, July 2026 142 protests across 42 states, August 3 2026 Abbott moratorium, ERCOT 474 GW queue.
+
+SECTION 2: SCREEN-BY-SCREEN WALKTHROUGH
+For each of the 5 screens show a title, one plain-English sentence about what it does, a "Why it matters" explanation (2-3 sentences), and a "What to look for" callout. Use conversational but professional language accessible to a high school economics student.
+
+SECTION 3: EVIDENCE CLASSIFICATION SYSTEM
+Show all five tiers with colors, plain-English definitions, and real-world analogies:
+- Verified Evidence (Green): "Like a bank statement, not someone's word."
+- Management Assertion (Yellow): "Like a resume, not a background check."
+- Model Inference (Blue): "Like estimating tomorrow's weather from today's barometric pressure."
+- User Assumption (Orange): "Like a doctor's estimate before running tests."
+- Missing Evidence (Red): "Like a blank on a loan application."
+
+SECTION 4: SOURCES AND METHODOLOGY
+List every source grouped by domain: Infrastructure & Energy (ERCOT, utility filings, Bloomberg, EIA), Water & Climate (Ceres, FEMA, NOAA, Texas Water Development Board), Community & Social (Census Bureau, NAACP, Data Center Watch), Regulatory (EU AI Act, FINRA, Abbott directive), Market & Investment (Formative/FactSet, Morningstar, MSCI, Gallup/Edward Jones). Note: "Transaction assumptions are synthetic. Environmental and infrastructure data are from public records."
+
+SECTION 5: WHO BUILT THIS
+"Built by LeAndrew Gordon, Founder and CEO of SafeLoc. Former Private Wealth Financial Advisor. Chartered SRI Counselor. Top 25 AI Builder (Replit, top 1% of users). Built for the Growth for Impact Conference, November 2026, Phoenix, AZ."
+
+Include "Return to Workbench" buttons at top and bottom. Make it scrollable as one long page with smooth anchor navigation.

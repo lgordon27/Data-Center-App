@@ -196,7 +196,7 @@ function ProgressNav({ current, onNavigate }: { current: Screen; onNavigate: (sc
       <div className="mx-auto flex max-w-[1480px] items-center justify-between">
         <div className="hidden items-center gap-2 py-3 text-[10px] font-bold uppercase tracking-[0.17em] text-[#52616b] md:flex">
           <span className="font-mono text-[#122232]">WORKBENCH /</span>
-          <span>CASE 24-017</span>
+          <span>CASE ABI-26-001</span>
         </div>
         <nav aria-label="Diligence progress" className="flex w-full items-stretch justify-between gap-1 md:w-auto md:gap-2">
           {screens.map((screen, index) => {
@@ -266,7 +266,7 @@ function Header({ onMenu, onReset, sessionRestored, mobileOpen, menuButtonRef }:
         <div className="hidden flex-1 items-center justify-center lg:flex">
           <div className="text-center">
             <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-[#b9d43a]">Evidence-Governed Investment Intelligence</div>
-            <div className="mt-1 text-[10px] text-[#96a4ad]">Phoenix metro / Southwest corridor · IC pre-read</div>
+            <div className="mt-1 text-[10px] text-[#96a4ad]">Taylor County, Texas / ERCOT · IC pre-read</div>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -285,12 +285,12 @@ function ShellAside({ screen, metrics, onNavigate, onReset }: { screen: Screen; 
     <aside className="hidden w-[246px] shrink-0 border-r border-[#d9e0e4] bg-[#eef2f1] px-5 py-7 lg:block">
       <SectionKicker>Active mandate</SectionKicker>
       <div className="mb-7">
-        <div className="font-mono text-[11px] font-bold text-[#122232]">SW-DC / PHX-24-017</div>
-         <div className="mt-1 text-xs leading-5 text-[#52616b]">Southwest digital infrastructure platform</div>
+        <div className="font-mono text-[11px] font-bold text-[#122232]">STARGATE / ABI-26-001</div>
+         <div className="mt-1 text-xs leading-5 text-[#52616b]">AI infrastructure diligence case</div>
       </div>
       <div className="mb-8 rounded-lg border border-[#cbd8d4] bg-[#f9faf8] p-3.5">
         <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#60707d]">
-          <MapPin className="h-3.5 w-3.5 text-[#ba2f45]" /> Goodyear, AZ
+          <MapPin className="h-3.5 w-3.5 text-[#ba2f45]" /> Taylor County, TX
         </div>
         <div className="mt-3 h-px bg-[#dfe6e3]" />
         <div className="mt-3 flex justify-between text-[10px]">
@@ -396,8 +396,8 @@ function CaseBrief({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
       <PageIntro
         eyebrow="01 / frame the opportunity"
         title="The return is only as durable as the evidence behind it."
-        description="A representative diligence case for a 120 MW hyperscale campus in the Southwest corridor. This is the starting frame — synthetic transaction assumptions, public-site context, and the investment questions that deserve scrutiny."
-        right={<div className="flex items-center gap-2 self-start rounded-full border border-[#cbd8d4] bg-[#f9faf8] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#60707d] md:self-auto"><span className="h-2 w-2 rounded-full bg-[#ba2f45]" /> Location signal · Goodyear, AZ</div>}
+        description="A public-source diligence case for Stargate Abilene, paired with clearly labeled synthetic acquisition economics. The operating facts are real-world evidence; the returns are a representative underwriting lens, not reported transaction terms."
+        right={<div className="flex items-center gap-2 self-start rounded-full border border-[#cbd8d4] bg-[#f9faf8] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#60707d] md:self-auto"><span className="h-2 w-2 rounded-full bg-[#ba2f45]" /> Location · Taylor County, TX</div>}
       />
       <div className="grid gap-5 xl:grid-cols-[1.4fr_0.8fr]">
         <section className="relative min-h-[360px] overflow-hidden rounded-xl bg-[#122232] p-6 text-white md:p-8">
@@ -405,8 +405,9 @@ function CaseBrief({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
           <div className="relative z-10 flex h-full flex-col justify-between">
             <div className="flex items-start justify-between">
               <div>
-                <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#b9d43a]">Case brief / SW-DC-24-017</div>
-                <h2 className="mt-5 max-w-lg text-[30px] font-semibold leading-[1.06] tracking-[-0.04em] md:text-[39px]">Desert Mesa<br /><span className="text-[#b9d43a]">Campus</span></h2>
+                <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#b9d43a]">Case brief / STARGATE-ABI-26</div>
+                <h2 className="mt-5 max-w-lg text-[30px] font-semibold leading-[1.06] tracking-[-0.04em] md:text-[39px]">Stargate<br /><span className="text-[#b9d43a]">Abilene</span></h2>
+                <p className="mt-4 max-w-xl text-[11px] leading-5 text-[#c4d0d6]">OpenAI · Oracle · Crusoe Energy<br />Part of the $500 billion Stargate initiative backed by OpenAI, SoftBank, Oracle, and MGX.</p>
               </div>
               <div className="hidden rounded-md border border-white/15 px-3 py-2 text-right sm:block">
                 <div className="text-[9px] uppercase tracking-[0.14em] text-[#a0b0b8]">Stage</div>
@@ -414,22 +415,23 @@ function CaseBrief({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
               </div>
             </div>
             <div className="grid max-w-xl grid-cols-2 gap-x-8 gap-y-5 border-t border-white/15 pt-5 sm:grid-cols-4">
-              <div><div className="text-[9px] uppercase tracking-[0.15em] text-[#a0b0b8]">Capacity</div><div className="mt-1 font-mono text-base">120 MW</div></div>
-              <div><div className="text-[9px] uppercase tracking-[0.15em] text-[#a0b0b8]">Site</div><div className="mt-1 font-mono text-base">84 acres</div></div>
-              <div><div className="text-[9px] uppercase tracking-[0.15em] text-[#a0b0b8]">Entry EV</div><div className="mt-1 font-mono text-base">$480M</div></div>
-              <div><div className="text-[9px] uppercase tracking-[0.15em] text-[#a0b0b8]">Vintage</div><div className="mt-1 font-mono text-base">2024</div></div>
+              <div><div className="text-[9px] uppercase tracking-[0.15em] text-[#a0b0b8]">Current / target</div><div className="mt-1 font-mono text-base">0.3 / 1.2 GW</div></div>
+              <div><div className="text-[9px] uppercase tracking-[0.15em] text-[#a0b0b8]">Site</div><div className="mt-1 font-mono text-base">~1,000 acres</div></div>
+              <div><div className="text-[9px] uppercase tracking-[0.15em] text-[#a0b0b8]">Built form</div><div className="mt-1 font-mono text-base">8 buildings</div></div>
+              <div><div className="text-[9px] uppercase tracking-[0.15em] text-[#a0b0b8]">Floor area</div><div className="mt-1 font-mono text-base">~4M sq ft</div></div>
             </div>
           </div>
         </section>
         <section className="rounded-xl border border-[#d9e0e4] bg-[#f9faf8] p-6">
           <SectionKicker>Investment thesis</SectionKicker>
-          <h3 className="text-[21px] font-semibold leading-tight tracking-[-0.03em] text-[#122232]">A contracted, power-constrained asset with a hidden water story.</h3>
-          <p className="mt-4 text-[12px] leading-5 text-[#63717a]">Demand for low-latency compute creates durable pricing power. Yet the proposed cooling architecture sits inside a water-stressed basin and relies on an interconnection window that is not yet fully evidenced.</p>
+          <h3 className="text-[21px] font-semibold leading-tight tracking-[-0.03em] text-[#122232]">Contracted AI demand meets physical infrastructure limits.</h3>
+          <p className="mt-4 text-[12px] leading-5 text-[#63717a]">Public reporting ties the campus to more than 450,000 NVIDIA GB200 GPUs under a reported 15-year Oracle lease. The core tension is no longer hypothetical: an expansion was cancelled after grid delays, while winter storms exposed cooling-system fragility.</p>
           <div className="mt-6 space-y-3 border-t border-[#d9e0e4] pt-5">
             {[
-              ["Catalyst", "Tenant LOI covers 85% of stabilized revenue."],
-              ["Tension", "Water rights seniority and community response are unresolved."],
-              ["Underwrite", "Returns hold only if energization lands inside the 24-month plan."],
+              ["Catalyst", "Oracle-backed contracted GPU capacity supports a long-duration demand case."],
+              ["Tension", "The original 2.1 GW expansion was cancelled after grid delays exceeded one year."],
+              ["Adjacent", "Microsoft partnered with Crusoe on a separately reported 900 MW site after OpenAI capped its expansion."],
+              ["Underwrite", "Water use and water rights remain undisclosed despite the campus scale."],
             ].map(([key, value]) => (
               <div key={key} className="grid grid-cols-[76px_1fr] gap-3 text-[11px]"><span className="font-mono uppercase tracking-[0.1em] text-[#52616b]">{key}</span><span className="font-medium leading-4 text-[#344550]">{value}</span></div>
             ))}
@@ -441,28 +443,28 @@ function CaseBrief({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
           <SectionKicker>Public-site context</SectionKicker>
           <div className="flex gap-3">
             <div className="mt-0.5 rounded bg-[#f5ddd5] p-2 text-[#ba2f45]"><MapPin className="h-4 w-4" /></div>
-            <div><div className="text-sm font-semibold text-[#122232]">West Valley growth edge</div><p className="mt-1 text-[11px] leading-5 text-[#6b7882]">Goodyear sits inside the Phoenix-Mesa-Scottsdale MSA, where population and industrial load are growing into a drought-constrained utility system.</p><div data-testid="text-climate-methodology" className="mt-3 border-t border-[#e5eae8] pt-2 font-mono text-[9px] leading-4 text-[#52616b]">Climate risk methodology: ISO 14091 CRVA framework</div></div>
+            <div><div className="text-sm font-semibold text-[#122232]">Taylor County buildout</div><p className="mt-1 text-[11px] leading-5 text-[#6b7882]">The campus sits outside Abilene. Reporting describes two buildings and roughly 0.3 GW operational since September 2025, with the eight-building core targeting approximately 1.2 GW.</p><div data-testid="text-climate-methodology" className="mt-3 border-t border-[#e5eae8] pt-2 font-mono text-[9px] leading-4 text-[#52616b]">Climate risk methodology: ISO 14091 CRVA framework</div></div>
           </div>
         </div>
         <div className="rounded-xl border border-[#d9e0e4] bg-white p-5">
           <SectionKicker>Transmission corridor</SectionKicker>
           <div className="flex items-center gap-2.5 text-[#122232]">
-            <Zap className="h-4 w-4 text-[#a65a00]" /><span className="font-mono text-sm font-bold">APS → SRP → ERCOT adjacencies</span>
+            <Zap className="h-4 w-4 text-[#a65a00]" /><span className="font-mono text-sm font-bold">On-site gas + ERCOT grid</span>
           </div>
-          <p className="mt-2 text-[11px] leading-5 text-[#6b7882]">A regional power story, not a single-site story. Interconnection and renewable procurement are central to the risk case.</p>
+          <p className="mt-2 text-[11px] leading-5 text-[#6b7882]">The power mix combines on-site natural-gas generation with ERCOT supply, including locally referenced wind. The delivered renewable percentage is not publicly verified.</p>
         </div>
         <div className="rounded-xl bg-[#d4e86b] p-5 text-[#1c2a16]">
           <div className="flex items-center justify-between"><SectionKicker tone="lime">The governing question</SectionKicker><Target className="h-5 w-5 opacity-60" /></div>
-          <div className="mt-1 text-[19px] font-semibold leading-tight tracking-[-0.025em]">What must be true for the 18.5% base return to deserve conviction?</div>
+          <div className="mt-1 text-[19px] font-semibold leading-tight tracking-[-0.025em]">What does a cancelled expansion reveal about the value of verified grid evidence?</div>
           <button data-testid="button-open-evidence-from-brief" onClick={() => onNavigate("evidence")} className="mt-5 inline-flex items-center gap-2 border-b border-[#1c2a16] pb-1 text-[10px] font-bold uppercase tracking-[0.15em]">Open evidence room <ArrowRight className="h-3.5 w-3.5" /></button>
         </div>
       </div>
       <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[
-          ["Water stress", "High", "Colorado River Basin · drought-constrained utility system", "#ba2f45"],
-          ["Grid capacity", "Constrained", "APS / SRP queue pressure around West Valley load growth", "#a65a00"],
-          ["Power price trend", "+5.0% / 5 yr", "Public utility and Bloomberg forward pricing signal", "#255bb7"],
-          ["Community profile", "+3.1% YoY", "Phoenix West Valley growth edge · Census ACS", "#7049b7"],
+          ["Water disclosure", "Missing", "Facility water use and water rights not publicly disclosed as of Aug 2026", "#ba2f45"],
+          ["Grid expansion", "Cancelled", "Reported interconnection delays exceeded 12 months", "#a65a00"],
+          ["Cooling resilience", "Tested", "Winter 2026 storms damaged liquid-cooling equipment", "#255bb7"],
+          ["Construction peak", "~6,400", "Housing, childcare, and road strain documented locally", "#7049b7"],
         ].map(([label, value, detail, color]) => (
           <div key={label} className="rounded-xl border border-[#d9e0e4] bg-white p-4">
             <div className="flex items-center justify-between gap-2">
@@ -484,10 +486,10 @@ function CaseBrief({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
         </div>
         <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {[
-            ["Acquisition price", "$480M", "Entry enterprise value"],
+            ["Acquisition price", "$4.8B", "Representative entry enterprise value"],
             ["Debt structure", "60% LTV", "7.5% interest · 10-year term"],
-            ["Target return", "18.5% IRR", "2.4x MOIC · 5-year hold"],
-            ["Cooling type", "Hybrid", "Closed-loop + evaporative trim"],
+            ["Lease economics", "$185/kW-mo", "Representative modeled revenue rate"],
+            ["Cooling CAPEX", "$450M", "Synthetic 1.2 GW analyst estimate"],
           ].map(([label, value, detail]) => (
             <div key={label} className="border-l-2 border-[#d4e86b] pl-3">
               <div className="text-[9px] font-bold uppercase tracking-[0.13em] text-[#52616b]">{label}</div>
@@ -1331,7 +1333,7 @@ function AppShell() {
 
   useEffect(() => {
     const activeScreen = screens.find((item) => item.id === screen);
-    document.title = activeScreen ? `SafeLoc · ${activeScreen.label}` : "SafeLoc Diligence Workbench";
+    document.title = activeScreen ? `Stargate Abilene · ${activeScreen.label}` : "Stargate Abilene | SafeLoc";
   }, [screen]);
 
   const go = (next: Screen) => {

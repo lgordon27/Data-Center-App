@@ -1,0 +1,23 @@
+Add an AI Value Chain page accessible from a "The AI Chain" button in the header navigation, routed at #value-chain.
+
+Create a visually striking horizontal or vertical flow showing 7 linked stages of the AI infrastructure economy. Each stage is a card with a title, one-sentence description, key company names, and a short "why evidence matters here" note.
+
+The chain:
+
+1. CHIP FABRICATION - "Where AI begins physically. Semiconductor fabs produce the silicon powering every AI model." Key players: TSMC, Samsung, Intel. Evidence note: "Supply concentrated in geopolitically sensitive regions creates single points of failure."
+
+2. CHIP DESIGN - "The architectures that determine what AI can do." Key players: NVIDIA, AMD, Broadcom. Evidence note: "NVIDIA holds MSCI ESG AAA rating and is 20%+ of major ESG funds. Forward revenue depends on downstream infrastructure buildout."
+
+3. HYPERSCALER PROCUREMENT - "$650 billion in committed AI infrastructure spending." Key players: Microsoft, Meta, Google, Amazon. Evidence note: "Capital commitments are announced. Whether the physical infrastructure can absorb them is unverified."
+
+4. DATA CENTER INFRASTRUCTURE - THIS IS THE HIGHLIGHTED STAGE with a "YOU ARE HERE" badge and distinct visual treatment. "Where capital meets physical reality: power, water, land, grid, community." Evidence note: "$130 billion in projects paused in Q1 2026. This is the layer this tool analyzes."
+
+5. AI MODEL DEPLOYMENT - "Training and inference running on the infrastructure above." Key players: OpenAI, Anthropic, Google DeepMind, Meta AI. Evidence note: "Model capability depends on uninterrupted power at extreme densities. Cooling failures halt training runs."
+
+6. AI GOVERNANCE & REGULATION - "The rules catching up to the technology." Key references: EU AI Act Article 14 (effective Aug 2, 2026), FINRA Notice 26-02, Texas Governor Abbott moratorium (Aug 3, 2026). Evidence note: "Two regulatory frameworks, one European and one Texan, arrived at the same conclusion in the same week."
+
+7. CLIENT-FACING AI APPLICATIONS - "Where AI meets the people your clients interact with." Examples: financial planning tools, portfolio screeners, robo-advisors. Evidence note: "45% of Americans have no confidence in AI for financial guidance. 79% trust financial advisors."
+
+Add a narrative paragraph above the chain: "The AI economy runs from semiconductor fabs in Taiwan to financial planning tools on your client's phone. This tool analyzes the link in that chain where the most capital is being deployed, the most uncertainty exists, and the most projects are being paused: the physical infrastructure. If the evidence does not hold at this layer, everything downstream is built on unverified assumptions."
+
+Design: polished editorial infographic feel, consistent with the workbench dark theme. Each stage card should be visually connected to the next. The data center infrastructure stage should be larger or more prominent than the others.

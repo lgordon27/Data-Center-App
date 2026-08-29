@@ -35,21 +35,21 @@ export const ADVISOR_QUESTIONS: AdvisorQuestion[] = [
   },
   {
     id: "energization",
-    question: "How does the manager price a 9–12 month energization slip into the underwriting hurdle?",
+    question: "What does the cancelled Abilene expansion imply for grid-delay underwriting across the portfolio?",
     evidenceId: "grid_interconnection",
-    activeDetail: "Grid interconnection is not verified: ask for the utility queue position, milestone evidence, and downside case for a delayed energization date.",
+    activeDetail: "If the verified cancellation is reclassified, request ERCOT and utility queue milestones plus a downside case for delays beyond 12 months.",
   },
   {
     id: "renewable-procurement",
-    question: "Is 100% renewable procurement a physical PPA, a bundled certificate, or an aspiration?",
+    question: "What share of Stargate Abilene power is physically supplied by local wind rather than ERCOT or on-site gas?",
     evidenceId: "renewable_percentage",
     activeDetail: "Clarify the provenance of the renewable claim and distinguish physical delivery from certificate-based coverage.",
   },
   {
     id: "customer-concentration",
-    question: "Where does customer concentration become a public-market governance signal?",
+    question: "How should a reported 15-year Oracle lease and concentrated GPU demand affect counterparty underwriting?",
     evidenceId: "customer_concentration",
-    activeDetail: "Revenue concentration is an evidence gap: request the lease schedule and renewal terms before assessing the governance signal.",
+    activeDetail: "Request the executed lease schedule, capacity ramp, remedies, and renewal terms before treating public reporting as a complete credit file.",
   },
   {
     id: "climate-hazard",

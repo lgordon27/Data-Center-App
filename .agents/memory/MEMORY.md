@@ -1,0 +1,1 @@
+- [Public facts vs. modeled economics](stargate-diligence-evidence.md) — keep public Stargate operating facts distinct from synthetic underwriting assumptions and unresolved disclosures.

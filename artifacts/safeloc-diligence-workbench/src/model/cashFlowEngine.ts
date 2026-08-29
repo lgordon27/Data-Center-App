@@ -124,20 +124,20 @@ export type CashFlowModel = {
   baseModel?: CashFlowModel;
 };
 
-const CAPACITY_MW = 120;
+const CAPACITY_MW = 1_200;
 const LEASE_RATE_PER_KW_MONTH = 185;
 const UTILIZATION_RAMP = [0.6, 0.8, 0.92, 0.92, 0.92];
 const HOURS_PER_YEAR = 8_760;
 const WATER_COST_PER_GALLON = 0.015;
 const MAINTENANCE_RATE = 0.045;
-const ANNUAL_LABOR_AT_FULL_UTILIZATION = 1.8;
+const ANNUAL_LABOR_AT_FULL_UTILIZATION = 18;
 const INSURANCE_RATE = 0.0035;
-const ENTRY_VALUE = 480;
+const ENTRY_VALUE = 4_800;
 const DEBT_LTV = 0.6;
 const INTEREST_RATE = 0.075;
 const AMORTIZATION_YEARS = 10;
-// Calibrated to the synthetic case's 18.5% target return at the verified
-// evidence state; this is an explicit assumption, not a market-data claim.
+// Representative acquisition economics scaled to the 1.2 GW Stargate target.
+// These are explicit synthetic assumptions, not reported transaction terms.
 const EXIT_MULTIPLE = 2.15;
 const DISCOUNT_RATE = 0.1;
 
@@ -150,22 +150,22 @@ export const CLIMATE_QUALITY_MULTIPLIERS: Record<Classification, number> = {
 };
 
 export const BACKUP_POWER_CAPEX_BY_CLASSIFICATION: Record<Classification, number> = {
-  "Verified Evidence": 3,
-  "Management Assertion": 3.5,
-  "Model Inference": 4,
-  "User Assumption": 4.5,
-  "Missing Evidence": 5,
+  "Verified Evidence": 30,
+  "Management Assertion": 35,
+  "Model Inference": 40,
+  "User Assumption": 45,
+  "Missing Evidence": 50,
 };
 
 export const WATER_CONVERSION_CAPEX_BY_CLASSIFICATION: Record<Classification, number> = {
-  "Verified Evidence": 8,
-  "Management Assertion": 10,
-  "Model Inference": 12,
-  "User Assumption": 13.5,
-  "Missing Evidence": 15,
+  "Verified Evidence": 80,
+  "Management Assertion": 100,
+  "Model Inference": 120,
+  "User Assumption": 135,
+  "Missing Evidence": 150,
 };
 
-const MIN_DOWNTIME_COST_PER_DAY = 500_000;
+const MIN_DOWNTIME_COST_PER_DAY = 5_000_000;
 
 const CONFIDENCE_WEIGHTS: Record<Classification, number> = {
   "Verified Evidence": 10,
@@ -283,6 +283,7 @@ function parseDowntimeCost(value: string | number, fallback: number) {
 
 function hazardProbability(value: string | number) {
   const normalized = String(value).toLowerCase();
+  if (normalized.includes("high") || normalized.includes("extreme")) return 0.05;
   if (normalized.includes("moderate")) return 0.02;
   if (normalized.includes("low")) return 0.005;
   return 0.05;
@@ -423,17 +424,17 @@ function runModel(evidence: EvidenceRecord): CashFlowModel {
   const downtimeCostQuality = QUALITY_POLICY[downtimeCostItem.classification];
 
   const electricityRate =
-    numberValue(electricityItem.value, 45) * electricityQuality.costMultiplier;
+    numberValue(electricityItem.value, 42) * electricityQuality.costMultiplier;
   const annualCoolingWaterMgal =
-    numberValue(waterConsumptionItem.value, 2.3) * waterQuality.waterConsumptionMultiplier;
+    numberValue(waterConsumptionItem.value, 23) * waterQuality.waterConsumptionMultiplier;
   const waterEscalationRate =
-    numberValue(waterEscalationItem.value, 8) / 100 +
+    numberValue(waterEscalationItem.value, 7) / 100 +
     waterEscalationQuality.waterEscalationAdder;
   const electricityEscalationRate =
-    numberValue(electricityEscalationItem.value, 5) / 100 +
+    numberValue(electricityEscalationItem.value, 6) / 100 +
     electricityEscalationQuality.electricityEscalationAdder;
   const effectiveRenewableProcurement = clamp(
-    numberValue(renewableItem.value, 100) * renewableQuality.renewableCoverage,
+    numberValue(renewableItem.value, 25) * renewableQuality.renewableCoverage,
     0,
     100,
   );
@@ -442,20 +443,20 @@ function runModel(evidence: EvidenceRecord): CashFlowModel {
   const gridInterconnectionMonths =
     numberValue(gridItem.value, 14) + gridQuality.timelineAdder;
   const permittingMonths =
-    numberValue(permittingItem.value, 12) + permittingQuality.timelineAdder;
+    numberValue(permittingItem.value, 10) + permittingQuality.timelineAdder;
   const communityDelayMonths = communityQuality.communityDelay;
   // Interconnection and permitting are parallel gates; the later gate controls
   // the start date, while community risk adds an independent permitting delay.
   const revenueDelayMonths = Math.round(
     Math.max(gridInterconnectionMonths, permittingMonths) + communityDelayMonths,
   );
-  const concentration = clamp(numberValue(concentrationItem.value, 85) / 100, 0, 1);
+  const concentration = clamp(numberValue(concentrationItem.value, 100) / 100, 0, 1);
   const customerUtilizationMultiplier = clamp(
     1 - concentration * concentrationQuality.customerLossRate,
     0.4,
     1,
   );
-  const coolingCapex = numberValue(coolingItem.value, 45);
+  const coolingCapex = numberValue(coolingItem.value, 450);
   const communityCapexContingency = communityQuality.communityContingency;
   const coolingCapexContingency = coolingQuality.coolingContingency;
   const siteHazardExposure = String(hazardItem.value);
@@ -500,7 +501,7 @@ function runModel(evidence: EvidenceRecord): CashFlowModel {
   const debtAmount = ENTRY_VALUE * DEBT_LTV;
   const annualPrincipalPayment = debtAmount / AMORTIZATION_YEARS;
   const annualCarbonCompliance =
-    numberValue(carbonItem.value, 2) * carbonQuality.carbonMultiplier;
+    numberValue(carbonItem.value, 20) * carbonQuality.carbonMultiplier;
   const waterRightsCostMultiplier = waterRightsQuality.waterRightsMultiplier;
   const totalDirectCapex = ENTRY_VALUE + coolingCapex;
   const annualRevenueAtFullUtilization =
@@ -578,7 +579,7 @@ function runModel(evidence: EvidenceRecord): CashFlowModel {
         operatingUtilization) /
       1_000_000;
     const backupPowerOpex = backupPowerContingencyTriggered
-      ? 0.2 * operatingUtilization
+      ? 2 * operatingUtilization
       : 0;
     const totalOpex =
       electricityOpex +

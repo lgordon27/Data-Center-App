@@ -43,11 +43,16 @@ test("the canonical evidence contract has 16 items and a 16-item confidence deno
   const model = calculateCashFlowModel(INITIAL_EVIDENCE);
 
   assert.equal(Object.keys(INITIAL_EVIDENCE).length, 16);
-  assert.equal(model.confidenceScore, 53);
-  assert.equal(model.assumptions.siteHazardExposure, "High");
-  assert.equal(model.assumptions.backupPowerHours, 48);
+  assert.equal(model.confidenceScore, 55);
+  assert.equal(
+    model.assumptions.siteHazardExposure,
+    "Extreme heat high; drought moderate; winter storm documented",
+  );
+  assert.equal(model.assumptions.backupPowerHours, 0);
   assert.equal(model.assumptions.waterSourceEscalationMultiplier, 1.5);
-  assert.equal(model.assumptions.downtimeCostPerDay, 285_000);
+  assert.equal(model.assumptions.downtimeCostPerDay, 2_850_000);
+  assert.equal(model.assumptions.capacityMW, 1_200);
+  assert.equal(model.assumptions.entryValue, 4_800);
 });
 
 test("climate quality multipliers adjust hazard probability and downtime cost", () => {
@@ -67,19 +72,19 @@ test("climate quality multipliers adjust hazard probability and downtime cost", 
     );
     assert.equal(
       downtimeModel.assumptions.adjustedDowntimeCostPerDay,
-      285_000 * CLIMATE_QUALITY_MULTIPLIERS[classification],
+      2_850_000 * CLIMATE_QUALITY_MULTIPLIERS[classification],
     );
   }
 
   const lowMissingCost = allVerified();
   lowMissingCost.downtime_cost = {
     ...lowMissingCost.downtime_cost,
-    value: "$100,000/day",
+    value: "$1,000,000/day",
     classification: "Missing Evidence",
   };
   assert.equal(
     calculateCashFlowModel(lowMissingCost).assumptions.adjustedDowntimeCostPerDay,
-    500_000,
+    5_000_000,
   );
 });
 
@@ -117,7 +122,7 @@ test("backup power contingency follows its trigger and classification mapping", 
       model.assumptions.backupPowerCapex,
       BACKUP_POWER_CAPEX_BY_CLASSIFICATION[classification],
     );
-    assert.equal(model.schedule[5].backupPowerOpex, 0.2 * model.schedule[5].operatingUtilization);
+    assert.equal(model.schedule[5].backupPowerOpex, 2 * model.schedule[5].operatingUtilization);
   }
 
   const sufficientBackup = classify(
@@ -137,7 +142,7 @@ test("water conversion contingency and stressed-basin escalation follow their br
   const verified = allVerified();
   const base = calculateCashFlowModel(verified);
   assert.equal(base.assumptions.waterSourceEscalationMultiplier, 1.5);
-  assert.equal(base.assumptions.waterEscalationRate, 0.12);
+  assert.ok(Math.abs(base.assumptions.waterEscalationRate - 0.105) < 0.000001);
   assert.equal(base.assumptions.waterConversionCapex, 0);
 
   for (const classification of CLASSIFICATIONS.slice(1)) {

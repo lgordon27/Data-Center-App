@@ -30,6 +30,8 @@ export type CashFlowYear = {
   laborOpex: number;
   insuranceOpex: number;
   carbonComplianceOpex: number;
+  climateDisruptionOpex: number;
+  backupPowerOpex: number;
   totalOpex: number;
   noi: number;
   beginningDebt: number;
@@ -65,6 +67,16 @@ export type ModelAssumptions = {
   annualLaborAtFullUtilization: number;
   insuranceRate: number;
   annualCarbonCompliance: number;
+  siteHazardExposure: string;
+  hazardProbability: number;
+  adjustedHazardProbability: number;
+  downtimeCostPerDay: number;
+  adjustedDowntimeCostPerDay: number;
+  backupPowerHours: number;
+  backupPowerCapex: number;
+  waterSourceResilience: string;
+  waterSourceEscalationMultiplier: number;
+  waterConversionCapex: number;
   effectiveRenewableProcurement: number;
   powerCostDifferential: number;
   gridInterconnectionMonths: number;
@@ -129,6 +141,32 @@ const AMORTIZATION_YEARS = 10;
 const EXIT_MULTIPLE = 2.15;
 const DISCOUNT_RATE = 0.1;
 
+export const CLIMATE_QUALITY_MULTIPLIERS: Record<Classification, number> = {
+  "Verified Evidence": 1,
+  "Management Assertion": 1.25,
+  "Model Inference": 1.5,
+  "User Assumption": 2,
+  "Missing Evidence": 2,
+};
+
+export const BACKUP_POWER_CAPEX_BY_CLASSIFICATION: Record<Classification, number> = {
+  "Verified Evidence": 3,
+  "Management Assertion": 3.5,
+  "Model Inference": 4,
+  "User Assumption": 4.5,
+  "Missing Evidence": 5,
+};
+
+export const WATER_CONVERSION_CAPEX_BY_CLASSIFICATION: Record<Classification, number> = {
+  "Verified Evidence": 8,
+  "Management Assertion": 10,
+  "Model Inference": 12,
+  "User Assumption": 13.5,
+  "Missing Evidence": 15,
+};
+
+const MIN_DOWNTIME_COST_PER_DAY = 500_000;
+
 const CONFIDENCE_WEIGHTS: Record<Classification, number> = {
   "Verified Evidence": 10,
   "Management Assertion": 6,
@@ -151,6 +189,7 @@ const QUALITY_POLICY = {
     carbonMultiplier: 1,
     customerLossRate: 0.05,
     waterRightsMultiplier: 1,
+    climateMultiplier: 1,
   },
   "Management Assertion": {
     costMultiplier: 1.08,
@@ -165,6 +204,7 @@ const QUALITY_POLICY = {
     carbonMultiplier: 1.1,
     customerLossRate: 0.1,
     waterRightsMultiplier: 1.1,
+    climateMultiplier: 1.25,
   },
   "Model Inference": {
     costMultiplier: 1.15,
@@ -179,6 +219,7 @@ const QUALITY_POLICY = {
     carbonMultiplier: 1.2,
     customerLossRate: 0.15,
     waterRightsMultiplier: 1.2,
+    climateMultiplier: 1.5,
   },
   "User Assumption": {
     costMultiplier: 1.25,
@@ -193,6 +234,7 @@ const QUALITY_POLICY = {
     carbonMultiplier: 1.35,
     customerLossRate: 0.22,
     waterRightsMultiplier: 1.35,
+    climateMultiplier: 2,
   },
   "Missing Evidence": {
     costMultiplier: 1.45,
@@ -207,6 +249,7 @@ const QUALITY_POLICY = {
     carbonMultiplier: 1.5,
     customerLossRate: 0.35,
     waterRightsMultiplier: 1.6,
+    climateMultiplier: 2,
   },
 } satisfies Record<Classification, Record<string, number>>;
 
@@ -216,11 +259,38 @@ const MATERIAL_IDS = [
   "grid_interconnection",
   "customer_concentration",
   "permitting_timeline",
+  "backup_power_capacity",
+  "water_source_resilience",
 ];
 
 function numberValue(value: string | number, fallback: number) {
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function parseHours(value: string | number, fallback: number) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : fallback;
+  const parsed = Number(value.match(/[\d.]+/)?.[0]);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function parseDowntimeCost(value: string | number, fallback: number) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : fallback;
+  const normalized = value.replace(/[$,]/g, "");
+  const parsed = Number(normalized.match(/[\d.]+/)?.[0]);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function hazardProbability(value: string | number) {
+  const normalized = String(value).toLowerCase();
+  if (normalized.includes("moderate")) return 0.02;
+  if (normalized.includes("low")) return 0.005;
+  return 0.05;
+}
+
+function isSingleSourceWater(value: string | number) {
+  const normalized = String(value).toLowerCase();
+  return normalized.includes("single source") || normalized.includes("no backup");
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -330,6 +400,10 @@ function runModel(evidence: EvidenceRecord): CashFlowModel {
   const permittingItem = evidence.permitting_timeline;
   const concentrationItem = evidence.customer_concentration;
   const waterRightsItem = evidence.water_rights;
+  const hazardItem = evidence.site_hazard_exposure;
+  const backupPowerItem = evidence.backup_power_capacity;
+  const waterSourceItem = evidence.water_source_resilience;
+  const downtimeCostItem = evidence.downtime_cost;
 
   const electricityQuality = QUALITY_POLICY[electricityItem.classification];
   const waterQuality = QUALITY_POLICY[waterConsumptionItem.classification];
@@ -343,6 +417,10 @@ function runModel(evidence: EvidenceRecord): CashFlowModel {
   const permittingQuality = QUALITY_POLICY[permittingItem.classification];
   const concentrationQuality = QUALITY_POLICY[concentrationItem.classification];
   const waterRightsQuality = QUALITY_POLICY[waterRightsItem.classification];
+  const hazardQuality = QUALITY_POLICY[hazardItem.classification];
+  const backupPowerQuality = QUALITY_POLICY[backupPowerItem.classification];
+  const waterSourceQuality = QUALITY_POLICY[waterSourceItem.classification];
+  const downtimeCostQuality = QUALITY_POLICY[downtimeCostItem.classification];
 
   const electricityRate =
     numberValue(electricityItem.value, 45) * electricityQuality.costMultiplier;
@@ -380,8 +458,44 @@ function runModel(evidence: EvidenceRecord): CashFlowModel {
   const coolingCapex = numberValue(coolingItem.value, 45);
   const communityCapexContingency = communityQuality.communityContingency;
   const coolingCapexContingency = coolingQuality.coolingContingency;
+  const siteHazardExposure = String(hazardItem.value);
+  const baseHazardProbability = hazardProbability(hazardItem.value);
+  const adjustedHazardProbability = clamp(
+    baseHazardProbability * hazardQuality.climateMultiplier,
+    0,
+    1,
+  );
+  const downtimeCostPerDay = parseDowntimeCost(downtimeCostItem.value, MIN_DOWNTIME_COST_PER_DAY);
+  const qualityAdjustedDowntimeCost =
+    downtimeCostPerDay * downtimeCostQuality.climateMultiplier;
+  const adjustedDowntimeCostPerDay =
+    downtimeCostItem.classification === "Missing Evidence"
+      ? Math.max(MIN_DOWNTIME_COST_PER_DAY, qualityAdjustedDowntimeCost)
+      : qualityAdjustedDowntimeCost;
+  const backupPowerHours =
+    backupPowerItem.classification === "Missing Evidence"
+      ? 0
+      : clamp(parseHours(backupPowerItem.value, 0), 0, 8760);
+  const backupPowerContingencyTriggered =
+    backupPowerHours < 72 && gridItem.classification !== "Verified Evidence";
+  const backupPowerCapex = backupPowerContingencyTriggered
+    ? BACKUP_POWER_CAPEX_BY_CLASSIFICATION[backupPowerItem.classification]
+    : 0;
+  const waterSourceResilience = String(waterSourceItem.value);
+  const stressedSingleSourceWater =
+    siteHazardExposure.toLowerCase().includes("high") &&
+    isSingleSourceWater(waterSourceItem.value);
+  const waterSourceEscalationMultiplier = stressedSingleSourceWater ? 1.5 : 1;
+  const waterConversionContingencyTriggered =
+    waterSourceItem.classification !== "Verified Evidence" &&
+    waterRightsItem.classification !== "Verified Evidence";
+  const waterConversionCapex = waterConversionContingencyTriggered
+    ? WATER_CONVERSION_CAPEX_BY_CLASSIFICATION[waterSourceItem.classification]
+    : 0;
+  const climateCapexContingency = backupPowerCapex + waterConversionCapex;
   const capexContingency =
-    coolingCapex * (communityCapexContingency + coolingCapexContingency);
+    coolingCapex * (communityCapexContingency + coolingCapexContingency) +
+    climateCapexContingency;
   const totalCapex = ENTRY_VALUE + coolingCapex + capexContingency;
   const debtAmount = ENTRY_VALUE * DEBT_LTV;
   const annualPrincipalPayment = debtAmount / AMORTIZATION_YEARS;
@@ -392,6 +506,7 @@ function runModel(evidence: EvidenceRecord): CashFlowModel {
   const annualRevenueAtFullUtilization =
     CAPACITY_MW * 1_000 * LEASE_RATE_PER_KW_MONTH * 12 / 1_000_000;
 
+  const adjustedWaterEscalationRate = waterEscalationRate * waterSourceEscalationMultiplier;
   const schedule: CashFlowYear[] = [];
   let cumulativeEquityCashFlow = 0;
 
@@ -411,6 +526,8 @@ function runModel(evidence: EvidenceRecord): CashFlowModel {
     laborOpex: 0,
     insuranceOpex: 0,
     carbonComplianceOpex: 0,
+    climateDisruptionOpex: 0,
+    backupPowerOpex: 0,
     totalOpex: 0,
     noi: 0,
     beginningDebt: debtAmount,
@@ -445,7 +562,7 @@ function runModel(evidence: EvidenceRecord): CashFlowModel {
     const waterRate =
       WATER_COST_PER_GALLON *
       waterRightsCostMultiplier *
-      Math.pow(1 + waterEscalationRate, year - 1);
+      Math.pow(1 + adjustedWaterEscalationRate, year - 1);
     const waterOpex = (waterGallons * waterRate) / 1_000_000;
     const maintenanceOpex =
       totalDirectCapex * MAINTENANCE_RATE * operatingUtilization;
@@ -454,13 +571,24 @@ function runModel(evidence: EvidenceRecord): CashFlowModel {
     const insuranceOpex =
       totalDirectCapex * INSURANCE_RATE * operatingUtilization;
     const carbonComplianceOpex = annualCarbonCompliance * operatingUtilization;
+    const climateDisruptionOpex =
+      (adjustedDowntimeCostPerDay *
+        adjustedHazardProbability *
+        365 *
+        operatingUtilization) /
+      1_000_000;
+    const backupPowerOpex = backupPowerContingencyTriggered
+      ? 0.2 * operatingUtilization
+      : 0;
     const totalOpex =
       electricityOpex +
       waterOpex +
       maintenanceOpex +
       laborOpex +
       insuranceOpex +
-      carbonComplianceOpex;
+      carbonComplianceOpex +
+      climateDisruptionOpex +
+      backupPowerOpex;
     const noi = revenue - totalOpex;
     const beginningDebt = Math.max(0, debtAmount - annualPrincipalPayment * (year - 1));
     const principal = Math.min(beginningDebt, annualPrincipalPayment);
@@ -486,6 +614,8 @@ function runModel(evidence: EvidenceRecord): CashFlowModel {
       laborOpex,
       insuranceOpex,
       carbonComplianceOpex,
+      climateDisruptionOpex,
+      backupPowerOpex,
       totalOpex,
       noi,
       beginningDebt,
@@ -546,12 +676,22 @@ function runModel(evidence: EvidenceRecord): CashFlowModel {
     electricityEscalationRate,
     annualCoolingWaterMgal,
     waterCostPerGallon: WATER_COST_PER_GALLON,
-    waterEscalationRate,
+    waterEscalationRate: adjustedWaterEscalationRate,
     waterRightsCostMultiplier,
     maintenanceRate: MAINTENANCE_RATE,
     annualLaborAtFullUtilization: ANNUAL_LABOR_AT_FULL_UTILIZATION,
     insuranceRate: INSURANCE_RATE,
     annualCarbonCompliance,
+    siteHazardExposure,
+    hazardProbability: baseHazardProbability,
+    adjustedHazardProbability,
+    downtimeCostPerDay,
+    adjustedDowntimeCostPerDay,
+    backupPowerHours,
+    backupPowerCapex,
+    waterSourceResilience,
+    waterSourceEscalationMultiplier,
+    waterConversionCapex,
     effectiveRenewableProcurement,
     powerCostDifferential,
     gridInterconnectionMonths,
@@ -578,7 +718,7 @@ function runModel(evidence: EvidenceRecord): CashFlowModel {
     electricity_cost: { id: "electricity_cost", driver: "Power OPEX", value: electricityRate, unit: "$/MWh", deltaIRR: 0 },
     water_consumption: { id: "water_consumption", driver: "Water OPEX", value: annualCoolingWaterMgal, unit: "M gal / yr", deltaIRR: 0 },
     grid_interconnection: { id: "grid_interconnection", driver: "Revenue delay", value: revenueDelayMonths, unit: "months", deltaIRR: 0 },
-    water_escalation: { id: "water_escalation", driver: "Water OPEX growth", value: waterEscalationRate * 100, unit: "%", deltaIRR: 0 },
+    water_escalation: { id: "water_escalation", driver: "Water OPEX growth", value: adjustedWaterEscalationRate * 100, unit: "%", deltaIRR: 0 },
     community_risk: { id: "community_risk", driver: "Permitting delay / CAPEX", value: communityDelayMonths, unit: "months", deltaIRR: 0 },
     renewable_percentage: { id: "renewable_percentage", driver: "Power cost differential", value: powerCostDifferential * 100, unit: "%", deltaIRR: 0 },
     cooling_capex: { id: "cooling_capex", driver: "Direct CAPEX", value: coolingCapex + capexContingency, unit: "$M", deltaIRR: 0 },
@@ -587,6 +727,10 @@ function runModel(evidence: EvidenceRecord): CashFlowModel {
     permitting_timeline: { id: "permitting_timeline", driver: "Revenue delay", value: permittingMonths, unit: "months", deltaIRR: 0 },
     customer_concentration: { id: "customer_concentration", driver: "Utilization discount", value: (1 - customerUtilizationMultiplier) * 100, unit: "%", deltaIRR: 0 },
     water_rights: { id: "water_rights", driver: "Water cost contingency", value: (waterRightsCostMultiplier - 1) * 100, unit: "%", deltaIRR: 0 },
+    site_hazard_exposure: { id: "site_hazard_exposure", driver: "Climate disruption OPEX", value: adjustedHazardProbability * 100, unit: "%", deltaIRR: 0 },
+    backup_power_capacity: { id: "backup_power_capacity", driver: "Backup power CAPEX / OPEX", value: backupPowerCapex, unit: "$M", deltaIRR: 0 },
+    water_source_resilience: { id: "water_source_resilience", driver: "Water conversion CAPEX", value: waterConversionCapex, unit: "$M", deltaIRR: 0 },
+    downtime_cost: { id: "downtime_cost", driver: "Climate disruption OPEX", value: adjustedDowntimeCostPerDay / 1_000_000, unit: "$M / day", deltaIRR: 0 },
   };
 
   return {

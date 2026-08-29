@@ -441,7 +441,7 @@ function CaseBrief({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
           <SectionKicker>Public-site context</SectionKicker>
           <div className="flex gap-3">
             <div className="mt-0.5 rounded bg-[#f5ddd5] p-2 text-[#ba2f45]"><MapPin className="h-4 w-4" /></div>
-            <div><div className="text-sm font-semibold text-[#122232]">West Valley growth edge</div><p className="mt-1 text-[11px] leading-5 text-[#6b7882]">Goodyear sits inside the Phoenix-Mesa-Scottsdale MSA, where population and industrial load are growing into a drought-constrained utility system.</p></div>
+            <div><div className="text-sm font-semibold text-[#122232]">West Valley growth edge</div><p className="mt-1 text-[11px] leading-5 text-[#6b7882]">Goodyear sits inside the Phoenix-Mesa-Scottsdale MSA, where population and industrial load are growing into a drought-constrained utility system.</p><div data-testid="text-climate-methodology" className="mt-3 border-t border-[#e5eae8] pt-2 font-mono text-[9px] leading-4 text-[#52616b]">Climate risk methodology: ISO 14091 CRVA framework</div></div>
           </div>
         </div>
         <div className="rounded-xl border border-[#d9e0e4] bg-white p-5">
@@ -541,8 +541,8 @@ function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => void }) 
       <PageIntro
         eyebrow="02 / source the conviction"
         title="Evidence is not a footnote. It is an active model input."
-        description="Twelve diligence inputs are classified by provenance. Change a classification to test what the return looks like when an assertion becomes an assumption, or when missing evidence is finally verified."
-        right={<div data-testid="text-evidence-count" className="rounded-lg border border-[#cbd8d4] bg-[#f9faf8] px-4 py-3 text-right"><div className="font-mono text-xl font-bold text-[#122232]">{items.length}<span className="text-[#52616b]"> / 12</span></div><div className="text-[9px] uppercase tracking-[0.14em] text-[#52616b]">Inputs registered</div></div>}
+        description={`${items.length} diligence inputs are classified by provenance. Change a classification to test what the return looks like when an assertion becomes an assumption, or when missing evidence is finally verified.`}
+        right={<div data-testid="text-evidence-count" className="rounded-lg border border-[#cbd8d4] bg-[#f9faf8] px-4 py-3 text-right"><div className="font-mono text-xl font-bold text-[#122232]">{items.length}<span className="text-[#52616b]"> / {items.length}</span></div><div className="text-[9px] uppercase tracking-[0.14em] text-[#52616b]">Inputs registered</div></div>}
       />
       <div className="mb-5 grid gap-3 sm:grid-cols-5">
         {counts.map(({ classification, count }) => {
@@ -658,8 +658,10 @@ function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => 
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {[
             ["Revenue build", `${formatCurrency(metrics.assumptions.annualRevenueAtFullUtilization)} full run-rate`, `${metrics.assumptions.capacityMW} MW × $${metrics.assumptions.leaseRatePerKwMonth} / kW-mo · ${metrics.assumptions.revenueDelayMonths} mo delay`],
-            ["OPEX build", `${formatCurrency(metrics.schedule[5]?.totalOpex ?? 0)} Y5 OPEX`, "Power, water, maintenance, labor, insurance, compliance"],
+            ["OPEX build", `${formatCurrency(metrics.schedule[5]?.totalOpex ?? 0)} Y5 OPEX`, "Power, water, maintenance, labor, insurance, compliance, and climate disruption"],
+            ["Climate disruption cost", `${formatCurrency(metrics.schedule[5]?.climateDisruptionOpex ?? 0)} Y5 OPEX`, `${(metrics.assumptions.adjustedHazardProbability * 100).toFixed(1)}% adjusted annual hazard × $${Math.round(metrics.assumptions.adjustedDowntimeCostPerDay / 1000)}K/day`],
             ["CAPEX schedule", `${formatCurrency(metrics.assumptions.totalCapex)} total`, `${formatCurrency(metrics.assumptions.entryValue)} entry + ${formatCurrency(metrics.assumptions.coolingCapex)} cooling + ${formatCurrency(metrics.assumptions.capexContingency)} contingency`],
+            ["Climate contingencies", formatCurrency(metrics.assumptions.backupPowerCapex + metrics.assumptions.waterConversionCapex), `${formatCurrency(metrics.assumptions.backupPowerCapex)} backup power + ${formatCurrency(metrics.assumptions.waterConversionCapex)} cooling conversion`],
             ["Debt structure", `${formatCurrency(metrics.assumptions.debtAmount)} opening debt`, `60% LTV · 7.5% interest · ${formatCurrency(metrics.assumptions.annualPrincipalPayment)} annual principal`],
             ["Terminal value", `${formatCurrency(metrics.terminalValue)} gross exit`, `${formatCurrency(metrics.schedule[5]?.noi ?? 0)} Y5 NOI × ${metrics.assumptions.exitMultiple.toFixed(1)}x`],
             ["Equity cash flows", `${formatCurrency(metrics.equityInvested)} invested`, `${formatCurrency(metrics.totalDistributions)} total distributions · true equity returns`],
@@ -676,13 +678,14 @@ function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => 
           <table className="w-full min-w-[760px] border-collapse text-left">
             <caption className="sr-only">Five-year annual project cash-flow schedule</caption>
             <thead className="bg-[#f1f5f3] text-[9px] font-bold uppercase tracking-[0.13em] text-[#52616b]">
-              <tr><th className="px-3 py-3">Year</th><th className="px-3 py-3">Revenue</th><th className="px-3 py-3">NOI</th><th className="px-3 py-3">Debt service</th><th className="px-3 py-3">Terminal value</th><th className="px-3 py-3">Net equity CF</th><th className="px-3 py-3">Cumulative CF</th></tr>
+              <tr><th className="px-3 py-3">Year</th><th className="px-3 py-3">Revenue</th><th className="px-3 py-3">Climate disruption OPEX</th><th className="px-3 py-3">NOI</th><th className="px-3 py-3">Debt service</th><th className="px-3 py-3">Terminal value</th><th className="px-3 py-3">Net equity CF</th><th className="px-3 py-3">Cumulative CF</th></tr>
             </thead>
             <tbody className="divide-y divide-[#e5eae8] font-mono text-[10px] text-[#344550]">
               {metrics.schedule.map((year) => (
                 <tr key={year.year} className={year.year === 5 ? "bg-[#f8fbe8]" : undefined}>
                   <th className="px-3 py-3 font-bold text-[#122232]">{year.year === 0 ? "Close" : `Y${year.year}`}</th>
                   <td className="px-3 py-3">{formatCurrency(year.revenue)}</td>
+                  <td data-testid={`text-climate-opex-y${year.year}`} className="px-3 py-3">{year.year === 0 ? "—" : formatCurrency(year.climateDisruptionOpex)}</td>
                   <td className="px-3 py-3">{formatCurrency(year.noi)}</td>
                   <td className="px-3 py-3">{formatCurrency(year.interest + year.principal)}</td>
                   <td className="px-3 py-3">{year.terminalValue ? formatCurrency(year.terminalValue) : "—"}</td>
@@ -694,7 +697,7 @@ function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => 
           </table>
         </div>
       </section>
-      <div className="mt-5 rounded-lg border border-[#d9e0e4] bg-[#eef2f1] px-4 py-3 text-[11px] leading-5 text-[#65737d]"><Info className="mr-2 inline h-3.5 w-3.5 text-[#255bb7]" /><strong className="text-[#344550]">Model mechanics:</strong> annual revenue uses partial operating months after the later of grid and permitting gates; OPEX includes power, water, maintenance, labor, insurance, and carbon compliance; debt is equal-principal senior debt; terminal value is Y5 NOI × {metrics.assumptions.exitMultiple.toFixed(1)}x less remaining debt. Quality classifications change the underwritten inputs themselves rather than applying a generic return penalty.</div>
+      <div className="mt-5 rounded-lg border border-[#d9e0e4] bg-[#eef2f1] px-4 py-3 text-[11px] leading-5 text-[#65737d]"><Info className="mr-2 inline h-3.5 w-3.5 text-[#255bb7]" /><strong className="text-[#344550]">Model mechanics:</strong> annual revenue uses partial operating months after the later of grid and permitting gates; OPEX includes power, water, maintenance, labor, insurance, carbon compliance, and adjusted downtime cost/day × adjusted hazard probability × 365 × operating utilization. Debt is equal-principal senior debt; terminal value is Y5 NOI × {metrics.assumptions.exitMultiple.toFixed(1)}x less remaining debt, so climate disruption reduces exit value through NOI without a second discount.</div>
       <BottomNav screen="materiality" onNavigate={onNavigate} />
     </div>
   );
@@ -999,7 +1002,7 @@ function DecisionReview({ onNavigate }: { onNavigate: (screen: Screen) => void }
         <section className="rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-6">
           <div className="flex items-end justify-between border-b border-[#e5eae8] pb-4"><div><SectionKicker>Evidence quality mix</SectionKicker><h2 className="text-[19px] font-semibold tracking-[-0.025em] text-[#122232]">What is carrying the case?</h2></div><span className="font-mono text-[10px] text-[#52616b]">{metrics.confidenceScore}% weighted</span></div>
           <div className="mt-4 space-y-3">
-            {grouped.map((group) => <div key={group.classification} data-testid={`group-quality-${classMeta[group.classification].short.toLowerCase()}`} className="flex items-center gap-3"><ClassificationBadge value={group.classification} compact /><div className="h-2 flex-1 overflow-hidden rounded-full bg-[#edf1ef]"><div className="motion-bar h-full rounded-full transition-all duration-500" style={{ width: `${(group.items.length / 12) * 100}%`, backgroundColor: classMeta[group.classification].color }} /></div><span className="w-5 text-right font-mono text-[11px] font-bold text-[#52616b]">{group.items.length}</span></div>)}
+            {grouped.map((group) => <div key={group.classification} data-testid={`group-quality-${classMeta[group.classification].short.toLowerCase()}`} className="flex items-center gap-3"><ClassificationBadge value={group.classification} compact /><div className="h-2 flex-1 overflow-hidden rounded-full bg-[#edf1ef]"><div className="motion-bar h-full rounded-full transition-all duration-500" style={{ width: `${(group.items.length / items.length) * 100}%`, backgroundColor: classMeta[group.classification].color }} /></div><span className="w-5 text-right font-mono text-[11px] font-bold text-[#52616b]">{group.items.length}</span></div>)}
           </div>
           <div className="mt-6 grid gap-3 border-t border-[#e5eae8] pt-5 sm:grid-cols-2">
             <div><div className="text-[9px] font-bold uppercase tracking-[0.13em] text-[#52616b]">Disputed / unverified</div><div className="mt-2 font-mono text-2xl font-bold text-[#ba2f45]">{disputed.length}</div><div className="mt-1 text-[10px] text-[#52616b]">Assertions or missing source</div></div>
@@ -1010,6 +1013,7 @@ function DecisionReview({ onNavigate }: { onNavigate: (screen: Screen) => void }
       <div className="mt-5 grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
         <section className="rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-6">
           <div className="flex items-center justify-between"><div><SectionKicker tone="warning">Material evidence gaps</SectionKicker><h2 className="text-[18px] font-semibold tracking-[-0.025em] text-[#122232]">Items that need a named owner</h2></div><CircleAlert className="h-5 w-5 text-[#ba2f45]" /></div>
+          <p data-testid="text-climate-material-dependencies" className="mt-3 rounded-md bg-[#fff8e9] px-3 py-2 text-[10px] leading-4 text-[#7f6337]">Backup power capacity and water-source resilience are material recommendation dependencies. Missing evidence blocks review; model inference or user assumption keeps the decision conditional.</p>
           <div className="mt-4 divide-y divide-[#e5eae8]">
             {items.filter((item) => item.classification === "Missing Evidence").map((item) => <div key={item.id} className="flex items-center justify-between gap-4 py-3"><div><div className="text-[11px] font-semibold text-[#344550]">{item.label}</div><div className="mt-1 text-[10px] text-[#52616b]">{item.citation}</div></div><span className="shrink-0 rounded bg-[#fde8eb] px-2 py-1 text-[9px] font-bold uppercase tracking-[0.11em] text-[#ba2f45]">Resolve</span></div>)}
             {items.filter((item) => item.classification === "Missing Evidence").length === 0 && <div className="rounded-md bg-[#e0f4ed] p-3 text-[11px] text-[#0b7a63]">No missing evidence items. The recommendation can move to review.</div>}
@@ -1185,6 +1189,7 @@ function DecisionReview({ onNavigate }: { onNavigate: (screen: Screen) => void }
 function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
   const { evidence, metrics } = useDiligence();
   const verifiedCount = Object.values(evidence).filter((item) => item.classification === "Verified Evidence").length;
+  const evidenceCount = Object.keys(evidence).length;
   const riskTier = getRiskTier(verifiedCount);
   const currentIRR = metrics.projectIRR ?? null;
   const baseIRR = metrics.baseIRR ?? null;
@@ -1201,7 +1206,7 @@ function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
        <section data-testid="text-advisor-summary" className="mb-5 rounded-xl border border-[#cbd8d4] bg-[#f9faf8] p-5 md:p-6">
         <SectionKicker>Live evidence posture</SectionKicker>
         <p className="max-w-4xl text-[18px] font-semibold leading-7 tracking-[-0.025em] text-[#122232] md:text-[21px]">
-          Based on current evidence quality, {verifiedCount} of 12 inputs are verified. Data center exposure in common ESG funds carries {riskTier} unverified risk.
+          Based on current evidence quality, {verifiedCount} of {evidenceCount} inputs are verified. Data center exposure in common ESG funds carries {riskTier} unverified risk.
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-[#e1e8e5] pt-4">
           <RiskIndicator tier={riskTier} testId="badge-advisor-summary-risk" />
@@ -1212,7 +1217,7 @@ function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
         <section className="rounded-xl bg-[#122232] p-6 text-white md:p-7">
            <SectionKicker tone="lime" className="!text-[#d4e86b]">Public-market exposure</SectionKicker>
           <h2 className="max-w-md text-[25px] font-semibold leading-tight tracking-[-0.035em]">The facility is private. The consequences may not be.</h2>
-          <p className="mt-3 max-w-lg text-[11px] leading-5 text-[#afbdc4]">Data center demand, chip concentration, power procurement, and resource intensity can transmit into listed companies and the funds that hold them.</p>
+          <p className="mt-3 max-w-lg text-[11px] leading-5 text-[#afbdc4]">Data center demand, chip concentration, power procurement, resource intensity, and site-level climate hazard exposure can transmit operating disruption and adaptation CAPEX into listed companies and the funds that hold them.</p>
           <div className="mt-7 space-y-3">
              <div data-testid="card-fund-ishares" className="rounded-lg border border-white/10 bg-white/5 p-4"><div className="flex items-start gap-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-[#e9e0f7] text-[#482873]"><Landmark className="h-4 w-4" /></div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center justify-between gap-2"><div className="text-[11px] font-bold">iShares ESG Advanced MSCI USA ETF</div><RiskIndicator tier={riskTier} testId="badge-fund-ishares-risk" /></div><div className="mt-1 text-[10px] text-[#9dafb8]">Public equity exposure · ESG-screened broad market</div></div></div></div>
              <div data-testid="card-fund-msci" className="rounded-lg border border-white/10 bg-white/5 p-4"><div className="flex items-start gap-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-[#d4e86b] text-[#314207]"><BarChart3 className="h-4 w-4" /></div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center justify-between gap-2"><div className="text-[11px] font-bold">MSCI KLD 400 Social Index</div><RiskIndicator tier={riskTier} testId="badge-fund-msci-risk" /></div><div className="mt-1 text-[10px] text-[#9dafb8]">Socially screened benchmark · stewardship reference</div></div></div></div>
@@ -1224,13 +1229,13 @@ function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
           <h2 className="text-[20px] font-semibold tracking-[-0.03em] text-[#122232]">From basin constraint to portfolio conversation</h2>
           <div className="mt-7 flex flex-wrap items-center gap-2.5">
             {[
-              ["Local water rights", "Missing", "#fde8eb", "#ba2f45"],
-              ["Asset delay / CAPEX", "Return", "#fff0d6", "#a65a00"],
+              ["Climate hazard / water resilience", "Asset exposure", "#fde8eb", "#ba2f45"],
+              ["Disruption OPEX / adaptation CAPEX", "Return", "#fff0d6", "#a65a00"],
               ["Operator credibility", "Engagement", "#eee7fa", "#7049b7"],
               ["Fund exposure", "Stewardship", "#e5efff", "#255bb7"],
             ].map(([title, label, bg, color], index) => <div key={title} className="flex items-center gap-2.5"><div className="rounded-md border px-3 py-2.5" style={{ backgroundColor: bg, borderColor: `${color}55`, color }}><div className="text-[10px] font-bold">{title}</div><div className="mt-1 font-mono text-[9px] uppercase tracking-[0.11em] opacity-75">{label}</div></div>{index < 3 && <ArrowRight className="h-4 w-4 shrink-0 text-[#a0adb3]" />}</div>)}
           </div>
-          <div className="mt-7 rounded-lg bg-[#f1f5f3] p-4"><div className="flex gap-3"><CloudLightning className="mt-0.5 h-4 w-4 shrink-0 text-[#255bb7]" /><p className="text-[11px] leading-5 text-[#52616b]">The relevant ESG question is not whether a fund owns this exact campus. It is whether its holdings benefit from the demand while the infrastructure externalities remain invisible in the diligence chain.</p></div></div>
+           <div className="mt-7 rounded-lg bg-[#f1f5f3] p-4"><div className="flex gap-3"><CloudLightning className="mt-0.5 h-4 w-4 shrink-0 text-[#255bb7]" /><p className="text-[11px] leading-5 text-[#52616b]">The relevant ESG question is not whether a fund owns this exact campus. It is whether portfolio holdings carry unpriced drought, extreme-heat, downtime, and adaptation exposure while those risks remain invisible in the diligence chain.</p></div></div>
         </section>
       </div>
       <div className="mt-5 grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
@@ -1240,12 +1245,12 @@ function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
           <div className="mt-4 divide-y divide-[#e5eae8]">
             {prioritizedQuestions.map((question, index) => {
               const classification = question.classification;
-              const { isActiveGap, isWaterGap, isEnergizationGap, showDetail } = getAdvisorQuestionPresentation(question.id, classification);
+              const { isActiveGap, isWaterGap, isEnergizationGap, isClimateGap, showDetail } = getAdvisorQuestionPresentation(question.id, classification);
               return (
                 <div
                   key={question.id}
                   data-testid={`advisor-question-${question.id}`}
-                  className={`rounded-lg px-3 py-4 transition-colors ${isWaterGap ? "my-2 border-2 border-[#efabb8] bg-[#fff3f4]" : isEnergizationGap ? "my-2 border border-[#f1cb8b] bg-[#fff8e9]" : isActiveGap ? "bg-[#fffaf0]" : ""}`}
+                  className={`rounded-lg px-3 py-4 transition-colors ${isWaterGap ? "my-2 border-2 border-[#efabb8] bg-[#fff3f4]" : isEnergizationGap || isClimateGap ? "my-2 border border-[#f1cb8b] bg-[#fff8e9]" : isActiveGap ? "bg-[#fffaf0]" : ""}`}
                 >
                   <div className="flex gap-4">
                   <span className={`font-mono text-[10px] font-bold ${isActiveGap ? "text-[#ba2f45]" : "text-[#b9d43a]"} [text-shadow:0_0_0_#122232]`}>{String(index + 1).padStart(2, "0")}</span>
@@ -1274,7 +1279,7 @@ function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
           <div className="max-w-2xl">
             <SectionKicker>Governance gap</SectionKicker>
             <h2 className="text-[19px] font-semibold leading-tight tracking-[-0.025em] text-[#122232]">What evidence classification prevents the model from hiding.</h2>
-            <p className="mt-3 text-[11px] leading-5 text-[#5e5870]">Without evidence classification, an AI screening tool would treat all 12 inputs as equivalent. Here is what that hides:</p>
+            <p className="mt-3 text-[11px] leading-5 text-[#5e5870]">Without evidence classification, an AI screening tool would treat all {evidenceCount} inputs as equivalent. Here is what that hides:</p>
           </div>
           <div className="shrink-0 rounded-lg border border-[#cbb7ec] bg-white px-5 py-4 md:max-w-[320px]">
             <div data-testid="text-governance-irr-gap" className="font-mono text-[16px] font-bold leading-6 text-[#482873]">
@@ -1476,7 +1481,7 @@ function AppShell() {
         <AlertDialogContent className="border-[#cbd8d4] bg-[#f9faf8]">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-[#122232]">Reset to Default?</AlertDialogTitle>
-            <AlertDialogDescription className="text-[#65737d]">This restores all 12 evidence classifications to the canonical starting state and clears the current session. Named scenarios are kept.</AlertDialogDescription>
+            <AlertDialogDescription className="text-[#65737d]">This restores all 16 evidence classifications to the canonical starting state and clears the current session. Named scenarios are kept.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="border-[#cbd8d4] text-[#52616b]">Cancel</AlertDialogCancel>

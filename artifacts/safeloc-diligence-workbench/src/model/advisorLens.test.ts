@@ -43,8 +43,9 @@ test("initial advisor posture prioritizes missing evidence and expands water rig
   const verifiedCount = countVerifiedEvidence(INITIAL_EVIDENCE);
   const questions = prioritizeAdvisorQuestions(INITIAL_EVIDENCE);
 
-  assert.equal(verifiedCount, 3);
-  assert.equal(getRiskTier(verifiedCount), "HIGH");
+  assert.equal(Object.keys(INITIAL_EVIDENCE).length, 16);
+  assert.equal(verifiedCount, 4);
+  assert.equal(getRiskTier(verifiedCount), "MODERATE");
   assert.deepEqual(
     questions.slice(0, 2).map((question) => question.id),
     ["water-rights", "customer-concentration"],
@@ -56,6 +57,12 @@ test("initial advisor posture prioritizes missing evidence and expands water rig
   assert.equal(waterPresentation.isActiveGap, true);
   assert.equal(waterPresentation.showDetail, true);
   assert.equal(waterPresentation.isWaterGap, true);
+  const climatePresentation = getAdvisorQuestionPresentation(
+    "climate-hazard",
+    INITIAL_EVIDENCE.site_hazard_exposure.classification,
+  );
+  assert.equal(climatePresentation.isActiveGap, true);
+  assert.equal(climatePresentation.showDetail, true);
 });
 
 test("reclassifying water rights and grid interconnection resolves their active emphasis", () => {
@@ -119,4 +126,20 @@ test("governance gap equals verified baseline IRR less current IRR and is safe w
   assert.equal(getGovernanceIRRGap(null, 12.5), null);
   assert.equal(getGovernanceIRRGap(18.5, undefined), null);
   assert.equal(getGovernanceIRRGap(Number.NaN, 12.5), null);
+});
+
+test("the climate hazard question is exact and follows weaker evidence ahead of stronger evidence", () => {
+  const questions = prioritizeAdvisorQuestions(INITIAL_EVIDENCE);
+  const climateQuestion = questions.find((question) => question.id === "climate-hazard");
+
+  assert.equal(
+    climateQuestion?.question,
+    "What site-level climate hazard assessment has been conducted for facilities in water-stressed or extreme-heat regions, and what adaptation investments are planned?",
+  );
+  assert.equal(climateQuestion?.classification, "Model Inference");
+  assert.equal(
+    questions.findIndex((question) => question.id === "climate-hazard") <
+      questions.findIndex((question) => question.id === "energization"),
+    true,
+  );
 });

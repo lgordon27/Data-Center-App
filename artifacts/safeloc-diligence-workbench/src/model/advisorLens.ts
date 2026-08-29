@@ -51,6 +51,12 @@ export const ADVISOR_QUESTIONS: AdvisorQuestion[] = [
     evidenceId: "customer_concentration",
     activeDetail: "Revenue concentration is an evidence gap: request the lease schedule and renewal terms before assessing the governance signal.",
   },
+  {
+    id: "climate-hazard",
+    question: "What site-level climate hazard assessment has been conducted for facilities in water-stressed or extreme-heat regions, and what adaptation investments are planned?",
+    evidenceId: "site_hazard_exposure",
+    activeDetail: "The site hazard profile is not verified: request a facility-level CRVA, resilience thresholds, and funded adaptation plans for drought and extreme heat.",
+  },
 ];
 
 export function countVerifiedEvidence(evidence: Record<string, ClassifiedEvidence>) {
@@ -85,12 +91,14 @@ export function getAdvisorQuestionPresentation(
 ) {
   const isWaterGap = questionId === "water-rights" && classification === "Missing Evidence";
   const isEnergizationGap = questionId === "energization" && classification !== "Verified Evidence";
+  const isClimateGap = questionId === "climate-hazard" && classification !== "Verified Evidence";
 
   return {
     isWaterGap,
     isEnergizationGap,
-    isActiveGap: isWaterGap || isEnergizationGap || classification === "Missing Evidence",
-    showDetail: isWaterGap || isEnergizationGap,
+    isClimateGap,
+    isActiveGap: isWaterGap || isEnergizationGap || isClimateGap || classification === "Missing Evidence",
+    showDetail: isWaterGap || isEnergizationGap || isClimateGap,
   };
 }
 

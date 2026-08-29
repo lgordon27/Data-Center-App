@@ -53,7 +53,43 @@ export const INITIAL_EVIDENCE: Record<string, EvidenceItem> = {
   carbon_compliance: { id: 'carbon_compliance', label: 'Carbon Compliance Cost', value: 2, unit: '$M/yr', classification: 'Model Inference', citation: 'Calculated from grid intensity and policy trajectory', description: 'Estimated carbon offset requirements.' },
   permitting_timeline: { id: 'permitting_timeline', label: 'Permitting Timeline', value: 12, unit: 'Months', classification: 'Management Assertion', citation: 'Sponsor Base Case Model', description: 'Time to secure all local approvals.' },
   customer_concentration: { id: 'customer_concentration', label: 'Customer Terms & Concentration', value: 85, unit: '%', classification: 'Missing Evidence', citation: 'Lease schedule not provided', description: 'Revenue tied to single hyperscaler.' },
-  water_rights: { id: 'water_rights', label: 'Local Water Rights & Allocation', value: 'Junior Tier', unit: 'Allocation', classification: 'Missing Evidence', citation: 'Pending legal rights review', description: 'Seniority of site water rights in drought.' }
+  water_rights: { id: 'water_rights', label: 'Local Water Rights & Allocation', value: 'Junior Tier', unit: 'Allocation', classification: 'Missing Evidence', citation: 'Pending legal rights review', description: 'Seniority of site water rights in drought.' },
+  site_hazard_exposure: {
+    id: 'site_hazard_exposure',
+    label: 'Site Hazard Exposure Profile',
+    value: 'High',
+    unit: 'Composite Risk',
+    classification: 'Model Inference',
+    citation: 'FEMA National Risk Index / NOAA Climate Normals / Arizona State Climate Office',
+    description: 'Drought — Extreme; extreme heat — High; flooding — Moderate; wildfire — Low.',
+  },
+  backup_power_capacity: {
+    id: 'backup_power_capacity',
+    label: 'Backup Power Capacity',
+    value: '48 hours (diesel generation)',
+    unit: 'Resilience',
+    classification: 'Management Assertion',
+    citation: 'Facility Operations Summary — Developer Provided',
+    description: 'Maximum self-sustained uptime during a grid failure.',
+  },
+  water_source_resilience: {
+    id: 'water_source_resilience',
+    label: 'Water Source Resilience',
+    value: 'Municipal (City of Goodyear) — single source, no backup',
+    unit: 'Supply',
+    classification: 'Verified Evidence',
+    citation: 'City of Goodyear 2024 Water Resources Plan / ADWR Groundwater Basin Report',
+    description: 'Single municipal source in a high water-stress region with no backup supply.',
+  },
+  downtime_cost: {
+    id: 'downtime_cost',
+    label: 'Estimated Downtime Cost',
+    value: '$285,000/day',
+    unit: 'Operating Loss',
+    classification: 'User Assumption',
+    citation: 'Analyst estimate based on contracted capacity and lease structure',
+    description: 'Estimated operating loss for each day of degraded or interrupted service.',
+  },
 };
 
 const DiligenceContext = createContext<DiligenceState | undefined>(undefined);

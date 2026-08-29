@@ -44,6 +44,7 @@ import {
   SavedScenario,
   useDiligence,
 } from "@/context/DiligenceContext";
+import { calculateCashFlowModel } from "@/model/cashFlowEngine";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -174,6 +175,25 @@ function SectionKicker({ children, tone = "default", className = "" }: { childre
     </div>
   );
 }
+
+function Disclosure({ title, children, defaultOpen = false, className = "", testId }: { title: string; children: ReactNode; defaultOpen?: boolean; className?: string; testId?: string }) {
+  return (
+    <details data-testid={testId} open={defaultOpen || undefined} className={`disclosure group rounded-xl border border-[#d9e0e4] bg-white ${className}`}>
+      <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-4 px-4 py-3 text-[11px] font-bold uppercase tracking-[0.12em] text-[#344550] [&::-webkit-details-marker]:hidden">
+        <span>{title}</span>
+        <ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-[#52616b] transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="border-t border-[#e5eae8] px-4 py-4">{children}</div>
+    </details>
+  );
+}
+
+const evidenceCategories = [
+  { id: "power-grid", label: "Power & Grid", itemIds: ["electricity_cost", "grid_interconnection", "electricity_escalation", "renewable_percentage", "backup_power_capacity"] },
+  { id: "water-climate", label: "Water & Climate", itemIds: ["water_consumption", "water_escalation", "water_rights", "site_hazard_exposure", "water_source_resilience"] },
+  { id: "community-permitting", label: "Community & Permitting", itemIds: ["community_risk", "permitting_timeline"] },
+  { id: "financial-counterparty", label: "Financial & Counterparty", itemIds: ["cooling_capex", "carbon_compliance", "customer_concentration", "downtime_cost"] },
+] as const;
 
 function MetricCard({ label, value, detail, accent = "navy", testId }: { label: string; value: string; detail: string; accent?: "navy" | "lime" | "coral" | "violet"; testId: string }) {
   const colors = { navy: "bg-[#122232] text-white", lime: "bg-[#d4e86b] text-[#1c2a16]", coral: "bg-[#f5ddd5] text-[#6d2b26]", violet: "bg-[#e9e0f7] text-[#482873]" };
@@ -484,44 +504,47 @@ function CaseBrief({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
           </div>
         </section>
       </div>
-      <div className="mt-5 grid gap-5 md:grid-cols-[1fr_1fr_1.25fr]">
-        <div className="rounded-xl border border-[#d9e0e4] bg-white p-5">
-          <SectionKicker>Public-site context</SectionKicker>
+      <div className="mt-5 grid gap-3 md:grid-cols-2">
+        <Disclosure title="Public-site context · Taylor County buildout" testId="disclosure-public-site-context">
           <div className="flex gap-3">
             <div className="mt-0.5 rounded bg-[#f5ddd5] p-2 text-[#ba2f45]"><MapPin className="h-4 w-4" /></div>
-            <div><div className="text-sm font-semibold text-[#122232]">Taylor County buildout</div><p className="mt-1 text-[11px] leading-5 text-[#6b7882]">The campus sits outside Abilene. Reporting describes two buildings and roughly 0.3 GW operational since September 2025, with the eight-building core targeting approximately 1.2 GW.</p><div data-testid="text-climate-methodology" className="mt-3 border-t border-[#e5eae8] pt-2 font-mono text-[9px] leading-4 text-[#52616b]">Climate risk methodology: ISO 14091 CRVA framework</div></div>
+            <div><p className="text-[11px] leading-5 text-[#6b7882]">The campus sits outside Abilene. Public reporting describes two buildings and roughly 0.3 GW operational since September 2025, with the eight-building core targeting approximately 1.2 GW.</p><div data-testid="text-climate-methodology" className="mt-3 border-t border-[#e5eae8] pt-2 font-mono text-[9px] leading-4 text-[#52616b]">Climate risk methodology: ISO 14091 CRVA framework</div></div>
           </div>
-        </div>
-        <div className="rounded-xl border border-[#d9e0e4] bg-white p-5">
-          <SectionKicker>Transmission corridor</SectionKicker>
+        </Disclosure>
+        <Disclosure title="Transmission corridor · power mix" testId="disclosure-transmission-corridor">
           <div className="flex items-center gap-2.5 text-[#122232]">
             <Zap className="h-4 w-4 text-[#a65a00]" /><span className="font-mono text-sm font-bold">On-site gas + ERCOT grid</span>
           </div>
           <p className="mt-2 text-[11px] leading-5 text-[#6b7882]">The power mix combines on-site natural-gas generation with ERCOT supply, including locally referenced wind. The delivered renewable percentage is not publicly verified.</p>
-        </div>
+        </Disclosure>
         <div className="rounded-xl bg-[#d4e86b] p-5 text-[#1c2a16]">
           <div className="flex items-center justify-between"><SectionKicker tone="lime">The governing question</SectionKicker><Target className="h-5 w-5 opacity-60" /></div>
           <div className="mt-1 text-[19px] font-semibold leading-tight tracking-[-0.025em]">What does a cancelled expansion reveal about the value of verified grid evidence?</div>
           <button data-testid="button-open-evidence-from-brief" onClick={() => onNavigate("evidence")} className="mt-5 inline-flex items-center gap-2 border-b border-[#1c2a16] pb-1 text-[10px] font-bold uppercase tracking-[0.15em]">Open evidence room <ArrowRight className="h-3.5 w-3.5" /></button>
         </div>
       </div>
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="mt-5 rounded-xl border border-[#d9e0e4] bg-[#f1f5f3] p-4" aria-labelledby="brief-risk-strip-title">
+        <div className="flex items-center justify-between gap-3">
+          <SectionKicker className="mb-0">Risk strip</SectionKicker>
+          <span id="brief-risk-strip-title" className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#7d898f]">Public operating signals</span>
+        </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
         {[
           ["Water disclosure", "Missing", "Facility water use and water rights not publicly disclosed as of Aug 2026", "#ba2f45"],
           ["Grid expansion", "Cancelled", "Reported interconnection delays exceeded 12 months", "#a65a00"],
           ["Cooling resilience", "Tested", "Winter 2026 storms damaged liquid-cooling equipment", "#255bb7"],
           ["Construction peak", "~6,400", "Housing, childcare, and road strain documented locally", "#7049b7"],
         ].map(([label, value, detail, color]) => (
-          <div key={label} className="rounded-xl border border-[#d9e0e4] bg-white p-4">
+          <div key={label} className="rounded-lg border border-[#d9e0e4] bg-white px-3 py-3">
             <div className="flex items-center justify-between gap-2">
               <span className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#52616b]">{label}</span>
               <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
             </div>
-            <div className="mt-3 font-mono text-lg font-bold text-[#122232]">{value}</div>
-            <div className="mt-1 text-[10px] leading-4 text-[#52616b]">{detail}</div>
+            <div className="mt-2 flex items-baseline gap-2"><span className="font-mono text-base font-bold text-[#122232]">{value}</span><span className="text-[10px] font-medium text-[#52616b]">{detail}</span></div>
           </div>
         ))}
       </div>
+      </section>
       <div className="mt-5 rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-6">
         <div className="flex items-end justify-between border-b border-[#e5eae8] pb-4">
           <div>
@@ -553,30 +576,17 @@ function CaseBrief({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
 function EvidenceRow({ item, onChange }: { item: EvidenceItem; onChange: (id: string, value: Classification) => void }) {
   const meta = classMeta[item.classification];
   return (
-    <div data-testid={`row-evidence-${item.id}`} className="group grid gap-3 border-b border-[#e4e9e8] px-4 py-4 transition-colors last:border-0 hover:bg-[#fbfcfa] md:grid-cols-[1.55fr_0.7fr_1.1fr_1.55fr] md:items-center md:px-5">
-      <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: meta.color }} />
-          <span className="text-[12px] font-semibold text-[#243844]">{item.label}</span>
-        </div>
-        <div className="mt-1 pl-3.5 text-[10px] leading-4 text-[#52616b]">{item.description}</div>
+    <details id={`evidence-item-${item.id}`} tabIndex={-1} data-testid={`row-evidence-${item.id}`} className="group border-b border-[#e4e9e8] last:border-0 focus-within:bg-[#fbfcfa]">
+      <summary className="grid cursor-pointer list-none gap-3 px-4 py-3 transition-colors hover:bg-[#fbfcfa] md:grid-cols-[1.55fr_0.8fr_1.55fr] md:items-center md:px-5 [&::-webkit-details-marker]:hidden">
+        <span className="flex min-w-0 items-center gap-2"><span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: meta.color }} /><span className="truncate text-[12px] font-semibold text-[#243844]">{item.label}</span></span>
+        <span className="min-w-0"><span className="font-mono text-[12px] font-bold text-[#122232]">{item.value}</span> <span className="text-[10px] text-[#52616b]">{item.unit}</span></span>
+        <span className="flex items-center justify-between gap-3"><span className="relative w-full md:max-w-[220px]"><select data-testid={`select-classification-${item.id}`} aria-label={`Classification for ${item.label}`} value={item.classification} onChange={(event) => onChange(item.id, event.target.value as Classification)} onClick={(event) => event.stopPropagation()} className="w-full appearance-none rounded-md border bg-white py-2 pl-3 pr-8 text-[10px] font-semibold text-[#243844] outline-none focus:ring-2 focus:ring-[#b9d43a]/50" style={{ borderColor: meta.border }}>{classifications.map((classification) => <option key={classification} value={classification}>{classification}</option>)}</select><ChevronDown aria-hidden="true" className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-[#52616b]" /></span><ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-[#52616b] transition-transform group-open:rotate-180 md:hidden" /></span>
+      </summary>
+      <div className="grid gap-3 bg-[#fbfcfa] px-4 pb-4 pt-1 md:grid-cols-[1.55fr_0.8fr_1.55fr] md:px-5">
+        <p className="text-[10px] leading-4 text-[#52616b] md:col-span-2">{item.description}</p>
+        <div className="flex items-start gap-1.5 text-[10px] leading-4 text-[#52616b]"><FileText aria-hidden="true" className="mt-0.5 h-3 w-3 shrink-0" /><span>{item.citation}</span></div>
       </div>
-      <div className="pl-3.5 md:pl-0"><span className="font-mono text-[13px] font-bold text-[#122232]">{item.value}</span> <span className="text-[10px] text-[#52616b]">{item.unit}</span></div>
-       <div className="pl-3.5 md:pl-0"><div className="flex items-start gap-1.5 text-[10px] leading-4 text-[#52616b]"><FileText aria-hidden="true" className="mt-0.5 h-3 w-3 shrink-0 text-[#52616b]" /><span>{item.citation}</span></div></div>
-      <div className="relative pl-3.5 md:pl-0">
-        <select
-          data-testid={`select-classification-${item.id}`}
-           aria-label={`Classification for ${item.label}`}
-          value={item.classification}
-          onChange={(event) => onChange(item.id, event.target.value as Classification)}
-          className="w-full appearance-none rounded-md border bg-white py-2 pl-3 pr-8 text-[10px] font-semibold text-[#243844] outline-none transition-shadow focus:ring-2 focus:ring-[#b9d43a]/50"
-          style={{ borderColor: meta.border }}
-        >
-          {classifications.map((classification) => <option key={classification} value={classification}>{classification}</option>)}
-        </select>
-        <ChevronDown className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-[#52616b]" />
-      </div>
-    </div>
+    </details>
   );
 }
 
@@ -598,11 +608,22 @@ function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => void }) 
           return <div key={classification} data-testid={`count-classification-${meta.short.toLowerCase()}`} className="rounded-lg border p-3" style={{ borderColor: meta.border, backgroundColor: meta.bg }}><div className="flex items-center justify-between gap-2"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: meta.color }} /><span className="font-mono text-xl font-bold" style={{ color: meta.color }}>{count}</span></div><div className="mt-2 text-[9px] font-bold uppercase leading-3 tracking-[0.1em]" style={{ color: meta.color }}>{classification}</div></div>;
         })}
       </div>
-      <div className="overflow-hidden rounded-xl border border-[#d9e0e4] bg-white">
-        <div className="hidden grid-cols-[1.55fr_0.7fr_1.1fr_1.55fr] gap-3 border-b border-[#d9e0e4] bg-[#f1f5f3] px-5 py-3 text-[9px] font-bold uppercase tracking-[0.16em] text-[#52616b] md:grid">
-          <span>Evidence variable</span><span>Current value</span><span>Citation / provenance</span><span>Classification · editable</span>
-        </div>
-        {items.map((item) => <EvidenceRow key={item.id} item={item} onChange={updateClassification} />)}
+      <div className="space-y-3">
+        {evidenceCategories.map((category) => {
+          const categoryItems = category.itemIds.map((id) => evidence[id]).filter(Boolean);
+          const verified = categoryItems.filter((item) => item.classification === "Verified Evidence").length;
+          const missing = categoryItems.filter((item) => item.classification === "Missing Evidence").length;
+          return (
+            <section key={category.id} id={`evidence-category-${category.id}`} data-testid={`evidence-category-${category.id}`} className="overflow-hidden rounded-xl border border-[#d9e0e4] bg-white">
+              <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[#d9e0e4] bg-[#f1f5f3] px-4 py-3 md:px-5">
+                <div><h2 className="text-[13px] font-semibold text-[#122232]">{category.label}</h2><p className="mt-0.5 text-[10px] text-[#7d898f]">{categoryItems.length} inputs · live provenance summary</p></div>
+                <div className="flex items-center gap-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em]"><span className="rounded-full bg-[#e0f4ed] px-2 py-1 text-[#0b7a63]">{verified} verified</span><span className={`rounded-full px-2 py-1 ${missing ? "bg-[#fde8eb] text-[#ba2f45]" : "bg-white text-[#7d898f]"}`}>{missing} missing</span></div>
+              </header>
+              <div className="hidden grid-cols-[1.55fr_0.8fr_1.55fr] gap-3 border-b border-[#e5eae8] px-5 py-2 text-[9px] font-bold uppercase tracking-[0.16em] text-[#7d898f] md:grid"><span>Variable</span><span>Value</span><span>Classification</span></div>
+              {categoryItems.map((item) => <EvidenceRow key={item.id} item={item} onChange={updateClassification} />)}
+            </section>
+          );
+        })}
       </div>
       <div className="mt-5 flex flex-col gap-3 rounded-lg border border-[#f1cb8b] bg-[#fff8e9] p-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-3"><TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-[#a65a00]" /><div><div className="text-[11px] font-bold text-[#6f460e]">Classification changes are live</div><div className="mt-1 text-[10px] leading-4 text-[#7f6337]">Materiality, confidence, and the recommendation status update as soon as a dropdown changes.</div></div></div>
@@ -625,6 +646,18 @@ function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => 
   const chartMin = Math.min(...chartValues, 0);
   const chartMax = Math.max(...chartValues, 0);
   const irrDelta = currentIRR === null || baseIRR === null ? null : currentIRR - baseIRR;
+  const waterfallSteps = useMemo(() => {
+    const baselineEvidence = Object.fromEntries(Object.entries(evidence).map(([id, item]) => [id, { ...item, classification: "Verified Evidence" as Classification }]));
+    let beforeEvidence = baselineEvidence;
+    const baseline = calculateCashFlowModel(beforeEvidence);
+    return impacts.map((impact) => {
+      const afterEvidence = { ...beforeEvidence, [impact.id]: { ...beforeEvidence[impact.id], classification: evidence[impact.id].classification } };
+      const before = calculateCashFlowModel(beforeEvidence).projectIRR;
+      const after = calculateCashFlowModel(afterEvidence).projectIRR;
+      beforeEvidence = afterEvidence;
+      return { ...impact, before, after };
+    }).map((step, index) => ({ ...step, index, change: step.before === null || step.after === null ? null : Number((step.after - step.before).toFixed(1)) }));
+  }, [evidence, impacts]);
   return (
     <div>
       <PageIntro
@@ -633,6 +666,13 @@ function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => 
         description="A five-year annual equity cash-flow engine ties revenue timing, operating costs, CAPEX, debt service, and terminal value to each evidence classification."
         right={<div className="flex items-center gap-2 rounded-md border border-[#9bd8c5] bg-[#e0f4ed] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#0b7a63]"><Sparkles className="h-3.5 w-3.5" /> Derived locally</div>}
       />
+      <nav aria-label="Financial materiality sections" className="sticky top-0 z-10 mb-4 flex gap-1 overflow-x-auto rounded-lg border border-[#d9e0e4] bg-[#f9faf8]/95 p-1.5 backdrop-blur-md">
+        {[
+          ["materiality-summary", "Summary"],
+          ["materiality-drivers", "Drivers"],
+          ["materiality-full-model", "Full Model"],
+        ].map(([id, label]) => <a key={id} href={`#${id}`} className="min-h-10 shrink-0 rounded-md px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#52616b] hover:bg-white hover:text-[#122232]">{label}</a>)}
+      </nav>
       {lowConfidence && <div className="mb-5"><LowConfidenceWarning testId="warning-low-confidence-materiality" /></div>}
       {metrics.mechanicalDisclaimer && (
         <div data-testid="banner-mechanical-disclaimer" className="mb-5 flex items-start gap-3 rounded-xl border-2 border-[#ba2f45] bg-[#fff3f4] px-5 py-4 text-[#7f2635]">
@@ -643,13 +683,29 @@ function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => 
           </div>
         </div>
       )}
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div id="materiality-summary" className="scroll-mt-24 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
          <MetricCard testId="metric-project-irr" label="Project IRR" value={formatIRR(currentIRR)} detail={`${irrDelta === null ? "N/M" : `${irrDelta >= 0 ? "+" : ""}${irrDelta.toFixed(1)} pts`} vs verified baseline`} accent="lime" />
         <MetricCard testId="metric-moic" label="MOIC" value={`${metrics.moic}x`} detail="5-year hold period" accent="navy" />
         <MetricCard testId="metric-coc" label="Cash-on-cash" value={`${metrics.cashOnCash}%`} detail="Stabilized year 3" accent="violet" />
         <MetricCard testId="metric-payback" label="Payback" value={formatPayback(metrics.payback)} detail="Cumulative equity breakeven" accent="coral" />
         <MetricCard testId="metric-npv" label="NPV @ 10%" value={formatCurrency(metrics.npv)} detail="Equity value created" accent="navy" />
       </div>
+      <section id="materiality-drivers" data-testid="panel-irr-waterfall" aria-labelledby="irr-waterfall-title" className="mt-5 scroll-mt-24 rounded-xl border-2 border-[#122232] bg-[#122232] p-5 text-white md:p-6">
+        <div className="flex flex-col justify-between gap-3 border-b border-white/15 pb-4 md:flex-row md:items-end">
+          <div><SectionKicker tone="lime" className="!text-[#d4e86b]">Evidence → return waterfall</SectionKicker><h2 id="irr-waterfall-title" className="text-[22px] font-semibold tracking-[-0.035em]">Every classification moves the same live model.</h2></div>
+          <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#9dafb8]">Sequential · baseline to current</span>
+        </div>
+        <p className="mt-3 max-w-3xl text-[11px] leading-5 text-[#c4d0d6]">This waterfall starts with every input treated as Verified Evidence, then applies the current classification one variable at a time. It is a model sensitivity view, not reported Stargate transaction performance.</p>
+        <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-lg border border-[#b9d43a]/40 bg-[#b9d43a]/10 p-3"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#b9d43a]">Verified baseline</div><div className="mt-1 font-mono text-2xl font-bold text-[#d4e86b]">{formatIRR(baseIRR)}</div></div>
+          {waterfallSteps.map((step) => {
+            const tone = step.change !== null && step.change < 0 ? "text-[#f5ddd5]" : "text-[#b9d43a]";
+            return <div key={step.id} data-testid={`waterfall-step-${step.id}`} className="rounded-lg border border-white/10 bg-white/5 p-3"><div className="truncate text-[10px] font-semibold text-[#e3eaed]">{evidence[step.id].label}</div><div className="mt-1 flex items-baseline justify-between gap-2"><span className={`font-mono text-sm font-bold ${tone}`}>{formatIRR(step.after)}</span><span className={`font-mono text-[9px] font-bold ${tone}`}>{step.change === null ? "N/M" : `${step.change >= 0 ? "+" : ""}${step.change.toFixed(1)} pts`}</span></div><div className="mt-1 text-[9px] text-[#9dafb8]">{evidence[step.id].classification}</div></div>;
+          })}
+          <div className="rounded-lg border-2 border-[#f5ddd5]/60 bg-[#f5ddd5]/10 p-3"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#f5ddd5]">Current case</div><div data-testid="waterfall-current-irr" className="mt-1 font-mono text-2xl font-bold text-[#f5ddd5]">{formatIRR(currentIRR)}</div></div>
+        </div>
+        <div className="sr-only" aria-live="polite">Verified baseline {formatIRR(baseIRR)}. Current case {formatIRR(currentIRR)}. Change {irrDelta === null ? "unavailable" : `${irrDelta.toFixed(1)} percentage points`}.</div>
+      </section>
       <div className="mt-5 grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
         <section className="rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-6">
           <div className="flex items-end justify-between border-b border-[#e5eae8] pb-4"><div><SectionKicker>Evidence → financial materiality</SectionKicker><h2 className="text-[19px] font-semibold tracking-[-0.025em] text-[#122232]">Where the model feels the uncertainty</h2></div><span className="font-mono text-[10px] text-[#52616b]">Δ IRR / variable</span></div>
@@ -666,21 +722,22 @@ function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => 
             })}
           </div>
         </section>
-        <section className="rounded-xl bg-[#122232] p-5 text-white md:p-6">
+        <section data-testid="panel-baseline-current" className="rounded-xl border-2 border-[#d4e86b]/35 bg-[#122232] p-5 text-white md:p-6">
           <div className="flex items-start justify-between"><div><SectionKicker tone="lime" className="!text-[#d4e86b]">Return path</SectionKicker><h2 className="text-[19px] font-semibold tracking-[-0.025em]">Verified baseline → current case</h2></div>{irrDelta !== null && irrDelta < 0 ? <TrendingDown className="h-5 w-5 text-[#f5ddd5]" /> : <TrendingUp className="h-5 w-5 text-[#d4e86b]" />}</div>
           {lowConfidence && <div className="mt-4"><LowConfidenceWarning testId="warning-low-confidence-materiality-return" /></div>}
           <div className="mt-8 flex items-end gap-5">
-            <div><div className="font-mono text-[9px] uppercase tracking-[0.15em] text-[#9dafb8]">Verified IRR</div><div className="mt-2 font-mono text-3xl font-bold text-[#b9d43a]">{formatIRR(baseIRR)}</div></div>
+             <div><div className="font-mono text-[9px] uppercase tracking-[0.15em] text-[#9dafb8]">Verified IRR baseline</div><div className="mt-2 font-mono text-[46px] font-bold leading-none tracking-[-0.07em] text-[#b9d43a]">{formatIRR(baseIRR)}</div></div>
             <ArrowRight className="mb-2 h-5 w-5 text-[#7c909d]" />
-            <div><div className="font-mono text-[9px] uppercase tracking-[0.15em] text-[#9dafb8]">Current IRR</div><div data-testid="text-current-irr-materiality" className="mt-2 font-mono text-3xl font-bold text-[#f5ddd5]">{formatIRR(currentIRR)}</div></div>
+             <div><div className="font-mono text-[9px] uppercase tracking-[0.15em] text-[#9dafb8]">Current evidence-adjusted IRR</div><div data-testid="text-current-irr-materiality" className="mt-2 font-mono text-[46px] font-bold leading-none tracking-[-0.07em] text-[#f5ddd5]">{formatIRR(currentIRR)}</div></div>
           </div>
+          <div className="mt-4 rounded-lg border border-[#f5ddd5]/30 bg-[#f5ddd5]/10 px-3 py-2 font-mono text-[12px] font-bold text-[#f5ddd5]">{irrDelta === null ? "Baseline delta unavailable" : `${irrDelta >= 0 ? "+" : ""}${irrDelta.toFixed(1)} percentage points from verified baseline`}</div>
           {metrics.lastChange && metrics.lastChange.from !== metrics.lastChange.to && (
             <div className="mt-3 flex items-center gap-2 font-mono text-[10px] text-[#f5ddd5]">
               <span className="line-through opacity-60">{metrics.lastChange.from}% prior</span>
               <span className="rounded bg-[#f5ddd5] px-2 py-1 font-bold text-[#ba2f45]">{metrics.lastChange.delta > 0 ? "+" : ""}{metrics.lastChange.delta.toFixed(1)} pts since reclassification</span>
             </div>
           )}
-          <div className="mt-7 h-28 border-b border-l border-white/20 px-3 pb-2 pt-3">
+          <div className="mt-5 h-28 border-b border-l border-white/20 px-3 pb-2 pt-3">
             <div className="relative h-full">
               <svg viewBox="0 0 500 72" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible">
                 <polyline points={chartPoints(basePath, chartMin, chartMax)} fill="none" stroke="#b9d43a" strokeWidth="3" strokeDasharray="5 4" />
@@ -688,6 +745,7 @@ function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => 
               </svg>
             </div>
           </div>
+          <div className="mt-2 grid grid-cols-2 gap-2 text-[9px] text-[#c4d0d6]"><span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-[#b9d43a]" />Verified baseline</span><span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-[#f5ddd5]" />Current case</span></div>
           <div className="mt-2 flex justify-between font-mono text-[9px] text-[#8299a6]"><span>Y0 / close</span><span>Y5 / exit</span><span>cumulative equity cash flow · $M</span></div>
           <div className="mt-5 grid grid-cols-2 gap-3">
             <div className="rounded border border-white/10 bg-white/5 p-3"><div className="text-[9px] uppercase tracking-[0.12em] text-[#9dafb8]">Revenue delay</div><div className="mt-1 font-mono text-sm text-[#f5ddd5]">+{metrics.revenueDelayMonths} mo</div></div>
@@ -695,7 +753,9 @@ function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => 
           </div>
         </section>
       </div>
-       <section className="mt-5 rounded-xl border border-[#d9e0e4] bg-[#eef2f1] p-5 md:p-6">
+       <details id="materiality-full-model" data-testid="disclosure-full-model-detail" className="mt-5 scroll-mt-24 rounded-xl border border-[#d9e0e4] bg-[#eef2f1]">
+        <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 text-[11px] font-bold uppercase tracking-[0.12em] text-[#122232] [&::-webkit-details-marker]:hidden"><span>Full Model Detail · assumptions and cash flow</span><ChevronDown aria-hidden="true" className="h-4 w-4 transition-transform [details[open]_&]:rotate-180" /></summary>
+        <section className="border-t border-[#d9e0e4] p-5 md:p-6">
         <div className="flex items-end justify-between border-b border-[#d6e0dc] pb-4">
           <div>
             <SectionKicker>Project-level return model</SectionKicker>
@@ -744,8 +804,22 @@ function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => 
             </tbody>
           </table>
         </div>
+       </section>
+       </details>
+      <section className="mt-5 rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-6" aria-labelledby="mechanics-flow-title">
+        <SectionKicker>Model mechanics</SectionKicker>
+        <h2 id="mechanics-flow-title" className="text-[19px] font-semibold tracking-[-0.025em] text-[#122232]">Five links from evidence to return.</h2>
+        <div className="mt-4 grid gap-2 md:grid-cols-5">
+          {[
+            ["01", "Evidence", "Classifications set confidence and stress inputs."],
+            ["02", "Timing", `${metrics.revenueDelayMonths} months of modeled revenue delay.`],
+            ["03", "Revenue / OPEX", "Power, water, climate, and operating costs flow through."],
+            ["04", "Equity Cash Flow", "Debt, distributions, and terminal value create the equity path."],
+            ["05", "Return", `${formatIRR(currentIRR)} current project IRR.`],
+          ].map(([number, title, detail], index) => <div key={title} className="relative rounded-lg border border-[#d9e0e4] bg-[#f1f5f3] p-3 md:min-h-[116px]"><div className="font-mono text-[9px] font-bold text-[#255bb7]">{number}</div><div className="mt-2 text-[12px] font-semibold text-[#122232]">{title}</div><div className="mt-1 text-[10px] leading-4 text-[#52616b]">{detail}</div>{index < 4 && <ArrowRight aria-hidden="true" className="absolute -right-3 top-1/2 z-10 hidden h-5 w-5 -translate-y-1/2 rounded-full bg-white text-[#b9d43a] md:block" />}</div>)}
+        </div>
+        <p className="mt-4 rounded-lg border border-[#f1cb8b] bg-[#fff8e9] px-3 py-2 text-[10px] leading-4 text-[#6f460e]"><strong>SYNTHETIC transaction assumptions:</strong> entry value, lease rate, CAPEX, debt, and terminal multiple are representative underwriting inputs—not reported Stargate terms.</p>
       </section>
-      <div className="mt-5 rounded-lg border border-[#d9e0e4] bg-[#eef2f1] px-4 py-3 text-[11px] leading-5 text-[#65737d]"><Info className="mr-2 inline h-3.5 w-3.5 text-[#255bb7]" /><strong className="text-[#344550]">Model mechanics:</strong> annual revenue uses partial operating months after the later of grid and permitting gates; OPEX includes power, water, maintenance, labor, insurance, carbon compliance, and adjusted downtime cost/day × adjusted hazard probability × 365 × operating utilization. Debt is equal-principal senior debt; terminal value is Y5 NOI × {metrics.assumptions.exitMultiple.toFixed(1)}x less remaining debt, so climate disruption reduces exit value through NOI without a second discount.</div>
       <BottomNav screen="materiality" onNavigate={onNavigate} />
     </div>
   );
@@ -976,7 +1050,7 @@ function ScenarioComparison({ scenarios }: { scenarios: SavedScenario[] }) {
     </section>
   );
 }
-function DecisionReview({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
+function DecisionReview({ onNavigate, onResolve }: { onNavigate: (screen: Screen) => void; onResolve: (id: string) => void }) {
   const { evidence, metrics, scenarios, saveScenario } = useDiligence();
   const items = Object.values(evidence);
   const [saveOpen, setSaveOpen] = useState(false);
@@ -1063,7 +1137,7 @@ function DecisionReview({ onNavigate }: { onNavigate: (screen: Screen) => void }
           <div className="flex items-center justify-between"><div><SectionKicker tone="warning">Material evidence gaps</SectionKicker><h2 className="text-[18px] font-semibold tracking-[-0.025em] text-[#122232]">Items that need a named owner</h2></div><CircleAlert className="h-5 w-5 text-[#ba2f45]" /></div>
           <p data-testid="text-climate-material-dependencies" className="mt-3 rounded-md bg-[#fff8e9] px-3 py-2 text-[10px] leading-4 text-[#7f6337]">Backup power capacity and water-source resilience are material recommendation dependencies. Missing evidence blocks review; model inference or user assumption keeps the decision conditional.</p>
           <div className="mt-4 divide-y divide-[#e5eae8]">
-            {items.filter((item) => item.classification === "Missing Evidence").map((item) => <div key={item.id} className="flex items-center justify-between gap-4 py-3"><div><div className="text-[11px] font-semibold text-[#344550]">{item.label}</div><div className="mt-1 text-[10px] text-[#52616b]">{item.citation}</div></div><span className="shrink-0 rounded bg-[#fde8eb] px-2 py-1 text-[9px] font-bold uppercase tracking-[0.11em] text-[#ba2f45]">Resolve</span></div>)}
+            {items.filter((item) => item.classification === "Missing Evidence").map((item) => <div key={item.id} className="flex items-center justify-between gap-4 py-3"><div><div className="text-[11px] font-semibold text-[#344550]">{item.label}</div><div className="mt-1 text-[10px] text-[#52616b]">{item.citation}</div></div><button type="button" data-testid={`button-resolve-${item.id}`} onClick={() => onResolve(item.id)} className="shrink-0 rounded bg-[#fde8eb] px-2.5 py-2 text-[9px] font-bold uppercase tracking-[0.11em] text-[#ba2f45] hover:bg-[#ba2f45] hover:text-white">Resolve <ArrowRight aria-hidden="true" className="ml-1 inline h-3 w-3" /></button></div>)}
             {items.filter((item) => item.classification === "Missing Evidence").length === 0 && <div className="rounded-md bg-[#e0f4ed] p-3 text-[11px] text-[#0b7a63]">No missing evidence items. The recommendation can move to review.</div>}
           </div>
         </section>
@@ -1309,11 +1383,7 @@ function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
           <div>
             <SectionKicker tone="lime" className="!text-[#d4e86b]">Section 1 / client exposure</SectionKicker>
             <h2 id="client-exposure-heading" className="max-w-2xl text-[26px] font-semibold leading-tight tracking-[-0.035em] md:text-[31px]">Your Clients’ Values Are Invested Here</h2>
-            <div className="mt-3 max-w-4xl space-y-3 text-[11px] leading-5 text-[#afbdc4]">
-              <p>Your client chose a values-aligned fund because they believe in responsible corporate behavior. The largest holding in that fund is NVIDIA. Every dollar of NVIDIA’s forward revenue depends on data centers being built. Those data centers are being built on assumptions about water, power, and community impact that have not been independently verified.</p>
-              <p>The sustainability rating tells your client what NVIDIA reported. This tool tests whether the physical infrastructure that rating depends on has been verified. Those are two different questions. And only one of them protects your client’s values and their returns.</p>
-              <p className="font-semibold text-[#d4e86b]">This chain is a transmission path for diligence questions—not proof that every link or statistic is independently verified.</p>
-            </div>
+            <p className="mt-3 max-w-4xl text-[11px] leading-5 text-[#afbdc4]">A values-aligned fund can connect a client’s capital to NVIDIA, GPU demand, hyperscaler CAPEX, and the Stargate Abilene buildout. The exposure chain turns that connection into diligence questions; it is not proof that every link or statistic is independently verified.</p>
           </div>
           <div className="flex shrink-0 items-center gap-2 rounded-md border border-white/15 bg-white/5 px-3 py-2 text-[9px] font-bold uppercase tracking-[0.13em] text-[#c4d0d6]"><Network className="h-3.5 w-3.5 text-[#d4e86b]" /> Exposure chain</div>
         </div>
@@ -1437,12 +1507,9 @@ function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
             </div>
           ))}
         </div>
-        <div className="mt-5 grid gap-4 border-t border-[#607500]/25 pt-5 md:grid-cols-[1fr_1.2fr]">
-          <div>
-            <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#607500]">The defensible role</div>
-            <p className="mt-2 max-w-xl text-[16px] font-semibold leading-6 tracking-[-0.02em]">If the advisor’s job is screening funds and rebalancing portfolios, AI replaces that. If the advisor’s job is interpreting evidence quality at the infrastructure level, asking the questions a screening algorithm cannot ask, and making judgment calls about whether unverified assumptions are acceptable for a specific client, that role is structurally irreplaceable.</p>
-          </div>
-          <p className="text-[11px] leading-5 text-[#3f501d]">Your clients chose you because they want an advisor who understands both their values and their returns. The Gallup/Edward Jones data is static editorial context—not a Stargate facility finding—and confirms the trust gap: 79% of Americans trust financial advisors, 3% trust AI, financially fulfilled adults are four times more likely to use a professional advisor, and confidence in AI has zero statistical association with financial fulfillment. The sustainability community helped birth the AI economy. This tool demonstrates what the sustainability advisor role looks like: separate verified evidence from assertion and inference, make uncertainty visible, ask what screening tools cannot ask, then decide whether the remaining exposure is acceptable for a client’s values, risk tolerance, and time horizon. The output supports judgment; it does not replace it.</p>
+        <div className="mt-5 grid gap-3 border-t border-[#607500]/25 pt-5 md:grid-cols-2">
+          <div className="rounded-lg border border-[#607500]/25 bg-white/35 p-4"><div className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#607500]">Traditional screening</div><p className="mt-2 text-[13px] font-semibold leading-5">Reads corporate disclosures, assigns a rating, and treats the reported record as the decision surface.</p></div>
+          <div className="rounded-lg border-2 border-[#607500]/45 bg-white/55 p-4"><div className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#607500]">Evidence-governed advising</div><p className="mt-2 text-[13px] font-semibold leading-5">Tests infrastructure assumptions, separates verified evidence from inference, and decides whether remaining exposure fits this client’s values, risk tolerance, and time horizon.</p></div>
         </div>
       </section>
       <div className="mt-5 grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
@@ -1488,10 +1555,12 @@ function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
             <h2 className="text-[19px] font-semibold leading-tight tracking-[-0.025em] text-[#122232]">What evidence classification prevents the model from hiding.</h2>
             <p className="mt-3 text-[11px] leading-5 text-[#5e5870]">Without evidence classification, an AI screening tool would treat all {evidenceCount} inputs as equivalent. Here is what that hides:</p>
           </div>
-          <div className="shrink-0 rounded-lg border border-[#cbb7ec] bg-white px-5 py-4 md:max-w-[320px]">
-            <div data-testid="text-governance-irr-gap" className="font-mono text-[16px] font-bold leading-6 text-[#482873]">
-              The difference between assuming everything and verifying everything: {governanceGap === null ? "N/M" : `${governanceGap.toFixed(1)} percentage points`} of IRR.
+          <div className="shrink-0 rounded-lg border-2 border-[#cbb7ec] bg-white px-5 py-4 md:max-w-[360px]">
+            <div className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#7049b7]">Governance gap</div>
+            <div data-testid="text-governance-irr-gap" className="mt-1 font-mono text-[28px] font-bold leading-tight tracking-[-0.05em] text-[#482873]">
+              {governanceGap === null ? "N/M" : `${governanceGap.toFixed(1)} pts`}
             </div>
+            <div className="mt-1 text-[10px] leading-4 text-[#5e5870]">assuming everything versus verifying everything</div>
             {governanceGap === null && <div className="mt-2 text-[10px] leading-4 text-[#706681]">The return gap is unavailable because one or both IRR calculations are non-numeric.</div>}
           </div>
         </div>
@@ -1594,6 +1663,7 @@ const chainAccentClasses: Record<ChainStage["accent"], { marker: string; label: 
 };
 
 function ValueChain({ onWorkbench }: { onWorkbench: () => void }) {
+  const [activeStage, setActiveStage] = useState("data-center-infrastructure");
   return (
     <div data-testid="value-chain-page" className="value-chain-page overflow-hidden rounded-2xl bg-[#0d1c2b] text-[#f6f7f2] shadow-xl">
       <section className="relative overflow-hidden border-b border-white/10 px-5 py-8 md:px-8 md:py-11 xl:px-10">
@@ -1630,17 +1700,18 @@ function ValueChain({ onWorkbench }: { onWorkbench: () => void }) {
             const accent = chainAccentClasses[stage.accent];
             return (
               <li key={stage.id} data-testid={`value-chain-stage-${stage.id}`} className={`value-chain-stage ${isFocal ? "value-chain-stage-focal" : ""}`}>
-                <article tabIndex={0} className={`value-chain-card ${isFocal ? "value-chain-card-focal" : ""}`}>
+                <details open={activeStage === stage.id} onToggle={(event) => setActiveStage(event.currentTarget.open ? stage.id : "")} className={`value-chain-card ${isFocal ? "value-chain-card-focal" : ""}`}>
+                  <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
                   <div className="flex items-start justify-between gap-2">
                     <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md font-mono text-[10px] font-bold ${accent.marker}`}>{stage.number}</span>
                     <Icon aria-hidden="true" className={`mt-1 h-4 w-4 shrink-0 ${accent.label}`} />
                   </div>
                   {isFocal && <div data-testid="value-chain-you-are-here" className="mt-4 inline-flex w-fit items-center gap-1.5 rounded-full bg-[#ba2f45] px-2.5 py-1 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-white"><MapPin className="h-3 w-3" /> YOU ARE HERE</div>}
                   <h3 className={`mt-4 text-[15px] font-bold leading-[1.08] tracking-[-0.025em] ${isFocal ? "text-[#122232]" : "text-white"}`}>{stage.title}</h3>
-                  <div className={`mt-4 border-t pt-3 ${isFocal ? "border-[#75851e]/40" : "border-white/15"}`}>
-                    <div className={`font-mono text-[8px] font-bold uppercase tracking-[0.16em] ${isFocal ? "text-[#4d6200]" : accent.label}`}>Description</div>
-                    <p className={`mt-1.5 text-[10px] leading-4 ${isFocal ? "text-[#263416]" : "text-[#c4d0d6]"}`}>{stage.description}</p>
-                  </div>
+                  <div className={`mt-3 text-[10px] leading-4 ${isFocal ? "text-[#263416]" : "text-[#c4d0d6]"}`}>{stage.description}</div>
+                  <div className={`mt-3 flex items-center gap-2 font-mono text-[8px] font-bold uppercase tracking-[0.14em] ${isFocal ? "text-[#4d6200]" : accent.label}`}><ChevronDown aria-hidden="true" className="h-3.5 w-3.5 transition-transform [details[open]_&]:rotate-180" /> {activeStage === stage.id ? "Hide players & evidence" : "Show players & evidence"}</div>
+                  </summary>
+                  <div>
                   <div className={`mt-4 border-t pt-3 ${isFocal ? "border-[#75851e]/40" : "border-white/15"}`}>
                     <div className={`font-mono text-[8px] font-bold uppercase tracking-[0.16em] ${isFocal ? "text-[#4d6200]" : accent.label}`}>Players / references</div>
                     <p className={`mt-1.5 text-[10px] font-medium leading-4 ${isFocal ? "text-[#263416]" : "text-[#e3eaed]"}`}>{stage.players}</p>
@@ -1650,7 +1721,8 @@ function ValueChain({ onWorkbench }: { onWorkbench: () => void }) {
                     <p className={`mt-1.5 text-[10px] leading-4 ${isFocal ? "text-[#263416]" : "text-[#c4d0d6]"}`}>{stage.evidence}</p>
                   </div>
                   {isFocal && <div className="mt-5 flex items-center gap-2 border-t border-[#75851e]/40 pt-4 font-mono text-[10px] font-bold uppercase tracking-[0.08em] text-[#ba2f45]"><Droplets className="h-3.5 w-3.5" /> Power · water · land · grid · community</div>}
-                </article>
+                  </div>
+                </details>
               </li>
             );
           })}
@@ -1660,10 +1732,6 @@ function ValueChain({ onWorkbench }: { onWorkbench: () => void }) {
             <div className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#f5ddd5]">The pause signal</div>
             <div className="mt-2 text-[22px] font-semibold tracking-[-0.04em] text-white">$130 billion in projects paused in Q1 2026.</div>
             <p className="mt-2 text-[10px] leading-4 text-[#e5c6c7]">Capital is meeting physical constraints before it reaches the model or application layer.</p>
-          </div>
-          <div className="rounded-lg border border-white/10 bg-[#13283a] p-4">
-            <div className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#d4e86b]">How to use this lens</div>
-            <p className="mt-2 max-w-3xl text-[11px] leading-5 text-[#c4d0d6]">Start at the highlighted infrastructure layer, test what is verified versus assumed, and then carry that confidence level into every claim about demand, deployment, governance, and client value.</p>
           </div>
         </div>
       </section>
@@ -1841,15 +1909,6 @@ function LandingHome() {
           <p className="mx-auto max-w-[1240px] px-5 pb-4 pt-1 font-mono text-[8px] uppercase tracking-[0.1em] text-[#718894] sm:px-8 xl:px-10">Editorial context from public reporting and market sources · Not facility-level Stargate facts</p>
         </section>
 
-        <section data-testid="home-purpose-strip" className="mx-auto max-w-[1240px] px-5 py-12 sm:px-8 md:py-14 xl:px-10">
-          <div className="grid gap-3 border-l-2 border-[#d4e86b] pl-5 md:grid-cols-[0.55fr_1.45fr] md:items-center md:gap-10 md:pl-7">
-            <div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[#d4e86b]">Why this exists</div>
-            <p className="max-w-3xl text-[19px] font-medium leading-7 tracking-[-0.02em] text-white md:text-[23px] md:leading-8">
-              Sustainable investors helped capitalize the AI revolution. The companies in your values-aligned funds are the ones writing the checks. This tool applies evidence standards to the infrastructure their capital is building.
-            </p>
-          </div>
-        </section>
-
         <section data-testid="home-entry-points" className="mx-auto max-w-[1240px] px-5 pb-14 sm:px-8 md:pb-20 xl:px-10">
           <div className="mb-5 flex items-end justify-between gap-4">
             <div>
@@ -1898,6 +1957,7 @@ function AppShell() {
   const [route, setRoute] = useState<AppRoute>(() => typeof window === "undefined" ? "home" : routeFromHash(window.location.hash) ?? "home");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
+  const [evidenceFocusId, setEvidenceFocusId] = useState<string | null>(null);
   const diligence = useDiligence();
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLElement>(null);
@@ -1932,6 +1992,17 @@ function AppShell() {
     window.scrollTo({ top: 0, behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ? "auto" : "smooth" });
   }, [route]);
 
+  useEffect(() => {
+    if (route !== "evidence" || !evidenceFocusId) return undefined;
+    const timer = window.setTimeout(() => {
+      const target = document.getElementById(`evidence-item-${evidenceFocusId}`);
+      target?.scrollIntoView({ behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ? "auto" : "smooth", block: "center" });
+      target?.focus({ preventScroll: true });
+      setEvidenceFocusId(null);
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [route, evidenceFocusId]);
+
   const go = (next: AppRoute) => {
     if (next !== route) diligence.clearLastChange();
     setMobileOpen(false);
@@ -1948,6 +2019,11 @@ function AppShell() {
     diligence.resetToDefault();
     setResetOpen(false);
     go("brief");
+  };
+
+  const resolveEvidence = (id: string) => {
+    setEvidenceFocusId(id);
+    go("evidence");
   };
 
   useEffect(() => {
@@ -2089,7 +2165,7 @@ function AppShell() {
                 {route === "brief" && <CaseBrief onNavigate={go} />}
                 {route === "evidence" && <EvidenceRoom onNavigate={go} />}
                 {route === "materiality" && <FinancialMateriality onNavigate={go} />}
-                {route === "decision" && <DecisionReview onNavigate={go} />}
+                {route === "decision" && <DecisionReview onNavigate={go} onResolve={resolveEvidence} />}
                 {route === "advisor" && <AdvisorLens onNavigate={go} />}
               </div>
             </main>

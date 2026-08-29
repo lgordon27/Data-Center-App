@@ -277,6 +277,30 @@
   outline: none;
 }
 
+details > summary:focus-visible {
+  outline: 3px solid #b9d43a;
+  outline-offset: -3px;
+}
+
+details[tabindex="-1"]:focus-visible {
+  outline: 3px solid #b9d43a;
+  outline-offset: 3px;
+}
+
+.value-chain-card > summary {
+  padding: 1.25rem;
+}
+
+.value-chain-card[open] > summary {
+  padding-bottom: 0;
+}
+
+@media (max-width: 767px) {
+  .value-chain-card > summary {
+    padding: 1rem;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto !important;

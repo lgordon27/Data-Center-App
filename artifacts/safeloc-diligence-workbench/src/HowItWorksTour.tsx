@@ -263,19 +263,8 @@ export function HowItWorksTour({ onReturn, onOpenScreen }: HowItWorksTourProps) 
                 <h1 id="tour-context-title" className="max-w-4xl text-balance text-[clamp(2.6rem,6vw,5.7rem)] font-semibold leading-[0.96] tracking-[-0.065em]">
                   A rating tells you what was reported. <span className="text-[#d4e86b]">Diligence tests what can be trusted.</span>
                 </h1>
-                <div data-testid="tour-sri-context" className="mt-7 max-w-3xl space-y-5 text-[15px] leading-7 text-[#d1dbe0] md:text-[17px] md:leading-8">
-                  <p>
-                    Responsible investors helped capitalize the AI revolution. Sustainability screening selected for well-governed, capital-efficient companies and concentrated capital in the stocks best positioned to lead the next technology wave. That thesis worked.
-                  </p>
-                  <p>
-                    Now the infrastructure that revolution requires is testing every principle those investors hold: environmental stewardship, community impact, transparent governance, and evidence-based decision-making. $130 billion in AI data center projects were blocked or delayed in Q1 2026 alone. On August 3, 2026, Texas Governor Greg Abbott ordered a moratorium on all new data center grid connections until ERCOT audits energy and water usage across roughly 300 proposed facilities.
-                  </p>
-                  <p>
-                    The sustainability community helped birth the AI economy. That creates a responsibility to understand the technology well enough to steer it. This tool was built by a sustainability professional who did exactly that: learned to build with AI, applied values-aligned evidence standards to the infrastructure layer, and created something the market does not have.
-                  </p>
-                  <p>
-                    In Q1 2026, $130 billion worth of AI data center projects were blocked or delayed across the United States. On August 3, 2026, Texas Governor Greg Abbott ordered a moratorium on all new data center grid connections until ERCOT completes a comprehensive audit of energy and water usage. The ERCOT interconnection queue holds 474 GW of requests, more than five times Texas record peak demand, with 90% from data centers. Traditional sustainability scorecards grade companies on what they reported last year. This tool tests whether the forward-looking assumptions behind a specific project are actually verified. That is the difference between a rating and diligence.
-                  </p>
+                <div data-testid="tour-sri-context" className="mt-7 max-w-3xl text-[15px] leading-7 text-[#d1dbe0] md:text-[17px] md:leading-8">
+                  <p>Responsible investors helped capitalize the AI revolution; now its physical infrastructure is testing environmental stewardship, community impact, transparent governance, and evidence-based decision-making. With $130 billion in AI projects blocked or delayed in Q1 2026 and Texas pausing new grid connections for an energy and water audit, this tour asks whether the forward-looking assumptions behind a specific project are actually verified.</p>
                 </div>
                 <div className="mt-8 flex flex-wrap items-center gap-4">
                   <TourJump id="tour-workflow" className="inline-flex min-h-11 items-center gap-2 rounded-md border border-[#60717f] px-4 py-3 text-[10px] font-bold uppercase tracking-[0.14em] text-[#f6f7f2] hover:border-[#d4e86b] hover:text-[#d4e86b]">
@@ -357,13 +346,6 @@ export function HowItWorksTour({ onReturn, onOpenScreen }: HowItWorksTourProps) 
                       <div className="p-5 md:p-7">
                         <div className="font-mono text-[9px] font-bold uppercase tracking-[0.15em] text-[#60707d]">What it does</div>
                         <p className="mt-2 max-w-2xl text-[16px] font-medium leading-6 text-[#243844]">{screen.purpose}</p>
-                        <div className="mt-6 flex gap-3 border-t border-[#e5eae8] pt-5">
-                          <CircleAlert aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#255bb7]" />
-                          <div>
-                            <div className="font-mono text-[9px] font-bold uppercase tracking-[0.15em] text-[#255bb7]">Why it matters</div>
-                            <p className="mt-2 max-w-2xl text-[13px] leading-6 text-[#52616b]">{screen.why}</p>
-                          </div>
-                        </div>
                       </div>
                       <div className="m-5 mt-0 rounded-lg border border-[#d4e86b] bg-[#f8fbe8] p-4 lg:m-5 lg:mt-5">
                         <div className="flex items-center gap-2 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#607500]"><Check aria-hidden="true" className="h-3.5 w-3.5" /> What to look for</div>
@@ -430,7 +412,7 @@ export function HowItWorksTour({ onReturn, onOpenScreen }: HowItWorksTourProps) 
             </div>
             <div className="mt-10 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
               {sourceGroups.map((group, index) => (
-                <details key={group.title} open data-testid={`tour-source-group-${index + 1}`} className={`group rounded-xl border border-[#d9e0e4] bg-white p-5 ${index === 0 ? "md:col-span-2 lg:col-span-1" : ""}`}>
+                <details key={group.title} data-testid={`tour-source-group-${index + 1}`} className={`group rounded-xl border border-[#d9e0e4] bg-white p-5 ${index === 0 ? "md:col-span-2 lg:col-span-1" : ""}`}>
                   <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 text-[14px] font-semibold text-[#122232] [&::-webkit-details-marker]:hidden">
                     <span className="flex items-center gap-2"><span className="font-mono text-[10px] text-[#255bb7]">0{index + 1}</span>{group.title}</span>
                     <ChevronRight aria-hidden="true" className="h-4 w-4 text-[#52616b] transition-transform group-open:rotate-90" />
@@ -464,9 +446,8 @@ export function HowItWorksTour({ onReturn, onOpenScreen }: HowItWorksTourProps) 
             <div>
               <TourKicker>05 / provenance of the work</TourKicker>
               <h2 id="tour-built-by-title" className="max-w-2xl text-[35px] font-semibold leading-[0.98] tracking-[-0.055em] md:text-[52px]">Built for the moment when a model needs a witness.</h2>
-              <div data-testid="tour-builder-story" className="mt-6 max-w-2xl space-y-5 text-[15px] leading-7 text-[#d1dbe0]">
-                <p>Built by LeAndrew Gordon, Founder and CEO of SafeLoc. Former Private Wealth Financial Advisor. Chartered SRI Counselor. Top 25 AI Builder (Replit, top 1% of users). Built for the Growth for Impact Conference, November 2026, Phoenix, AZ.</p>
-                <p>Sustainability professionals helped build the AI economy. This tool exists because that responsibility does not end at the screening level. It extends to the infrastructure layer, where the assumptions behind AI&apos;s growth are being tested by physical reality every day. Understanding AI well enough to build with it, and applying values-aligned evidence standards to what you build, is how the sustainability community steers this technology toward a better future rather than watching from the sidelines.</p>
+              <div data-testid="tour-builder-story" className="mt-6 max-w-2xl text-[15px] leading-7 text-[#d1dbe0]">
+                <p>Built by LeAndrew Gordon, Founder and CEO of SafeLoc, a former Private Wealth Financial Advisor and Chartered SRI Counselor, for the Growth for Impact Conference. SafeLoc applies values-aligned evidence standards to the infrastructure layer so sustainability professionals can help steer the AI economy rather than watch from the sidelines.</p>
               </div>
               <div className="mt-7 flex flex-wrap items-center gap-4 font-mono text-[10px] uppercase tracking-[0.12em] text-[#9dafb8]">
                 <span className="inline-flex items-center gap-2"><Zap aria-hidden="true" className="h-3.5 w-3.5 text-[#d4e86b]" /> SafeLoc</span>

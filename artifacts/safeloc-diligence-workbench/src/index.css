@@ -152,6 +152,89 @@
   @apply shadow-md border-primary/20 transform -translate-y-0.5;
 }
 
+.value-chain-flow {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.value-chain-stage {
+  min-width: 0;
+  position: relative;
+}
+
+.value-chain-card {
+  min-height: 100%;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 0.75rem;
+  background: linear-gradient(150deg, #173247 0%, #112739 100%);
+  padding: 1rem;
+  transition: border-color 220ms ease, background-color 220ms ease, transform 220ms ease, box-shadow 220ms ease;
+}
+
+.value-chain-card:hover {
+  border-color: rgb(212 232 107 / 0.65);
+  background: linear-gradient(150deg, #1c3c50 0%, #142d42 100%);
+  box-shadow: 0 12px 30px rgb(0 0 0 / 0.22);
+  transform: translateY(-3px);
+}
+
+.value-chain-card:focus-visible {
+  border-color: #d4e86b;
+  box-shadow: 0 0 0 3px #0d1c2b, 0 0 0 6px #d4e86b;
+  outline: none;
+}
+
+.value-chain-card-focal {
+  border-color: #d4e86b;
+  background: linear-gradient(150deg, #d4e86b 0%, #b9d43a 100%);
+  box-shadow: 0 16px 36px rgb(212 232 107 / 0.16);
+}
+
+.value-chain-card-focal:hover {
+  border-color: #f5ddd5;
+  background: linear-gradient(150deg, #e0ed88 0%, #c8df4b 100%);
+}
+
+@media (min-width: 768px) {
+  .value-chain-flow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1280px) {
+  .value-chain-flow {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+
+  .value-chain-stage:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    z-index: 2;
+    top: 2.55rem;
+    right: -0.68rem;
+    width: 0.65rem;
+    border-top: 1px solid #6e8a63;
+  }
+
+  .value-chain-stage:not(:last-child)::before {
+    content: "";
+    position: absolute;
+    z-index: 2;
+    top: 2.35rem;
+    right: -0.72rem;
+    width: 0.45rem;
+    height: 0.45rem;
+    border-right: 1px solid #b9d43a;
+    border-top: 1px solid #b9d43a;
+    transform: rotate(45deg);
+  }
+}
+
 :where(button, a, select):focus-visible {
   outline: 3px solid #122232;
   outline-offset: 2px;

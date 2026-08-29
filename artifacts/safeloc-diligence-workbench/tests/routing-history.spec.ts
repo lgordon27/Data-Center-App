@@ -49,4 +49,45 @@ test.describe("hash routing and browser history", () => {
     await expect(page).toHaveURL(/#decision$/);
     await expect(page.getByTestId("button-navigate-decision")).toHaveAttribute("aria-current", "step");
   });
+
+  test("opens the AI chain from the header and preserves the five-step workbench", async ({ page }) => {
+    await page.goto("/#brief");
+    if (await page.getByTestId("button-open-menu").isVisible()) {
+      await page.getByTestId("button-open-menu").click();
+      await page.getByTestId("mobile-navigate-value-chain").click();
+    } else {
+      await page.getByTestId("button-open-value-chain").click();
+    }
+
+    await expect(page).toHaveURL(/#value-chain$/);
+    await expect(page).toHaveTitle("SafeLoc · The AI Chain");
+    await expect(page.getByTestId("value-chain-narrative")).toContainText("The AI economy runs from semiconductor fabs in Taiwan");
+    await expect(page.getByTestId("value-chain-stages").locator(":scope > li")).toHaveCount(7);
+    await expect(page.getByTestId("value-chain-stage-data-center-infrastructure")).toContainText("YOU ARE HERE");
+    await expect(page.getByTestId("value-chain-stage-data-center-infrastructure")).toContainText("Power · water · land · grid · community");
+    await expect(page.getByTestId("value-chain-page")).toContainText("$130 billion in projects paused in Q1 2026.");
+
+    await page.getByTestId("button-value-chain-return-hero").click();
+    await expect(page).toHaveURL(/#brief$/);
+    await expect(page.getByTestId("button-navigate-brief")).toHaveAttribute("aria-current", "step");
+  });
+
+  test("renders the seven stages in order at the direct value-chain link", async ({ page }) => {
+    await page.goto("/#value-chain");
+    await expect(page.getByTestId("value-chain-stages").locator(":scope > li h3")).toHaveText([
+      "CHIP FABRICATION",
+      "CHIP DESIGN",
+      "HYPERSCALER PROCUREMENT",
+      "DATA CENTER INFRASTRUCTURE",
+      "AI MODEL DEPLOYMENT",
+      "AI GOVERNANCE & REGULATION",
+      "CLIENT-FACING AI APPLICATIONS",
+    ]);
+    await expect(page.getByTestId("value-chain-stage-ai-governance-regulation")).toContainText("EU AI Act Article 14 (effective Aug 2, 2026)");
+    await expect(page.getByTestId("value-chain-stage-ai-governance-regulation")).toContainText("FINRA Notice 26-02");
+    await expect(page.getByTestId("value-chain-stage-ai-governance-regulation")).toContainText("Texas Governor Abbott moratorium (Aug 3, 2026)");
+    await expect(page.getByTestId("value-chain-stage-client-facing-ai-applications")).toContainText("financial planning tools");
+    await expect(page.getByTestId("value-chain-stage-client-facing-ai-applications")).toContainText("portfolio screeners");
+    await expect(page.getByTestId("value-chain-stage-client-facing-ai-applications")).toContainText("robo-advisors");
+  });
 });

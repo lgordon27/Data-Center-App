@@ -11,6 +11,8 @@ import {
   CircleDot,
   ClipboardCheck,
   CloudLightning,
+  Cpu,
+  Factory,
   FileCheck2,
   FileText,
   Gauge,
@@ -21,7 +23,10 @@ import {
   Menu,
   Network,
   RefreshCw,
+  Scale,
+  Server,
   ShieldCheck,
+  Smartphone,
   Sparkles,
   Target,
   TrendingDown,
@@ -29,6 +34,7 @@ import {
   TriangleAlert,
   X,
   Zap,
+  Droplets,
 } from "lucide-react";
 import {
   Classification,
@@ -65,6 +71,7 @@ import {
 } from "@/model/advisorLens";
 
 type Screen = "brief" | "evidence" | "materiality" | "decision" | "advisor";
+type AppRoute = Screen | "value-chain";
 
 const screens: { id: Screen; number: string; label: string; short: string; icon: typeof BookOpen }[] = [
   { id: "brief", number: "01", label: "Case Brief", short: "Frame", icon: BookOpen },
@@ -237,7 +244,7 @@ function ProgressNav({ current, onNavigate }: { current: Screen; onNavigate: (sc
   );
 }
 
-function Header({ onMenu, onReset, sessionRestored, mobileOpen, menuButtonRef }: { onMenu: () => void; onReset: () => void; sessionRestored: boolean; mobileOpen: boolean; menuButtonRef: RefObject<HTMLButtonElement | null> }) {
+function Header({ onMenu, onReset, onValueChain, onWorkbench, route, sessionRestored, mobileOpen, menuButtonRef }: { onMenu: () => void; onReset: () => void; onValueChain: () => void; onWorkbench: () => void; route: AppRoute; sessionRestored: boolean; mobileOpen: boolean; menuButtonRef: RefObject<HTMLButtonElement | null> }) {
   return (
     <header className="border-b border-[#d9e0e4] bg-[#122232] px-4 py-4 text-[#f6f7f2] md:px-8 md:py-5">
       <div className="mx-auto flex max-w-[1480px] items-center justify-between gap-4">
@@ -270,6 +277,25 @@ function Header({ onMenu, onReset, sessionRestored, mobileOpen, menuButtonRef }:
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            data-testid="button-open-value-chain"
+            type="button"
+            onClick={onValueChain}
+            aria-current={route === "value-chain" ? "page" : undefined}
+            className={`hidden rounded border px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] transition-colors md:inline-flex ${route === "value-chain" ? "border-[#d4e86b] bg-[#d4e86b] text-[#122232]" : "border-[#60717f] text-[#d4e86b] hover:border-[#d4e86b] hover:bg-white/10"}`}
+          >
+            The AI Chain
+          </button>
+          {route === "value-chain" && (
+            <button
+              data-testid="button-return-to-workbench"
+              type="button"
+              onClick={onWorkbench}
+              className="hidden items-center rounded border border-[#60717f] px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#f5ddd5] transition-colors hover:border-[#f5ddd5] hover:bg-white/10 sm:inline-flex"
+            >
+              Return to Workbench
+            </button>
+          )}
           {sessionRestored && <span role="status" data-testid="text-session-restored" className="absolute right-4 top-full z-20 rounded border border-[#b9d43a]/40 bg-[#122232] px-2.5 py-1.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-[#d4e86b] shadow-md md:right-8">Session restored</span>}
           <button data-testid="button-reset-default" type="button" onClick={onReset} className="rounded border border-[#60717f] px-2.5 py-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.08em] text-[#d4e86b] transition-colors hover:border-[#d4e86b] hover:bg-white/10">Reset to Default</button>
           <span className="hidden rounded border border-[#60717f] px-2.5 py-1.5 font-mono text-[9px] uppercase tracking-[0.1em] text-[#c8d0d5] sm:inline-flex">POC / v0.9</span>
@@ -1454,12 +1480,185 @@ function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
   );
 }
 
+type ChainStage = {
+  id: string;
+  number: string;
+  title: string;
+  description: string;
+  players: string;
+  evidence: string;
+  accent: "blue" | "lime" | "coral" | "violet";
+  icon: typeof Factory;
+};
+
+const chainStages: ChainStage[] = [
+  {
+    id: "chip-fabrication",
+    number: "01",
+    title: "CHIP FABRICATION",
+    description: "Semiconductor fabs turn designs into the advanced processors that make modern AI compute possible.",
+    players: "TSMC · Samsung · Intel Foundry",
+    evidence: "Capacity, export controls, water, and energy intensity determine whether supply can scale.",
+    accent: "blue",
+    icon: Factory,
+  },
+  {
+    id: "chip-design",
+    number: "02",
+    title: "CHIP DESIGN",
+    description: "Chip designers architect the accelerators and systems that translate algorithms into usable compute.",
+    players: "NVIDIA · AMD · Arm · Broadcom",
+    evidence: "Architecture leadership is not the same as guaranteed delivery; verify roadmap, packaging, and concentration.",
+    accent: "violet",
+    icon: Cpu,
+  },
+  {
+    id: "hyperscaler-procurement",
+    number: "03",
+    title: "HYPERSCALER PROCUREMENT",
+    description: "Cloud platforms reserve scarce processors, power, and data-center capacity to meet AI demand.",
+    players: "Microsoft · Google · Amazon · Oracle",
+    evidence: "Signed demand can support a project, but lease terms, delivery timing, and counterparty commitment need proof.",
+    accent: "coral",
+    icon: Landmark,
+  },
+  {
+    id: "data-center-infrastructure",
+    number: "04",
+    title: "DATA CENTER INFRASTRUCTURE",
+    description: "Physical infrastructure converts contracted AI demand into powered, cooled, connected, and permitted capacity.",
+    players: "Stargate Abilene · Oracle · Crusoe Energy",
+    evidence: "Power, water, land, grid, and community constraints decide whether the modeled return can become an operating asset.",
+    accent: "lime",
+    icon: Server,
+  },
+  {
+    id: "ai-model-deployment",
+    number: "05",
+    title: "AI MODEL DEPLOYMENT",
+    description: "Model operators put trained systems into production workloads that consume compute and generate measurable value.",
+    players: "OpenAI · Anthropic · Meta · Mistral",
+    evidence: "Usage, latency, reliability, and unit economics show whether infrastructure demand is durable beyond the announcement.",
+    accent: "blue",
+    icon: Zap,
+  },
+  {
+    id: "ai-governance-regulation",
+    number: "06",
+    title: "AI GOVERNANCE & REGULATION",
+    description: "Rules and controls shape how models are tested, explained, supervised, and used in consequential decisions.",
+    players: "EU AI Act Article 14 (effective Aug 2, 2026) · FINRA Notice 26-02 · Texas Governor Abbott moratorium (Aug 3, 2026)",
+    evidence: "Regulatory readiness, human oversight, and jurisdictional limits can change deployment scope and the risk assigned to each layer.",
+    accent: "violet",
+    icon: Scale,
+  },
+  {
+    id: "client-facing-ai-applications",
+    number: "07",
+    title: "CLIENT-FACING AI APPLICATIONS",
+    description: "Client-facing products turn AI capability into financial planning tools, portfolio screeners, and robo-advisors.",
+    players: "Financial planning tools · Portfolio screeners · Robo-advisors",
+    evidence: "Suitability, transparency, and trust evidence matter because downstream advice inherits upstream infrastructure and model assumptions.",
+    accent: "coral",
+    icon: Smartphone,
+  },
+];
+
+const chainAccentClasses: Record<ChainStage["accent"], { marker: string; label: string }> = {
+  blue: { marker: "bg-[#8dc8e8] text-[#122232]", label: "text-[#8dc8e8]" },
+  lime: { marker: "bg-[#d4e86b] text-[#122232]", label: "text-[#d4e86b]" },
+  coral: { marker: "bg-[#f5ddd5] text-[#54221f]", label: "text-[#f5ddd5]" },
+  violet: { marker: "bg-[#cbb7ec] text-[#2b174d]", label: "text-[#cbb7ec]" },
+};
+
+function ValueChain({ onWorkbench }: { onWorkbench: () => void }) {
+  return (
+    <div data-testid="value-chain-page" className="value-chain-page overflow-hidden rounded-2xl bg-[#0d1c2b] text-[#f6f7f2] shadow-xl">
+      <section className="relative overflow-hidden border-b border-white/10 px-5 py-8 md:px-8 md:py-11 xl:px-10">
+        <div className="absolute inset-0 opacity-40 [background-image:linear-gradient(#294454_1px,transparent_1px),linear-gradient(90deg,#294454_1px,transparent_1px)] [background-size:42px_42px] [mask-image:linear-gradient(120deg,black,transparent_80%)]" />
+        <div className="relative z-10">
+          <div className="flex flex-col justify-between gap-6 lg:flex-row lg:items-start">
+            <div className="max-w-4xl">
+              <div className="mb-4 flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.22em] text-[#d4e86b]"><Network className="h-3.5 w-3.5" /> The AI Chain / seven linked layers</div>
+              <h1 className="max-w-4xl text-[38px] font-semibold leading-[0.98] tracking-[-0.055em] md:text-[60px]">From the wafer to the <span className="text-[#d4e86b]">client conversation.</span></h1>
+              <p data-testid="value-chain-narrative" className="mt-6 max-w-3xl text-[14px] leading-7 text-[#c4d0d6] md:text-[16px] md:leading-8">The AI economy runs from semiconductor fabs in Taiwan to financial planning tools on your client&apos;s phone. This tool analyzes the link in that chain where the most capital is being deployed, the most uncertainty exists, and the most projects are being paused: the physical infrastructure. If the evidence does not hold at this layer, everything downstream is built on unverified assumptions.</p>
+            </div>
+            <button data-testid="button-value-chain-return-hero" type="button" onClick={onWorkbench} className="inline-flex shrink-0 items-center justify-center gap-2 self-start rounded-md border border-[#60717f] px-4 py-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-[#d4e86b] transition-colors hover:border-[#d4e86b] hover:bg-white/10">Back to workbench <ArrowLeft className="h-3.5 w-3.5" /></button>
+          </div>
+          <div className="mt-9 grid max-w-3xl grid-cols-2 gap-3 border-t border-white/15 pt-5 sm:grid-cols-4">
+            <div><div className="font-mono text-[22px] font-bold text-[#d4e86b]">7</div><div className="mt-1 text-[9px] uppercase tracking-[0.14em] text-[#9dafb8]">linked layers</div></div>
+            <div><div className="font-mono text-[22px] font-bold text-[#f5ddd5]">$130B</div><div className="mt-1 text-[9px] uppercase tracking-[0.14em] text-[#9dafb8]">paused in Q1 2026</div></div>
+            <div><div className="font-mono text-[22px] font-bold text-[#cbb7ec]">1</div><div className="mt-1 text-[9px] uppercase tracking-[0.14em] text-[#9dafb8]">physical bottleneck</div></div>
+            <div><div className="font-mono text-[22px] font-bold text-[#8dc8e8]">∞</div><div className="mt-1 text-[9px] uppercase tracking-[0.14em] text-[#9dafb8]">downstream assumptions</div></div>
+          </div>
+        </div>
+      </section>
+      <section className="px-5 py-7 md:px-8 md:py-9 xl:px-10">
+        <div className="mb-6 flex flex-col justify-between gap-3 md:flex-row md:items-end">
+          <div>
+            <div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[#8dc8e8]">Follow the dependency</div>
+            <h2 className="mt-2 text-[24px] font-semibold tracking-[-0.04em] md:text-[29px]">Every layer carries a different proof burden.</h2>
+          </div>
+          <div className="max-w-sm text-[11px] leading-5 text-[#9dafb8]">Read left to right. The highlighted layer is where this diligence workbench starts.</div>
+        </div>
+        <ol data-testid="value-chain-stages" aria-label="Seven linked layers of the AI economy" className="value-chain-flow">
+          {chainStages.map((stage) => {
+            const Icon = stage.icon;
+            const isFocal = stage.id === "data-center-infrastructure";
+            const accent = chainAccentClasses[stage.accent];
+            return (
+              <li key={stage.id} data-testid={`value-chain-stage-${stage.id}`} className={`value-chain-stage ${isFocal ? "value-chain-stage-focal" : ""}`}>
+                <article tabIndex={0} className={`value-chain-card ${isFocal ? "value-chain-card-focal" : ""}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md font-mono text-[10px] font-bold ${accent.marker}`}>{stage.number}</span>
+                    <Icon aria-hidden="true" className={`mt-1 h-4 w-4 shrink-0 ${accent.label}`} />
+                  </div>
+                  {isFocal && <div data-testid="value-chain-you-are-here" className="mt-4 inline-flex w-fit items-center gap-1.5 rounded-full bg-[#ba2f45] px-2.5 py-1 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-white"><MapPin className="h-3 w-3" /> YOU ARE HERE</div>}
+                  <h3 className={`mt-4 text-[15px] font-bold leading-[1.08] tracking-[-0.025em] ${isFocal ? "text-[#122232]" : "text-white"}`}>{stage.title}</h3>
+                  <div className={`mt-4 border-t pt-3 ${isFocal ? "border-[#75851e]/40" : "border-white/15"}`}>
+                    <div className={`font-mono text-[8px] font-bold uppercase tracking-[0.16em] ${isFocal ? "text-[#4d6200]" : accent.label}`}>Description</div>
+                    <p className={`mt-1.5 text-[10px] leading-4 ${isFocal ? "text-[#263416]" : "text-[#c4d0d6]"}`}>{stage.description}</p>
+                  </div>
+                  <div className={`mt-4 border-t pt-3 ${isFocal ? "border-[#75851e]/40" : "border-white/15"}`}>
+                    <div className={`font-mono text-[8px] font-bold uppercase tracking-[0.16em] ${isFocal ? "text-[#4d6200]" : accent.label}`}>Players / references</div>
+                    <p className={`mt-1.5 text-[10px] font-medium leading-4 ${isFocal ? "text-[#263416]" : "text-[#e3eaed]"}`}>{stage.players}</p>
+                  </div>
+                  <div className={`mt-4 border-t pt-3 ${isFocal ? "border-[#75851e]/40" : "border-white/15"}`}>
+                    <div className={`font-mono text-[8px] font-bold uppercase tracking-[0.16em] ${isFocal ? "text-[#4d6200]" : accent.label}`}>Why evidence matters here</div>
+                    <p className={`mt-1.5 text-[10px] leading-4 ${isFocal ? "text-[#263416]" : "text-[#c4d0d6]"}`}>{stage.evidence}</p>
+                  </div>
+                  {isFocal && <div className="mt-5 flex items-center gap-2 border-t border-[#75851e]/40 pt-4 font-mono text-[10px] font-bold uppercase tracking-[0.08em] text-[#ba2f45]"><Droplets className="h-3.5 w-3.5" /> Power · water · land · grid · community</div>}
+                </article>
+              </li>
+            );
+          })}
+        </ol>
+        <div className="mt-7 grid gap-4 border-t border-white/10 pt-6 md:grid-cols-[1fr_1.6fr]">
+          <div className="rounded-lg border border-[#ba2f45]/50 bg-[#3a1e2b] p-4">
+            <div className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#f5ddd5]">The pause signal</div>
+            <div className="mt-2 text-[22px] font-semibold tracking-[-0.04em] text-white">$130 billion in projects paused in Q1 2026.</div>
+            <p className="mt-2 text-[10px] leading-4 text-[#e5c6c7]">Capital is meeting physical constraints before it reaches the model or application layer.</p>
+          </div>
+          <div className="rounded-lg border border-white/10 bg-[#13283a] p-4">
+            <div className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#d4e86b]">How to use this lens</div>
+            <p className="mt-2 max-w-3xl text-[11px] leading-5 text-[#c4d0d6]">Start at the highlighted infrastructure layer, test what is verified versus assumed, and then carry that confidence level into every claim about demand, deployment, governance, and client value.</p>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function screenFromHash(hash: string): Screen | null {
   const route = hash.replace(/^#/, "") as Screen;
   return screens.some((screen) => screen.id === route) ? route : null;
 }
+function routeFromHash(hash: string): AppRoute | null {
+  if (hash.replace(/^#/, "") === "value-chain") return "value-chain";
+  return screenFromHash(hash);
+}
 function AppShell() {
-  const [screen, setScreen] = useState<Screen>(() => typeof window === "undefined" ? "brief" : screenFromHash(window.location.hash) ?? "brief");
+  const [route, setRoute] = useState<AppRoute>(() => typeof window === "undefined" ? "brief" : routeFromHash(window.location.hash) ?? "brief");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const diligence = useDiligence();
@@ -1474,12 +1673,12 @@ function AppShell() {
 
   useEffect(() => {
     const syncFromHash = () => {
-      const next = screenFromHash(window.location.hash);
+      const next = routeFromHash(window.location.hash);
       if (!next) {
         window.history.replaceState(null, "", "#brief");
-        setScreen("brief");
+        setRoute("brief");
       } else {
-        setScreen(next);
+        setRoute(next);
       }
       setMobileOpen(false);
     };
@@ -1489,19 +1688,19 @@ function AppShell() {
   }, []);
 
   useEffect(() => {
-    const activeScreen = screens.find((item) => item.id === screen);
-    document.title = activeScreen ? `Stargate Abilene · ${activeScreen.label}` : "Stargate Abilene | SafeLoc";
-  }, [screen]);
+    const activeScreen = screens.find((item) => item.id === route);
+    document.title = route === "value-chain" ? "SafeLoc · The AI Chain" : activeScreen ? `SafeLoc · ${activeScreen.label}` : "SafeLoc Diligence Workbench";
+  }, [route]);
 
-  const go = (next: Screen) => {
-    if (next !== screen) diligence.clearLastChange();
+  const go = (next: AppRoute) => {
+    if (next !== route) diligence.clearLastChange();
     setMobileOpen(false);
     const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false;
     window.scrollTo({ top: 0, behavior: prefersReducedMotion ? "auto" : "smooth" });
     if (window.location.hash !== `#${next}`) {
       window.location.hash = next;
     } else {
-      setScreen(next);
+      setRoute(next);
     }
   };
 
@@ -1573,11 +1772,14 @@ function AppShell() {
       <Header
         onMenu={() => setMobileOpen((value) => !value)}
         onReset={() => setResetOpen(true)}
+        onValueChain={() => go("value-chain")}
+        onWorkbench={() => go("brief")}
+        route={route}
         sessionRestored={diligence.sessionRestored}
         mobileOpen={mobileOpen}
         menuButtonRef={menuButtonRef}
       />
-      <ProgressNav current={screen} onNavigate={go} />
+      {route !== "value-chain" && <ProgressNav current={route} onNavigate={go} />}
       {mobileOpen && (
         <>
           <div
@@ -1597,14 +1799,19 @@ function AppShell() {
                 key={item.id}
                 data-testid={`mobile-navigate-${item.id}`}
                 type="button"
-                aria-current={screen === item.id ? "step" : undefined}
+                 aria-current={route === item.id ? "step" : undefined}
                 aria-label={`Step ${index + 1}: ${item.label}`}
                 onClick={() => go(item.id)}
-                className={`flex w-full items-center gap-3 rounded px-3 py-3 text-left text-[11px] font-semibold ${screen === item.id ? "bg-[#122232] text-[#d4e86b]" : "text-[#52616b]"}`}
+                 className={`flex w-full items-center gap-3 rounded px-3 py-3 text-left text-[11px] font-semibold ${route === item.id ? "bg-[#122232] text-[#d4e86b]" : "text-[#52616b]"}`}
               >
                 <item.icon aria-hidden="true" className="h-4 w-4" /> {item.label}
               </button>
             ))}
+            <div className="my-1 border-t border-[#d9e0e4]" />
+            <button data-testid="mobile-navigate-value-chain" type="button" aria-current={route === "value-chain" ? "page" : undefined} onClick={() => go("value-chain")} className={`flex w-full items-center gap-3 rounded px-3 py-3 text-left text-[11px] font-semibold ${route === "value-chain" ? "bg-[#122232] text-[#d4e86b]" : "text-[#52616b]"}`}>
+              <Network aria-hidden="true" className="h-4 w-4" /> The AI Chain
+            </button>
+            {route === "value-chain" && <button data-testid="mobile-return-to-workbench" type="button" onClick={() => go("brief")} className="flex w-full items-center gap-3 rounded px-3 py-3 text-left text-[11px] font-semibold text-[#ba2f45]"><ArrowLeft aria-hidden="true" className="h-4 w-4" /> Return to Workbench</button>}
           </nav>
         </>
       )}
@@ -1621,14 +1828,15 @@ function AppShell() {
         </div>
       )}
       <div className="mx-auto flex max-w-[1480px]">
-        <ShellAside screen={screen} metrics={diligence.metrics} onNavigate={go} onReset={() => setResetOpen(true)} />
+         {route !== "value-chain" && <ShellAside screen={route} metrics={diligence.metrics} onNavigate={go} onReset={() => setResetOpen(true)} />}
         <main className="min-w-0 flex-1 px-4 py-7 md:px-8 md:py-10 xl:px-12">
-          <div className="mx-auto max-w-[1160px]">
-            {screen === "brief" && <CaseBrief onNavigate={go} />}
-            {screen === "evidence" && <EvidenceRoom onNavigate={go} />}
-            {screen === "materiality" && <FinancialMateriality onNavigate={go} />}
-            {screen === "decision" && <DecisionReview onNavigate={go} />}
-            {screen === "advisor" && <AdvisorLens onNavigate={go} />}
+           <div className={`mx-auto ${route === "value-chain" ? "max-w-[1320px]" : "max-w-[1160px]"}`}>
+             {route === "value-chain" && <ValueChain onWorkbench={() => go("brief")} />}
+             {route === "brief" && <CaseBrief onNavigate={go} />}
+             {route === "evidence" && <EvidenceRoom onNavigate={go} />}
+             {route === "materiality" && <FinancialMateriality onNavigate={go} />}
+             {route === "decision" && <DecisionReview onNavigate={go} />}
+             {route === "advisor" && <AdvisorLens onNavigate={go} />}
           </div>
         </main>
       </div>

@@ -926,8 +926,12 @@ function ScenarioComparison({ scenarios }: { scenarios: SavedScenario[] }) {
   );
 }
 function DecisionReview({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
-  const { evidence, metrics } = useDiligence();
+  const { evidence, metrics, scenarios, saveScenario } = useDiligence();
   const items = Object.values(evidence);
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [scenarioName, setScenarioName] = useState("");
+  const [saveFeedback, setSaveFeedback] = useState("");
+  const [showComparison, setShowComparison] = useState(false);
   const lowConfidence = metrics.confidenceScore < 25;
   const statusMeta = {
     BLOCKED: { color: "#ba2f45", bg: "#fde8eb", border: "#efabb8" },
@@ -958,6 +962,7 @@ function DecisionReview({ onNavigate }: { onNavigate: (screen: Screen) => void }
       const timer = window.setTimeout(() => setFlash(false), 1800);
       return () => window.clearTimeout(timer);
     }
+    setFlash(false);
     return undefined;
   }, [metrics.lastChange]);
   const grouped = classifications.map((classification) => ({ classification, items: items.filter((item) => item.classification === classification) })).filter((group) => group.items.length);
@@ -968,8 +973,11 @@ function DecisionReview({ onNavigate }: { onNavigate: (screen: Screen) => void }
         eyebrow="04 / make the call"
         title="A return without provenance is not a decision."
         description="Bring the evidence quality and the financial outcome into the same frame. The recommendation is derived from the status of material evidence, not from the return alone."
-        right={<div data-testid="card-recommendation-status" className="rounded-lg border px-4 py-3" style={{ color: statusMeta.color, backgroundColor: statusMeta.bg, borderColor: statusMeta.border }}><div className="text-[9px] font-bold uppercase tracking-[0.14em]">Recommendation status</div><div data-testid="status-recommendation" className="mt-1 font-mono text-sm font-bold">{metrics.recommendationStatus}</div></div>}
+        right={<div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-end"><div data-testid="card-recommendation-status" className="rounded-lg border px-4 py-3" style={{ color: statusMeta.color, backgroundColor: statusMeta.bg, borderColor: statusMeta.border }}><div className="text-[9px] font-bold uppercase tracking-[0.14em]">Recommendation status</div><div data-testid="status-recommendation" className="mt-1 font-mono text-sm font-bold">{metrics.recommendationStatus}</div></div><div className="flex gap-2"><button data-testid="button-save-scenario" disabled={scenarios.length >= 5} onClick={() => { setSaveFeedback(""); setSaveOpen(true); }} className="inline-flex flex-1 items-center justify-center gap-2 rounded-md bg-[#122232] px-3 py-2.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[#d4e86b] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:bg-[#87939a] disabled:text-white">Save Scenario <span className="font-mono text-[9px] opacity-70">({scenarios.length}/5)</span></button><button data-testid="button-compare-scenarios" onClick={() => setShowComparison((value) => !value)} className="inline-flex flex-1 items-center justify-center gap-2 rounded-md border border-[#cbd8d4] bg-white px-3 py-2.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[#122232] hover:border-[#122232]">{showComparison ? "Hide comparison" : "Compare Scenarios"}</button></div></div>}
       />
+      {scenarios.length >= 5 && <div role="status" data-testid="text-scenario-capacity" className="mb-5 rounded-lg border border-[#ecd39d] bg-[#fff8e9] px-4 py-3 text-[11px] font-semibold text-[#7f6337]">Scenario capacity reached (5/5). Save Scenario is disabled; named snapshots remain independent of the live case.</div>}
+      {saveFeedback && <div role="status" data-testid="text-scenario-feedback" className={`mb-5 rounded-lg border px-4 py-3 text-[11px] font-semibold ${saveFeedback.startsWith("A scenario") || saveFeedback.startsWith("Five") ? "border-[#efabb8] bg-[#fff3f4] text-[#ba2f45]" : "border-[#9bd8c5] bg-[#e0f4ed] text-[#0b7a63]"}`}>{saveFeedback}</div>}
+      {showComparison && <ScenarioComparison scenarios={scenarios} />}
       {metrics.recommendationStatus === "BLOCKED" && <div data-testid="banner-recommendation-blocked" className="mb-5 flex items-start gap-3 rounded-xl border-2 border-[#ba2f45] bg-[#fff3f4] px-5 py-4 text-[#7f2635]"><CircleAlert className="mt-0.5 h-5 w-5 shrink-0" /><div><div className="font-mono text-[12px] font-bold tracking-[0.08em]">RECOMMENDATION BLOCKED: {metrics.missingMaterialCount} material items are missing evidence</div><div className="mt-1 text-[11px] leading-5 text-[#96525d]">Resolve the material evidence gaps below before treating the base return as investment-grade.</div></div></div>}
       {metrics.recommendationStatus === "CONDITIONAL" && <div data-testid="banner-recommendation-conditional" className="mb-5 flex items-start gap-3 rounded-xl border-2 border-[#a65a00] bg-[#fff8e9] px-5 py-4 text-[#6f460e]"><CircleAlert className="mt-0.5 h-5 w-5 shrink-0" /><div><div className="font-mono text-[12px] font-bold tracking-[0.08em]">CONDITIONAL: {metrics.materialUnverifiedCount} material assumptions depend on unverified evidence</div><div className="mt-1 text-[11px] leading-5 text-[#806d51]">Name the evidence owners and carry these conditions into review.</div></div></div>}
       {metrics.recommendationStatus === "READY FOR REVIEW" && <div data-testid="banner-recommendation-ready" className="mb-5 flex items-start gap-3 rounded-xl border-2 border-[#0b7a63] bg-[#f0faf5] px-5 py-4 text-[#0b6351]"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0" /><div><div className="font-mono text-[12px] font-bold tracking-[0.08em]">READY FOR REVIEW: all material evidence is supported</div><div className="mt-1 text-[11px] leading-5 text-[#4b756b]">The return is ready for an IC discussion with its provenance preserved.</div></div></div>}
@@ -1013,6 +1021,33 @@ function DecisionReview({ onNavigate }: { onNavigate: (screen: Screen) => void }
           <button data-testid="button-open-advisor-lens" onClick={() => onNavigate("advisor")} className="mt-6 inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#122232] hover:text-[#607500]">Carry this into the advisor lens <ArrowRight className="h-3.5 w-3.5" /></button>
         </section>
       </div>
+      <Dialog open={saveOpen} onOpenChange={setSaveOpen}>
+        <DialogContent className="border-[#cbd8d4] bg-[#f9faf8]">
+          <DialogHeader>
+            <DialogTitle className="text-[#122232]">Save Scenario</DialogTitle>
+            <DialogDescription className="text-[#65737d]">Capture the current evidence classifications and calculated returns as a named snapshot. The snapshot will not change when the live case changes.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={(event) => {
+            event.preventDefault();
+            const result = saveScenario(scenarioName);
+            if (!result.ok) {
+              setSaveFeedback(result.reason === "empty-name" ? "A scenario name is required." : result.reason === "duplicate-name" ? "A scenario with that name already exists." : "Five scenarios are already saved. Resetting does not remove named scenarios.");
+              return;
+            }
+            setSaveFeedback(`Scenario “${result.scenario.name}” saved.`);
+            setScenarioName("");
+            setSaveOpen(false);
+          }}>
+            <label htmlFor="scenario-name" className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#60707d]">Scenario name</label>
+            <Input id="scenario-name" data-testid="input-scenario-name" autoFocus value={scenarioName} onChange={(event) => setScenarioName(event.target.value)} placeholder="e.g. Water rights resolved" className="mt-2 border-[#cbd8d4] bg-white text-[#122232]" aria-invalid={Boolean(saveFeedback && !saveFeedback.startsWith("Scenario “"))} />
+            {saveFeedback && !saveFeedback.startsWith("Scenario “") && <p role="alert" data-testid="text-scenario-dialog-error" className="mt-2 text-[10px] font-semibold text-[#ba2f45]">{saveFeedback}</p>}
+            <DialogFooter className="mt-5">
+              <button type="button" onClick={() => setSaveOpen(false)} className="rounded-md border border-[#cbd8d4] px-4 py-2 text-[10px] font-bold uppercase tracking-[0.1em] text-[#52616b] hover:border-[#122232]">Cancel</button>
+              <button type="submit" data-testid="button-confirm-save-scenario" className="rounded-md bg-[#122232] px-4 py-2 text-[10px] font-bold uppercase tracking-[0.1em] text-[#d4e86b]">Save Scenario</button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
       <BottomNav screen="decision" onNavigate={onNavigate} />
     </div>
   );
@@ -1545,7 +1580,7 @@ export default App;
 function formatScenarioDelta(first: number | null, second: number | null, metric: "irr" | "moic" | "npv" | "cashOnCash" | "payback" | "confidence") {
   if (first === null || second === null) return "Unavailable";
   const delta = second - first;
-  const sign = delta > 0 ? "+" : "";
+  const sign = delta >= 0 ? "+" : "";
   if (metric === "irr") return `${sign}${delta.toFixed(1)} pts`;
   if (metric === "moic") return `${sign}${delta.toFixed(2)}x`;
   if (metric === "npv") return `${delta >= 0 ? "+" : "−"}$${Math.abs(delta).toFixed(1)}M`;

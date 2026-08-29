@@ -78,7 +78,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!sessionRestored) return undefined;
-    const timer = window.setTimeout(() => setSessionRestored(false), 3000);
+    const timer = window.setTimeout(() => setSessionRestored(false), 4000);
     return () => window.clearTimeout(timer);
   }, [sessionRestored]);
 

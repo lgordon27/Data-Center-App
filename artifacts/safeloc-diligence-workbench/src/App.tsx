@@ -67,6 +67,31 @@ function formatCurrency(value: number, decimals = 1) {
   return `${value < 0 ? "−" : ""}$${Math.abs(value).toFixed(decimals)}M`;
 }
 
+function formatIRR(value: number | null) {
+  return value === null ? "N/M" : `${value.toFixed(1)}%`;
+}
+
+function formatPayback(value: number | null) {
+  return value === null ? "Not reached" : `${value.toFixed(2)} yrs`;
+}
+
+function formatLineItemValue(value: number, unit: string) {
+  if (unit.startsWith("$")) return formatCurrency(value);
+  if (unit === "%") return `${value.toFixed(1)}%`;
+  return `${value.toFixed(1)} ${unit}`;
+}
+
+function chartPoints(values: number[], min: number, max: number) {
+  const width = 500;
+  const height = 72;
+  const range = max - min || 1;
+  return values.map((value, index) => {
+    const x = (index / Math.max(values.length - 1, 1)) * width;
+    const y = height - ((value - min) / range) * height;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+}
+
 function ClassificationBadge({ value, compact = false }: { value: Classification; compact?: boolean }) {
   const meta = classMeta[value];
   return (
@@ -441,25 +466,37 @@ function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => void }) 
 
 function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
   const { evidence, metrics } = useDiligence();
-  const impacts = [
-    { id: "grid_interconnection", variable: "Grid interconnection", driver: "Revenue delay", impact: `+${metrics.revenueDelayMonths} months`, effect: -1.3, color: "#ba2f45" },
-    { id: "cooling_capex", variable: "Cooling infrastructure", driver: "Incremental CAPEX", impact: formatCurrency(metrics.incrementalCapex), effect: -0.4, color: "#a65a00" },
-    { id: "water_escalation", variable: "Water escalation", driver: "OPEX change", impact: formatCurrency(metrics.opexChange) + " / yr", effect: -0.3, color: "#7049b7" },
-    { id: "electricity_cost", variable: "Electricity cost", driver: "EBITDA effect", impact: evidence.electricity_cost.value + " " + evidence.electricity_cost.unit, effect: -0.8, color: "#255bb7" },
-  ];
+  const impacts = Object.values(metrics.lineItems);
+  const currentIRR = metrics.projectIRR;
+  const baseIRR = metrics.baseIRR ?? null;
+  const currentPath = metrics.schedule.map((year) => year.cumulativeEquityCashFlow);
+  const basePath = metrics.baseModel?.schedule.map((year) => year.cumulativeEquityCashFlow) ?? currentPath;
+  const chartValues = [...currentPath, ...basePath];
+  const chartMin = Math.min(...chartValues, 0);
+  const chartMax = Math.max(...chartValues, 0);
+  const irrDelta = currentIRR === null || baseIRR === null ? null : currentIRR - baseIRR;
   return (
     <div>
       <PageIntro
         eyebrow="03 / quantify the uncertainty"
         title="Trace each uncertainty into the return."
-        description="The model is intentionally transparent. It is not a valuation engine; it is a sensitivity instrument that reveals which evidence gaps can move the investment outcome."
+        description="A five-year annual equity cash-flow engine ties revenue timing, operating costs, CAPEX, debt service, and terminal value to each evidence classification."
         right={<div className="flex items-center gap-2 rounded-md border border-[#9bd8c5] bg-[#e0f4ed] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#0b7a63]"><Sparkles className="h-3.5 w-3.5" /> Derived locally</div>}
       />
+      {metrics.mechanicalDisclaimer && (
+        <div data-testid="banner-mechanical-disclaimer" className="mb-5 flex items-start gap-3 rounded-xl border-2 border-[#ba2f45] bg-[#fff3f4] px-5 py-4 text-[#7f2635]">
+          <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0" />
+          <div>
+            <div className="font-mono text-[12px] font-bold tracking-[0.08em]">MECHANICAL OUTPUTS ONLY · 0% EVIDENCE CONFIDENCE</div>
+            <div className="mt-1 text-[11px] leading-5 text-[#96525d]">Every input is currently missing. Returns, payback, and terminal value are scenario mechanics—not investment-grade underwriting or a recommendation.</div>
+          </div>
+        </div>
+      )}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <MetricCard testId="metric-project-irr" label="Project IRR" value={`${metrics.projectIRR}%`} detail={`${metrics.projectIRR >= metrics.baseIRR ? "+" : ""}${(metrics.projectIRR - metrics.baseIRR).toFixed(1)} pts vs base`} accent="lime" />
+        <MetricCard testId="metric-project-irr" label="Project IRR" value={formatIRR(currentIRR)} detail={`${irrDelta === null ? "N/M" : `${irrDelta >= 0 ? "+" : ""}${irrDelta.toFixed(1)} pts`} vs verified baseline`} accent="lime" />
         <MetricCard testId="metric-moic" label="MOIC" value={`${metrics.moic}x`} detail="5-year hold period" accent="navy" />
         <MetricCard testId="metric-coc" label="Cash-on-cash" value={`${metrics.cashOnCash}%`} detail="Stabilized year 3" accent="violet" />
-        <MetricCard testId="metric-payback" label="Payback" value={`${metrics.payback} yrs`} detail="From initial close" accent="coral" />
+        <MetricCard testId="metric-payback" label="Payback" value={formatPayback(metrics.payback)} detail="Cumulative equity breakeven" accent="coral" />
         <MetricCard testId="metric-npv" label="NPV @ 10%" value={formatCurrency(metrics.npv)} detail="Equity value created" accent="navy" />
       </div>
       <div className="mt-5 grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
@@ -468,21 +505,22 @@ function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => 
           <div className="mt-2 divide-y divide-[#e5eae8]">
             {impacts.map((impact) => {
               const item = evidence[impact.id];
+              const effectTone = impact.deltaIRR < 0 ? "text-[#ba2f45]" : impact.deltaIRR > 0 ? "text-[#0b7a63]" : "text-[#63717a]";
               return <div key={impact.id} data-testid={`row-materiality-${impact.id}`} className="grid grid-cols-[1fr_auto] gap-4 py-4 sm:grid-cols-[1.2fr_0.9fr_0.75fr_0.5fr] sm:items-center">
-                <div><div className="text-[12px] font-semibold text-[#243844]">{impact.variable}</div><div className="mt-1 text-[10px] text-[#87939a]">{impact.driver}</div></div>
+                <div><div className="text-[12px] font-semibold text-[#243844]">{item.label}</div><div className="mt-1 text-[10px] text-[#87939a]">{impact.driver}</div></div>
                 <div className="sm:col-auto"><ClassificationBadge value={item.classification} compact /></div>
-                <div className="text-right font-mono text-[11px] font-bold text-[#4d5c65] sm:text-left">{impact.impact}</div>
-                <div className="hidden text-right font-mono text-[12px] font-bold text-[#ba2f45] sm:block">{impact.effect.toFixed(1)} pts</div>
+                <div className="text-right font-mono text-[11px] font-bold text-[#4d5c65] sm:text-left">{formatLineItemValue(impact.value, impact.unit)}</div>
+                <div className={`hidden text-right font-mono text-[12px] font-bold sm:block ${effectTone}`}>{impact.deltaIRR > 0 ? "+" : ""}{impact.deltaIRR.toFixed(1)} pts</div>
               </div>;
             })}
           </div>
         </section>
         <section className="rounded-xl bg-[#122232] p-5 text-white md:p-6">
-          <div className="flex items-start justify-between"><div><SectionKicker tone="lime">Return path</SectionKicker><h2 className="text-[19px] font-semibold tracking-[-0.025em]">Base case → evidence-adjusted case</h2></div><TrendingDown className="h-5 w-5 text-[#f5ddd5]" /></div>
+          <div className="flex items-start justify-between"><div><SectionKicker tone="lime">Return path</SectionKicker><h2 className="text-[19px] font-semibold tracking-[-0.025em]">Verified baseline → current case</h2></div>{irrDelta !== null && irrDelta < 0 ? <TrendingDown className="h-5 w-5 text-[#f5ddd5]" /> : <TrendingUp className="h-5 w-5 text-[#d4e86b]" />}</div>
           <div className="mt-8 flex items-end gap-5">
-            <div><div className="font-mono text-[9px] uppercase tracking-[0.15em] text-[#9dafb8]">Base IRR</div><div className="mt-2 font-mono text-3xl font-bold text-[#b9d43a]">{metrics.baseIRR}%</div></div>
+            <div><div className="font-mono text-[9px] uppercase tracking-[0.15em] text-[#9dafb8]">Verified IRR</div><div className="mt-2 font-mono text-3xl font-bold text-[#b9d43a]">{formatIRR(baseIRR)}</div></div>
             <ArrowRight className="mb-2 h-5 w-5 text-[#7c909d]" />
-            <div><div className="font-mono text-[9px] uppercase tracking-[0.15em] text-[#9dafb8]">Current IRR</div><div data-testid="text-current-irr-materiality" className="mt-2 font-mono text-3xl font-bold text-[#f5ddd5]">{metrics.projectIRR}%</div></div>
+            <div><div className="font-mono text-[9px] uppercase tracking-[0.15em] text-[#9dafb8]">Current IRR</div><div data-testid="text-current-irr-materiality" className="mt-2 font-mono text-3xl font-bold text-[#f5ddd5]">{formatIRR(currentIRR)}</div></div>
           </div>
           {metrics.lastChange && metrics.lastChange.from !== metrics.lastChange.to && (
             <div className="mt-3 flex items-center gap-2 font-mono text-[10px] text-[#f5ddd5]">
@@ -490,16 +528,18 @@ function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => 
               <span className="rounded bg-[#f5ddd5] px-2 py-1 font-bold text-[#ba2f45]">{metrics.lastChange.delta > 0 ? "+" : ""}{metrics.lastChange.delta.toFixed(1)} pts since reclassification</span>
             </div>
           )}
-          <div className="mt-7 h-24 border-b border-l border-white/20 px-3 pb-2 pt-3">
+          <div className="mt-7 h-28 border-b border-l border-white/20 px-3 pb-2 pt-3">
             <div className="relative h-full">
-              <div className="absolute bottom-[34%] left-0 right-0 border-t border-dashed border-[#b9d43a]/50"><span className="absolute -top-4 right-0 font-mono text-[9px] text-[#b9d43a]">base 18.5</span></div>
-              <div className="absolute bottom-[20%] left-0 right-0 border-t border-[#f5ddd5]"><span className="absolute -top-4 right-0 font-mono text-[9px] text-[#f5ddd5]">now {metrics.projectIRR}</span></div>
-              <svg viewBox="0 0 500 60" preserveAspectRatio="none" className="absolute inset-0 h-full w-full opacity-70"><path d="M0 19 C75 21, 95 32, 155 30 S250 39, 315 41 S400 46, 500 49" fill="none" stroke="#f5ddd5" strokeWidth="3" /></svg>
+              <svg viewBox="0 0 500 72" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible">
+                <polyline points={chartPoints(basePath, chartMin, chartMax)} fill="none" stroke="#b9d43a" strokeWidth="3" strokeDasharray="5 4" />
+                <polyline points={chartPoints(currentPath, chartMin, chartMax)} fill="none" stroke="#f5ddd5" strokeWidth="3" />
+              </svg>
             </div>
           </div>
+          <div className="mt-2 flex justify-between font-mono text-[9px] text-[#8299a6]"><span>Y0 / close</span><span>Y5 / exit</span><span>cumulative equity cash flow · $M</span></div>
           <div className="mt-5 grid grid-cols-2 gap-3">
             <div className="rounded border border-white/10 bg-white/5 p-3"><div className="text-[9px] uppercase tracking-[0.12em] text-[#9dafb8]">Revenue delay</div><div className="mt-1 font-mono text-sm text-[#f5ddd5]">+{metrics.revenueDelayMonths} mo</div></div>
-            <div className="rounded border border-white/10 bg-white/5 p-3"><div className="text-[9px] uppercase tracking-[0.12em] text-[#9dafb8]">CAPEX at risk</div><div className="mt-1 font-mono text-sm text-[#f5ddd5]">{formatCurrency(metrics.incrementalCapex)}</div></div>
+            <div className="rounded border border-white/10 bg-white/5 p-3"><div className="text-[9px] uppercase tracking-[0.12em] text-[#9dafb8]">CAPEX contingency</div><div className="mt-1 font-mono text-sm text-[#f5ddd5]">{formatCurrency(metrics.incrementalCapex)}</div></div>
           </div>
         </section>
       </div>
@@ -509,14 +549,16 @@ function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => 
             <SectionKicker>Project-level return model</SectionKicker>
             <h2 className="text-[18px] font-semibold tracking-[-0.025em] text-[#122232]">A transparent bridge from operations to returns.</h2>
           </div>
-          <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#7d898f]">Simplified / client-side</span>
+          <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#7d898f]">5-year / client-side</span>
         </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {[
-            ["Revenue build", "120 MW × $185 / kW-mo × 92%", "Contracted capacity × lease rate × utilization"],
-            ["OPEX build", "$45 / MWh + water + 4.5% maint.", "Power, water, maintenance, labor, insurance, compliance"],
-            ["CAPEX schedule", "$480M entry + $45M cooling", "Acquisition plus infrastructure reserve"],
-            ["Debt structure", "60% LTV · 7.5% · 10 yr", "Simple senior debt with 5-year hold"],
+            ["Revenue build", `${formatCurrency(metrics.assumptions.annualRevenueAtFullUtilization)} full run-rate`, `${metrics.assumptions.capacityMW} MW × $${metrics.assumptions.leaseRatePerKwMonth} / kW-mo · ${metrics.assumptions.revenueDelayMonths} mo delay`],
+            ["OPEX build", `${formatCurrency(metrics.schedule[5]?.totalOpex ?? 0)} Y5 OPEX`, "Power, water, maintenance, labor, insurance, compliance"],
+            ["CAPEX schedule", `${formatCurrency(metrics.assumptions.totalCapex)} total`, `${formatCurrency(metrics.assumptions.entryValue)} entry + ${formatCurrency(metrics.assumptions.coolingCapex)} cooling + ${formatCurrency(metrics.assumptions.capexContingency)} contingency`],
+            ["Debt structure", `${formatCurrency(metrics.assumptions.debtAmount)} opening debt`, `60% LTV · 7.5% interest · ${formatCurrency(metrics.assumptions.annualPrincipalPayment)} annual principal`],
+            ["Terminal value", `${formatCurrency(metrics.terminalValue)} gross exit`, `${formatCurrency(metrics.schedule[5]?.noi ?? 0)} Y5 NOI × ${metrics.assumptions.exitMultiple.toFixed(1)}x`],
+            ["Equity cash flows", `${formatCurrency(metrics.equityInvested)} invested`, `${formatCurrency(metrics.totalDistributions)} total distributions · true equity returns`],
           ].map(([label, value, detail]) => (
             <div key={label} className="rounded-lg border border-[#d9e0e4] bg-white p-4">
               <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#7d898f]">{label}</div>
@@ -525,8 +567,29 @@ function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => 
             </div>
           ))}
         </div>
+        <div className="mt-5 overflow-x-auto rounded-lg border border-[#d9e0e4] bg-white">
+          <table className="w-full min-w-[760px] border-collapse text-left">
+            <caption className="sr-only">Five-year annual project cash-flow schedule</caption>
+            <thead className="bg-[#f1f5f3] text-[9px] font-bold uppercase tracking-[0.13em] text-[#7d898f]">
+              <tr><th className="px-3 py-3">Year</th><th className="px-3 py-3">Revenue</th><th className="px-3 py-3">NOI</th><th className="px-3 py-3">Debt service</th><th className="px-3 py-3">Terminal value</th><th className="px-3 py-3">Net equity CF</th><th className="px-3 py-3">Cumulative CF</th></tr>
+            </thead>
+            <tbody className="divide-y divide-[#e5eae8] font-mono text-[10px] text-[#344550]">
+              {metrics.schedule.map((year) => (
+                <tr key={year.year} className={year.year === 5 ? "bg-[#f8fbe8]" : undefined}>
+                  <th className="px-3 py-3 font-bold text-[#122232]">{year.year === 0 ? "Close" : `Y${year.year}`}</th>
+                  <td className="px-3 py-3">{formatCurrency(year.revenue)}</td>
+                  <td className="px-3 py-3">{formatCurrency(year.noi)}</td>
+                  <td className="px-3 py-3">{formatCurrency(year.interest + year.principal)}</td>
+                  <td className="px-3 py-3">{year.terminalValue ? formatCurrency(year.terminalValue) : "—"}</td>
+                  <td className={`px-3 py-3 font-bold ${year.netEquityCashFlow < 0 ? "text-[#ba2f45]" : "text-[#0b7a63]"}`}>{formatCurrency(year.netEquityCashFlow)}</td>
+                  <td className="px-3 py-3">{formatCurrency(year.cumulativeEquityCashFlow)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
-      <div className="mt-5 rounded-lg border border-[#d9e0e4] bg-[#eef2f1] px-4 py-3 text-[11px] leading-5 text-[#65737d]"><Info className="mr-2 inline h-3.5 w-3.5 text-[#255bb7]" /><strong className="text-[#344550]">Model note:</strong> each low-confidence input applies a deliberately visible penalty; the point is not precision, but making the cost of uncertainty discussable before the IC meeting.</div>
+      <div className="mt-5 rounded-lg border border-[#d9e0e4] bg-[#eef2f1] px-4 py-3 text-[11px] leading-5 text-[#65737d]"><Info className="mr-2 inline h-3.5 w-3.5 text-[#255bb7]" /><strong className="text-[#344550]">Model mechanics:</strong> annual revenue uses partial operating months after the later of grid and permitting gates; OPEX includes power, water, maintenance, labor, insurance, and carbon compliance; debt is equal-principal senior debt; terminal value is Y5 NOI × {metrics.assumptions.exitMultiple.toFixed(1)}x less remaining debt. Quality classifications change the underwritten inputs themselves rather than applying a generic return penalty.</div>
       <BottomNav screen="materiality" onNavigate={onNavigate} />
     </div>
   );
@@ -559,10 +622,10 @@ function DecisionReview({ onNavigate }: { onNavigate: (screen: Screen) => void }
         <section className={`rounded-xl border border-[#d9e0e4] bg-[#122232] p-6 text-white transition-transform ${flash ? "scale-[1.01]" : ""}`} data-testid="panel-decision-return">
           <div className="flex items-start justify-between"><div><SectionKicker tone="lime">Prominent base return</SectionKicker><div className="mt-2 text-[10px] uppercase tracking-[0.17em] text-[#a4b4bd]">Evidence-adjusted project IRR</div></div><Gauge className="h-5 w-5 text-[#b9d43a]" /></div>
           <div className="mt-5 flex items-end justify-between gap-3">
-            <div data-testid="text-decision-irr" className="font-mono text-[64px] font-bold leading-none tracking-[-0.08em] text-[#d4e86b]">{metrics.projectIRR}<span className="text-3xl tracking-[-0.04em]">%</span></div>
+            <div data-testid="text-decision-irr" className="font-mono text-[64px] font-bold leading-none tracking-[-0.08em] text-[#d4e86b]">{formatIRR(metrics.projectIRR)}</div>
             {metrics.lastChange && metrics.lastChange.from !== metrics.lastChange.to && <div className={`mb-1 flex flex-col items-end gap-1 rounded px-2 py-1 font-mono text-[10px] font-bold ${metrics.lastChange.delta < 0 ? "bg-[#f5ddd5] text-[#ba2f45]" : "bg-[#e0f4ed] text-[#0b7a63]"}`}><span className="opacity-60 line-through">{metrics.lastChange.from}% prior</span><span>{metrics.lastChange.delta > 0 ? "+" : ""}{metrics.lastChange.delta.toFixed(1)} pts</span></div>}
           </div>
-          <div className="mt-5 border-t border-white/15 pt-4 text-[11px] leading-5 text-[#afbdc4]">Base underwriting: <span className="font-mono text-white">{metrics.baseIRR}%</span>. The current return reflects evidence quality, timeline drag, and infrastructure risk.</div>
+          <div className="mt-5 border-t border-white/15 pt-4 text-[11px] leading-5 text-[#afbdc4]">Verified underwriting: <span className="font-mono text-white">{formatIRR(metrics.baseIRR ?? null)}</span>. The current return reflects evidence quality, timeline drag, and infrastructure risk.</div>
           <div className="mt-6 grid grid-cols-3 gap-2">
             <div className="rounded border border-white/10 bg-white/5 p-3"><div className="text-[9px] uppercase tracking-[0.1em] text-[#9dafb8]">MOIC</div><div className="mt-1 font-mono text-sm">{metrics.moic}x</div></div>
             <div className="rounded border border-white/10 bg-white/5 p-3"><div className="text-[9px] uppercase tracking-[0.1em] text-[#9dafb8]">NPV</div><div className="mt-1 font-mono text-sm">{formatCurrency(metrics.npv)}</div></div>

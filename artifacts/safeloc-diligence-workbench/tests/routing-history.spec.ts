@@ -98,9 +98,10 @@ test.describe("hash routing and browser history", () => {
 
     await expect(page).toHaveURL(/#value-chain$/);
     await expect(page).toHaveTitle("SafeLoc · The AI Chain");
-    await expect(page.getByTestId("value-chain-narrative")).toContainText("The AI economy runs from semiconductor fabs in Taiwan");
+    await expect(page.getByTestId("value-chain-narrative")).toContainText("Sustainable investors helped capitalize this chain by concentrating capital in well-governed, high-performing companies like NVIDIA.");
     await expect(page.getByTestId("value-chain-stages").locator(":scope > li")).toHaveCount(7);
     await expect(page.getByTestId("value-chain-stage-data-center-infrastructure")).toContainText("YOU ARE HERE");
+    await expect(page.getByTestId("value-chain-stage-data-center-infrastructure")).toContainText("Where capital meets physical reality: power, water, land, grid, community.");
     await expect(page.getByTestId("value-chain-stage-data-center-infrastructure")).toContainText("Power · water · land · grid · community");
     await expect(page.getByTestId("value-chain-page")).toContainText("$130 billion in projects paused in Q1 2026.");
 
@@ -117,15 +118,32 @@ test.describe("hash routing and browser history", () => {
       "HYPERSCALER PROCUREMENT",
       "DATA CENTER INFRASTRUCTURE",
       "AI MODEL DEPLOYMENT",
-      "AI GOVERNANCE & REGULATION",
+      "AI GOVERNANCE AND REGULATION",
       "CLIENT-FACING AI APPLICATIONS",
     ]);
-    await expect(page.getByTestId("value-chain-stage-ai-governance-regulation")).toContainText("EU AI Act Article 14 (effective Aug 2, 2026)");
+    await expect(page.getByTestId("value-chain-stage-chip-fabrication")).toContainText("Where AI begins physically.");
+    await expect(page.getByTestId("value-chain-stage-chip-fabrication")).toContainText("TSMC · Samsung · Intel");
+    await expect(page.getByTestId("value-chain-stage-chip-fabrication")).toContainText("Supply concentrated in geopolitically sensitive regions.");
+    await expect(page.getByTestId("value-chain-stage-chip-design")).toContainText("The architectures that determine what AI can do.");
+    await expect(page.getByTestId("value-chain-stage-chip-design")).toContainText("NVIDIA · AMD · Broadcom");
+    await expect(page.getByTestId("value-chain-stage-chip-design")).toContainText("NVIDIA holds a top-tier sustainability rating and is the largest holding in major sustainable investment funds.");
+    await expect(page.getByTestId("value-chain-stage-hyperscaler-procurement")).toContainText("$650 billion in committed AI infrastructure spending.");
+    await expect(page.getByTestId("value-chain-stage-hyperscaler-procurement")).toContainText("Microsoft · Meta · Google · Amazon");
+    await expect(page.getByTestId("value-chain-stage-hyperscaler-procurement")).toContainText("Whether the physical infrastructure can absorb them is unverified.");
+    await expect(page.getByTestId("value-chain-stage-data-center-infrastructure")).toContainText("$130 billion in projects paused in Q1 2026. The evidence behind the assumptions is what this tool tests.");
+    await expect(page.getByTestId("value-chain-stage-ai-model-deployment")).toContainText("Training and inference running on the infrastructure above.");
+    await expect(page.getByTestId("value-chain-stage-ai-model-deployment")).toContainText("OpenAI · Anthropic · Google DeepMind · Meta AI");
+    await expect(page.getByTestId("value-chain-stage-ai-model-deployment")).toContainText("Cooling failures halt training runs.");
+    await expect(page.getByTestId("value-chain-stage-ai-governance-regulation")).toContainText("The rules catching up to the technology.");
+    await expect(page.getByTestId("value-chain-stage-ai-governance-regulation")).toContainText("EU AI Act Article 14 (Aug 2, 2026)");
     await expect(page.getByTestId("value-chain-stage-ai-governance-regulation")).toContainText("FINRA Notice 26-02");
     await expect(page.getByTestId("value-chain-stage-ai-governance-regulation")).toContainText("Texas Governor Abbott moratorium (Aug 3, 2026)");
+    await expect(page.getByTestId("value-chain-stage-ai-governance-regulation")).toContainText("the buildout is moving faster than the evidence");
+    await expect(page.getByTestId("value-chain-stage-client-facing-ai-applications")).toContainText("Where AI meets the people your clients interact with.");
     await expect(page.getByTestId("value-chain-stage-client-facing-ai-applications")).toContainText("financial planning tools");
-    await expect(page.getByTestId("value-chain-stage-client-facing-ai-applications")).toContainText("portfolio screeners");
     await expect(page.getByTestId("value-chain-stage-client-facing-ai-applications")).toContainText("robo-advisors");
+    await expect(page.getByTestId("value-chain-stage-client-facing-ai-applications")).toContainText("portfolio screeners");
+    await expect(page.getByTestId("value-chain-stage-client-facing-ai-applications")).toContainText("45% of Americans have no confidence in AI for financial guidance.");
   });
 
   test("renders the SRI thesis, live evidence posture, and advisor handoff", async ({ page }) => {

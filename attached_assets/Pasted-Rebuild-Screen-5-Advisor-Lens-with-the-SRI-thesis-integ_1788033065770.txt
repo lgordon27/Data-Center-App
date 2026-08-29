@@ -1,0 +1,34 @@
+Rebuild Screen 5 (Advisor Lens) with the SRI thesis integrated throughout.
+
+SECTION 1: "YOUR CLIENTS' VALUES ARE INVESTED HERE"
+
+Show the exposure chain visually: Client's Values-Aligned Portfolio -> Sustainable Investment Fund -> NVIDIA (20%+ of iShares fund) -> GPU Orders -> Hyperscaler CAPEX ($650B) -> Stargate Abilene.
+
+Text: "Your client chose a values-aligned fund because they believe in responsible corporate behavior. The largest holding in that fund is NVIDIA. Every dollar of NVIDIA's forward revenue depends on data centers being built. Those data centers are being built on assumptions about water, power, and community impact that have not been independently verified.
+
+The sustainability rating tells your client what NVIDIA reported. This tool tests whether the physical infrastructure that rating depends on has been verified. Those are two different questions. And only one of them protects your client's values and their returns."
+
+Show aggregate numbers: $130B paused, $8B revenue losses estimated by Q1 2027, NVIDIA without AI leadership trails the other 493 S&P companies.
+
+SECTION 2: "HOW TO TALK TO YOUR CLIENT"
+
+Three conversations:
+
+Client asks "Is my fund still aligned with my values?"
+The question is not about the rating. It is about whether the fund manager is applying evidence standards to the infrastructure assumptions driving the fund's largest holding. The screening selected NVIDIA. The question is whether anyone verified what happens downstream. Action: Ask your fund manager what site-level evidence standards they apply to AI infrastructure holdings.
+
+Client asks "Should I be worried about AI risk?"
+The risk is not AI itself. The risk is that the infrastructure build is outrunning the evidence base. $130B in projects blocked not because technology failed but because water, power, and community assumptions were not verified. Action: Review concentration in AI infrastructure-dependent holdings and the evidence quality behind them.
+
+Client asks "What should I do?"
+Not sell. Engage. The sustainability community helped build this. Walking away forfeits the standing to steer it. The advisor's role is to interpret evidence quality, ask questions no screening tool asks, and decide whether unverified assumptions are acceptable for the client's values, risk tolerance, and time horizon. Action: Use the governance gap from this tool in your next client review as a conversation starter.
+
+SECTION 3: "WHY THIS IS YOUR ROLE"
+
+"Your clients chose you because they want an advisor who understands both their values and their returns. The Gallup/Edward Jones data confirms what you already know: 79% of Americans trust financial advisors. 3% trust AI. Financially fulfilled adults are four times more likely to use a professional advisor. Confidence in AI has zero statistical association with financial fulfillment.
+
+But those numbers only hold if you do something AI cannot do. If the advisor's job is screening funds and rebalancing portfolios, AI replaces that. If the advisor's job is interpreting evidence quality at the infrastructure level, asking the questions a screening algorithm cannot ask, and making judgment calls about whether unverified assumptions are acceptable for a specific client, that role is structurally irreplaceable.
+
+The sustainability community helped birth the AI economy. The sustainability advisor who understands AI well enough to evaluate the evidence behind it, and to explain that evidence to clients, has the most defensible value proposition in the industry. This tool is proof of what that looks like."
+
+Keep the existing dynamic governance gap calculation and adaptive fund-manager questions. These update based on evidence state.

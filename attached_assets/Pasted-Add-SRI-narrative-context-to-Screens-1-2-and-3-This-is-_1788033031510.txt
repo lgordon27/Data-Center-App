@@ -1,0 +1,27 @@
+Add SRI narrative context to Screens 1, 2, and 3. This is a light touch, not a redesign. Add the following text elements without changing any existing functionality or layout.
+
+SCREEN 1 (Case Brief) - Add a narrative section ABOVE the project details:
+
+Title: "We Helped Build This"
+
+Body: "Sustainable investors were among the earliest concentrated holders of NVIDIA. Values-aligned screening selected for strong governance, workforce practices, and environmental stewardship, exactly the qualities of a well-run company positioned to lead the next technology wave. The iShares Sustainable MSCI USA ETF holds NVIDIA at over 20% of the portfolio. NVIDIA is the single largest contributor to S&P 500 earnings growth.
+
+That thesis worked. And the capital it concentrated helped finance the most consequential technology shift in a generation.
+
+Now the infrastructure that AI runs on requires millions of gallons of cooling water in arid communities, strains electrical grids and pushes costs onto residential ratepayers, and displaces rural towns with construction booms that leave behind a few hundred permanent jobs. $130 billion in projects were paused in Q1 2026 alone because the environmental and community assumptions behind them did not hold up.
+
+Sustainability professionals helped birth the AI economy. That is not a reason to look away. It is the reason to get your hands dirty, understand the technology, and apply the same evidence standards to AI infrastructure that values-aligned investors have always applied to the companies in their portfolios.
+
+This tool is what that looks like."
+
+Below the narrative, add a callout box: "The companies building this infrastructure, NVIDIA, Microsoft, Meta, Google, are the largest holdings in major sustainable investment funds. The evidence gaps identified in this analysis are embedded in your clients' portfolio returns."
+
+SCREEN 2 (Evidence Room) - Add a one-line framing above the evidence inputs:
+
+"Sustainability ratings grade companies on their disclosures. This evidence room tests whether those disclosures hold up at the site level, where the water, power, and community impact assumptions meet physical reality."
+
+SCREEN 3 (Financial Materiality) - Add a one-line framing above the financial outputs:
+
+"Water stress is not a values issue sitting in a separate report. It is a cost variable that changes the projected return. This screen shows what happens to the investment math when you take the environmental evidence seriously."
+
+TERMINOLOGY: Replace all instances of "ESG fund" with "values-aligned fund" and "ESG screening" with "sustainability screening" throughout the entire codebase. Keep proper fund names unchanged (iShares ESG Advanced MSCI USA ETF, MSCI KLD 400 Social Index).

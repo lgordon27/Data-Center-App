@@ -1,0 +1,23 @@
+Add an AI Value Chain page accessible from "The AI Chain" button in the header navigation, routed at #value-chain.
+
+Create a visual flow showing 7 linked stages of the AI economy. Each stage is a card with a title, one-sentence description, key players, and a note.
+
+Open with a narrative: "The AI economy runs from semiconductor fabs in Taiwan to financial planning tools on your client's phone. Sustainable investors helped capitalize this chain by concentrating capital in well-governed, high-performing companies like NVIDIA. Now the infrastructure layer of that chain is testing every value those investors hold. This tool analyzes the layer where the most capital is being deployed, the most uncertainty exists, and the most projects are being paused."
+
+The 7 stages:
+
+1. CHIP FABRICATION - "Where AI begins physically." Key players: TSMC, Samsung, Intel. Note: "Supply concentrated in geopolitically sensitive regions."
+
+2. CHIP DESIGN - "The architectures that determine what AI can do." Key players: NVIDIA, AMD, Broadcom. Note: "NVIDIA holds a top-tier sustainability rating and is the largest holding in major sustainable investment funds. Values-aligned investors were among the earliest to concentrate capital here."
+
+3. HYPERSCALER PROCUREMENT - "$650 billion in committed AI infrastructure spending." Key players: Microsoft, Meta, Google, Amazon. Note: "Capital commitments are announced. Whether the physical infrastructure can absorb them is unverified."
+
+4. DATA CENTER INFRASTRUCTURE - Highlight this stage with a "YOU ARE HERE" badge and distinct visual treatment, larger than other cards. "Where capital meets physical reality: power, water, land, grid, community." Note: "$130 billion in projects paused in Q1 2026. The evidence behind the assumptions is what this tool tests."
+
+5. AI MODEL DEPLOYMENT - "Training and inference running on the infrastructure above." Key players: OpenAI, Anthropic, Google DeepMind, Meta AI. Note: "Model capability depends on uninterrupted power at extreme densities. Cooling failures halt training runs."
+
+6. AI GOVERNANCE AND REGULATION - "The rules catching up to the technology." Key references: EU AI Act Article 14 (Aug 2, 2026), FINRA Notice 26-02, Texas Governor Abbott moratorium (Aug 3, 2026). Note: "Two regulatory frameworks arrived at the same conclusion in the same week: the buildout is moving faster than the evidence."
+
+7. CLIENT-FACING AI APPLICATIONS - "Where AI meets the people your clients interact with." Examples: financial planning tools, robo-advisors, portfolio screeners. Note: "45% of Americans have no confidence in AI for financial guidance. 79% trust financial advisors. The advisor's role starts here but depends on everything upstream."
+
+Design: polished editorial infographic, dark theme consistent with the workbench. Cards connected visually. Data center infrastructure stage is largest and most prominent.

@@ -1,0 +1,40 @@
+Add a "How It Works" page accessible from the header navigation, routed at #how-it-works. Polished product tour feel, not a help document.
+
+SECTION 1: WHY THIS EXISTS
+
+Lead with the SRI origin: "Responsible investors helped capitalize the AI revolution. Sustainability screening selected for well-governed, capital-efficient companies and concentrated capital in the stocks best positioned to lead the next technology wave. That thesis worked.
+
+Now the infrastructure that revolution requires is testing every principle those investors hold: environmental stewardship, community impact, transparent governance, and evidence-based decision-making. $130 billion in AI data center projects were blocked or delayed in Q1 2026 alone. On August 3, 2026, Texas Governor Greg Abbott ordered a moratorium on all new data center grid connections until ERCOT audits energy and water usage across roughly 300 proposed facilities.
+
+The sustainability community helped birth the AI economy. That creates a responsibility to understand the technology well enough to steer it. This tool was built by a sustainability professional who did exactly that: learned to build with AI, applied values-aligned evidence standards to the infrastructure layer, and created something the market does not have.
+
+Traditional sustainability ratings grade companies on what they reported last year. This tool tests whether the forward-looking assumptions behind a specific project, the water rights, the grid connections, the power costs, the climate exposure, are actually verified. That is the difference between a rating and diligence."
+
+Add a timeline: 2025 $156B blocked, Q1 2026 $130B blocked, May 2025 Sanders-AOC moratorium bill, July 2026 142 protests across 42 states, August 3 2026 Abbott moratorium, ERCOT 474 GW queue, December 2026 audit deadline.
+
+SECTION 2: SCREEN WALKTHROUGH
+For each of the 5 screens show title, plain-English summary, "Why it matters," and "What to look for." Conversational but professional. Accessible to someone new to infrastructure investing.
+
+Screen 1 Case Brief: "This is the deal. The most prominent AI infrastructure project in the world, and the values-aligned capital that helped make it possible."
+Screen 2 Evidence Room: "This is what we know, what we think we know, and what we do not know. Click any dropdown and change a classification. Watch what happens."
+Screen 3 Financial Materiality: "This is where environmental evidence becomes money. Water stress is not a separate report. It is a cost variable."
+Screen 4 Decision Review: "This is where the tool makes a call. And where one click can change everything."
+Screen 5 Advisor Lens: "This is what you do about it Monday morning."
+
+SECTION 3: EVIDENCE CLASSIFICATION SYSTEM
+Five tiers with colors, definitions, and analogies:
+- Verified Evidence (Green): "Like a bank statement, not someone's word."
+- Management Assertion (Yellow): "Like a resume, not a background check."
+- Model Inference (Blue): "Like estimating tomorrow's weather from barometric pressure."
+- User Assumption (Orange): "Like a doctor's estimate before running tests."
+- Missing Evidence (Red): "Like a blank on a loan application."
+
+SECTION 4: SOURCES AND METHODOLOGY
+List every source grouped by domain. Note that transaction assumptions are synthetic and environmental data is from public records.
+
+SECTION 5: WHO BUILT THIS AND WHY
+"Built by LeAndrew Gordon, Founder and CEO of SafeLoc. Former Private Wealth Financial Advisor. Chartered SRI Counselor. Top 25 AI Builder (Replit, top 1% of users).
+
+Sustainability professionals helped build the AI economy. This tool exists because that responsibility does not end at the screening level. It extends to the infrastructure layer, where the assumptions behind AI's growth are being tested by physical reality every day. Understanding AI well enough to build with it, and applying values-aligned evidence standards to what you build, is how the sustainability community steers this technology toward a better future rather than watching from the sidelines."
+
+Include Return to Workbench buttons at top and bottom.

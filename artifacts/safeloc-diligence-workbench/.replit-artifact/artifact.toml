@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "SafeLoc Diligence Workbench"
+description = "An interactive evidence-governed investment analysis workbench for data center infrastructure diligence in the Texas and Southwest U.S. corridor. It shows how environmental and infrastructure evidence changes financial returns and recommendation confidence in real time."
+version = "1.0.0"
+id = "artifacts/safeloc-diligence-workbench"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 25519
+
+[services.development]
+run = "pnpm --filter @workspace/safeloc-diligence-workbench run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/safeloc-diligence-workbench", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/safeloc-diligence-workbench/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25519"
+BASE_PATH = "/"

@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useState, useMemo } from 'react';
+import React, { createContext, useContext, useState, useMemo, useCallback, useRef } from 'react';
 import {
   calculateCashFlowModel,
   Classification,
+  EvidenceRecord,
 } from '@/model/cashFlowEngine';
 
 export type { Classification } from '@/model/cashFlowEngine';
@@ -23,6 +24,7 @@ export type FinancialMetrics = Omit<ReturnType<typeof calculateCashFlowModel>, '
 type DiligenceState = {
   evidence: Record<string, EvidenceItem>;
   updateClassification: (id: string, classification: Classification) => void;
+  clearLastChange: () => void;
   metrics: FinancialMetrics;
 };
 
@@ -44,36 +46,49 @@ const INITIAL_EVIDENCE: Record<string, EvidenceItem> = {
 const DiligenceContext = createContext<DiligenceState | undefined>(undefined);
 
 export function DiligenceProvider({ children }: { children: React.ReactNode }) {
-  const [evidence, setEvidence] = useState<Record<string, EvidenceItem>>(INITIAL_EVIDENCE);
-  const [lastChange, setLastChange] = useState<FinancialMetrics['lastChange']>(null);
+  const [state, setState] = useState({
+    evidence: INITIAL_EVIDENCE,
+    lastChange: null as FinancialMetrics['lastChange'],
+  });
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
-  const updateClassification = (id: string, classification: Classification) => {
-    const previous = evidence[id]?.classification;
+  const updateClassification = useCallback((id: string, classification: Classification) => {
+    const currentState = stateRef.current;
+    const previous = currentState.evidence[id]?.classification;
     if (!previous || previous === classification) return;
 
-    const previousIrr = calculateCashFlowModel(evidence).projectIRR;
+    const previousIrr = calculateCashFlowModel(currentState.evidence as EvidenceRecord).projectIRR;
     const nextEvidence = {
-      ...evidence,
-      [id]: { ...evidence[id], classification },
+      ...currentState.evidence,
+      [id]: { ...currentState.evidence[id], classification },
     };
-    const nextIrr = calculateCashFlowModel(nextEvidence).projectIRR;
-    setLastChange({
+    const nextIrr = calculateCashFlowModel(nextEvidence as EvidenceRecord).projectIRR;
+    const nextState = {
+      evidence: nextEvidence,
+      lastChange: {
       from: previousIrr ?? 0,
       to: nextIrr ?? 0,
       delta: Number(((nextIrr ?? 0) - (previousIrr ?? 0)).toFixed(1)),
-    });
-    setEvidence(() => {
-      return nextEvidence;
-    });
-  };
+      },
+    };
+    stateRef.current = nextState;
+    setState(nextState);
+  }, []);
+
+  const clearLastChange = useCallback(() => {
+    const nextState = { ...stateRef.current, lastChange: null };
+    stateRef.current = nextState;
+    setState(nextState);
+  }, []);
 
   const metrics = useMemo(
-    () => ({ ...calculateCashFlowModel(evidence), lastChange }),
-    [evidence, lastChange],
+    () => ({ ...calculateCashFlowModel(state.evidence as EvidenceRecord), lastChange: state.lastChange }),
+    [state],
   );
 
   return (
-    <DiligenceContext.Provider value={{ evidence, updateClassification, metrics }}>
+    <DiligenceContext.Provider value={{ evidence: state.evidence, updateClassification, clearLastChange, metrics }}>
       {children}
     </DiligenceContext.Provider>
   );

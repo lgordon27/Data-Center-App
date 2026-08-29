@@ -81,6 +81,10 @@ function formatLineItemValue(value: number, unit: string) {
   return `${value.toFixed(1)} ${unit}`;
 }
 
+function formatRecordedValue(value: string | number) {
+  return typeof value === "number" ? value.toLocaleString("en-US", { maximumFractionDigits: 2 }) : value;
+}
+
 function chartPoints(values: number[], min: number, max: number) {
   const width = 500;
   const height = 72;
@@ -162,6 +166,17 @@ function MetricCard({ label, value, detail, accent = "navy", testId }: { label: 
       </div>
       <div data-testid={`${testId}-value`} className="mt-3 font-mono text-[27px] font-bold tracking-[-0.05em]">{value}</div>
       <div className="mt-1 text-[11px] opacity-65">{detail}</div>
+    </div>
+  );
+}
+
+function LowConfidenceWarning({ testId }: { testId: string }) {
+  return (
+    <div data-testid={testId} role="note" className="flex items-start gap-3 rounded-lg border-2 border-[#ba2f45] bg-[#fff3f4] px-4 py-3 text-[#7f2635]">
+      <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+      <p className="font-mono text-[10px] font-bold leading-5 tracking-[0.02em]">
+        Evidence base insufficient for investment conclusions - outputs shown for sensitivity analysis only
+      </p>
     </div>
   );
 }
@@ -504,6 +519,7 @@ function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => void }) 
 function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
   const { evidence, metrics } = useDiligence();
   const impacts = Object.values(metrics.lineItems);
+  const lowConfidence = metrics.confidenceScore < 25;
   const currentIRR = metrics.projectIRR;
   const baseIRR = metrics.baseIRR ?? null;
   const currentPath = metrics.schedule.map((year) => year.cumulativeEquityCashFlow);
@@ -520,6 +536,7 @@ function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => 
         description="A five-year annual equity cash-flow engine ties revenue timing, operating costs, CAPEX, debt service, and terminal value to each evidence classification."
         right={<div className="flex items-center gap-2 rounded-md border border-[#9bd8c5] bg-[#e0f4ed] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#0b7a63]"><Sparkles className="h-3.5 w-3.5" /> Derived locally</div>}
       />
+      {lowConfidence && <div className="mb-5"><LowConfidenceWarning testId="warning-low-confidence-materiality" /></div>}
       {metrics.mechanicalDisclaimer && (
         <div data-testid="banner-mechanical-disclaimer" className="mb-5 flex items-start gap-3 rounded-xl border-2 border-[#ba2f45] bg-[#fff3f4] px-5 py-4 text-[#7f2635]">
           <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0" />
@@ -554,17 +571,12 @@ function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => 
         </section>
         <section className="rounded-xl bg-[#122232] p-5 text-white md:p-6">
           <div className="flex items-start justify-between"><div><SectionKicker tone="lime">Return path</SectionKicker><h2 className="text-[19px] font-semibold tracking-[-0.025em]">Verified baseline → current case</h2></div>{irrDelta !== null && irrDelta < 0 ? <TrendingDown className="h-5 w-5 text-[#f5ddd5]" /> : <TrendingUp className="h-5 w-5 text-[#d4e86b]" />}</div>
+          {lowConfidence && <div className="mt-4"><LowConfidenceWarning testId="warning-low-confidence-materiality-return" /></div>}
           <div className="mt-8 flex items-end gap-5">
             <div><div className="font-mono text-[9px] uppercase tracking-[0.15em] text-[#9dafb8]">Verified IRR</div><div className="mt-2 font-mono text-3xl font-bold text-[#b9d43a]">{formatIRR(baseIRR)}</div></div>
             <ArrowRight className="mb-2 h-5 w-5 text-[#7c909d]" />
             <div><div className="font-mono text-[9px] uppercase tracking-[0.15em] text-[#9dafb8]">Current IRR</div><div data-testid="text-current-irr-materiality" className="mt-2 font-mono text-3xl font-bold text-[#f5ddd5]">{formatIRR(currentIRR)}</div></div>
           </div>
-          {metrics.lastChange && metrics.lastChange.from !== metrics.lastChange.to && (
-            <div className="mt-3 flex items-center gap-2 font-mono text-[10px] text-[#f5ddd5]">
-              <span className="line-through opacity-60">{metrics.lastChange.from}% prior</span>
-              <span className="rounded bg-[#f5ddd5] px-2 py-1 font-bold text-[#ba2f45]">{metrics.lastChange.delta > 0 ? "+" : ""}{metrics.lastChange.delta.toFixed(1)} pts since reclassification</span>
-            </div>
-          )}
           <div className="mt-7 h-28 border-b border-l border-white/20 px-3 pb-2 pt-3">
             <div className="relative h-full">
               <svg viewBox="0 0 500 72" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible">
@@ -604,6 +616,7 @@ function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => 
             </div>
           ))}
         </div>
+        {lowConfidence && <div className="mt-5"><LowConfidenceWarning testId="warning-low-confidence-materiality-model" /></div>}
         <div className="mt-5 overflow-x-auto rounded-lg border border-[#d9e0e4] bg-white">
           <table className="w-full min-w-[760px] border-collapse text-left">
             <caption className="sr-only">Five-year annual project cash-flow schedule</caption>
@@ -635,32 +648,51 @@ function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => 
 function DecisionReview({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
   const { evidence, metrics } = useDiligence();
   const items = Object.values(evidence);
-  const [flash, setFlash] = useState(false);
-  useEffect(() => {
-    if (metrics.lastChange && metrics.lastChange.from !== metrics.lastChange.to) {
-      setFlash(true);
-      const timer = window.setTimeout(() => setFlash(false), 1800);
-      return () => window.clearTimeout(timer);
-    }
-    return undefined;
-  }, [metrics.lastChange]);
-  const grouped = classifications.map((classification) => ({ classification, items: items.filter((item) => item.classification === classification) })).filter((group) => group.items.length);
+  const lowConfidence = metrics.confidenceScore < 25;
+  const statusMeta = {
+    BLOCKED: { color: "#ba2f45", bg: "#fde8eb", border: "#efabb8" },
+    CONDITIONAL: { color: "#a65a00", bg: "#fff0d6", border: "#f1cb8b" },
+    "READY FOR REVIEW": { color: "#0b7a63", bg: "#e0f4ed", border: "#9bd8c5" },
+  }[metrics.recommendationStatus];
   const disputed = items.filter((item) => item.classification === "Management Assertion" || item.classification === "Missing Evidence");
+  const grouped = classifications.map((classification) => ({
+    classification,
+    items: items.filter((item) => item.classification === classification),
+  }));
+  const decisionCopy = {
+    BLOCKED: {
+      title: "Do not advance on return alone.",
+      description: "The asset may still be compelling, but material evidence gaps prevent a clean recommendation.",
+      icon: <TriangleAlert className="h-5 w-5" />,
+    },
+    CONDITIONAL: {
+      title: "Advance with explicit conditions.",
+      description: "Material assumptions remain unverified. Carry the named evidence dependencies into the investment committee discussion.",
+      icon: <CircleAlert className="h-5 w-5" />,
+    },
+    "READY FOR REVIEW": {
+      title: "Advance to investment committee review.",
+      description: "Every material input is supported by verified evidence or management assertion. Preserve the distinction between verified inputs and modeled interpretation.",
+      icon: <ShieldCheck className="h-5 w-5" />,
+    },
+  }[metrics.recommendationStatus];
   return (
     <div>
       <PageIntro
         eyebrow="04 / make the call"
         title="A return without provenance is not a decision."
-        description="Bring the evidence quality and the financial outcome into the same frame. The recommendation stays blocked when material assumptions cannot be supported."
-        right={<div className={`rounded-lg border px-4 py-3 transition-colors ${metrics.recommendationBlocked ? "border-[#efabb8] bg-[#fde8eb] text-[#ba2f45]" : "border-[#9bd8c5] bg-[#e0f4ed] text-[#0b7a63]"}`}><div className="text-[9px] font-bold uppercase tracking-[0.14em]">Recommendation status</div><div data-testid="status-recommendation" className="mt-1 font-mono text-sm font-bold">{metrics.recommendationBlocked ? "BLOCKED" : "READY FOR REVIEW"}</div></div>}
+        description="Bring the evidence quality and the financial outcome into the same frame. The recommendation is derived from the status of material evidence, not from the return alone."
+        right={<div data-testid="card-recommendation-status" className="rounded-lg border px-4 py-3" style={{ color: statusMeta.color, backgroundColor: statusMeta.bg, borderColor: statusMeta.border }}><div className="text-[9px] font-bold uppercase tracking-[0.14em]">Recommendation status</div><div data-testid="status-recommendation" className="mt-1 font-mono text-sm font-bold">{metrics.recommendationStatus}</div></div>}
       />
-      {metrics.recommendationBlocked && <div data-testid="banner-recommendation-blocked" className="mb-5 flex items-start gap-3 rounded-xl border-2 border-[#ba2f45] bg-[#fff3f4] px-5 py-4 text-[#7f2635]"><CircleAlert className="mt-0.5 h-5 w-5 shrink-0" /><div><div className="font-mono text-[12px] font-bold tracking-[0.08em]">RECOMMENDATION BLOCKED: {metrics.missingMaterialCount} material assumptions lack sufficient evidence</div><div className="mt-1 text-[11px] leading-5 text-[#96525d]">Resolve the material evidence gaps below before treating the base return as investment-grade.</div></div></div>}
+      {metrics.recommendationStatus === "BLOCKED" && <div data-testid="banner-recommendation-blocked" className="mb-5 flex items-start gap-3 rounded-xl border-2 border-[#ba2f45] bg-[#fff3f4] px-5 py-4 text-[#7f2635]"><CircleAlert className="mt-0.5 h-5 w-5 shrink-0" /><div><div className="font-mono text-[12px] font-bold tracking-[0.08em]">RECOMMENDATION BLOCKED: {metrics.missingMaterialCount} material items are missing evidence</div><div className="mt-1 text-[11px] leading-5 text-[#96525d]">Resolve the material evidence gaps below before treating the base return as investment-grade.</div></div></div>}
+      {metrics.recommendationStatus === "CONDITIONAL" && <div data-testid="banner-recommendation-conditional" className="mb-5 flex items-start gap-3 rounded-xl border-2 border-[#a65a00] bg-[#fff8e9] px-5 py-4 text-[#6f460e]"><CircleAlert className="mt-0.5 h-5 w-5 shrink-0" /><div><div className="font-mono text-[12px] font-bold tracking-[0.08em]">CONDITIONAL: {metrics.materialUnverifiedCount} material assumptions depend on unverified evidence</div><div className="mt-1 text-[11px] leading-5 text-[#806d51]">Name the evidence owners and carry these conditions into review.</div></div></div>}
+      {metrics.recommendationStatus === "READY FOR REVIEW" && <div data-testid="banner-recommendation-ready" className="mb-5 flex items-start gap-3 rounded-xl border-2 border-[#0b7a63] bg-[#f0faf5] px-5 py-4 text-[#0b6351]"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0" /><div><div className="font-mono text-[12px] font-bold tracking-[0.08em]">READY FOR REVIEW: all material evidence is supported</div><div className="mt-1 text-[11px] leading-5 text-[#4b756b]">The return is ready for an IC discussion with its provenance preserved.</div></div></div>}
       <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
-        <section className={`rounded-xl border border-[#d9e0e4] bg-[#122232] p-6 text-white transition-transform ${flash ? "scale-[1.01]" : ""}`} data-testid="panel-decision-return">
+        <section className="rounded-xl border border-[#d9e0e4] bg-[#122232] p-6 text-white" data-testid="panel-decision-return">
           <div className="flex items-start justify-between"><div><SectionKicker tone="lime">Prominent base return</SectionKicker><div className="mt-2 text-[10px] uppercase tracking-[0.17em] text-[#a4b4bd]">Evidence-adjusted project IRR</div></div><Gauge className="h-5 w-5 text-[#b9d43a]" /></div>
+          {lowConfidence && <div className="mt-4"><LowConfidenceWarning testId="warning-low-confidence-decision" /></div>}
           <div className="mt-5 flex items-end justify-between gap-3">
             <div data-testid="text-decision-irr" className="font-mono text-[64px] font-bold leading-none tracking-[-0.08em] text-[#d4e86b]">{formatIRR(metrics.projectIRR)}</div>
-            {metrics.lastChange && metrics.lastChange.from !== metrics.lastChange.to && <div className={`mb-1 flex flex-col items-end gap-1 rounded px-2 py-1 font-mono text-[10px] font-bold ${metrics.lastChange.delta < 0 ? "bg-[#f5ddd5] text-[#ba2f45]" : "bg-[#e0f4ed] text-[#0b7a63]"}`}><span className="opacity-60 line-through">{metrics.lastChange.from}% prior</span><span>{metrics.lastChange.delta > 0 ? "+" : ""}{metrics.lastChange.delta.toFixed(1)} pts</span></div>}
           </div>
           <div className="mt-5 border-t border-white/15 pt-4 text-[11px] leading-5 text-[#afbdc4]">Verified underwriting: <span className="font-mono text-white">{formatIRR(metrics.baseIRR ?? null)}</span>. The current return reflects evidence quality, timeline drag, and infrastructure risk.</div>
           <div className="mt-6 grid grid-cols-3 gap-2">
@@ -676,10 +708,39 @@ function DecisionReview({ onNavigate }: { onNavigate: (screen: Screen) => void }
           </div>
           <div className="mt-6 grid gap-3 border-t border-[#e5eae8] pt-5 sm:grid-cols-2">
             <div><div className="text-[9px] font-bold uppercase tracking-[0.13em] text-[#7d898f]">Disputed / unverified</div><div className="mt-2 font-mono text-2xl font-bold text-[#ba2f45]">{disputed.length}</div><div className="mt-1 text-[10px] text-[#87939a]">Assertions or missing source</div></div>
-            <div><div className="text-[9px] font-bold uppercase tracking-[0.13em] text-[#7d898f]">Material gap count</div><div className="mt-2 font-mono text-2xl font-bold text-[#a65a00]">{metrics.missingMaterialCount}</div><div className="mt-1 text-[10px] text-[#87939a]">Blocking the recommendation</div></div>
+            <div><div className="text-[9px] font-bold uppercase tracking-[0.13em] text-[#7d898f]">Material gap count</div><div className="mt-2 font-mono text-2xl font-bold text-[#a65a00]">{metrics.missingMaterialCount}</div><div className="mt-1 text-[10px] text-[#87939a]">Missing material evidence</div></div>
           </div>
         </section>
       </div>
+      <section data-testid="decision-evidence-groups" className="mt-5 space-y-4">
+        {grouped.map(({ classification, items: groupItems }) => {
+          const meta = classMeta[classification];
+          return (
+            <section key={classification} data-testid={`section-evidence-${meta.short.toLowerCase()}`} className="overflow-hidden rounded-xl border border-[#d9e0e4] bg-white">
+              <div className="flex flex-col gap-3 border-b border-[#e5eae8] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: meta.color }} /><h2 className="text-[17px] font-semibold tracking-[-0.025em] text-[#122232]">{classification}</h2></div>
+                <span className="font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-[#7d898f]">{groupItems.length} {groupItems.length === 1 ? "item" : "items"}</span>
+              </div>
+              {groupItems.length > 0 ? (
+                <div className="divide-y divide-[#e5eae8]">
+                  {groupItems.map((item) => {
+                    const impact = metrics.lineItems[item.id];
+                    const effectTone = impact.deltaIRR < 0 ? "text-[#ba2f45]" : impact.deltaIRR > 0 ? "text-[#0b7a63]" : "text-[#63717a]";
+                    return (
+                      <div key={item.id} data-testid={`row-decision-evidence-${item.id}`} className="grid gap-4 px-5 py-4 md:grid-cols-[1.15fr_0.85fr_1.1fr_0.95fr] md:items-center">
+                        <div><div className="text-[12px] font-semibold text-[#243844]">{item.label}</div><div className="mt-1 text-[10px] leading-4 text-[#87939a]">{item.description}</div></div>
+                        <div><div className="text-[9px] font-bold uppercase tracking-[0.12em] text-[#7d898f]">Recorded value</div><div className="mt-1 font-mono text-[12px] font-bold text-[#122232]">{formatRecordedValue(item.value)} <span className="font-sans text-[10px] font-medium text-[#7e8b92]">{item.unit}</span></div></div>
+                        <div><div className="text-[9px] font-bold uppercase tracking-[0.12em] text-[#7d898f]">Provenance / context</div><div className="mt-1 text-[10px] leading-4 text-[#66757e]">{item.citation}</div></div>
+                        <div className="rounded-md bg-[#f5f7f5] p-3"><div className="text-[9px] font-bold uppercase tracking-[0.12em] text-[#7d898f]">Model driver</div><div className="mt-1 text-[10px] font-semibold text-[#344550]">{impact.driver}</div><div className="mt-2 text-[9px] text-[#87939a]">Modeled {formatLineItemValue(impact.value, impact.unit)}</div><div className={`mt-1 font-mono text-[11px] font-bold ${effectTone}`}>{impact.deltaIRR > 0 ? "+" : ""}{impact.deltaIRR.toFixed(1)} pts IRR vs verified</div></div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : <div data-testid={`empty-evidence-${meta.short.toLowerCase()}`} className="px-5 py-5 text-[11px] italic text-[#87939a]">No {classification.toLowerCase()} items are currently recorded.</div>}
+            </section>
+          );
+        })}
+      </section>
       <div className="mt-5 grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
         <section className="rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-6">
           <div className="flex items-center justify-between"><div><SectionKicker tone="warning">Material evidence gaps</SectionKicker><h2 className="text-[18px] font-semibold tracking-[-0.025em] text-[#122232]">Items that need a named owner</h2></div><CircleAlert className="h-5 w-5 text-[#ba2f45]" /></div>
@@ -690,7 +751,7 @@ function DecisionReview({ onNavigate }: { onNavigate: (screen: Screen) => void }
         </section>
         <section className="rounded-xl border border-[#d9e0e4] bg-[#f1f5f3] p-5 md:p-6">
           <SectionKicker>Decision posture</SectionKicker>
-          <div className="mt-2 flex items-start gap-3"><div className={`rounded-md p-2.5 ${metrics.recommendationBlocked ? "bg-[#f5ddd5] text-[#ba2f45]" : "bg-[#d4e86b] text-[#314207]"}`}>{metrics.recommendationBlocked ? <TriangleAlert className="h-5 w-5" /> : <ShieldCheck className="h-5 w-5" />}</div><div><h2 className="text-[20px] font-semibold leading-tight tracking-[-0.03em] text-[#122232]">{metrics.recommendationBlocked ? "Do not advance on return alone." : "Advance to investment committee review."}</h2><p className="mt-2 text-[11px] leading-5 text-[#65737d]">{metrics.recommendationBlocked ? "The asset may still be compelling, but the evidence chain is not yet complete enough to support a clean recommendation." : "The evidence chain is sufficiently mature for an IC discussion. Preserve the distinction between verified inputs and modeled interpretation."}</p></div></div>
+          <div className="mt-2 flex items-start gap-3"><div className={`rounded-md p-2.5 ${metrics.recommendationStatus === "BLOCKED" ? "bg-[#f5ddd5] text-[#ba2f45]" : metrics.recommendationStatus === "CONDITIONAL" ? "bg-[#fff0d6] text-[#a65a00]" : "bg-[#d4e86b] text-[#314207]"}`}>{decisionCopy.icon}</div><div><h2 className="text-[20px] font-semibold leading-tight tracking-[-0.03em] text-[#122232]">{decisionCopy.title}</h2><p className="mt-2 text-[11px] leading-5 text-[#65737d]">{decisionCopy.description}</p></div></div>
           <button data-testid="button-open-advisor-lens" onClick={() => onNavigate("advisor")} className="mt-6 inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#122232] hover:text-[#607500]">Carry this into the advisor lens <ArrowRight className="h-3.5 w-3.5" /></button>
         </section>
       </div>
@@ -862,12 +923,34 @@ function AppShell() {
   const [screen, setScreen] = useState<Screen>("brief");
   const [mobileOpen, setMobileOpen] = useState(false);
   const diligence = useDiligence();
-  const go = (next: Screen) => { setScreen(next); setMobileOpen(false); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  useEffect(() => {
+    if (!diligence.metrics.lastChange) return undefined;
+    const timer = window.setTimeout(diligence.clearLastChange, 8000);
+    return () => window.clearTimeout(timer);
+  }, [diligence.metrics.lastChange, diligence.clearLastChange]);
+  const go = (next: Screen) => {
+    if (next !== screen) diligence.clearLastChange();
+    setScreen(next);
+    setMobileOpen(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
   return (
     <div className="min-h-[100dvh] bg-[#f4f6f4] text-[#122232]">
       <Header onMenu={() => setMobileOpen((value) => !value)} />
       <ProgressNav current={screen} onNavigate={go} />
       {mobileOpen && <div className="fixed inset-x-4 top-[76px] z-30 rounded-lg border border-[#cbd8d4] bg-[#f9faf8] p-2 shadow-lg md:hidden">{screens.map((item) => <button key={item.id} data-testid={`mobile-navigate-${item.id}`} onClick={() => go(item.id)} className={`flex w-full items-center gap-3 rounded px-3 py-3 text-left text-[11px] font-semibold ${screen === item.id ? "bg-[#122232] text-[#d4e86b]" : "text-[#52616b]"}`}><item.icon className="h-4 w-4" /> {item.label}</button>)}</div>}
+      {diligence.metrics.lastChange && (
+        <div data-testid="toast-reclassification" role="status" aria-live="polite" className="fixed bottom-5 right-4 z-40 w-[min(360px,calc(100vw-2rem))] rounded-lg border border-[#cbd8d4] bg-[#122232] p-4 text-white shadow-xl md:bottom-7 md:right-7">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="font-mono text-[9px] font-bold uppercase tracking-[0.16em] text-[#b9d43a]">Evidence reclassified</div>
+              <div className="mt-2 text-[11px] leading-5 text-[#dce4e7]">Return updated from <span className="font-mono text-white">{formatIRR(diligence.metrics.lastChange.from)}</span> to <span className="font-mono text-white">{formatIRR(diligence.metrics.lastChange.to)}</span>.</div>
+              <div className={`mt-1 font-mono text-[12px] font-bold ${diligence.metrics.lastChange.delta < 0 ? "text-[#f5ddd5]" : "text-[#d4e86b]"}`}>{diligence.metrics.lastChange.delta > 0 ? "+" : ""}{diligence.metrics.lastChange.delta.toFixed(1)} pts IRR</div>
+            </div>
+            <button data-testid="button-dismiss-reclassification" aria-label="Dismiss reclassification notification" onClick={diligence.clearLastChange} className="rounded p-1 text-[#a4b4bd] hover:bg-white/10 hover:text-white"><span aria-hidden="true">×</span></button>
+          </div>
+        </div>
+      )}
       <div className="mx-auto flex max-w-[1480px]">
         <ShellAside screen={screen} metrics={diligence.metrics} onNavigate={go} />
         <main className="min-w-0 flex-1 px-4 py-7 md:px-8 md:py-10 xl:px-12">

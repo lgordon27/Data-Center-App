@@ -5,6 +5,8 @@ export type Classification =
   | "User Assumption"
   | "Missing Evidence";
 
+export type RecommendationStatus = "BLOCKED" | "CONDITIONAL" | "READY FOR REVIEW";
+
 export type EvidenceRecord = Record<
   string,
   {
@@ -97,7 +99,9 @@ export type CashFlowModel = {
   opexChange: number;
   ebitdaEffect: number;
   recommendationBlocked: boolean;
+  recommendationStatus: RecommendationStatus;
   missingMaterialCount: number;
+  materialUnverifiedCount: number;
   totalDistributions: number;
   equityInvested: number;
   terminalValue: number;
@@ -513,6 +517,17 @@ function runModel(evidence: EvidenceRecord): CashFlowModel {
   const missingMaterialCount = Object.values(evidence).filter(
     (item) => item.classification === "Missing Evidence" && MATERIAL_IDS.includes(item.id),
   ).length;
+  const materialUnverifiedCount = Object.values(evidence).filter(
+    (item) =>
+      MATERIAL_IDS.includes(item.id) &&
+      (item.classification === "Model Inference" || item.classification === "User Assumption"),
+  ).length;
+  const recommendationStatus: RecommendationStatus =
+    missingMaterialCount > 0
+      ? "BLOCKED"
+      : materialUnverifiedCount > 0
+        ? "CONDITIONAL"
+        : "READY FOR REVIEW";
   const totalConfidence = Object.values(evidence).reduce(
     (total, item) => total + CONFIDENCE_WEIGHTS[item.classification],
     0,
@@ -587,8 +602,10 @@ function runModel(evidence: EvidenceRecord): CashFlowModel {
     incrementalCapex: round(capexContingency, 1),
     opexChange: round((yearFive?.totalOpex ?? 0) - (firstOperatingYear?.totalOpex ?? 0), 1),
     ebitdaEffect: round(ebitdaEffect, 1),
-    recommendationBlocked: missingMaterialCount >= 1,
+    recommendationBlocked: recommendationStatus === "BLOCKED",
+    recommendationStatus,
     missingMaterialCount,
+    materialUnverifiedCount,
     totalDistributions: round(totalDistributions, 1),
     equityInvested: round(equityInvested, 1),
     terminalValue: round(yearFive?.terminalValue ?? 0, 1),

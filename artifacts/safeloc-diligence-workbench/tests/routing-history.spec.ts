@@ -31,6 +31,12 @@ test.describe("hash routing and browser history", () => {
     await expect(page).toHaveURL(/#how-it-works$/);
     await expect(page).toHaveTitle("SafeLoc · How It Works");
     await expect(page.getByRole("heading", { name: /A rating tells you what was reported/i })).toBeVisible();
+    await expect(page.getByTestId("tour-sri-context")).toContainText("Responsible investors helped capitalize the AI revolution.");
+    await expect(page.getByTestId("tour-sri-context")).toContainText("That thesis worked.");
+    await expect(page.getByTestId("tour-sri-context")).toContainText("The sustainability community helped birth the AI economy.");
+    await expect(page.getByTestId("tour-sri-context")).toContainText("understand the technology well enough to steer it");
+    await expect(page.getByTestId("tour-builder-story")).toContainText("Sustainability professionals helped build the AI economy.");
+    await expect(page.getByTestId("tour-builder-story")).toContainText("rather than watching from the sidelines.");
     await expect(page.getByText("$130 billion worth of AI data center projects", { exact: false })).toBeVisible();
     await expect(page.locator("[data-testid^='timeline-milestone-']")).toHaveCount(6);
     await expect(page.locator("[data-testid^='tour-screen-']")).toHaveCount(5);
@@ -44,6 +50,18 @@ test.describe("hash routing and browser history", () => {
     await page.goto("/#not-a-screen");
     await expect(page).toHaveURL(/#brief$/);
     await expect(page.getByTestId("button-navigate-brief")).toHaveAttribute("aria-current", "step");
+  });
+
+  test("shows the complete SRI origin story in the product tour", async ({ page }) => {
+    await page.goto("/#how-it-works");
+
+    const context = page.getByTestId("tour-sri-context");
+    await expect(context).toContainText("Responsible investors helped capitalize the AI revolution. Sustainability screening selected for well-governed, capital-efficient companies and concentrated capital in the stocks best positioned to lead the next technology wave. That thesis worked.");
+    await expect(context).toContainText("The sustainability community helped birth the AI economy. That creates a responsibility to understand the technology well enough to steer it. This tool was built by a sustainability professional who did exactly that");
+
+    const builderStory = page.getByTestId("tour-builder-story");
+    await expect(builderStory).toContainText("Built by LeAndrew Gordon, Founder and CEO of SafeLoc. Former Private Wealth Financial Advisor. Chartered SRI Counselor.");
+    await expect(builderStory).toContainText("Sustainability professionals helped build the AI economy. This tool exists because that responsibility does not end at the screening level. It extends to the infrastructure layer, where the assumptions behind AI's growth are being tested by physical reality every day. Understanding AI well enough to build with it, and applying values-aligned evidence standards to what you build, is how the sustainability community steers this technology toward a better future rather than watching from the sidelines.");
   });
 
   test("uses SRI terminology while preserving formal fund names", async ({ page }) => {

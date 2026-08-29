@@ -263,9 +263,20 @@ export function HowItWorksTour({ onReturn, onOpenScreen }: HowItWorksTourProps) 
                 <h1 id="tour-context-title" className="max-w-4xl text-balance text-[clamp(2.6rem,6vw,5.7rem)] font-semibold leading-[0.96] tracking-[-0.065em]">
                   A rating tells you what was reported. <span className="text-[#d4e86b]">Diligence tests what can be trusted.</span>
                 </h1>
-                <p className="mt-7 max-w-3xl text-[15px] leading-7 text-[#d1dbe0] md:text-[17px] md:leading-8">
-                  In Q1 2026, $130 billion worth of AI data center projects were blocked or delayed across the United States. On August 3, 2026, Texas Governor Greg Abbott ordered a moratorium on all new data center grid connections until ERCOT completes a comprehensive audit of energy and water usage. The ERCOT interconnection queue holds 474 GW of requests, more than five times Texas record peak demand, with 90% from data centers. Traditional sustainability scorecards grade companies on what they reported last year. This tool tests whether the forward-looking assumptions behind a specific project are actually verified. That is the difference between a rating and diligence.
-                </p>
+                <div data-testid="tour-sri-context" className="mt-7 max-w-3xl space-y-5 text-[15px] leading-7 text-[#d1dbe0] md:text-[17px] md:leading-8">
+                  <p>
+                    Responsible investors helped capitalize the AI revolution. Sustainability screening selected for well-governed, capital-efficient companies and concentrated capital in the stocks best positioned to lead the next technology wave. That thesis worked.
+                  </p>
+                  <p>
+                    Now the infrastructure that revolution requires is testing every principle those investors hold: environmental stewardship, community impact, transparent governance, and evidence-based decision-making. $130 billion in AI data center projects were blocked or delayed in Q1 2026 alone. On August 3, 2026, Texas Governor Greg Abbott ordered a moratorium on all new data center grid connections until ERCOT audits energy and water usage across roughly 300 proposed facilities.
+                  </p>
+                  <p>
+                    The sustainability community helped birth the AI economy. That creates a responsibility to understand the technology well enough to steer it. This tool was built by a sustainability professional who did exactly that: learned to build with AI, applied values-aligned evidence standards to the infrastructure layer, and created something the market does not have.
+                  </p>
+                  <p>
+                    In Q1 2026, $130 billion worth of AI data center projects were blocked or delayed across the United States. On August 3, 2026, Texas Governor Greg Abbott ordered a moratorium on all new data center grid connections until ERCOT completes a comprehensive audit of energy and water usage. The ERCOT interconnection queue holds 474 GW of requests, more than five times Texas record peak demand, with 90% from data centers. Traditional sustainability scorecards grade companies on what they reported last year. This tool tests whether the forward-looking assumptions behind a specific project are actually verified. That is the difference between a rating and diligence.
+                  </p>
+                </div>
                 <div className="mt-8 flex flex-wrap items-center gap-4">
                   <TourJump id="tour-workflow" className="inline-flex min-h-11 items-center gap-2 rounded-md border border-[#60717f] px-4 py-3 text-[10px] font-bold uppercase tracking-[0.14em] text-[#f6f7f2] hover:border-[#d4e86b] hover:text-[#d4e86b]">
                     Explore the five screens <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" />
@@ -453,7 +464,10 @@ export function HowItWorksTour({ onReturn, onOpenScreen }: HowItWorksTourProps) 
             <div>
               <TourKicker>05 / provenance of the work</TourKicker>
               <h2 id="tour-built-by-title" className="max-w-2xl text-[35px] font-semibold leading-[0.98] tracking-[-0.055em] md:text-[52px]">Built for the moment when a model needs a witness.</h2>
-              <p className="mt-6 max-w-2xl text-[15px] leading-7 text-[#d1dbe0]">Built by LeAndrew Gordon, Founder and CEO of SafeLoc. Former Private Wealth Financial Advisor. Chartered SRI Counselor. Top 25 AI Builder (Replit, top 1% of users). Built for the Growth for Impact Conference, November 2026, Phoenix, AZ.</p>
+              <div data-testid="tour-builder-story" className="mt-6 max-w-2xl space-y-5 text-[15px] leading-7 text-[#d1dbe0]">
+                <p>Built by LeAndrew Gordon, Founder and CEO of SafeLoc. Former Private Wealth Financial Advisor. Chartered SRI Counselor. Top 25 AI Builder (Replit, top 1% of users). Built for the Growth for Impact Conference, November 2026, Phoenix, AZ.</p>
+                <p>Sustainability professionals helped build the AI economy. This tool exists because that responsibility does not end at the screening level. It extends to the infrastructure layer, where the assumptions behind AI&apos;s growth are being tested by physical reality every day. Understanding AI well enough to build with it, and applying values-aligned evidence standards to what you build, is how the sustainability community steers this technology toward a better future rather than watching from the sidelines.</p>
+              </div>
               <div className="mt-7 flex flex-wrap items-center gap-4 font-mono text-[10px] uppercase tracking-[0.12em] text-[#9dafb8]">
                 <span className="inline-flex items-center gap-2"><Zap aria-hidden="true" className="h-3.5 w-3.5 text-[#d4e86b]" /> SafeLoc</span>
                 <span aria-hidden="true" className="h-px w-8 bg-[#60717f]" />

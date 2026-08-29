@@ -9,22 +9,59 @@ const routes = [
 ] as const;
 
 test.describe("hash routing and browser history", () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto("/");
-    await page.evaluate(() => window.localStorage.clear());
-  });
-
   test("supports all direct links and normalizes invalid hashes", async ({ page }) => {
     for (const [route, label] of routes) {
       await page.goto(`/#${route}`);
       await expect(page).toHaveURL(new RegExp(`#${route}$`));
-      await expect(page.getByTestId(`button-navigate-${route}`)).toHaveAttribute("aria-current", "step");
       await expect(page).toHaveTitle(`SafeLoc · ${label}`);
+      await expect(page.getByTestId(`button-navigate-${route}`)).toHaveAttribute("aria-current", "step");
     }
+
+    await page.goto("/#how-it-works");
+    await expect(page).toHaveURL(/#how-it-works$/);
+    await expect(page).toHaveTitle("SafeLoc · How It Works");
+    await expect(page.getByRole("heading", { name: /A rating tells you what was reported/i })).toBeVisible();
+    await expect(page.getByText("$130 billion worth of AI data center projects", { exact: false })).toBeVisible();
+    await expect(page.locator("[data-testid^='timeline-milestone-']")).toHaveCount(6);
+    await expect(page.locator("[data-testid^='tour-screen-']")).toHaveCount(5);
+    await expect(page.getByRole("heading", { name: "Verified Evidence" })).toBeVisible();
+    await expect(page.getByTestId("tour-source-group-1")).toContainText("Infrastructure & Energy");
+    await expect(page.getByTestId("button-return-workbench-top")).toBeVisible();
+    await expect(page.getByTestId("button-return-workbench-bottom")).toBeVisible();
+    await page.getByTestId("link-tour-tour-workflow").click();
+    await expect(page.getByRole("heading", { name: "Five screens. One evidence chain." })).toBeInViewport();
 
     await page.goto("/#not-a-screen");
     await expect(page).toHaveURL(/#brief$/);
     await expect(page.getByTestId("button-navigate-brief")).toHaveAttribute("aria-current", "step");
+  });
+
+  test("opens and returns from the tour using the desktop header", async ({ page }) => {
+    await page.goto("/#brief");
+    if (!(await page.getByTestId("button-how-it-works").isVisible())) return;
+
+    await page.getByTestId("button-how-it-works").click();
+    await expect(page).toHaveURL(/#how-it-works$/);
+    await expect(page.getByRole("heading", { name: /A rating tells you what was reported/i })).toBeVisible();
+    await page.getByTestId("button-return-workbench-top").click();
+    await expect(page).toHaveURL(/#brief$/);
+    await expect(page.getByTestId("button-navigate-brief")).toHaveAttribute("aria-current", "step");
+  });
+
+  test("opens and returns from the tour using mobile navigation", async ({ page }) => {
+    await page.goto("/#brief");
+    if (!(await page.getByTestId("button-open-menu").isVisible())) return;
+
+    const menuButton = page.getByTestId("button-open-menu");
+    await expect(menuButton).toHaveAttribute("aria-expanded", "false");
+    await menuButton.click();
+    await expect(menuButton).toHaveAttribute("aria-expanded", "true");
+    await expect(page.getByTestId("mobile-navigation")).toBeVisible();
+    await page.getByTestId("mobile-navigate-how-it-works").click();
+    await expect(page).toHaveURL(/#how-it-works$/);
+    await expect(page.getByRole("heading", { name: /A rating tells you what was reported/i })).toBeVisible();
+    await page.getByTestId("button-return-workbench-bottom").click();
+    await expect(page).toHaveURL(/#brief$/);
   });
 
   test("preserves navigation order through back and forward", async ({ page }) => {

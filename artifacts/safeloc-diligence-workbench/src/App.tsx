@@ -69,9 +69,10 @@ import {
   prioritizeAdvisorQuestions,
   type RiskTier,
 } from "@/model/advisorLens";
+import { HowItWorksTour } from "@/HowItWorksTour";
 
 type Screen = "brief" | "evidence" | "materiality" | "decision" | "advisor";
-type AppRoute = Screen | "value-chain";
+type AppRoute = Screen | "value-chain" | "how-it-works";
 
 const screens: { id: Screen; number: string; label: string; short: string; icon: typeof BookOpen }[] = [
   { id: "brief", number: "01", label: "Case Brief", short: "Frame", icon: BookOpen },
@@ -244,7 +245,7 @@ function ProgressNav({ current, onNavigate }: { current: Screen; onNavigate: (sc
   );
 }
 
-function Header({ onMenu, onReset, onValueChain, onWorkbench, route, sessionRestored, mobileOpen, menuButtonRef }: { onMenu: () => void; onReset: () => void; onValueChain: () => void; onWorkbench: () => void; route: AppRoute; sessionRestored: boolean; mobileOpen: boolean; menuButtonRef: RefObject<HTMLButtonElement | null> }) {
+function Header({ onMenu, onReset, onHowItWorks, onValueChain, onWorkbench, route, sessionRestored, mobileOpen, menuButtonRef }: { onMenu: () => void; onReset: () => void; onHowItWorks: () => void; onValueChain: () => void; onWorkbench: () => void; route: AppRoute; sessionRestored: boolean; mobileOpen: boolean; menuButtonRef: RefObject<HTMLButtonElement | null> }) {
   return (
     <header className="border-b border-[#d9e0e4] bg-[#122232] px-4 py-4 text-[#f6f7f2] md:px-8 md:py-5">
       <div className="mx-auto flex max-w-[1480px] items-center justify-between gap-4">
@@ -286,6 +287,15 @@ function Header({ onMenu, onReset, onValueChain, onWorkbench, route, sessionRest
           >
             The AI Chain
           </button>
+           <button
+             data-testid="button-how-it-works"
+             type="button"
+             onClick={onHowItWorks}
+             aria-current={route === "how-it-works" ? "page" : undefined}
+             className={`hidden min-h-11 items-center gap-2 rounded border px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] transition-colors sm:inline-flex ${route === "how-it-works" ? "border-[#d4e86b] bg-[#d4e86b] text-[#122232]" : "border-[#60717f] text-[#d4e86b] hover:border-[#d4e86b] hover:bg-white/10"}`}
+           >
+             <Info aria-hidden="true" className="h-3.5 w-3.5" /> How It Works
+           </button>
           {route === "value-chain" && (
             <button
               data-testid="button-return-to-workbench"
@@ -1654,8 +1664,8 @@ function screenFromHash(hash: string): Screen | null {
   return screens.some((screen) => screen.id === route) ? route : null;
 }
 function routeFromHash(hash: string): AppRoute | null {
-  if (hash.replace(/^#/, "") === "value-chain") return "value-chain";
-  return screenFromHash(hash);
+  const route = hash.replace(/^#/, "") as AppRoute;
+  return route === "value-chain" || route === "how-it-works" || screens.some((screen) => screen.id === route) ? route : null;
 }
 function AppShell() {
   const [route, setRoute] = useState<AppRoute>(() => typeof window === "undefined" ? "brief" : routeFromHash(window.location.hash) ?? "brief");
@@ -1672,6 +1682,7 @@ function AppShell() {
   }, [diligence.metrics.lastChange, diligence.clearLastChange]);
 
   useEffect(() => {
+    let isInitialSync = true;
     const syncFromHash = () => {
       const next = routeFromHash(window.location.hash);
       if (!next) {
@@ -1680,16 +1691,18 @@ function AppShell() {
       } else {
         setRoute(next);
       }
-      setMobileOpen(false);
+      if (!isInitialSync) setMobileOpen(false);
     };
     syncFromHash();
+    isInitialSync = false;
     window.addEventListener("hashchange", syncFromHash);
     return () => window.removeEventListener("hashchange", syncFromHash);
   }, []);
 
   useEffect(() => {
     const activeScreen = screens.find((item) => item.id === route);
-    document.title = route === "value-chain" ? "SafeLoc · The AI Chain" : activeScreen ? `SafeLoc · ${activeScreen.label}` : "SafeLoc Diligence Workbench";
+    document.title = route === "value-chain" ? "SafeLoc · The AI Chain" : route === "how-it-works" ? "SafeLoc · How It Works" : activeScreen ? `SafeLoc · ${activeScreen.label}` : "SafeLoc Diligence Workbench";
+    window.scrollTo({ top: 0, behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ? "auto" : "smooth" });
   }, [route]);
 
   const go = (next: AppRoute) => {
@@ -1772,6 +1785,7 @@ function AppShell() {
       <Header
         onMenu={() => setMobileOpen((value) => !value)}
         onReset={() => setResetOpen(true)}
+        onHowItWorks={() => go("how-it-works")}
         onValueChain={() => go("value-chain")}
         onWorkbench={() => go("brief")}
         route={route}
@@ -1779,7 +1793,7 @@ function AppShell() {
         mobileOpen={mobileOpen}
         menuButtonRef={menuButtonRef}
       />
-      {route !== "value-chain" && <ProgressNav current={route} onNavigate={go} />}
+      {route !== "value-chain" && route !== "how-it-works" && <ProgressNav current={route} onNavigate={go} />}
       {mobileOpen && (
         <>
           <div
@@ -1791,6 +1805,7 @@ function AppShell() {
           <nav
             ref={menuRef}
             id="mobile-navigation"
+             data-testid="mobile-navigation"
             aria-label="Mobile navigation"
             className="fixed inset-x-4 top-[76px] z-30 max-h-[calc(100dvh-92px)] overflow-y-auto rounded-lg border border-[#cbd8d4] bg-[#f9faf8] p-2 shadow-lg md:hidden"
           >
@@ -1811,6 +1826,9 @@ function AppShell() {
             <button data-testid="mobile-navigate-value-chain" type="button" aria-current={route === "value-chain" ? "page" : undefined} onClick={() => go("value-chain")} className={`flex w-full items-center gap-3 rounded px-3 py-3 text-left text-[11px] font-semibold ${route === "value-chain" ? "bg-[#122232] text-[#d4e86b]" : "text-[#52616b]"}`}>
               <Network aria-hidden="true" className="h-4 w-4" /> The AI Chain
             </button>
+            <button data-testid="mobile-navigate-how-it-works" type="button" aria-current={route === "how-it-works" ? "page" : undefined} onClick={() => go("how-it-works")} className={`flex min-h-11 w-full items-center gap-3 rounded px-3 py-3 text-left text-[11px] font-semibold ${route === "how-it-works" ? "bg-[#122232] text-[#d4e86b]" : "text-[#52616b]"}`}>
+              <Info aria-hidden="true" className="h-4 w-4" /> How It Works
+            </button>
             {route === "value-chain" && <button data-testid="mobile-return-to-workbench" type="button" onClick={() => go("brief")} className="flex w-full items-center gap-3 rounded px-3 py-3 text-left text-[11px] font-semibold text-[#ba2f45]"><ArrowLeft aria-hidden="true" className="h-4 w-4" /> Return to Workbench</button>}
           </nav>
         </>
@@ -1827,23 +1845,29 @@ function AppShell() {
           </div>
         </div>
       )}
-      <div className="mx-auto flex max-w-[1480px]">
-         {route !== "value-chain" && <ShellAside screen={route} metrics={diligence.metrics} onNavigate={go} onReset={() => setResetOpen(true)} />}
-        <main className="min-w-0 flex-1 px-4 py-7 md:px-8 md:py-10 xl:px-12">
-           <div className={`mx-auto ${route === "value-chain" ? "max-w-[1320px]" : "max-w-[1160px]"}`}>
-             {route === "value-chain" && <ValueChain onWorkbench={() => go("brief")} />}
-             {route === "brief" && <CaseBrief onNavigate={go} />}
-             {route === "evidence" && <EvidenceRoom onNavigate={go} />}
-             {route === "materiality" && <FinancialMateriality onNavigate={go} />}
-             {route === "decision" && <DecisionReview onNavigate={go} />}
-             {route === "advisor" && <AdvisorLens onNavigate={go} />}
+      {route === "how-it-works" ? (
+        <HowItWorksTour onReturn={() => go("brief")} onOpenScreen={go} />
+      ) : (
+        <>
+          <div className="mx-auto flex max-w-[1480px]">
+            {route !== "value-chain" && <ShellAside screen={route} metrics={diligence.metrics} onNavigate={go} onReset={() => setResetOpen(true)} />}
+            <main className="min-w-0 flex-1 px-4 py-7 md:px-8 md:py-10 xl:px-12">
+              <div className={`mx-auto ${route === "value-chain" ? "max-w-[1320px]" : "max-w-[1160px]"}`}>
+                {route === "value-chain" && <ValueChain onWorkbench={() => go("brief")} />}
+                {route === "brief" && <CaseBrief onNavigate={go} />}
+                {route === "evidence" && <EvidenceRoom onNavigate={go} />}
+                {route === "materiality" && <FinancialMateriality onNavigate={go} />}
+                {route === "decision" && <DecisionReview onNavigate={go} />}
+                {route === "advisor" && <AdvisorLens onNavigate={go} />}
+              </div>
+            </main>
           </div>
-        </main>
-      </div>
-      <DiligenceLiveRegions metrics={diligence.metrics} />
-      <footer className="border-t border-[#d9e0e4] bg-[#eef2f1] px-4 py-6 md:px-8">
-        <div className="mx-auto flex max-w-[1480px] flex-col justify-between gap-3 text-[9px] uppercase tracking-[0.12em] text-[#52616b] sm:flex-row sm:items-center"><span>SafeLoc Diligence Workbench</span><span>Proof of Concept | Transaction assumptions are synthetic | Environmental and infrastructure data from public sources</span><span className="font-mono">2024 / 24-017</span></div>
-      </footer>
+          <DiligenceLiveRegions metrics={diligence.metrics} />
+          <footer className="border-t border-[#d9e0e4] bg-[#eef2f1] px-4 py-6 md:px-8">
+            <div className="mx-auto flex max-w-[1480px] flex-col justify-between gap-3 text-[9px] uppercase tracking-[0.12em] text-[#52616b] sm:flex-row sm:items-center"><span>SafeLoc Diligence Workbench</span><span>Proof of Concept | Transaction assumptions are synthetic | Environmental and infrastructure data from public sources</span><span className="font-mono">2024 / 24-017</span></div>
+          </footer>
+        </>
+      )}
       <AlertDialog open={resetOpen} onOpenChange={setResetOpen}>
         <AlertDialogContent className="border-[#cbd8d4] bg-[#f9faf8]">
           <AlertDialogHeader>

@@ -1,8 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap');
 @import 'tailwindcss';
-@import 'tw-animate-css';
-@plugin "@tailwindcss/typography";
-
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -50,12 +47,6 @@
   --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
   --color-sidebar-accent-border: var(--sidebar-accent-border);
   --color-sidebar-ring: hsl(var(--sidebar-ring));
-
-  --color-evidence-verified: hsl(var(--evidence-verified));
-  --color-evidence-management: hsl(var(--evidence-management));
-  --color-evidence-inference: hsl(var(--evidence-inference));
-  --color-evidence-assumption: hsl(var(--evidence-assumption));
-  --color-evidence-missing: hsl(var(--evidence-missing));
 
   --font-sans: var(--app-font-sans);
   --font-mono: var(--app-font-mono);
@@ -106,12 +97,6 @@
   --sidebar-accent-foreground: 210 40% 98%;
   --sidebar-ring: 217 32% 17%;
 
-  --evidence-verified: 153 60% 40%;
-  --evidence-management: 214 90% 52%;
-  --evidence-inference: 262 70% 55%;
-  --evidence-assumption: 35 92% 50%;
-  --evidence-missing: 350 80% 50%;
-
   --app-font-sans: 'Outfit', sans-serif;
   --app-font-mono: 'Space Mono', monospace;
   
@@ -160,13 +145,6 @@
   }
 }
 
-.glass-panel {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.5);
-}
-
 .metric-card {
   @apply bg-white border border-border rounded-lg p-5 shadow-sm transition-all duration-300;
 }
@@ -182,25 +160,6 @@
 
 :where(button, a, select):focus:not(:focus-visible) {
   outline: none;
-}
-
-.nav-active {
-  @apply relative;
-}
-.nav-active::after {
-  content: '';
-  @apply absolute -bottom-[1px] left-0 w-full h-[2px] bg-primary rounded-t-md;
-}
-
-/* Animations */
-@keyframes pulse-ring {
-  0% { transform: scale(0.8); opacity: 0.5; }
-  100% { transform: scale(2); opacity: 0; }
-}
-.animate-pulse-ring::before {
-  content: '';
-  @apply absolute inset-0 rounded-full border border-current;
-  animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -220,9 +179,7 @@
   [class*="scale-"],
   [class*="translate-"],
   .metric-card:hover,
-  .motion-bar,
-  .animate-pulse,
-  .animate-pulse-ring::before {
+  .motion-bar {
     animation: none !important;
     transition: none !important;
     transform: none !important;

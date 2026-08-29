@@ -97,7 +97,6 @@ export type CashFlowModel = {
   revenueDelayMonths: number;
   incrementalCapex: number;
   opexChange: number;
-  ebitdaEffect: number;
   recommendationBlocked: boolean;
   recommendationStatus: RecommendationStatus;
   missingMaterialCount: number;
@@ -537,7 +536,6 @@ function runModel(evidence: EvidenceRecord): CashFlowModel {
   );
   const yearFive = schedule[5];
   const firstOperatingYear = schedule.find((year) => year.year > 0 && year.operatingUtilization > 0);
-  const ebitdaEffect = -(yearFive?.totalOpex ?? 0) * 0.8 / 10;
 
   const assumptions: ModelAssumptions = {
     capacityMW: CAPACITY_MW,
@@ -601,7 +599,6 @@ function runModel(evidence: EvidenceRecord): CashFlowModel {
     revenueDelayMonths,
     incrementalCapex: round(capexContingency, 1),
     opexChange: round((yearFive?.totalOpex ?? 0) - (firstOperatingYear?.totalOpex ?? 0), 1),
-    ebitdaEffect: round(ebitdaEffect, 1),
     recommendationBlocked: recommendationStatus === "BLOCKED",
     recommendationStatus,
     missingMaterialCount,

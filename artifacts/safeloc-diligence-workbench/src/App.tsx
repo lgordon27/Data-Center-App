@@ -3,7 +3,6 @@ import type { ReactNode, RefObject } from "react";
 import {
   ArrowLeft,
   ArrowRight,
-  ArrowUpRight,
   BarChart3,
   BookOpen,
   Check,
@@ -12,8 +11,8 @@ import {
   CircleDot,
   ClipboardCheck,
   CloudLightning,
-  ExternalLink,
   FileCheck2,
+  FileText,
   Gauge,
   Info,
   Landmark,
@@ -240,8 +239,8 @@ function ProgressNav({ current, onNavigate }: { current: Screen; onNavigate: (sc
           })}
         </nav>
         <div className="hidden items-center gap-2 py-3 md:flex">
-          <span className="h-2 w-2 animate-pulse rounded-full bg-[#0b7a63]" aria-hidden="true" />
-          <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#52616b]">Local model · live</span>
+           <span className="h-2 w-2 rounded-full bg-[#0b7a63]" aria-hidden="true" />
+           <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#52616b]">Client-side model · static data</span>
         </div>
       </div>
     </div>
@@ -401,7 +400,7 @@ function DiligenceLiveRegions({ metrics }: { metrics: ReturnType<typeof useDilig
   );
 }
 
-function CaseBrief({ metrics, onNavigate }: { metrics: ReturnType<typeof useDiligence>["metrics"]; onNavigate: (screen: Screen) => void }) {
+function CaseBrief({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
   return (
     <div>
       <PageIntro
@@ -525,7 +524,7 @@ function EvidenceRow({ item, onChange }: { item: EvidenceItem; onChange: (id: st
         <div className="mt-1 pl-3.5 text-[10px] leading-4 text-[#52616b]">{item.description}</div>
       </div>
       <div className="pl-3.5 md:pl-0"><span className="font-mono text-[13px] font-bold text-[#122232]">{item.value}</span> <span className="text-[10px] text-[#52616b]">{item.unit}</span></div>
-      <div className="pl-3.5 md:pl-0"><div className="flex items-start gap-1.5 text-[10px] leading-4 text-[#52616b]"><ExternalLink className="mt-0.5 h-3 w-3 shrink-0 text-[#52616b]" /><span>{item.citation}</span></div></div>
+       <div className="pl-3.5 md:pl-0"><div className="flex items-start gap-1.5 text-[10px] leading-4 text-[#52616b]"><FileText aria-hidden="true" className="mt-0.5 h-3 w-3 shrink-0 text-[#52616b]" /><span>{item.citation}</span></div></div>
       <div className="relative pl-3.5 md:pl-0">
         <select
           data-testid={`select-classification-${item.id}`}
@@ -545,7 +544,7 @@ function EvidenceRow({ item, onChange }: { item: EvidenceItem; onChange: (id: st
 
 function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
   const { evidence, updateClassification, metrics } = useDiligence();
-  const items = Object.values(evidence);
+  const items = useMemo(() => Object.values(evidence), [evidence]);
   const counts = useMemo(() => classifications.map((classification) => ({ classification, count: items.filter((item) => item.classification === classification).length })), [items]);
   return (
     <div>
@@ -1241,7 +1240,7 @@ function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
              <div data-testid="card-fund-ishares" className="rounded-lg border border-white/10 bg-white/5 p-4"><div className="flex items-start gap-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-[#e9e0f7] text-[#482873]"><Landmark className="h-4 w-4" /></div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center justify-between gap-2"><div className="text-[11px] font-bold">iShares ESG Advanced MSCI USA ETF</div><RiskIndicator tier={riskTier} testId="badge-fund-ishares-risk" /></div><div className="mt-1 text-[10px] text-[#9dafb8]">Public equity exposure · ESG-screened broad market</div></div></div></div>
              <div data-testid="card-fund-msci" className="rounded-lg border border-white/10 bg-white/5 p-4"><div className="flex items-start gap-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-[#d4e86b] text-[#314207]"><BarChart3 className="h-4 w-4" /></div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center justify-between gap-2"><div className="text-[11px] font-bold">MSCI KLD 400 Social Index</div><RiskIndicator tier={riskTier} testId="badge-fund-msci-risk" /></div><div className="mt-1 text-[10px] text-[#9dafb8]">Socially screened benchmark · stewardship reference</div></div></div></div>
           </div>
-          <div className="mt-7 flex items-center gap-3 border-t border-white/15 pt-5"><div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#f5ddd5] font-mono text-[10px] font-bold text-[#ba2f45]">NVDA</div><div><div className="text-[10px] uppercase tracking-[0.13em] text-[#9dafb8]">Largest holding signal</div><div className="mt-1 text-sm font-semibold text-[#f5ddd5]">NVIDIA</div></div><ArrowUpRight className="ml-auto h-4 w-4 text-[#b9d43a]" /></div>
+           <div className="mt-7 flex items-center gap-3 border-t border-white/15 pt-5"><div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#f5ddd5] font-mono text-[10px] font-bold text-[#ba2f45]">NVDA</div><div><div className="text-[10px] uppercase tracking-[0.13em] text-[#9dafb8]">Largest holding signal</div><div className="mt-1 text-sm font-semibold text-[#f5ddd5]">NVIDIA</div></div></div>
         </section>
         <section className="rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-7">
           <SectionKicker>Risk transmission map</SectionKicker>
@@ -1478,7 +1477,7 @@ function AppShell() {
         <ShellAside screen={screen} metrics={diligence.metrics} onNavigate={go} onReset={() => setResetOpen(true)} />
         <main className="min-w-0 flex-1 px-4 py-7 md:px-8 md:py-10 xl:px-12">
           <div className="mx-auto max-w-[1160px]">
-            {screen === "brief" && <CaseBrief metrics={diligence.metrics} onNavigate={go} />}
+            {screen === "brief" && <CaseBrief onNavigate={go} />}
             {screen === "evidence" && <EvidenceRoom onNavigate={go} />}
             {screen === "materiality" && <FinancialMateriality onNavigate={go} />}
             {screen === "decision" && <DecisionReview onNavigate={go} />}

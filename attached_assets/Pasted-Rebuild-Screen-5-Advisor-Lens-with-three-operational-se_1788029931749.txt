@@ -1,7 +1,7 @@
 Rebuild Screen 5 (Advisor Lens) with three operational sections plus the existing governance gap calculation.
 
 SECTION 1: YOUR CLIENTS OWN THIS
-Show the exposure chain visually: Client Portfolio -> ESG Fund -> NVIDIA (20%+ of iShares ESG Advanced) -> GPU Orders -> Hyperscaler CAPEX ($650B committed) -> Data Center Buildout -> Stargate Abilene (the project just analyzed).
+Show the exposure chain visually: Client Portfolio -> values-aligned fund -> NVIDIA (20%+ of iShares ESG Advanced) -> GPU Orders -> Hyperscaler CAPEX ($650B committed) -> Data Center Buildout -> Stargate Abilene (the project just analyzed).
 
 Show aggregate risk data: $130B in projects paused Q1 2026. Bloomberg NEF estimates $8B in data center revenue losses by Q1 2027. NVIDIA is the single largest contributor to S&P 500 earnings growth; without it, Mag 7 drops from 22.8% to 6.4%.
 
@@ -10,7 +10,7 @@ Then the epistemic gap: "MSCI gave NVIDIA an AAA ESG rating based on corporate d
 SECTION 2: HOW TO TALK TO YOUR CLIENT
 Three pre-framed client conversations, each with the client question, the advisor response framework, and a specific action:
 
-Conversation 1 - Client asks "Is my ESG fund still a good investment?"
+Conversation 1 - Client asks "Is my values-aligned fund still a good investment?"
 Frame: The question is not about the rating. It is about whether the fund manager is conducting site-level diligence on the infrastructure assumptions driving top holdings' earnings. Action: Ask your fund manager what site-level evidence standards they apply to AI infrastructure holdings.
 
 Conversation 2 - Client asks "Should I be worried about AI risk in my portfolio?"

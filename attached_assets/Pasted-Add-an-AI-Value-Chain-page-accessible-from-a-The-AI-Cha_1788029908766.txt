@@ -6,7 +6,7 @@ The chain:
 
 1. CHIP FABRICATION - "Where AI begins physically. Semiconductor fabs produce the silicon powering every AI model." Key players: TSMC, Samsung, Intel. Evidence note: "Supply concentrated in geopolitically sensitive regions creates single points of failure."
 
-2. CHIP DESIGN - "The architectures that determine what AI can do." Key players: NVIDIA, AMD, Broadcom. Evidence note: "NVIDIA holds MSCI ESG AAA rating and is 20%+ of major ESG funds. Forward revenue depends on downstream infrastructure buildout."
+2. CHIP DESIGN - "The architectures that determine what AI can do." Key players: NVIDIA, AMD, Broadcom. Evidence note: "NVIDIA holds MSCI ESG AAA rating and is 20%+ of major values-aligned funds. Forward revenue depends on downstream infrastructure buildout."
 
 3. HYPERSCALER PROCUREMENT - "$650 billion in committed AI infrastructure spending." Key players: Microsoft, Meta, Google, Amazon. Evidence note: "Capital commitments are announced. Whether the physical infrastructure can absorb them is unverified."
 

@@ -1235,7 +1235,7 @@ function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
   const prioritizedQuestions = useMemo(() => prioritizeAdvisorQuestions(evidence), [evidence]);
   const exposureChain = [
     { label: "Client Portfolio", detail: "Retirement, managed, or values-aligned allocation", tone: "neutral" },
-    { label: "ESG Fund", detail: "Screened fund or benchmark exposure", tone: "blue" },
+    { label: "Values-Aligned Fund", detail: "Screened fund or benchmark exposure", tone: "blue" },
     { label: "NVIDIA", detail: "20%+ of iShares ESG Advanced", tone: "coral" },
     { label: "GPU Orders", detail: "Demand for accelerated computing", tone: "lime" },
     { label: "Hyperscaler CAPEX", detail: "$650B committed", tone: "violet" },
@@ -1255,7 +1255,7 @@ function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
     {
       number: "01",
       topic: "ESG-fund quality",
-      question: "Is my ESG fund still a good investment?",
+      question: "Is my values-aligned fund still a good investment?",
       framework: "The question is not about the rating. It is about whether the fund manager is conducting site-level diligence on the infrastructure assumptions driving top holdings' earnings.",
       action: "Ask your fund manager what site-level evidence standards they apply to AI infrastructure holdings.",
       accent: "blue",
@@ -1289,7 +1289,7 @@ function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
         <SectionKicker>Live evidence posture</SectionKicker>
          <h2 id="advisor-live-posture-heading" className="sr-only">Live evidence posture</h2>
         <p className="max-w-4xl text-[18px] font-semibold leading-7 tracking-[-0.025em] text-[#122232] md:text-[21px]">
-          Based on current evidence quality, {verifiedCount} of {evidenceCount} inputs are verified. Data center exposure in common ESG funds carries {riskTier} unverified risk.
+          Based on current evidence quality, {verifiedCount} of {evidenceCount} inputs are verified. Data center exposure in common values-aligned funds carries {riskTier} unverified risk.
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-[#e1e8e5] pt-4">
           <RiskIndicator tier={riskTier} testId="badge-advisor-summary-risk" />

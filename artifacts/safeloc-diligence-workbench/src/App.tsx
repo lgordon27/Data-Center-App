@@ -1280,7 +1280,7 @@ function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
       <PageIntro
         eyebrow="05 / advisor handoff"
         title="Turn evidence quality into a client conversation."
-        description="A practical handoff for advisors reviewing how Stargate Abilene’s physical infrastructure assumptions may connect to public-market exposure. Use the live evidence posture, not a generic ESG label, to frame the next question."
+        description="A practical handoff for advisors reviewing how Stargate Abilene’s physical infrastructure assumptions may connect to public-market exposure. Use the live evidence posture, not a generic sustainability label, to frame the next question."
         right={<div className="flex items-center gap-2 rounded-md border border-[#cbb7ec] bg-[#eee7fa] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#7049b7]"><Leaf className="h-3.5 w-3.5" /> Advisor handoff</div>}
       />
       <section data-testid="text-advisor-summary" className="mb-5 rounded-xl border border-[#cbd8d4] bg-[#f9faf8] p-5 md:p-6" aria-labelledby="advisor-live-posture-heading">
@@ -1344,7 +1344,7 @@ function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
             <CircleAlert aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#607500]" />
             <div>
               <div className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#607500]">The epistemic gap</div>
-              <p data-testid="text-epistemic-gap" className="mt-2 text-[12px] font-semibold leading-5">The sustainability rating tells your client what NVIDIA reported: MSCI’s AAA ESG rating is based on corporate disclosures. This tool tests whether the physical infrastructure that rating depends on has been independently verified. Those are two different questions.</p>
+              <p data-testid="text-epistemic-gap" className="mt-2 text-[12px] font-semibold leading-5">The sustainability rating tells your client what NVIDIA reported: MSCI’s AAA sustainability rating is based on corporate disclosures. This tool tests whether the physical infrastructure that rating depends on has been independently verified. Those are two different questions.</p>
             </div>
           </div>
         </div>
@@ -1360,14 +1360,14 @@ function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
           </div>
           <p className="mt-3 max-w-2xl text-[11px] leading-5 text-[#63717a]">These indicators show the live unverified-exposure tier for funds and benchmarks that may carry AI infrastructure dependence. They are not a claim about fund quality by themselves.</p>
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <div data-testid="card-fund-ishares" className="rounded-lg border border-[#d9e0e4] bg-[#f9faf8] p-4"><div className="flex items-start gap-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-[#e9e0f7] text-[#482873]"><Landmark aria-hidden="true" className="h-4 w-4" /></div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-start justify-between gap-2"><div className="text-[11px] font-bold text-[#122232]">iShares ESG Advanced MSCI USA ETF</div><RiskIndicator tier={riskTier} testId="badge-fund-ishares-risk" /></div><div className="mt-1 text-[10px] text-[#6b7882]">Public equity exposure · ESG-screened broad market</div></div></div></div>
+            <div data-testid="card-fund-ishares" className="rounded-lg border border-[#d9e0e4] bg-[#f9faf8] p-4"><div className="flex items-start gap-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-[#e9e0f7] text-[#482873]"><Landmark aria-hidden="true" className="h-4 w-4" /></div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-start justify-between gap-2"><div className="text-[11px] font-bold text-[#122232]">iShares ESG Advanced MSCI USA ETF</div><RiskIndicator tier={riskTier} testId="badge-fund-ishares-risk" /></div><div className="mt-1 text-[10px] text-[#6b7882]">Public equity exposure · sustainability-screened broad market</div></div></div></div>
             <div data-testid="card-fund-msci" className="rounded-lg border border-[#d9e0e4] bg-[#f9faf8] p-4"><div className="flex items-start gap-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-[#d4e86b] text-[#314207]"><BarChart3 aria-hidden="true" className="h-4 w-4" /></div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-start justify-between gap-2"><div className="text-[11px] font-bold text-[#122232]">MSCI KLD 400 Social Index</div><RiskIndicator tier={riskTier} testId="badge-fund-msci-risk" /></div><div className="mt-1 text-[10px] text-[#6b7882]">Socially screened benchmark · stewardship reference</div></div></div></div>
           </div>
         </div>
         <div className="rounded-xl border border-[#d9e0e4] bg-[#f1f5f3] p-5 md:p-6">
           <SectionKicker>What the chain means</SectionKicker>
           <h2 className="text-[20px] font-semibold leading-tight tracking-[-0.03em] text-[#122232]">Ask where the evidence changes quality.</h2>
-          <p className="mt-3 text-[11px] leading-5 text-[#52616b]">The relevant ESG question is not whether a fund owns this exact campus. It is whether portfolio holdings carry unpriced drought, extreme-heat, downtime, and adaptation exposure while those risks remain invisible in the diligence chain.</p>
+          <p className="mt-3 text-[11px] leading-5 text-[#52616b]">The relevant sustainability question is not whether a fund owns this exact campus. It is whether portfolio holdings carry unpriced drought, extreme-heat, downtime, and adaptation exposure while those risks remain invisible in the diligence chain.</p>
           <div className="mt-5 flex items-start gap-3 border-t border-[#d9e0e4] pt-4"><CloudLightning aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#255bb7]" /><p className="text-[10px] font-medium leading-4 text-[#344550]">A rating based on corporate disclosures and a site-level infrastructure review can both be valid—and still answer different questions.</p></div>
         </div>
       </section>

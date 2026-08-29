@@ -121,7 +121,7 @@ const walkthrough = [
     icon: Network,
     purpose: "Translates the case into questions and implications an advisor can carry into a client conversation.",
     why: "A diligence file has to travel beyond the analyst who built it. Advisor Lens preserves the distinction between fact, inference, and assumption while surfacing the questions most likely to change a recommendation.",
-    lookFor: "Look for the prioritized questions, the ESG and portfolio context, and the visible warning when an answer is still an evidence gap.",
+    lookFor: "Look for the prioritized questions, the sustainability and portfolio context, and the visible warning when an answer is still an evidence gap.",
   },
 ] as const;
 
@@ -264,7 +264,7 @@ export function HowItWorksTour({ onReturn, onOpenScreen }: HowItWorksTourProps) 
                   A rating tells you what was reported. <span className="text-[#d4e86b]">Diligence tests what can be trusted.</span>
                 </h1>
                 <p className="mt-7 max-w-3xl text-[15px] leading-7 text-[#d1dbe0] md:text-[17px] md:leading-8">
-                  In Q1 2026, $130 billion worth of AI data center projects were blocked or delayed across the United States. On August 3, 2026, Texas Governor Greg Abbott ordered a moratorium on all new data center grid connections until ERCOT completes a comprehensive audit of energy and water usage. The ERCOT interconnection queue holds 474 GW of requests, more than five times Texas record peak demand, with 90% from data centers. Traditional ESG scorecards grade companies on what they reported last year. This tool tests whether the forward-looking assumptions behind a specific project are actually verified. That is the difference between a rating and diligence.
+                  In Q1 2026, $130 billion worth of AI data center projects were blocked or delayed across the United States. On August 3, 2026, Texas Governor Greg Abbott ordered a moratorium on all new data center grid connections until ERCOT completes a comprehensive audit of energy and water usage. The ERCOT interconnection queue holds 474 GW of requests, more than five times Texas record peak demand, with 90% from data centers. Traditional sustainability scorecards grade companies on what they reported last year. This tool tests whether the forward-looking assumptions behind a specific project are actually verified. That is the difference between a rating and diligence.
                 </p>
                 <div className="mt-8 flex flex-wrap items-center gap-4">
                   <TourJump id="tour-workflow" className="inline-flex min-h-11 items-center gap-2 rounded-md border border-[#60717f] px-4 py-3 text-[10px] font-bold uppercase tracking-[0.14em] text-[#f6f7f2] hover:border-[#d4e86b] hover:text-[#d4e86b]">

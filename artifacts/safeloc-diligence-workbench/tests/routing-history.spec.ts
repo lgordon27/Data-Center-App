@@ -15,6 +15,16 @@ test.describe("hash routing and browser history", () => {
       await expect(page).toHaveURL(new RegExp(`#${route}$`));
       await expect(page).toHaveTitle(`SafeLoc · ${label}`);
       await expect(page.getByTestId(`button-navigate-${route}`)).toHaveAttribute("aria-current", "step");
+      if (route === "brief") {
+        await expect(page.getByTestId("section-sri-context")).toContainText("We Helped Build This");
+        await expect(page.getByTestId("sri-context-callout")).toContainText("The companies building this infrastructure");
+      }
+      if (route === "evidence") {
+        await expect(page.getByTestId("text-evidence-sri-framing")).toContainText("Sustainability ratings grade companies on their disclosures.");
+      }
+      if (route === "materiality") {
+        await expect(page.getByTestId("text-materiality-sri-framing")).toContainText("Water stress is not a values issue sitting in a separate report.");
+      }
     }
 
     await page.goto("/#how-it-works");
@@ -34,6 +44,17 @@ test.describe("hash routing and browser history", () => {
     await page.goto("/#not-a-screen");
     await expect(page).toHaveURL(/#brief$/);
     await expect(page.getByTestId("button-navigate-brief")).toHaveAttribute("aria-current", "step");
+  });
+
+  test("uses SRI terminology while preserving formal fund names", async ({ page }) => {
+    await page.goto("/#advisor");
+    await expect(page.getByTestId("text-advisor-summary")).toContainText("values-aligned funds");
+    await expect(page.getByTestId("text-epistemic-gap")).toContainText("AAA sustainability rating");
+    await expect(page.getByTestId("card-fund-ishares")).toContainText("iShares ESG Advanced MSCI USA ETF");
+    await expect(page.getByTestId("card-fund-msci")).toContainText("MSCI KLD 400 Social Index");
+    await expect(page.getByTestId("card-fund-ishares")).toContainText("sustainability-screened broad market");
+    await expect(page.getByTestId("section-client-conversations")).toContainText("Values-aligned fund quality");
+    await expect(page.getByTestId("section-client-conversations")).not.toContainText("ESG-fund");
   });
 
   test("opens and returns from the tour using the desktop header", async ({ page }) => {

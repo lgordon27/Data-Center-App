@@ -259,6 +259,9 @@ export function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => vo
             </div>
           ))}
         </div>
+       <div data-testid="text-governed-ai-connection" className="mt-5 rounded-lg border border-[#607500]/25 bg-white/45 p-4 md:p-5">
+         <p className="text-[12px] font-semibold leading-5">You just experienced governed AI in this tool. An AI proposed evidence classifications. You decided which to accept. That interaction is the future of financial advising: AI accelerates the analysis, the advisor makes the judgment call. The Gallup data confirms what you already felt: 79% of Americans trust advisors. 3% trust AI. The advisor who can work with AI and govern its output has the most defensible position in the industry.</p>
+       </div>
         <div className="mt-5 grid gap-3 border-t border-[#607500]/25 pt-5 md:grid-cols-2">
           <div className="rounded-lg border border-[#607500]/25 bg-white/35 p-4"><div className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#607500]">Traditional screening</div><p className="mt-2 text-[13px] font-semibold leading-5">Reads corporate disclosures, assigns a rating, and treats the reported record as the decision surface.</p></div>
           <div className="rounded-lg border-2 border-[#607500]/45 bg-white/55 p-4"><div className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#607500]">Evidence-governed advising</div><p className="mt-2 text-[13px] font-semibold leading-5">Tests infrastructure assumptions, separates verified evidence from inference, and decides whether remaining exposure fits this client’s values, risk tolerance, and time horizon.</p></div>

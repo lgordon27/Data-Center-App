@@ -107,6 +107,10 @@ function EvidenceAssessment({
             </button>
           </div>
         </div>
+         <div className="mt-3 border-t border-[#d8e4de] pt-3">
+           <p data-testid={`ai-trust-context-${item.id}`} className="text-[10px] leading-4 text-[#52616b]">Only 3% of Americans have high confidence in AI for financial guidance. This suggestion is a starting point, not a conclusion. Your classification is the one the model uses.</p>
+           <p data-testid={`ai-trust-source-${item.id}`} className="mt-1 font-mono text-[9px] tracking-[0.08em] text-[#60707d]">Gallup/Edward Jones, August 2026</p>
+         </div>
       </div>
     );
   }

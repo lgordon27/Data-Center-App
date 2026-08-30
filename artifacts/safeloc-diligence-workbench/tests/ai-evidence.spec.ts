@@ -32,6 +32,8 @@ test.describe("AI evidence classification", () => {
     await expect(row.getByTestId("ai-assessment-community_risk")).toContainText("AI Assessment");
     await expect(row.getByTestId("badge-classification-missing")).toBeVisible();
     await expect(row).toContainText("Suggestion, not a determination");
+     await expect(row.getByTestId("ai-trust-context-community_risk")).toHaveText("Only 3% of Americans have high confidence in AI for financial guidance. This suggestion is a starting point, not a conclusion. Your classification is the one the model uses.");
+     await expect(row.getByTestId("ai-trust-source-community_risk")).toHaveText("Gallup/Edward Jones, August 2026");
     await expect(row.getByTestId("select-classification-community_risk")).toHaveValue("Verified Evidence");
     expect(requests).toBe(1);
 
@@ -92,6 +94,10 @@ test.describe("AI evidence classification", () => {
     expect(await page.getByTestId("select-classification-water_rights").inputValue()).toBe("Missing Evidence");
     expect(await page.getByTestId("select-classification-electricity_cost").inputValue()).toBe("Verified Evidence");
     await expect(page.locator("[data-testid^='ai-assessment-']")).toHaveCount(16);
+     await expect(page.locator("[data-testid^='ai-trust-context-']")).toHaveCount(16);
+     await expect(page.locator("[data-testid^='ai-trust-source-']")).toHaveCount(16);
+     await expect(page.getByTestId("ai-trust-context-electricity_cost")).toContainText("Your classification is the one the model uses.");
+     await expect(page.getByTestId("ai-trust-source-electricity_cost")).toHaveText("Gallup/Edward Jones, August 2026");
   });
 
   test("clears suggestions after refresh and displays manual-review errors", async ({ page }) => {
@@ -103,6 +109,8 @@ test.describe("AI evidence classification", () => {
     const row = page.getByTestId("row-evidence-electricity_cost");
     await row.getByTestId("button-analyze-ai-electricity_cost").click();
     await expect(row.getByTestId("text-ai-raw-response-electricity_cost")).toContainText("not structured");
+     await expect(row.locator("[data-testid^='ai-trust-context-']")).toHaveCount(0);
+     await expect(row.locator("[data-testid^='ai-trust-source-']")).toHaveCount(0);
     await page.reload();
     await expect(page.getByTestId("row-evidence-electricity_cost").getByTestId("ai-assessment-electricity_cost")).not.toBeVisible();
   });

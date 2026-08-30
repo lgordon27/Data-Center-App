@@ -457,6 +457,7 @@ test.describe("hash routing and browser history", () => {
     await expect(page.getByTestId("section-practice-value")).toContainText("3%");
     await expect(page.getByTestId("section-practice-value")).toContainText("4x");
     await expect(page.getByTestId("section-practice-value")).toContainText("zero statistical association with financial fulfillment");
+     await expect(page.getByTestId("text-governed-ai-connection")).toHaveText("You just experienced governed AI in this tool. An AI proposed evidence classifications. You decided which to accept. That interaction is the future of financial advising: AI accelerates the analysis, the advisor makes the judgment call. The Gallup data confirms what you already felt: 79% of Americans trust advisors. 3% trust AI. The advisor who can work with AI and govern its output has the most defensible position in the industry.");
     await expect(page.getByTestId("text-governance-irr-gap")).toHaveText(/-?\d+\.\d pts/);
     await expect(page.getByTestId("card-fund-ishares")).toBeVisible();
     await expect(page.getByTestId("advisor-question-water-rights")).toBeVisible();

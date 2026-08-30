@@ -181,6 +181,7 @@ test.describe("hash routing and browser history", () => {
         await expect(page.getByTestId("sri-context-callout")).toContainText("The companies building this infrastructure");
         await expect(page.getByTestId("brief-tier-2-callout")).toContainText("Stargate is a Tier 2 infrastructure project");
         await expect(page.getByTestId("brief-tier-2-callout")).toContainText("Chevron/Microsoft's Project Kilby bypassed the grid");
+        await expect(page.getByTestId("brief-tier-2-qualifier")).toHaveText(/public market context only.*not facility-level Stargate evidence.*not a synthetic transaction input/i);
       }
       if (route === "evidence") {
         await expect(page.getByTestId("text-evidence-sri-framing")).toContainText("Sustainability ratings grade companies on their disclosures.");
@@ -195,6 +196,7 @@ test.describe("hash routing and browser history", () => {
     await expect(page).toHaveTitle("SafeLoc · Home");
     await expect(page.getByTestId("home-bifurcation-framing")).toContainText("The AI infrastructure market is splitting in two.");
     await expect(page.getByTestId("home-bifurcation-framing")).toContainText("The companies in your portfolio are on both sides.");
+    await expect(page.getByTestId("home-bifurcation-qualifier")).toHaveText(/public market context only.*not facility-level Stargate evidence.*not a modeled financial input/i);
 
     await page.goto("/#how-it-works");
     await expect(page).toHaveURL(/#how-it-works$/);
@@ -554,5 +556,70 @@ test.describe("hash routing and browser history", () => {
     await page.goto("/");
     await expect(page.getByTestId("home-irr-verified")).toHaveText("18.4%");
     await expect(page.getByTestId("home-evidence-visual")).toHaveAttribute("aria-label", /18\.4%/);
+  });
+
+  test("keeps market comparisons adjacent to their provenance boundary", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.route("**/api/eia/electricity", (route) => route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ status: "fallback" }),
+    }));
+    await page.goto("/#evidence");
+
+    const initialEvidence = await page.locator("select[data-testid^='select-classification-']").evaluateAll((selects) =>
+      Object.fromEntries(selects.map((select) => [select.getAttribute("data-testid"), (select as HTMLSelectElement).value])),
+    );
+    await page.goto("/#materiality");
+    const initialModelInputs = await page.locator("[data-testid^='row-materiality-']").allTextContents();
+    const initialMaterialityMetrics = await Promise.all([
+      page.getByTestId("metric-project-irr").innerText(),
+      page.getByTestId("metric-moic").innerText(),
+      page.getByTestId("metric-coc").innerText(),
+      page.getByTestId("metric-payback").innerText(),
+      page.getByTestId("metric-npv").innerText(),
+    ]);
+
+    await page.goto("/");
+    const homeComparison = page.getByTestId("home-bifurcation-comparison");
+    await expect(homeComparison).toContainText("The companies in your portfolio are on both sides.");
+    await expect(homeComparison.locator("xpath=following-sibling::*[1]")).toHaveAttribute("data-testid", "home-bifurcation-qualifier");
+    await expect(page.getByTestId("home-bifurcation-qualifier")).toHaveText(/public market context only.*not facility-level Stargate evidence.*not a modeled financial input/i);
+
+    await page.goto("/#brief");
+    const briefComparison = page.getByTestId("brief-tier-2-comparison");
+    await expect(briefComparison).toContainText("Project Kilby");
+    await expect(briefComparison.locator("xpath=following-sibling::*[1]")).toHaveAttribute("data-testid", "brief-tier-2-qualifier");
+    await expect(page.getByTestId("brief-tier-2-qualifier")).toHaveText(/public market context only.*not facility-level Stargate evidence.*not a synthetic transaction input/i);
+
+    await page.goto("/#advisor");
+    const advisorExposure = page.getByTestId("advisor-tier-exposure");
+    const advisorQualifier = advisorExposure.getByTestId("advisor-exposure-qualifier");
+    await expect(advisorQualifier).toHaveText(/public market-context examples.*not facility-level Stargate evidence.*not modeled financial inputs/i);
+    await expect(advisorQualifier.locator("xpath=following-sibling::*[1]")).toHaveAttribute("data-testid", "advisor-exposure-comparisons");
+    await expect(advisorExposure.getByTestId("advisor-tier-microsoft")).toContainText("Project Kilby (Tier 1, proceeding)");
+
+    await page.goto("/#evidence");
+    const evidenceSurfaceText = await page.locator("body").innerText();
+    expect(evidenceSurfaceText).not.toContain("Project Kilby");
+    expect(evidenceSurfaceText).not.toContain("The companies in your portfolio are on both sides.");
+    const finalEvidence = await page.locator("select[data-testid^='select-classification-']").evaluateAll((selects) =>
+      Object.fromEntries(selects.map((select) => [select.getAttribute("data-testid"), (select as HTMLSelectElement).value])),
+    );
+    expect(finalEvidence).toEqual(initialEvidence);
+
+    await page.goto("/#materiality");
+    const finalMaterialityMetrics = await Promise.all([
+      page.getByTestId("metric-project-irr").innerText(),
+      page.getByTestId("metric-moic").innerText(),
+      page.getByTestId("metric-coc").innerText(),
+      page.getByTestId("metric-payback").innerText(),
+      page.getByTestId("metric-npv").innerText(),
+    ]);
+    await expect(page.getByTestId("portfolio-connection-strip")).toContainText("This is market context, not facility-level Stargate evidence or a new modeled input.");
+    expect(await page.locator("[data-testid^='row-materiality-']").allTextContents()).toEqual(initialModelInputs);
+    expect(finalMaterialityMetrics).toEqual(initialMaterialityMetrics);
+    const syntheticEconomicsText = await page.locator("#materiality-summary, [data-testid='panel-irr-waterfall'], [data-testid='panel-baseline-current'], [data-testid='disclosure-full-model-detail']").allTextContents();
+    expect(syntheticEconomicsText.join(" ")).not.toMatch(/Project Kilby|The companies in your portfolio are on both sides/i);
   });
 });

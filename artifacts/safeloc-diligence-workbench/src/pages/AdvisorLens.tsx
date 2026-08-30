@@ -143,9 +143,9 @@ export function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => vo
               <div className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#d4e86b]">Public context / portfolio exposure</div>
               <h3 className="mt-1 text-[19px] font-semibold tracking-[-0.025em] text-white">Your Clients Are on Both Sides</h3>
             </div>
-            <p className="max-w-md text-[10px] leading-4 text-[#9dafb8]">Exposure is not uniform. These are market-context examples, not facility-level Stargate evidence.</p>
           </div>
-          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          <p data-testid="advisor-exposure-qualifier" className="mt-2 max-w-md text-[10px] leading-4 text-[#9dafb8]">Exposure is not uniform. These are public market-context examples, not facility-level Stargate evidence and not modeled financial inputs.</p>
+          <div data-testid="advisor-exposure-comparisons" className="mt-4 grid gap-2 sm:grid-cols-2">
             {infrastructureExposure.map((entry) => (
               <div key={entry.id} data-testid={`advisor-tier-${entry.id}`} className="rounded-lg border border-white/10 bg-white/5 p-3">
                 <div className="font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-[#d4e86b]">{entry.company}</div>

@@ -169,8 +169,11 @@ export function Home() {
                 </p>
                 <div data-testid="home-bifurcation-framing" className="mt-5 max-w-2xl border-l-2 border-[#d4e86b]/70 pl-4">
                   <div className="font-mono text-[9px] font-bold uppercase tracking-[0.16em] text-[#d4e86b]">Public context / the market split</div>
-                  <p className="mt-2 text-[13px] leading-6 text-[#e0e8e2] md:text-[15px] md:leading-7">
+                  <p data-testid="home-bifurcation-comparison" className="mt-2 text-[13px] leading-6 text-[#e0e8e2] md:text-[15px] md:leading-7">
                     The AI infrastructure market is splitting in two. Projects that solved their constraints independently are proceeding. Projects dependent on public infrastructure are stalling. The companies in your portfolio are on both sides.
+                  </p>
+                  <p data-testid="home-bifurcation-qualifier" className="mt-2 font-mono text-[9px] uppercase leading-4 tracking-[0.08em] text-[#9dafb8]">
+                    Public market context only — not facility-level Stargate evidence and not a modeled financial input.
                   </p>
                 </div>
                 <a data-testid="button-open-workbench" href="#brief" className="mt-7 inline-flex items-center gap-3 rounded-md bg-[#d4e86b] px-5 py-3.5 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#122232] transition-transform hover:-translate-y-0.5">

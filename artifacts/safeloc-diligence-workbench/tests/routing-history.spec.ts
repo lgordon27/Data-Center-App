@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 const routes = [
   ["brief", "Case Brief"],
@@ -8,7 +8,113 @@ const routes = [
   ["advisor", "Advisor Lens"],
 ] as const;
 
-    const visual = page.getByTestId("home-evidence-visual");
+async function expectTourLayoutToStayReadable(page: Page, selector: string) {
+  const overflow = await page.evaluate(() => ({
+    bodyWidth: document.body.scrollWidth,
+    documentWidth: document.documentElement.scrollWidth,
+    viewportWidth: window.innerWidth,
+  }));
+  expect(overflow.bodyWidth).toBeLessThanOrEqual(overflow.viewportWidth + 1);
+  expect(overflow.documentWidth).toBeLessThanOrEqual(overflow.viewportWidth + 1);
+
+  const clipped = await page.evaluate((sectionSelector) => {
+    const tour = document.querySelector<HTMLElement>(sectionSelector);
+    if (!tour) return [`${sectionSelector} is missing`];
+
+    return [tour, ...Array.from(tour.querySelectorAll<HTMLElement>("*"))]
+      .filter((element) => {
+        const style = window.getComputedStyle(element);
+        const clipsContent = [style.overflow, style.overflowX, style.overflowY].some((value) =>
+          value === "hidden" || value === "clip",
+        );
+        return (
+          clipsContent &&
+          element.getClientRects().length > 0 &&
+          Boolean(element.textContent?.trim()) &&
+          (element.scrollWidth > element.clientWidth + 1 ||
+            element.scrollHeight > element.clientHeight + 1)
+        );
+      })
+      .map((element) => element.dataset.testid || element.id || element.tagName.toLowerCase());
+  }, selector);
+  expect(clipped).toEqual([]);
+
+  const lowContrast = await page.evaluate((sectionSelector) => {
+    const parseColor = (value: string) => {
+      const channels = value.match(/rgba?\(([^)]+)\)/)?.[1].split(",").map(Number);
+      if (!channels || channels.length < 3) return null;
+      return {
+        red: channels[0],
+        green: channels[1],
+        blue: channels[2],
+        alpha: channels[3] ?? 1,
+      };
+    };
+
+    const relativeLuminance = (color: { red: number; green: number; blue: number }) =>
+      [color.red, color.green, color.blue]
+        .map((channel) => channel / 255)
+        .map((channel) => (channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4))
+        .reduce((total, channel, index) => total + channel * [0.2126, 0.7152, 0.0722][index], 0);
+
+    const contrastRatio = (
+      foreground: { red: number; green: number; blue: number },
+      background: { red: number; green: number; blue: number },
+    ) => {
+      const foregroundLuminance = relativeLuminance(foreground);
+      const backgroundLuminance = relativeLuminance(background);
+      return (
+        (Math.max(foregroundLuminance, backgroundLuminance) + 0.05) /
+        (Math.min(foregroundLuminance, backgroundLuminance) + 0.05)
+      );
+    };
+
+    const blend = (
+      foreground: { red: number; green: number; blue: number; alpha: number },
+      background: { red: number; green: number; blue: number },
+    ) => ({
+      red: foreground.red * foreground.alpha + background.red * (1 - foreground.alpha),
+      green: foreground.green * foreground.alpha + background.green * (1 - foreground.alpha),
+      blue: foreground.blue * foreground.alpha + background.blue * (1 - foreground.alpha),
+    });
+
+    const tour = document.querySelector<HTMLElement>(sectionSelector);
+    if (!tour) return [`${sectionSelector} is missing`];
+
+    const failures: string[] = [];
+    for (const element of [tour, ...Array.from(tour.querySelectorAll<HTMLElement>("*"))]) {
+      const hasDirectText = Array.from(element.childNodes).some(
+        (node) => node.nodeType === Node.TEXT_NODE && Boolean(node.textContent?.trim()),
+      );
+      if (!hasDirectText || element.getClientRects().length === 0) continue;
+
+      const foreground = parseColor(window.getComputedStyle(element).color);
+      if (!foreground) continue;
+
+      let background = { red: 255, green: 255, blue: 255 };
+      const backgrounds: Array<{ red: number; green: number; blue: number; alpha: number }> = [];
+      let ancestor: HTMLElement | null = element;
+      while (ancestor) {
+        const ancestorBackground = parseColor(window.getComputedStyle(ancestor).backgroundColor);
+        if (ancestorBackground && ancestorBackground.alpha > 0) {
+          backgrounds.push(ancestorBackground);
+        }
+        ancestor = ancestor.parentElement;
+      }
+      for (const ancestorBackground of backgrounds.reverse()) {
+        background = blend(ancestorBackground, background);
+      }
+
+      if (contrastRatio(blend(foreground, background), background) < 4.5) {
+        failures.push(
+          `${element.dataset.testid || element.id || element.tagName.toLowerCase()} (${window.getComputedStyle(element).color})`,
+        );
+      }
+    }
+    return failures;
+  }, selector);
+  expect(lowContrast).toEqual([]);
+}
 
 test.describe("hash routing and browser history", () => {
   test("supports all direct links and normalizes invalid hashes", async ({ page }) => {
@@ -64,6 +170,49 @@ test.describe("hash routing and browser history", () => {
     const builderStory = page.getByTestId("tour-builder-story");
     await expect(builderStory).toContainText("Built by LeAndrew Gordon, Founder and CEO of SafeLoc. Former Private Wealth Financial Advisor. Chartered SRI Counselor.");
     await expect(builderStory).toContainText("Sustainability professionals helped build the AI economy. This tool exists because that responsibility does not end at the screening level. It extends to the infrastructure layer, where the assumptions behind AI's growth are being tested by physical reality every day. Understanding AI well enough to build with it, and applying values-aligned evidence standards to what you build, is how the sustainability community steers this technology toward a better future rather than watching from the sidelines.");
+  });
+
+  test("keeps the opening and builder story readable at every browser size", async ({ page }) => {
+    await page.goto("/#how-it-works");
+    await expect(page.getByTestId("tour-sri-context")).toBeVisible();
+    await expect(page.getByTestId("tour-builder-story")).toBeVisible();
+
+    await expectTourLayoutToStayReadable(page, "#tour-context");
+    await expect(page.locator("#tour-context")).toHaveScreenshot("how-it-works-opening.png", {
+      animations: "disabled",
+      caret: "hide",
+    });
+
+    await page.getByTestId("link-tour-chapter-tour-built-by").click();
+    await expect(page.getByTestId("tour-builder-story")).toBeInViewport();
+    await expectTourLayoutToStayReadable(page, "#tour-built-by");
+    await expect(page.locator("#tour-built-by")).toHaveScreenshot("how-it-works-builder-story.png", {
+      animations: "disabled",
+      caret: "hide",
+    });
+  });
+
+  test("keeps reduced-motion tour jumps immediate without changing interaction", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/#how-it-works");
+    await page.evaluate(() => {
+      const calls: unknown[] = [];
+      const originalScrollIntoView = Element.prototype.scrollIntoView;
+      Element.prototype.scrollIntoView = function (options) {
+        calls.push(options);
+        originalScrollIntoView.call(this, options);
+      };
+      (window as typeof window & { __tourScrollCalls?: unknown[] }).__tourScrollCalls = calls;
+    });
+
+    await page.getByTestId("link-tour-chapter-tour-built-by").click();
+    await expect(page).toHaveURL(/#how-it-works$/);
+    await expect(page.getByTestId("tour-builder-story")).toBeInViewport();
+    await expectTourLayoutToStayReadable(page, "#tour-built-by");
+
+    await expect
+      .poll(() => page.evaluate(() => (window as typeof window & { __tourScrollCalls?: unknown[] }).__tourScrollCalls))
+      .toEqual([{ behavior: "auto", block: "start" }]);
   });
 
   test("uses SRI terminology while preserving formal fund names", async ({ page }) => {
@@ -239,7 +388,3 @@ test.describe("hash routing and browser history", () => {
     await expect(page).toHaveURL(/#decision$/);
   });
 });
-
-    const viewportWidth = page.viewportSize()?.width ?? 0;
-
-      const documentWidth = await page.evaluate(() => document.documentElement.scrollWidth);

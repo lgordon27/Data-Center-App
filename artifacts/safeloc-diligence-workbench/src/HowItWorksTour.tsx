@@ -231,9 +231,9 @@ function ReturnButton({ onReturn, top = false }: { onReturn: () => void; top?: b
   );
 }
 
-function TourKicker({ children }: { children: React.ReactNode }) {
+function TourKicker({ children, dark = false }: { children: React.ReactNode; dark?: boolean }) {
   return (
-    <div className="mb-3 flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[#60707d]">
+    <div className={`mb-3 flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.2em] ${dark ? "text-[#9dafb8]" : "text-[#60707d]"}`}>
       <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-[#b9d43a]" />
       {children}
     </div>
@@ -444,7 +444,7 @@ export function HowItWorksTour({ onReturn, onOpenScreen }: HowItWorksTourProps) 
         <section id="tour-built-by" aria-labelledby="tour-built-by-title" className="scroll-mt-20 border-t border-[#d9e0e4] bg-[#122232] px-4 py-14 text-white md:px-8 md:py-20">
           <div className="mx-auto grid max-w-[1240px] gap-8 lg:grid-cols-[1fr_0.8fr] lg:items-end">
             <div>
-              <TourKicker>05 / provenance of the work</TourKicker>
+              <TourKicker dark>05 / provenance of the work</TourKicker>
               <h2 id="tour-built-by-title" className="max-w-2xl text-[35px] font-semibold leading-[0.98] tracking-[-0.055em] md:text-[52px]">Built for the moment when a model needs a witness.</h2>
               <div data-testid="tour-builder-story" className="mt-6 max-w-2xl text-[15px] leading-7 text-[#d1dbe0]">
                 <p>Built by LeAndrew Gordon, Founder and CEO of SafeLoc, a former Private Wealth Financial Advisor and Chartered SRI Counselor, for the Growth for Impact Conference. SafeLoc applies values-aligned evidence standards to the infrastructure layer so sustainability professionals can help steer the AI economy rather than watch from the sidelines.</p>

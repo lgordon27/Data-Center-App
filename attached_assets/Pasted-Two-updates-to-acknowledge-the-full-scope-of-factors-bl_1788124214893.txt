@@ -1,0 +1,22 @@
+Two updates to acknowledge the full scope of factors blocking data center projects.
+
+UPDATE 1: Add a disclosure to Screen 1 (Case Brief) as a collapsible section titled "Scope and Limitations":
+
+"This tool models 16 evidence variables that directly affect project-level financial returns: power, water, grid, climate, community, and financial inputs. Additional factors also affect data center project timelines but are not individually modeled in this proof of concept:
+
+- Electrical equipment supply chain: transformers, switchgear, and battery order books now exceed 18-month lead times, creating bottlenecks independent of siting
+- Local electricity rate impact: grid upgrades for data centers can increase residential electricity bills, driving community resistance beyond direct environmental concerns  
+- Noise and operational impact: backup generator and cooling system noise is a documented driver of zoning opposition
+- Jurisdictional moratoriums: at least 69 local governments have enacted data center bans as of May 2026, independent of individual project evidence
+- Semiconductor and memory supply: AI buildouts are driving 3-5x cost increases in memory and storage components
+- Phantom load requests: a significant portion of grid queue requests are speculative, meaning the 474 GW ERCOT queue overstates actual demand
+
+These factors are relevant context for interpreting any project analysis."
+
+Default state: collapsed, showing only the title "Scope and Limitations" with an expand arrow.
+
+UPDATE 2: Update the system prompt in POST /api/research-project to include these additional research areas. Add to the system prompt:
+
+"In addition to the 16 evidence variables, include in the projectSummary.description any relevant findings about: electrical equipment procurement status, local jurisdictional bans or moratoriums on data centers, noise ordinance requirements, local electricity rate impact concerns, and semiconductor supply chain constraints affecting the project. These provide context even though they are not individually modeled as evidence items."
+
+This ensures custom project analyses surface the full picture even though the financial model only processes the 16 core variables.

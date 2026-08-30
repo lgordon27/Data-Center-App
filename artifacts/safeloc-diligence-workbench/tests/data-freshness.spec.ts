@@ -12,7 +12,7 @@ test("shows the expandable four-source bar only on workbench routes", async ({ p
 
   await page.goto("/#brief");
   await expect(page.getByTestId("data-source-status-fema-nri")).toHaveText("Embedded");
-  await expect(page.getByTestId("data-source-status-ercot-queue")).toHaveText("Embedded");
+  await expect(page.getByTestId("data-source-status-ercot-queue")).toContainText(/Live|Cached|Embedded/);
   await expect(page.getByTestId("data-source-status-eia")).toHaveText("Embedded");
   await expect(page.getByTestId("data-source-status-gridtracker-mcp")).toHaveText("Disconnected");
   await page.getByTestId("data-sources-toggle").click();
@@ -26,6 +26,28 @@ test("shows the expandable four-source bar only on workbench routes", async ({ p
     await page.goto(`/#${route}`);
     await expect(page.getByTestId("data-sources")).toHaveCount(0);
   }
+});
+
+test("shows truthful ERCOT aggregates, named-record guard, and developer diagnostics", async ({ page }) => {
+  await page.goto("/#brief");
+  await expect(page.getByTestId("ercot-queue-statistics")).toBeVisible();
+  await expect(page.getByTestId("ercot-total-queue-gw")).toContainText("GW");
+  await expect(page.getByTestId("ercot-data-center-count")).toHaveText("Not published");
+  await expect(page.getByTestId("ercot-source-attribution")).toContainText("Source: ERCOTQueue.com");
+
+  await page.goto("/#evidence");
+  await expect(page.getByTestId("ercot-grid-evidence")).toBeVisible();
+  const matchCount = await page.getByTestId("ercot-matching-record").count();
+  if (matchCount === 0) {
+    await expect(page.getByTestId("ercot-no-named-match")).toContainText("No named Stargate or Oracle");
+    await expect(page.getByTestId("button-suggest-verified-grid")).toHaveCount(0);
+  }
+
+  await page.getByTestId("ercot-console-toggle").click();
+  await expect(page.getByTestId("ercot-developer-console")).toBeVisible();
+  await expect(page.getByTestId("ercot-developer-console")).toContainText("/api/ercot-queue");
+  await page.getByTestId("ercot-console-raw-toggle").click();
+  await expect(page.getByTestId("ercot-console-raw-json")).toContainText('"request"');
 });
 
 test("keeps evidence freshness separate from classification and model mechanics", async ({ page }) => {

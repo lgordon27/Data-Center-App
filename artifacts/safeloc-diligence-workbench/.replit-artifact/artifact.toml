@@ -8,20 +8,19 @@ router = "path"
 
 [[services]]
 name = "web"
-paths = [ "/" ]
+paths = [ "/", "/api/ercot-queue" ]
 localPort = 25519
 
 [services.development]
 run = "pnpm --filter @workspace/safeloc-diligence-workbench run dev"
 
 [services.production]
-build = [ "pnpm", "--filter", "@workspace/safeloc-diligence-workbench", "run", "build" ]
-serve = "static"
-publicDir = "artifacts/safeloc-diligence-workbench/dist/public"
 
-[[services.production.rewrites]]
-from = "/*"
-to = "/index.html"
+[services.production.build]
+args = [ "pnpm", "--filter", "@workspace/safeloc-diligence-workbench", "run", "build" ]
+
+[services.production.run]
+args = [ "node", "artifacts/safeloc-diligence-workbench/server.mjs" ]
 
 [services.env]
 PORT = "25519"

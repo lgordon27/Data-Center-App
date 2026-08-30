@@ -18,6 +18,7 @@ import {
   EvidenceItem,
   useDiligence
 } from "@/context/DiligenceContext";
+import { formatSourceTimestamp } from "@/data/sources";
 
 
 
@@ -52,9 +53,11 @@ function EvidenceRow({ item, onChange }: { item: EvidenceItem; onChange: (id: st
 }
 
 export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
-  const { evidence, updateClassification, metrics } = useDiligence();
+  const { evidence, updateClassification, metrics, ercotQueue, sourceStates } = useDiligence();
   const items = useMemo(() => Object.values(evidence), [evidence]);
   const counts = useMemo(() => classifications.map((classification) => ({ classification, count: items.filter((item) => item.classification === classification).length })), [items]);
+  const match = ercotQueue.matchingProject;
+  const canSuggestVerified = ercotQueue.providerStatus === "live" && Boolean(match?.explicitDelayOrCancellation);
   return (
     <div>
       <PageIntro
@@ -82,6 +85,46 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
               </header>
               <div className="hidden grid-cols-[1.55fr_0.8fr_1.55fr] gap-3 border-b border-[#e5eae8] px-5 py-2 text-[9px] font-bold uppercase tracking-[0.16em] text-[#7d898f] md:grid"><span>Variable</span><span>Value</span><span>Classification</span></div>
               {categoryItems.map((item) => <EvidenceRow key={item.id} item={item} onChange={updateClassification} />)}
+              {category.id === "power-grid" && (
+                <article data-testid="ercot-grid-evidence" className="border-t border-[#d9e0e4] bg-[#f7faf8] px-4 py-4 md:px-5">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#60707d]">ERCOT Interconnection Queue citation</div>
+                      <h3 className="mt-1 text-[12px] font-semibold text-[#122232]">Grid Interconnection Timeline · public queue check</h3>
+                    </div>
+                    <SourceStatusBadge source={sourceStates["ercot-queue"]} testId="ercot-evidence-source-status" />
+                  </div>
+                  {match ? (
+                    <dl data-testid="ercot-matching-record" className="mt-3 grid gap-2 text-[10px] sm:grid-cols-2 lg:grid-cols-4">
+                      <div><dt className="font-bold uppercase tracking-[0.1em] text-[#7d898f]">Project</dt><dd className="mt-1 text-[#243844]">{match.name} · {match.inr}</dd></div>
+                      <div><dt className="font-bold uppercase tracking-[0.1em] text-[#7d898f]">Capacity / status</dt><dd className="mt-1 text-[#243844]">{match.capacityMw.toFixed(1)} MW · {match.currentStatus}</dd></div>
+                      <div><dt className="font-bold uppercase tracking-[0.1em] text-[#7d898f]">COD / IA</dt><dd className="mt-1 text-[#243844]">{match.projectedCod ? formatSourceTimestamp(match.projectedCod) : "Projected COD not published"} · {match.iaStatus ?? "IA status not published"}</dd></div>
+                      <div><dt className="font-bold uppercase tracking-[0.1em] text-[#7d898f]">Slips / position</dt><dd className="mt-1 text-[#243844]">{match.codSlipCount} slips · {match.totalDaysSlipped} days{match.queuePosition !== null ? ` · Queue position ${match.queuePosition}` : " · Queue position not published"}</dd></div>
+                    </dl>
+                  ) : (
+                    <p data-testid="ercot-no-named-match" className="mt-3 text-[10px] leading-4 text-[#52616b]">
+                      No named Stargate or Oracle customer-specific record was published in the generation queue. The existing cancellation and delay evidence remains public-reporting context; this feed does not independently confirm it.
+                    </p>
+                  )}
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[#e1e8e5] pt-3">
+                    <p className="text-[9px] text-[#60707d]">Last updated {formatSourceTimestamp(ercotQueue.sourceUpdatedAt ?? undefined)} · Feed freshness does not change evidence classification.</p>
+                    {canSuggestVerified ? (
+                      <button
+                        data-testid="button-suggest-verified-grid"
+                        type="button"
+                        onClick={() => updateClassification("grid_interconnection", "Verified Evidence")}
+                        className="rounded-md border border-[#0b7a63] bg-[#e0f4ed] px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#08644f]"
+                      >
+                        Suggest VERIFIED
+                      </button>
+                    ) : (
+                      <span data-testid="text-no-ercot-suggestion" className="text-[9px] text-[#7d898f]">
+                        No suggestion: a live named record with an explicit delay or cancellation is required.
+                      </span>
+                    )}
+                  </div>
+                </article>
+              )}
             </section>
           );
         })}

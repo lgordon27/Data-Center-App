@@ -22,7 +22,14 @@ import {
 import type {
   Screen
 } from "@/components/Shell";
+import { useDiligence } from "@/context/DiligenceContext";
+import { formatSourceTimestamp } from "@/data/sources";
 export function CaseBrief({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
+  const { ercotQueue } = useDiligence();
+  const queueStatus = ercotQueue.status === "live" ? "Live" : ercotQueue.status === "cached" ? "Cached" : "Embedded";
+  const queueStatusClasses = ercotQueue.status === "live"
+    ? "bg-[#e0f4ed] text-[#08644f]"
+    : "bg-[#fff0d6] text-[#7c4c00]";
   return (
     <div>
       <PageIntro
@@ -70,6 +77,38 @@ export function CaseBrief({ onNavigate }: { onNavigate: (screen: Screen) => void
           </div>
         </section>
       </div>
+      <section data-testid="ercot-queue-statistics" className="mt-5 rounded-xl border border-[#cbd8d4] bg-white p-5 md:p-6" aria-labelledby="ercot-queue-title">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#e5eae8] pb-4">
+          <div>
+            <SectionKicker>ERCOT large-load queue</SectionKicker>
+            <h2 id="ercot-queue-title" className="text-[18px] font-semibold tracking-[-0.025em] text-[#122232]">Public aggregate demand pressure</h2>
+          </div>
+          <span data-testid="ercot-queue-status" className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-mono text-[9px] font-bold uppercase tracking-[0.1em] ${queueStatusClasses}`}>
+            <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${ercotQueue.status === "live" ? "bg-[#0b7a63]" : "bg-[#a65a00]"}`} />
+            {queueStatus}
+          </span>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <div className="min-w-0 rounded-lg bg-[#122232] p-4 text-white">
+            <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#a9b8c0]">Total queue depth</div>
+            <div data-testid="ercot-total-queue-gw" className="mt-2 break-words font-mono text-[25px] font-bold tracking-[-0.05em]">{ercotQueue.stats.totalGw.toFixed(1)} GW</div>
+            <div className="mt-1 text-[10px] text-[#c4d0d6]">Large-load requests submitted</div>
+          </div>
+          <div className="min-w-0 rounded-lg bg-[#d4e86b] p-4 text-[#1c2a16]">
+            <div className="text-[9px] font-bold uppercase tracking-[0.14em] opacity-65">Data-center share</div>
+            <div data-testid="ercot-data-center-share" className="mt-2 break-words font-mono text-[25px] font-bold tracking-[-0.05em]">{ercotQueue.stats.dataCenterShare.toFixed(1)}%</div>
+            <div className="mt-1 text-[10px] opacity-70">{(ercotQueue.stats.dataCenterMw / 1000).toFixed(1)} GW identified by sector</div>
+          </div>
+          <div className="min-w-0 rounded-lg border border-[#d9e0e4] bg-[#f9faf8] p-4">
+            <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#60707d]">Active data-center requests</div>
+            <div data-testid="ercot-data-center-count" className="mt-2 break-words font-mono text-[20px] font-bold tracking-[-0.04em] text-[#122232]">{ercotQueue.stats.dataCenterRequestCount ?? "Not published"}</div>
+            <div className="mt-1 text-[10px] leading-4 text-[#52616b]">The public aggregate does not expose a complete named customer/request count.</div>
+          </div>
+        </div>
+        <p data-testid="ercot-source-attribution" className="mt-4 font-mono text-[9px] leading-4 text-[#52616b]">
+          Source: ERCOTQueue.com, updated {formatSourceTimestamp(ercotQueue.sourceUpdatedAt ?? undefined)}. Aggregate queue activity is market context, not a named Stargate or Oracle confirmation.
+        </p>
+      </section>
       <div className="mt-5 grid gap-3 md:grid-cols-2">
         <Disclosure title="Public-site context · Taylor County buildout" testId="disclosure-public-site-context">
           <div className="flex gap-3">

@@ -11,7 +11,7 @@ The workbench is a private working-paper proof of concept for an IC pre-read. It
 - **Public context:** reported Stargate, environmental, energy, water, climate, community, permitting, and infrastructure facts, events, assertions, and unresolved disclosures.
 - **Synthetic economics:** representative acquisition and operating assumptions used to demonstrate sensitivity analysis. These are not disclosed project terms, reported returns, or a claim about Stargate's actual transaction economics.
 
-The application does not fetch live data or call a server in this proof-of-concept. A canonical client-safe source registry exposes provider identity, status, timestamps/version, data role, and fallback text. The default FEMA profile, ERCOTQueue context, and EIA estimate are embedded; GridTracker MCP is disconnected. Provider adapters may supply response metadata through the registry contract, but the UI never invents a live response, cache, or timestamp.
+The application uses an artifact-owned, same-origin `/api/ercot-queue` proxy for ERCOTQueue.com's documented public JSON datasets. A canonical client-safe source registry exposes provider identity, status, timestamps/version, data role, and fallback text. FEMA and EIA remain embedded by default and GridTracker MCP remains disconnected; the UI never invents a live response, named customer match, request count, cache, or timestamp.
 
 ## Stack and architecture
 
@@ -23,7 +23,7 @@ The application does not fetch live data or call a server in this proof-of-conce
 - Hash routing implemented in `src/App.tsx`; no routing library
 - Browser-only calculations in `src/model/cashFlowEngine.ts`
 - Browser `localStorage` for the current evidence-classification session and named scenario snapshots
-- No SafeLoc API, database, server-side calculation layer, or authentication dependency
+- One read-only SafeLoc proxy route for ERCOTQueue public data; no database, server-side calculation layer, or authentication dependency
 
 The artifact is registered as a path-routed web artifact in `artifacts/safeloc-diligence-workbench/.replit-artifact/artifact.toml`. Its development service runs on the workflow-provided port and serves the artifact at `/`.
 
@@ -41,7 +41,9 @@ The artifact is registered as a path-routed web artifact in `artifacts/safeloc-d
 - `artifacts/safeloc-diligence-workbench/src/HowItWorksTour.tsx` — the product tour's workflow, evidence-tier, source/method, and handoff content.
 - `artifacts/safeloc-diligence-workbench/src/model/*.test.ts` — model and advisor-lens unit tests.
 - `artifacts/safeloc-diligence-workbench/tests/*.spec.ts` — browser regression coverage for routing, storage/reset behavior, and scenarios.
-- `artifacts/safeloc-diligence-workbench/vite.config.ts` — Vite/Tailwind setup, aliases, required environment validation, host/port configuration, and static output path.
+- `artifacts/safeloc-diligence-workbench/vite.config.ts` — Vite/Tailwind setup, aliases, required environment validation, host/port configuration, development proxy middleware, and output path.
+- `artifacts/safeloc-diligence-workbench/server.mjs` and `server/ercotProxy.mjs` — artifact-owned production static server and bounded public ERCOTQueue proxy.
+- `artifacts/safeloc-diligence-workbench/src/services/ercotService.ts` — client validation, aggregate calculations, named-record matching, COD-slip normalization, and embedded fallback.
 
 ## Routes and user flow
 
@@ -141,13 +143,15 @@ pnpm --filter @workspace/safeloc-diligence-workbench run test
 pnpm --filter @workspace/safeloc-diligence-workbench run test:e2e
 ```
 
-The production build is a static Vite output under `artifacts/safeloc-diligence-workbench/dist/public`. The artifact manifest serves that directory and rewrites requests to `index.html`; the app itself still resolves its internal views from the hash.
+The production build is a Vite output under `artifacts/safeloc-diligence-workbench/dist/public`. The artifact-owned Node process serves those files and the `/api/ercot-queue` route; the app itself still resolves its internal views from the hash.
 
 For Playwright tests, `playwright.config.ts` starts the SafeLoc dev server on port `4173` with `PORT=4173 BASE_PATH=/` unless `PLAYWRIGHT_BASE_URL` is provided. If a custom base URL is used, start a compatible SafeLoc server yourself and set `PLAYWRIGHT_BASE_URL` to it.
 
 ## Data boundary
 
 The case's citations and descriptions represent public-source context already encoded in the application, including Stargate/Oracle/OpenAI/Crusoe/Lancium reporting, ERCOT and utility context, water and climate records, community reporting, and related environmental/infrastructure evidence. “Not disclosed” values remain unresolved rather than being silently filled with facts.
+
+The ERCOT proxy fetches only documented, unauthenticated resources: generation `projects.json`, `cod_history.json`, large-load `load/load_queue_summary.json`, and `site_freshness.json`. It applies bounded timeouts and validates upstream status, content type, and minimum payload shape. Successful snapshots are retained in-process for a cached response if a later refresh fails; otherwise the browser service uses a clearly labeled embedded aggregate baseline. The large-load source publishes aggregate MW and sector share but currently reports null project counts, so SafeLoc displays “Not published” rather than deriving or fabricating a customer count. Generation records only become named Stargate/Oracle evidence when those names are actually present in the public project record.
 
 The financial engine uses explicit representative assumptions scaled to the modeled 1.2 GW target, including entry value, lease rate, cooling CAPEX, utilization ramp, debt, discount rate, exit multiple, downtime cost, and other costs. These are synthetic underwriting inputs for a demonstration of evidence-governed sensitivity; they are not disclosed Stargate acquisition terms, actual project cash flows, or public facts about the project. Preserve that distinction when changing the UI or adding case inputs.
 

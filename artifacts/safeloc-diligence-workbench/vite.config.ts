@@ -2,8 +2,10 @@ import path from 'path';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
+import type { Plugin } from 'vite';
 
 import runtimeErrorOverlay from '@replit/vite-plugin-runtime-error-modal';
+import { handleErcotQueueRequest } from './server/ercotProxy.mjs';
 
 const rawPort = process.env.PORT;
 
@@ -27,9 +29,26 @@ if (!basePath) {
   );
 }
 
+function ercotQueueApiPlugin(): Plugin {
+  return {
+    name: 'safeloc-ercot-queue-api',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        const pathname = new URL(req.url ?? '/', 'http://127.0.0.1').pathname;
+        if (pathname !== '/api/ercot-queue') {
+          next();
+          return;
+        }
+        await handleErcotQueueRequest(req, res);
+      });
+    },
+  };
+}
+
 export default defineConfig({
   base: basePath,
   plugins: [
+    ercotQueueApiPlugin(),
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),

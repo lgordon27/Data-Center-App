@@ -10,6 +10,11 @@ import {
   type SourceId,
   type SourceState,
 } from "@/data/sources";
+import {
+  FALLBACK_ERCOT_RESULT,
+  fetchErcotQueue,
+  type ErcotQueueResult,
+} from "@/services/ercotService";
 
 export type { Classification } from '@/model/cashFlowEngine';
 
@@ -52,6 +57,7 @@ type DiligenceState = {
   renameScenario: (id: string, name: string) => RenameScenarioResult;
   removeScenario: (id: string) => RemoveScenarioResult;
   sourceStates: Record<SourceId, SourceState>;
+  ercotQueue: ErcotQueueResult;
 };
 
 export const CURRENT_SESSION_STORAGE_KEY = 'safeloc:diligence:current-session:v1';
@@ -141,7 +147,20 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   stateRef.current = state;
   const [sessionRestored, setSessionRestored] = useState(initialSession.restored);
   const [scenarios, setScenarios] = useState<SavedScenario[]>(loadScenarios);
-  const sourceStates = useMemo(() => sourceStateMap(), []);
+  const [ercotQueue, setErcotQueue] = useState<ErcotQueueResult>(FALLBACK_ERCOT_RESULT);
+  const sourceStates = useMemo(() => sourceStateMap({
+    "ercot-queue": ercotQueue.sourceMetadata,
+  }), [ercotQueue.sourceMetadata]);
+
+  useEffect(() => {
+    let active = true;
+    void fetchErcotQueue().then((result) => {
+      if (active) setErcotQueue(result);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!sessionRestored) return undefined;
@@ -253,7 +272,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <DiligenceContext.Provider value={{ evidence: state.evidence, updateClassification, clearLastChange, metrics, resetToDefault, sessionRestored, scenarios, saveScenario, renameScenario, removeScenario, sourceStates }}>
+    <DiligenceContext.Provider value={{ evidence: state.evidence, updateClassification, clearLastChange, metrics, resetToDefault, sessionRestored, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue }}>
       {children}
     </DiligenceContext.Provider>
   );

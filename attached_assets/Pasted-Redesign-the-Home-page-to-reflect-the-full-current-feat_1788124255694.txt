@@ -1,0 +1,68 @@
+Redesign the Home page to reflect the full current feature set. The app has evolved significantly. The home page needs to communicate three things in order: the market is splitting, you can analyze any project to see which side it's on, and your portfolio is exposed to the result.
+
+HERO SECTION (above the fold):
+
+Replace the current headline. New headline in large type:
+"The AI infrastructure market is splitting in two. Which side are your holdings on?"
+
+Below the headline, two lines of supporting context (not a paragraph, just two separate lines):
+"$725 billion is being invested in AI infrastructure this year. $130 billion has already stalled."
+"Projects that solved their constraints are proceeding. Projects that didn't are stuck. The evidence determines which is which."
+
+THE PRIMARY INTERACTION (replaces the old "Open the Workbench" button as the hero action):
+
+A prominent input section with two options side by side:
+
+Left option: A text input field with placeholder "Enter any data center project..." and a "Run AI Analysis" button. Subtitle: "AI researches public sources and classifies 16 evidence variables."
+
+Right option: A button styled distinctly: "Analyze Stargate Abilene" with subtitle: "OpenAI's $500B flagship. The curated deep dive."
+
+Between them, a subtle "or" divider.
+
+This makes the custom project analysis the primary engagement hook while keeping Stargate as the premium, curated path.
+
+BIFURCATION VISUAL (replaces or enhances the old four stat cards):
+
+Show the split visually. Two columns or two cards side by side:
+
+Left card (green/positive tint): "TIER 1: PROCEEDING"
+"Behind-the-meter power. Secured water. No grid dependency."
+"Example: Chevron/Microsoft Project Kilby"
+"Evidence profile: Mostly verified"
+
+Right card (amber/caution tint): "TIER 2: STALLING"
+"Grid-dependent. Municipal water. Public permitting."
+"Example: OpenAI Stargate Abilene"  
+"Evidence profile: Key gaps unresolved"
+
+Below both cards, one line: "Run any project through the workbench to see which tier it falls in."
+
+KEY NUMBERS (compact strip, not full cards):
+
+Keep the four numbers but make them a single horizontal strip, not four large cards:
+$725B / $130B paused / 474 GW queued / 1.6% operating
+
+TRUST ANCHOR (new, compact):
+
+A single line with the Gallup data: "79% of Americans trust financial advisors. 3% trust AI. This tool uses AI to accelerate analysis. You make the call."
+
+ENTRY POINTS (updated from four to reflect current app):
+
+Three cards instead of four (the custom project input above replaces the old "Workbench" card as the primary entry):
+
+Card 1: "The AI Chain" - "Trace from NVIDIA to your client's portfolio." Links to #value-chain.
+Card 2: "How It Works" - "Plain-English tour of the method and sources." Links to #how-it-works.  
+Card 3: "Advisor Lens" - "What this means for your clients Monday morning." Links to #advisor.
+
+FOOTER:
+Keep: "Built by LeAndrew Gordon | SafeLoc | Growth for Impact Conference, November 2026"
+Keep: "Public Context · Synthetic Returns"
+
+DESIGN:
+- Keep the dark theme
+- The bifurcation visual (Tier 1 vs Tier 2) should be the most visually striking element after the headline
+- The project input field should feel like the primary action on the page
+- Everything above the fold on desktop: headline, input/Stargate choice, bifurcation visual
+- Numbers strip and entry cards below the fold
+- Mobile: stack vertically, input field full width, bifurcation cards stack
+- Total text on the page should be less than what's currently there. Shorter sentences, fewer words. Every line earns its space.

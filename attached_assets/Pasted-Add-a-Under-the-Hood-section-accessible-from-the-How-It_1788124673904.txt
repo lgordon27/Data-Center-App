@@ -1,0 +1,29 @@
+Add a "Under the Hood" section accessible from the How It Works page or as a collapsible panel on the Financial Materiality screen. This showcases the technical architecture for audiences evaluating the builder's skills, not just the tool's output.
+
+Title: "What Powers This Tool"
+
+Show five technical layers, each with a one-line description and a visual or code snippet:
+
+1. CASH FLOW ENGINE
+"A five-year equity cash flow model running entirely in your browser. Revenue ramp, OPEX by line item, CAPEX with contingencies, debt service, terminal value. IRR solved via Newton's method. Not a score. Not a penalty. Real project finance math."
+Show: a simplified visual of the cash flow waterfall or a 3-line code snippet showing the IRR solver.
+
+2. EVIDENCE-TO-MODEL WIRING
+"Each of the 16 evidence inputs is wired to a specific financial line item. Electricity cost drives power OPEX. Grid delays drive revenue timing. Water rights drive CAPEX contingency. Change one classification and the entire model recalculates because the inputs are structurally linked, not cosmetically connected."
+Show: a visual mapping 3-4 evidence items to their financial model line items with arrows.
+
+3. LIVE DATA INTEGRATION
+"ERCOT queue data from ERCOTQueue.com updates automatically. EIA electricity pricing from the U.S. Energy Information Administration. FEMA National Risk Index climate data embedded at the county level. Each feed has a caching layer and graceful fallback if the source is unavailable."
+Show: the three data sources with live/cached status indicators.
+
+4. AI-POWERED EVIDENCE ANALYSIS
+"OpenAI classifies evidence quality by analyzing source documents and public records. Every AI assessment is a suggestion. The human accepts or overrides. The financial model only moves when the human acts. AI proposes. You decide."
+Show: a simplified version of the Analyze with AI interaction.
+
+5. CUSTOM PROJECT RESEARCH
+"Enter any data center project. AI researches public sources for 16 evidence variables, proposes classifications, and populates the financial model. The curated Stargate analysis uses hand-verified sources. Custom analyses use AI research with transparent limitations."
+Show: the input field and a note about curated vs AI-researched data quality.
+
+Bottom line: "Built by one person using Claude, Replit, and public data APIs. The APIs took hours. The financial model, evidence architecture, and domain expertise took years."
+
+Design: clean, technical, confident. Not a tutorial. A credential. Someone evaluating the builder's skills should understand within 30 seconds that this is not a dashboard connected to APIs. It is a governed financial model with a domain-specific evidence methodology, built by someone who understands project finance, climate risk, energy infrastructure, and AI governance deeply enough to make the design decisions that no API can make for you."

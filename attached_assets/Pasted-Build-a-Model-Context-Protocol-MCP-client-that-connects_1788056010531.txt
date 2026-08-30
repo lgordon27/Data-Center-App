@@ -1,0 +1,33 @@
+Build a Model Context Protocol (MCP) client that connects to GridTracker's MCP server for real-time interconnection queue intelligence.
+
+This is the most technically advanced integration and should be showcased prominently.
+
+In the Express proxy server, add an MCP client module at server/mcp/gridtracker.ts that:
+- Connects to the GridTracker MCP server endpoint
+- Implements the MCP client protocol (JSON-RPC 2.0 over the transport GridTracker supports)
+- Can query for: project-level queue snapshots, COD slip history and change logs, project classification (active, withdrawn, energized), daily queue change summaries
+- Caches query results with appropriate TTL (queue snapshots: 24 hours, change logs: 12 hours)
+- Handles connection failures gracefully with cached fallback
+
+Add a proxy endpoint at GET /api/gridtracker/query?q=:naturalLanguageQuery that:
+- Accepts a natural language query about the ERCOT queue
+- Forwards it to the GridTracker MCP server
+- Returns the structured response
+- Logs the query and response for the developer console
+
+On Screen 2 (Evidence Room), add a "Query Live Grid Data" button that lets the user ask a natural language question about the Stargate project's queue status. Example queries pre-loaded:
+- "What is the current queue status for Oracle's Abilene interconnection request?"
+- "How many times has the Stargate project's commercial operation date slipped?"
+- "Show me all ERCOT data center projects that withdrew from the queue in 2026"
+
+Display the MCP query, the structured response, and how it maps to the evidence classification. If the MCP response confirms a data point, offer to upgrade the evidence classification to VERIFIED.
+
+In the developer console (the toggle from Prompt 3), add an "MCP" tab that shows:
+- Connection status to GridTracker MCP server
+- Query history with timestamps
+- Raw MCP JSON-RPC request/response pairs
+- A "Try a query" input for technical users to run their own MCP queries
+
+Add a prominent technical attribution: "Grid intelligence: GridTracker MCP Server | Model Context Protocol"
+
+This integration demonstrates: MCP protocol implementation, AI agent data access patterns, server-side proxy architecture, natural language to structured query translation, and real-time data verification against the evidence classification system. These are directly relevant to the CAM Protocol thesis that AI agents should operate through governed, auditable channels.

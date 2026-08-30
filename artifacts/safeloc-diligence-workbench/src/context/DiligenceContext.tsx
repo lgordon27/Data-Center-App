@@ -58,6 +58,7 @@ export type ScenarioMetrics = {
 };
 type DiligenceState = {
   evidence: Record<string, EvidenceItem>;
+  hasChangedClassification: boolean;
   updateClassification: (id: string, classification: Classification) => void;
   clearLastChange: () => void;
   metrics: FinancialMetrics;
@@ -74,6 +75,7 @@ type DiligenceState = {
 };
 
 export const CURRENT_SESSION_STORAGE_KEY = 'safeloc:diligence:current-session:v1';
+export const EVIDENCE_TIP_DISMISSED_STORAGE_KEY = 'safeloc:diligence:evidence-room-tip-dismissed:v1';
 export const INITIAL_EVIDENCE: Record<string, EvidenceItem> = {
   electricity_cost: { id: 'electricity_cost', label: 'Electricity Cost / MWh', value: 42, numericValue: 42, unit: '$/MWh', classification: 'Verified Evidence', citation: 'ERCOT market data / Oncor commercial rate filings, 2025–2026', description: 'Representative West Texas blended power rate; the underwriting rate is synthetic but anchored to public ERCOT and Oncor data.', sourceId: null, providerSourceId: 'eia', sourceRole: 'Embedded electricity-cost estimate' },
   water_consumption: { id: 'water_consumption', label: 'Annual Cooling Water', value: 'Not disclosed', numericValue: 23, unit: 'Facility total', classification: 'Missing Evidence', citation: 'No public disclosure as of Aug 2026', description: 'Stargate Abilene has not publicly disclosed facility-level water consumption.', sourceId: null, providerSourceId: null, sourceRole: 'Project disclosure' },
@@ -155,6 +157,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   const initialSession = useMemo(() => loadCurrentSession(), []);
   const [state, setState] = useState({
     evidence: initialSession.evidence,
+    hasChangedClassification: initialSession.hasChangedClassification,
     lastChange: null as FinancialMetrics['lastChange'],
   });
   const stateRef = useRef(state);
@@ -214,6 +217,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     const nextIrr = calculateCashFlowModel(applyEiaEvidence(nextEvidence, eiaData) as EvidenceRecord).projectIRR;
     const nextState = {
       evidence: nextEvidence,
+      hasChangedClassification: true,
       lastChange: {
         from: previousIrr ?? 0,
         to: nextIrr ?? 0,
@@ -224,6 +228,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     setState(nextState);
     writeStorage(CURRENT_SESSION_STORAGE_KEY, {
       version: STORAGE_VERSION,
+      hasChangedClassification: true,
       classifications: Object.fromEntries(
         Object.entries(nextEvidence).map(([itemId, item]) => [itemId, item.classification]),
       ),
@@ -237,7 +242,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const resetToDefault = useCallback(() => {
-    const nextState = { evidence: cloneEvidence(INITIAL_EVIDENCE), lastChange: null };
+    const nextState = { evidence: cloneEvidence(INITIAL_EVIDENCE), hasChangedClassification: false, lastChange: null };
     stateRef.current = nextState;
     setState(nextState);
     clearStorage(CURRENT_SESSION_STORAGE_KEY);
@@ -305,7 +310,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, updateClassification, clearLastChange, metrics, resetToDefault, sessionRestored, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading }}>
+    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, clearLastChange, metrics, resetToDefault, sessionRestored, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading }}>
       {children}
     </DiligenceContext.Provider>
   );
@@ -423,7 +428,7 @@ export const SCENARIOS_STORAGE_KEY = 'safeloc:diligence:scenarios:v1';
 
 function loadCurrentSession() {
   const raw = readStorage(CURRENT_SESSION_STORAGE_KEY);
-  if (!raw) return { evidence: cloneEvidence(INITIAL_EVIDENCE), restored: false };
+  if (!raw) return { evidence: cloneEvidence(INITIAL_EVIDENCE), hasChangedClassification: false, restored: false };
 
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -432,7 +437,7 @@ function loadCurrentSession() {
         ? (parsed as { classifications?: unknown }).classifications
         : parsed;
     if (!classifications || typeof classifications !== 'object' || Array.isArray(classifications)) {
-      return { evidence: cloneEvidence(INITIAL_EVIDENCE), restored: false };
+      return { evidence: cloneEvidence(INITIAL_EVIDENCE), hasChangedClassification: false, restored: false };
     }
 
     const entries = Object.entries(classifications);
@@ -442,16 +447,22 @@ function loadCurrentSession() {
       expectedIds.some((id) => !Object.prototype.hasOwnProperty.call(classifications, id)) ||
       entries.some(([, value]) => !isClassification(value))
     ) {
-      return { evidence: cloneEvidence(INITIAL_EVIDENCE), restored: false };
+      return { evidence: cloneEvidence(INITIAL_EVIDENCE), hasChangedClassification: false, restored: false };
     }
 
     const evidence = cloneEvidence(INITIAL_EVIDENCE);
     for (const [id, classification] of entries) {
       evidence[id] = { ...evidence[id], classification };
     }
-    return { evidence, restored: true };
+    const hasChangedClassification = Boolean(
+      parsed &&
+      typeof parsed === 'object' &&
+      !Array.isArray(parsed) &&
+      (parsed as { hasChangedClassification?: unknown }).hasChangedClassification === true,
+    );
+    return { evidence, hasChangedClassification, restored: true };
   } catch {
-    return { evidence: cloneEvidence(INITIAL_EVIDENCE), restored: false };
+    return { evidence: cloneEvidence(INITIAL_EVIDENCE), hasChangedClassification: false, restored: false };
   }
 }
 

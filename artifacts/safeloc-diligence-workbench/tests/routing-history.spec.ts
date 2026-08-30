@@ -160,6 +160,30 @@ test.describe("hash routing and browser history", () => {
     await expect(page.getByTestId("button-navigate-brief")).toHaveAttribute("aria-current", "step");
   });
 
+  test("guides the classification-to-return interaction across screens", async ({ page }) => {
+    await page.addInitScript(() => window.localStorage.clear());
+    await page.goto("/#evidence");
+
+    const evidenceTip = page.getByTestId("evidence-classification-tip");
+    await expect(evidenceTip).toContainText("Try it: Click any dropdown and change a classification. Watch what happens.");
+    const countCards = page.getByTestId("count-classification-verified");
+    const tipBox = await evidenceTip.boundingBox();
+    const countBox = await countCards.boundingBox();
+    expect(tipBox && countBox ? tipBox.y + tipBox.height : 0).toBeLessThanOrEqual(countBox?.y ?? Number.POSITIVE_INFINITY);
+
+    await page.goto("/#materiality");
+    await expect(page.getByTestId("materiality-classification-prompt")).toContainText("Change a classification to see the return update.");
+
+    await page.goto("/#evidence");
+    await page.getByTestId("select-classification-electricity_cost").selectOption("Missing Evidence");
+    await expect(page.getByTestId("toast-reclassification")).toContainText("Return updated");
+    await expect(page.getByTestId("live-current-irr")).toContainText("Current IRR is now");
+
+    await page.goto("/#materiality");
+    await expect(page.getByTestId("materiality-classification-prompt")).toHaveCount(0);
+    await expect(page.getByTestId("metric-project-irr")).toContainText(/\d+\.\d%/);
+  });
+
   test("shows the complete SRI origin story in the product tour", async ({ page }) => {
     await page.goto("/#how-it-works");
 

@@ -42,7 +42,7 @@ import type {
 } from "@/components/Shell";
 import { formatElectricityCostAttribution } from "@/data/sources";
 export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
-  const { evidence, metrics, sourceStates } = useDiligence();
+  const { evidence, hasChangedClassification, metrics, sourceStates } = useDiligence();
   const impacts = Object.values(metrics.lineItems);
   const lowConfidence = metrics.confidenceScore < 25;
   const currentIRR = metrics.projectIRR;
@@ -72,6 +72,12 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
         description="A five-year annual equity cash-flow engine ties revenue timing, operating costs, CAPEX, debt service, and terminal value to each evidence classification."
         right={<div className="flex items-center gap-2 rounded-md border border-[#9bd8c5] bg-[#e0f4ed] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#0b7a63]"><Sparkles className="h-3.5 w-3.5" /> Derived locally</div>}
       />
+      {!hasChangedClassification && (
+        <aside data-testid="materiality-classification-prompt" role="note" className="mb-5 flex items-start gap-3 rounded-lg border border-[#aac6f4] bg-[#eef5ff] px-4 py-3 text-[11px] leading-5 text-[#344550]">
+          <Sparkles aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#255bb7]" />
+          <p><strong className="font-semibold text-[#122232]">Change a classification</strong> to see the return update.</p>
+        </aside>
+      )}
       <nav aria-label="Financial materiality sections" className="sticky top-0 z-10 mb-4 flex gap-1 overflow-x-auto rounded-lg border border-[#d9e0e4] bg-[#f9faf8]/95 p-1.5 backdrop-blur-md">
         {[
           ["materiality-summary", "Summary"],

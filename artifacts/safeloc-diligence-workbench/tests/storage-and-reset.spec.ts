@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 const currentSessionKey = "safeloc:diligence:current-session:v1";
 const scenariosKey = "safeloc:diligence:scenarios:v1";
+const evidenceTipDismissedKey = "safeloc:diligence:evidence-room-tip-dismissed:v1";
 
 test.describe("current-session recovery and reset isolation", () => {
   test.skip(({ viewport }) => viewport?.width !== 1440, "Storage behavior only needs one browser viewport.");
@@ -24,6 +25,37 @@ test.describe("current-session recovery and reset isolation", () => {
     await page.waitForTimeout(3_000);
     await expect(page.getByTestId("text-session-restored")).toBeVisible();
     await expect(page.getByTestId("text-session-restored")).toBeHidden({ timeout: 2_000 });
+  });
+
+  test("guides the first classification interaction and remembers the tip dismissal", async ({ page }) => {
+    await page.goto("/#evidence");
+
+    const evidenceTip = page.getByTestId("evidence-classification-tip");
+    await expect(evidenceTip).toBeVisible();
+    await expect(evidenceTip).toContainText("Try it: Click any dropdown and change a classification. Watch what happens.");
+    await expect(page.getByTestId("select-classification-electricity_cost")).toBeVisible();
+
+    await page.getByTestId("button-dismiss-evidence-classification-tip").click();
+    await expect(evidenceTip).toBeHidden();
+    await expect.poll(() => page.evaluate((key) => window.localStorage.getItem(key), evidenceTipDismissedKey)).toBe("true");
+
+    await page.reload();
+    await expect(page.getByTestId("evidence-classification-tip")).toHaveCount(0);
+  });
+
+  test("removes the materiality prompt after a classification recalculates the return", async ({ page }) => {
+    await page.goto("/#materiality");
+    await expect(page.getByTestId("materiality-classification-prompt")).toContainText("Change a classification to see the return update.");
+
+    await page.goto("/#evidence");
+    await page.getByTestId("select-classification-electricity_cost").selectOption("Missing Evidence");
+    await expect(page.getByTestId("toast-reclassification")).toContainText("Return updated");
+
+    await page.goto("/#materiality");
+    await expect(page.getByTestId("materiality-classification-prompt")).toHaveCount(0);
+    await expect(page.getByTestId("live-current-irr")).toContainText("Current IRR is now");
+    await page.reload();
+    await expect(page.getByTestId("materiality-classification-prompt")).toHaveCount(0);
   });
 
   test("falls back to defaults when current-session storage is malformed", async ({ page }) => {
@@ -74,5 +106,7 @@ test.describe("current-session recovery and reset isolation", () => {
 
     await page.goto("/#evidence");
     await expect(classification).toHaveValue("Verified Evidence");
+    await page.goto("/#materiality");
+    await expect(page.getByTestId("materiality-classification-prompt")).toBeVisible();
   });
 });

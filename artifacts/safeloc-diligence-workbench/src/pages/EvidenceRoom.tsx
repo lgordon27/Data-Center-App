@@ -10,12 +10,15 @@ import {
 import {
   ChevronDown,
   FileText,
+  Lightbulb,
   RefreshCw,
-  TriangleAlert
+  TriangleAlert,
+  X
 } from "lucide-react";
 import { SourceStatusBadge } from "@/components/DataSources";
 import {
   Classification,
+  EVIDENCE_TIP_DISMISSED_STORAGE_KEY,
   EvidenceItem,
   useDiligence
 } from "@/context/DiligenceContext";
@@ -178,10 +181,19 @@ function EiaElectricityEvidence({
 
 export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
   const { evidence, updateClassification, metrics, ercotQueue, eiaData, eiaLoading, sourceStates } = useDiligence();
+  const [showClassificationTip, setShowClassificationTip] = useState(() => !isStorageFlagSet(EVIDENCE_TIP_DISMISSED_STORAGE_KEY));
   const items = useMemo(() => Object.values(evidence), [evidence]);
   const counts = useMemo(() => classifications.map((classification) => ({ classification, count: items.filter((item) => item.classification === classification).length })), [items]);
   const match = ercotQueue.matchingProject;
   const canSuggestVerified = ercotQueue.providerStatus === "live" && Boolean(match?.explicitDelayOrCancellation);
+  const dismissClassificationTip = () => {
+    setShowClassificationTip(false);
+    try {
+      window.localStorage.setItem(EVIDENCE_TIP_DISMISSED_STORAGE_KEY, "true");
+    } catch {
+      // Storage is optional; the dismissal still applies for this visit.
+    }
+  };
   return (
     <div>
       <PageIntro
@@ -190,6 +202,24 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
         description={`${items.length} diligence inputs are classified by provenance. Change a classification to test what the return looks like when an assertion becomes an assumption, or when missing evidence is finally verified.`}
         right={<div data-testid="text-evidence-count" className="rounded-lg border border-[#cbd8d4] bg-[#f9faf8] px-4 py-3 text-right"><div className="font-mono text-xl font-bold text-[#122232]">{items.length}<span className="text-[#52616b]"> / {items.length}</span></div><div className="text-[9px] uppercase tracking-[0.14em] text-[#52616b]">Inputs registered</div></div>}
       />
+      {showClassificationTip && (
+        <aside data-testid="evidence-classification-tip" role="note" className="classification-tip mb-5 flex items-start gap-3 rounded-lg border border-[#b9d43a]/70 bg-[#f8fbe8] px-4 py-3 text-[#344550]">
+          <Lightbulb aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#607500]" />
+          <p className="min-w-0 flex-1 text-[11px] leading-5">
+            <strong className="font-semibold text-[#122232]">Try it:</strong> Click any dropdown and change a classification. Watch what happens.
+          </p>
+          <button
+            data-testid="button-dismiss-evidence-classification-tip"
+            type="button"
+            aria-label="Dismiss classification tip"
+            title="Dismiss classification tip"
+            onClick={dismissClassificationTip}
+            className="shrink-0 rounded p-1 text-[#607500] transition-colors hover:bg-[#d4e86b]/40 hover:text-[#344550]"
+          >
+            <X aria-hidden="true" className="h-4 w-4" />
+          </button>
+        </aside>
+      )}
       <div className="mb-5 grid gap-3 sm:grid-cols-5">
         {counts.map(({ classification, count }) => {
           const meta = classMeta[classification];
@@ -269,5 +299,14 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
       <BottomNav screen="evidence" onNavigate={onNavigate} />
     </div>
   );
+}
+
+function isStorageFlagSet(key: string) {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(key) === "true";
+  } catch {
+    return false;
+  }
 }
 

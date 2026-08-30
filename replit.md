@@ -1,45 +1,141 @@
-# [Project name]
+# SafeLoc Diligence Workbench
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+SafeLoc is an evidence-governed investment workbench for diligence on the Stargate Abilene AI-infrastructure project in Taylor County, Texas. It helps an analyst or investment committee connect public operating evidence to representative acquisition economics, see which uncertainties are financially material, and carry the open questions into an advisor handoff.
 
-## Run & Operate
+This guide documents the `artifacts/safeloc-diligence-workbench` web artifact. The sibling API Server, Canvas, and any workspace database packages are separate artifacts and are not part of SafeLoc's runtime.
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+## Purpose and scope
 
-## Stack
+The workbench is a private working-paper proof of concept for an IC pre-read. Its central question is whether Stargate Abilene can deliver what a financial model assumes. It intentionally keeps two things distinct:
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- **Public context:** reported Stargate, environmental, energy, water, climate, community, permitting, and infrastructure facts, events, assertions, and unresolved disclosures.
+- **Synthetic economics:** representative acquisition and operating assumptions used to demonstrate sensitivity analysis. These are not disclosed project terms, reported returns, or a claim about Stargate's actual transaction economics.
 
-## Where things live
+The application does not fetch live data or call a server. The evidence records and source descriptions currently displayed in the UI are the case data bundled in the client.
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+## Stack and architecture
 
-## Architecture decisions
+- pnpm workspace package: `@workspace/safeloc-diligence-workbench`
+- React 19 and React DOM 19 with TypeScript
+- Vite 7 for development and the production static build
+- Tailwind CSS 4 through `@tailwindcss/vite`
+- Lucide React for interface icons
+- Hash routing implemented in `src/App.tsx`; no routing library
+- Browser-only calculations in `src/model/cashFlowEngine.ts`
+- Browser `localStorage` for the current evidence-classification session and named scenario snapshots
+- No SafeLoc API, database, server-side calculation layer, or authentication dependency
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+The artifact is registered as a path-routed web artifact in `artifacts/safeloc-diligence-workbench/.replit-artifact/artifact.toml`. Its development service runs on the workflow-provided port and serves the artifact at `/`.
 
-## Product
+## Key files
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- `artifacts/safeloc-diligence-workbench/.replit-artifact/artifact.toml` — artifact identity, `/` preview path, web service, development command, static production build, and `PORT`/`BASE_PATH` values.
+- `artifacts/safeloc-diligence-workbench/package.json` — SafeLoc scripts for development, build, preview, typecheck, unit tests, and Playwright tests.
+- `artifacts/safeloc-diligence-workbench/src/main.tsx` — React entrypoint; mounts `App` inside the error boundary and loads the global CSS.
+- `artifacts/safeloc-diligence-workbench/src/App.tsx` — active shell, hash route handling, navigation, home page, five workbench screens, AI Chain view, scenario comparison, reset flow, and presentation components.
+- `artifacts/safeloc-diligence-workbench/src/context/DiligenceContext.tsx` — canonical 16-item evidence set, classification state, localStorage hydration/persistence, calculated metrics access, and saved-scenario state.
+- `artifacts/safeloc-diligence-workbench/src/model/cashFlowEngine.ts` — browser cash-flow model, provenance quality policy, five-year schedule, IRR/NPV/payback and other metrics, recommendation state, and verified baseline comparison.
+- `artifacts/safeloc-diligence-workbench/src/model/advisorLens.ts` — advisor questions, provenance strength ordering, risk tiers, evidence-gap presentation, and governance IRR-gap helpers.
+- `artifacts/safeloc-diligence-workbench/src/HowItWorksTour.tsx` — the product tour's workflow, evidence-tier, source/method, and handoff content.
+- `artifacts/safeloc-diligence-workbench/src/model/*.test.ts` — model and advisor-lens unit tests.
+- `artifacts/safeloc-diligence-workbench/tests/*.spec.ts` — browser regression coverage for routing, storage/reset behavior, and scenarios.
+- `artifacts/safeloc-diligence-workbench/vite.config.ts` — Vite/Tailwind setup, aliases, required environment validation, host/port configuration, and static output path.
 
-## User preferences
+## Routes and user flow
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+The app uses hash routes and falls back to `#home` for an empty or unknown hash:
 
-## Gotchas
+- `#home` — landing page that frames the product and opens the workbench, AI Chain, or tour.
+- `#brief` — **Case Brief**, which frames the Stargate Abilene opportunity, location, public operating story, and synthetic transaction boundary.
+- `#evidence` — **Evidence Room**, where the 16 inputs, citations, descriptions, and provenance classifications can be reviewed and changed.
+- `#materiality` — **Financial Materiality**, which shows the current model, verified baseline, evidence-to-return bridge, assumptions, and five-year cash-flow schedule.
+- `#decision` — **Decision Review**, which combines recommendation status, material gaps, underwriting gates, and optional named scenario capture/comparison.
+- `#advisor` — **Advisor Lens**, which prioritizes questions and translates unresolved evidence into advisor-ready context.
+- `#value-chain` — **The AI Chain**, a separate view connecting infrastructure diligence to the broader AI value chain; it can return to the workbench.
+- `#how-it-works` — the long-form **How It Works** product tour. The tour can jump directly to any of the five workbench screens.
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+The five numbered screens are the core workbench progression: frame, source, model, decide, and transmit. Header, progress navigation, mobile navigation, and previous/continue controls all change the hash rather than maintaining a second routing system.
 
-## Pointers
+## Evidence governance and model behavior
 
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+The default case contains exactly 16 evidence inputs:
+
+1. Electricity Cost / MWh (`electricity_cost`)
+2. Annual Cooling Water (`water_consumption`)
+3. Grid Interconnection Timeline (`grid_interconnection`)
+4. 5-Yr Water Cost Escalation (`water_escalation`)
+5. Community Infrastructure Strain (`community_risk`)
+6. Renewable Procurement (`renewable_percentage`)
+7. Cooling Infrastructure CAPEX (`cooling_capex`)
+8. 5-Yr Electricity Price Increase (`electricity_escalation`)
+9. Carbon Compliance Cost (`carbon_compliance`)
+10. Core Build Timeline (`permitting_timeline`)
+11. Customer Terms & Concentration (`customer_concentration`)
+12. Local Water Rights & Allocation (`water_rights`)
+13. Site Hazard Exposure Profile (`site_hazard_exposure`)
+14. Backup Power Capacity (`backup_power_capacity`)
+15. Water Source Resilience (`water_source_resilience`)
+16. Estimated Downtime Cost (`downtime_cost`)
+
+Each item has a value, unit, citation, description, and one of five provenance classes:
+
+- **Verified Evidence** — a public record or dependable source directly supports the input.
+- **Management Assertion** — the project or its representatives state the input, but independent proof is limited.
+- **Model Inference** — the tool derives an estimate from related public facts.
+- **User Assumption** — an analyst-selected value is used where the project-specific fact is not established.
+- **Missing Evidence** — the needed information has not been found or disclosed.
+
+Changing a classification is not just a label change. The cash-flow engine applies the classification-specific quality policy to the affected driver. Depending on the input, that can change underwritten power or water cost, escalation, renewable coverage, customer utilization, delay timing, contingency CAPEX, climate disruption cost, backup-power treatment, water-rights cost, and related operating assumptions. The model then recalculates in the browser. The UI shows the current return, a verified-evidence baseline, the IRR change from the latest reclassification, evidence confidence, and the affected model line items.
+
+The reported model outputs include project IRR, MOIC, NPV, cash-on-cash, payback, confidence score, revenue delay, incremental CAPEX, OPEX change, material evidence-gap counts, total distributions, equity invested, terminal value, assumptions, line items, and a five-year schedule. A low-confidence warning is shown for sensitivity analysis when the evidence base is insufficient; at zero confidence, the engine also marks the output as mechanical.
+
+Recommendation status is governed by material evidence, not return alone:
+
+- **BLOCKED** when any material input is classified as Missing Evidence.
+- **CONDITIONAL** when no material input is missing but one or more material inputs are Model Inference or User Assumption.
+- **READY FOR REVIEW** when no material input is missing or classified as Model Inference/User Assumption. A Management Assertion is not treated as verified evidence, but it does not by itself prevent this status.
+
+## Persistence and saved scenarios
+
+SafeLoc is client-only and persistence is local to the browser:
+
+- The current session saves the 16 classifications in `localStorage`. A valid saved session is restored on load and briefly surfaced as “Session restored.”
+- Reset to Default restores the canonical evidence classifications and clears the current session. It does not delete named scenarios.
+- The Decision Review screen can save a named snapshot containing all classifications and the calculated metrics. Names must be non-empty and unique (case-insensitive), and at most five scenarios are kept.
+- Saved scenarios are independent snapshots: later changes to the live workbench do not mutate them. With at least two snapshots, the UI can compare their IRR, MOIC, NPV, cash-on-cash, payback, and confidence values.
+- Storage is optional defensive persistence. Invalid or unavailable browser storage falls back to the default in-memory case rather than making the workbench unusable.
+
+## Run and operate locally
+
+Run commands from the repository root with pnpm. There is no root `pnpm dev` script for SafeLoc; use the artifact filter:
+
+```bash
+# Replit workflow command
+pnpm --filter @workspace/safeloc-diligence-workbench run dev
+```
+
+The Vite configuration requires both `PORT` and `BASE_PATH` for every Vite command (`dev`, `build`, and `serve`). The registered artifact supplies `PORT=25519` and `BASE_PATH=/`; when running the package outside the managed workflow, provide them explicitly:
+
+```bash
+PORT=25519 BASE_PATH=/ pnpm --filter @workspace/safeloc-diligence-workbench run dev
+```
+
+Other package scripts are:
+
+```bash
+PORT=25519 BASE_PATH=/ pnpm --filter @workspace/safeloc-diligence-workbench run build
+PORT=25519 BASE_PATH=/ pnpm --filter @workspace/safeloc-diligence-workbench run serve
+pnpm --filter @workspace/safeloc-diligence-workbench run typecheck
+pnpm --filter @workspace/safeloc-diligence-workbench run test
+pnpm --filter @workspace/safeloc-diligence-workbench run test:e2e
+```
+
+The production build is a static Vite output under `artifacts/safeloc-diligence-workbench/dist/public`. The artifact manifest serves that directory and rewrites requests to `index.html`; the app itself still resolves its internal views from the hash.
+
+For Playwright tests, `playwright.config.ts` starts the SafeLoc dev server on port `4173` with `PORT=4173 BASE_PATH=/` unless `PLAYWRIGHT_BASE_URL` is provided. If a custom base URL is used, start a compatible SafeLoc server yourself and set `PLAYWRIGHT_BASE_URL` to it.
+
+## Data boundary
+
+The case's citations and descriptions represent public-source context already encoded in the application, including Stargate/Oracle/OpenAI/Crusoe/Lancium reporting, ERCOT and utility context, water and climate records, community reporting, and related environmental/infrastructure evidence. “Not disclosed” values remain unresolved rather than being silently filled with facts.
+
+The financial engine uses explicit representative assumptions scaled to the modeled 1.2 GW target, including entry value, lease rate, cooling CAPEX, utilization ramp, debt, discount rate, exit multiple, downtime cost, and other costs. These are synthetic underwriting inputs for a demonstration of evidence-governed sensitivity; they are not disclosed Stargate acquisition terms, actual project cash flows, or public facts about the project. Preserve that distinction when changing the UI or adding case inputs.

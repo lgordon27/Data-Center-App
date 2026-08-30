@@ -3,6 +3,7 @@ import type {
   ReactNode,
   RefObject
 } from "react";
+import { useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -35,6 +36,7 @@ import {
 import {
   type RiskTier
 } from "@/model/advisorLens";
+import { DeveloperConsole } from "@/components/DeveloperConsole";
 
 export type Screen = "brief" | "evidence" | "materiality" | "decision" | "advisor";
 type AppRoute = Screen | "home" | "value-chain" | "how-it-works";
@@ -230,7 +232,9 @@ export function ProgressNav({ current, onNavigate }: { current: Screen; onNaviga
 }
 
 export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, onWorkbench, route, sessionRestored, mobileOpen, menuButtonRef }: { onMenu: () => void; onReset: () => void; onHome: () => void; onHowItWorks: () => void; onValueChain: () => void; onWorkbench: () => void; route: AppRoute; sessionRestored: boolean; mobileOpen: boolean; menuButtonRef: RefObject<HTMLButtonElement | null> }) {
+  const [developerConsoleOpen, setDeveloperConsoleOpen] = useState(false);
   return (
+    <>
     <header className="border-b border-[#d9e0e4] bg-[#122232] px-4 py-4 text-[#f6f7f2] md:px-8 md:py-5">
       <div className="mx-auto flex max-w-[1480px] items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -245,6 +249,15 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
             className="rounded-md p-2 text-[#d4e86b] hover:bg-white/10 md:hidden"
           >
             {mobileOpen ? <X aria-hidden="true" className="h-5 w-5" /> : <Menu aria-hidden="true" className="h-5 w-5" />}
+          </button>
+          <button
+            data-testid="button-developer-console-mobile"
+            type="button"
+            onClick={() => setDeveloperConsoleOpen(true)}
+            className="rounded-md p-2 text-[#d4e86b] hover:bg-white/10 md:hidden"
+            aria-label="Open developer console"
+          >
+            <span aria-hidden="true" className="block h-2 w-2 rounded-full bg-[#b9d43a]" />
           </button>
           <div className="relative flex h-9 w-9 items-center justify-center rounded border border-[#d4e86b]/50 bg-[#d4e86b] text-[#122232]">
             <span className="absolute h-4 w-4 rounded-sm border-2 border-[#122232]" />
@@ -289,6 +302,14 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
            >
              <Info aria-hidden="true" className="h-3.5 w-3.5" /> How It Works
            </button>
+           <button
+             data-testid="button-developer-console"
+             type="button"
+              onClick={() => setDeveloperConsoleOpen(true)}
+             className="hidden min-h-11 items-center gap-2 rounded border border-[#60717f] px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#d4e86b] transition-colors hover:border-[#d4e86b] hover:bg-white/10 lg:inline-flex"
+           >
+             <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-[#b9d43a]" /> Developer Console
+           </button>
           {route === "value-chain" && (
             <button
               data-testid="button-return-to-workbench"
@@ -306,6 +327,8 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
         </div>
       </div>
     </header>
+    <DeveloperConsole isOpen={developerConsoleOpen} onClose={() => setDeveloperConsoleOpen(false)} />
+    </>
   );
 }
 

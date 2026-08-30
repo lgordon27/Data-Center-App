@@ -8,7 +8,7 @@ router = "path"
 
 [[services]]
 name = "web"
-paths = [ "/", "/api/ercot-queue" ]
+paths = [ "/", "/api/ercot-queue", "/api/gridtracker" ]
 localPort = 25519
 
 [services.development]
@@ -20,7 +20,7 @@ run = "pnpm --filter @workspace/safeloc-diligence-workbench run dev"
 args = [ "pnpm", "--filter", "@workspace/safeloc-diligence-workbench", "run", "build" ]
 
 [services.production.run]
-args = [ "node", "artifacts/safeloc-diligence-workbench/server.mjs" ]
+args = [ "pnpm", "--filter", "@workspace/safeloc-diligence-workbench", "run", "start" ]
 
 [services.env]
 PORT = "25519"

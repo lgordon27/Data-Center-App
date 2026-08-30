@@ -1,0 +1,86 @@
+import { strict as assert } from "node:assert";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+import path from "node:path";
+import { test } from "node:test";
+
+const packageRoot = path.resolve(import.meta.dirname, "..");
+
+async function run(command: string, args: string[], env: NodeJS.ProcessEnv = {}) {
+  const child = spawn(command, args, {
+    cwd: packageRoot,
+    env: { ...process.env, ...env },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const chunks: Buffer[] = [];
+  child.stdout.on("data", (chunk: Buffer) => chunks.push(chunk));
+  child.stderr.on("data", (chunk: Buffer) => chunks.push(chunk));
+  const [result] = await once(child, "close");
+  if (result !== 0) {
+    throw new Error(`${command} ${args.join(" ")} failed with code ${result}\n${Buffer.concat(chunks).toString()}`);
+  }
+}
+
+async function waitForJson(url: string, child: ReturnType<typeof spawn>) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    try {
+      const response = await fetch(url);
+      const contentType = response.headers.get("content-type") ?? "";
+      assert.match(contentType, /application\/json/, `${url} should be a JSON API response`);
+      return await response.json() as Record<string, unknown>;
+    } catch (error) {
+      if (child.exitCode !== null) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+  throw new Error(`Timed out waiting for ${url}`);
+}
+
+async function stopProcess(child: ReturnType<typeof spawn>) {
+  if (child.exitCode !== null) return;
+  try {
+    if (child.pid) process.kill(-child.pid, "SIGTERM");
+    else child.kill("SIGTERM");
+  } catch {
+    child.kill("SIGTERM");
+  }
+  await Promise.race([
+    once(child, "close"),
+    new Promise((resolve) => setTimeout(resolve, 2_000)),
+  ]);
+  if (child.exitCode === null) {
+    try {
+      if (child.pid) process.kill(-child.pid, "SIGKILL");
+      else child.kill("SIGKILL");
+    } catch {
+      child.kill("SIGKILL");
+    }
+  }
+}
+
+test("production entry point serves all GridTracker API routes", async () => {
+  const port = 4700 + (process.pid % 500);
+  await run("pnpm", ["run", "build"], { PORT: String(port), BASE_PATH: "/" });
+  const child = spawn("pnpm", ["run", "start"], {
+    cwd: packageRoot,
+    env: { ...process.env, NODE_ENV: "production", PORT: String(port), BASE_PATH: "/" },
+    stdio: ["ignore", "pipe", "pipe"],
+    detached: true,
+  });
+
+  try {
+    const baseUrl = `http://127.0.0.1:${port}`;
+    const status = await waitForJson(`${baseUrl}/api/gridtracker/status`, child);
+    assert.equal(status.status, "disconnected");
+    const ercot = await waitForJson(`${baseUrl}/api/ercot-queue`, child);
+    assert.ok(["live", "cached", "error"].includes(String(ercot.status)));
+    assert.equal(typeof ercot.diagnostics, "object");
+    const diagnostics = await waitForJson(`${baseUrl}/api/gridtracker/diagnostics`, child);
+    assert.ok(Array.isArray(diagnostics.history));
+    const query = await waitForJson(`${baseUrl}/api/gridtracker/query?q=What%20is%20the%20current%20queue%20status%3F`, child);
+    assert.equal(query.ok, false);
+    assert.equal((query.error as { code?: string }).code, "NOT_CONFIGURED");
+  } finally {
+    await stopProcess(child);
+  }
+});

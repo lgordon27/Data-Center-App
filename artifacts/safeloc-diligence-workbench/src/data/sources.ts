@@ -81,9 +81,9 @@ export const sourceDefinitions: readonly SourceDefinition[] = [
     description: "Grid intelligence and query context.",
     role: "Grid intelligence",
     icon: "gridtracker",
-    supportedStatuses: ["connected", "disconnected"],
+    supportedStatuses: ["connected", "disconnected", "live", "cached"],
     fallbackText: "No live GridTracker query is claimed until a connection reports one.",
-    statusMeaning: "Connected means a provider connection is available; Disconnected means no live query is available.",
+    statusMeaning: "Connected means the MCP handshake is available; Live and Cached describe the latest query result, not evidence quality.",
   },
 ];
 

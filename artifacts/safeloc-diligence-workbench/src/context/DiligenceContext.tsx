@@ -7,6 +7,7 @@ import {
 } from '@/model/cashFlowEngine';
 import {
   sourceStateMap,
+  type ProviderSourceMetadata,
   type SourceId,
   type SourceState,
 } from "@/data/sources";
@@ -64,6 +65,7 @@ type DiligenceState = {
   removeScenario: (id: string) => RemoveScenarioResult;
   sourceStates: Record<SourceId, SourceState>;
   ercotQueue: ErcotQueueResult;
+  refreshGridTrackerState: () => Promise<void>;
 };
 
 export const CURRENT_SESSION_STORAGE_KEY = 'safeloc:diligence:current-session:v1';
@@ -155,9 +157,11 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   const [sessionRestored, setSessionRestored] = useState(initialSession.restored);
   const [scenarios, setScenarios] = useState<SavedScenario[]>(loadScenarios);
   const [ercotQueue, setErcotQueue] = useState<ErcotQueueResult>(FALLBACK_ERCOT_RESULT);
+  const [gridTrackerState, setGridTrackerState] = useState<ProviderSourceMetadata>({ status: "disconnected" });
   const sourceStates = useMemo(() => sourceStateMap({
     "ercot-queue": ercotQueue.sourceMetadata,
-  }), [ercotQueue.sourceMetadata]);
+    "gridtracker-mcp": gridTrackerState,
+  }), [ercotQueue.sourceMetadata, gridTrackerState]);
 
   useEffect(() => {
     let active = true;
@@ -168,6 +172,41 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       active = false;
     };
   }, []);
+
+  const refreshGridTrackerState = useCallback(async () => {
+    if (typeof window === "undefined") return;
+    try {
+      const response = await fetch("/api/gridtracker/status");
+      if (!response.ok) throw new Error("status request failed");
+      const payload = await response.json() as {
+        status?: "connected" | "disconnected";
+        protocolVersion?: string | null;
+        negotiatedAt?: string | null;
+        lastQuery?: { at?: string; freshness?: "live" | "cached" | "stale" | "disconnected" } | null;
+      };
+      const freshness = payload.lastQuery?.freshness;
+      const status: ProviderSourceMetadata["status"] =
+        freshness === "live"
+          ? "live"
+          : freshness === "cached" || freshness === "stale"
+            ? "cached"
+            : payload.status === "connected"
+              ? "connected"
+              : "disconnected";
+      setGridTrackerState({
+        status,
+        dataOrigin: status === "live" || status === "cached" ? "provider" : undefined,
+        timestamp: payload.lastQuery?.at ?? payload.negotiatedAt ?? undefined,
+        version: payload.protocolVersion ?? undefined,
+      });
+    } catch {
+      setGridTrackerState({ status: "disconnected" });
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshGridTrackerState();
+  }, [refreshGridTrackerState]);
 
   useEffect(() => {
     if (!sessionRestored) return undefined;
@@ -279,7 +318,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <DiligenceContext.Provider value={{ evidence: state.evidence, updateClassification, clearLastChange, metrics, resetToDefault, sessionRestored, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue }}>
+    <DiligenceContext.Provider value={{ evidence: state.evidence, updateClassification, clearLastChange, metrics, resetToDefault, sessionRestored, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, refreshGridTrackerState }}>
       {children}
     </DiligenceContext.Provider>
   );

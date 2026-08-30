@@ -11,19 +11,20 @@ The workbench is a private working-paper proof of concept for an IC pre-read. It
 - **Public context:** reported Stargate, environmental, energy, water, climate, community, permitting, and infrastructure facts, events, assertions, and unresolved disclosures.
 - **Synthetic economics:** representative acquisition and operating assumptions used to demonstrate sensitivity analysis. These are not disclosed project terms, reported returns, or a claim about Stargate's actual transaction economics.
 
-The application uses an artifact-owned, same-origin `/api/ercot-queue` proxy for ERCOTQueue.com's documented public JSON datasets. A canonical client-safe source registry exposes provider identity, status, timestamps/version, data role, and fallback text. FEMA and EIA remain embedded by default and GridTracker MCP remains disconnected; the UI never invents a live response, named customer match, request count, cache, or timestamp.
+The application keeps provider credentials and transport server-side. A canonical client-safe source registry exposes provider identity, status, timestamps/version, data role, and fallback text. The default FEMA profile, ERCOTQueue context, and EIA estimate are embedded; GridTracker MCP starts disconnected unless `GRIDTRACKER_MCP_ENDPOINT` is configured. Provider responses are normalized before they reach the browser, and the UI never invents a live response, cache, or timestamp.
 
 ## Stack and architecture
 
 - pnpm workspace package: `@workspace/safeloc-diligence-workbench`
 - React 19 and React DOM 19 with TypeScript
-- Vite 7 for development and the production static build
+- Vite 7 for the client development and production build
+- Express 5 runtime serving the client and same-origin GridTracker API
 - Tailwind CSS 4 through `@tailwindcss/vite`
 - Lucide React for interface icons
 - Hash routing implemented in `src/App.tsx`; no routing library
 - Browser-only calculations in `src/model/cashFlowEngine.ts`
 - Browser `localStorage` for the current evidence-classification session and named scenario snapshots
-- One read-only SafeLoc proxy route for ERCOTQueue public data; no database, server-side calculation layer, or authentication dependency
+- No database or authentication dependency; server-side GridTracker configuration is environment-only
 
 The artifact is registered as a path-routed web artifact in `artifacts/safeloc-diligence-workbench/.replit-artifact/artifact.toml`. Its development service runs on the workflow-provided port and serves the artifact at `/`.
 
@@ -41,9 +42,9 @@ The artifact is registered as a path-routed web artifact in `artifacts/safeloc-d
 - `artifacts/safeloc-diligence-workbench/src/HowItWorksTour.tsx` — the product tour's workflow, evidence-tier, source/method, and handoff content.
 - `artifacts/safeloc-diligence-workbench/src/model/*.test.ts` — model and advisor-lens unit tests.
 - `artifacts/safeloc-diligence-workbench/tests/*.spec.ts` — browser regression coverage for routing, storage/reset behavior, and scenarios.
-- `artifacts/safeloc-diligence-workbench/vite.config.ts` — Vite/Tailwind setup, aliases, required environment validation, host/port configuration, development proxy middleware, and output path.
-- `artifacts/safeloc-diligence-workbench/server.mjs` and `server/ercotProxy.mjs` — artifact-owned production static server and bounded public ERCOTQueue proxy.
-- `artifacts/safeloc-diligence-workbench/src/services/ercotService.ts` — client validation, aggregate calculations, named-record matching, COD-slip normalization, and embedded fallback.
+- `artifacts/safeloc-diligence-workbench/vite.config.ts` — Vite/Tailwind setup, aliases, required environment validation, host/port configuration, and static output path.
+- `artifacts/safeloc-diligence-workbench/server/index.ts` — Express host for the development Vite middleware, production client, and same-origin GridTracker routes.
+- `artifacts/safeloc-diligence-workbench/server/mcp/gridtracker.ts` — MCP initialization and tool discovery, normalized query results, TTL cache, stale fallback, and redacted diagnostics.
 
 ## Routes and user flow
 
@@ -143,15 +144,13 @@ pnpm --filter @workspace/safeloc-diligence-workbench run test
 pnpm --filter @workspace/safeloc-diligence-workbench run test:e2e
 ```
 
-The production build is a Vite output under `artifacts/safeloc-diligence-workbench/dist/public`. The artifact-owned Node process serves those files and the `/api/ercot-queue` route; the app itself still resolves its internal views from the hash.
+The production build is a Vite output under `artifacts/safeloc-diligence-workbench/dist/public`. `pnpm ... run serve` starts the production Express host, which serves that directory and keeps `/api/gridtracker/*` same-origin. The artifact manifest retains the static preview declaration for the managed artifact preview; deployments that run the package can use the Express `serve` script.
 
 For Playwright tests, `playwright.config.ts` starts the SafeLoc dev server on port `4173` with `PORT=4173 BASE_PATH=/` unless `PLAYWRIGHT_BASE_URL` is provided. If a custom base URL is used, start a compatible SafeLoc server yourself and set `PLAYWRIGHT_BASE_URL` to it.
 
 ## Data boundary
 
 The case's citations and descriptions represent public-source context already encoded in the application, including Stargate/Oracle/OpenAI/Crusoe/Lancium reporting, ERCOT and utility context, water and climate records, community reporting, and related environmental/infrastructure evidence. “Not disclosed” values remain unresolved rather than being silently filled with facts.
-
-The ERCOT proxy fetches only documented, unauthenticated resources: generation `projects.json`, `cod_history.json`, large-load `load/load_queue_summary.json`, and `site_freshness.json`. It applies bounded timeouts and validates upstream status, content type, and minimum payload shape. Successful snapshots are retained in-process for a cached response if a later refresh fails; otherwise the browser service uses a clearly labeled embedded aggregate baseline. The large-load source publishes aggregate MW and sector share but currently reports null project counts, so SafeLoc displays “Not published” rather than deriving or fabricating a customer count. Generation records only become named Stargate/Oracle evidence when those names are actually present in the public project record.
 
 The financial engine uses explicit representative assumptions scaled to the modeled 1.2 GW target, including entry value, lease rate, cooling CAPEX, utilization ramp, debt, discount rate, exit multiple, downtime cost, and other costs. These are synthetic underwriting inputs for a demonstration of evidence-governed sensitivity; they are not disclosed Stargate acquisition terms, actual project cash flows, or public facts about the project. Preserve that distinction when changing the UI or adding case inputs.
 
@@ -160,3 +159,18 @@ The financial engine uses explicit representative assumptions scaled to the mode
 Evidence records can identify the source and data role that support them without changing their evidence classification. API-backed records show the shared source status (live or cached); records without a provider-backed source remain explicitly embedded. The financial model keeps its numeric inputs unchanged and derives electricity-cost attribution from the shared EIA state: a live provider response includes its observed date, while the bundled case continues to read “embedded estimate.”
 
 The client-safe provider boundary accepts separate live and retained-cache metadata. It validates provider origin and timestamps, chooses a valid live response first, automatically uses the timestamped retained response when live metadata is unavailable or invalid, and returns to the embedded baseline when neither exists. This is the mechanism behind the required demonstration rule: **All external feeds automatically fall back to cached values during an unavailable live demonstration.** The current proof-of-concept supplies no provider payload, so its visible defaults remain embedded rather than cached.
+
+The ERCOTQueue adapter still handles its documented public queue resources independently from the GridTracker MCP adapter. Its named-record matching and aggregate fallback remain evidence context only; neither feed freshness nor a provider response silently changes a classification.
+
+### GridTracker MCP runtime
+
+GridTracker is an optional server-side MCP connection. Configure it only through the runtime environment; never put its endpoint or credential in client code:
+
+```bash
+GRIDTRACKER_MCP_ENDPOINT=https://provider.example/mcp
+GRIDTRACKER_MCP_AUTH_TOKEN=<server-side secret>
+```
+
+The adapter sends `initialize`, discovers the provider's advertised tools with `tools/list`, and selects an operation from the discovered tool names/descriptions for queue snapshots, change logs, classifications, or daily summaries. It derives the query argument from the discovered input schema rather than assuming a provider-specific tool name. `GET /api/gridtracker/query?q=...` returns normalized SafeLoc data, connection state, freshness, cache age/TTL, evidence mapping, and a diagnostic history identifier. Snapshot results are retained for 24 hours and change-log results for 12 hours; a provider failure returns a clearly marked stale result when an expired cached result exists.
+
+The Evidence Room's GridTracker action never changes an evidence classification automatically. An analyst must confirm the proposed `grid_interconnection` → `Verified Evidence` mapping, after which the existing diligence context performs the canonical recalculation and persistence. The Developer Console exposes only bounded, redacted in-session protocol diagnostics.

@@ -117,6 +117,10 @@ test("governance gap equals verified baseline IRR less current IRR and is safe w
   assert.notEqual(changedModel.baseIRR, null);
   assert.equal(
     getGovernanceIRRGap(changedModel.baseIRR, changedModel.projectIRR),
+    changedModel.baseIRR! - changedModel.projectIRR!,
+  );
+  assert.notEqual(
+    getGovernanceIRRGap(changedModel.baseIRR, changedModel.projectIRR),
     Number((changedModel.baseIRR! - changedModel.projectIRR!).toFixed(1)),
   );
   assert.notEqual(

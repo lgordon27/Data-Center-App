@@ -309,10 +309,6 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
-function round(value: number, decimals = 1) {
-  return Number(value.toFixed(decimals));
-}
-
 function calculateNPV(cashFlows: number[], rate: number) {
   return cashFlows.reduce((total, cashFlow, index) => total + cashFlow / Math.pow(1 + rate, index), 0);
 }
@@ -383,7 +379,7 @@ function calculatePayback(cashFlows: number[]) {
     if (cumulative >= 0 && index > 0) {
       const change = cumulative - previous;
       const fraction = change > 0 ? Math.abs(previous) / change : 0;
-      return round((index - 1) + clamp(fraction, 0, 1), 2);
+      return (index - 1) + clamp(fraction, 0, 1);
     }
   }
 
@@ -761,22 +757,22 @@ function runModel(evidence: EvidenceRecord): CashFlowModel {
   };
 
   return {
-    projectIRR: projectIRR === null ? null : round(projectIRR * 100, 1),
-    moic: equityInvested > 0 ? round(totalDistributions / equityInvested, 2) : 0,
-    cashOnCash: round(cashOnCash, 1),
+    projectIRR: projectIRR === null ? null : projectIRR * 100,
+    moic: equityInvested > 0 ? totalDistributions / equityInvested : 0,
+    cashOnCash,
     payback: calculatePayback(cashFlows),
-    npv: round(npv, 1),
+    npv,
     confidenceScore,
     revenueDelayMonths,
-    incrementalCapex: round(capexContingency, 1),
-    opexChange: round((yearFive?.totalOpex ?? 0) - (firstOperatingYear?.totalOpex ?? 0), 1),
+    incrementalCapex: capexContingency,
+    opexChange: (yearFive?.totalOpex ?? 0) - (firstOperatingYear?.totalOpex ?? 0),
     recommendationBlocked: recommendationStatus === "BLOCKED",
     recommendationStatus,
     missingMaterialCount,
     materialUnverifiedCount,
-    totalDistributions: round(totalDistributions, 1),
-    equityInvested: round(equityInvested, 1),
-    terminalValue: round(yearFive?.terminalValue ?? 0, 1),
+    totalDistributions,
+    equityInvested,
+    terminalValue: yearFive?.terminalValue ?? 0,
     schedule,
     assumptions,
     lineItems,
@@ -800,7 +796,7 @@ export function calculateCashFlowModel(evidence: EvidenceRecord) {
       const deltaIRR =
         current.projectIRR === null || repairedModel.projectIRR === null
           ? 0
-          : round(current.projectIRR - repairedModel.projectIRR, 1);
+          : current.projectIRR - repairedModel.projectIRR;
       return [id, { ...lineItem, deltaIRR }];
     }),
   );

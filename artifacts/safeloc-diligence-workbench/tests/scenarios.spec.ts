@@ -44,6 +44,10 @@ test.describe("named scenario snapshots and comparisons", () => {
   test("captures immutable snapshots and enforces the five-scenario limit", async ({ page }) => {
     await saveScenario(page, "Base case");
     const originalSnapshot = await page.evaluate((key) => JSON.parse(window.localStorage.getItem(key) ?? "{}").scenarios[0], scenariosKey);
+    expect(originalSnapshot.metrics.projectIRR).not.toBe(Number(originalSnapshot.metrics.projectIRR.toFixed(1)));
+    expect(originalSnapshot.metrics.moic).not.toBe(Number(originalSnapshot.metrics.moic.toFixed(2)));
+    expect(originalSnapshot.metrics.npv).not.toBe(Number(originalSnapshot.metrics.npv.toFixed(0)));
+    expect(originalSnapshot.metrics.payback).not.toBe(Number(originalSnapshot.metrics.payback.toFixed(1)));
 
     await page.goto("/#evidence");
     await page.getByTestId("select-classification-electricity_cost").selectOption("Missing Evidence");
@@ -75,14 +79,14 @@ test.describe("named scenario snapshots and comparisons", () => {
               name: "First case",
               savedAt: "2026-08-29T12:00:00.000Z",
               classifications,
-              metrics: { projectIRR: 10, moic: 1.5, npv: 12.3, cashOnCash: 8.2, payback: null, confidence: 40 },
+              metrics: { projectIRR: 10.04, moic: 1.504, npv: 12.49, cashOnCash: 8.24, payback: null, confidence: 40.04 },
             },
             {
               id: "second",
               name: "Second case",
               savedAt: "2026-08-29T12:05:00.000Z",
               classifications,
-              metrics: { projectIRR: 8.5, moic: 1.5, npv: 9.1, cashOnCash: 8.2, payback: 4.5, confidence: 55 },
+              metrics: { projectIRR: 8.46, moic: 1.495, npv: 9.11, cashOnCash: 8.26, payback: 4.54, confidence: 55.06 },
             },
           ],
         },
@@ -92,12 +96,12 @@ test.describe("named scenario snapshots and comparisons", () => {
     await page.getByTestId("button-compare-scenarios").click();
 
     const expectedRows = {
-      projectIRR: ["10.0%", "8.5%", "-1.5 pts"],
-      moic: ["1.50x", "1.50x", "+0.00x"],
-      npv: ["$12.3M", "$9.1M", "−$3.2M"],
-      cashOnCash: ["8.2%", "8.2%", "+0.0%"],
-      payback: ["Not reached", "4.50 yrs", "Unavailable"],
-      confidence: ["40.0%", "55.0%", "+15.0%"],
+      projectIRR: ["10.0%", "8.5%", "-1.6 pts"],
+      moic: ["1.50x", "1.50x", "-0.01x"],
+      npv: ["$12M", "$9M", "−$3M"],
+      cashOnCash: ["8.2%", "8.3%", "+0.0%"],
+      payback: ["Not reached", "4.5 years", "Unavailable"],
+      confidence: ["40.0%", "55.1%", "+15.0%"],
     };
 
     for (const [metric, values] of Object.entries(expectedRows)) {

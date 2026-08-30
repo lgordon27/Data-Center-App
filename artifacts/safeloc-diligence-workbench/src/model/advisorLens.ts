@@ -116,5 +116,5 @@ export function getGovernanceIRRGap(
   ) {
     return null;
   }
-  return Number((baseIRR - currentIRR).toFixed(1));
+  return baseIRR - currentIRR;
 }

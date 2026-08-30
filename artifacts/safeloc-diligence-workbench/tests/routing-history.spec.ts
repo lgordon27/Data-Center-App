@@ -373,7 +373,7 @@ test.describe("hash routing and browser history", () => {
     await expect(page.getByTestId("section-practice-value")).toContainText("3%");
     await expect(page.getByTestId("section-practice-value")).toContainText("4x");
     await expect(page.getByTestId("section-practice-value")).toContainText("zero statistical association with financial fulfillment");
-    await expect(page.getByTestId("text-governance-irr-gap")).toHaveText(/\d+(\.\d+)? pts/);
+    await expect(page.getByTestId("text-governance-irr-gap")).toHaveText(/-?\d+\.\d pts/);
     await expect(page.getByTestId("card-fund-ishares")).toBeVisible();
     await expect(page.getByTestId("advisor-question-water-rights")).toBeVisible();
 
@@ -386,5 +386,36 @@ test.describe("hash routing and browser history", () => {
     await expect(page.getByTestId("button-return-decision")).toBeVisible();
     await page.getByTestId("button-return-decision").click();
     await expect(page).toHaveURL(/#decision$/);
+  });
+
+  test("rounds financial metrics only at the presentation boundary", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/#materiality");
+
+    await expect(page.getByTestId("metric-project-irr")).toContainText(/Project IRR/);
+    await expect(page.getByTestId("metric-project-irr")).toContainText(/\d+\.\d%/);
+    await expect(page.getByTestId("metric-moic")).toContainText(/\d+\.\d{2}x/);
+    await expect(page.getByTestId("metric-coc")).toContainText(/\d+\.\d%/);
+    await expect(page.getByTestId("metric-payback")).toContainText(/\d+\.\d years|Not reached/);
+    await expect(page.getByTestId("metric-npv")).toContainText(/[$−]\d+M/);
+    await expect(page.getByTestId("waterfall-step-water_rights")).toContainText(/[-+]\d+\.\d pts|N\/M/);
+    await expect(page.getByTestId("live-current-irr")).toContainText(/Current IRR is now \d+\.\d%\./);
+
+    await page.goto("/#evidence");
+    await page.getByTestId("select-classification-water_rights").selectOption("Verified Evidence");
+    await expect(page.getByTestId("toast-reclassification")).toContainText(/[-+]\d+\.\d pts IRR/);
+    await expect(page.getByTestId("toast-reclassification")).not.toContainText(/\d+\.\d{2,}%/);
+
+    await page.goto("/#decision");
+    await expect(page.getByTestId("text-decision-irr")).toContainText(/\d+\.\d%/);
+    await expect(page.getByTestId("panel-decision-return")).toContainText(/\d+\.\d{2}x/);
+    await expect(page.getByTestId("panel-decision-return")).toContainText(/[$−]\d+M/);
+
+    await page.goto("/#advisor");
+    await expect(page.getByTestId("text-governance-irr-gap")).toHaveText(/-?\d+\.\d pts/);
+
+    await page.goto("/");
+    await expect(page.getByTestId("home-irr-verified")).toHaveText("18.4%");
+    await expect(page.getByTestId("home-evidence-visual")).toHaveAttribute("aria-label", /18\.4%/);
   });
 });

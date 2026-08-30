@@ -185,6 +185,22 @@ test("display copy changes do not change structured model outputs", () => {
   assert.deepEqual(calculateCashFlowModel(editedEvidence), calculateCashFlowModel(INITIAL_EVIDENCE));
 });
 
+test("financial metrics retain model precision beyond their display formats", () => {
+  const model = calculateCashFlowModel(INITIAL_EVIDENCE);
+
+  assert.notEqual(model.projectIRR, null);
+  assert.notEqual(model.projectIRR, Number(model.projectIRR!.toFixed(1)));
+  assert.notEqual(model.moic, Number(model.moic.toFixed(2)));
+  assert.notEqual(model.cashOnCash, Number(model.cashOnCash.toFixed(1)));
+  assert.notEqual(model.payback, null);
+  assert.notEqual(model.payback, Number(model.payback!.toFixed(1)));
+  assert.notEqual(model.npv, Number(model.npv.toFixed(0)));
+  assert.notEqual(
+    model.lineItems.site_hazard_exposure.deltaIRR,
+    Number(model.lineItems.site_hazard_exposure.deltaIRR.toFixed(1)),
+  );
+});
+
 test("climate uncertainty propagates through returns and material recommendation rules", () => {
   const verified = calculateCashFlowModel(allVerified());
   const current = calculateCashFlowModel(INITIAL_EVIDENCE);

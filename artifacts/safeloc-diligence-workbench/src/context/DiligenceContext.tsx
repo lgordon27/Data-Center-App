@@ -143,7 +143,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       lastChange: {
         from: previousIrr ?? 0,
         to: nextIrr ?? 0,
-        delta: Number(((nextIrr ?? 0) - (previousIrr ?? 0)).toFixed(1)),
+        delta: (nextIrr ?? 0) - (previousIrr ?? 0),
       },
     };
     stateRef.current = nextState;

@@ -110,15 +110,18 @@ function formatIRR(value: number | null) {
 }
 
 function formatPayback(value: number | null) {
-  return value === null ? "Not reached" : `${value.toFixed(2)} yrs`;
+  return value === null ? "Not reached" : `${value.toFixed(1)} years`;
 }
 
+function formatNPV(value: number) {
+  return formatCurrency(value, 0);
+}
 function formatScenarioMetric(value: number | null, metric: "irr" | "moic" | "npv" | "cashOnCash" | "payback" | "confidence") {
   if (metric === "irr") return formatIRR(value);
   if (metric === "payback") return formatPayback(value);
   if (value === null) return "Unavailable";
   if (metric === "moic") return `${value.toFixed(2)}x`;
-  if (metric === "npv") return formatCurrency(value);
+  if (metric === "npv") return formatNPV(value);
   return `${value.toFixed(1)}%`;
 }
 function formatLineItemValue(value: number, unit: string) {
@@ -198,7 +201,7 @@ const evidenceCategories = [
 ] as const;
 
 function MetricCard({ label, value, detail, accent = "navy", testId }: { label: string; value: string; detail: string; accent?: "navy" | "lime" | "coral" | "violet"; testId: string }) {
-  const colors = { navy: "bg-[#122232] text-white", lime: "bg-[#d4e86b] text-[#1c2a16]", coral: "bg-[#f5ddd5] text-[#6d2b26]", violet: "bg-[#e9e0f7] text-[#482873]" };
+  const colors = { navy: "!bg-[#122232] !text-white", lime: "!bg-[#d4e86b] !text-[#1c2a16]", coral: "!bg-[#f5ddd5] !text-[#6d2b26]", violet: "!bg-[#e9e0f7] !text-[#482873]" };
   return (
     <div data-testid={testId} className={`metric-card min-h-[116px] !border-0 ${colors[accent]}`}>
       <div className="flex items-start justify-between gap-2">
@@ -658,7 +661,7 @@ function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => 
       const after = calculateCashFlowModel(afterEvidence).projectIRR;
       beforeEvidence = afterEvidence;
       return { ...impact, before, after };
-    }).map((step, index) => ({ ...step, index, change: step.before === null || step.after === null ? null : Number((step.after - step.before).toFixed(1)) }));
+    }).map((step, index) => ({ ...step, index, change: step.before === null || step.after === null ? null : step.after - step.before }));
   }, [evidence, impacts]);
   return (
     <div>
@@ -686,11 +689,11 @@ function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => 
         </div>
       )}
       <div id="materiality-summary" className="scroll-mt-24 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-         <MetricCard testId="metric-project-irr" label="Project IRR" value={formatIRR(currentIRR)} detail={`${irrDelta === null ? "N/M" : `${irrDelta >= 0 ? "+" : ""}${irrDelta.toFixed(1)} pts`} vs verified baseline`} accent="lime" />
-        <MetricCard testId="metric-moic" label="MOIC" value={`${metrics.moic}x`} detail="5-year hold period" accent="navy" />
-        <MetricCard testId="metric-coc" label="Cash-on-cash" value={`${metrics.cashOnCash}%`} detail="Stabilized year 3" accent="violet" />
+         <MetricCard testId="metric-project-irr" label="Project IRR" value={formatIRR(currentIRR)} detail={`${irrDelta === null ? "N/M" : formatIRRDelta(irrDelta, true)} vs verified baseline`} accent="lime" />
+        <MetricCard testId="metric-moic" label="MOIC" value={`${metrics.moic.toFixed(2)}x`} detail="5-year hold period" accent="navy" />
+        <MetricCard testId="metric-coc" label="Cash-on-cash" value={`${metrics.cashOnCash.toFixed(1)}%`} detail="Stabilized year 3" accent="violet" />
         <MetricCard testId="metric-payback" label="Payback" value={formatPayback(metrics.payback)} detail="Cumulative equity breakeven" accent="coral" />
-        <MetricCard testId="metric-npv" label="NPV @ 10%" value={formatCurrency(metrics.npv)} detail="Equity value created" accent="navy" />
+        <MetricCard testId="metric-npv" label="NPV @ 10%" value={formatNPV(metrics.npv)} detail="Equity value created" accent="navy" />
       </div>
       <section id="materiality-drivers" data-testid="panel-irr-waterfall" aria-labelledby="irr-waterfall-title" className="mt-5 scroll-mt-24 rounded-xl border-2 border-[#122232] bg-[#122232] p-5 text-white md:p-6">
         <div className="flex flex-col justify-between gap-3 border-b border-white/15 pb-4 md:flex-row md:items-end">
@@ -702,11 +705,11 @@ function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => 
           <div className="rounded-lg border border-[#b9d43a]/40 bg-[#b9d43a]/10 p-3"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#b9d43a]">Verified baseline</div><div className="mt-1 font-mono text-2xl font-bold text-[#d4e86b]">{formatIRR(baseIRR)}</div></div>
           {waterfallSteps.map((step) => {
             const tone = step.change !== null && step.change < 0 ? "text-[#f5ddd5]" : "text-[#b9d43a]";
-            return <div key={step.id} data-testid={`waterfall-step-${step.id}`} className="rounded-lg border border-white/10 bg-white/5 p-3"><div className="truncate text-[10px] font-semibold text-[#e3eaed]">{evidence[step.id].label}</div><div className="mt-1 flex items-baseline justify-between gap-2"><span className={`font-mono text-sm font-bold ${tone}`}>{formatIRR(step.after)}</span><span className={`font-mono text-[9px] font-bold ${tone}`}>{step.change === null ? "N/M" : `${step.change >= 0 ? "+" : ""}${step.change.toFixed(1)} pts`}</span></div><div className="mt-1 text-[9px] text-[#9dafb8]">{evidence[step.id].classification}</div></div>;
+            return <div key={step.id} data-testid={`waterfall-step-${step.id}`} className="rounded-lg border border-white/10 bg-white/5 p-3"><div className="truncate text-[10px] font-semibold text-[#e3eaed]">{evidence[step.id].label}</div><div className="mt-1 flex items-baseline justify-between gap-2"><span className={`font-mono text-sm font-bold ${tone}`}>{formatIRR(step.after)}</span><span className={`font-mono text-[9px] font-bold ${tone}`}>{formatIRRDelta(step.change, true)}</span></div><div className="mt-1 text-[9px] text-[#9dafb8]">{evidence[step.id].classification}</div></div>;
           })}
           <div className="rounded-lg border-2 border-[#f5ddd5]/60 bg-[#f5ddd5]/10 p-3"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#f5ddd5]">Current case</div><div data-testid="waterfall-current-irr" className="mt-1 font-mono text-2xl font-bold text-[#f5ddd5]">{formatIRR(currentIRR)}</div></div>
         </div>
-        <div className="sr-only" aria-live="polite">Verified baseline {formatIRR(baseIRR)}. Current case {formatIRR(currentIRR)}. Change {irrDelta === null ? "unavailable" : `${irrDelta.toFixed(1)} percentage points`}.</div>
+        <div className="sr-only" aria-live="polite">Verified baseline {formatIRR(baseIRR)}. Current case {formatIRR(currentIRR)}. Change {irrDelta === null ? "unavailable" : `${formatIRRDelta(irrDelta, true).replace(" pts", " percentage points")}`}.</div>
       </section>
       <div className="mt-5 grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
         <section className="rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-6">
@@ -719,7 +722,7 @@ function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => 
                 <div><div className="text-[12px] font-semibold text-[#243844]">{item.label}</div><div className="mt-1 text-[10px] text-[#52616b]">{impact.driver}</div></div>
                 <div className="sm:col-auto"><ClassificationBadge value={item.classification} compact /></div>
                 <div className="text-right font-mono text-[11px] font-bold text-[#4d5c65] sm:text-left">{formatLineItemValue(impact.value, impact.unit)}</div>
-                <div className={`hidden text-right font-mono text-[12px] font-bold sm:block ${effectTone}`}>{impact.deltaIRR > 0 ? "+" : ""}{impact.deltaIRR.toFixed(1)} pts</div>
+                <div className={`hidden text-right font-mono text-[12px] font-bold sm:block ${effectTone}`}>{formatIRRDelta(impact.deltaIRR, true)}</div>
               </div>;
             })}
           </div>
@@ -732,11 +735,11 @@ function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => 
             <ArrowRight className="mb-2 h-5 w-5 text-[#7c909d]" />
              <div><div className="font-mono text-[9px] uppercase tracking-[0.15em] text-[#9dafb8]">Current evidence-adjusted IRR</div><div data-testid="text-current-irr-materiality" className="mt-2 font-mono text-[46px] font-bold leading-none tracking-[-0.07em] text-[#f5ddd5]">{formatIRR(currentIRR)}</div></div>
           </div>
-          <div className="mt-4 rounded-lg border border-[#f5ddd5]/30 bg-[#f5ddd5]/10 px-3 py-2 font-mono text-[12px] font-bold text-[#f5ddd5]">{irrDelta === null ? "Baseline delta unavailable" : `${irrDelta >= 0 ? "+" : ""}${irrDelta.toFixed(1)} percentage points from verified baseline`}</div>
+          <div className="mt-4 rounded-lg border border-[#f5ddd5]/30 bg-[#f5ddd5]/10 px-3 py-2 font-mono text-[12px] font-bold text-[#f5ddd5]">{irrDelta === null ? "Baseline delta unavailable" : `${formatIRRDelta(irrDelta, true).replace(" pts", " percentage points")} from verified baseline`}</div>
           {metrics.lastChange && metrics.lastChange.from !== metrics.lastChange.to && (
             <div className="mt-3 flex items-center gap-2 font-mono text-[10px] text-[#f5ddd5]">
-              <span className="line-through opacity-60">{metrics.lastChange.from}% prior</span>
-              <span className="rounded bg-[#f5ddd5] px-2 py-1 font-bold text-[#ba2f45]">{metrics.lastChange.delta > 0 ? "+" : ""}{metrics.lastChange.delta.toFixed(1)} pts since reclassification</span>
+              <span className="line-through opacity-60">{formatIRR(metrics.lastChange.from)} prior</span>
+              <span className="rounded bg-[#f5ddd5] px-2 py-1 font-bold text-[#ba2f45]">{formatIRRDelta(metrics.lastChange.delta, true)} since reclassification</span>
             </div>
           )}
           <div className="mt-5 h-28 border-b border-l border-white/20 px-3 pb-2 pt-3">
@@ -1043,12 +1046,12 @@ function DecisionReview({ onNavigate, onResolve }: { onNavigate: (screen: Screen
           {lowConfidence && <div className="mt-4"><LowConfidenceWarning testId="warning-low-confidence-decision" /></div>}
           <div className="mt-5 flex items-end justify-between gap-3">
             <div data-testid="text-decision-irr" className="font-mono text-[64px] font-bold leading-none tracking-[-0.08em] text-[#d4e86b]">{formatIRR(metrics.projectIRR)}</div>
-            {metrics.lastChange && metrics.lastChange.from !== metrics.lastChange.to && <div className={`mb-1 flex flex-col items-end gap-1 rounded px-2 py-1 font-mono text-[10px] font-bold ${metrics.lastChange.delta < 0 ? "bg-[#f5ddd5] text-[#ba2f45]" : "bg-[#e0f4ed] text-[#0b7a63]"}`}><span className="opacity-60 line-through">{metrics.lastChange.from}% prior</span><span>{metrics.lastChange.delta > 0 ? "+" : ""}{metrics.lastChange.delta.toFixed(1)} pts</span></div>}
+            {metrics.lastChange && metrics.lastChange.from !== metrics.lastChange.to && <div className={`mb-1 flex flex-col items-end gap-1 rounded px-2 py-1 font-mono text-[10px] font-bold ${metrics.lastChange.delta < 0 ? "bg-[#f5ddd5] text-[#ba2f45]" : "bg-[#e0f4ed] text-[#0b7a63]"}`}><span className="opacity-60 line-through">{formatIRR(metrics.lastChange.from)} prior</span><span>{formatIRRDelta(metrics.lastChange.delta, true)}</span></div>}
           </div>
           <div className="mt-5 border-t border-white/15 pt-4 text-[11px] leading-5 text-[#afbdc4]">Verified underwriting: <span className="font-mono text-white">{formatIRR(metrics.baseIRR ?? null)}</span>. The current return reflects evidence quality, timeline drag, and infrastructure risk.</div>
           <div className="mt-6 grid grid-cols-3 gap-2">
-            <div className="rounded border border-white/10 bg-white/5 p-3"><div className="text-[9px] uppercase tracking-[0.1em] text-[#9dafb8]">MOIC</div><div className="mt-1 font-mono text-sm">{metrics.moic}x</div></div>
-            <div className="rounded border border-white/10 bg-white/5 p-3"><div className="text-[9px] uppercase tracking-[0.1em] text-[#9dafb8]">NPV</div><div className="mt-1 font-mono text-sm">{formatCurrency(metrics.npv)}</div></div>
+            <div className="rounded border border-white/10 bg-white/5 p-3"><div className="text-[9px] uppercase tracking-[0.1em] text-[#9dafb8]">MOIC</div><div className="mt-1 font-mono text-sm">{metrics.moic.toFixed(2)}x</div></div>
+            <div className="rounded border border-white/10 bg-white/5 p-3"><div className="text-[9px] uppercase tracking-[0.1em] text-[#9dafb8]">NPV</div><div className="mt-1 font-mono text-sm">{formatNPV(metrics.npv)}</div></div>
             <div className="rounded border border-white/10 bg-white/5 p-3"><div className="text-[9px] uppercase tracking-[0.1em] text-[#9dafb8]">Confidence</div><div data-testid="text-decision-confidence" className="mt-1 font-mono text-sm text-[#d4e86b]">{metrics.confidenceScore}%</div></div>
           </div>
         </section>
@@ -1413,7 +1416,7 @@ function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
           <div className="shrink-0 rounded-lg border-2 border-[#cbb7ec] bg-white px-5 py-4 md:max-w-[360px]">
             <div className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#7049b7]">Governance gap</div>
             <div data-testid="text-governance-irr-gap" className="mt-1 font-mono text-[28px] font-bold leading-tight tracking-[-0.05em] text-[#482873]">
-              {governanceGap === null ? "N/M" : `${governanceGap.toFixed(1)} pts`}
+              {formatIRRDelta(governanceGap)}
             </div>
             <div className="mt-1 text-[10px] leading-4 text-[#5e5870]">assuming everything versus verifying everything</div>
             {governanceGap === null && <div className="mt-2 text-[10px] leading-4 text-[#706681]">The return gap is unavailable because one or both IRR calculations are non-numeric.</div>}
@@ -1619,13 +1622,15 @@ function HomeEvidenceVisual() {
   }, [reducedMotion]);
 
   const isVerified = state === "verified";
+  const illustrativeIRR = isVerified ? 18.4 : 8.7;
+  const illustrativeDelta = isVerified ? null : -9.7;
   return (
     <div
       data-testid="home-evidence-visual"
       className="home-evidence-visual relative overflow-hidden rounded-2xl border border-white/15 bg-[#102b3b] p-4 shadow-2xl shadow-black/20 sm:p-5"
       role="img"
       aria-live="polite"
-      aria-label={`Illustrative evidence-to-return example. Grid Interconnection Timeline is ${isVerified ? "Verified Evidence" : "Missing Evidence"} and the illustrative IRR is ${isVerified ? "18.4%" : "8.7%"}.`}
+      aria-label={`Illustrative evidence-to-return example. Grid Interconnection Timeline is ${isVerified ? "Verified Evidence" : "Missing Evidence"} and the illustrative IRR is ${formatIRR(illustrativeIRR)}${illustrativeDelta === null ? "" : `, a ${formatIRRDelta(illustrativeDelta, true)} change when unverified`}.`}
     >
       <div className="absolute inset-0 opacity-40 [background-image:linear-gradient(#31566a_1px,transparent_1px),linear-gradient(90deg,#31566a_1px,transparent_1px)] [background-size:28px_28px] [mask-image:linear-gradient(135deg,black,transparent_78%)]" />
       <div className="relative">
@@ -1655,11 +1660,11 @@ function HomeEvidenceVisual() {
           <div className="border-t border-white/10 pt-4 sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0">
             <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#8299a5]">Illustrative project IRR</div>
             <div data-testid="home-irr-value" className={`mt-1 font-mono text-[42px] font-bold leading-none tracking-[-0.07em] transition-colors sm:text-[48px] ${isVerified ? "text-[#d4e86b]" : "text-[#f5ddd5]"}`}>
-              <span data-testid={`home-irr-${state}`}>{isVerified ? "18.4%" : "8.7%"}</span>
+              <span data-testid={`home-irr-${state}`}>{formatIRR(illustrativeIRR)}</span>
             </div>
             <div className={`mt-2 flex items-center gap-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.1em] ${isVerified ? "text-[#8fd9bc]" : "text-[#f5aab0]"}`}>
               {isVerified ? <TrendingUp aria-hidden="true" className="h-3 w-3" /> : <TrendingDown aria-hidden="true" className="h-3 w-3" />}
-              {isVerified ? "Evidence-supported case" : "−9.7 pts when unverified"}
+              {isVerified ? "Evidence-supported case" : `${formatIRRDelta(illustrativeDelta, true)} when unverified`}
             </div>
           </div>
         </div>
@@ -2002,7 +2007,7 @@ function AppShell() {
             <div>
               <div className="font-mono text-[9px] font-bold uppercase tracking-[0.16em] text-[#b9d43a]">Evidence reclassified</div>
               <div className="mt-2 text-[11px] leading-5 text-[#dce4e7]">Return updated from <span className="font-mono text-white">{formatIRR(diligence.metrics.lastChange.from)}</span> to <span className="font-mono text-white">{formatIRR(diligence.metrics.lastChange.to)}</span>.</div>
-              <div className={`mt-1 font-mono text-[12px] font-bold ${diligence.metrics.lastChange.delta < 0 ? "text-[#f5ddd5]" : "text-[#d4e86b]"}`}>{diligence.metrics.lastChange.delta > 0 ? "+" : ""}{diligence.metrics.lastChange.delta.toFixed(1)} pts IRR</div>
+              <div className={`mt-1 font-mono text-[12px] font-bold ${diligence.metrics.lastChange.delta < 0 ? "text-[#f5ddd5]" : "text-[#d4e86b]"}`}>{formatIRRDelta(diligence.metrics.lastChange.delta, true)} IRR</div>
             </div>
             <button data-testid="button-dismiss-reclassification" aria-label="Dismiss reclassification notification" onClick={diligence.clearLastChange} className="rounded p-1 text-[#a4b4bd] hover:bg-white/10 hover:text-white"><span aria-hidden="true">×</span></button>
           </div>
@@ -2059,9 +2064,18 @@ function formatScenarioDelta(first: number | null, second: number | null, metric
   if (first === null || second === null) return "Unavailable";
   const delta = second - first;
   const sign = delta >= 0 ? "+" : "";
-  if (metric === "irr") return `${sign}${delta.toFixed(1)} pts`;
+  if (metric === "irr") return formatIRRDelta(delta, true);
   if (metric === "moic") return `${sign}${delta.toFixed(2)}x`;
-  if (metric === "npv") return `${delta >= 0 ? "+" : "−"}$${Math.abs(delta).toFixed(1)}M`;
-  if (metric === "payback") return `${sign}${delta.toFixed(2)} yrs`;
+  if (metric === "npv") return formatSignedCurrency(delta);
+  if (metric === "payback") return `${sign}${delta.toFixed(1)} years`;
   return `${sign}${delta.toFixed(1)}%`;
+}
+
+function formatIRRDelta(value: number | null, signed = false) {
+  if (value === null) return "N/M";
+  return `${signed && value >= 0 ? "+" : ""}${value.toFixed(1)} pts`;
+}
+
+function formatSignedCurrency(value: number, decimals = 0) {
+  return `${value >= 0 ? "+" : "−"}$${Math.abs(value).toFixed(decimals)}M`;
 }

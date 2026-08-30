@@ -1,58 +1,177 @@
 import {
   useMemo,
+  useEffect,
   useState
 } from "react";
 import {
   PageIntro,
-  BottomNav
+  BottomNav,
+  ClassificationBadge,
+  classifications,
+  classMeta,
+  evidenceCategories
 } from "@/components/Shell";
 
 import {
   ChevronDown,
   FileText,
   Lightbulb,
+  LoaderCircle,
   RefreshCw,
+  Sparkles,
   TriangleAlert,
   X
 } from "lucide-react";
 import { SourceStatusBadge } from "@/components/DataSources";
 import {
-  Classification,
   EVIDENCE_TIP_DISMISSED_STORAGE_KEY,
-  EvidenceItem,
+  type Classification,
+  type EvidenceItem,
   useDiligence
 } from "@/context/DiligenceContext";
 import { formatSourceTimestamp } from "@/data/sources";
 import type { EiaElectricityData, EiaFuel } from "@/services/eiaService";
-
-
-
-
-
 import {
-  classifications,
-  classMeta,
-  evidenceCategories
-} from "@/components/Shell";
+  analyzeEvidence,
+  type AIEvidenceResult,
+  type AIEvidenceSuccess,
+} from "@/services/aiEvidenceService";
+import { logSessionAction } from "@/services/sessionLog";
 import type {
   Screen
 } from "@/components/Shell";
-function EvidenceRow({ item, onChange }: { item: EvidenceItem; onChange: (id: string, value: Classification) => void }) {
+
+type AssessmentNotice = "accepted" | "overridden";
+
+function EvidenceAssessment({
+  item,
+  assessment,
+  notice,
+  onAccept,
+  onOverride,
+}: {
+  item: EvidenceItem;
+  assessment?: AIEvidenceResult;
+  notice?: AssessmentNotice;
+  onAccept: (item: EvidenceItem, assessment: AIEvidenceSuccess) => void;
+  onOverride: (item: EvidenceItem) => void;
+}) {
+  if (notice) {
+    return (
+      <div
+        data-testid={`status-ai-decision-${item.id}`}
+        role="status"
+        className="border-t border-[#d8e4de] bg-[#f4faf6] px-4 py-2.5 text-[10px] font-semibold text-[#0b7a63] md:px-5"
+      >
+        {notice === "accepted" ? "Classification updated." : "AI suggestion overridden; classification unchanged."}
+      </div>
+    );
+  }
+  if (!assessment || assessment.status === "success") {
+    if (!assessment) return null;
+    return (
+      <div
+        data-testid={`ai-assessment-${item.id}`}
+        role="region"
+        aria-label={`AI Assessment for ${item.label}`}
+        className="border-t border-[#cbd8d4] bg-[#f4f8f5] px-4 py-3.5 md:px-5"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <Sparkles aria-hidden="true" className="h-3.5 w-3.5 text-[#607500]" />
+              <span className="font-mono text-[9px] font-bold uppercase tracking-[0.15em] text-[#607500]">AI Assessment</span>
+              <span className="text-[9px] uppercase tracking-[0.1em] text-[#7d898f]">Suggestion, not a determination</span>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <ClassificationBadge value={assessment.classification} compact />
+              <p data-testid={`text-ai-reasoning-${item.id}`} className="text-[10px] leading-4 text-[#344550]">{assessment.reasoning}</p>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              data-testid={`button-accept-ai-${item.id}`}
+              type="button"
+              onClick={() => onAccept(item, assessment)}
+              className="rounded-md border border-[#9bd8c5] bg-[#e0f4ed] px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#08644f] hover:bg-[#d2eee3]"
+            >
+              Accept
+            </button>
+            <button
+              data-testid={`button-override-ai-${item.id}`}
+              type="button"
+              onClick={() => onOverride(item)}
+              className="rounded-md border border-[#cbd8d4] bg-white px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#52616b] hover:border-[#7d898f] hover:text-[#243844]"
+            >
+              Override
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      data-testid={`ai-assessment-${item.id}`}
+      role="status"
+      className={`border-t px-4 py-3 text-[10px] leading-4 md:px-5 ${assessment.status === "unparseable" ? "border-[#f1cb8b] bg-[#fff8e9] text-[#6f460e]" : "border-[#d9e0e4] bg-[#f7faf8] text-[#60707d]"}`}
+    >
+      <div className="flex items-start gap-2">
+        <TriangleAlert aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <div>
+          <div className="font-semibold">{assessment.message}</div>
+          {assessment.status === "unparseable" && (
+            <pre data-testid={`text-ai-raw-response-${item.id}`} className="mt-2 max-h-24 overflow-auto whitespace-pre-wrap rounded border border-[#ecd39d] bg-white/70 p-2 font-mono text-[9px] text-[#52616b]">{assessment.rawText}</pre>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EvidenceRow({
+  item,
+  onChange,
+  onAnalyze,
+  onAccept,
+  onOverride,
+  assessment,
+  notice,
+  analysisBusy,
+  analysisDisabled,
+}: {
+  item: EvidenceItem;
+  onChange: (id: string, value: Classification) => void;
+  onAnalyze: (item: EvidenceItem) => void;
+  onAccept: (item: EvidenceItem, assessment: AIEvidenceSuccess) => void;
+  onOverride: (item: EvidenceItem) => void;
+  assessment?: AIEvidenceResult;
+  notice?: AssessmentNotice;
+  analysisBusy: boolean;
+  analysisDisabled: boolean;
+}) {
   const meta = classMeta[item.classification];
   const { sourceStates } = useDiligence();
   const source = item.sourceId ? sourceStates[item.sourceId] : null;
   const providerSource = item.providerSourceId ? sourceStates[item.providerSourceId] : null;
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (assessment || notice) setOpen(true);
+  }, [assessment, notice]);
   return (
-    <details id={`evidence-item-${item.id}`} tabIndex={-1} data-testid={`row-evidence-${item.id}`} className="group border-b border-[#e4e9e8] last:border-0 focus-within:bg-[#fbfcfa]">
+    <details id={`evidence-item-${item.id}`} open={open} onToggle={(event) => setOpen(event.currentTarget.open)} tabIndex={-1} data-testid={`row-evidence-${item.id}`} className="group border-b border-[#e4e9e8] last:border-0 focus-within:bg-[#fbfcfa]">
       <summary className="grid cursor-pointer list-none gap-3 px-4 py-3 transition-colors hover:bg-[#fbfcfa] md:grid-cols-[1.55fr_0.8fr_1.55fr] md:items-center md:px-5 [&::-webkit-details-marker]:hidden">
         <span className="flex min-w-0 items-center gap-2"><span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: meta.color }} /><span className="truncate text-[12px] font-semibold text-[#243844]">{item.label}</span></span>
          <span className="min-w-0"><span className="flex flex-wrap items-center gap-2"><span className="font-mono text-[12px] font-bold text-[#122232]">{item.value}</span> <span className="text-[10px] text-[#52616b]">{item.unit}</span>{source ? <SourceStatusBadge source={source} compact testId={`evidence-source-status-${item.id}`} /> : <span data-testid={`evidence-origin-${item.id}`} className="rounded-full bg-[#e7ecef] px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.09em] text-[#52616b]">Embedded</span>}</span></span>
-        <span className="flex items-center justify-between gap-3"><span className="relative w-full md:max-w-[220px]"><select data-testid={`select-classification-${item.id}`} aria-label={`Classification for ${item.label}`} value={item.classification} onChange={(event) => onChange(item.id, event.target.value as Classification)} onClick={(event) => event.stopPropagation()} className="w-full appearance-none rounded-md border bg-white py-2 pl-3 pr-8 text-[10px] font-semibold text-[#243844] outline-none focus:ring-2 focus:ring-[#b9d43a]/50" style={{ borderColor: meta.border }}>{classifications.map((classification) => <option key={classification} value={classification}>{classification}</option>)}</select><ChevronDown aria-hidden="true" className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-[#52616b]" /></span><ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-[#52616b] transition-transform group-open:rotate-180 md:hidden" /></span>
+         <span className="flex flex-wrap items-center justify-between gap-2"><span className="flex min-w-0 flex-1 items-center gap-2"><span className="relative min-w-0 flex-1 md:max-w-[220px]"><select data-testid={`select-classification-${item.id}`} aria-label={`Classification for ${item.label}`} value={item.classification} onChange={(event) => onChange(item.id, event.target.value as Classification)} onClick={(event) => event.stopPropagation()} className="w-full appearance-none rounded-md border bg-white py-2 pl-3 pr-8 text-[10px] font-semibold text-[#243844] outline-none focus:ring-2 focus:ring-[#b9d43a]/50" style={{ borderColor: meta.border }}>{classifications.map((classification) => <option key={classification} value={classification}>{classification}</option>)}</select><ChevronDown aria-hidden="true" className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-[#52616b]" /></span><button data-testid={`button-analyze-ai-${item.id}`} type="button" aria-label={`Analyze ${item.label} with AI`} aria-busy={analysisBusy} disabled={analysisDisabled} onClick={(event) => { event.preventDefault(); event.stopPropagation(); setOpen(true); onAnalyze(item); }} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[#cbd8d4] bg-white px-2 py-2 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#52616b] hover:border-[#7d898f] hover:text-[#243844] disabled:cursor-wait disabled:opacity-60"><Sparkles aria-hidden="true" className="h-3 w-3 text-[#607500]" />{analysisBusy ? "Analyzing…" : "Analyze with AI"}</button></span><ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-[#52616b] transition-transform group-open:rotate-180 md:hidden" /></span>
       </summary>
+       {analysisBusy && <div data-testid={`status-ai-analysis-${item.id}`} role="status" aria-live="polite" className="border-t border-[#d9e0e4] bg-[#f7faf8] px-4 py-2 text-[10px] text-[#60707d] md:px-5"><LoaderCircle aria-hidden="true" className="mr-1.5 inline h-3 w-3 animate-spin" />Analyzing source quality…</div>}
       <div className="grid gap-3 bg-[#fbfcfa] px-4 pb-4 pt-1 md:grid-cols-[1.55fr_0.8fr_1.55fr] md:px-5">
         <p className="text-[10px] leading-4 text-[#52616b] md:col-span-2">{item.description}</p>
          <div className="flex items-start gap-1.5 text-[10px] leading-4 text-[#52616b]"><FileText aria-hidden="true" className="mt-0.5 h-3 w-3 shrink-0" /><span>{item.citation}<span className="mt-1 block text-[9px] uppercase tracking-[0.08em] text-[#7d898f]">Role: {item.sourceRole}{source ? ` · ${source.fullName}` : " · Embedded case record"}{providerSource ? ` · Provider-ready: ${providerSource.shortName}` : ""}</span></span></div>
       </div>
+       <EvidenceAssessment item={item} assessment={assessment} notice={notice} onAccept={onAccept} onOverride={onOverride} />
     </details>
   );
 }
@@ -70,6 +189,15 @@ function monthLabel(period?: string) {
   if (!period) return "month unavailable";
   return new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric", timeZone: "UTC" })
     .format(new Date(`${period}-01T00:00:00.000Z`));
+}
+
+function isStorageFlagSet(key: string) {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(key) === "true";
+  } catch {
+    return false;
+  }
 }
 
 function sparklinePoints(data: EiaElectricityData["priceHistory"]) {
@@ -181,11 +309,17 @@ function EiaElectricityEvidence({
 
 export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
   const { evidence, updateClassification, metrics, ercotQueue, eiaData, eiaLoading, sourceStates } = useDiligence();
-  const [showClassificationTip, setShowClassificationTip] = useState(() => !isStorageFlagSet(EVIDENCE_TIP_DISMISSED_STORAGE_KEY));
   const items = useMemo(() => Object.values(evidence), [evidence]);
   const counts = useMemo(() => classifications.map((classification) => ({ classification, count: items.filter((item) => item.classification === classification).length })), [items]);
   const match = ercotQueue.matchingProject;
   const canSuggestVerified = ercotQueue.providerStatus === "live" && Boolean(match?.explicitDelayOrCancellation);
+  const [showClassificationTip, setShowClassificationTip] = useState(() => !isStorageFlagSet(EVIDENCE_TIP_DISMISSED_STORAGE_KEY));
+  const [assessments, setAssessments] = useState<Record<string, AIEvidenceResult | undefined>>({});
+  const [notices, setNotices] = useState<Record<string, AssessmentNotice | undefined>>({});
+  const [activeAnalysisId, setActiveAnalysisId] = useState<string | null>(null);
+  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
+  const isAnalysisBusy = activeAnalysisId !== null;
+
   const dismissClassificationTip = () => {
     setShowClassificationTip(false);
     try {
@@ -194,13 +328,94 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
       // Storage is optional; the dismissal still applies for this visit.
     }
   };
+
+  const analyzeOne = async (item: EvidenceItem) => {
+    if (isAnalysisBusy) return;
+    setAssessments((current) => ({ ...current, [item.id]: undefined }));
+    setNotices((current) => ({ ...current, [item.id]: undefined }));
+    setActiveAnalysisId(item.id);
+    try {
+      const result = await analyzeEvidence(item);
+      setAssessments((current) => ({ ...current, [item.id]: result }));
+    } catch {
+      setAssessments((current) => ({
+        ...current,
+        [item.id]: { status: "error", message: "AI analysis unavailable. Classify manually." },
+      }));
+    } finally {
+      setActiveAnalysisId(null);
+    }
+  };
+
+  const analyzeAll = async () => {
+    if (isAnalysisBusy) return;
+    setNotices({});
+    setBatchProgress({ current: 1, total: items.length });
+    for (const [index, item] of items.entries()) {
+      setAssessments((current) => ({ ...current, [item.id]: undefined }));
+      setActiveAnalysisId(item.id);
+      setBatchProgress({ current: index + 1, total: items.length });
+      try {
+        const result = await analyzeEvidence(item);
+        setAssessments((current) => ({ ...current, [item.id]: result }));
+      } catch {
+        setAssessments((current) => ({
+          ...current,
+          [item.id]: { status: "error", message: "AI analysis unavailable. Classify manually." },
+        }));
+      }
+    }
+    setActiveAnalysisId(null);
+    setBatchProgress(null);
+  };
+
+  const acceptAssessment = (item: EvidenceItem, assessment: AIEvidenceSuccess) => {
+    updateClassification(item.id, assessment.classification);
+    logSessionAction("AI-proposed, human-accepted", item.id);
+    setAssessments((current) => ({ ...current, [item.id]: undefined }));
+    setNotices((current) => ({ ...current, [item.id]: "accepted" }));
+    window.setTimeout(() => {
+      setNotices((current) => current[item.id] === "accepted" ? { ...current, [item.id]: undefined } : current);
+    }, 4000);
+  };
+
+  const overrideAssessment = (item: EvidenceItem) => {
+    logSessionAction("AI-proposed, human-overridden", item.id);
+    setAssessments((current) => ({ ...current, [item.id]: undefined }));
+    setNotices((current) => ({ ...current, [item.id]: "overridden" }));
+    window.setTimeout(() => {
+      setNotices((current) => current[item.id] === "overridden" ? { ...current, [item.id]: undefined } : current);
+    }, 4000);
+  };
+
   return (
     <div>
       <PageIntro
         eyebrow="02 / source the conviction"
         title="Evidence is not a footnote. It is an active model input."
         description={`${items.length} diligence inputs are classified by provenance. Change a classification to test what the return looks like when an assertion becomes an assumption, or when missing evidence is finally verified.`}
-        right={<div data-testid="text-evidence-count" className="rounded-lg border border-[#cbd8d4] bg-[#f9faf8] px-4 py-3 text-right"><div className="font-mono text-xl font-bold text-[#122232]">{items.length}<span className="text-[#52616b]"> / {items.length}</span></div><div className="text-[9px] uppercase tracking-[0.14em] text-[#52616b]">Inputs registered</div></div>}
+        right={
+          <div className="flex flex-wrap items-end justify-end gap-2">
+            <div data-testid="text-evidence-count" className="rounded-lg border border-[#cbd8d4] bg-[#f9faf8] px-4 py-3 text-right">
+              <div className="font-mono text-xl font-bold text-[#122232]">{items.length}<span className="text-[#52616b]"> / {items.length}</span></div>
+              <div className="text-[9px] uppercase tracking-[0.14em] text-[#52616b]">Inputs registered</div>
+            </div>
+            <div className="flex flex-col items-stretch gap-1">
+              <button
+                data-testid="button-analyze-all-ai"
+                type="button"
+                disabled={isAnalysisBusy}
+                aria-busy={isAnalysisBusy}
+                onClick={() => void analyzeAll()}
+                className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-[#9aaec0] bg-[#122232] px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#d4e86b] hover:border-[#d4e86b] disabled:cursor-wait disabled:opacity-60"
+              >
+                <Sparkles aria-hidden="true" className="h-3.5 w-3.5" />
+                {batchProgress ? `Analyzing ${batchProgress.current} of ${batchProgress.total}…` : "Analyze All with AI"}
+              </button>
+              {batchProgress && <span data-testid="status-ai-batch" role="status" aria-live="polite" className="text-right font-mono text-[8px] uppercase tracking-[0.08em] text-[#60707d]">One item at a time · suggestions only</span>}
+            </div>
+          </div>
+        }
       />
       {showClassificationTip && (
         <aside data-testid="evidence-classification-tip" role="note" className="classification-tip mb-5 flex items-start gap-3 rounded-lg border border-[#b9d43a]/70 bg-[#f8fbe8] px-4 py-3 text-[#344550]">
@@ -238,7 +453,20 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
                 <div className="flex items-center gap-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em]"><span className="rounded-full bg-[#e0f4ed] px-2 py-1 text-[#0b7a63]">{verified} verified</span><span className={`rounded-full px-2 py-1 ${missing ? "bg-[#fde8eb] text-[#ba2f45]" : "bg-white text-[#7d898f]"}`}>{missing} missing</span></div>
               </header>
               <div className="hidden grid-cols-[1.55fr_0.8fr_1.55fr] gap-3 border-b border-[#e5eae8] px-5 py-2 text-[9px] font-bold uppercase tracking-[0.16em] text-[#7d898f] md:grid"><span>Variable</span><span>Value</span><span>Classification</span></div>
-              {categoryItems.map((item) => <EvidenceRow key={item.id} item={item} onChange={updateClassification} />)}
+              {categoryItems.map((item) => (
+                <EvidenceRow
+                  key={item.id}
+                  item={item}
+                  onChange={updateClassification}
+                  onAnalyze={analyzeOne}
+                  onAccept={acceptAssessment}
+                  onOverride={overrideAssessment}
+                  assessment={assessments[item.id]}
+                  notice={notices[item.id]}
+                  analysisBusy={activeAnalysisId === item.id}
+                  analysisDisabled={isAnalysisBusy}
+                />
+              ))}
               {category.id === "power-grid" && (
                 <>
                   <EiaElectricityEvidence
@@ -299,14 +527,5 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
       <BottomNav screen="evidence" onNavigate={onNavigate} />
     </div>
   );
-}
-
-function isStorageFlagSet(key: string) {
-  if (typeof window === "undefined") return false;
-  try {
-    return window.localStorage.getItem(key) === "true";
-  } catch {
-    return false;
-  }
 }
 

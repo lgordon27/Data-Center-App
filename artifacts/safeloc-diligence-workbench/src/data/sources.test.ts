@@ -14,7 +14,6 @@ test("the default source registry is truthful about bundled provider state", () 
       { id: "fema-nri", status: "embedded", dataOrigin: "embedded", version: "v1.20" },
       { id: "ercot-queue", status: "embedded", dataOrigin: "embedded", version: "Bundled case baseline" },
       { id: "eia", status: "embedded", dataOrigin: "embedded", version: "Bundled case baseline" },
-      { id: "gridtracker-mcp", status: "disconnected", dataOrigin: "embedded", version: undefined },
     ],
   );
 });

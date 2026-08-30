@@ -10,12 +10,10 @@ import {
 import {
   ChevronDown,
   FileText,
-  Network,
   RefreshCw,
   TriangleAlert
 } from "lucide-react";
 import { SourceStatusBadge } from "@/components/DataSources";
-import { GridTrackerPanel } from "@/components/GridTrackerPanel";
 import {
   Classification,
   EvidenceItem,
@@ -179,8 +177,7 @@ function EiaElectricityEvidence({
 }
 
 export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
-  const { evidence, updateClassification, metrics, ercotQueue, eiaData, eiaLoading, sourceStates, refreshGridTrackerState } = useDiligence();
-  const [gridTrackerOpen, setGridTrackerOpen] = useState(false);
+  const { evidence, updateClassification, metrics, ercotQueue, eiaData, eiaLoading, sourceStates } = useDiligence();
   const items = useMemo(() => Object.values(evidence), [evidence]);
   const counts = useMemo(() => classifications.map((classification) => ({ classification, count: items.filter((item) => item.classification === classification).length })), [items]);
   const match = ercotQueue.matchingProject;
@@ -193,29 +190,6 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
         description={`${items.length} diligence inputs are classified by provenance. Change a classification to test what the return looks like when an assertion becomes an assumption, or when missing evidence is finally verified.`}
         right={<div data-testid="text-evidence-count" className="rounded-lg border border-[#cbd8d4] bg-[#f9faf8] px-4 py-3 text-right"><div className="font-mono text-xl font-bold text-[#122232]">{items.length}<span className="text-[#52616b]"> / {items.length}</span></div><div className="text-[9px] uppercase tracking-[0.14em] text-[#52616b]">Inputs registered</div></div>}
       />
-      <section data-testid="gridtracker-entry" className="mb-6 rounded-xl border border-[#b9d43a] bg-[#122232] p-4 text-white shadow-sm md:flex md:items-center md:justify-between md:gap-6 md:p-5">
-        <div className="flex items-start gap-3">
-          <Network aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-[#d4e86b]" />
-          <div>
-            <div className="font-mono text-[9px] font-bold uppercase tracking-[0.16em] text-[#d4e86b]">Grid intelligence: GridTracker MCP Server | Model Context Protocol</div>
-            <p className="mt-2 max-w-2xl text-[12px] leading-5 text-[#d7e0e3]">Query current ERCOT interconnection intelligence without treating feed freshness as proof. Any corroboration remains a deliberate analyst decision.</p>
-          </div>
-        </div>
-        <button data-testid="button-query-live-grid-data" type="button" onClick={() => setGridTrackerOpen(true)} className="mt-4 inline-flex min-h-11 shrink-0 items-center justify-center rounded-md bg-[#d4e86b] px-4 py-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.11em] text-[#122232] transition-transform hover:-translate-y-0.5 md:mt-0">Query Live Grid Data</button>
-      </section>
-      {gridTrackerOpen && (
-        <div className="mb-6">
-          <GridTrackerPanel
-            onClose={() => setGridTrackerOpen(false)}
-            onConfirmClassification={(id, classification) => {
-              if (classification === "Verified Evidence") {
-                updateClassification(id, "Verified Evidence");
-                void refreshGridTrackerState();
-              }
-            }}
-          />
-        </div>
-      )}
       <div className="mb-5 grid gap-3 sm:grid-cols-5">
         {counts.map(({ classification, count }) => {
           const meta = classMeta[classification];
@@ -261,7 +235,7 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
                     </dl>
                   ) : (
                     <p data-testid="ercot-no-named-match" className="mt-3 text-[10px] leading-4 text-[#52616b]">
-                      No named Stargate or Oracle customer-specific record was published in the generation queue. The existing cancellation and delay evidence remains public-reporting context; this feed does not independently confirm it.
+                       No named Stargate, Oracle, or Crusoe customer-specific record was published in the generation queue. The existing cancellation and delay evidence remains public-reporting context; this feed does not independently confirm it.
                     </p>
                   )}
                   <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[#e1e8e5] pt-3">

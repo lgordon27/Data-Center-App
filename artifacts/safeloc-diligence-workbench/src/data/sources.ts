@@ -4,11 +4,10 @@ export const SOURCE_IDS = [
   "fema-nri",
   "ercot-queue",
   "eia",
-  "gridtracker-mcp",
 ] as const;
 
 export type SourceId = (typeof SOURCE_IDS)[number];
-export type SourceStatus = "embedded" | "live" | "cached" | "connected" | "disconnected";
+export type SourceStatus = "embedded" | "live" | "cached";
 export type SourceDataOrigin = "embedded" | "provider";
 
 export type SourceDefinition = {
@@ -17,7 +16,7 @@ export type SourceDefinition = {
   fullName: string;
   description: string;
   role: string;
-  icon: "fema" | "ercot" | "eia" | "gridtracker";
+  icon: "fema" | "ercot" | "eia";
   supportedStatuses: readonly SourceStatus[];
   fallbackText: string;
   statusMeaning: string;
@@ -74,32 +73,15 @@ export const sourceDefinitions: readonly SourceDefinition[] = [
     fallbackText: "The latest available electricity data is retained when a live demonstration is unavailable.",
     statusMeaning: "Embedded means a bundled estimate; Live means returned by the provider; Cached means a retained provider response.",
   },
-  {
-    id: "gridtracker-mcp",
-    shortName: "GridTracker MCP",
-    fullName: "GridTracker MCP",
-    description: "Grid intelligence and query context.",
-    role: "Grid intelligence",
-    icon: "gridtracker",
-    supportedStatuses: ["connected", "disconnected", "live", "cached"],
-    fallbackText: "No live GridTracker query is claimed until a connection reports one.",
-    statusMeaning: "Connected means the MCP handshake is available; Live and Cached describe the latest query result, not evidence quality.",
-  },
 ];
 
 export const DEFAULT_SOURCE_STATES: readonly SourceState[] = sourceDefinitions.map((definition) => ({
   ...definition,
-  status: definition.id === "fema-nri"
-    ? "embedded"
-    : definition.id === "gridtracker-mcp"
-      ? "disconnected"
-      : "embedded",
+  status: "embedded",
   dataOrigin: "embedded",
   version: definition.id === "fema-nri"
     ? "v1.20"
-    : definition.id === "gridtracker-mcp"
-      ? undefined
-      : "Bundled case baseline",
+    : "Bundled case baseline",
 }));
 
 export function sourceStateMap(
@@ -122,7 +104,7 @@ export function resolveSourceState(
   const live = boundary.live
     ? mergeValidProviderMetadata(source, boundary.live)
     : source;
-  if (live.status === "live" || live.status === "connected") return live;
+  if (live.status === "live") return live;
   const cached = boundary.cached
     ? mergeValidProviderMetadata(source, boundary.cached)
     : source;
@@ -134,7 +116,7 @@ function mergeValidProviderMetadata(
   override: ProviderSourceMetadata,
 ): SourceState {
   const validStatus = source.supportedStatuses.includes(override.status);
-  const providerState = override.status === "live" || override.status === "cached" || override.status === "connected";
+  const providerState = override.status === "live" || override.status === "cached";
   const timestampRequired = override.status === "live" || override.status === "cached";
   const validTimestamp = !timestampRequired || (
     typeof override.timestamp === "string" &&
@@ -222,7 +204,7 @@ export const evidenceTiers: Array<{
 export const sourceGroups = [
   {
     title: "Infrastructure & Energy",
-    sources: ["ERCOT", "Utility filings", "Bloomberg", "U.S. Energy Information Administration (EIA)"],
+    sources: ["ERCOTQueue.com", "Utility filings", "Bloomberg", "U.S. Energy Information Administration (EIA)"],
   },
   {
     title: "Water & Climate",

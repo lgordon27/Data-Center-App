@@ -1,7 +1,6 @@
 import {
   Database,
   Gauge,
-  Network,
   RadioTower,
   ShieldCheck,
   ChevronDown,
@@ -18,7 +17,6 @@ const sourceIcons = {
   fema: ShieldCheck,
   ercot: RadioTower,
   eia: Gauge,
-  gridtracker: Network,
 } as const;
 
 const statusColors = {
@@ -97,7 +95,7 @@ export function DataSources() {
               <ChevronDown aria-hidden="true" className="h-4 w-4 text-[#52616b] transition-transform group-open:rotate-180" />
             </span>
           </span>
-          <div data-testid="data-sources-bar" className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+           <div data-testid="data-sources-bar" className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {sources.map((source) => {
               const Icon = sourceIcons[source.icon];
               return (

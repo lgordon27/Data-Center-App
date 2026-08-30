@@ -179,7 +179,7 @@ function findMatchingProject(projects: unknown, codHistory: unknown): ErcotProje
     .filter((project): project is ErcotProjectRecord => project !== null);
   return candidates.find((project) => {
     const searchable = normalizeText(project.name);
-    return searchable.includes("stargate") || searchable.includes("oracle");
+     return searchable.includes("stargate") || searchable.includes("oracle") || searchable.includes("crusoe");
   }) ?? null;
 }
 

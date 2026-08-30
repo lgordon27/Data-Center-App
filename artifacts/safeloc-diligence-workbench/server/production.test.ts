@@ -58,7 +58,7 @@ async function stopProcess(child: ReturnType<typeof spawn>) {
   }
 }
 
-test("production entry point serves all GridTracker API routes", async () => {
+test("production entry point serves ERCOTQueue and EIA routes without retired endpoints", async () => {
   const port = 4700 + (process.pid % 500);
   await run("pnpm", ["run", "build"], { PORT: String(port), BASE_PATH: "/" });
   const child = spawn("pnpm", ["run", "start"], {
@@ -70,19 +70,16 @@ test("production entry point serves all GridTracker API routes", async () => {
 
   try {
     const baseUrl = `http://127.0.0.1:${port}`;
-    const status = await waitForJson(`${baseUrl}/api/gridtracker/status`, child);
-    assert.equal(status.status, "disconnected");
     const ercot = await waitForJson(`${baseUrl}/api/ercot-queue`, child);
     assert.ok(["live", "cached", "error"].includes(String(ercot.status)));
     assert.equal(typeof ercot.diagnostics, "object");
     const eia = await waitForJson(`${baseUrl}/api/eia/electricity`, child);
     assert.ok(["live", "cached", "unavailable", "error"].includes(String(eia.status)));
     assert.equal(typeof eia.diagnostics, "object");
-    const diagnostics = await waitForJson(`${baseUrl}/api/gridtracker/diagnostics`, child);
-    assert.ok(Array.isArray(diagnostics.history));
-    const query = await waitForJson(`${baseUrl}/api/gridtracker/query?q=What%20is%20the%20current%20queue%20status%3F`, child);
-    assert.equal(query.ok, false);
-    assert.equal((query.error as { code?: string }).code, "NOT_CONFIGURED");
+    for (const retiredPath of ["/api/grid/status", "/api/grid/diagnostics", "/api/grid/query"]) {
+      const retiredResponse = await fetch(`${baseUrl}${retiredPath}`);
+      assert.equal(retiredResponse.status, 404, `${retiredPath} should not be exposed`);
+    }
   } finally {
     await stopProcess(child);
   }

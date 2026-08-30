@@ -3,18 +3,17 @@ import { expect, test } from "@playwright/test";
 const workbenchRoutes = ["brief", "evidence", "materiality", "decision", "advisor"] as const;
 const nonWorkbenchRoutes = ["home", "value-chain", "how-it-works"] as const;
 
-test("shows the expandable four-source bar only on workbench routes", async ({ page }) => {
+test("shows the expandable three-source bar only on workbench routes", async ({ page }) => {
   for (const route of workbenchRoutes) {
     await page.goto(`/#${route}`);
     await expect(page.getByTestId("data-sources")).toBeVisible();
-    await expect(page.locator("[data-testid^='data-source-']:not([data-testid^='data-source-status-'])")).toHaveCount(4);
+    await expect(page.locator("[data-testid^='data-source-']:not([data-testid^='data-source-status-'])")).toHaveCount(3);
   }
 
   await page.goto("/#brief");
   await expect(page.getByTestId("data-source-status-fema-nri")).toHaveText("Embedded");
   await expect(page.getByTestId("data-source-status-ercot-queue")).toContainText(/Live|Cached|Embedded/);
   await expect(page.getByTestId("data-source-status-eia")).toHaveText("Embedded");
-  await expect(page.getByTestId("data-source-status-gridtracker-mcp")).toHaveText("Disconnected");
   await page.getByTestId("data-sources-toggle").click();
   await expect(page.getByTestId("data-sources-details")).toBeVisible();
   await expect(page.getByTestId("source-detail-fema-nri")).toContainText("v1.20");
@@ -39,7 +38,7 @@ test("shows truthful ERCOT aggregates, named-record guard, and developer diagnos
   await expect(page.getByTestId("ercot-grid-evidence")).toBeVisible();
   const matchCount = await page.getByTestId("ercot-matching-record").count();
   if (matchCount === 0) {
-    await expect(page.getByTestId("ercot-no-named-match")).toContainText("No named Stargate or Oracle");
+      await expect(page.getByTestId("ercot-no-named-match")).toContainText("No named Stargate, Oracle, or Crusoe");
     await expect(page.getByTestId("button-suggest-verified-grid")).toHaveCount(0);
   }
 
@@ -66,14 +65,13 @@ test("keeps evidence freshness separate from classification and model mechanics"
   );
 });
 
-test("documents all four source integrations and the fallback rule in How It Works", async ({ page }) => {
+test("documents the three source integrations and the fallback rule in How It Works", async ({ page }) => {
   await page.goto("/#how-it-works");
   const register = page.getByTestId("tour-data-sources");
   await expect(register.getByRole("heading", { name: "Data Sources" })).toBeVisible();
   await expect(register).toContainText("ERCOTQueue.com");
   await expect(register).toContainText("U.S. EIA Open Data");
   await expect(register).toContainText("FEMA National Risk Index v1.20");
-  await expect(register).toContainText("GridTracker MCP");
   await expect(register).toContainText(
     "All external feeds automatically fall back to cached values during an unavailable live demonstration.",
   );

@@ -7,7 +7,6 @@ import {
 } from '@/model/cashFlowEngine';
 import {
   sourceStateMap,
-  type ProviderSourceMetadata,
   type SourceId,
   type SourceState,
 } from "@/data/sources";
@@ -72,7 +71,6 @@ type DiligenceState = {
   ercotQueue: ErcotQueueResult;
   eiaData: EiaElectricityData;
   eiaLoading: boolean;
-  refreshGridTrackerState: () => Promise<void>;
 };
 
 export const CURRENT_SESSION_STORAGE_KEY = 'safeloc:diligence:current-session:v1';
@@ -110,10 +108,10 @@ export const INITIAL_EVIDENCE: Record<string, EvidenceItem> = {
     numericValue: 0,
     unit: 'Resilience',
     classification: 'Management Assertion',
-    citation: 'Crusoe / Lancium public statements; Grid Status analysis, 2026',
+     citation: 'Crusoe / Lancium public statements; public grid-reliability analysis, 2026',
     description: 'On-site natural-gas generation is publicly confirmed, but capacity and duration are not disclosed; winter 2026 outages show reliability was not assured.',
     sourceId: null,
-    providerSourceId: 'gridtracker-mcp',
+     providerSourceId: null,
     sourceRole: 'Embedded management and public context',
   },
   water_source_resilience: {
@@ -166,12 +164,10 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   const [ercotQueue, setErcotQueue] = useState<ErcotQueueResult>(FALLBACK_ERCOT_RESULT);
   const [eiaData, setEiaData] = useState<EiaElectricityData>(() => createEiaFallback());
   const [eiaLoading, setEiaLoading] = useState(true);
-  const [gridTrackerState, setGridTrackerState] = useState<ProviderSourceMetadata>({ status: "disconnected" });
   const sourceStates = useMemo(() => sourceStateMap({
     "ercot-queue": ercotQueue.sourceMetadata,
     eia: eiaData.sourceMetadata,
-    "gridtracker-mcp": gridTrackerState,
-  }), [eiaData.sourceMetadata, ercotQueue.sourceMetadata, gridTrackerState]);
+  }), [eiaData.sourceMetadata, ercotQueue.sourceMetadata]);
   const effectiveEvidence = useMemo(
     () => applyEiaEvidence(state.evidence, eiaData),
     [state.evidence, eiaData],
@@ -198,41 +194,6 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       active = false;
     };
   }, []);
-
-  const refreshGridTrackerState = useCallback(async () => {
-    if (typeof window === "undefined") return;
-    try {
-      const response = await fetch("/api/gridtracker/status");
-      if (!response.ok) throw new Error("status request failed");
-      const payload = await response.json() as {
-        status?: "connected" | "disconnected";
-        protocolVersion?: string | null;
-        negotiatedAt?: string | null;
-        lastQuery?: { at?: string; freshness?: "live" | "cached" | "stale" | "disconnected" } | null;
-      };
-      const freshness = payload.lastQuery?.freshness;
-      const status: ProviderSourceMetadata["status"] =
-        freshness === "live"
-          ? "live"
-          : freshness === "cached" || freshness === "stale"
-            ? "cached"
-            : payload.status === "connected"
-              ? "connected"
-              : "disconnected";
-      setGridTrackerState({
-        status,
-        dataOrigin: status === "live" || status === "cached" ? "provider" : undefined,
-        timestamp: payload.lastQuery?.at ?? payload.negotiatedAt ?? undefined,
-        version: payload.protocolVersion ?? undefined,
-      });
-    } catch {
-      setGridTrackerState({ status: "disconnected" });
-    }
-  }, []);
-
-  useEffect(() => {
-    void refreshGridTrackerState();
-  }, [refreshGridTrackerState]);
 
   useEffect(() => {
     if (!sessionRestored) return undefined;
@@ -344,7 +305,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, updateClassification, clearLastChange, metrics, resetToDefault, sessionRestored, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading, refreshGridTrackerState }}>
+    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, updateClassification, clearLastChange, metrics, resetToDefault, sessionRestored, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading }}>
       {children}
     </DiligenceContext.Provider>
   );

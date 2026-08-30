@@ -1,16 +1,62 @@
 import { DataSources } from "@/components/DataSources";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Code2, ChevronDown } from "lucide-react";
 import { useDiligence } from "@/context/DiligenceContext";
 import { formatSourceTimestamp } from "@/data/sources";
 
 const workbenchRoutes = new Set(["brief", "evidence", "materiality", "decision", "advisor"]);
 
+type EiaDiagnosticResponse = {
+  status?: string;
+  sourceUpdatedAt?: string | null;
+  diagnostics?: {
+    endpoint?: string;
+    requestTimestamp?: string;
+    responseStatus?: number;
+    cache?: string;
+    sourceFreshness?: string | null;
+    responses?: unknown[];
+    failedResponses?: unknown[];
+    error?: string;
+  };
+};
+
 export function Footer() {
   const [consoleOpen, setConsoleOpen] = useState(false);
+  const [eiaResponse, setEiaResponse] = useState<EiaDiagnosticResponse | null>(null);
+  const [eiaLoading, setEiaLoading] = useState(false);
   const { ercotQueue } = useDiligence();
   const route = typeof window === "undefined" ? "" : window.location.hash.replace(/^#/, "");
   const showsFemaNri = route === "brief" || route === "evidence";
+
+  useEffect(() => {
+    if (!consoleOpen) return undefined;
+    let active = true;
+    setEiaLoading(true);
+    void fetch("/api/eia/electricity", { headers: { accept: "application/json" } })
+      .then(async (response) => {
+        const payload = await response.json() as EiaDiagnosticResponse;
+        if (active) setEiaResponse(payload);
+      })
+      .catch((error) => {
+        if (active) {
+          setEiaResponse({
+            status: "unavailable",
+            diagnostics: {
+              endpoint: "/api/eia/electricity",
+              error: error instanceof Error ? error.message : "EIA request failed",
+            },
+          });
+        }
+      })
+      .finally(() => {
+        if (active) setEiaLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [consoleOpen]);
+
   return (
     <>
       {workbenchRoutes.has(route) && <DataSources />}
@@ -72,6 +118,29 @@ export function Footer() {
                 },
               }, null, 2)}</pre>
             </details>
+             <div data-testid="eia-console-diagnostics" className="mt-4 border-t border-white/10 pt-4">
+               <div className="flex flex-wrap items-start justify-between gap-3">
+                 <div>
+                   <div className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#b9d43a]">EIA proxy diagnostics</div>
+                   <div className="mt-1 font-mono text-[11px] text-white">/api/eia/electricity</div>
+                 </div>
+                 <span className="rounded bg-white/10 px-2 py-1 font-mono text-[9px] uppercase">{eiaLoading ? "loading" : eiaResponse?.status ?? "unavailable"}</span>
+               </div>
+               <dl className="mt-4 grid gap-3 text-[10px] sm:grid-cols-2 lg:grid-cols-4">
+                 <div><dt className="uppercase tracking-[0.1em] text-[#96a4ad]">Request timestamp</dt><dd className="mt-1 break-all font-mono">{eiaResponse?.diagnostics?.requestTimestamp ?? "Not available"}</dd></div>
+                 <div><dt className="uppercase tracking-[0.1em] text-[#96a4ad]">Response status</dt><dd className="mt-1 font-mono">{eiaResponse?.diagnostics?.responseStatus ?? "Not available"}</dd></div>
+                 <div><dt className="uppercase tracking-[0.1em] text-[#96a4ad]">Cache</dt><dd className="mt-1 font-mono">{eiaResponse?.diagnostics?.cache ?? "Not available"}</dd></div>
+                 <div><dt className="uppercase tracking-[0.1em] text-[#96a4ad]">Source freshness</dt><dd className="mt-1 font-mono">{formatSourceTimestamp(eiaResponse?.diagnostics?.sourceFreshness ?? eiaResponse?.sourceUpdatedAt ?? undefined)}</dd></div>
+               </dl>
+               {eiaResponse?.diagnostics?.error && <p className="mt-3 rounded border border-[#a65a00]/60 bg-[#a65a00]/15 px-3 py-2 text-[10px] text-[#f5ddd5]">{eiaResponse.diagnostics.error}</p>}
+               <pre data-testid="eia-console-raw-json" className="mt-3 max-h-64 overflow-auto rounded border border-white/10 bg-black/15 p-3 text-[9px] leading-4 text-[#b9d43a]">{JSON.stringify({
+                 request: {
+                   endpoint: eiaResponse?.diagnostics?.endpoint ?? "/api/eia/electricity",
+                   timestamp: eiaResponse?.diagnostics?.requestTimestamp ?? null,
+                 },
+                 response: eiaResponse,
+               }, null, 2)}</pre>
+             </div>
           </section>
         )}
       </footer>

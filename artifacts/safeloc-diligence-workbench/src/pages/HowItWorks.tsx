@@ -273,10 +273,9 @@ export function HowItWorks({ onReturn, onOpenScreen }: HowItWorksProps) {
                <p className="mt-3 max-w-3xl text-[12px] leading-5 text-[#c4d0d6]">{SOURCE_FALLBACK_EXPLANATION}</p>
                <div className="mt-5 grid gap-3 sm:grid-cols-2">
                  {[
-                   ["ERCOTQueue.com", "Grid interconnection queue and timing context; live or cached when provider metadata is available."],
-                   ["U.S. EIA Open Data", "Electricity market and price context; live or cached when provider metadata is available."],
-                   ["FEMA National Risk Index v1.20", "Versioned hazard exposure profile embedded in this proof-of-concept."],
-                   ["GridTracker MCP", "Grid intelligence and last-query context; connected or disconnected without claiming a query that did not occur."],
+                    ["ERCOTQueue.com", "Grid interconnection queue and timing context; live or cached when provider metadata is available."],
+                    ["U.S. EIA Open Data", "Electricity market and price context; live or cached when provider metadata is available."],
+                    ["FEMA National Risk Index v1.20", "Versioned hazard exposure profile embedded in this proof-of-concept."],
                  ].map(([name, detail]) => (
                    <div key={name} className="rounded-lg border border-white/15 bg-white/5 p-4">
                      <div className="text-[12px] font-semibold text-[#f6f7f2]">{name}</div>

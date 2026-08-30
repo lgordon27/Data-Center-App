@@ -22,6 +22,8 @@ test.describe("AI evidence classification", () => {
     });
 
     await page.goto("/#evidence");
+    await expect(page.getByTestId("ai-evidence-time-contract")).toContainText("Cutoff: August 30, 2026");
+    await expect(page.getByTestId("ai-evidence-time-contract")).toContainText("Valid reporting: 2025–2026");
     await page.evaluate(() => {
       const events: unknown[] = [];
       window.addEventListener("safeloc:session-action", (event) => events.push((event as CustomEvent).detail));

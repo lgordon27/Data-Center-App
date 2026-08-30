@@ -30,6 +30,12 @@ import {
   useDiligence
 } from "@/context/DiligenceContext";
 import { formatSourceTimestamp } from "@/data/sources";
+import {
+  AI_EVIDENCE_CUTOFF_LABEL,
+  AI_EVIDENCE_REPORTING_WINDOW,
+  AI_EVIDENCE_TEMPORAL_CONFIG,
+  AI_EVIDENCE_VALID_REPORTING_YEARS_LABEL,
+} from "@/data/aiEvidenceTemporal.mjs";
 import type { EiaElectricityData, EiaFuel } from "@/services/eiaService";
 import {
   analyzeEvidence,
@@ -421,6 +427,21 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
           </div>
         }
       />
+      <aside data-testid="ai-evidence-time-contract" role="note" className="mb-5 rounded-lg border border-[#cbd8d4] bg-[#f4f8f5] px-4 py-3 md:px-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="font-mono text-[9px] font-bold uppercase tracking-[0.15em] text-[#607500]">AI evidence time contract</div>
+            <h2 className="mt-1 text-[12px] font-semibold text-[#243844]">Review the diligence cutoff before running analysis</h2>
+          </div>
+          <div className="flex flex-wrap gap-2 font-mono text-[9px] font-bold uppercase tracking-[0.08em] text-[#52616b]">
+            <span data-testid="ai-evidence-cutoff" className="rounded-full bg-white px-2.5 py-1">Cutoff: <time dateTime={AI_EVIDENCE_TEMPORAL_CONFIG.cutoffDate}>{AI_EVIDENCE_CUTOFF_LABEL}</time></span>
+            <span data-testid="ai-evidence-reporting-window" className="rounded-full bg-white px-2.5 py-1">Valid reporting: {AI_EVIDENCE_REPORTING_WINDOW}</span>
+          </div>
+        </div>
+        <p className="mt-2 max-w-4xl text-[10px] leading-4 text-[#52616b]">
+          The AI prompt and this Evidence Room use the same reviewed temporal record. Dated {AI_EVIDENCE_VALID_REPORTING_YEARS_LABEL} reporting remains valid and potentially current as of the cutoff; update the shared temporal configuration when the diligence cutoff changes.
+        </p>
+      </aside>
       {showClassificationTip && (
         <aside data-testid="evidence-classification-tip" role="note" className="classification-tip mb-5 flex items-start gap-3 rounded-lg border border-[#b9d43a]/70 bg-[#f8fbe8] px-4 py-3 text-[#344550]">
           <Lightbulb aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#607500]" />

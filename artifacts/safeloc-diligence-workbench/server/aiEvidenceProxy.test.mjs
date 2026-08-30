@@ -9,6 +9,11 @@ import {
   buildAIEvidencePrompt,
   handleAnalyzeEvidenceRequest,
 } from "./aiEvidenceProxy.mjs";
+import {
+  AI_EVIDENCE_CUTOFF_LABEL,
+  AI_EVIDENCE_REPORTING_WINDOW,
+  AI_EVIDENCE_TEMPORAL_CONFIG,
+} from "../src/data/aiEvidenceTemporal.mjs";
 
 const evidence = {
   name: "Annual Cooling Water",
@@ -100,15 +105,18 @@ test("sends the exact OpenAI contract and returns parsed assessment JSON", async
   });
 });
 
-test("grounds the system instruction in the August 30, 2026 temporal contract", () => {
-  assert.match(AI_EVIDENCE_SYSTEM_PROMPT, /Today is August 30, 2026/);
+test("grounds the system instruction in the shared temporal contract", () => {
+  assert.equal(AI_EVIDENCE_TEMPORAL_CONFIG.cutoffDate, "2026-08-30");
+  assert.deepEqual(AI_EVIDENCE_TEMPORAL_CONFIG.validReportingYears, [2025, 2026]);
+  assert.equal(AI_EVIDENCE_CUTOFF_LABEL, "August 30, 2026");
+  assert.equal(AI_EVIDENCE_REPORTING_WINDOW, "2025–2026");
+  assert.match(AI_EVIDENCE_SYSTEM_PROMPT, new RegExp(`Today is ${AI_EVIDENCE_CUTOFF_LABEL}`));
+  assert.match(AI_EVIDENCE_SYSTEM_PROMPT, new RegExp(`active reporting window is ${AI_EVIDENCE_REPORTING_WINDOW}`));
   assert.match(AI_EVIDENCE_SYSTEM_PROMPT, /2025 and 2026 reporting as valid/i);
   assert.match(AI_EVIDENCE_SYSTEM_PROMPT, /Stargate Abilene data center project/i);
-  assert.match(AI_EVIDENCE_SYSTEM_PROMPT, /2026 Epoch AI.*WinBuzzer.*SiliconReport/i);
-  assert.match(AI_EVIDENCE_SYSTEM_PROMPT, /Epoch AI.*WinBuzzer.*SiliconReport/i);
-  assert.match(AI_EVIDENCE_SYSTEM_PROMPT, /expansion was cancelled after .*12 months/i);
-  assert.match(AI_EVIDENCE_SYSTEM_PROMPT, /winter storms damaged cooling equipment/i);
-  assert.match(AI_EVIDENCE_SYSTEM_PROMPT, /August 3, 2026.*moratorium/i);
+  for (const event of AI_EVIDENCE_TEMPORAL_CONFIG.temporalRecord) {
+    assert.match(AI_EVIDENCE_SYSTEM_PROMPT, new RegExp(event.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
   assert.match(AI_EVIDENCE_SYSTEM_PROMPT, /exactly two JSON fields/i);
   assert.match(AI_EVIDENCE_SYSTEM_PROMPT, /and no others/i);
   assert.match(AI_EVIDENCE_SYSTEM_PROMPT, /reasoning \(one sentence explaining why\)/i);

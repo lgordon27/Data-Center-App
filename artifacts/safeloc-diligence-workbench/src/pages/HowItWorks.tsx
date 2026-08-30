@@ -34,7 +34,8 @@ const tourSections = [
   { id: "tour-workflow", number: "02", label: "The workflow" },
   { id: "tour-classification", number: "03", label: "Evidence tiers" },
   { id: "tour-sources", number: "04", label: "Sources & method" },
-  { id: "tour-built-by", number: "05", label: "Who built this" },
+  { id: "tour-under-the-hood", number: "05", label: "Under the Hood" },
+  { id: "tour-built-by", number: "06", label: "Who built this" },
 ] as const;
 
 function TourJump({ id, children, className = "", testId = `link-tour-${id}` }: { id: string; children: React.ReactNode; className?: string; testId?: string }) {
@@ -298,10 +299,181 @@ export function HowItWorks({ onReturn, onOpenScreen }: HowItWorksProps) {
           </div>
         </section>
 
+         <section id="tour-under-the-hood" aria-labelledby="tour-under-the-hood-title" className="scroll-mt-20 border-y border-[#d9e0e4] bg-[#f9faf8] px-4 py-14 md:px-8 md:py-20">
+           <div className="mx-auto max-w-[1240px]">
+             <div className="grid gap-7 lg:grid-cols-[0.8fr_1.2fr] lg:items-end">
+               <div>
+                 <TourKicker>05 / technical architecture</TourKicker>
+                 <h2 id="tour-under-the-hood-title" className="text-[35px] font-semibold leading-[0.98] tracking-[-0.055em] md:text-[52px]">What Powers This Tool</h2>
+               </div>
+               <p className="max-w-2xl text-[14px] leading-6 text-[#52616b]">SafeLoc is not a dashboard connected to APIs. It is a governed financial model with a domain-specific evidence methodology: deterministic math, inspectable wiring, honest source states, and a human decision at the point where judgment enters.</p>
+             </div>
+
+             <div data-testid="tour-under-the-hood-layers" className="mt-10 space-y-4">
+               <article data-testid="tour-under-the-hood-layer-cash-flow" className="rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-7">
+                 <div className="grid gap-7 lg:grid-cols-[0.8fr_1.2fr] lg:items-start">
+                   <div>
+                     <div className="flex items-center gap-3">
+                       <span className="flex h-9 w-9 items-center justify-center rounded-md bg-[#122232] font-mono text-[11px] font-bold text-[#d4e86b]">01</span>
+                       <div className="font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#607500]">Cash Flow Engine</div>
+                     </div>
+                     <h3 className="mt-5 text-[24px] font-semibold leading-tight tracking-[-0.035em] text-[#122232]">A model you can inspect, not a score you have to trust.</h3>
+                     <p className="mt-4 text-[13px] leading-6 text-[#52616b]">A five-year equity cash flow model running entirely in your browser. Revenue ramp, OPEX by line item, CAPEX with contingencies, debt service, terminal value. IRR solved via Newton’s method. <strong className="text-[#122232]">Not a score. Not a penalty. Real project finance math.</strong></p>
+                   </div>
+                   <div data-testid="tour-under-the-hood-cash-flow-visual" className="rounded-lg border border-[#cbd8d4] bg-[#122232] p-4 text-[#e6eef0]">
+                     <div className="mb-3 flex items-center justify-between gap-3 font-mono text-[9px] font-bold uppercase tracking-[0.14em]">
+                       <span className="text-[#b9d43a]">Equity cash flow / years 0—5 / Newton method IRR</span>
+                       <span className="text-[#9dafb8]">deterministic</span>
+                     </div>
+                     <div className="grid grid-cols-6 items-end gap-2 border-b border-[#60717f] pb-3" aria-label="Illustration of equity cash flow rising from initial investment through terminal value">
+                       {[
+                         ["Y0", "−CAPEX", "h-8", "bg-[#f5ddd5]"],
+                         ["Y1", "NOI − debt", "h-12", "bg-[#8bb7b0]"],
+                         ["Y2", "NOI − debt", "h-16", "bg-[#8bb7b0]"],
+                         ["Y3", "NOI − debt", "h-20", "bg-[#b9d43a]"],
+                         ["Y4", "NOI − debt", "h-24", "bg-[#b9d43a]"],
+                         ["Y5", "+ terminal", "h-32", "bg-[#d4e86b]"],
+                       ].map(([year, label, height, tone]) => (
+                         <div key={year} className="flex min-w-0 flex-col items-center gap-2 text-center">
+                           <div className={`w-full rounded-t-sm ${height} ${tone}`} />
+                           <span className="font-mono text-[8px] font-bold text-[#f6f7f2]">{year}</span>
+                           <span className="min-h-8 text-[8px] leading-3 text-[#9dafb8]">{label}</span>
+                         </div>
+                       ))}
+                     </div>
+                     <pre className="mt-4 overflow-hidden whitespace-pre-wrap break-words font-mono text-[10px] leading-5 text-[#c4d0d6]" aria-label="Simplified Newton method IRR code"><code>rate = 0.15
+repeat until NPV(rate) ≈ 0:
+  rate = rate − NPV(rate) / NPV′(rate)</code></pre>
+                   </div>
+                 </div>
+               </article>
+
+               <article data-testid="tour-under-the-hood-layer-wiring" className="rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-7">
+                 <div className="grid gap-7 lg:grid-cols-[0.8fr_1.2fr] lg:items-start">
+                   <div>
+                     <div className="flex items-center gap-3">
+                       <span className="flex h-9 w-9 items-center justify-center rounded-md bg-[#122232] font-mono text-[11px] font-bold text-[#d4e86b]">02</span>
+                       <div className="font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#255bb7]">Evidence-to-Model Wiring</div>
+                     </div>
+                     <h3 className="mt-5 text-[24px] font-semibold leading-tight tracking-[-0.035em] text-[#122232]">Every classification has a financial consequence.</h3>
+                     <p className="mt-4 text-[13px] leading-6 text-[#52616b]">Each of the 16 evidence inputs is wired to a specific financial line item. Change one classification and the entire model recalculates because the inputs are structurally linked, not cosmetically connected.</p>
+                   </div>
+                   <div data-testid="tour-under-the-hood-wiring-visual" className="rounded-lg border border-[#cbd8d4] bg-[#eef2f1] p-4">
+                     <div className="mb-3 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#52616b]">Input → linked model line item</div>
+                     <ul className="space-y-2" aria-label="Examples of evidence inputs linked to financial model line items">
+                       {[
+                         ["Electricity cost", "Power OPEX", "rate × MWh"],
+                         ["Grid delays", "Revenue timing", "months → ramp"],
+                         ["Water rights", "CAPEX contingency", "classification → reserve"],
+                         ["Hazard exposure", "Downtime risk", "quality → loss"],
+                       ].map(([input, lineItem, formula]) => (
+                         <li key={input} className="grid min-w-0 items-center gap-2 rounded-md border border-[#d9e0e4] bg-white p-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+                           <span className="min-w-0 text-[11px] font-semibold text-[#243844]">{input}</span>
+                           <ArrowRight aria-hidden="true" className="hidden h-4 w-4 text-[#607500] sm:block" />
+                           <span className="min-w-0 text-[11px] text-[#52616b]"><strong className="text-[#122232]">{lineItem}</strong><span className="ml-1 font-mono text-[9px] text-[#607500]">({formula})</span></span>
+                         </li>
+                       ))}
+                     </ul>
+                     <div className="mt-3 rounded-md border border-[#9bd8c5] bg-[#e0f4ed] p-3 text-[11px] font-semibold leading-5 text-[#0b624f]"><span className="font-mono text-[9px] uppercase tracking-[0.1em]">Reclassify one input</span><span aria-hidden="true" className="mx-2">→</span>structurally linked model recalculates</div>
+                   </div>
+                 </div>
+               </article>
+
+               <article data-testid="tour-under-the-hood-layer-data" className="rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-7">
+                 <div className="grid gap-7 lg:grid-cols-[0.8fr_1.2fr] lg:items-start">
+                   <div>
+                     <div className="flex items-center gap-3">
+                       <span className="flex h-9 w-9 items-center justify-center rounded-md bg-[#122232] font-mono text-[11px] font-bold text-[#d4e86b]">03</span>
+                       <div className="font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#0b7a63]">Live Data Integration</div>
+                     </div>
+                     <h3 className="mt-5 text-[24px] font-semibold leading-tight tracking-[-0.035em] text-[#122232]">Freshness is a state, not a label.</h3>
+                     <p className="mt-4 text-[13px] leading-6 text-[#52616b]">ERCOT queue data from ERCOTQueue.com updates automatically. EIA electricity pricing comes from the U.S. Energy Information Administration. FEMA National Risk Index climate data is embedded at the county level. Each feed has a caching layer and graceful fallback if the source is unavailable.</p>
+                   </div>
+                   <div data-testid="tour-under-the-hood-data-visual" className="grid gap-2 sm:grid-cols-3">
+                     {[
+                       ["ERCOT queue", "Provider feed", "Live / Cached", "Bundled baseline if unavailable"],
+                       ["EIA pricing", "Provider feed", "Live / Cached", "Bundled baseline if unavailable"],
+                       ["FEMA NRI", "County profile", "Embedded", "Versioned v1.20 case context"],
+                     ].map(([name, sourceType, status, detail]) => (
+                       <div key={name} className="rounded-lg border border-[#cbd8d4] bg-[#f8fbe8] p-4">
+                         <div className="text-[12px] font-semibold text-[#122232]">{name}</div>
+                         <div className="mt-3 flex items-center gap-2">
+                           <span aria-hidden="true" className="h-2 w-2 rounded-full bg-[#607500]" />
+                           <span className="font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#607500]">{status}</span>
+                         </div>
+                         <div className="mt-2 text-[10px] font-semibold text-[#344550]">{sourceType}</div>
+                         <p className="mt-2 text-[10px] leading-4 text-[#52616b]">{detail}</p>
+                       </div>
+                     ))}
+                     <p className="sm:col-span-3 rounded-md border border-[#f1cb8b] bg-[#fff8e9] p-3 text-[11px] leading-5 text-[#6f460e]"><strong>Provider state is validated.</strong> Embedded baselines are identified as embedded; a fallback value is never mislabeled as live data.</p>
+                   </div>
+                 </div>
+               </article>
+
+               <article data-testid="tour-under-the-hood-layer-ai" className="rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-7">
+                 <div className="grid gap-7 lg:grid-cols-[0.8fr_1.2fr] lg:items-start">
+                   <div>
+                     <div className="flex items-center gap-3">
+                       <span className="flex h-9 w-9 items-center justify-center rounded-md bg-[#122232] font-mono text-[11px] font-bold text-[#d4e86b]">04</span>
+                       <div className="font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#a65a00]">AI-Powered Evidence Analysis</div>
+                     </div>
+                     <h3 className="mt-5 text-[24px] font-semibold leading-tight tracking-[-0.035em] text-[#122232]">AI proposes. You decide.</h3>
+                     <p className="mt-4 text-[13px] leading-6 text-[#52616b]">OpenAI classifies evidence quality by analyzing source documents and public records. Every AI assessment is a suggestion. The human accepts or overrides. The financial model only moves when the human acts.</p>
+                   </div>
+                   <ol data-testid="tour-under-the-hood-ai-visual" className="grid gap-2 sm:grid-cols-3" aria-label="AI evidence governance sequence">
+                     {[
+                       ["01", "OpenAI suggestion", "Proposes a provenance class and concise reasoning."],
+                       ["02", "Human accepts or overrides", "An analyst reviews the suggestion before it becomes an input."],
+                       ["03", "Model recalculates", "Only the human decision changes the linked financial model."],
+                     ].map(([number, title, detail], index) => (
+                       <li key={title} className="relative rounded-lg border border-[#cbd8d4] bg-[#eef2f1] p-4 sm:last:after:hidden">
+                         <div className="font-mono text-[10px] font-bold text-[#a65a00]">{number}</div>
+                         <div className="mt-3 text-[12px] font-semibold text-[#122232]">{title}</div>
+                         <p className="mt-2 text-[10px] leading-4 text-[#52616b]">{detail}</p>
+                         {index < 2 && <ArrowRight aria-hidden="true" className="absolute -right-3 top-1/2 z-10 hidden h-5 w-5 -translate-y-1/2 rounded-full bg-[#f9faf8] text-[#a65a00] sm:block" />}
+                       </li>
+                     ))}
+                   </ol>
+                 </div>
+               </article>
+
+               <article data-testid="tour-under-the-hood-layer-research" className="rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-7">
+                 <div className="grid gap-7 lg:grid-cols-[0.8fr_1.2fr] lg:items-start">
+                   <div>
+                     <div className="flex items-center gap-3">
+                       <span className="flex h-9 w-9 items-center justify-center rounded-md bg-[#122232] font-mono text-[11px] font-bold text-[#d4e86b]">05</span>
+                       <div className="font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#255bb7]">Custom Project Research</div>
+                     </div>
+                     <h3 className="mt-5 text-[24px] font-semibold leading-tight tracking-[-0.035em] text-[#122232]">A future surface with an explicit boundary.</h3>
+                     <p className="mt-4 text-[13px] leading-6 text-[#52616b]">The intended future concept is to enter any data center project and have AI research public sources for 16 evidence variables, propose classifications, and populate the financial model. That capability is <strong className="text-[#122232]">not available in the current workbench.</strong></p>
+                   </div>
+                   <div data-testid="tour-under-the-hood-research-visual" className="grid gap-3 sm:grid-cols-2">
+                     <div className="rounded-lg border-2 border-[#0b7a63] bg-[#e0f4ed] p-4">
+                       <div className="font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-[#0b624f]">Current / curated case</div>
+                       <div className="mt-3 text-[15px] font-semibold text-[#122232]">Stargate Abilene</div>
+                       <p className="mt-2 text-[11px] leading-5 text-[#34584f]">Hand-verified sources, explicit synthetic assumptions, and a documented evidence boundary.</p>
+                     </div>
+                     <div className="rounded-lg border-2 border-[#255bb7] bg-[#e5efff] p-4">
+                       <div className="font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-[#255bb7]">Future / AI-researched</div>
+                       <div className="mt-3 rounded border border-[#aac6f4] bg-white px-3 py-2 font-mono text-[10px] text-[#52616b]" aria-label="Illustration of a future project name input">project name →</div>
+                       <p className="mt-2 text-[11px] leading-5 text-[#3f5577]">Public-source research would remain a proposal with transparent limitations—not verified project truth.</p>
+                     </div>
+                   </div>
+                 </div>
+               </article>
+             </div>
+
+             <aside data-testid="tour-under-the-hood-bottom-line" role="note" className="mt-6 rounded-xl border-2 border-[#122232] bg-[#122232] p-6 text-white md:p-8">
+               <div className="font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-[#b9d43a]">The bottom line</div>
+               <p className="mt-4 max-w-4xl text-[22px] font-semibold leading-tight tracking-[-0.035em] text-[#f6f7f2] md:text-[31px]">Built by one person using Claude, Replit, and public data APIs. The APIs took hours. The financial model, evidence architecture, and domain expertise took years.</p>
+             </aside>
+           </div>
+         </section>
+
         <section id="tour-built-by" aria-labelledby="tour-built-by-title" className="scroll-mt-20 border-t border-[#d9e0e4] bg-[#122232] px-4 py-14 text-white md:px-8 md:py-20">
           <div className="mx-auto grid max-w-[1240px] gap-8 lg:grid-cols-[1fr_0.8fr] lg:items-end">
             <div>
-              <TourKicker dark>05 / provenance of the work</TourKicker>
+               <TourKicker dark>06 / provenance of the work</TourKicker>
               <h2 id="tour-built-by-title" className="max-w-2xl text-[35px] font-semibold leading-[0.98] tracking-[-0.055em] md:text-[52px]">Built for the moment when a model needs a witness.</h2>
               <div data-testid="tour-builder-story" className="mt-6 max-w-2xl text-[15px] leading-7 text-[#d1dbe0]">
                 <p>Built by LeAndrew Gordon, Founder and CEO of SafeLoc, a former Private Wealth Financial Advisor and Chartered SRI Counselor, for the Growth for Impact Conference. SafeLoc applies values-aligned evidence standards to the infrastructure layer so sustainability professionals can help steer the AI economy rather than watch from the sidelines.</p>

@@ -1,0 +1,49 @@
+Add an AI-powered evidence classification feature to the Evidence Room (Screen 2). This makes the tool agentic by using Claude's API to analyze source quality and propose evidence classifications that the user then accepts or overrides.
+
+IMPLEMENTATION:
+
+Add an "Analyze with AI" button (small, secondary style, with a sparkle or AI icon) next to each evidence item's classification dropdown in the Evidence Room.
+
+When clicked, the button:
+1. Shows a brief loading state ("Analyzing source quality...")
+2. Calls the Anthropic API at https://api.anthropic.com/v1/messages with this configuration:
+   - model: "claude-sonnet-4-6"
+   - max_tokens: 300
+   - System prompt: "You are an infrastructure diligence analyst specializing in AI data center investments. You assess evidence quality for investment underwriting. Respond with exactly two fields in JSON format: classification (one of: Verified Evidence, Management Assertion, Model Inference, User Assumption, Missing Evidence) and reasoning (one sentence explaining why)."
+   - User message: "Assess the evidence quality of this data point for the Stargate Abilene data center project (OpenAI/Oracle, Taylor County, Texas): Variable: [evidence item name]. Current value: [evidence item value]. Cited source: [evidence item source citation]. Based on the source type and what is publicly verifiable about this project, classify the evidence quality."
+
+3. Parses the JSON response and displays a suggestion card below the evidence item showing:
+   - The AI's proposed classification with the matching color badge
+   - The one-sentence reasoning
+   - Two buttons: "Accept" (green) and "Override" (neutral)
+   - A label: "AI Assessment" with a subtle indicator that this is a suggestion, not a determination
+
+4. If the user clicks "Accept":
+   - The evidence classification updates to the AI's suggestion
+   - The financial model recalculates
+   - The suggestion card collapses with a brief "Classification updated" confirmation
+   - Log the action: "AI-proposed, human-accepted"
+
+5. If the user clicks "Override":
+   - The suggestion card collapses
+   - The dropdown remains unchanged (user keeps their current classification or selects a new one manually)
+   - Log the action: "AI-proposed, human-overridden"
+
+6. Error handling:
+   - If the API call fails, show a subtle error: "AI analysis unavailable. Classify manually."
+   - If the response cannot be parsed as valid JSON, show the raw text response with a note: "Could not parse structured assessment. Review manually."
+   - Add a 10-second timeout on the API call
+
+Add an "Analyze All with AI" button at the top of the Evidence Room (next to the 16/16 inputs registered badge) that runs the analysis sequentially for all 16 items. Show a progress indicator: "Analyzing 3 of 16..." Each result appears as a suggestion card on its respective evidence item. The user can accept or override each one individually. Do not auto-accept any classifications.
+
+DESIGN:
+- The "Analyze with AI" button should be small and unobtrusive, not competing with the classification dropdown
+- The suggestion card should have a distinct visual treatment (subtle border, slightly different background) so it's clearly a suggestion layer, not part of the core evidence display
+- Use the existing dark theme and color system
+- The "Analyze All" button should be prominent but not the primary action on the screen
+
+IMPORTANT ARCHITECTURAL NOTES:
+- The API call should be made directly from the frontend. No API key is needed as it is handled automatically.
+- Do not store API responses in localStorage
+- Each "Analyze with AI" click makes a fresh API call (no caching of AI assessments)
+- The AI suggestion does not persist after page refresh. Only the accepted classification persists.

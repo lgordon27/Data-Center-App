@@ -1,0 +1,23 @@
+Integrate the infrastructure bifurcation framing across the app. This is the concept that the AI infrastructure market is splitting into two tiers.
+
+Tier 1 projects solved power, water, and land independently of public infrastructure. Example: Chevron/Microsoft Project Kilby in Reeves County, TX. 2.67 GW behind-the-meter natural gas, 20-year PPA, brackish groundwater from Texas Pacific Land, exempt from Abbott's moratorium. Proceeding on schedule.
+
+Tier 2 projects depend on the public grid (ERCOT), municipal water, public permitting, and community approval. Example: Stargate Abilene (the project this tool analyzes). 600 MW expansion cancelled due to grid delays. Winter storms damaged cooling. Water undisclosed. Stalled.
+
+Add the following content to existing screens. Do not create new pages or sections.
+
+HOME PAGE: Add a secondary line below the current subtitle or above the stat cards: "The AI infrastructure market is splitting in two. Projects that solved their constraints independently are proceeding. Projects dependent on public infrastructure are stalling. The companies in your portfolio are on both sides."
+
+VALUE CHAIN PAGE: On the Data Center Infrastructure card (the "You Are Here" stage), add to the existing note: "This layer is bifurcating. Behind-the-meter projects like Chevron/Microsoft's Project Kilby bypass the grid and are proceeding. Grid-dependent projects like Stargate Abilene are subject to the 474 GW queue and the Abbott moratorium. Evidence quality determines which side a project lands on."
+
+SCREEN 1 (Case Brief): Add a brief callout after the Stargate project details: "Stargate is a Tier 2 infrastructure project: grid-dependent, subject to ERCOT delays, affected by the August 2026 moratorium. Not all AI infrastructure faces these constraints. Chevron/Microsoft's Project Kilby bypassed the grid with behind-the-meter generation and is proceeding. This tool analyzes the evidence gap that separates projects that advance from projects that stall."
+
+SCREEN 5 (Advisor Lens): Add a subsection in the client exposure area titled "Your Clients Are on Both Sides" with four compact entries:
+- NVIDIA: "Downstream of all infrastructure. GPU revenue depends on total build rate. Tier 2 delays slow procurement."
+- Microsoft: "Partially hedged. Project Kilby (Tier 1, proceeding) plus grid-dependent projects (Tier 2, at risk)."
+- Meta: "More grid-dependent. Major Texas projects require ERCOT interconnection. More exposed to Tier 2 delays."
+- Google: "Significant Texas investment dependent on grid connection. Subject to Abbott's audit."
+
+HOW IT WORKS: In the "Why This Exists" section, add one line: "The market is bifurcating between projects that solved their constraints independently and projects still waiting on public infrastructure. This tool tests which side a specific project falls on."
+
+Keep all additions concise. One or two sentences per placement. Weave into existing content rather than creating new panels or cards.

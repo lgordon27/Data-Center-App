@@ -23,6 +23,7 @@ import {
   SavedScenario,
   useDiligence
 } from "@/context/DiligenceContext";
+import type { RecommendationStatus } from "@/model/cashFlowEngine";
 
 import {
   AlertDialog,
@@ -57,6 +58,13 @@ import {
 import type {
   Screen
 } from "@/components/Shell";
+
+const holdingsConnectionCopy: Record<RecommendationStatus, string> = {
+  BLOCKED: "NVIDIA GPU contracts and hyperscaler CAPEX may connect values-aligned funds to this buildout, but unresolved project evidence leaves a material exposure gap. This blocked status is a diligence signal—not a facility-level Stargate fact or a holdings recommendation.",
+  CONDITIONAL: "NVIDIA GPU contracts and hyperscaler CAPEX may connect values-aligned funds to this buildout. The exposure gap remains conditional while unverified project assumptions are carried into review; this is market context, not a holdings recommendation.",
+  "READY FOR REVIEW": "NVIDIA GPU contracts and hyperscaler CAPEX connect values-aligned funds to this buildout. The project evidence is ready for review, while portfolio exposure remains market context—not proof of facility-level Stargate exposure or a holdings recommendation.",
+};
+
 export function DecisionReview({ onNavigate, onResolve }: { onNavigate: (screen: Screen) => void; onResolve: (id: string) => void }) {
   const { evidence, metrics, scenarios, saveScenario, renameScenario, removeScenario } = useDiligence();
   const items = Object.values(evidence);
@@ -167,6 +175,10 @@ export function DecisionReview({ onNavigate, onResolve }: { onNavigate: (screen:
         <section className="rounded-xl border border-[#d9e0e4] bg-[#f1f5f3] p-5 md:p-6">
           <SectionKicker>Decision posture</SectionKicker>
           <div className="mt-2 flex items-start gap-3"><div className={`rounded-md p-2.5 ${metrics.recommendationStatus === "BLOCKED" ? "bg-[#f5ddd5] text-[#ba2f45]" : metrics.recommendationStatus === "CONDITIONAL" ? "bg-[#fff0d6] text-[#a65a00]" : "bg-[#d4e86b] text-[#314207]"}`}>{decisionCopy.icon}</div><div><h2 className="text-[20px] font-semibold leading-tight tracking-[-0.03em] text-[#122232]">{decisionCopy.title}</h2><p className="mt-2 text-[11px] leading-5 text-[#65737d]">{decisionCopy.description}</p></div></div>
+           <aside data-testid="holdings-connection-indicator" role="note" aria-labelledby="holdings-connection-title" className="mt-5 rounded-lg border bg-white/70 px-3 py-3" style={{ borderColor: statusMeta.border }}>
+             <h3 id="holdings-connection-title" className="font-mono text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: statusMeta.color }}>What This Means for Holdings</h3>
+             <p data-testid="holdings-connection-message" aria-live="polite" className="mt-2 text-[11px] leading-5 text-[#344550]">{holdingsConnectionCopy[metrics.recommendationStatus]}</p>
+           </aside>
           <button data-testid="button-open-advisor-lens" onClick={() => onNavigate("advisor")} className="mt-6 inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#122232] hover:text-[#607500]">Carry this into the advisor lens <ArrowRight className="h-3.5 w-3.5" /></button>
         </section>
       </div>

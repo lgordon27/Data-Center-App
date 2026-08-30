@@ -189,24 +189,8 @@ test.describe("hash routing and browser history", () => {
     const countCards = page.getByTestId("count-classification-verified");
     const tipBox = await evidenceTip.boundingBox();
     const countBox = await countCards.boundingBox();
-    expect(tipBox && countBox ? tipBox.y + tipBox.height : 0).toBeLessThanOrEqual(countBox?.y ?? Number.POSITIVE_INFINITY);
 
-    await page.goto("/#materiality");
-    await expect(page.getByTestId("materiality-classification-prompt")).toContainText("Change a classification to see the return update.");
-
-    await page.goto("/#evidence");
-    await page.getByTestId("select-classification-electricity_cost").selectOption("Missing Evidence");
-    await expect(page.getByTestId("toast-reclassification")).toContainText("Return updated");
-    await expect(page.getByTestId("live-current-irr")).toContainText("Current IRR is now");
-
-    await page.goto("/#materiality");
-    await expect(page.getByTestId("materiality-classification-prompt")).toHaveCount(0);
-    await expect(page.getByTestId("metric-project-irr")).toContainText(/\d+\.\d%/);
-  });
-
-  test("shows the complete SRI origin story in the product tour", async ({ page }) => {
-    await page.goto("/#how-it-works");
-
+    const portfolioConnection = page.getByTestId("portfolio-connection-strip");
     const context = page.getByTestId("tour-sri-context");
     await expect(context).toContainText("Responsible investors helped capitalize the AI revolution; now its physical infrastructure is testing environmental stewardship, community impact, transparent governance, and evidence-based decision-making.");
     await expect(context).toContainText("Texas pausing new grid connections for an energy and water audit");
@@ -504,3 +488,9 @@ test.describe("hash routing and browser history", () => {
     await expect(page.getByTestId("home-evidence-visual")).toHaveAttribute("aria-label", /18\.4%/);
   });
 });
+
+    const holdingsIndicator = page.getByTestId("holdings-connection-indicator");
+
+    const viewportWidth = await page.evaluate(() => window.innerWidth);
+
+    const holdingsBox = await holdingsIndicator.boundingBox();

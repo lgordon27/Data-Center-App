@@ -39,12 +39,12 @@ function withVerifiedCount(count: number) {
   );
 }
 
-test("initial advisor posture prioritizes missing evidence and expands water rights", () => {
+test("initial advisor posture keeps the facility-level climate inference distinct from FEMA evidence", () => {
   const verifiedCount = countVerifiedEvidence(INITIAL_EVIDENCE);
   const questions = prioritizeAdvisorQuestions(INITIAL_EVIDENCE);
 
   assert.equal(Object.keys(INITIAL_EVIDENCE).length, 16);
-  assert.equal(verifiedCount, 5);
+  assert.equal(verifiedCount, 6);
   assert.equal(getRiskTier(verifiedCount), "MODERATE");
   assert.deepEqual(
     questions.slice(0, 2).map((question) => question.id),
@@ -59,7 +59,8 @@ test("initial advisor posture prioritizes missing evidence and expands water rig
   assert.equal(waterPresentation.isWaterGap, true);
   const climatePresentation = getAdvisorQuestionPresentation(
     "climate-hazard",
-    INITIAL_EVIDENCE.site_hazard_exposure.classification,
+    INITIAL_EVIDENCE.site_hazard_exposure.modelClassification ??
+      INITIAL_EVIDENCE.site_hazard_exposure.classification,
   );
   assert.equal(climatePresentation.isActiveGap, true);
   assert.equal(climatePresentation.showDetail, true);
@@ -132,7 +133,7 @@ test("governance gap equals verified baseline IRR less current IRR and is safe w
   assert.equal(getGovernanceIRRGap(Number.NaN, 12.5), null);
 });
 
-test("the climate hazard question is exact and follows weaker evidence ahead of stronger evidence", () => {
+test("the climate hazard question is exact and carries the separate model classification", () => {
   const questions = prioritizeAdvisorQuestions(INITIAL_EVIDENCE);
   const climateQuestion = questions.find((question) => question.id === "climate-hazard");
 

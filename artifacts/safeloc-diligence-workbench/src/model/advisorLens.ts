@@ -9,6 +9,7 @@ export type AdvisorQuestion = {
 
 export type ClassifiedEvidence = {
   classification: Classification;
+  modelClassification?: Classification;
 };
 
 export type PrioritizedAdvisorQuestion = AdvisorQuestion & {
@@ -76,7 +77,9 @@ export function prioritizeAdvisorQuestions(
     .map((question, index) => ({
       ...question,
       index,
-      classification: evidence[question.evidenceId]?.classification,
+      classification:
+        evidence[question.evidenceId]?.modelClassification ??
+        evidence[question.evidenceId]?.classification,
     }))
     .sort((a, b) => {
       const aStrength = a.classification === undefined ? -1 : CLASSIFICATION_STRENGTH[a.classification];

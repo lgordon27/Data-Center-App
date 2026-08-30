@@ -15,6 +15,11 @@ import {
   fetchErcotQueue,
   type ErcotQueueResult,
 } from "@/services/ercotService";
+import {
+  ACTIVE_FEMA_NRI_PROFILE,
+  FEMA_NRI_ATTRIBUTION,
+  formatFemaHazardSummary,
+} from "@/data/femaNRI";
 
 export type { Classification } from '@/model/cashFlowEngine';
 
@@ -24,6 +29,7 @@ export type EvidenceItem = {
   value: string | number;
   unit: string;
   classification: Classification;
+  modelClassification?: Classification;
   citation: string;
   description: string;
   sourceId: SourceId | null;
@@ -66,7 +72,7 @@ export const INITIAL_EVIDENCE: Record<string, EvidenceItem> = {
   water_consumption: { id: 'water_consumption', label: 'Annual Cooling Water', value: 'Not disclosed', numericValue: 23, unit: 'Facility total', classification: 'Missing Evidence', citation: 'No public disclosure as of Aug 2026', description: 'Stargate Abilene has not publicly disclosed facility-level water consumption.', sourceId: null, providerSourceId: null, sourceRole: 'Project disclosure' },
   grid_interconnection: { id: 'grid_interconnection', label: 'Grid Interconnection Timeline', value: 'Expansion cancelled; delays exceeded 12 months', numericValue: 14, unit: 'Verified event', classification: 'Verified Evidence', citation: 'Epoch AI / WinBuzzer / SiliconReport, 2026 reporting', description: 'The planned expansion beyond the 1.2 GW core was cancelled after grid-interconnection delays exceeded one year.', sourceId: null, providerSourceId: 'ercot-queue', sourceRole: 'Embedded public-reporting evidence' },
   water_escalation: { id: 'water_escalation', label: '5-Yr Water Cost Escalation', value: 7, numericValue: 7, unit: '%', classification: 'Model Inference', citation: 'Taylor County and City of Abilene municipal-rate records; analyst trend inference', description: 'Representative five-year escalation inferred from local municipal water-rate history, not a disclosed Stargate contract rate.', sourceId: null, providerSourceId: null, sourceRole: 'Analyst inference' },
-  community_risk: { id: 'community_risk', label: 'Community Infrastructure Strain', value: 'Documented', unit: 'Local impact', classification: 'Verified Evidence', citation: 'Texas Standard / AI Wiki / Abilene local reporting', description: 'Reporting documents pressure on housing, childcare, and roads as construction employment peaks near 6,400 while permanent jobs are expected in the low hundreds.', sourceId: null, providerSourceId: null, sourceRole: 'Public reporting' },
+  community_risk: { id: 'community_risk', label: 'Community Infrastructure Strain', value: 'Documented', unit: 'Local impact', classification: 'Verified Evidence', citation: `Texas Standard / AI Wiki / Abilene local reporting; ${FEMA_NRI_ATTRIBUTION}, FIPS ${ACTIVE_FEMA_NRI_PROFILE.fips}`, description: `Local reporting documents pressure on housing, childcare, and roads as construction employment peaks near 6,400 while permanent jobs are expected in the low hundreds. Separate FEMA county context for ${ACTIVE_FEMA_NRI_PROFILE.county} (FIPS ${ACTIVE_FEMA_NRI_PROFILE.fips}): Social Vulnerability ${ACTIVE_FEMA_NRI_PROFILE.socialVulnerabilityScore.toFixed(2)}, ${ACTIVE_FEMA_NRI_PROFILE.socialVulnerabilityRating}.`, sourceId: null, providerSourceId: null, sourceRole: 'Local public reporting with separate FEMA county context' },
   renewable_percentage: { id: 'renewable_percentage', label: 'Renewable Procurement', value: 'Local wind referenced; percentage unverified', numericValue: 25, unit: 'Power mix', classification: 'Management Assertion', citation: 'Lancium / Crusoe public statements; ERCOT generation context', description: 'Local wind is referenced in the campus power story, but the renewable share delivered to Stargate is not publicly verified.', sourceId: null, providerSourceId: null, sourceRole: 'Management and public context' },
   cooling_capex: { id: 'cooling_capex', label: 'Cooling Infrastructure CAPEX', value: 450, numericValue: 450, unit: '$M', classification: 'User Assumption', citation: 'Synthetic analyst estimate scaled to 1.2 GW; winter 2026 event context from SiliconReport', description: 'Representative liquid-cooling and heat-rejection CAPEX. Public reporting says winter 2026 storms damaged cooling equipment and forced buildings offline.', sourceId: null, providerSourceId: null, sourceRole: 'Synthetic underwriting input' },
   electricity_escalation: { id: 'electricity_escalation', label: '5-Yr Electricity Price Increase', value: 6, numericValue: 6, unit: '%', classification: 'Verified Evidence', citation: 'Bloomberg power-market data / ERCOT market reports, 2025–2026', description: 'Representative West Texas power-cost escalation anchored to public ERCOT market conditions.', sourceId: null, providerSourceId: 'eia', sourceRole: 'Embedded electricity-market context' },
@@ -77,15 +83,16 @@ export const INITIAL_EVIDENCE: Record<string, EvidenceItem> = {
   site_hazard_exposure: {
     id: 'site_hazard_exposure',
     label: 'Site Hazard Exposure Profile',
-    value: 'Extreme heat high; drought moderate; winter storm documented',
+    value: formatFemaHazardSummary(ACTIVE_FEMA_NRI_PROFILE),
     qualitativeValue: 'high',
-    unit: 'Composite Risk',
-    classification: 'Model Inference',
-    citation: 'FEMA National Risk Index / NOAA climate records / SiliconReport winter 2026 reporting',
-    description: 'West Texas CRVA profile: high extreme-heat exposure, moderate drought exposure, and a verified winter-storm event that damaged liquid-cooling equipment.',
+    unit: 'FEMA county ratings',
+    classification: 'Verified Evidence',
+    modelClassification: 'Model Inference',
+    citation: `${FEMA_NRI_ATTRIBUTION}, FIPS ${ACTIVE_FEMA_NRI_PROFILE.fips}`,
+    description: `Exact FEMA hazard ratings for ${ACTIVE_FEMA_NRI_PROFILE.county} (FIPS ${ACTIVE_FEMA_NRI_PROFILE.fips}). FEMA's Inland Flooding field (IFLD_RISKR) is labeled Riverine Flooding in this product. The separate facility-level qualitative model input remains a Model Inference and is not a FEMA measurement.`,
     sourceId: 'fema-nri',
     providerSourceId: null,
-    sourceRole: 'Hazard exposure profile',
+    sourceRole: 'Embedded FEMA county hazard profile',
   },
   backup_power_capacity: {
     id: 'backup_power_capacity',

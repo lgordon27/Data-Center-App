@@ -21,6 +21,7 @@ export type EvidenceRecord = Record<
     id: string;
     value: string | number;
     classification: Classification;
+     modelClassification?: Classification;
     numericValue?: number;
     qualitativeValue?: QualitativeEvidenceValue;
   }
@@ -390,7 +391,13 @@ function buildVerifiedEvidence(evidence: EvidenceRecord): EvidenceRecord {
   return Object.fromEntries(
     Object.entries(evidence).map(([id, item]) => [
       id,
-      { ...item, classification: "Verified Evidence" as Classification },
+      {
+        ...item,
+        classification: "Verified Evidence" as Classification,
+        modelClassification: item.modelClassification
+          ? "Verified Evidence" as Classification
+          : undefined,
+      },
     ]),
   );
 }
@@ -425,7 +432,7 @@ function runModel(evidence: EvidenceRecord): CashFlowModel {
   const permittingQuality = QUALITY_POLICY[permittingItem.classification];
   const concentrationQuality = QUALITY_POLICY[concentrationItem.classification];
   const waterRightsQuality = QUALITY_POLICY[waterRightsItem.classification];
-  const hazardQuality = QUALITY_POLICY[hazardItem.classification];
+  const hazardQuality = QUALITY_POLICY[hazardItem.modelClassification ?? hazardItem.classification];
   const backupPowerQuality = QUALITY_POLICY[backupPowerItem.classification];
   const waterSourceQuality = QUALITY_POLICY[waterSourceItem.classification];
   const downtimeCostQuality = QUALITY_POLICY[downtimeCostItem.classification];
@@ -791,6 +798,9 @@ export function calculateCashFlowModel(evidence: EvidenceRecord) {
         [id]: {
           ...evidence[id],
           classification: "Verified Evidence" as Classification,
+          modelClassification: evidence[id].modelClassification
+            ? "Verified Evidence" as Classification
+            : undefined,
         },
       });
       const deltaIRR =

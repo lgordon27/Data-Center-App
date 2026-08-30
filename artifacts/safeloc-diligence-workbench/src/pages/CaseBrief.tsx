@@ -24,8 +24,14 @@ import type {
 } from "@/components/Shell";
 import { useDiligence } from "@/context/DiligenceContext";
 import { formatSourceTimestamp } from "@/data/sources";
+import {
+  ACTIVE_FEMA_NRI_PROFILE,
+  FEMA_NRI_ATTRIBUTION,
+  getTopFemaHazards,
+} from "@/data/femaNRI";
 export function CaseBrief({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
   const { ercotQueue } = useDiligence();
+  const topHazards = getTopFemaHazards(ACTIVE_FEMA_NRI_PROFILE);
   const queueStatus = ercotQueue.status === "live" ? "Live" : ercotQueue.status === "cached" ? "Cached" : "Embedded";
   const queueStatusClasses = ercotQueue.status === "live"
     ? "bg-[#e0f4ed] text-[#08644f]"
@@ -108,6 +114,35 @@ export function CaseBrief({ onNavigate }: { onNavigate: (screen: Screen) => void
         <p data-testid="ercot-source-attribution" className="mt-4 font-mono text-[9px] leading-4 text-[#52616b]">
           Source: ERCOTQueue.com, updated {formatSourceTimestamp(ercotQueue.sourceUpdatedAt ?? undefined)}. Aggregate queue activity is market context, not a named Stargate or Oracle confirmation.
         </p>
+      </section>
+      <section data-testid="card-fema-climate-risk" className="mt-5 rounded-xl border border-[#cbd8d4] bg-white p-5 md:p-6" aria-labelledby="fema-climate-risk-title">
+        <div className="flex flex-col justify-between gap-3 border-b border-[#e5eae8] pb-4 sm:flex-row sm:items-start">
+          <div>
+            <SectionKicker>Public climate evidence</SectionKicker>
+            <h2 id="fema-climate-risk-title" className="text-[20px] font-semibold tracking-[-0.025em] text-[#122232]">FEMA Climate Risk Profile</h2>
+            <p data-testid="text-fema-county-fips" className="mt-1 font-mono text-[10px] uppercase tracking-[0.11em] text-[#52616b]">{ACTIVE_FEMA_NRI_PROFILE.county}, Texas · FIPS {ACTIVE_FEMA_NRI_PROFILE.fips}</p>
+          </div>
+          <span data-testid="badge-fema-attribution" className="self-start rounded-full border border-[#aac6f4] bg-[#e5efff] px-3 py-1.5 font-mono text-[9px] font-bold text-[#255bb7]">{FEMA_NRI_ATTRIBUTION}</span>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <div className="rounded-lg bg-[#122232] p-4 text-white">
+            <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#a4b4bd]">Overall FEMA rating</div>
+            <div data-testid="text-fema-overall-rating" className="mt-2 text-[18px] font-semibold text-[#d4e86b]">{ACTIVE_FEMA_NRI_PROFILE.overallRiskRating}</div>
+            <div className="mt-1 font-mono text-[11px] text-[#dce4e7]">Score {ACTIVE_FEMA_NRI_PROFILE.overallRiskScore.toFixed(1)}</div>
+          </div>
+          <div data-testid="list-fema-top-hazards" className="rounded-lg border border-[#d9e0e4] bg-[#f9faf8] p-4">
+            <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#52616b]">Top rated hazards</div>
+            <ol className="mt-2 space-y-1.5">
+              {topHazards.map((hazard) => <li key={hazard.key} className="flex items-center justify-between gap-3 text-[11px]"><span className="font-semibold text-[#344550]">{hazard.label}</span><span className="font-mono text-[9px] text-[#52616b]">{hazard.rating}</span></li>)}
+            </ol>
+          </div>
+          <div className="rounded-lg border border-[#d9e0e4] bg-[#f9faf8] p-4">
+            <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#52616b]">Social Vulnerability</div>
+            <div data-testid="text-fema-social-vulnerability" className="mt-2 font-mono text-[18px] font-bold text-[#122232]">{ACTIVE_FEMA_NRI_PROFILE.socialVulnerabilityScore.toFixed(2)}</div>
+            <div className="mt-1 text-[11px] font-semibold text-[#52616b]">{ACTIVE_FEMA_NRI_PROFILE.socialVulnerabilityRating}</div>
+          </div>
+        </div>
+        <p className="mt-3 text-[10px] leading-4 text-[#60707d]">FEMA county measurements are public evidence. They do not replace SafeLoc’s separate synthetic transaction economics or CRVA/model assumptions.</p>
       </section>
       <div className="mt-5 grid gap-3 md:grid-cols-2">
         <Disclosure title="Public-site context · Taylor County buildout" testId="disclosure-public-site-context">

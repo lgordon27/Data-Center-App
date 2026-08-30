@@ -43,7 +43,7 @@ test("the canonical evidence contract has 16 items and a 16-item confidence deno
   const model = calculateCashFlowModel(INITIAL_EVIDENCE);
 
   assert.equal(Object.keys(INITIAL_EVIDENCE).length, 16);
-  assert.equal(model.confidenceScore, 55);
+  assert.equal(model.confidenceScore, 59);
   assert.equal(
     model.assumptions.siteHazardExposure,
     "Extreme heat high; drought moderate; winter storm documented",
@@ -59,9 +59,12 @@ test("climate quality multipliers adjust hazard probability and downtime cost", 
   const verified = allVerified();
 
   for (const classification of CLASSIFICATIONS) {
-    const hazardModel = calculateCashFlowModel(
-      classify(verified, "site_hazard_exposure", classification),
-    );
+    const hazardEvidence = classify(verified, "site_hazard_exposure", "Verified Evidence");
+    hazardEvidence.site_hazard_exposure = {
+      ...hazardEvidence.site_hazard_exposure,
+      modelClassification: classification,
+    };
+    const hazardModel = calculateCashFlowModel(hazardEvidence);
     assert.equal(
       hazardModel.assumptions.adjustedHazardProbability,
       0.05 * CLIMATE_QUALITY_MULTIPLIERS[classification],
@@ -198,6 +201,10 @@ test("financial metrics retain model precision beyond their display formats", ()
   assert.notEqual(
     model.lineItems.site_hazard_exposure.deltaIRR,
     Number(model.lineItems.site_hazard_exposure.deltaIRR.toFixed(1)),
+  );
+  assert.notEqual(
+    model.lineItems.downtime_cost.deltaIRR,
+    Number(model.lineItems.downtime_cost.deltaIRR.toFixed(1)),
   );
 });
 

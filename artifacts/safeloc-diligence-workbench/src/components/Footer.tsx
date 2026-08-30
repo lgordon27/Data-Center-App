@@ -10,13 +10,17 @@ export function Footer() {
   const [consoleOpen, setConsoleOpen] = useState(false);
   const { ercotQueue } = useDiligence();
   const route = typeof window === "undefined" ? "" : window.location.hash.replace(/^#/, "");
+  const showsFemaNri = route === "brief" || route === "evidence";
   return (
     <>
       {workbenchRoutes.has(route) && <DataSources />}
       <footer className="mt-8 border-t border-[#d9e0e4] bg-[#eef2f1] px-4 py-6 md:px-8">
         <div className="mx-auto flex max-w-[1480px] flex-col justify-between gap-3 text-[9px] uppercase tracking-[0.12em] text-[#52616b] sm:flex-row sm:items-center">
           <span>SafeLoc Diligence Workbench</span>
-          <span>Proof of Concept | Transaction assumptions are synthetic | Environmental and infrastructure data from public sources</span>
+          <span className="flex flex-col gap-1">
+            <span>Proof of Concept | Transaction assumptions are synthetic | Environmental and infrastructure data from public sources</span>
+            {showsFemaNri && <span data-testid="footer-fema-attribution" className="font-mono normal-case tracking-normal text-[#344550]">Climate risk data: FEMA National Risk Index v1.20</span>}
+          </span>
           <span className="flex items-center gap-2 font-mono">
             2024 / 24-017
             <button

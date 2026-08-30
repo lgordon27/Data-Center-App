@@ -164,8 +164,8 @@ export function sourceStatusLabel(source: Pick<SourceState, "status">): string {
 
 export function formatElectricityCostAttribution(rate: number, source: SourceState): string {
   const formattedRate = `$${rate.toFixed(rate % 1 === 0 ? 0 : 1)}/MWh`;
-  if (source.id === "eia" && source.status === "live" && source.dataOrigin === "provider" && source.timestamp) {
-    return `Electricity cost: ${formattedRate} (EIA live data, ${formatSourceTimestamp(source.timestamp)})`;
+  if (source.id === "eia" && (source.status === "live" || source.status === "cached") && source.dataOrigin === "provider" && source.timestamp) {
+    return `Electricity cost: ${formattedRate} (U.S. Energy Information Administration Open Data, ${source.status} · ${formatSourceTimestamp(source.timestamp)})`;
   }
   return `Electricity cost: ${formattedRate} (embedded estimate)`;
 }

@@ -75,6 +75,9 @@ test("production entry point serves all GridTracker API routes", async () => {
     const ercot = await waitForJson(`${baseUrl}/api/ercot-queue`, child);
     assert.ok(["live", "cached", "error"].includes(String(ercot.status)));
     assert.equal(typeof ercot.diagnostics, "object");
+    const eia = await waitForJson(`${baseUrl}/api/eia/electricity`, child);
+    assert.ok(["live", "cached", "unavailable", "error"].includes(String(eia.status)));
+    assert.equal(typeof eia.diagnostics, "object");
     const diagnostics = await waitForJson(`${baseUrl}/api/gridtracker/diagnostics`, child);
     assert.ok(Array.isArray(diagnostics.history));
     const query = await waitForJson(`${baseUrl}/api/gridtracker/query?q=What%20is%20the%20current%20queue%20status%3F`, child);

@@ -22,6 +22,7 @@ import {
   useDiligence
 } from "@/context/DiligenceContext";
 import { formatSourceTimestamp } from "@/data/sources";
+import type { EiaElectricityData, EiaFuel } from "@/services/eiaService";
 
 
 
@@ -55,8 +56,130 @@ function EvidenceRow({ item, onChange }: { item: EvidenceItem; onChange: (id: st
   );
 }
 
+const fuelLabels: Record<EiaFuel, string> = {
+  naturalGas: "Natural gas",
+  wind: "Wind",
+  solar: "Solar",
+  nuclear: "Nuclear",
+  coal: "Coal",
+  other: "Other",
+};
+
+function monthLabel(period?: string) {
+  if (!period) return "month unavailable";
+  return new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric", timeZone: "UTC" })
+    .format(new Date(`${period}-01T00:00:00.000Z`));
+}
+
+function sparklinePoints(data: EiaElectricityData["priceHistory"]) {
+  if (data.length === 0) return "";
+  const values = data.map((point) => point.pricePerMwh);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  return data.map((point, index) => {
+    const x = (index / Math.max(data.length - 1, 1)) * 220;
+    const y = 54 - ((point.pricePerMwh - min) / range) * 46;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+}
+
+function EiaElectricityEvidence({
+  data,
+  loading,
+  source,
+  classification,
+  onSuggestVerified,
+}: {
+  data: EiaElectricityData;
+  loading: boolean;
+  source: ReturnType<typeof useDiligence>["sourceStates"]["eia"];
+  classification: Classification;
+  onSuggestVerified: () => void;
+}) {
+  const mix = data.latestGenerationMix;
+  const historyText = data.priceHistory.map((point) => `${monthLabel(point.period)}: $${point.pricePerMwh.toFixed(1)} per MWh`).join("; ");
+  const trendCopy = data.trend === "unavailable"
+    ? "Unavailable — 25 monthly calculation points are required to compare consecutive year-over-year windows."
+    : `${data.trend[0].toUpperCase()}${data.trend.slice(1)} versus the preceding 12-month window.`;
+  return (
+    <article data-testid="eia-electricity-evidence" className="border-t border-[#d9e0e4] bg-[#f7faf8] px-4 py-5 md:px-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#60707d]">Federal electricity context</div>
+          <h3 className="mt-1 text-[14px] font-semibold text-[#122232]">Texas industrial price, trend, and generation mix</h3>
+          <p data-testid="eia-attribution" className="mt-1 font-mono text-[9px] text-[#52616b]">Electricity data: U.S. Energy Information Administration Open Data</p>
+        </div>
+        <SourceStatusBadge source={source} testId="eia-evidence-source-status" />
+      </div>
+      {loading ? (
+        <p data-testid="eia-loading" className="mt-4 text-[10px] text-[#52616b]">Checking the server-backed EIA source…</p>
+      ) : data.dataOrigin === "provider" ? (
+        <div className="mt-4 grid gap-3 lg:grid-cols-3">
+          <section data-testid="eia-price-history" className="rounded-lg border border-[#d9e0e4] bg-white p-4">
+            <div className="text-[9px] font-bold uppercase tracking-[0.12em] text-[#60707d]">Industrial retail rate</div>
+            <div className="mt-2 flex items-baseline gap-2">
+              <span data-testid="eia-latest-rate" className="font-mono text-2xl font-bold text-[#122232]">${data.latestPrice.toFixed(1)}</span>
+              <span className="text-[10px] text-[#52616b]">/ MWh</span>
+            </div>
+            <p className="mt-1 text-[10px] text-[#52616b]">Source: U.S. EIA, {monthLabel(data.latestPricePeriod)}</p>
+            <figure className="mt-3">
+              <svg role="img" aria-label={`Texas industrial electricity price history for ${data.priceHistory.length} months`} viewBox="0 0 220 60" className="h-16 w-full overflow-visible">
+                <title>Texas industrial electricity-price history</title>
+                <polyline points={sparklinePoints(data.priceHistory)} fill="none" stroke="#255bb7" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
+              </svg>
+              <figcaption className="text-[9px] text-[#7d898f]">{data.priceHistory.length}-month monthly trend · oldest to latest</figcaption>
+              <span className="sr-only">{historyText}</span>
+            </figure>
+            {data.status === "live" ? (
+              <button
+                data-testid="button-suggest-verified-eia"
+                type="button"
+                onClick={onSuggestVerified}
+                disabled={classification === "Verified Evidence"}
+                className="mt-3 rounded-md border border-[#0b7a63] bg-[#e0f4ed] px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#08644f] disabled:cursor-default disabled:opacity-60"
+              >
+                {classification === "Verified Evidence" ? "Verified Evidence retained" : "Suggest Verified Evidence"}
+              </button>
+            ) : <p className="mt-3 text-[9px] text-[#7d898f]">Cached federal observation — no live verification suggestion.</p>}
+          </section>
+          <section data-testid="eia-price-trend" className="rounded-lg border border-[#d9e0e4] bg-white p-4">
+            <div className="text-[9px] font-bold uppercase tracking-[0.12em] text-[#60707d]">Year-over-year movement</div>
+            <div className="mt-2 font-mono text-xl font-bold text-[#122232]">{data.yoyChangePercent === null ? "Unavailable" : `${data.yoyChangePercent >= 0 ? "+" : ""}${data.yoyChangePercent.toFixed(1)}%`}</div>
+            <dl className="mt-3 space-y-2 text-[10px]">
+              <div><dt className="font-bold text-[#52616b]">Latest 12-month change</dt><dd className="mt-0.5 text-[#243844]">{data.yoyChangePercent === null ? "Insufficient history" : `${data.yoyChangePercent.toFixed(1)}%`}</dd></div>
+              <div><dt className="font-bold text-[#52616b]">Preceding 12-month change</dt><dd className="mt-0.5 text-[#243844]">{data.precedingYoyChangePercent === null ? "Insufficient history" : `${data.precedingYoyChangePercent.toFixed(1)}%`}</dd></div>
+              <div><dt className="font-bold text-[#52616b]">Trend</dt><dd data-testid="eia-acceleration-trend" className="mt-0.5 text-[#243844]">{trendCopy}</dd></div>
+            </dl>
+          </section>
+          <section data-testid="eia-generation-mix" className="rounded-lg border border-[#d9e0e4] bg-white p-4">
+            <div className="text-[9px] font-bold uppercase tracking-[0.12em] text-[#60707d]">Texas generation mix · {monthLabel(mix?.period)}</div>
+            {mix ? (
+              <dl className="mt-3 grid grid-cols-2 gap-2 text-[10px]">
+                {(Object.keys(fuelLabels) as EiaFuel[]).map((fuel) => (
+                  <div key={fuel} className="rounded bg-[#f1f5f3] px-2 py-1.5">
+                    <dt className="text-[#60707d]">{fuelLabels[fuel]}</dt>
+                    <dd data-testid={`eia-mix-${fuel}`} className="mt-0.5 font-mono font-bold text-[#122232]">{mix.shares[fuel].toFixed(1)}%</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : <p className="mt-3 text-[10px] text-[#52616b]">Generation mix unavailable.</p>}
+            <p className="mt-3 text-[9px] leading-4 text-[#6f460e]">Statewide generation mix is market context only. It does not prove Stargate’s delivered renewable procurement or contract supply.</p>
+            {data.consumptionHistory.at(-1) && <p className="mt-2 text-[9px] text-[#7d898f]">Latest total consumption: {Math.round(data.consumptionHistory.at(-1)!.consumptionMwh).toLocaleString()} MWh.</p>}
+          </section>
+        </div>
+      ) : (
+        <div data-testid="eia-fallback-state" className="mt-4 rounded-lg border border-[#f1cb8b] bg-[#fff8e9] p-4 text-[10px] leading-5 text-[#6f460e]">
+          EIA observations are unavailable. The workbench remains usable with the embedded $42/MWh underwriting assumption; it is not presented as current federal data.
+          {data.error && <span className="mt-1 block text-[9px] text-[#7f6337]">{data.error}</span>}
+        </div>
+      )}
+    </article>
+  );
+}
+
 export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
-  const { evidence, updateClassification, metrics, ercotQueue, sourceStates, refreshGridTrackerState } = useDiligence();
+  const { evidence, updateClassification, metrics, ercotQueue, eiaData, eiaLoading, sourceStates, refreshGridTrackerState } = useDiligence();
   const [gridTrackerOpen, setGridTrackerOpen] = useState(false);
   const items = useMemo(() => Object.values(evidence), [evidence]);
   const counts = useMemo(() => classifications.map((classification) => ({ classification, count: items.filter((item) => item.classification === classification).length })), [items]);
@@ -113,6 +236,14 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
               <div className="hidden grid-cols-[1.55fr_0.8fr_1.55fr] gap-3 border-b border-[#e5eae8] px-5 py-2 text-[9px] font-bold uppercase tracking-[0.16em] text-[#7d898f] md:grid"><span>Variable</span><span>Value</span><span>Classification</span></div>
               {categoryItems.map((item) => <EvidenceRow key={item.id} item={item} onChange={updateClassification} />)}
               {category.id === "power-grid" && (
+                <>
+                  <EiaElectricityEvidence
+                    data={eiaData}
+                    loading={eiaLoading}
+                    source={sourceStates.eia}
+                    classification={evidence.electricity_cost.classification}
+                    onSuggestVerified={() => updateClassification("electricity_cost", "Verified Evidence")}
+                  />
                 <article data-testid="ercot-grid-evidence" className="border-t border-[#d9e0e4] bg-[#f7faf8] px-4 py-4 md:px-5">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
@@ -151,6 +282,7 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
                     )}
                   </div>
                 </article>
+                </>
               )}
             </section>
           );

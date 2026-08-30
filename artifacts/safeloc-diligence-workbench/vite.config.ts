@@ -6,6 +6,7 @@ import type { Plugin } from 'vite';
 
 import runtimeErrorOverlay from '@replit/vite-plugin-runtime-error-modal';
 import { handleErcotQueueRequest } from './server/ercotProxy.mjs';
+import { handleEiaElectricityRequest } from './server/eiaProxy.mjs';
 
 const rawPort = process.env.PORT;
 
@@ -45,10 +46,27 @@ function ercotQueueApiPlugin(): Plugin {
   };
 }
 
+function eiaElectricityApiPlugin(): Plugin {
+  return {
+    name: 'safeloc-eia-electricity-api',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        const pathname = new URL(req.url ?? '/', 'http://127.0.0.1').pathname;
+        if (pathname !== '/api/eia/electricity') {
+          next();
+          return;
+        }
+        await handleEiaElectricityRequest(req, res);
+      });
+    },
+  };
+}
+
 export default defineConfig({
   base: basePath,
   plugins: [
     ercotQueueApiPlugin(),
+    eiaElectricityApiPlugin(),
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),

@@ -188,6 +188,29 @@ test("display copy changes do not change structured model outputs", () => {
   assert.deepEqual(calculateCashFlowModel(editedEvidence), calculateCashFlowModel(INITIAL_EVIDENCE));
 });
 
+test("a structured EIA electricity rate flows through the existing quality policy", () => {
+  const eiaEvidence = {
+    ...INITIAL_EVIDENCE,
+    electricity_cost: {
+      ...INITIAL_EVIDENCE.electricity_cost,
+      value: "Editorial copy is not parsed",
+      numericValue: 55,
+      sourceId: "eia" as const,
+    },
+  };
+  const model = calculateCashFlowModel(eiaEvidence);
+  assert.equal(model.assumptions.electricityRate, 55);
+
+  const inferred = {
+    ...eiaEvidence,
+    electricity_cost: {
+      ...eiaEvidence.electricity_cost,
+      classification: "Model Inference" as const,
+    },
+  };
+  assert.equal(calculateCashFlowModel(inferred).assumptions.electricityRate, 55 * 1.15);
+});
+
 test("financial metrics retain model precision beyond their display formats", () => {
   const model = calculateCashFlowModel(INITIAL_EVIDENCE);
 

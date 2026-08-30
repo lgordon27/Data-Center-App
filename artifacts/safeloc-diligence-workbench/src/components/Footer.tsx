@@ -19,6 +19,7 @@ export function Footer() {
           <span>SafeLoc Diligence Workbench</span>
           <span className="flex flex-col gap-1">
             <span>Proof of Concept | Transaction assumptions are synthetic | Environmental and infrastructure data from public sources</span>
+            <span data-testid="footer-eia-attribution" className="font-mono normal-case tracking-normal text-[#344550]">Electricity data: U.S. Energy Information Administration Open Data</span>
             {showsFemaNri && <span data-testid="footer-fema-attribution" className="font-mono normal-case tracking-normal text-[#344550]">Climate risk data: FEMA National Risk Index v1.20</span>}
           </span>
           <span className="flex items-center gap-2 font-mono">

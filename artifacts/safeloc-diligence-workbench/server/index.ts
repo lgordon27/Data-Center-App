@@ -2,6 +2,7 @@ import express, { type Express, type Request, type Response } from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { handleErcotQueueRequest } from "./ercotProxy.mjs";
+import { handleEiaElectricityRequest } from "./eiaProxy.mjs";
 import { GridTrackerMcpClient, validateNaturalLanguageQuery } from "./mcp/gridtracker";
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
@@ -12,6 +13,9 @@ export async function createApp(client = new GridTrackerMcpClient()): Promise<Ex
   app.disable("x-powered-by");
   app.all("/api/ercot-queue", async (request: Request, response: Response) => {
     await handleErcotQueueRequest(request, response);
+  });
+  app.all("/api/eia/electricity", async (request: Request, response: Response) => {
+    await handleEiaElectricityRequest(request, response);
   });
   app.get("/api/gridtracker/status", (_request: Request, response: Response) => {
     response.json(client.status());

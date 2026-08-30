@@ -26,7 +26,17 @@ test("provider metadata can promote EIA to a timestamped live response", () => {
   assert.equal(formatSourceTimestamp(eia.timestamp), "Aug 29, 2026");
   assert.equal(
     formatElectricityCostAttribution(42, eia),
-    "Electricity cost: $42/MWh (EIA live data, Aug 29, 2026)",
+    "Electricity cost: $42/MWh (U.S. Energy Information Administration Open Data, live · Aug 29, 2026)",
+  );
+});
+
+test("cached EIA observations retain provider attribution", () => {
+  const eia = sourceStateMap({
+    eia: { status: "cached", dataOrigin: "provider", timestamp: "2026-08-29T12:00:00.000Z" },
+  }).eia;
+  assert.equal(
+    formatElectricityCostAttribution(42.5, eia),
+    "Electricity cost: $42.5/MWh (U.S. Energy Information Administration Open Data, cached · Aug 29, 2026)",
   );
 });
 

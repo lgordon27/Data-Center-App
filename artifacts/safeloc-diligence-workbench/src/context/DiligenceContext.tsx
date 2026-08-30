@@ -21,6 +21,11 @@ import {
   FEMA_NRI_ATTRIBUTION,
   formatFemaHazardSummary,
 } from "@/data/femaNRI";
+import {
+  createEiaFallback,
+  fetchEiaElectricity,
+  type EiaElectricityData,
+} from "@/services/eiaService";
 
 export type { Classification } from '@/model/cashFlowEngine';
 
@@ -65,6 +70,8 @@ type DiligenceState = {
   removeScenario: (id: string) => RemoveScenarioResult;
   sourceStates: Record<SourceId, SourceState>;
   ercotQueue: ErcotQueueResult;
+  eiaData: EiaElectricityData;
+  eiaLoading: boolean;
   refreshGridTrackerState: () => Promise<void>;
 };
 
@@ -157,16 +164,35 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   const [sessionRestored, setSessionRestored] = useState(initialSession.restored);
   const [scenarios, setScenarios] = useState<SavedScenario[]>(loadScenarios);
   const [ercotQueue, setErcotQueue] = useState<ErcotQueueResult>(FALLBACK_ERCOT_RESULT);
+  const [eiaData, setEiaData] = useState<EiaElectricityData>(() => createEiaFallback());
+  const [eiaLoading, setEiaLoading] = useState(true);
   const [gridTrackerState, setGridTrackerState] = useState<ProviderSourceMetadata>({ status: "disconnected" });
   const sourceStates = useMemo(() => sourceStateMap({
     "ercot-queue": ercotQueue.sourceMetadata,
+    eia: eiaData.sourceMetadata,
     "gridtracker-mcp": gridTrackerState,
-  }), [ercotQueue.sourceMetadata, gridTrackerState]);
+  }), [eiaData.sourceMetadata, ercotQueue.sourceMetadata, gridTrackerState]);
+  const effectiveEvidence = useMemo(
+    () => applyEiaEvidence(state.evidence, eiaData),
+    [state.evidence, eiaData],
+  );
 
   useEffect(() => {
     let active = true;
     void fetchErcotQueue().then((result) => {
       if (active) setErcotQueue(result);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void fetchEiaElectricity().then((result) => {
+      if (!active) return;
+      setEiaData(result);
+      setEiaLoading(false);
     });
     return () => {
       active = false;
@@ -219,12 +245,12 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     const previous = currentState.evidence[id]?.classification;
     if (!previous || previous === classification || !isClassification(classification)) return;
 
-    const previousIrr = calculateCashFlowModel(currentState.evidence as EvidenceRecord).projectIRR;
+    const previousIrr = calculateCashFlowModel(applyEiaEvidence(currentState.evidence, eiaData) as EvidenceRecord).projectIRR;
     const nextEvidence = {
       ...currentState.evidence,
       [id]: { ...currentState.evidence[id], classification },
     };
-    const nextIrr = calculateCashFlowModel(nextEvidence as EvidenceRecord).projectIRR;
+    const nextIrr = calculateCashFlowModel(applyEiaEvidence(nextEvidence, eiaData) as EvidenceRecord).projectIRR;
     const nextState = {
       evidence: nextEvidence,
       lastChange: {
@@ -241,7 +267,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         Object.entries(nextEvidence).map(([itemId, item]) => [itemId, item.classification]),
       ),
     });
-  }, []);
+  }, [eiaData]);
 
   const clearLastChange = useCallback(() => {
     const nextState = { ...stateRef.current, lastChange: null };
@@ -313,12 +339,12 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   };
 
   const metrics = useMemo(
-    () => ({ ...calculateCashFlowModel(state.evidence as EvidenceRecord), lastChange: state.lastChange }),
-    [state],
+    () => ({ ...calculateCashFlowModel(effectiveEvidence as EvidenceRecord), lastChange: state.lastChange }),
+    [effectiveEvidence, state.lastChange],
   );
 
   return (
-    <DiligenceContext.Provider value={{ evidence: state.evidence, updateClassification, clearLastChange, metrics, resetToDefault, sessionRestored, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, refreshGridTrackerState }}>
+    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, updateClassification, clearLastChange, metrics, resetToDefault, sessionRestored, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading, refreshGridTrackerState }}>
       {children}
     </DiligenceContext.Provider>
   );
@@ -478,6 +504,44 @@ function readStorage(key: string): string | null {
 }
 
 const STORAGE_VERSION = 1;
+
+function applyEiaEvidence(
+  evidence: Record<string, EvidenceItem>,
+  eiaData: EiaElectricityData,
+): Record<string, EvidenceItem> {
+  if (eiaData.dataOrigin !== "provider" || !eiaData.latestPricePeriod) return evidence;
+  const date = new Date(`${eiaData.latestPricePeriod}-01T00:00:00.000Z`);
+  const monthYear = new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(date);
+  const citation = `Source: U.S. EIA, ${monthYear}`;
+  const next = cloneEvidence(evidence);
+  next.electricity_cost = {
+    ...next.electricity_cost,
+    value: Number(eiaData.latestPrice.toFixed(1)),
+    numericValue: eiaData.latestPrice,
+    citation,
+    description: "Texas industrial retail electricity price observed by the U.S. Energy Information Administration. This statewide rate is used as the current model input; it is not a Stargate contract tariff.",
+    sourceId: "eia",
+    providerSourceId: null,
+    sourceRole: "Federal Texas industrial retail-price observation",
+  };
+  if (eiaData.yoyChangePercent !== null) {
+    next.electricity_escalation = {
+      ...next.electricity_escalation,
+      value: Number(eiaData.yoyChangePercent.toFixed(1)),
+      numericValue: eiaData.yoyChangePercent,
+      citation,
+      description: "Latest year-over-year change in the EIA Texas industrial retail electricity-price series, compared with the preceding annual window when enough history is available.",
+      sourceId: "eia",
+      providerSourceId: null,
+      sourceRole: "Calculated from federal monthly industrial retail-price observations",
+    };
+  }
+  return next;
+}
 
 function isScenarioMetrics(value: unknown): value is ScenarioMetrics {
   if (!value || typeof value !== 'object') return false;

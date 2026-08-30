@@ -74,6 +74,7 @@ function SourceDetail({ source }: { source: SourceState }) {
         <div><dt className="font-bold uppercase tracking-[0.1em] text-[#7d898f]">Data role</dt><dd className="mt-1 text-[#344550]">{source.role}</dd></div>
       </dl>
       <p className="mt-2 text-[10px] leading-4 text-[#60707d]">{source.fallbackText}</p>
+      {source.id === "eia" && <p data-testid="eia-persistent-attribution" className="mt-2 font-mono text-[9px] text-[#344550]">Electricity data: U.S. Energy Information Administration Open Data</p>}
     </article>
   );
 }

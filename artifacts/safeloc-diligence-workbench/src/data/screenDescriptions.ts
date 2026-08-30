@@ -1,0 +1,48 @@
+import { BookOpen, FileCheck2, BarChart3, ClipboardCheck, Network } from "lucide-react";
+export const walkthrough = [
+  {
+    id: "brief",
+    number: "01",
+    title: "Case Brief",
+    icon: BookOpen,
+    purpose: "Sets the scene: what the project is, where it sits, and which operating facts matter before anyone looks at a return.",
+    why: "A good investment decision starts with a shared frame. The Case Brief separates the public operating story from the synthetic transaction frame, so a compelling headline cannot quietly stand in for a verified fact.",
+    lookFor: "Look for the governing question, the location context, and the explicit SYNTHETIC label on modeled acquisition economics.",
+  },
+  {
+    id: "evidence",
+    number: "02",
+    title: "Evidence Room",
+    icon: FileCheck2,
+    purpose: "Shows each important input, its source, and how strong the evidence is right now.",
+    why: "This is where uncertainty becomes visible instead of disappearing into a spreadsheet. Reclassifying an input changes the downstream confidence and return, making the cost of an unsupported belief easy to see.",
+    lookFor: "Look for the citation beside every input, the five provenance labels, and missing items such as facility water use or water rights.",
+  },
+  {
+    id: "materiality",
+    number: "03",
+    title: "Financial Materiality",
+    icon: BarChart3,
+    purpose: "Traces evidence quality into revenue timing, costs, cash flow, and the project return.",
+    why: "Not every unknown deserves the same amount of research. This screen shows which uncertainty can move IRR, payback, or terminal value, so diligence effort follows financial consequence rather than volume of information.",
+    lookFor: "Look for the verified baseline beside the current case, the evidence-to-return bridge, and the mechanical-outputs warning when confidence is low.",
+  },
+  {
+    id: "decision",
+    number: "04",
+    title: "Decision Review",
+    icon: ClipboardCheck,
+    purpose: "Turns the evidence and model into a decision posture: what is investable, what is gated, and what still needs proof.",
+    why: "An attractive model is not the same as an investable opportunity. Decision Review puts recommendation status, material gaps, and underwriting gates next to each other so the investment committee can act on what is known and what is not.",
+    lookFor: "Look for the recommendation status, the material evidence gaps, and the explicit next gates before a commitment can move forward.",
+  },
+  {
+    id: "advisor",
+    number: "05",
+    title: "Advisor Lens",
+    icon: Network,
+    purpose: "Translates the case into questions and implications an advisor can carry into a client conversation.",
+    why: "A diligence file has to travel beyond the analyst who built it. Advisor Lens preserves the distinction between fact, inference, and assumption while surfacing the questions most likely to change a recommendation.",
+    lookFor: "Look for the prioritized questions, the sustainability and portfolio context, and the visible warning when an answer is still an evidence gap.",
+  },
+] as const;

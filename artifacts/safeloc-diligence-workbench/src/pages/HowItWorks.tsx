@@ -1,25 +1,29 @@
 import {
+  milestones
+} from "@/data/timeline";
+import {
+  walkthrough
+} from "@/data/screenDescriptions";
+import {
+  evidenceTiers,
+  sourceGroups
+} from "@/data/sources";
+import {
   ArrowLeft,
   ArrowRight,
-  BarChart3,
-  BookOpen,
   CalendarDays,
   Check,
   ChevronRight,
-  CircleAlert,
-  ClipboardCheck,
   ExternalLink,
-  FileCheck2,
   Gauge,
   Landmark,
-  Network,
   ShieldCheck,
   Target,
-  Zap,
+  Zap
 } from "lucide-react";
-import type { Classification } from "@/context/DiligenceContext";
 
-type HowItWorksTourProps = {
+
+type HowItWorksProps = {
   onReturn: () => void;
   onOpenScreen: (screen: "brief" | "evidence" | "materiality" | "decision" | "advisor") => void;
 };
@@ -30,172 +34,6 @@ const tourSections = [
   { id: "tour-classification", number: "03", label: "Evidence tiers" },
   { id: "tour-sources", number: "04", label: "Sources & method" },
   { id: "tour-built-by", number: "05", label: "Who built this" },
-] as const;
-
-const milestones = [
-  {
-    date: "2025 / FULL YEAR",
-    signal: "$156B",
-    title: "AI projects blocked or delayed",
-    detail: "Across the United States, the capital at risk made infrastructure constraints an investment question—not just a permitting footnote.",
-    tone: "border-[#255bb7] bg-[#e5efff]",
-  },
-  {
-    date: "Q1 2026",
-    signal: "$130B",
-    title: "Blocked or delayed in one quarter",
-    detail: "The pace of disruption accelerated just as demand for AI compute was scaling, widening the gap between announced capacity and delivered capacity.",
-    tone: "border-[#ba2f45] bg-[#fde8eb]",
-  },
-  {
-    date: "MAY 2025",
-    signal: "SANDERS–AOC",
-    title: "Moratorium bill introduced",
-    detail: "A federal proposal showed how quickly data-center growth had moved into the public-policy and community debate.",
-    tone: "border-[#8a6400] bg-[#fff6c7]",
-  },
-  {
-    date: "JULY 2026",
-    signal: "142 / 42",
-    title: "Protests across states",
-    detail: "Reported protests in 42 states made local consent, water, power, and neighborhood impact part of the operating risk picture.",
-    tone: "border-[#a65a00] bg-[#fff0d6]",
-  },
-  {
-    date: "AUGUST 3, 2026",
-    signal: "ABBOTT",
-    title: "Texas orders a moratorium",
-    detail: "Governor Greg Abbott ordered a moratorium on new data-center grid connections until ERCOT completes an energy and water-use audit.",
-    tone: "border-[#ba2f45] bg-[#fde8eb]",
-  },
-  {
-    date: "ERCOT / 2026",
-    signal: "474 GW",
-    title: "Interconnection queue",
-    detail: "The request queue is more than five times Texas record peak demand, with 90% of requests attributed to data centers.",
-    tone: "border-[#0b7a63] bg-[#e0f4ed]",
-  },
-] as const;
-
-const walkthrough = [
-  {
-    id: "brief",
-    number: "01",
-    title: "Case Brief",
-    icon: BookOpen,
-    purpose: "Sets the scene: what the project is, where it sits, and which operating facts matter before anyone looks at a return.",
-    why: "A good investment decision starts with a shared frame. The Case Brief separates the public operating story from the synthetic transaction frame, so a compelling headline cannot quietly stand in for a verified fact.",
-    lookFor: "Look for the governing question, the location context, and the explicit SYNTHETIC label on modeled acquisition economics.",
-  },
-  {
-    id: "evidence",
-    number: "02",
-    title: "Evidence Room",
-    icon: FileCheck2,
-    purpose: "Shows each important input, its source, and how strong the evidence is right now.",
-    why: "This is where uncertainty becomes visible instead of disappearing into a spreadsheet. Reclassifying an input changes the downstream confidence and return, making the cost of an unsupported belief easy to see.",
-    lookFor: "Look for the citation beside every input, the five provenance labels, and missing items such as facility water use or water rights.",
-  },
-  {
-    id: "materiality",
-    number: "03",
-    title: "Financial Materiality",
-    icon: BarChart3,
-    purpose: "Traces evidence quality into revenue timing, costs, cash flow, and the project return.",
-    why: "Not every unknown deserves the same amount of research. This screen shows which uncertainty can move IRR, payback, or terminal value, so diligence effort follows financial consequence rather than volume of information.",
-    lookFor: "Look for the verified baseline beside the current case, the evidence-to-return bridge, and the mechanical-outputs warning when confidence is low.",
-  },
-  {
-    id: "decision",
-    number: "04",
-    title: "Decision Review",
-    icon: ClipboardCheck,
-    purpose: "Turns the evidence and model into a decision posture: what is investable, what is gated, and what still needs proof.",
-    why: "An attractive model is not the same as an investable opportunity. Decision Review puts recommendation status, material gaps, and underwriting gates next to each other so the investment committee can act on what is known and what is not.",
-    lookFor: "Look for the recommendation status, the material evidence gaps, and the explicit next gates before a commitment can move forward.",
-  },
-  {
-    id: "advisor",
-    number: "05",
-    title: "Advisor Lens",
-    icon: Network,
-    purpose: "Translates the case into questions and implications an advisor can carry into a client conversation.",
-    why: "A diligence file has to travel beyond the analyst who built it. Advisor Lens preserves the distinction between fact, inference, and assumption while surfacing the questions most likely to change a recommendation.",
-    lookFor: "Look for the prioritized questions, the sustainability and portfolio context, and the visible warning when an answer is still an evidence gap.",
-  },
-] as const;
-
-const evidenceTiers: Array<{
-  name: Classification;
-  color: string;
-  background: string;
-  border: string;
-  definition: string;
-  analogy: string;
-}> = [
-  {
-    name: "Verified Evidence",
-    color: "#0b7a63",
-    background: "#e0f4ed",
-    border: "#9bd8c5",
-    definition: "A public record or dependable source directly supports the input.",
-    analogy: "Like a bank statement, not someone's word.",
-  },
-  {
-    name: "Management Assertion",
-    color: "#8a6400",
-    background: "#fff6c7",
-    border: "#e6cf70",
-    definition: "The project or its representatives say it is true, but independent proof is limited.",
-    analogy: "Like a resume, not a background check.",
-  },
-  {
-    name: "Model Inference",
-    color: "#255bb7",
-    background: "#e5efff",
-    border: "#aac6f4",
-    definition: "The tool derives a reasonable estimate from related public facts.",
-    analogy: "Like estimating tomorrow's weather from today's barometric pressure.",
-  },
-  {
-    name: "User Assumption",
-    color: "#a65a00",
-    background: "#fff0d6",
-    border: "#f1cb8b",
-    definition: "An analyst-selected value is used because the project-specific fact is not established.",
-    analogy: "Like a doctor's estimate before running tests.",
-  },
-  {
-    name: "Missing Evidence",
-    color: "#ba2f45",
-    background: "#fde8eb",
-    border: "#efabb8",
-    definition: "The information needed to support an input has not been found or disclosed.",
-    analogy: "Like a blank on a loan application.",
-  },
-];
-
-const sourceGroups = [
-  {
-    title: "Infrastructure & Energy",
-    sources: ["ERCOT", "Utility filings", "Bloomberg", "U.S. Energy Information Administration (EIA)"],
-  },
-  {
-    title: "Water & Climate",
-    sources: ["Ceres", "FEMA National Risk Index", "NOAA climate records", "Texas Water Development Board"],
-  },
-  {
-    title: "Community & Social",
-    sources: ["U.S. Census Bureau", "NAACP", "Data Center Watch"],
-  },
-  {
-    title: "Regulatory",
-    sources: ["EU AI Act", "FINRA", "Governor Abbott directive"],
-  },
-  {
-    title: "Market & Investment",
-    sources: ["Formative / FactSet", "Morningstar", "MSCI", "Gallup / Edward Jones"],
-  },
 ] as const;
 
 function TourJump({ id, children, className = "", testId = `link-tour-${id}` }: { id: string; children: React.ReactNode; className?: string; testId?: string }) {
@@ -240,7 +78,7 @@ function TourKicker({ children, dark = false }: { children: React.ReactNode; dar
   );
 }
 
-export function HowItWorksTour({ onReturn, onOpenScreen }: HowItWorksTourProps) {
+export function HowItWorks({ onReturn, onOpenScreen }: HowItWorksProps) {
   return (
     <div className="min-h-[100dvh] bg-[#f4f6f4] text-[#122232]">
       <a href="#tour-main" className="sr-only z-50 rounded bg-[#d4e86b] px-3 py-2 text-sm text-[#122232] focus:not-sr-only focus:fixed focus:left-4 focus:top-4">
@@ -331,7 +169,7 @@ export function HowItWorksTour({ onReturn, onOpenScreen }: HowItWorksTourProps) 
               <p className="mt-5 text-[15px] leading-7 text-[#63717a]">Move from context to conviction without losing the provenance of an input. Each screen has a job, and each job leaves a visible trail for the next one.</p>
             </div>
             <div className="mt-10 space-y-4">
-              {walkthrough.map((screen, index) => {
+              {walkthrough.map((screen) => {
                 const Icon = screen.icon;
                 return (
                   <article key={screen.id} id={`tour-screen-${screen.id}`} data-testid={`tour-screen-${screen.id}`} className="scroll-mt-24 overflow-hidden rounded-xl border border-[#d9e0e4] bg-white">

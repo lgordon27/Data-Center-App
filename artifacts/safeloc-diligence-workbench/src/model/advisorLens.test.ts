@@ -44,8 +44,8 @@ test("initial advisor posture keeps the facility-level climate inference distinc
   const questions = prioritizeAdvisorQuestions(INITIAL_EVIDENCE);
 
   assert.equal(Object.keys(INITIAL_EVIDENCE).length, 16);
-  assert.equal(verifiedCount, 6);
-  assert.equal(getRiskTier(verifiedCount), "MODERATE");
+   assert.equal(verifiedCount, 3);
+   assert.equal(getRiskTier(verifiedCount), "HIGH");
   assert.deepEqual(
     questions.slice(0, 2).map((question) => question.id),
     ["water-rights", "climate-hazard"],

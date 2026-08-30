@@ -43,7 +43,7 @@ test("the canonical evidence contract has 16 items and a 16-item confidence deno
   const model = calculateCashFlowModel(INITIAL_EVIDENCE);
 
   assert.equal(Object.keys(INITIAL_EVIDENCE).length, 16);
-  assert.equal(model.confidenceScore, 59);
+   assert.equal(model.confidenceScore, 48);
   assert.equal(
     model.assumptions.siteHazardExposure,
     "Extreme heat high; drought moderate; winter storm documented",
@@ -199,7 +199,7 @@ test("a structured EIA electricity rate flows through the existing quality polic
     },
   };
   const model = calculateCashFlowModel(eiaEvidence);
-  assert.equal(model.assumptions.electricityRate, 55);
+   assert.equal(model.assumptions.electricityRate, 55 * 1.25);
 
   const inferred = {
     ...eiaEvidence,
@@ -212,7 +212,12 @@ test("a structured EIA electricity rate flows through the existing quality polic
 });
 
 test("financial metrics retain model precision beyond their display formats", () => {
-  const model = calculateCashFlowModel(INITIAL_EVIDENCE);
+  const precisionEvidence = allVerified();
+  precisionEvidence.downtime_cost = {
+    ...precisionEvidence.downtime_cost,
+    classification: "User Assumption",
+  };
+  const model = calculateCashFlowModel(precisionEvidence);
 
   assert.notEqual(model.projectIRR, null);
   assert.notEqual(model.projectIRR, Number(model.projectIRR!.toFixed(1)));

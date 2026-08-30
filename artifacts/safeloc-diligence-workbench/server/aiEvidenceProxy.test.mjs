@@ -100,6 +100,20 @@ test("sends the exact OpenAI contract and returns parsed assessment JSON", async
   });
 });
 
+test("grounds the system instruction in the August 30, 2026 temporal contract", () => {
+  assert.match(AI_EVIDENCE_SYSTEM_PROMPT, /Today is August 30, 2026/);
+  assert.match(AI_EVIDENCE_SYSTEM_PROMPT, /2025 and 2026 reporting as valid/i);
+  assert.match(AI_EVIDENCE_SYSTEM_PROMPT, /Stargate Abilene data center project/i);
+  assert.match(AI_EVIDENCE_SYSTEM_PROMPT, /2026 Epoch AI.*WinBuzzer.*SiliconReport/i);
+  assert.match(AI_EVIDENCE_SYSTEM_PROMPT, /Epoch AI.*WinBuzzer.*SiliconReport/i);
+  assert.match(AI_EVIDENCE_SYSTEM_PROMPT, /expansion was cancelled after .*12 months/i);
+  assert.match(AI_EVIDENCE_SYSTEM_PROMPT, /winter storms damaged cooling equipment/i);
+  assert.match(AI_EVIDENCE_SYSTEM_PROMPT, /August 3, 2026.*moratorium/i);
+  assert.match(AI_EVIDENCE_SYSTEM_PROMPT, /exactly two JSON fields/i);
+  assert.match(AI_EVIDENCE_SYSTEM_PROMPT, /and no others/i);
+  assert.match(AI_EVIDENCE_SYSTEM_PROMPT, /reasoning \(one sentence explaining why\)/i);
+});
+
 test("preserves upstream status with a safe error message", async () => {
   const response = responseRecorder();
   await handleAnalyzeEvidenceRequest(requestWithBody(evidence), response, {

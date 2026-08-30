@@ -40,8 +40,9 @@ import {
 import type {
   Screen
 } from "@/components/Shell";
+import { formatElectricityCostAttribution } from "@/data/sources";
 export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
-  const { evidence, metrics } = useDiligence();
+  const { evidence, metrics, sourceStates } = useDiligence();
   const impacts = Object.values(metrics.lineItems);
   const lowConfidence = metrics.confidenceScore < 25;
   const currentIRR = metrics.projectIRR;
@@ -214,6 +215,7 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
       <section className="mt-5 rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-6" aria-labelledby="mechanics-flow-title">
         <SectionKicker>Model mechanics</SectionKicker>
         <h2 id="mechanics-flow-title" className="text-[19px] font-semibold tracking-[-0.025em] text-[#122232]">Five links from evidence to return.</h2>
+         <p data-testid="model-electricity-attribution" className="mt-4 rounded-lg border border-[#cbd8d4] bg-[#f1f5f3] px-3 py-2 font-mono text-[11px] font-bold text-[#344550]">{formatElectricityCostAttribution(metrics.assumptions.electricityRate, evidence.electricity_cost.sourceId === "eia" ? sourceStates.eia : { ...sourceStates.eia, status: "embedded", dataOrigin: "embedded", timestamp: undefined })}</p>
         <div className="mt-4 grid gap-2 md:grid-cols-5">
           {[
             ["01", "Evidence", "Classifications set confidence and stress inputs."],

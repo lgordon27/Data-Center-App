@@ -8,6 +8,7 @@ import {
   evidenceTiers,
   sourceGroups
 } from "@/data/sources";
+import { SOURCE_FALLBACK_EXPLANATION } from "@/data/sources";
 import {
   ArrowLeft,
   ArrowRight,
@@ -266,6 +267,24 @@ export function HowItWorks({ onReturn, onOpenScreen }: HowItWorksProps) {
                 </details>
               ))}
             </div>
+             <section data-testid="tour-data-sources" aria-labelledby="tour-data-sources-title" className="mt-8 rounded-xl border-2 border-[#122232] bg-[#122232] p-5 text-white md:p-6">
+               <div className="flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#d4e86b]"><Gauge aria-hidden="true" className="h-4 w-4" /> Data Sources</div>
+               <h3 id="tour-data-sources-title" className="mt-3 text-[24px] font-semibold tracking-[-0.035em]">Provider identity and freshness stay visible.</h3>
+               <p className="mt-3 max-w-3xl text-[12px] leading-5 text-[#c4d0d6]">{SOURCE_FALLBACK_EXPLANATION}</p>
+               <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                 {[
+                   ["ERCOTQueue.com", "Grid interconnection queue and timing context; live or cached when provider metadata is available."],
+                   ["U.S. EIA Open Data", "Electricity market and price context; live or cached when provider metadata is available."],
+                   ["FEMA National Risk Index v1.20", "Versioned hazard exposure profile embedded in this proof-of-concept."],
+                   ["GridTracker MCP", "Grid intelligence and last-query context; connected or disconnected without claiming a query that did not occur."],
+                 ].map(([name, detail]) => (
+                   <div key={name} className="rounded-lg border border-white/15 bg-white/5 p-4">
+                     <div className="text-[12px] font-semibold text-[#f6f7f2]">{name}</div>
+                     <p className="mt-2 text-[11px] leading-5 text-[#9dafb8]">{detail}</p>
+                   </div>
+                 ))}
+               </div>
+             </section>
             <div className="mt-5 grid gap-3 md:grid-cols-2">
               <aside className="rounded-xl border-2 border-[#f1cb8b] bg-[#fff8e9] p-5">
                 <div className="flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#a65a00]"><Landmark aria-hidden="true" className="h-4 w-4" /> Methodology note</div>

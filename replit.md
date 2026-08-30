@@ -11,7 +11,7 @@ The workbench is a private working-paper proof of concept for an IC pre-read. It
 - **Public context:** reported Stargate, environmental, energy, water, climate, community, permitting, and infrastructure facts, events, assertions, and unresolved disclosures.
 - **Synthetic economics:** representative acquisition and operating assumptions used to demonstrate sensitivity analysis. These are not disclosed project terms, reported returns, or a claim about Stargate's actual transaction economics.
 
-The application does not fetch live data or call a server. The evidence records and source descriptions currently displayed in the UI are the case data bundled in the client.
+The application does not fetch live data or call a server in this proof-of-concept. A canonical client-safe source registry exposes provider identity, status, timestamps/version, data role, and fallback text. The default FEMA profile, ERCOTQueue context, and EIA estimate are embedded; GridTracker MCP is disconnected. Provider adapters may supply response metadata through the registry contract, but the UI never invents a live response, cache, or timestamp.
 
 ## Stack and architecture
 
@@ -35,6 +35,8 @@ The artifact is registered as a path-routed web artifact in `artifacts/safeloc-d
 - `artifacts/safeloc-diligence-workbench/src/App.tsx` — active shell, hash route handling, navigation, home page, five workbench screens, AI Chain view, scenario comparison, reset flow, and presentation components.
 - `artifacts/safeloc-diligence-workbench/src/context/DiligenceContext.tsx` — canonical 16-item evidence set, classification state, localStorage hydration/persistence, calculated metrics access, and saved-scenario state.
 - `artifacts/safeloc-diligence-workbench/src/model/cashFlowEngine.ts` — browser cash-flow model, provenance quality policy, five-year schedule, IRR/NPV/payback and other metrics, recommendation state, and verified baseline comparison.
+- `artifacts/safeloc-diligence-workbench/src/data/sources.ts` — canonical source identities, provider status contract, timestamp/version formatting, fallback explanation, and electricity-cost attribution.
+- `artifacts/safeloc-diligence-workbench/src/components/DataSources.tsx` — compact workbench source bar and expandable attribution panel.
 - `artifacts/safeloc-diligence-workbench/src/model/advisorLens.ts` — advisor questions, provenance strength ordering, risk tiers, evidence-gap presentation, and governance IRR-gap helpers.
 - `artifacts/safeloc-diligence-workbench/src/HowItWorksTour.tsx` — the product tour's workflow, evidence-tier, source/method, and handoff content.
 - `artifacts/safeloc-diligence-workbench/src/model/*.test.ts` — model and advisor-lens unit tests.
@@ -148,3 +150,9 @@ For Playwright tests, `playwright.config.ts` starts the SafeLoc dev server on po
 The case's citations and descriptions represent public-source context already encoded in the application, including Stargate/Oracle/OpenAI/Crusoe/Lancium reporting, ERCOT and utility context, water and climate records, community reporting, and related environmental/infrastructure evidence. “Not disclosed” values remain unresolved rather than being silently filled with facts.
 
 The financial engine uses explicit representative assumptions scaled to the modeled 1.2 GW target, including entry value, lease rate, cooling CAPEX, utilization ramp, debt, discount rate, exit multiple, downtime cost, and other costs. These are synthetic underwriting inputs for a demonstration of evidence-governed sensitivity; they are not disclosed Stargate acquisition terms, actual project cash flows, or public facts about the project. Preserve that distinction when changing the UI or adding case inputs.
+
+### External-data freshness boundary
+
+Evidence records can identify the source and data role that support them without changing their evidence classification. API-backed records show the shared source status (live or cached); records without a provider-backed source remain explicitly embedded. The financial model keeps its numeric inputs unchanged and derives electricity-cost attribution from the shared EIA state: a live provider response includes its observed date, while the bundled case continues to read “embedded estimate.”
+
+The client-safe provider boundary accepts separate live and retained-cache metadata. It validates provider origin and timestamps, chooses a valid live response first, automatically uses the timestamped retained response when live metadata is unavailable or invalid, and returns to the embedded baseline when neither exists. This is the mechanism behind the required demonstration rule: **All external feeds automatically fall back to cached values during an unavailable live demonstration.** The current proof-of-concept supplies no provider payload, so its visible defaults remain embedded rather than cached.

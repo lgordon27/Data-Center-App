@@ -1,0 +1,52 @@
+Add a "New Analysis" feature that lets users analyze any data center project, not just Stargate Abilene. This uses AI to research and populate the evidence room for a user-specified project.
+
+ADD A PROJECT SELECTOR:
+
+On the Home page, add a second entry point below or alongside "Open the Workbench" button:
+
+A text input field with placeholder text: "Enter a data center project (e.g., Meta El Paso, Project Kilby, Google Ellis County)"
+A "Run Analysis" button next to it
+A subtitle: "AI will research public sources and classify what can be verified."
+
+Keep the existing "Open the Workbench" button as the default path to the Stargate analysis. The new input is an alternative entry point.
+
+Also add a small "Analyze a different project" link or button in the workbench header (visible on all 5 screens) that opens a modal with the same input field and Run Analysis button.
+
+BACKEND ENDPOINT:
+
+Add POST /api/research-project to the server.
+
+This endpoint should:
+1. Accept JSON body: { projectName: string, location: string }
+2. Call OpenAI API (using OPENAI_API_KEY from env) with model "gpt-4o" (use the full model for research quality, not mini)
+3. System prompt: "You are an infrastructure diligence analyst researching AI data center projects. Today's date is August 30, 2026. Sources from 2025 and 2026 are current and valid. Given a project name and location, research what is publicly known and populate an evidence assessment. You must respond with valid JSON only, no other text. Return an object with two fields: projectSummary (an object with: name, operators, location, county, state, capacity in MW as a number, status, description, investmentThesis) and evidenceItems (an array of exactly 16 objects, each with: id matching these exact IDs [electricity-cost, cooling-water, grid-interconnection, water-escalation, community-opposition, renewable-procurement, cooling-capex, electricity-escalation, carbon-compliance, permitting-timeline, customer-concentration, water-rights, hazard-exposure, backup-power, water-source-resilience, downtime-cost], value (what you found or 'Not publicly disclosed'), classification (one of: Verified Evidence, Management Assertion, Model Inference, User Assumption, Missing Evidence), source (the specific source if found, or 'No public disclosure identified'), and reasoning (one sentence on why this classification)). Be honest about what is verifiable versus what is claimed by the operator. If you cannot find information for a variable, classify it as Missing Evidence. Do not invent data."
+4. User prompt: "Research this AI data center project: [projectName] in [location]. Find publicly available information about its power source, grid interconnection status, water usage, water source, cooling infrastructure, community response, permitting status, customer contracts, climate hazards at the site, backup power, and operator details. For each of the 16 evidence variables, report what you found from public sources."
+5. Parse the JSON response from data.choices[0].message.content
+6. Return to the frontend: { projectSummary, evidenceItems }
+7. Set max_tokens to 4000
+8. Timeout: 30 seconds
+9. If OPENAI_API_KEY is not set, return 503 with "AI research not configured"
+10. If API fails, return 500 with useful error message
+
+FRONTEND FLOW:
+
+When the user submits a project name:
+1. Show a loading state: "Researching [project name]... Checking public sources for 16 evidence variables." Show a progress animation. This may take 10-15 seconds.
+2. When the response arrives, update the DiligenceContext:
+   - Replace the project summary data on Screen 1 (Case Brief) with the AI-researched summary
+   - Replace the 16 evidence items with the AI-populated items, including their AI-proposed classifications
+   - Keep the financial model structure and standardized per-MW economics unchanged. Use the AI-reported capacity (from projectSummary.capacity) to scale revenue assumptions. If capacity is not found or not a valid number, use a default of 500 MW.
+   - Recalculate all financial model outputs based on the new evidence classifications
+3. Navigate to Screen 1 (Case Brief) to show the new project
+4. Show a persistent banner at the top of all workbench screens: "AI-Researched Project: [name]. All evidence classifications were proposed by AI from public sources. Review and adjust before relying on results. This tool provides high-level insight, not investment-grade diligence."
+5. Every evidence item should show a small "AI-researched" badge next to its classification to indicate it was populated by AI, not manually curated
+6. The "Analyze with AI" button on individual evidence items should still work on AI-researched projects, allowing the user to re-analyze any single item
+
+IMPORTANT RULES:
+- Stargate Abilene remains the default when clicking "Open the Workbench." The hardcoded Stargate data is the curated, high-quality baseline.
+- Custom projects use AI-researched data which may be less accurate. The persistent banner makes this clear.
+- The user can manually override any AI-proposed classification using the existing dropdown
+- "Reset to Default" returns to Stargate Abilene data, not the custom project
+- Store the current custom project name in React state only (not localStorage). It clears on refresh, returning to Stargate.
+- The financial model uses the same standardized per-MW economics for all projects. Only evidence classifications and capacity scale change.
+- The Advisor Lens (Screen 5) content about fund exposure and client conversations applies to all projects since all data center projects involve the same upstream companies (NVIDIA, Microsoft, Meta, Google).

@@ -164,8 +164,8 @@ test.describe("hash routing and browser history", () => {
     await page.goto("/#how-it-works");
 
     const context = page.getByTestId("tour-sri-context");
-    await expect(context).toContainText("Responsible investors helped capitalize the AI revolution. Sustainability screening selected for well-governed, capital-efficient companies and concentrated capital in the stocks best positioned to lead the next technology wave. That thesis worked.");
-    await expect(context).toContainText("The sustainability community helped birth the AI economy. That creates a responsibility to understand the technology well enough to steer it. This tool was built by a sustainability professional who did exactly that");
+    await expect(context).toContainText("Responsible investors helped capitalize the AI revolution; now its physical infrastructure is testing environmental stewardship, community impact, transparent governance, and evidence-based decision-making.");
+    await expect(context).toContainText("Texas pausing new grid connections for an energy and water audit");
 
     const builderStory = page.getByTestId("tour-builder-story");
     await expect(builderStory).toContainText("Built by LeAndrew Gordon, Founder and CEO of SafeLoc. Former Private Wealth Financial Advisor. Chartered SRI Counselor.");
@@ -354,7 +354,7 @@ test.describe("hash routing and browser history", () => {
       /Stargate Abilene/,
     ]);
 
-    await expect(page.getByTestId("section-client-exposure")).toContainText("transmission path for diligence questions");
+    await expect(page.getByTestId("section-client-exposure")).toContainText("The exposure chain turns that connection into diligence questions");
     await expect(page.getByTestId("text-epistemic-gap")).toContainText("two different questions");
     await expect(page.getByTestId("advisor-risk-stat-paused")).toContainText("$130B");
     await expect(page.getByTestId("advisor-risk-stat-revenue")).toContainText("$8B");
@@ -371,9 +371,9 @@ test.describe("hash routing and browser history", () => {
 
     await expect(page.getByTestId("section-practice-value")).toContainText("79%");
     await expect(page.getByTestId("section-practice-value")).toContainText("3%");
-    await expect(page.getByTestId("section-practice-value")).toContainText("four times more likely to use a professional advisor");
+    await expect(page.getByTestId("section-practice-value")).toContainText("4x");
     await expect(page.getByTestId("section-practice-value")).toContainText("zero statistical association with financial fulfillment");
-    await expect(page.getByTestId("text-governance-irr-gap")).toContainText("percentage points of IRR");
+    await expect(page.getByTestId("text-governance-irr-gap")).toHaveText(/\d+(\.\d+)? pts/);
     await expect(page.getByTestId("card-fund-ishares")).toBeVisible();
     await expect(page.getByTestId("advisor-question-water-rights")).toBeVisible();
 

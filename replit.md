@@ -2,7 +2,7 @@
 
 SafeLoc is an evidence-governed investment workbench for diligence on the Stargate Abilene AI-infrastructure project in Taylor County, Texas. It helps an analyst or investment committee connect public operating evidence to representative acquisition economics, see which uncertainties are financially material, and carry the open questions into an advisor handoff.
 
-This guide documents the `artifacts/safeloc-diligence-workbench` web artifact. The sibling API Server, Canvas, and any workspace database packages are separate artifacts and are not part of SafeLoc's runtime.
+This guide documents the `artifacts/safeloc-diligence-workbench` web artifact. The sibling Canvas component preview is a separate artifact and is not part of SafeLoc's runtime.
 
 ## Purpose and scope
 
@@ -107,11 +107,20 @@ SafeLoc is client-only and persistence is local to the browser:
 
 ## Run and operate locally
 
-Run commands from the repository root with pnpm. There is no root `pnpm dev` script for SafeLoc; use the artifact filter:
+Run commands from the repository root with pnpm. The remaining workspace packages are SafeLoc, the mockup sandbox, and repository scripts. There is no root `pnpm dev` script for SafeLoc; use the artifact filter:
 
 ```bash
 # Replit workflow command
 pnpm --filter @workspace/safeloc-diligence-workbench run dev
+```
+
+The repository-wide checks cover the remaining artifacts and scripts:
+
+```bash
+pnpm run typecheck
+pnpm run build
+pnpm --filter @workspace/mockup-sandbox run typecheck
+pnpm --filter @workspace/mockup-sandbox run build
 ```
 
 The Vite configuration requires both `PORT` and `BASE_PATH` for every Vite command (`dev`, `build`, and `serve`). The registered artifact supplies `PORT=25519` and `BASE_PATH=/`; when running the package outside the managed workflow, provide them explicitly:

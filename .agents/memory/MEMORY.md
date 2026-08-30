@@ -1,1 +1,2 @@
 - [Public facts vs. modeled economics](stargate-diligence-evidence.md) — keep public Stargate operating facts distinct from synthetic underwriting assumptions and unresolved disclosures.
+- [Client-only workspace pruning](client-only-workspace-pruning.md) — removing shared API packages also requires clearing consuming project references before Vite or TypeScript can resolve the workspace.

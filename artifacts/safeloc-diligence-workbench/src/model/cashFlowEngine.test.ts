@@ -79,7 +79,7 @@ test("climate quality multipliers adjust hazard probability and downtime cost", 
   const lowMissingCost = allVerified();
   lowMissingCost.downtime_cost = {
     ...lowMissingCost.downtime_cost,
-    value: "$1,000,000/day",
+    numericValue: 1_000_000,
     classification: "Missing Evidence",
   };
   assert.equal(
@@ -132,7 +132,7 @@ test("backup power contingency follows its trigger and classification mapping", 
   );
   sufficientBackup.backup_power_capacity = {
     ...sufficientBackup.backup_power_capacity,
-    value: "96 hours (diesel generation)",
+    numericValue: 96,
     classification: "Verified Evidence",
   };
   assert.equal(calculateCashFlowModel(sufficientBackup).assumptions.backupPowerCapex, 0);
@@ -161,12 +161,28 @@ test("water conversion contingency and stressed-basin escalation follow their br
   const diversifiedSource = allVerified();
   diversifiedSource.water_source_resilience = {
     ...diversifiedSource.water_source_resilience,
-    value: "Municipal plus reclaimed-water backup",
+    qualitativeValue: "diversified",
   };
   assert.equal(
     calculateCashFlowModel(diversifiedSource).assumptions.waterSourceEscalationMultiplier,
     1,
   );
+});
+
+test("display copy changes do not change structured model outputs", () => {
+  const editedEvidence = {
+    ...INITIAL_EVIDENCE,
+    electricity_cost: {
+      ...INITIAL_EVIDENCE.electricity_cost,
+      value: "A completely different editorial power-rate note",
+    },
+    site_hazard_exposure: {
+      ...INITIAL_EVIDENCE.site_hazard_exposure,
+      value: "Rewritten hazard narrative with unrelated wording",
+    },
+  };
+
+  assert.deepEqual(calculateCashFlowModel(editedEvidence), calculateCashFlowModel(INITIAL_EVIDENCE));
 });
 
 test("climate uncertainty propagates through returns and material recommendation rules", () => {

@@ -7,12 +7,22 @@ export type Classification =
 
 export type RecommendationStatus = "BLOCKED" | "CONDITIONAL" | "READY FOR REVIEW";
 
+export const HAZARD_EXPOSURE_LEVELS = ["low", "moderate", "high"] as const;
+export type HazardExposureLevel = (typeof HAZARD_EXPOSURE_LEVELS)[number];
+
+export const WATER_SOURCE_RESILIENCE_STATES = ["single-source", "diversified"] as const;
+export type WaterSourceResilienceState = (typeof WATER_SOURCE_RESILIENCE_STATES)[number];
+
+export type QualitativeEvidenceValue = HazardExposureLevel | WaterSourceResilienceState;
+
 export type EvidenceRecord = Record<
   string,
   {
     id: string;
     value: string | number;
     classification: Classification;
+    numericValue?: number;
+    qualitativeValue?: QualitativeEvidenceValue;
   }
 >;
 
@@ -263,36 +273,37 @@ const MATERIAL_IDS = [
   "water_source_resilience",
 ];
 
-function numberValue(value: string | number, fallback: number) {
-  const parsed = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
+function finiteNumericValue(value: unknown, fallback: number) {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
-function parseHours(value: string | number, fallback: number) {
-  if (typeof value === "number") return Number.isFinite(value) ? value : fallback;
-  const parsed = Number(value.match(/[\d.]+/)?.[0]);
-  return Number.isFinite(parsed) ? parsed : fallback;
+function isHazardExposureLevel(value: unknown): value is HazardExposureLevel {
+  return typeof value === "string" && HAZARD_EXPOSURE_LEVELS.includes(value as HazardExposureLevel);
 }
 
-function parseDowntimeCost(value: string | number, fallback: number) {
-  if (typeof value === "number") return Number.isFinite(value) ? value : fallback;
-  const normalized = value.replace(/[$,]/g, "");
-  const parsed = Number(normalized.match(/[\d.]+/)?.[0]);
-  return Number.isFinite(parsed) ? parsed : fallback;
+function isWaterSourceResilienceState(value: unknown): value is WaterSourceResilienceState {
+  return (
+    typeof value === "string" &&
+    WATER_SOURCE_RESILIENCE_STATES.includes(value as WaterSourceResilienceState)
+  );
 }
 
-function hazardProbability(value: string | number) {
-  const normalized = String(value).toLowerCase();
-  if (normalized.includes("high") || normalized.includes("extreme")) return 0.05;
-  if (normalized.includes("moderate")) return 0.02;
-  if (normalized.includes("low")) return 0.005;
-  return 0.05;
-}
+const HAZARD_PROBABILITY_BY_LEVEL: Record<HazardExposureLevel, number> = {
+  low: 0.005,
+  moderate: 0.02,
+  high: 0.05,
+};
 
-function isSingleSourceWater(value: string | number) {
-  const normalized = String(value).toLowerCase();
-  return normalized.includes("single source") || normalized.includes("no backup");
-}
+const HAZARD_EXPOSURE_LABELS: Record<HazardExposureLevel, string> = {
+  low: "Extreme heat low; drought low; winter storm not documented",
+  moderate: "Extreme heat moderate; drought moderate; winter storm not documented",
+  high: "Extreme heat high; drought moderate; winter storm documented",
+};
+
+const WATER_SOURCE_RESILIENCE_LABELS: Record<WaterSourceResilienceState, string> = {
+  "single-source": "Taylor County municipal — single source, no disclosed backup",
+  diversified: "Municipal plus reclaimed-water backup",
+};
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -424,49 +435,60 @@ function runModel(evidence: EvidenceRecord): CashFlowModel {
   const downtimeCostQuality = QUALITY_POLICY[downtimeCostItem.classification];
 
   const electricityRate =
-    numberValue(electricityItem.value, 42) * electricityQuality.costMultiplier;
+    finiteNumericValue(electricityItem.numericValue, 42) * electricityQuality.costMultiplier;
   const annualCoolingWaterMgal =
-    numberValue(waterConsumptionItem.value, 23) * waterQuality.waterConsumptionMultiplier;
+    finiteNumericValue(waterConsumptionItem.numericValue, 23) *
+    waterQuality.waterConsumptionMultiplier;
   const waterEscalationRate =
-    numberValue(waterEscalationItem.value, 7) / 100 +
+    finiteNumericValue(waterEscalationItem.numericValue, 7) / 100 +
     waterEscalationQuality.waterEscalationAdder;
   const electricityEscalationRate =
-    numberValue(electricityEscalationItem.value, 6) / 100 +
+    finiteNumericValue(electricityEscalationItem.numericValue, 6) / 100 +
     electricityEscalationQuality.electricityEscalationAdder;
   const effectiveRenewableProcurement = clamp(
-    numberValue(renewableItem.value, 25) * renewableQuality.renewableCoverage,
+    finiteNumericValue(renewableItem.numericValue, 25) * renewableQuality.renewableCoverage,
     0,
     100,
   );
   const powerCostDifferential =
     ((100 - effectiveRenewableProcurement) / 100) * 0.12;
   const gridInterconnectionMonths =
-    numberValue(gridItem.value, 14) + gridQuality.timelineAdder;
+    finiteNumericValue(gridItem.numericValue, 14) + gridQuality.timelineAdder;
   const permittingMonths =
-    numberValue(permittingItem.value, 10) + permittingQuality.timelineAdder;
+    finiteNumericValue(permittingItem.numericValue, 10) + permittingQuality.timelineAdder;
   const communityDelayMonths = communityQuality.communityDelay;
   // Interconnection and permitting are parallel gates; the later gate controls
   // the start date, while community risk adds an independent permitting delay.
   const revenueDelayMonths = Math.round(
     Math.max(gridInterconnectionMonths, permittingMonths) + communityDelayMonths,
   );
-  const concentration = clamp(numberValue(concentrationItem.value, 100) / 100, 0, 1);
+  const concentration = clamp(
+    finiteNumericValue(concentrationItem.numericValue, 100) / 100,
+    0,
+    1,
+  );
   const customerUtilizationMultiplier = clamp(
     1 - concentration * concentrationQuality.customerLossRate,
     0.4,
     1,
   );
-  const coolingCapex = numberValue(coolingItem.value, 450);
+  const coolingCapex = finiteNumericValue(coolingItem.numericValue, 450);
   const communityCapexContingency = communityQuality.communityContingency;
   const coolingCapexContingency = coolingQuality.coolingContingency;
-  const siteHazardExposure = String(hazardItem.value);
-  const baseHazardProbability = hazardProbability(hazardItem.value);
+  const hazardExposureLevel = isHazardExposureLevel(hazardItem.qualitativeValue)
+    ? hazardItem.qualitativeValue
+    : "high";
+  const siteHazardExposure = HAZARD_EXPOSURE_LABELS[hazardExposureLevel];
+  const baseHazardProbability = HAZARD_PROBABILITY_BY_LEVEL[hazardExposureLevel];
   const adjustedHazardProbability = clamp(
     baseHazardProbability * hazardQuality.climateMultiplier,
     0,
     1,
   );
-  const downtimeCostPerDay = parseDowntimeCost(downtimeCostItem.value, MIN_DOWNTIME_COST_PER_DAY);
+  const downtimeCostPerDay = finiteNumericValue(
+    downtimeCostItem.numericValue,
+    MIN_DOWNTIME_COST_PER_DAY,
+  );
   const qualityAdjustedDowntimeCost =
     downtimeCostPerDay * downtimeCostQuality.climateMultiplier;
   const adjustedDowntimeCostPerDay =
@@ -476,16 +498,20 @@ function runModel(evidence: EvidenceRecord): CashFlowModel {
   const backupPowerHours =
     backupPowerItem.classification === "Missing Evidence"
       ? 0
-      : clamp(parseHours(backupPowerItem.value, 0), 0, 8760);
+      : clamp(finiteNumericValue(backupPowerItem.numericValue, 0), 0, 8760);
   const backupPowerContingencyTriggered =
     backupPowerHours < 72 && gridItem.classification !== "Verified Evidence";
   const backupPowerCapex = backupPowerContingencyTriggered
     ? BACKUP_POWER_CAPEX_BY_CLASSIFICATION[backupPowerItem.classification]
     : 0;
-  const waterSourceResilience = String(waterSourceItem.value);
+  const waterSourceResilienceState = isWaterSourceResilienceState(
+    waterSourceItem.qualitativeValue,
+  )
+    ? waterSourceItem.qualitativeValue
+    : "single-source";
+  const waterSourceResilience = WATER_SOURCE_RESILIENCE_LABELS[waterSourceResilienceState];
   const stressedSingleSourceWater =
-    siteHazardExposure.toLowerCase().includes("high") &&
-    isSingleSourceWater(waterSourceItem.value);
+    hazardExposureLevel === "high" && waterSourceResilienceState === "single-source";
   const waterSourceEscalationMultiplier = stressedSingleSourceWater ? 1.5 : 1;
   const waterConversionContingencyTriggered =
     waterSourceItem.classification !== "Verified Evidence" &&
@@ -501,7 +527,7 @@ function runModel(evidence: EvidenceRecord): CashFlowModel {
   const debtAmount = ENTRY_VALUE * DEBT_LTV;
   const annualPrincipalPayment = debtAmount / AMORTIZATION_YEARS;
   const annualCarbonCompliance =
-    numberValue(carbonItem.value, 20) * carbonQuality.carbonMultiplier;
+    finiteNumericValue(carbonItem.numericValue, 20) * carbonQuality.carbonMultiplier;
   const waterRightsCostMultiplier = waterRightsQuality.waterRightsMultiplier;
   const totalDirectCapex = ENTRY_VALUE + coolingCapex;
   const annualRevenueAtFullUtilization =

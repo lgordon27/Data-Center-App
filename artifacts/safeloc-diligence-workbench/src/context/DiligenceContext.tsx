@@ -3,6 +3,7 @@ import {
   calculateCashFlowModel,
   Classification,
   EvidenceRecord,
+  type QualitativeEvidenceValue,
 } from '@/model/cashFlowEngine';
 
 export type { Classification } from '@/model/cashFlowEngine';
@@ -15,6 +16,8 @@ export type EvidenceItem = {
   classification: Classification;
   citation: string;
   description: string;
+  numericValue?: number;
+  qualitativeValue?: QualitativeEvidenceValue;
 };
 
 export type FinancialMetrics = Omit<ReturnType<typeof calculateCashFlowModel>, 'lastChange'> & {
@@ -42,22 +45,23 @@ type DiligenceState = {
 
 export const CURRENT_SESSION_STORAGE_KEY = 'safeloc:diligence:current-session:v1';
 export const INITIAL_EVIDENCE: Record<string, EvidenceItem> = {
-  electricity_cost: { id: 'electricity_cost', label: 'Electricity Cost / MWh', value: 42, unit: '$/MWh', classification: 'Verified Evidence', citation: 'ERCOT market data / Oncor commercial rate filings, 2025–2026', description: 'Representative West Texas blended power rate; the underwriting rate is synthetic but anchored to public ERCOT and Oncor data.' },
-  water_consumption: { id: 'water_consumption', label: 'Annual Cooling Water', value: 'Not disclosed', unit: 'Facility total', classification: 'Missing Evidence', citation: 'No public disclosure as of Aug 2026', description: 'Stargate Abilene has not publicly disclosed facility-level water consumption.' },
-  grid_interconnection: { id: 'grid_interconnection', label: 'Grid Interconnection Timeline', value: 'Expansion cancelled; delays exceeded 12 months', unit: 'Verified event', classification: 'Verified Evidence', citation: 'Epoch AI / WinBuzzer / SiliconReport, 2026 reporting', description: 'The planned expansion beyond the 1.2 GW core was cancelled after grid-interconnection delays exceeded one year.' },
-  water_escalation: { id: 'water_escalation', label: '5-Yr Water Cost Escalation', value: 7, unit: '%', classification: 'Model Inference', citation: 'Taylor County and City of Abilene municipal-rate records; analyst trend inference', description: 'Representative five-year escalation inferred from local municipal water-rate history, not a disclosed Stargate contract rate.' },
+  electricity_cost: { id: 'electricity_cost', label: 'Electricity Cost / MWh', value: 42, numericValue: 42, unit: '$/MWh', classification: 'Verified Evidence', citation: 'ERCOT market data / Oncor commercial rate filings, 2025–2026', description: 'Representative West Texas blended power rate; the underwriting rate is synthetic but anchored to public ERCOT and Oncor data.' },
+  water_consumption: { id: 'water_consumption', label: 'Annual Cooling Water', value: 'Not disclosed', numericValue: 23, unit: 'Facility total', classification: 'Missing Evidence', citation: 'No public disclosure as of Aug 2026', description: 'Stargate Abilene has not publicly disclosed facility-level water consumption.' },
+  grid_interconnection: { id: 'grid_interconnection', label: 'Grid Interconnection Timeline', value: 'Expansion cancelled; delays exceeded 12 months', numericValue: 14, unit: 'Verified event', classification: 'Verified Evidence', citation: 'Epoch AI / WinBuzzer / SiliconReport, 2026 reporting', description: 'The planned expansion beyond the 1.2 GW core was cancelled after grid-interconnection delays exceeded one year.' },
+  water_escalation: { id: 'water_escalation', label: '5-Yr Water Cost Escalation', value: 7, numericValue: 7, unit: '%', classification: 'Model Inference', citation: 'Taylor County and City of Abilene municipal-rate records; analyst trend inference', description: 'Representative five-year escalation inferred from local municipal water-rate history, not a disclosed Stargate contract rate.' },
   community_risk: { id: 'community_risk', label: 'Community Infrastructure Strain', value: 'Documented', unit: 'Local impact', classification: 'Verified Evidence', citation: 'Texas Standard / AI Wiki / Abilene local reporting', description: 'Reporting documents pressure on housing, childcare, and roads as construction employment peaks near 6,400 while permanent jobs are expected in the low hundreds.' },
-  renewable_percentage: { id: 'renewable_percentage', label: 'Renewable Procurement', value: 'Local wind referenced; percentage unverified', unit: 'Power mix', classification: 'Management Assertion', citation: 'Lancium / Crusoe public statements; ERCOT generation context', description: 'Local wind is referenced in the campus power story, but the renewable share delivered to Stargate is not publicly verified.' },
-  cooling_capex: { id: 'cooling_capex', label: 'Cooling Infrastructure CAPEX', value: 450, unit: '$M', classification: 'User Assumption', citation: 'Synthetic analyst estimate scaled to 1.2 GW; winter 2026 event context from SiliconReport', description: 'Representative liquid-cooling and heat-rejection CAPEX. Public reporting says winter 2026 storms damaged cooling equipment and forced buildings offline.' },
-  electricity_escalation: { id: 'electricity_escalation', label: '5-Yr Electricity Price Increase', value: 6, unit: '%', classification: 'Verified Evidence', citation: 'Bloomberg power-market data / ERCOT market reports, 2025–2026', description: 'Representative West Texas power-cost escalation anchored to public ERCOT market conditions.' },
-  carbon_compliance: { id: 'carbon_compliance', label: 'Carbon Compliance Cost', value: 20, unit: '$M/yr', classification: 'Model Inference', citation: 'Analyst inference from ERCOT grid intensity and on-site natural-gas generation', description: 'Synthetic annual allowance for emissions, offsets, and policy exposure at full campus scale.' },
-  permitting_timeline: { id: 'permitting_timeline', label: 'Core Build Timeline', value: 'Eight-building core targeted for completion in 2026–2027', unit: 'Management schedule', classification: 'Management Assertion', citation: 'OpenAI / Oracle announcements and Abilene local project updates', description: 'Public announcements targeted the eight-building core for mid-2026, while later local updates described construction continuing into early 2027.' },
-  customer_concentration: { id: 'customer_concentration', label: 'Customer Terms & Concentration', value: 100, unit: '% concentrated', classification: 'Verified Evidence', citation: 'Oracle SEC filings and public announcements; Crusoe project disclosures', description: 'The modeled revenue base is concentrated in Oracle under a reported 15-year lease supporting more than 450,000 NVIDIA GB200 GPUs.' },
+  renewable_percentage: { id: 'renewable_percentage', label: 'Renewable Procurement', value: 'Local wind referenced; percentage unverified', numericValue: 25, unit: 'Power mix', classification: 'Management Assertion', citation: 'Lancium / Crusoe public statements; ERCOT generation context', description: 'Local wind is referenced in the campus power story, but the renewable share delivered to Stargate is not publicly verified.' },
+  cooling_capex: { id: 'cooling_capex', label: 'Cooling Infrastructure CAPEX', value: 450, numericValue: 450, unit: '$M', classification: 'User Assumption', citation: 'Synthetic analyst estimate scaled to 1.2 GW; winter 2026 event context from SiliconReport', description: 'Representative liquid-cooling and heat-rejection CAPEX. Public reporting says winter 2026 storms damaged cooling equipment and forced buildings offline.' },
+  electricity_escalation: { id: 'electricity_escalation', label: '5-Yr Electricity Price Increase', value: 6, numericValue: 6, unit: '%', classification: 'Verified Evidence', citation: 'Bloomberg power-market data / ERCOT market reports, 2025–2026', description: 'Representative West Texas power-cost escalation anchored to public ERCOT market conditions.' },
+  carbon_compliance: { id: 'carbon_compliance', label: 'Carbon Compliance Cost', value: 20, numericValue: 20, unit: '$M/yr', classification: 'Model Inference', citation: 'Analyst inference from ERCOT grid intensity and on-site natural-gas generation', description: 'Synthetic annual allowance for emissions, offsets, and policy exposure at full campus scale.' },
+  permitting_timeline: { id: 'permitting_timeline', label: 'Core Build Timeline', value: 'Eight-building core targeted for completion in 2026–2027', numericValue: 10, unit: 'Management schedule', classification: 'Management Assertion', citation: 'OpenAI / Oracle announcements and Abilene local project updates', description: 'Public announcements targeted the eight-building core for mid-2026, while later local updates described construction continuing into early 2027.' },
+  customer_concentration: { id: 'customer_concentration', label: 'Customer Terms & Concentration', value: 100, numericValue: 100, unit: '% concentrated', classification: 'Verified Evidence', citation: 'Oracle SEC filings and public announcements; Crusoe project disclosures', description: 'The modeled revenue base is concentrated in Oracle under a reported 15-year lease supporting more than 450,000 NVIDIA GB200 GPUs.' },
   water_rights: { id: 'water_rights', label: 'Local Water Rights & Allocation', value: 'Not disclosed', unit: 'Taylor County facility', classification: 'Missing Evidence', citation: 'No public disclosure as of Aug 2026; Taylor County records reviewed', description: 'No public facility-level disclosure establishes Stargate water rights, allocation seniority, or drought curtailment protection.' },
   site_hazard_exposure: {
     id: 'site_hazard_exposure',
     label: 'Site Hazard Exposure Profile',
     value: 'Extreme heat high; drought moderate; winter storm documented',
+    qualitativeValue: 'high',
     unit: 'Composite Risk',
     classification: 'Model Inference',
     citation: 'FEMA National Risk Index / NOAA climate records / SiliconReport winter 2026 reporting',
@@ -67,6 +71,7 @@ export const INITIAL_EVIDENCE: Record<string, EvidenceItem> = {
     id: 'backup_power_capacity',
     label: 'Backup Power Capacity',
     value: 'On-site natural gas confirmed; capacity not disclosed',
+    numericValue: 0,
     unit: 'Resilience',
     classification: 'Management Assertion',
     citation: 'Crusoe / Lancium public statements; Grid Status analysis, 2026',
@@ -76,6 +81,7 @@ export const INITIAL_EVIDENCE: Record<string, EvidenceItem> = {
     id: 'water_source_resilience',
     label: 'Water Source Resilience',
     value: 'Taylor County municipal — single source, no disclosed backup',
+    qualitativeValue: 'single-source',
     unit: 'Supply',
     classification: 'Model Inference',
     citation: 'Taylor County / City of Abilene records; public project reporting',
@@ -85,6 +91,7 @@ export const INITIAL_EVIDENCE: Record<string, EvidenceItem> = {
     id: 'downtime_cost',
     label: 'Estimated Downtime Cost',
     value: '$2,850,000/day',
+    numericValue: 2_850_000,
     unit: 'Operating Loss',
     classification: 'User Assumption',
     citation: 'Synthetic analyst estimate based on reported GPU capacity and Oracle lease structure',

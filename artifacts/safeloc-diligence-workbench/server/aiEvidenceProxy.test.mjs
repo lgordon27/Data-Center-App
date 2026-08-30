@@ -4,9 +4,11 @@ import test from "node:test";
 import {
   AI_EVIDENCE_MAX_TOKENS,
   AI_EVIDENCE_MODEL,
+  AI_EVIDENCE_RATE_LIMIT_MESSAGE,
   AI_EVIDENCE_SYSTEM_PROMPT,
   OPENAI_CHAT_COMPLETIONS_URL,
   buildAIEvidencePrompt,
+  createAIEvidenceRateLimiter,
   handleAnalyzeEvidenceRequest,
 } from "./aiEvidenceProxy.mjs";
 import {
@@ -39,8 +41,8 @@ function responseRecorder() {
   };
 }
 
-function requestWithBody(body, method = "POST") {
-  return { method, body };
+function requestWithBody(body, method = "POST", ip = "198.51.100.10") {
+  return { method, body, ip };
 }
 
 test("returns the exact missing-key response without calling OpenAI", async () => {
@@ -122,20 +124,66 @@ test("grounds the system instruction in the shared temporal contract", () => {
   assert.match(AI_EVIDENCE_SYSTEM_PROMPT, /reasoning \(one sentence explaining why\)/i);
 });
 
-test("preserves upstream status with a safe error message", async () => {
+test("preserves upstream status without leaking provider error details", async () => {
   const response = responseRecorder();
   await handleAnalyzeEvidenceRequest(requestWithBody(evidence), response, {
     apiKey: "server-secret-for-test",
     fetchImpl: async () => new Response(JSON.stringify({
-      error: { message: "The model is temporarily overloaded." },
+      error: { message: "provider-internal detail server-secret-for-test" },
     }), { status: 429, headers: { "content-type": "application/json" } }),
   });
 
   assert.equal(response.statusCode, 429);
   assert.deepEqual(response.json(), {
-    error: "AI analysis unavailable. The model is temporarily overloaded.",
+    error: "AI analysis unavailable. Please classify manually.",
   });
   assert.doesNotMatch(response.body, /server-secret-for-test/);
+  assert.doesNotMatch(response.body, /provider-internal detail/);
+});
+
+test("bounds requests per client and returns a safe manual-review fallback", async () => {
+  let now = 100_000;
+  const rateLimiter = createAIEvidenceRateLimiter({
+    limit: 2,
+    windowMs: 60_000,
+    now: () => now,
+  });
+  let calls = 0;
+  const options = {
+    apiKey: "server-secret-for-test",
+    rateLimiter,
+    fetchImpl: async () => {
+      calls += 1;
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: JSON.stringify({
+          classification: "Missing Evidence",
+          reasoning: "The project has not publicly disclosed a facility-level water total.",
+        }) } }],
+      }), { status: 200 });
+    },
+  };
+
+  await handleAnalyzeEvidenceRequest(requestWithBody(evidence), responseRecorder(), options);
+  await handleAnalyzeEvidenceRequest(requestWithBody(evidence), responseRecorder(), options);
+  const limitedResponse = responseRecorder();
+  await handleAnalyzeEvidenceRequest(requestWithBody(evidence), limitedResponse, options);
+
+  assert.equal(calls, 2);
+  assert.equal(limitedResponse.statusCode, 429);
+  assert.equal(limitedResponse.headers["retry-after"], "60");
+  assert.deepEqual(limitedResponse.json(), { error: AI_EVIDENCE_RATE_LIMIT_MESSAGE });
+  assert.doesNotMatch(limitedResponse.body, /server-secret-for-test|provider/i);
+
+  const otherClientResponse = responseRecorder();
+  await handleAnalyzeEvidenceRequest(requestWithBody(evidence, "POST", "198.51.100.11"), otherClientResponse, options);
+  assert.equal(otherClientResponse.statusCode, 200);
+  assert.equal(calls, 3);
+
+  now += 60_000;
+  const resetResponse = responseRecorder();
+  await handleAnalyzeEvidenceRequest(requestWithBody(evidence), resetResponse, options);
+  assert.equal(resetResponse.statusCode, 200);
+  assert.equal(calls, 4);
 });
 
 test("rejects methods and malformed evidence before an upstream request", async () => {

@@ -79,6 +79,18 @@ test("normalizes transport failures and abort timeouts", async () => {
   });
 });
 
+test("uses a safe manual-review message for a rate-limited response", async () => {
+  const result = await analyzeEvidence(item, async () => new Response(JSON.stringify({
+    error: "provider-internal detail should not be shown",
+  }), { status: 429 }));
+
+  assert.deepEqual(result, {
+    status: "error",
+    message: "AI analysis request limit reached. Please wait before trying again and classify manually.",
+  });
+  assert.doesNotMatch(result.message, /provider-internal detail/);
+});
+
 test("makes a fresh request for every analysis", async () => {
   let requests = 0;
   const fetchImpl = async () => {

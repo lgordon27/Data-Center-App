@@ -100,11 +100,6 @@ function parseAssessment(rawText: string): AIEvidenceResult {
   };
 }
 
-function rawResponsePreview(rawText: string) {
-  const cleaned = rawText.trim();
-  return cleaned.length > 400 ? `${cleaned.slice(0, 400)}…` : cleaned;
-}
-
 export async function analyzeEvidence(
   item: Pick<EvidenceItem, "label" | "value" | "citation">,
   fetchImpl: typeof fetch = fetch,
@@ -125,12 +120,12 @@ export async function analyzeEvidence(
 
     const rawText = await response.text();
     if (!response.ok) {
-      const detail = rawResponsePreview(rawText);
       return {
         status: "error",
-        message: detail
-          ? `AI analysis unavailable (${response.status}). Classify manually. ${detail}`
-          : `AI analysis unavailable (${response.status}). Classify manually.`,
+        message:
+          response.status === 429
+            ? "AI analysis request limit reached. Please wait before trying again and classify manually."
+            : "AI analysis unavailable. Classify manually.",
       };
     }
 

@@ -23,6 +23,7 @@ import {
   MapPin,
   Menu,
   Network,
+  Pencil,
   RefreshCw,
   Scale,
   Server,
@@ -30,6 +31,7 @@ import {
   Smartphone,
   Sparkles,
   Target,
+  Trash2,
   TrendingDown,
   TrendingUp,
   TriangleAlert,
@@ -1050,14 +1052,66 @@ function ScenarioComparison({ scenarios }: { scenarios: SavedScenario[] }) {
     </section>
   );
 }
+
+function SavedScenarioList({
+  scenarios,
+  onRename,
+  onRemove,
+}: {
+  scenarios: SavedScenario[];
+  onRename: (scenario: SavedScenario) => void;
+  onRemove: (scenario: SavedScenario) => void;
+}) {
+  if (scenarios.length === 0) return null;
+
+  return (
+    <section data-testid="panel-saved-scenarios" className="mt-5 rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-6">
+      <div className="flex flex-col gap-2 border-b border-[#e5eae8] pb-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <SectionKicker>Named snapshots</SectionKicker>
+          <h2 className="text-[19px] font-semibold tracking-[-0.025em] text-[#122232]">Manage saved scenarios</h2>
+          <p className="mt-1 text-[11px] leading-5 text-[#65737d]">Rename an outdated case or remove it from the comparison set. These actions do not change the live evidence classifications.</p>
+        </div>
+        <span data-testid="text-scenario-count" className="font-mono text-[10px] text-[#7d898f]">{scenarios.length}/5 saved</span>
+      </div>
+      <div className="divide-y divide-[#e5eae8]">
+        {scenarios.map((scenario) => (
+          <div key={scenario.id} data-testid={`scenario-card-${scenario.id}`} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <div data-testid={`text-scenario-name-${scenario.id}`} className="truncate text-[12px] font-semibold text-[#122232]">{scenario.name}</div>
+              <time dateTime={scenario.savedAt} className="mt-1 block text-[10px] text-[#7d898f]">
+                Saved {new Date(scenario.savedAt).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
+              </time>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              <button type="button" data-testid={`button-rename-scenario-${scenario.id}`} onClick={() => onRename(scenario)} className="inline-flex items-center gap-1.5 rounded-md border border-[#cbd8d4] px-2.5 py-2 text-[9px] font-bold uppercase tracking-[0.1em] text-[#344550] hover:border-[#122232] hover:text-[#122232]">
+                <Pencil aria-hidden="true" className="h-3 w-3" /> Rename
+              </button>
+              <button type="button" data-testid={`button-remove-scenario-${scenario.id}`} onClick={() => onRemove(scenario)} className="inline-flex items-center gap-1.5 rounded-md border border-[#efabb8] bg-[#fff3f4] px-2.5 py-2 text-[9px] font-bold uppercase tracking-[0.1em] text-[#ba2f45] hover:bg-[#ba2f45] hover:text-white">
+                <Trash2 aria-hidden="true" className="h-3 w-3" /> Remove
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function DecisionReview({ onNavigate, onResolve }: { onNavigate: (screen: Screen) => void; onResolve: (id: string) => void }) {
-  const { evidence, metrics, scenarios, saveScenario } = useDiligence();
+  const { evidence, metrics, scenarios, saveScenario, renameScenario, removeScenario } = useDiligence();
   const items = Object.values(evidence);
   const [saveOpen, setSaveOpen] = useState(false);
   const [scenarioName, setScenarioName] = useState("");
   const [saveFeedback, setSaveFeedback] = useState("");
   const [showComparison, setShowComparison] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameScenarioId, setRenameScenarioId] = useState<string | null>(null);
+  const [renameName, setRenameName] = useState("");
+  const [renameFeedback, setRenameFeedback] = useState("");
+  const [removeScenarioId, setRemoveScenarioId] = useState<string | null>(null);
   const lowConfidence = metrics.confidenceScore < 25;
+  const scenarioToRemove = scenarios.find((scenario) => scenario.id === removeScenarioId);
   const statusMeta = {
     BLOCKED: { color: "#ba2f45", bg: "#fde8eb", border: "#efabb8" },
     CONDITIONAL: { color: "#a65a00", bg: "#fff0d6", border: "#f1cb8b" },
@@ -1102,6 +1156,16 @@ function DecisionReview({ onNavigate, onResolve }: { onNavigate: (screen: Screen
       />
       {scenarios.length >= 5 && <div role="status" data-testid="text-scenario-capacity" className="mb-5 rounded-lg border border-[#ecd39d] bg-[#fff8e9] px-4 py-3 text-[11px] font-semibold text-[#7f6337]">Scenario capacity reached (5/5). Save Scenario is disabled; named snapshots remain independent of the live case.</div>}
       {saveFeedback && <div role="status" data-testid="text-scenario-feedback" className={`mb-5 rounded-lg border px-4 py-3 text-[11px] font-semibold ${saveFeedback.startsWith("A scenario") || saveFeedback.startsWith("Five") ? "border-[#efabb8] bg-[#fff3f4] text-[#ba2f45]" : "border-[#9bd8c5] bg-[#e0f4ed] text-[#0b7a63]"}`}>{saveFeedback}</div>}
+       <SavedScenarioList
+         scenarios={scenarios}
+         onRename={(scenario) => {
+           setRenameScenarioId(scenario.id);
+           setRenameName(scenario.name);
+           setRenameFeedback("");
+           setRenameOpen(true);
+         }}
+         onRemove={(scenario) => setRemoveScenarioId(scenario.id)}
+       />
       {showComparison && <ScenarioComparison scenarios={scenarios} />}
       {metrics.recommendationStatus === "BLOCKED" && <div data-testid="banner-recommendation-blocked" className="mb-5 flex items-start gap-3 rounded-xl border-2 border-[#ba2f45] bg-[#fff3f4] px-5 py-4 text-[#7f2635]"><CircleAlert className="mt-0.5 h-5 w-5 shrink-0" /><div><div className="font-mono text-[12px] font-bold tracking-[0.08em]">RECOMMENDATION BLOCKED: {metrics.missingMaterialCount} material items are missing evidence</div><div className="mt-1 text-[11px] leading-5 text-[#96525d]">Resolve the material evidence gaps below before treating the base return as investment-grade.</div></div></div>}
       {metrics.recommendationStatus === "CONDITIONAL" && <div data-testid="banner-recommendation-conditional" className="mb-5 flex items-start gap-3 rounded-xl border-2 border-[#a65a00] bg-[#fff8e9] px-5 py-4 text-[#6f460e]"><CircleAlert className="mt-0.5 h-5 w-5 shrink-0" /><div><div className="font-mono text-[12px] font-bold tracking-[0.08em]">CONDITIONAL: {metrics.materialUnverifiedCount} material assumptions depend on unverified evidence</div><div className="mt-1 text-[11px] leading-5 text-[#806d51]">Name the evidence owners and carry these conditions into review.</div></div></div>}
@@ -1173,8 +1237,62 @@ function DecisionReview({ onNavigate, onResolve }: { onNavigate: (screen: Screen
             </DialogFooter>
           </form>
         </DialogContent>
-      </Dialog>
-      <BottomNav screen="decision" onNavigate={onNavigate} />
+       </Dialog>
+       <Dialog open={renameOpen} onOpenChange={(open) => {
+         setRenameOpen(open);
+         if (!open) {
+           setRenameScenarioId(null);
+           setRenameFeedback("");
+         }
+       }}>
+         <DialogContent className="border-[#cbd8d4] bg-[#f9faf8]">
+           <DialogHeader>
+             <DialogTitle className="text-[#122232]">Rename Scenario</DialogTitle>
+             <DialogDescription className="text-[#65737d]">Give this saved snapshot a distinct name. Its classifications, metrics, and saved timestamp will remain unchanged.</DialogDescription>
+           </DialogHeader>
+           <form onSubmit={(event) => {
+             event.preventDefault();
+             if (!renameScenarioId) return;
+             const result = renameScenario(renameScenarioId, renameName);
+             if (!result.ok) {
+               setRenameFeedback(result.reason === "empty-name" ? "A scenario name is required." : result.reason === "duplicate-name" ? "A scenario with that name already exists." : "That saved scenario is no longer available.");
+               return;
+             }
+             setSaveFeedback(`Scenario “${result.scenario.name}” renamed.`);
+             setRenameScenarioId(null);
+             setRenameFeedback("");
+             setRenameOpen(false);
+           }}>
+             <label htmlFor="rename-scenario-name" className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#60707d]">Scenario name</label>
+             <Input id="rename-scenario-name" data-testid="input-rename-scenario-name" autoFocus value={renameName} onChange={(event) => setRenameName(event.target.value)} className="mt-2 border-[#cbd8d4] bg-white text-[#122232]" aria-invalid={Boolean(renameFeedback)} />
+             {renameFeedback && <p role="alert" data-testid="text-rename-scenario-dialog-error" className="mt-2 text-[10px] font-semibold text-[#ba2f45]">{renameFeedback}</p>}
+             <DialogFooter className="mt-5">
+               <button type="button" onClick={() => setRenameOpen(false)} className="rounded-md border border-[#cbd8d4] px-4 py-2 text-[10px] font-bold uppercase tracking-[0.1em] text-[#52616b] hover:border-[#122232]">Cancel</button>
+               <button type="submit" data-testid="button-confirm-rename-scenario" className="rounded-md bg-[#122232] px-4 py-2 text-[10px] font-bold uppercase tracking-[0.1em] text-[#d4e86b]">Rename Scenario</button>
+             </DialogFooter>
+           </form>
+         </DialogContent>
+       </Dialog>
+       <AlertDialog open={Boolean(scenarioToRemove)} onOpenChange={(open) => {
+         if (!open) setRemoveScenarioId(null);
+       }}>
+         <AlertDialogContent className="border-[#efabb8] bg-[#fffafa]">
+           <AlertDialogHeader>
+             <AlertDialogTitle className="text-[#122232]">Remove “{scenarioToRemove?.name}”?</AlertDialogTitle>
+             <AlertDialogDescription className="text-[#65737d]">This permanently removes the saved snapshot from browser storage and the comparison set. Your live evidence classifications will not change.</AlertDialogDescription>
+           </AlertDialogHeader>
+           <AlertDialogFooter>
+             <AlertDialogCancel data-testid="button-cancel-remove-scenario" className="border-[#cbd8d4] text-[#52616b]">Keep Scenario</AlertDialogCancel>
+             <AlertDialogAction data-testid="button-confirm-remove-scenario" onClick={() => {
+               if (!removeScenarioId) return;
+               const result = removeScenario(removeScenarioId);
+               if (result.ok) setSaveFeedback(`Scenario “${result.scenario.name}” removed.`);
+               setRemoveScenarioId(null);
+             }} className="border-[#ba2f45] bg-[#ba2f45] text-white hover:bg-[#9c2439]">Remove Scenario</AlertDialogAction>
+           </AlertDialogFooter>
+         </AlertDialogContent>
+       </AlertDialog>
+       <BottomNav screen="decision" onNavigate={onNavigate} />
     </div>
   );
 }

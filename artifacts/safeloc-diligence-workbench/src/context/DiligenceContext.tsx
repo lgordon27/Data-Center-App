@@ -41,6 +41,8 @@ type DiligenceState = {
   sessionRestored: boolean;
   scenarios: SavedScenario[];
   saveScenario: (name: string) => SaveScenarioResult;
+  renameScenario: (id: string, name: string) => RenameScenarioResult;
+  removeScenario: (id: string) => RemoveScenarioResult;
 };
 
 export const CURRENT_SESSION_STORAGE_KEY = 'safeloc:diligence:current-session:v1';
@@ -197,13 +199,39 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     return { ok: true, scenario };
   };
 
+  const renameScenario = (id: string, name: string): RenameScenarioResult => {
+    const trimmedName = name.trim();
+    if (!trimmedName) return { ok: false, reason: 'empty-name' };
+    const scenario = scenarios.find((candidate) => candidate.id === id);
+    if (!scenario) return { ok: false, reason: 'not-found' };
+    if (scenarios.some((candidate) => candidate.id !== id && candidate.name.toLowerCase() === trimmedName.toLowerCase())) {
+      return { ok: false, reason: 'duplicate-name' };
+    }
+
+    const renamedScenario = { ...scenario, name: trimmedName };
+    const nextScenarios = scenarios.map((candidate) => candidate.id === id ? renamedScenario : candidate);
+    setScenarios(nextScenarios);
+    writeStorage(SCENARIOS_STORAGE_KEY, { version: STORAGE_VERSION, scenarios: nextScenarios });
+    return { ok: true, scenario: renamedScenario };
+  };
+
+  const removeScenario = (id: string): RemoveScenarioResult => {
+    const scenario = scenarios.find((candidate) => candidate.id === id);
+    if (!scenario) return { ok: false, reason: 'not-found' };
+
+    const nextScenarios = scenarios.filter((candidate) => candidate.id !== id);
+    setScenarios(nextScenarios);
+    writeStorage(SCENARIOS_STORAGE_KEY, { version: STORAGE_VERSION, scenarios: nextScenarios });
+    return { ok: true, scenario };
+  };
+
   const metrics = useMemo(
     () => ({ ...calculateCashFlowModel(state.evidence as EvidenceRecord), lastChange: state.lastChange }),
     [state],
   );
 
   return (
-    <DiligenceContext.Provider value={{ evidence: state.evidence, updateClassification, clearLastChange, metrics, resetToDefault, sessionRestored, scenarios, saveScenario }}>
+    <DiligenceContext.Provider value={{ evidence: state.evidence, updateClassification, clearLastChange, metrics, resetToDefault, sessionRestored, scenarios, saveScenario, renameScenario, removeScenario }}>
       {children}
     </DiligenceContext.Provider>
   );
@@ -233,6 +261,9 @@ export type SaveScenarioResult =
   | { ok: true; scenario: SavedScenario }
   | { ok: false; reason: 'empty-name' | 'duplicate-name' | 'capacity' };
 
+export type RenameScenarioResult =
+  | { ok: true; scenario: SavedScenario }
+  | { ok: false; reason: 'empty-name' | 'duplicate-name' | 'not-found' };
 function cloneEvidence(source: Record<string, EvidenceItem>) {
   return Object.fromEntries(
     Object.entries(source).map(([id, item]) => [id, { ...item }]),
@@ -373,3 +404,7 @@ function isScenarioMetrics(value: unknown): value is ScenarioMetrics {
     isFiniteNumber(metrics.confidence)
   );
 }
+
+export type RemoveScenarioResult =
+  | { ok: true; scenario: SavedScenario }
+  | { ok: false; reason: 'not-found' };

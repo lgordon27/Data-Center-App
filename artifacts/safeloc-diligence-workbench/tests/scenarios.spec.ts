@@ -109,4 +109,49 @@ test.describe("named scenario snapshots and comparisons", () => {
     await expect(page.getByTestId("select-scenario-second")).toHaveValue("second");
     await expect(page.evaluate((key) => window.localStorage.getItem(key), currentSessionKey)).resolves.toBeNull();
   });
+
+  test("renames a snapshot without changing its saved data and rejects invalid names", async ({ page }) => {
+    await saveScenario(page, "Base case");
+    await saveScenario(page, "Downside");
+    const originalSnapshot = await page.evaluate((key) => JSON.parse(window.localStorage.getItem(key) ?? "{}").scenarios[0], scenariosKey);
+
+    await page.getByTestId(`button-rename-scenario-${originalSnapshot.id}`).click();
+    const input = page.getByTestId("input-rename-scenario-name");
+    await expect(input).toBeVisible();
+    await input.fill("   ");
+    await page.getByTestId("button-confirm-rename-scenario").click();
+    await expect(page.getByTestId("text-rename-scenario-dialog-error")).toContainText("A scenario name is required.");
+
+    await input.fill("Downside");
+    await page.getByTestId("button-confirm-rename-scenario").click();
+    await expect(page.getByTestId("text-rename-scenario-dialog-error")).toContainText("A scenario with that name already exists.");
+
+    await input.fill("Base case renamed");
+    await page.getByTestId("button-confirm-rename-scenario").click();
+    await expect(page.getByTestId("text-scenario-feedback")).toContainText("Scenario “Base case renamed” renamed.");
+
+    const renamedSnapshot = await page.evaluate((key) => JSON.parse(window.localStorage.getItem(key) ?? "{}").scenarios[0], scenariosKey);
+    expect(renamedSnapshot).toEqual({ ...originalSnapshot, name: "Base case renamed" });
+  });
+
+  test("confirms removal, persists it, and updates comparison choices", async ({ page }) => {
+    await saveScenario(page, "Base case");
+    await saveScenario(page, "Downside");
+    const snapshots = await page.evaluate((key) => JSON.parse(window.localStorage.getItem(key) ?? "{}").scenarios, scenariosKey);
+
+    await page.getByTestId("button-compare-scenarios").click();
+    await expect(page.getByTestId("select-scenario-first")).toHaveValue(snapshots[0].id);
+    await page.getByTestId(`button-remove-scenario-${snapshots[0].id}`).click();
+    await expect(page.getByRole("alertdialog")).toContainText("Your live evidence classifications will not change.");
+    await page.getByTestId("button-cancel-remove-scenario").click();
+    await expect(page.getByTestId(`scenario-card-${snapshots[0].id}`)).toBeVisible();
+
+    await page.getByTestId(`button-remove-scenario-${snapshots[0].id}`).click();
+    await page.getByTestId("button-confirm-remove-scenario").click();
+    await expect(page.getByTestId("text-scenario-feedback")).toContainText("Scenario “Base case” removed.");
+    await expect(page.getByTestId(`scenario-card-${snapshots[0].id}`)).toBeHidden();
+    await expect(page.getByTestId("panel-scenario-comparison")).toContainText("At least two saved scenarios are required.");
+    await expect.poll(() => page.evaluate((key) => JSON.parse(window.localStorage.getItem(key) ?? "{}").scenarios.length, scenariosKey)).toBe(1);
+    await expect(page.evaluate((key) => JSON.parse(window.localStorage.getItem(key) ?? "{}").scenarios[0].name, scenariosKey)).resolves.toBe("Downside");
+  });
 });

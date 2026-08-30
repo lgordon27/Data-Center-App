@@ -3,11 +3,7 @@ import test from "node:test";
 
 import {
   AI_EVIDENCE_ENDPOINT,
-  AI_EVIDENCE_MAX_TOKENS,
-  AI_EVIDENCE_MODEL,
-  AI_EVIDENCE_SYSTEM_PROMPT,
   analyzeEvidence,
-  buildAIEvidencePrompt,
 } from "./aiEvidenceService";
 
 const item = {
@@ -16,18 +12,18 @@ const item = {
   citation: "No public disclosure as of Aug 2026",
 };
 
-function anthropicResponse(text: string, status = 200) {
-  return new Response(JSON.stringify({ content: [{ type: "text", text }] }), {
+function proxyResponse(text: string, status = 200) {
+  return new Response(text, {
     status,
     headers: { "content-type": "application/json" },
   });
 }
 
-test("sends the browser-direct Anthropic contract and normalizes a valid assessment", async () => {
+test("sends the same-origin evidence contract and normalizes a valid assessment", async () => {
   let request: Request | undefined;
   const result = await analyzeEvidence(item, async (input, init) => {
-    request = new Request(input, init);
-    return anthropicResponse(JSON.stringify({
+    request = new Request(new URL(String(input), "http://localhost"), init);
+    return proxyResponse(JSON.stringify({
       classification: "missing evidence",
       reasoning: "The project has not publicly disclosed a facility-level water total.",
     }));
@@ -38,18 +34,14 @@ test("sends the browser-direct Anthropic contract and normalizes a valid assessm
     classification: "Missing Evidence",
     reasoning: "The project has not publicly disclosed a facility-level water total.",
   });
-  assert.equal(request?.url, AI_EVIDENCE_ENDPOINT);
+  assert.equal(new URL(request!.url).pathname, AI_EVIDENCE_ENDPOINT);
   assert.equal(request?.method, "POST");
-  assert.equal(request?.headers.get("anthropic-version"), "2023-06-01");
-  assert.equal(request?.headers.get("anthropic-dangerous-direct-browser-access"), "true");
-  const body = await request!.json() as Record<string, unknown>;
-  assert.equal(body.model, AI_EVIDENCE_MODEL);
-  assert.equal(body.max_tokens, AI_EVIDENCE_MAX_TOKENS);
-  assert.equal(body.system, AI_EVIDENCE_SYSTEM_PROMPT);
-  assert.equal(
-    (body.messages as Array<{ content: string }>)[0].content,
-    buildAIEvidencePrompt(item),
-  );
+  assert.equal(request?.headers.get("content-type"), "application/json");
+  assert.deepEqual(await request!.json(), {
+    name: item.label,
+    value: item.value,
+    source: item.citation,
+  });
 });
 
 test("returns raw text for non-JSON and structurally invalid responses", async () => {
@@ -61,7 +53,7 @@ test("returns raw text for non-JSON and structurally invalid responses", async (
     rawText,
   });
 
-  const invalid = await analyzeEvidence(item, async () => anthropicResponse(JSON.stringify({
+  const invalid = await analyzeEvidence(item, async () => proxyResponse(JSON.stringify({
     classification: "Verified Evidence",
     reasoning: "",
   })));
@@ -91,7 +83,7 @@ test("makes a fresh request for every analysis", async () => {
   let requests = 0;
   const fetchImpl = async () => {
     requests += 1;
-    return anthropicResponse(JSON.stringify({
+    return proxyResponse(JSON.stringify({
       classification: "Model Inference",
       reasoning: "The estimate is derived from related public facts rather than a disclosed contract.",
     }));

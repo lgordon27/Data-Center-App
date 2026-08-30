@@ -1,11 +1,7 @@
 import type { Classification, EvidenceItem } from "@/context/DiligenceContext";
 
-export const AI_EVIDENCE_ENDPOINT = "https://api.anthropic.com/v1/messages";
-export const AI_EVIDENCE_MODEL = "claude-sonnet-4-6";
-export const AI_EVIDENCE_MAX_TOKENS = 300;
+export const AI_EVIDENCE_ENDPOINT = "/api/analyze-evidence";
 export const AI_EVIDENCE_TIMEOUT_MS = 10_000;
-export const AI_EVIDENCE_SYSTEM_PROMPT =
-  "You are an infrastructure diligence analyst specializing in AI data center investments. You assess evidence quality for investment underwriting. Respond with exactly two fields in JSON format: classification (one of: Verified Evidence, Management Assertion, Model Inference, User Assumption, Missing Evidence) and reasoning (one sentence explaining why).";
 
 export type AIEvidenceSuccess = {
   status: "success";
@@ -59,15 +55,6 @@ function cleanReasoning(value: unknown): string | null {
   return cleaned || null;
 }
 
-function textFromAnthropicBody(body: unknown): string | null {
-  if (!isRecord(body) || !Array.isArray(body.content)) return null;
-  const textBlock = body.content.find(
-    (block): block is Record<string, unknown> =>
-      isRecord(block) && block.type === "text" && typeof block.text === "string",
-  );
-  return textBlock && typeof textBlock.text === "string" ? textBlock.text.trim() : null;
-}
-
 function stripMarkdownFence(value: string) {
   return value
     .trim()
@@ -118,10 +105,6 @@ function rawResponsePreview(rawText: string) {
   return cleaned.length > 400 ? `${cleaned.slice(0, 400)}…` : cleaned;
 }
 
-export function buildAIEvidencePrompt(item: Pick<EvidenceItem, "label" | "value" | "citation">) {
-  return `Assess the evidence quality of this data point for the Stargate Abilene data center project (OpenAI/Oracle, Taylor County, Texas): Variable: ${item.label}. Current value: ${String(item.value)}. Cited source: ${item.citation}. Based on the source type and what is publicly verifiable about this project, classify the evidence quality.`;
-}
-
 export async function analyzeEvidence(
   item: Pick<EvidenceItem, "label" | "value" | "citation">,
   fetchImpl: typeof fetch = fetch,
@@ -135,15 +118,8 @@ export async function analyzeEvidence(
       headers: {
         accept: "application/json",
         "content-type": "application/json",
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true",
       },
-      body: JSON.stringify({
-        model: AI_EVIDENCE_MODEL,
-        max_tokens: AI_EVIDENCE_MAX_TOKENS,
-        system: AI_EVIDENCE_SYSTEM_PROMPT,
-        messages: [{ role: "user", content: buildAIEvidencePrompt(item) }],
-      }),
+      body: JSON.stringify({ name: item.label, value: String(item.value), source: item.citation }),
       signal: controller.signal,
     });
 
@@ -158,9 +134,8 @@ export async function analyzeEvidence(
       };
     }
 
-    let body: unknown;
     try {
-      body = JSON.parse(rawText) as unknown;
+      JSON.parse(rawText);
     } catch {
       return {
         status: "unparseable",
@@ -168,15 +143,7 @@ export async function analyzeEvidence(
         rawText,
       };
     }
-    const assessmentText = textFromAnthropicBody(body);
-    if (!assessmentText) {
-      return {
-        status: "unparseable",
-        message: "Could not parse structured assessment. Review manually.",
-        rawText,
-      };
-    }
-    return parseAssessment(assessmentText);
+    return parseAssessment(rawText);
   } catch (error) {
     if (
       (typeof DOMException !== "undefined" && error instanceof DOMException && error.name === "AbortError") ||

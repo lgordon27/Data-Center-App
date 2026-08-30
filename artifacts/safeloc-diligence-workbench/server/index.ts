@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { handleErcotQueueRequest } from "./ercotProxy.mjs";
 import { handleEiaElectricityRequest } from "./eiaProxy.mjs";
+import { handleAnalyzeEvidenceRequest } from "./aiEvidenceProxy.mjs";
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
 const artifactDir = path.resolve(serverDir, "..");
@@ -10,6 +11,10 @@ const artifactDir = path.resolve(serverDir, "..");
 export async function createApp(): Promise<Express> {
   const app = express();
   app.disable("x-powered-by");
+  app.use(express.json());
+  app.all("/api/analyze-evidence", async (request: Request, response: Response) => {
+    await handleAnalyzeEvidenceRequest(request, response);
+  });
   app.all("/api/ercot-queue", async (request: Request, response: Response) => {
     await handleErcotQueueRequest(request, response);
   });

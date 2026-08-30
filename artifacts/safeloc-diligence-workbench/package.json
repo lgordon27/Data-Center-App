@@ -9,7 +9,7 @@
     "start": "NODE_ENV=production tsx server/index.ts",
     "serve": "NODE_ENV=production tsx server/index.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx --test src/model/*.test.ts src/data/*.test.ts src/services/*.test.ts server/ercotProxy.test.mjs server/eiaProxy.test.mjs",
+    "test": "tsx --test src/model/*.test.ts src/data/*.test.ts src/services/*.test.ts server/ercotProxy.test.mjs server/eiaProxy.test.mjs server/aiEvidenceProxy.test.mjs",
     "test:production": "tsx --test server/production.test.ts",
     "test:e2e": "playwright test --config playwright.config.ts"
   },

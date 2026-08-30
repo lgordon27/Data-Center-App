@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test";
 
 const responseFor = (classification: string, reasoning: string) => ({
-  content: [{ type: "text", text: JSON.stringify({ classification, reasoning }) }],
+  classification,
+  reasoning,
 });
 
 test.describe("AI evidence classification", () => {
@@ -11,7 +12,7 @@ test.describe("AI evidence classification", () => {
 
   test("shows a fresh suggestion and routes acceptance through live model state", async ({ page }) => {
     let requests = 0;
-    await page.route("https://api.anthropic.com/v1/messages", async (route) => {
+    await page.route("**/api/analyze-evidence", async (route) => {
       requests += 1;
       await route.fulfill({
         status: 200,
@@ -51,11 +52,11 @@ test.describe("AI evidence classification", () => {
     const requestedIds: string[] = [];
     let inFlight = 0;
     let maxInFlight = 0;
-    await page.route("https://api.anthropic.com/v1/messages", async (route) => {
+    await page.route("**/api/analyze-evidence", async (route) => {
       inFlight += 1;
       maxInFlight = Math.max(maxInFlight, inFlight);
-      const body = await route.request().postDataJSON() as { messages: Array<{ content: string }> };
-      const id = body.messages[0].content.match(/Variable: ([^.]+)\./)?.[1] ?? "unknown";
+       const body = await route.request().postDataJSON() as { name: string };
+       const id = body.name;
       requestedIds.push(id);
       await route.fulfill({
         status: 200,
@@ -94,7 +95,7 @@ test.describe("AI evidence classification", () => {
   });
 
   test("clears suggestions after refresh and displays manual-review errors", async ({ page }) => {
-    await page.route("https://api.anthropic.com/v1/messages", async (route) => {
+    await page.route("**/api/analyze-evidence", async (route) => {
       await route.fulfill({ status: 200, contentType: "text/plain", body: "not structured" });
     });
 

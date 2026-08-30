@@ -2,3 +2,4 @@
 - [Client-only workspace pruning](client-only-workspace-pruning.md) — removing shared API packages also requires clearing consuming project references before Vite or TypeScript can resolve the workspace.
 - [External data truth states](external-data-truth-states.md) — never label bundled baselines cached/live; provider states require validated origin and timestamps.
 - [Artifact process production](artifact-process-production.md) — process-backed artifact services use nested build/run args tables, not a command in `serve`.
+- [Typed server modules](server-mjs-type-declarations.md) — TypeScript imports of server-side .mjs modules need matching declaration sidecars to pass the package typecheck.

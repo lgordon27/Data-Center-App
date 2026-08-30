@@ -58,7 +58,7 @@ async function stopProcess(child: ReturnType<typeof spawn>) {
   }
 }
 
-test("production entry point serves ERCOTQueue and EIA routes without retired endpoints", async () => {
+test("production entry point serves active API routes without retired endpoints", async () => {
   const port = 4700 + (process.pid % 500);
   await run("pnpm", ["run", "build"], { PORT: String(port), BASE_PATH: "/" });
   const child = spawn("pnpm", ["run", "start"], {
@@ -76,6 +76,8 @@ test("production entry point serves ERCOTQueue and EIA routes without retired en
     const eia = await waitForJson(`${baseUrl}/api/eia/electricity`, child);
     assert.ok(["live", "cached", "unavailable", "error"].includes(String(eia.status)));
     assert.equal(typeof eia.diagnostics, "object");
+    const aiMethod = await fetch(`${baseUrl}/api/analyze-evidence`);
+    assert.equal(aiMethod.status, 405);
     for (const retiredPath of ["/api/grid/status", "/api/grid/diagnostics", "/api/grid/query"]) {
       const retiredResponse = await fetch(`${baseUrl}${retiredPath}`);
       assert.equal(retiredResponse.status, 404, `${retiredPath} should not be exposed`);

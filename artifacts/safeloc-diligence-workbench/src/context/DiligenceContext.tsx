@@ -68,6 +68,7 @@ type DiligenceState = {
   metrics: FinancialMetrics;
   resetToDefault: () => void;
   sessionRestored: boolean;
+  sessionMigrated: boolean;
   scenarios: SavedScenario[];
   saveScenario: (name: string) => SaveScenarioResult;
   renameScenario: (id: string, name: string) => RenameScenarioResult;
@@ -80,6 +81,7 @@ type DiligenceState = {
 
 export const CURRENT_SESSION_STORAGE_KEY = 'safeloc:diligence:current-session:v1';
 export const EVIDENCE_TIP_DISMISSED_STORAGE_KEY = 'safeloc:diligence:evidence-room-tip-dismissed:v1';
+export const CURRENT_PROVENANCE_VERSION = 2;
 export const INITIAL_EVIDENCE: Record<string, EvidenceItem> = {
   electricity_cost: { id: 'electricity_cost', label: 'Electricity Cost / MWh', value: 42, numericValue: 42, unit: '$/MWh', classification: 'User Assumption', citation: 'U.S. Energy Information Administration Electric Power Monthly (2025); Oncor Electric Delivery Company tariff filings (2026)', description: 'Representative West Texas blended power rate selected for underwriting; it is a synthetic input anchored to public EIA and Oncor data, not a disclosed Stargate contract tariff.', sourceId: null, providerSourceId: 'eia', sourceRole: 'Synthetic electricity-cost assumption' },
   water_consumption: { id: 'water_consumption', label: 'Annual Cooling Water', value: 'Not disclosed', numericValue: 23, unit: 'Facility total', classification: 'Missing Evidence', citation: 'City of Abilene water utility records (2025–2026) and Stargate/Crusoe project disclosures (2025–2026) searched; no facility-level annual total found', description: 'The dated municipal records and project disclosures searched do not establish Stargate Abilene facility-level water consumption.', sourceId: null, providerSourceId: null, sourceRole: 'Searched public records and project disclosures' },
@@ -157,6 +159,15 @@ const VALID_CLASSIFICATIONS: Classification[] = [
   'User Assumption',
   'Missing Evidence',
 ];
+
+// These are the audited defaults from the previous provenance definition. They
+// let a legacy session distinguish stale defaults from analyst-selected values.
+const LEGACY_PROVENANCE_DEFAULTS: Partial<Record<string, Classification>> = {
+  electricity_cost: 'Verified Evidence',
+  electricity_escalation: 'Verified Evidence',
+  customer_concentration: 'Verified Evidence',
+};
+
 export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   const initialSession = useMemo(() => loadCurrentSession(), []);
   const [state, setState] = useState({
@@ -167,6 +178,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   const stateRef = useRef(state);
   stateRef.current = state;
   const [sessionRestored, setSessionRestored] = useState(initialSession.restored);
+  const [sessionMigrated] = useState(initialSession.migrated);
   const [scenarios, setScenarios] = useState<SavedScenario[]>(loadScenarios);
   const [ercotQueue, setErcotQueue] = useState<ErcotQueueResult>(FALLBACK_ERCOT_RESULT);
   const [eiaData, setEiaData] = useState<EiaElectricityData>(() => createEiaFallback());
@@ -233,13 +245,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     if (source === "manual") {
       recordManualClassificationChange(id, previous, classification);
     }
-    writeStorage(CURRENT_SESSION_STORAGE_KEY, {
-      version: STORAGE_VERSION,
-      hasChangedClassification: true,
-      classifications: Object.fromEntries(
-        Object.entries(nextEvidence).map(([itemId, item]) => [itemId, item.classification]),
-      ),
-    });
+    writeStorage(CURRENT_SESSION_STORAGE_KEY, createSessionPayload(nextEvidence, true));
   }, [eiaData]);
 
   const clearLastChange = useCallback(() => {
@@ -282,7 +288,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     };
     const nextScenarios = [...scenarios, scenario];
     setScenarios(nextScenarios);
-    writeStorage(SCENARIOS_STORAGE_KEY, { version: STORAGE_VERSION, scenarios: nextScenarios });
+    writeStorage(SCENARIOS_STORAGE_KEY, { version: SCENARIOS_STORAGE_VERSION, scenarios: nextScenarios });
     return { ok: true, scenario };
   };
 
@@ -298,7 +304,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     const renamedScenario = { ...scenario, name: trimmedName };
     const nextScenarios = scenarios.map((candidate) => candidate.id === id ? renamedScenario : candidate);
     setScenarios(nextScenarios);
-    writeStorage(SCENARIOS_STORAGE_KEY, { version: STORAGE_VERSION, scenarios: nextScenarios });
+    writeStorage(SCENARIOS_STORAGE_KEY, { version: SCENARIOS_STORAGE_VERSION, scenarios: nextScenarios });
     return { ok: true, scenario: renamedScenario };
   };
 
@@ -308,7 +314,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
 
     const nextScenarios = scenarios.filter((candidate) => candidate.id !== id);
     setScenarios(nextScenarios);
-    writeStorage(SCENARIOS_STORAGE_KEY, { version: STORAGE_VERSION, scenarios: nextScenarios });
+    writeStorage(SCENARIOS_STORAGE_KEY, { version: SCENARIOS_STORAGE_VERSION, scenarios: nextScenarios });
     return { ok: true, scenario };
   };
 
@@ -318,7 +324,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, clearLastChange, metrics, resetToDefault, sessionRestored, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading }}>
+    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, clearLastChange, metrics, resetToDefault, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading }}>
       {children}
     </DiligenceContext.Provider>
   );
@@ -434,9 +440,64 @@ function writeStorage(key: string, value: unknown) {
 
 export const SCENARIOS_STORAGE_KEY = 'safeloc:diligence:scenarios:v1';
 
+const SESSION_STORAGE_VERSION = 2;
+const SCENARIOS_STORAGE_VERSION = 1;
+
+type SessionPayload = {
+  version: number;
+  canonicalProvenanceVersion: number;
+  hasChangedClassification: boolean;
+  classifications: Record<string, Classification>;
+  overrides: Record<string, Classification>;
+};
+
+function createSessionPayload(
+  evidence: Record<string, EvidenceItem>,
+  hasChangedClassification: boolean,
+): SessionPayload {
+  return {
+    version: SESSION_STORAGE_VERSION,
+    canonicalProvenanceVersion: CURRENT_PROVENANCE_VERSION,
+    hasChangedClassification,
+    classifications: Object.fromEntries(
+      Object.entries(evidence).map(([id, item]) => [id, item.classification]),
+    ),
+    overrides: getClassificationOverrides(evidence),
+  };
+}
+
+function getClassificationOverrides(
+  evidence: Record<string, EvidenceItem>,
+): Record<string, Classification> {
+  return Object.fromEntries(
+    Object.entries(evidence)
+      .filter(([id, item]) => item.classification !== INITIAL_EVIDENCE[id]?.classification)
+      .map(([id, item]) => [id, item.classification]),
+  );
+}
+
+function parseClassificationOverrides(value: unknown): Record<string, Classification> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const overrides = value as Record<string, unknown>;
+  const expectedIds = Object.keys(INITIAL_EVIDENCE);
+  if (Object.keys(overrides).some((id) => !expectedIds.includes(id))) return null;
+  if (Object.values(overrides).some((classification) => !isClassification(classification))) return null;
+  return overrides as Record<string, Classification>;
+}
+
+function applyClassificationOverrides(
+  overrides: Record<string, Classification>,
+): Record<string, EvidenceItem> {
+  const evidence = cloneEvidence(INITIAL_EVIDENCE);
+  for (const [id, classification] of Object.entries(overrides)) {
+    evidence[id] = { ...evidence[id], classification };
+  }
+  return evidence;
+}
+
 function loadCurrentSession() {
   const raw = readStorage(CURRENT_SESSION_STORAGE_KEY);
-  if (!raw) return { evidence: cloneEvidence(INITIAL_EVIDENCE), hasChangedClassification: false, restored: false };
+  if (!raw) return { evidence: cloneEvidence(INITIAL_EVIDENCE), hasChangedClassification: false, restored: false, migrated: false };
 
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -445,7 +506,7 @@ function loadCurrentSession() {
         ? (parsed as { classifications?: unknown }).classifications
         : parsed;
     if (!classifications || typeof classifications !== 'object' || Array.isArray(classifications)) {
-      return { evidence: cloneEvidence(INITIAL_EVIDENCE), hasChangedClassification: false, restored: false };
+      return { evidence: cloneEvidence(INITIAL_EVIDENCE), hasChangedClassification: false, restored: false, migrated: false };
     }
 
     const entries = Object.entries(classifications);
@@ -455,22 +516,50 @@ function loadCurrentSession() {
       expectedIds.some((id) => !Object.prototype.hasOwnProperty.call(classifications, id)) ||
       entries.some(([, value]) => !isClassification(value))
     ) {
-      return { evidence: cloneEvidence(INITIAL_EVIDENCE), hasChangedClassification: false, restored: false };
+      return { evidence: cloneEvidence(INITIAL_EVIDENCE), hasChangedClassification: false, restored: false, migrated: false };
     }
 
-    const evidence = cloneEvidence(INITIAL_EVIDENCE);
-    for (const [id, classification] of entries) {
-      evidence[id] = { ...evidence[id], classification };
+    const parsedRecord = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null;
+    const storedOverrides = parsedRecord ? parseClassificationOverrides(parsedRecord.overrides) : null;
+    const isCurrentProvenance = parsedRecord?.canonicalProvenanceVersion === CURRENT_PROVENANCE_VERSION;
+    let evidence: Record<string, EvidenceItem>;
+    let migrated = false;
+
+    if (isCurrentProvenance && storedOverrides) {
+      evidence = applyClassificationOverrides(storedOverrides);
+    } else if (isCurrentProvenance) {
+      evidence = cloneEvidence(INITIAL_EVIDENCE);
+      for (const [id, classification] of entries) {
+        evidence[id] = { ...evidence[id], classification };
+      }
+    } else if (storedOverrides) {
+      // A session written by an intermediate version already records the
+      // analyst's intent explicitly; carry those overrides onto new defaults.
+      evidence = applyClassificationOverrides(storedOverrides);
+      migrated = true;
+    } else {
+      const legacyClassifications = classifications as Record<string, unknown>;
+      const overrides: Record<string, Classification> = {};
+      evidence = cloneEvidence(INITIAL_EVIDENCE);
+      for (const [id, classification] of entries) {
+        const legacyDefault = LEGACY_PROVENANCE_DEFAULTS[id] ?? INITIAL_EVIDENCE[id].classification;
+        if (classification !== legacyDefault) overrides[id] = classification;
+      }
+      evidence = applyClassificationOverrides(overrides);
+      migrated = true;
     }
     const hasChangedClassification = Boolean(
-      parsed &&
-      typeof parsed === 'object' &&
-      !Array.isArray(parsed) &&
-      (parsed as { hasChangedClassification?: unknown }).hasChangedClassification === true,
+      parsedRecord?.hasChangedClassification === true ||
+      Object.keys(getClassificationOverrides(evidence)).length > 0,
     );
-    return { evidence, hasChangedClassification, restored: true };
+    if (migrated) {
+      writeStorage(CURRENT_SESSION_STORAGE_KEY, createSessionPayload(evidence, hasChangedClassification));
+    }
+    return { evidence, hasChangedClassification, restored: true, migrated };
   } catch {
-    return { evidence: cloneEvidence(INITIAL_EVIDENCE), hasChangedClassification: false, restored: false };
+    return { evidence: cloneEvidence(INITIAL_EVIDENCE), hasChangedClassification: false, restored: false, migrated: false };
   }
 }
 
@@ -482,8 +571,6 @@ function readStorage(key: string): string | null {
     return null;
   }
 }
-
-const STORAGE_VERSION = 1;
 
 function applyEiaEvidence(
   evidence: Record<string, EvidenceItem>,

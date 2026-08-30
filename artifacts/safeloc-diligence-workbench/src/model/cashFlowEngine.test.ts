@@ -43,6 +43,9 @@ test("the canonical evidence contract has 16 items and a 16-item confidence deno
   const model = calculateCashFlowModel(INITIAL_EVIDENCE);
 
   assert.equal(Object.keys(INITIAL_EVIDENCE).length, 16);
+  assert.equal(INITIAL_EVIDENCE.electricity_cost.classification, "User Assumption");
+  assert.equal(INITIAL_EVIDENCE.electricity_escalation.classification, "Model Inference");
+  assert.equal(INITIAL_EVIDENCE.customer_concentration.classification, "Management Assertion");
    assert.equal(model.confidenceScore, 48);
   assert.equal(
     model.assumptions.siteHazardExposure,

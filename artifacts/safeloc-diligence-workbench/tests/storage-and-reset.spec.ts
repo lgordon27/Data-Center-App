@@ -63,8 +63,54 @@ test.describe("current-session recovery and reset isolation", () => {
     await page.goto("/#evidence");
     await page.reload();
 
-    await expect(page.getByTestId("select-classification-electricity_cost")).toHaveValue("Verified Evidence");
+    await expect(page.getByTestId("select-classification-electricity_cost")).toHaveValue("User Assumption");
     await expect(page.getByTestId("text-session-restored")).toHaveCount(0);
+  });
+
+  test("migrates stale audited defaults while preserving intentional overrides", async ({ page }) => {
+    const legacyClassifications = {
+      electricity_cost: "Verified Evidence",
+      water_consumption: "Verified Evidence",
+      grid_interconnection: "Verified Evidence",
+      water_escalation: "Model Inference",
+      community_risk: "Verified Evidence",
+      renewable_percentage: "Management Assertion",
+      cooling_capex: "User Assumption",
+      electricity_escalation: "Verified Evidence",
+      carbon_compliance: "Model Inference",
+      permitting_timeline: "Management Assertion",
+      customer_concentration: "Missing Evidence",
+      water_rights: "Missing Evidence",
+      site_hazard_exposure: "Verified Evidence",
+      backup_power_capacity: "Management Assertion",
+      water_source_resilience: "Model Inference",
+      downtime_cost: "User Assumption",
+    };
+    await page.evaluate(
+      ({ key, classifications }) => window.localStorage.setItem(key, JSON.stringify({
+        version: 1,
+        hasChangedClassification: true,
+        classifications,
+      })),
+      { key: currentSessionKey, classifications: legacyClassifications },
+    );
+
+    await page.goto("/#evidence");
+    await page.reload();
+
+    await expect(page.getByTestId("select-classification-electricity_cost")).toHaveValue("User Assumption");
+    await expect(page.getByTestId("select-classification-electricity_escalation")).toHaveValue("Model Inference");
+    await expect(page.getByTestId("select-classification-customer_concentration")).toHaveValue("Missing Evidence");
+    await expect(page.getByTestId("select-classification-water_consumption")).toHaveValue("Verified Evidence");
+    await expect(page.getByTestId("text-session-restored")).toHaveText("Session updated to audited defaults");
+
+    const migrated = await page.evaluate((key) => JSON.parse(window.localStorage.getItem(key) ?? "{}"), currentSessionKey);
+    expect(migrated.version).toBe(2);
+    expect(migrated.canonicalProvenanceVersion).toBe(2);
+    expect(migrated.overrides).toEqual({
+      customer_concentration: "Missing Evidence",
+      water_consumption: "Verified Evidence",
+    });
   });
 
   test("requires reset confirmation and preserves named scenarios", async ({ page }) => {
@@ -105,7 +151,7 @@ test.describe("current-session recovery and reset isolation", () => {
     await expect.poll(() => page.evaluate((key) => JSON.parse(window.localStorage.getItem(key) ?? "{}").scenarios?.[0]?.name, scenariosKey)).toBe("Keep me");
 
     await page.goto("/#evidence");
-    await expect(classification).toHaveValue("Verified Evidence");
+    await expect(classification).toHaveValue("User Assumption");
     await page.goto("/#materiality");
     await expect(page.getByTestId("materiality-classification-prompt")).toBeVisible();
   });

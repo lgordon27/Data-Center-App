@@ -230,6 +230,7 @@ export function ProgressNav({ current, onNavigate }: { current: Screen; onNaviga
 }
 
 export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, onWorkbench, route, sessionRestored, mobileOpen, menuButtonRef }: { onMenu: () => void; onReset: () => void; onHome: () => void; onHowItWorks: () => void; onValueChain: () => void; onWorkbench: () => void; route: AppRoute; sessionRestored: boolean; mobileOpen: boolean; menuButtonRef: RefObject<HTMLButtonElement | null> }) {
+  const { sessionMigrated } = useDiligence();
   return (
     <>
     <header className="border-b border-[#d9e0e4] bg-[#122232] px-4 py-4 text-[#f6f7f2] md:px-8 md:py-5">
@@ -300,7 +301,7 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
               Return to Workbench
             </button>
           )}
-          {sessionRestored && <span role="status" data-testid="text-session-restored" className="absolute right-4 top-full z-20 rounded border border-[#b9d43a]/40 bg-[#122232] px-2.5 py-1.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-[#d4e86b] shadow-md md:right-8">Session restored</span>}
+          {sessionRestored && <span role="status" data-testid="text-session-restored" className="absolute right-4 top-full z-20 rounded border border-[#b9d43a]/40 bg-[#122232] px-2.5 py-1.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-[#d4e86b] shadow-md md:right-8">{sessionMigrated ? "Session updated to audited defaults" : "Session restored"}</span>}
           <button data-testid="button-reset-default" type="button" onClick={onReset} className="rounded border border-[#60717f] px-2.5 py-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.08em] text-[#d4e86b] transition-colors hover:border-[#d4e86b] hover:bg-white/10">Reset to Default</button>
           <span className="hidden rounded border border-[#60717f] px-2.5 py-1.5 font-mono text-[9px] uppercase tracking-[0.1em] text-[#c8d0d5] sm:inline-flex">POC / v0.9</span>
           <div className="hidden h-8 w-8 items-center justify-center rounded-full bg-[#e9e0f7] font-mono text-[10px] font-bold text-[#482873] sm:flex">AD</div>

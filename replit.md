@@ -104,7 +104,7 @@ Recommendation status is governed by material evidence, not return alone:
 
 SafeLoc is client-only and persistence is local to the browser:
 
-- The current session saves the 16 classifications in `localStorage`. A valid saved session is restored on load and briefly surfaced as “Session restored.”
+- The current session saves the 16 classifications plus a canonical provenance version and explicit analyst overrides in `localStorage`. Legacy sessions are migrated against the prior audited defaults so corrected provenance is restored without discarding intentional changes; migration is briefly surfaced as “Session updated to audited defaults.”
 - Reset to Default restores the canonical evidence classifications and clears the current session. It does not delete named scenarios.
 - The Decision Review screen can save a named snapshot containing all classifications and the calculated metrics. Names must be non-empty and unique (case-insensitive), and at most five scenarios are kept.
 - Saved scenarios are independent snapshots: later changes to the live workbench do not mutate them. With at least two snapshots, the UI can compare their IRR, MOIC, NPV, cash-on-cash, payback, and confidence values.

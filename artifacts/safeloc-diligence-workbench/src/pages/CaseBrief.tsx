@@ -83,6 +83,12 @@ export function CaseBrief({ onNavigate }: { onNavigate: (screen: Screen) => void
           </div>
         </section>
       </div>
+      <aside data-testid="brief-tier-2-callout" className="mt-5 border-l-2 border-[#255bb7] bg-[#eef2f1] px-4 py-4 md:px-5">
+        <div className="font-mono text-[9px] font-bold uppercase tracking-[0.16em] text-[#255bb7]">Market context / Tier 2</div>
+        <p className="mt-2 max-w-5xl text-[12px] leading-5 text-[#344550]">
+          Stargate is a Tier 2 infrastructure project: grid-dependent, subject to ERCOT delays, affected by the August 2026 moratorium. Not all AI infrastructure faces these constraints. Chevron/Microsoft&apos;s Project Kilby bypassed the grid with behind-the-meter generation and is proceeding. This tool analyzes the evidence gap that separates projects that advance from projects that stall.
+        </p>
+      </aside>
       <section data-testid="ercot-queue-statistics" className="mt-5 rounded-xl border border-[#cbd8d4] bg-white p-5 md:p-6" aria-labelledby="ercot-queue-title">
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#e5eae8] pb-4">
           <div>

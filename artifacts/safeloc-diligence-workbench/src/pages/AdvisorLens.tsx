@@ -62,6 +62,12 @@ export function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => vo
     violet: { background: "#eee7fa", border: "#cbb7ec", color: "#7049b7" },
     navy: { background: "#122232", border: "#122232", color: "#d4e86b" },
   };
+  const infrastructureExposure = [
+    { id: "nvidia", company: "NVIDIA", detail: "Downstream of all infrastructure. GPU revenue depends on total build rate. Tier 2 delays slow procurement." },
+    { id: "microsoft", company: "Microsoft", detail: "Partially hedged. Project Kilby (Tier 1, proceeding) plus grid-dependent projects (Tier 2, at risk)." },
+    { id: "meta", company: "Meta", detail: "More grid-dependent. Major Texas projects require ERCOT interconnection. More exposed to Tier 2 delays." },
+    { id: "google", company: "Google", detail: "Significant Texas investment dependent on grid connection. Subject to Abbott's audit." },
+  ] as const;
   const conversations = [
     {
       number: "01",
@@ -130,6 +136,23 @@ export function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => vo
               </div>
             );
           })}
+        </div>
+        <div data-testid="advisor-tier-exposure" className="mt-6 border-t border-white/15 pt-5">
+          <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
+            <div>
+              <div className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#d4e86b]">Public context / portfolio exposure</div>
+              <h3 className="mt-1 text-[19px] font-semibold tracking-[-0.025em] text-white">Your Clients Are on Both Sides</h3>
+            </div>
+            <p className="max-w-md text-[10px] leading-4 text-[#9dafb8]">Exposure is not uniform. These are market-context examples, not facility-level Stargate evidence.</p>
+          </div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            {infrastructureExposure.map((entry) => (
+              <div key={entry.id} data-testid={`advisor-tier-${entry.id}`} className="rounded-lg border border-white/10 bg-white/5 p-3">
+                <div className="font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-[#d4e86b]">{entry.company}</div>
+                <p className="mt-1 text-[10px] leading-4 text-[#c4d0d6]">{entry.detail}</p>
+              </div>
+            ))}
+          </div>
         </div>
         <div className="mt-6 grid gap-3 md:grid-cols-3">
           <div data-testid="advisor-risk-stat-paused" className="rounded-lg border border-white/10 bg-white/5 p-4">

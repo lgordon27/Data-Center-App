@@ -40,7 +40,7 @@ export const valueChainStages: ChainStage[] = [
     title: "DATA CENTER INFRASTRUCTURE",
     description: "Where capital meets physical reality: power, water, land, grid, community.",
     players: "Stargate Abilene · Oracle · Crusoe Energy",
-    evidence: "$130 billion in projects paused in Q1 2026. The evidence behind the assumptions is what this tool tests.",
+    evidence: "$130 billion in projects paused in Q1 2026. The evidence behind the assumptions is what this tool tests. This layer is bifurcating. Behind-the-meter projects like Chevron/Microsoft's Project Kilby bypass the grid and are proceeding. Grid-dependent projects like Stargate Abilene are subject to the 474 GW queue and the Abbott moratorium. Evidence quality determines which side a project lands on.",
     accent: "lime",
     icon: Server,
   },

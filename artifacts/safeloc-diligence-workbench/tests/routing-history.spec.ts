@@ -116,6 +116,16 @@ async function expectTourLayoutToStayReadable(page: Page, selector: string) {
   expect(lowContrast).toEqual([]);
 }
 
+async function expectPageToStayWithinViewport(page: Page) {
+  const overflow = await page.evaluate(() => ({
+    bodyWidth: document.body.scrollWidth,
+    documentWidth: document.documentElement.scrollWidth,
+    viewportWidth: window.innerWidth,
+  }));
+  expect(overflow.bodyWidth).toBeLessThanOrEqual(overflow.viewportWidth + 1);
+  expect(overflow.documentWidth).toBeLessThanOrEqual(overflow.viewportWidth + 1);
+}
+
 test.describe("hash routing and browser history", () => {
   test("supports all direct links and normalizes invalid hashes", async ({ page }) => {
     for (const [route, label] of routes) {
@@ -126,6 +136,8 @@ test.describe("hash routing and browser history", () => {
       if (route === "brief") {
         await expect(page.getByTestId("section-sri-context")).toContainText("We Helped Build This");
         await expect(page.getByTestId("sri-context-callout")).toContainText("The companies building this infrastructure");
+        await expect(page.getByTestId("brief-tier-2-callout")).toContainText("Stargate is a Tier 2 infrastructure project");
+        await expect(page.getByTestId("brief-tier-2-callout")).toContainText("Chevron/Microsoft's Project Kilby bypassed the grid");
       }
       if (route === "evidence") {
         await expect(page.getByTestId("text-evidence-sri-framing")).toContainText("Sustainability ratings grade companies on their disclosures.");
@@ -135,6 +147,12 @@ test.describe("hash routing and browser history", () => {
       }
     }
 
+    await page.goto("/");
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveTitle("SafeLoc · Home");
+    await expect(page.getByTestId("home-bifurcation-framing")).toContainText("The AI infrastructure market is splitting in two.");
+    await expect(page.getByTestId("home-bifurcation-framing")).toContainText("The companies in your portfolio are on both sides.");
+
     await page.goto("/#how-it-works");
     await expect(page).toHaveURL(/#how-it-works$/);
     await expect(page).toHaveTitle("SafeLoc · How It Works");
@@ -143,6 +161,8 @@ test.describe("hash routing and browser history", () => {
     await expect(page.getByTestId("tour-sri-context")).toContainText("That thesis worked.");
     await expect(page.getByTestId("tour-sri-context")).toContainText("The sustainability community helped birth the AI economy.");
     await expect(page.getByTestId("tour-sri-context")).toContainText("understand the technology well enough to steer it");
+    await expect(page.getByTestId("tour-bifurcation-context")).toContainText("The market is bifurcating between projects that solved their constraints independently");
+    await expect(page.getByTestId("tour-bifurcation-context")).toContainText("which side a specific project falls on.");
     await expect(page.getByTestId("tour-builder-story")).toContainText("Sustainability professionals helped build the AI economy.");
     await expect(page.getByTestId("tour-builder-story")).toContainText("rather than watching from the sidelines.");
     await expect(page.getByText("$130 billion worth of AI data center projects", { exact: false })).toBeVisible();
@@ -278,6 +298,38 @@ test.describe("hash routing and browser history", () => {
     await expect(page).toHaveURL(/#brief$/);
   });
 
+  test("shows infrastructure bifurcation framing on each editorial route", async ({ page }) => {
+    await page.goto("/");
+    await expectPageToStayWithinViewport(page);
+    await expect(page.getByTestId("home-bifurcation-framing")).toContainText("Projects that solved their constraints independently are proceeding");
+    await expect(page.getByTestId("home-bifurcation-framing")).toContainText("Projects dependent on public infrastructure are stalling");
+
+    await page.goto("/#brief");
+    await expectPageToStayWithinViewport(page);
+    await expect(page.getByTestId("brief-tier-2-callout")).toContainText("affected by the August 2026 moratorium");
+    await expect(page.getByTestId("brief-tier-2-callout")).toContainText("the evidence gap that separates projects that advance from projects that stall");
+
+    await page.goto("/#value-chain");
+    await expectPageToStayWithinViewport(page);
+    const focalStage = page.getByTestId("value-chain-stage-data-center-infrastructure");
+    await expect(focalStage).toContainText("Chevron/Microsoft's Project Kilby bypass the grid and are proceeding");
+    await expect(focalStage).toContainText("Grid-dependent projects like Stargate Abilene");
+
+    await page.goto("/#advisor");
+    await expectPageToStayWithinViewport(page);
+    const tierExposure = page.getByTestId("advisor-tier-exposure");
+    await expect(tierExposure.getByRole("heading", { name: "Your Clients Are on Both Sides" })).toBeVisible();
+    await expect(tierExposure.locator("[data-testid^='advisor-tier-']")).toHaveCount(4);
+    await expect(tierExposure).toContainText("NVIDIA");
+    await expect(tierExposure).toContainText("Microsoft");
+    await expect(tierExposure).toContainText("Meta");
+    await expect(tierExposure).toContainText("Google");
+
+    await page.goto("/#how-it-works");
+    await expectPageToStayWithinViewport(page);
+    await expect(page.getByTestId("tour-bifurcation-context")).toContainText("This tool tests which side a specific project falls on.");
+  });
+
   test("preserves navigation order through back and forward", async ({ page }) => {
     await page.goto("/#brief");
     await page.getByTestId("button-navigate-evidence").click();
@@ -318,6 +370,9 @@ test.describe("hash routing and browser history", () => {
     await expect(page.getByTestId("value-chain-stage-data-center-infrastructure")).toContainText("Where capital meets physical reality: power, water, land, grid, community.");
     await expect(page.getByTestId("value-chain-stage-data-center-infrastructure")).toContainText("Power · water · land · grid · community");
     await expect(page.getByTestId("value-chain-page")).toContainText("$130 billion in projects paused in Q1 2026.");
+    await expect(page.getByTestId("value-chain-stage-data-center-infrastructure")).toContainText("This layer is bifurcating.");
+    await expect(page.getByTestId("value-chain-stage-data-center-infrastructure")).toContainText("the 474 GW queue and the Abbott moratorium");
+    await expect(page.getByTestId("value-chain-stage-data-center-infrastructure")).toContainText("Evidence quality determines which side a project lands on.");
 
     await page.getByTestId("button-value-chain-return-hero").click();
     await expect(page).toHaveURL(/#brief$/);
@@ -364,6 +419,7 @@ test.describe("hash routing and browser history", () => {
     await page.goto("/#advisor");
 
     await expect(page.getByRole("heading", { name: "Your Clients’ Values Are Invested Here" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Your Clients Are on Both Sides" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "How to Talk to Your Client" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Why This Is Your Role" })).toBeVisible();
 
@@ -379,6 +435,10 @@ test.describe("hash routing and browser history", () => {
     ]);
 
     await expect(page.getByTestId("section-client-exposure")).toContainText("The exposure chain turns that connection into diligence questions");
+    await expect(page.getByTestId("advisor-tier-nvidia")).toContainText("Tier 2 delays slow procurement.");
+    await expect(page.getByTestId("advisor-tier-microsoft")).toContainText("Project Kilby (Tier 1, proceeding)");
+    await expect(page.getByTestId("advisor-tier-meta")).toContainText("Major Texas projects require ERCOT interconnection.");
+    await expect(page.getByTestId("advisor-tier-google")).toContainText("Subject to Abbott's audit.");
     await expect(page.getByTestId("text-epistemic-gap")).toContainText("two different questions");
     await expect(page.getByTestId("advisor-risk-stat-paused")).toContainText("$130B");
     await expect(page.getByTestId("advisor-risk-stat-revenue")).toContainText("$8B");

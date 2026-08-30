@@ -42,7 +42,13 @@ import {
   type AIEvidenceResult,
   type AIEvidenceSuccess,
 } from "@/services/aiEvidenceService";
-import { logSessionAction } from "@/services/sessionLog";
+import {
+  DECISION_HISTORY_EVENT,
+  getDecisionHistory,
+  logSessionAction,
+  recordAIDecision,
+  type DecisionHistoryEntry,
+} from "@/services/sessionLog";
 import type {
   Screen
 } from "@/components/Shell";
@@ -328,7 +334,14 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
   const [notices, setNotices] = useState<Record<string, AssessmentNotice | undefined>>({});
   const [activeAnalysisId, setActiveAnalysisId] = useState<string | null>(null);
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
+  const [decisionHistory, setDecisionHistory] = useState<DecisionHistoryEntry[]>(getDecisionHistory);
   const isAnalysisBusy = activeAnalysisId !== null;
+
+  useEffect(() => {
+    const syncDecisionHistory = () => setDecisionHistory(getDecisionHistory());
+    window.addEventListener(DECISION_HISTORY_EVENT, syncDecisionHistory);
+    return () => window.removeEventListener(DECISION_HISTORY_EVENT, syncDecisionHistory);
+  }, []);
 
   const dismissClassificationTip = () => {
     setShowClassificationTip(false);
@@ -380,8 +393,9 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
   };
 
   const acceptAssessment = (item: EvidenceItem, assessment: AIEvidenceSuccess) => {
-    updateClassification(item.id, assessment.classification);
+    updateClassification(item.id, assessment.classification, "ai");
     logSessionAction("AI-proposed, human-accepted", item.id);
+    recordAIDecision(item.id, assessment.classification, assessment.reasoning, "accepted", assessment.classification);
     setAssessments((current) => ({ ...current, [item.id]: undefined }));
     setNotices((current) => ({ ...current, [item.id]: "accepted" }));
     window.setTimeout(() => {
@@ -391,6 +405,10 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
 
   const overrideAssessment = (item: EvidenceItem) => {
     logSessionAction("AI-proposed, human-overridden", item.id);
+    const assessment = assessments[item.id];
+    if (assessment?.status === "success") {
+      recordAIDecision(item.id, assessment.classification, assessment.reasoning, "overridden", item.classification);
+    }
     setAssessments((current) => ({ ...current, [item.id]: undefined }));
     setNotices((current) => ({ ...current, [item.id]: "overridden" }));
     window.setTimeout(() => {
@@ -466,6 +484,7 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
           return <div key={classification} data-testid={`count-classification-${meta.short.toLowerCase()}`} className="rounded-lg border p-3" style={{ borderColor: meta.border, backgroundColor: meta.bg }}><div className="flex items-center justify-between gap-2"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: meta.color }} /><span className="font-mono text-xl font-bold" style={{ color: meta.color }}>{count}</span></div><div className="mt-2 text-[9px] font-bold uppercase leading-3 tracking-[0.1em]" style={{ color: meta.color }}>{classification}</div></div>;
         })}
       </div>
+      <DecisionHistory items={decisionHistory} evidence={evidence} />
       <div className="space-y-3">
         {evidenceCategories.map((category) => {
           const categoryItems = category.itemIds.map((id) => evidence[id]).filter(Boolean);
@@ -552,5 +571,106 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
       <BottomNav screen="evidence" onNavigate={onNavigate} />
     </div>
   );
+}
+
+function DecisionHistory({ items, evidence }: { items: DecisionHistoryEntry[]; evidence: Record<string, EvidenceItem> }) {
+  const orderedItems = [...items].reverse();
+  return (
+    <section data-testid="ai-decision-history" aria-labelledby="ai-decision-history-title" className="mb-5 overflow-hidden rounded-xl border border-[#d9e0e4] bg-white">
+      <header className="border-b border-[#d9e0e4] bg-[#122232] px-4 py-4 text-white md:px-5">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <div>
+            <div className="font-mono text-[9px] font-bold uppercase tracking-[0.16em] text-[#b9d43a]">Reviewable decision trail</div>
+            <h2 id="ai-decision-history-title" className="mt-1 text-[16px] font-semibold">AI decisions behind the classification</h2>
+          </div>
+          <span data-testid="ai-decision-history-count" className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#aebdc5]">{items.length} {items.length === 1 ? "entry" : "entries"}</span>
+        </div>
+        <p className="mt-2 max-w-3xl text-[10px] leading-4 text-[#c4d0d6]">Model suggestions and human decisions are recorded separately. This history explains how the current classification was reached; it does not change the live model.</p>
+      </header>
+      {orderedItems.length === 0 ? (
+        <p data-testid="ai-decision-history-empty" className="px-4 py-4 text-[10px] leading-4 text-[#60707d] md:px-5">No AI decisions or manual classification changes have been recorded in this session.</p>
+      ) : (
+        <ol className="divide-y divide-[#e5eae8]">
+          {orderedItems.map((entry, index) => {
+            const item = evidence[entry.itemId];
+            if (!item) return null;
+            return (
+              <li key={`${entry.recordedAt}-${entry.itemId}-${index}`} data-testid={`decision-history-entry-${index}`} className="px-4 py-4 md:px-5">
+                {entry.kind === "ai" ? (
+                  <AIDecisionHistoryEntry entry={entry} item={item} />
+                ) : (
+                  <ManualDecisionHistoryEntry entry={entry} item={item} />
+                )}
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </section>
+  );
+}
+
+function AIDecisionHistoryEntry({ entry, item }: { entry: Extract<DecisionHistoryEntry, { kind: "ai" }>; item: EvidenceItem }) {
+  const accepted = entry.decision === "accepted";
+  return (
+    <div>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <Sparkles aria-hidden="true" className="h-3.5 w-3.5 text-[#607500]" />
+            <span className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#607500]">Model suggestion</span>
+            <span className={`rounded-full px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.08em] ${accepted ? "bg-[#e0f4ed] text-[#0b7a63]" : "bg-[#fff0d6] text-[#a65a00]"}`}>{accepted ? "Accepted by human" : "Overridden by human"}</span>
+          </div>
+          <h3 className="mt-2 text-[12px] font-semibold text-[#243844]">{item.label}</h3>
+        </div>
+        <time dateTime={entry.recordedAt} className="font-mono text-[9px] text-[#7d898f]">{formatDecisionTime(entry.recordedAt)}</time>
+      </div>
+      <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="rounded-lg border border-[#d9e0e4] bg-[#f7faf8] p-3">
+          <div className="font-mono text-[8px] font-bold uppercase tracking-[0.12em] text-[#60707d]">AI proposed</div>
+          <div className="mt-2"><ClassificationBadge value={entry.proposedClassification} compact /></div>
+          <p className="mt-2 text-[10px] leading-4 text-[#52616b]">{entry.reasoning}</p>
+        </div>
+        <div className="rounded-lg border border-[#d9e0e4] bg-[#fbfcfa] p-3">
+          <div className="font-mono text-[8px] font-bold uppercase tracking-[0.12em] text-[#60707d]">Human decision / resulting classification</div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="text-[10px] font-semibold text-[#52616b]">{accepted ? "Accepted" : "Override retained"}</span>
+            <ClassificationBadge value={entry.resultingClassification} compact />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ManualDecisionHistoryEntry({ entry, item }: { entry: Extract<DecisionHistoryEntry, { kind: "manual" }>; item: EvidenceItem }) {
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="h-2 w-2 rounded-full bg-[#255bb7]" aria-hidden="true" />
+          <span className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#255bb7]">Human decision · manual classification change</span>
+        </div>
+        <h3 className="mt-2 text-[12px] font-semibold text-[#243844]">{item.label}</h3>
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-[#52616b]">
+          <ClassificationBadge value={entry.previousClassification} compact />
+          <span aria-hidden="true">→</span>
+          <ClassificationBadge value={entry.resultingClassification} compact />
+        </div>
+      </div>
+      <time dateTime={entry.recordedAt} className="font-mono text-[9px] text-[#7d898f]">{formatDecisionTime(entry.recordedAt)}</time>
+    </div>
+  );
+}
+
+function formatDecisionTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Time unavailable";
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
 }
 

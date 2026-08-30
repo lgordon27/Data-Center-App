@@ -25,6 +25,10 @@ import {
   fetchEiaElectricity,
   type EiaElectricityData,
 } from "@/services/eiaService";
+import {
+  clearDecisionHistory,
+  recordManualClassificationChange,
+} from "@/services/sessionLog";
 
 export type { Classification } from '@/model/cashFlowEngine';
 
@@ -59,7 +63,7 @@ export type ScenarioMetrics = {
 type DiligenceState = {
   evidence: Record<string, EvidenceItem>;
   hasChangedClassification: boolean;
-  updateClassification: (id: string, classification: Classification) => void;
+  updateClassification: (id: string, classification: Classification, source?: "manual" | "ai") => void;
   clearLastChange: () => void;
   metrics: FinancialMetrics;
   resetToDefault: () => void;
@@ -204,7 +208,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     return () => window.clearTimeout(timer);
   }, [sessionRestored]);
 
-  const updateClassification = useCallback((id: string, classification: Classification) => {
+  const updateClassification = useCallback((id: string, classification: Classification, source: "manual" | "ai" = "manual") => {
     const currentState = stateRef.current;
     const previous = currentState.evidence[id]?.classification;
     if (!previous || previous === classification || !isClassification(classification)) return;
@@ -226,6 +230,9 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     };
     stateRef.current = nextState;
     setState(nextState);
+    if (source === "manual") {
+      recordManualClassificationChange(id, previous, classification);
+    }
     writeStorage(CURRENT_SESSION_STORAGE_KEY, {
       version: STORAGE_VERSION,
       hasChangedClassification: true,
@@ -246,6 +253,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     stateRef.current = nextState;
     setState(nextState);
     clearStorage(CURRENT_SESSION_STORAGE_KEY);
+    clearDecisionHistory();
   }, []);
 
   const saveScenario = (name: string): SaveScenarioResult => {

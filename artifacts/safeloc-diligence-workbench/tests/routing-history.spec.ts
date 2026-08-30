@@ -126,6 +126,49 @@ async function expectPageToStayWithinViewport(page: Page) {
   expect(overflow.documentWidth).toBeLessThanOrEqual(overflow.viewportWidth + 1);
 }
 
+async function expectContextNoteToStayReadable(page: Page, noteTestId: string, messageTestId: string) {
+  const note = page.getByTestId(noteTestId);
+  const message = page.getByTestId(messageTestId);
+
+  await expect(note).toBeVisible();
+  await expect(note).toHaveAttribute("role", "note");
+  await expectTourLayoutToStayReadable(page, `[data-testid="${noteTestId}"]`);
+
+  const layout = await page.evaluate(({ noteTestId: noteId, messageTestId: messageId }) => {
+    const noteElement = document.querySelector<HTMLElement>(`[data-testid="${noteId}"]`);
+    const messageElement = document.querySelector<HTMLElement>(`[data-testid="${messageId}"]`);
+    if (!noteElement || !messageElement) {
+      return { error: `Missing ${noteId} or ${messageId}` };
+    }
+
+    const noteBox = noteElement.getBoundingClientRect();
+    const messageStyle = window.getComputedStyle(messageElement);
+    const lineHeight = Number.parseFloat(messageStyle.lineHeight);
+    return {
+      noteLeft: noteBox.left,
+      noteRight: noteBox.right,
+      viewportWidth: window.innerWidth,
+      messageClientWidth: messageElement.clientWidth,
+      messageScrollWidth: messageElement.scrollWidth,
+      messageClientHeight: messageElement.clientHeight,
+      messageScrollHeight: messageElement.scrollHeight,
+      lineHeight,
+      whiteSpace: messageStyle.whiteSpace,
+    };
+  }, { noteTestId, messageTestId });
+
+  expect(layout).not.toHaveProperty("error");
+  if ("error" in layout) return;
+
+  expect(layout.noteLeft).toBeGreaterThanOrEqual(-1);
+  expect(layout.noteRight).toBeLessThanOrEqual(layout.viewportWidth + 1);
+  expect(layout.messageClientWidth).toBeGreaterThan(0);
+  expect(layout.messageScrollWidth).toBeLessThanOrEqual(layout.messageClientWidth + 1);
+  expect(layout.messageScrollHeight).toBeLessThanOrEqual(layout.messageClientHeight + 1);
+  expect(layout.whiteSpace).not.toMatch(/nowrap|pre/);
+  expect(layout.messageClientHeight).toBeGreaterThan(layout.lineHeight + 1);
+}
+
 test.describe("hash routing and browser history", () => {
   test("supports all direct links and normalizes invalid hashes", async ({ page }) => {
     for (const [route, label] of routes) {
@@ -190,14 +233,39 @@ test.describe("hash routing and browser history", () => {
     const tipBox = await evidenceTip.boundingBox();
     const countBox = await countCards.boundingBox();
 
-    const portfolioConnection = page.getByTestId("portfolio-connection-strip");
+    expect(tipBox && countBox ? tipBox.y + tipBox.height : 0).toBeLessThanOrEqual(countBox?.y ?? Number.POSITIVE_INFINITY);
+
+    await page.goto("/#materiality");
+    await expect(page.getByTestId("materiality-classification-prompt")).toContainText("Change a classification to see the return update.");
+
+    await page.goto("/#evidence");
+    await page.getByTestId("select-classification-electricity_cost").selectOption("Missing Evidence");
+    await expect(page.getByTestId("toast-reclassification")).toContainText("Return updated");
+    await expect(page.getByTestId("live-current-irr")).toContainText("Current IRR is now");
+
+    await page.goto("/#materiality");
+    await expect(page.getByTestId("materiality-classification-prompt")).toHaveCount(0);
+    await expect(page.getByTestId("metric-project-irr")).toContainText(/\d+\.\d%/);
+  });
+
+  test("shows the complete SRI origin story in the product tour", async ({ page }) => {
+    await page.goto("/#how-it-works");
+
     const context = page.getByTestId("tour-sri-context");
     await expect(context).toContainText("Responsible investors helped capitalize the AI revolution; now its physical infrastructure is testing environmental stewardship, community impact, transparent governance, and evidence-based decision-making.");
     await expect(context).toContainText("Texas pausing new grid connections for an energy and water audit");
 
     const builderStory = page.getByTestId("tour-builder-story");
-    await expect(builderStory).toContainText("Built by LeAndrew Gordon, Founder and CEO of SafeLoc. Former Private Wealth Financial Advisor. Chartered SRI Counselor.");
-    await expect(builderStory).toContainText("Sustainability professionals helped build the AI economy. This tool exists because that responsibility does not end at the screening level. It extends to the infrastructure layer, where the assumptions behind AI's growth are being tested by physical reality every day. Understanding AI well enough to build with it, and applying values-aligned evidence standards to what you build, is how the sustainability community steers this technology toward a better future rather than watching from the sidelines.");
+    await expect(builderStory).toContainText("Built by LeAndrew Gordon, Founder and CEO of SafeLoc, a former Private Wealth Financial Advisor and Chartered SRI Counselor, for the Growth for Impact Conference.");
+    await expect(builderStory).toContainText("SafeLoc applies values-aligned evidence standards to the infrastructure layer so sustainability professionals can help steer the AI economy rather than watch from the sidelines.");
+  });
+
+  test("keeps portfolio context notes readable at configured browser sizes", async ({ page }) => {
+    await page.goto("/#materiality");
+    await expectContextNoteToStayReadable(page, "portfolio-connection-strip", "portfolio-connection-message");
+
+    await page.goto("/#decision");
+    await expectContextNoteToStayReadable(page, "holdings-connection-indicator", "holdings-connection-message");
   });
 
   test("keeps the opening and builder story readable at every browser size", async ({ page }) => {
@@ -488,9 +556,3 @@ test.describe("hash routing and browser history", () => {
     await expect(page.getByTestId("home-evidence-visual")).toHaveAttribute("aria-label", /18\.4%/);
   });
 });
-
-    const holdingsIndicator = page.getByTestId("holdings-connection-indicator");
-
-    const viewportWidth = await page.evaluate(() => window.innerWidth);
-
-    const holdingsBox = await holdingsIndicator.boundingBox();

@@ -105,7 +105,7 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
        <aside data-testid="portfolio-connection-strip" role="note" aria-labelledby="portfolio-connection-title" className="mt-4 rounded-lg border border-[#cbd8d4] bg-[#f1f5f3] px-4 py-3">
          <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:gap-4">
            <h2 id="portfolio-connection-title" className="shrink-0 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#52616b]">Portfolio Connection</h2>
-           <p className="text-[11px] leading-5 text-[#344550]">NVIDIA GPU contracts and hyperscaler CAPEX connect values-aligned funds to the infrastructure buildout. Evidence gaps at the project level can become exposure gaps in portfolio returns. This is market context, not facility-level Stargate evidence or a new modeled input.</p>
+            <p data-testid="portfolio-connection-message" className="min-w-0 flex-1 text-[11px] leading-5 text-[#344550]">NVIDIA GPU contracts and hyperscaler CAPEX connect values-aligned funds to the infrastructure buildout. Evidence gaps at the project level can become exposure gaps in portfolio returns. This is market context, not facility-level Stargate evidence or a new modeled input.</p>
          </div>
        </aside>
       <section id="materiality-drivers" data-testid="panel-irr-waterfall" aria-labelledby="irr-waterfall-title" className="mt-5 scroll-mt-24 rounded-xl border-2 border-[#122232] bg-[#122232] p-5 text-white md:p-6">

@@ -265,7 +265,7 @@ const QUALITY_POLICY = {
 } satisfies Record<Classification, Record<string, number>>;
 
 // Shared with Advisor Lens so materiality has one source of truth across
-// recommendation status and exposure-risk posture.
+// recommendation status and evidence-completeness posture.
 export const MATERIAL_EVIDENCE_IDS: readonly string[] = [
   "community_risk",
   "water_rights",

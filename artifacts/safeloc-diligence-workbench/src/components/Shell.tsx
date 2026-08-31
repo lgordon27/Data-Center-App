@@ -34,7 +34,7 @@ import {
 
 
 import {
-  type RiskTier
+  type EvidenceCompletenessTier
 } from "@/model/advisorLens";
 import { CustomProjectDialog } from "@/pages/Home";
 
@@ -113,17 +113,17 @@ export function ClassificationBadge({ value, compact = false }: { value: Classif
     </span>
   );
 }
-const riskMeta: Record<RiskTier, { color: string; bg: string; border: string }> = {
+const evidenceCompletenessMeta: Record<EvidenceCompletenessTier, { color: string; bg: string; border: string }> = {
   HIGH: { color: "#ba2f45", bg: "#fde8eb", border: "#efabb8" },
   MODERATE: { color: "#8a6400", bg: "#fff6c7", border: "#e6cf70" },
   LOW: { color: "#0b7a63", bg: "#e0f4ed", border: "#9bd8c5" },
 };
-export function RiskIndicator({ tier, testId }: { tier: RiskTier; testId: string }) {
-  const meta = riskMeta[tier];
+export function EvidenceCompletenessIndicator({ tier, testId }: { tier: EvidenceCompletenessTier; testId: string }) {
+  const meta = evidenceCompletenessMeta[tier];
   return (
     <span
       data-testid={testId}
-      aria-label={`${tier} unverified exposure risk`}
+      aria-label={`${tier} Stargate infrastructure evidence completeness`}
       className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[9px] font-bold tracking-[0.1em]"
       style={{ color: meta.color, backgroundColor: meta.bg, borderColor: meta.border }}
     >

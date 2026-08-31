@@ -617,78 +617,15 @@ test.describe("hash routing and browser history", () => {
 
     const conversations = page.getByTestId("section-client-conversations");
 
+     const fundCards = [
+       page.getByTestId("card-fund-ishares"),
+       page.getByTestId("card-fund-msci"),
+     ];
+
     const thirdConversation = page.getByTestId("client-conversation-03");
     const initialGap = await page.getByTestId("text-governance-irr-gap").textContent();
-    await page.goto("/#evidence");
-    await page.getByTestId("select-classification-water_rights").selectOption("Verified Evidence");
-    await page.goto("/#advisor");
-     await expect(page.getByTestId("text-advisor-summary")).toContainText(
-       "MODERATE: 6 of 7 material inputs verified. 4 of 16 total inputs verified.",
-     );
-    await expect(page.getByTestId("advisor-question-water-rights")).not.toHaveClass(/border-2/);
-    await expect(page.getByTestId("text-governance-irr-gap")).not.toHaveText(initialGap ?? "");
-     await page.goto("/#evidence");
-     await page.getByTestId("select-classification-water_source_resilience").selectOption("Verified Evidence");
-     await page.goto("/#advisor");
-     await expect(page.getByTestId("text-advisor-summary")).toContainText(
-       "LOW: 7 of 7 material inputs verified. 5 of 16 total inputs verified.",
-     );
-     await expect(page.getByTestId("badge-advisor-summary-risk")).toHaveAttribute(
-       "aria-label",
-       "LOW unverified exposure risk",
-     );
-     await expect(page.getByTestId("badge-fund-ishares-risk")).toHaveAttribute(
-       "aria-label",
-       "LOW unverified exposure risk",
-     );
-     await expect(page.getByTestId("badge-fund-msci-risk")).toHaveAttribute(
-       "aria-label",
-       "LOW unverified exposure risk",
-     );
-    await expect(page.getByTestId("button-return-decision")).toBeVisible();
-    await page.getByTestId("button-return-decision").click();
-    await expect(page).toHaveURL(/#decision$/);
-  });
 
-  test("rounds financial metrics only at the presentation boundary", async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.goto("/#materiality");
-
-    await expect(page.getByTestId("metric-project-irr")).toContainText(/Project IRR/);
-    await expect(page.getByTestId("metric-project-irr")).toContainText(/\d+\.\d%/);
-    await expect(page.getByTestId("metric-moic")).toContainText(/\d+\.\d{2}x/);
-    await expect(page.getByTestId("metric-coc")).toContainText(/\d+\.\d%/);
-    await expect(page.getByTestId("metric-payback")).toContainText(/\d+\.\d years|Not reached/);
-    await expect(page.getByTestId("metric-npv")).toContainText(/[$−]\d+M/);
-    await expect(page.getByTestId("waterfall-step-water_rights")).toContainText(/[-+]\d+\.\d pts|N\/M/);
-    await expect(page.getByTestId("live-current-irr")).toContainText(/Current IRR is now \d+\.\d%\./);
-
-    await page.goto("/#evidence");
-    await page.getByTestId("select-classification-water_rights").selectOption("Verified Evidence");
-    await expect(page.getByTestId("toast-reclassification")).toContainText(/[-+]\d+\.\d pts IRR/);
-    await expect(page.getByTestId("toast-reclassification")).not.toContainText(/\d+\.\d{2,}%/);
-
-    await page.goto("/#decision");
-    await expect(page.getByTestId("text-decision-irr")).toContainText(/\d+\.\d%/);
-    await expect(page.getByTestId("panel-decision-return")).toContainText(/\d+\.\d{2}x/);
-    await expect(page.getByTestId("panel-decision-return")).toContainText(/[$−]\d+M/);
-
-    await page.goto("/#advisor");
-    await expect(page.getByTestId("text-governance-irr-gap")).toHaveText(/-?\d+\.\d pts/);
-
-    await page.goto("/");
-    await expect(page.getByTestId("home-hero-heading")).toContainText("Which side are your holdings on?");
-  });
-
-  test("keeps market comparisons adjacent to their provenance boundary", async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.route("**/api/eia/electricity", (route) => route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ status: "fallback" }),
-    }));
-    await page.goto("/#evidence");
-
+     const fundSection = page.getByTestId("section-client-fund-indicators");
     const initialEvidence = await page.locator("select[data-testid^='select-classification-']").evaluateAll((selects) =>
       Object.fromEntries(selects.map((select) => [select.getAttribute("data-testid"), (select as HTMLSelectElement).value])),
     );

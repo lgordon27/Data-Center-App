@@ -5,9 +5,9 @@ import { INITIAL_EVIDENCE } from "@/context/DiligenceContext";
 import { calculateCashFlowModel, MATERIAL_EVIDENCE_IDS } from "./cashFlowEngine";
 import {
   getAdvisorEvidenceSummary,
+  getEvidenceCompletenessTier,
   getAdvisorQuestionPresentation,
   getGovernanceIRRGap,
-  getRiskTier,
   prioritizeAdvisorQuestions,
 } from "./advisorLens";
 
@@ -59,7 +59,7 @@ test("initial advisor posture is materiality-aware and keeps the facility-level 
     verifiedCount: 3,
     totalInputCount: 16,
   });
-  assert.equal(getRiskTier(summary), "MODERATE");
+  assert.equal(getEvidenceCompletenessTier(summary), "MODERATE");
   assert.deepEqual(
     questions.slice(0, 2).map((question) => question.id),
     ["water-rights", "climate-hazard"],
@@ -105,34 +105,34 @@ test("reclassifying water rights and grid interconnection resolves their active 
   assert.equal(questions.findIndex((question) => question.id === "energization") > 0, true);
 });
 
-test("risk tiers use fewer-than-half, half-or-more, and all-material-ready boundaries", () => {
+test("evidence completeness tiers use fewer-than-half, half-or-more, and all-material-ready boundaries", () => {
   const belowHalf = getAdvisorEvidenceSummary(withMaterialClassification(3));
   assert.equal(belowHalf.materialVerifiedCount, 3);
-  assert.equal(getRiskTier(belowHalf), "HIGH");
+  assert.equal(getEvidenceCompletenessTier(belowHalf), "HIGH");
 
   const exactlyHalfOrMore = getAdvisorEvidenceSummary(withMaterialClassification(4));
   assert.equal(exactlyHalfOrMore.materialVerifiedCount, 4);
-  assert.equal(getRiskTier(exactlyHalfOrMore), "MODERATE");
+  assert.equal(getEvidenceCompletenessTier(exactlyHalfOrMore), "MODERATE");
 
   const allMaterialReady = getAdvisorEvidenceSummary(withMaterialClassification(7));
   assert.equal(allMaterialReady.materialVerifiedCount, 7);
   assert.equal(allMaterialReady.materialMissingCount, 0);
-  assert.equal(getRiskTier(allMaterialReady), "LOW");
+  assert.equal(getEvidenceCompletenessTier(allMaterialReady), "LOW");
 });
 
-test("Management Assertion counts as materially sufficient while active gaps remain tier-driving", () => {
+test("Management Assertion counts as materially sufficient while active gaps remain completeness-driving", () => {
   const managementAssertions = getAdvisorEvidenceSummary(
     withMaterialClassification(4, "Management Assertion"),
   );
   assert.equal(managementAssertions.materialVerifiedCount, 4);
   assert.equal(managementAssertions.materialGapCount, 3);
-  assert.equal(getRiskTier(managementAssertions), "MODERATE");
+  assert.equal(getEvidenceCompletenessTier(managementAssertions), "MODERATE");
 
   const materialGap = getAdvisorEvidenceSummary(
     withMaterialClassification(2, "Management Assertion"),
   );
   assert.equal(materialGap.materialMissingCount, 5);
-  assert.equal(getRiskTier(materialGap), "HIGH");
+  assert.equal(getEvidenceCompletenessTier(materialGap), "HIGH");
 });
 
 test("material sufficiency follows active classifications rather than optional model classifications", () => {
@@ -143,7 +143,7 @@ test("material sufficiency follows active classifications rather than optional m
 
   assert.equal(summary.materialVerifiedCount, 3);
   assert.equal(summary.materialGapCount, 4);
-  assert.equal(getRiskTier(summary), "HIGH");
+  assert.equal(getEvidenceCompletenessTier(summary), "HIGH");
 });
 
 test("four non-material verified inputs cannot outrank an under-half material posture", () => {
@@ -159,14 +159,14 @@ test("four non-material verified inputs cannot outrank an under-half material po
 
   assert.equal(summary.verifiedCount, 4);
   assert.equal(summary.materialVerifiedCount, 0);
-  assert.equal(getRiskTier(summary), "HIGH");
+  assert.equal(getEvidenceCompletenessTier(summary), "HIGH");
 });
 
-test("two adequate material inputs remain high risk even when they are the only reassuring inputs", () => {
+test("two adequate material inputs remain high-gap completeness even when they are the only reassuring inputs", () => {
   const summary = getAdvisorEvidenceSummary(withMaterialClassification(2, "Management Assertion"));
   assert.equal(summary.materialVerifiedCount, 2);
   assert.equal(summary.totalInputCount, 16);
-  assert.equal(getRiskTier(summary), "HIGH");
+  assert.equal(getEvidenceCompletenessTier(summary), "HIGH");
 });
 
 test("governance gap equals verified baseline IRR less current IRR and is safe when unavailable", () => {

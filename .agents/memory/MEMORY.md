@@ -5,3 +5,4 @@
 - [Typed server modules](server-mjs-type-declarations.md) — TypeScript imports of server-side .mjs modules need matching declaration sidecars to pass the package typecheck.
 - [Compute Atlas directory boundary](compute-atlas-directory.md) — directory metadata helps discovery but must stay separate from SafeLoc evidence and synthetic economics.
 - [Local Playwright browser setup](local-playwright-browser.md) — package-scoped Playwright may need its Chromium cache provisioned before repository specs can launch.
+- [Project posture vs. fund materiality](project-posture-vs-fund-materiality.md) — project evidence completeness must not be presented as fund-level risk or materiality.

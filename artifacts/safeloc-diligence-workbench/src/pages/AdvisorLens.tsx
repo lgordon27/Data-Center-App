@@ -3,7 +3,7 @@ import {
 } from "react";
 import {
   ClassificationBadge,
-  RiskIndicator,
+  EvidenceCompletenessIndicator,
   SectionKicker,
   PageIntro,
   BottomNav
@@ -25,13 +25,11 @@ import {
 } from "@/context/DiligenceContext";
 
 
-
-
 import {
   getAdvisorEvidenceSummary,
+  getEvidenceCompletenessTier,
   getAdvisorQuestionPresentation,
   getGovernanceIRRGap,
-  getRiskTier,
   prioritizeAdvisorQuestions
 } from "@/model/advisorLens";
 
@@ -45,7 +43,7 @@ export function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => vo
   const originatingLabel = originatingCompany ?? "No company selected";
   const evidenceSummary = getAdvisorEvidenceSummary(evidence);
   const evidenceCount = evidenceSummary.totalInputCount;
-  const riskTier = getRiskTier(evidenceSummary);
+  const completenessTier = getEvidenceCompletenessTier(evidenceSummary);
   const currentIRR = metrics.projectIRR ?? null;
   const baseIRR = metrics.baseIRR ?? null;
   const governanceGap = getGovernanceIRRGap(baseIRR, currentIRR);
@@ -116,13 +114,14 @@ export function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => vo
         right={<div className="flex items-center gap-2 rounded-md border border-[#cbb7ec] bg-[#eee7fa] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#7049b7]"><Leaf className="h-3.5 w-3.5" /> Advisor handoff</div>}
       />
       <section data-testid="text-advisor-summary" className="mb-5 rounded-xl border border-[#cbd8d4] bg-[#f9faf8] p-5 md:p-6" aria-labelledby="advisor-live-posture-heading">
-        <SectionKicker>Live evidence posture</SectionKicker>
+         <SectionKicker>Live Stargate infrastructure evidence completeness</SectionKicker>
          <h2 id="advisor-live-posture-heading" className="sr-only">Live evidence posture</h2>
         <p className="max-w-4xl text-[18px] font-semibold leading-7 tracking-[-0.025em] text-[#122232] md:text-[21px]">
-          {riskTier}: {evidenceSummary.materialVerifiedCount} of {evidenceSummary.materialTotal} material inputs verified. {evidenceSummary.verifiedCount} of {evidenceSummary.totalInputCount} total inputs verified.
+           {completenessTier} completeness: {evidenceSummary.materialVerifiedCount} of {evidenceSummary.materialTotal} material inputs meet the evidence threshold. {evidenceSummary.verifiedCount} of {evidenceSummary.totalInputCount} total inputs are Verified Evidence.
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-[#e1e8e5] pt-4">
-          <RiskIndicator tier={riskTier} testId="badge-advisor-summary-risk" />
+           <EvidenceCompletenessIndicator tier={completenessTier} testId="badge-advisor-summary-completeness" />
+           <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#344550]">Stargate infrastructure evidence completeness</span>
           <span className="text-[10px] text-[#6b7882]">Material sufficiency includes Verified Evidence and Management Assertion; Model Inference, User Assumption, and Missing Evidence remain material gaps.</span>
         </div>
       </section>
@@ -199,16 +198,49 @@ export function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => vo
         <div className="rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-6">
           <div className="flex items-end justify-between gap-3">
             <div>
-              <SectionKicker>Live fund indicators</SectionKicker>
-              <h2 id="fund-indicators-heading" className="text-[20px] font-semibold tracking-[-0.03em] text-[#122232]">Carry the current posture into stewardship.</h2>
+              <SectionKicker>Live project posture in fund context</SectionKicker>
+              <h2 id="fund-indicators-heading" className="text-[20px] font-semibold tracking-[-0.03em] text-[#122232]">Carry the evidence completeness into stewardship.</h2>
             </div>
             <span className="hidden font-mono text-[9px] uppercase tracking-[0.12em] text-[#60707d] sm:block">Updates with evidence</span>
           </div>
-          <p className="mt-3 max-w-2xl text-[11px] leading-5 text-[#63717a]">These indicators show the live unverified-exposure tier for funds and benchmarks that may carry AI infrastructure dependence. They are not a claim about fund quality by themselves.</p>
+          <p className="mt-3 max-w-2xl text-[11px] leading-5 text-[#63717a]">These indicators show the live Stargate infrastructure evidence completeness posture alongside two public-market contexts. They do not quantify a fund, issuer, or portfolio.</p>
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <div data-testid="card-fund-ishares" className="rounded-lg border border-[#d9e0e4] bg-[#f9faf8] p-4"><div className="flex items-start gap-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-[#e9e0f7] text-[#482873]"><Landmark aria-hidden="true" className="h-4 w-4" /></div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-start justify-between gap-2"><div className="text-[11px] font-bold text-[#122232]">iShares ESG Advanced MSCI USA ETF</div><RiskIndicator tier={riskTier} testId="badge-fund-ishares-risk" /></div><div className="mt-1 text-[10px] text-[#6b7882]">Public equity exposure · sustainability-screened broad market</div></div></div></div>
-            <div data-testid="card-fund-msci" className="rounded-lg border border-[#d9e0e4] bg-[#f9faf8] p-4"><div className="flex items-start gap-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-[#d4e86b] text-[#314207]"><BarChart3 aria-hidden="true" className="h-4 w-4" /></div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-start justify-between gap-2"><div className="text-[11px] font-bold text-[#122232]">MSCI KLD 400 Social Index</div><RiskIndicator tier={riskTier} testId="badge-fund-msci-risk" /></div><div className="mt-1 text-[10px] text-[#6b7882]">Socially screened benchmark · stewardship reference</div></div></div></div>
+            <div data-testid="card-fund-ishares" className="rounded-lg border border-[#d9e0e4] bg-[#f9faf8] p-4">
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-[#e9e0f7] text-[#482873]"><Landmark aria-hidden="true" className="h-4 w-4" /></div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0 text-[11px] font-bold text-[#122232]">iShares ESG Advanced MSCI USA ETF</div>
+                    <EvidenceCompletenessIndicator tier={completenessTier} testId="badge-fund-ishares-completeness" />
+                  </div>
+                  <div className="mt-1 text-[10px] text-[#6b7882]">Public equity exposure · sustainability-screened broad market</div>
+                  <dl className="mt-4 grid gap-2 border-t border-[#e1e8e5] pt-3 text-[10px] leading-4">
+                    <div className="grid gap-0.5 sm:grid-cols-[7.5rem_1fr] sm:gap-2"><dt className="font-semibold text-[#60707d]">Issuer connection:</dt><dd className="text-[#344550]">Reported supplier relationship</dd></div>
+                    <div className="grid gap-0.5 sm:grid-cols-[7.5rem_1fr] sm:gap-2"><dt className="font-semibold text-[#60707d]">Fund connection:</dt><dd className="text-[#344550]">Holding-level exposure (NVIDIA at 20%+)</dd></div>
+                    <div className="grid gap-0.5 sm:grid-cols-[7.5rem_1fr] sm:gap-2"><dt className="font-semibold text-[#60707d]">Portfolio materiality:</dt><dd className="text-[#344550]">Not established by this analysis</dd></div>
+                  </dl>
+                </div>
+              </div>
+            </div>
+            <div data-testid="card-fund-msci" className="rounded-lg border border-[#d9e0e4] bg-[#f9faf8] p-4">
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-[#d4e86b] text-[#314207]"><BarChart3 aria-hidden="true" className="h-4 w-4" /></div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0 text-[11px] font-bold text-[#122232]">MSCI KLD 400 Social Index</div>
+                    <EvidenceCompletenessIndicator tier={completenessTier} testId="badge-fund-msci-completeness" />
+                  </div>
+                  <div className="mt-1 text-[10px] text-[#6b7882]">Socially screened benchmark · stewardship reference</div>
+                  <dl className="mt-4 grid gap-2 border-t border-[#e1e8e5] pt-3 text-[10px] leading-4">
+                    <div className="grid gap-0.5 sm:grid-cols-[7.5rem_1fr] sm:gap-2"><dt className="font-semibold text-[#60707d]">Issuer connection:</dt><dd className="text-[#344550]">Reported supplier relationship</dd></div>
+                    <div className="grid gap-0.5 sm:grid-cols-[7.5rem_1fr] sm:gap-2"><dt className="font-semibold text-[#60707d]">Fund connection:</dt><dd className="text-[#344550]">Holding-level exposure (NVIDIA at 20%+)</dd></div>
+                    <div className="grid gap-0.5 sm:grid-cols-[7.5rem_1fr] sm:gap-2"><dt className="font-semibold text-[#60707d]">Portfolio materiality:</dt><dd className="text-[#344550]">Not established by this analysis</dd></div>
+                  </dl>
+                </div>
+              </div>
+            </div>
           </div>
+          <p data-testid="text-advisor-analysis-boundary" className="mt-5 border-t border-[#d9e0e4] pt-4 text-[10px] font-medium leading-4 text-[#52616b]">This analysis establishes the evidence posture of one project. The degree to which this affects a specific fund depends on the fund's total exposure to AI infrastructure holdings, which requires portfolio-level analysis beyond the scope of this tool.</p>
         </div>
         <div className="rounded-xl border border-[#d9e0e4] bg-[#f1f5f3] p-5 md:p-6">
           <SectionKicker>What the chain means</SectionKicker>
@@ -339,5 +371,4 @@ export function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => vo
     </div>
   );
 }
-
 

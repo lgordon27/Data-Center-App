@@ -29,7 +29,7 @@ export type PrioritizedAdvisorQuestion = AdvisorQuestion & {
   classification?: Classification;
 };
 
-export type RiskTier = "HIGH" | "MODERATE" | "LOW";
+export type EvidenceCompletenessTier = "HIGH" | "MODERATE" | "LOW";
 
 export const CLASSIFICATION_STRENGTH: Record<Classification, number> = {
   "Missing Evidence": 0,
@@ -102,12 +102,12 @@ export function getAdvisorEvidenceSummary(
   };
 }
 
-export function getRiskTier(
+export function getEvidenceCompletenessTier(
   summary: Pick<
     AdvisorEvidenceSummary,
     "materialTotal" | "materialVerifiedCount" | "materialMissingCount"
   >,
-): RiskTier {
+): EvidenceCompletenessTier {
   if (summary.materialTotal === 0 || summary.materialVerifiedCount * 2 < summary.materialTotal) {
     return "HIGH";
   }

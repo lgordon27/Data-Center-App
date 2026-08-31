@@ -293,6 +293,35 @@ test.describe("hash routing and browser history", () => {
     await expect(page.getByTestId("metric-project-irr")).toContainText(/\d+\.\d%/);
   });
 
+  test("frames the financial waterfall as an evidence-quality stress test", async ({ page }) => {
+    await page.goto("/#materiality");
+
+    const waterfall = page.getByTestId("panel-irr-waterfall");
+    const baseCaseLabel = "Base Case (All Inputs Verified)";
+    const conservativeCaseLabel = "Conservative Case (Evidence-Adjusted)";
+    const description = "Lower evidence quality applies progressively conservative assumptions. This is a stress test, not a prediction. Unverified inputs are assigned worst-case values, not because negative outcomes are certain, but because conservative underwriting requires assuming the downside until evidence proves otherwise.";
+    const note = "A management assertion that proves accurate would improve the return. This stress test shows the cost of not knowing, not the cost of a negative outcome.";
+
+    await expect(waterfall.getByRole("heading", { name: "Evidence-Quality Stress Test" })).toBeVisible();
+    await expect(waterfall.getByTestId("waterfall-description")).toHaveText(description);
+    await expect(waterfall).toContainText(baseCaseLabel);
+    await expect(waterfall).toContainText(conservativeCaseLabel);
+    await expect(waterfall.getByTestId("waterfall-underwriting-note")).toHaveText(note);
+    await expect(waterfall).not.toContainText("Every classification moves the same live model.");
+
+    const baselineIrr = await waterfall.getByTestId("waterfall-base-irr").textContent();
+    const currentIrr = await page.getByTestId("waterfall-current-irr").textContent();
+
+    await page.goto("/#evidence");
+    await page.getByTestId("select-classification-electricity_cost").selectOption("Missing Evidence");
+    await page.goto("/#materiality");
+    await expect(waterfall.getByTestId("waterfall-underwriting-note")).toHaveText(note);
+    await expect(waterfall).toContainText(baseCaseLabel);
+    await expect(waterfall).toContainText(conservativeCaseLabel);
+    await expect(waterfall.getByTestId("waterfall-current-irr")).not.toHaveText(currentIrr ?? "");
+    await expect(waterfall.getByTestId("waterfall-base-irr")).toHaveText(baselineIrr ?? "");
+  });
+
   test("shows the complete SRI origin story in the product tour", async ({ page }) => {
     await page.goto("/#how-it-works");
 

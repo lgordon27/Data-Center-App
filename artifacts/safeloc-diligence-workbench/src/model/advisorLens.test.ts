@@ -51,12 +51,9 @@ function withMaterialClassification(
 }
 
 test("initial advisor posture is materiality-aware and keeps the facility-level climate inference distinct from FEMA evidence", () => {
-  const summary = getAdvisorEvidenceSummary(withMaterialClassification(2, "Management Assertion"));
-  const questions = prioritizeAdvisorQuestions(INITIAL_EVIDENCE);
-
   const waterPresentation = getAdvisorQuestionPresentation(
     "water-rights",
-    evidence.water_rights.classification,
+    INITIAL_EVIDENCE.water_rights.classification,
   );
   assert.equal(waterPresentation.isActiveGap, true);
   assert.equal(waterPresentation.showDetail, true);
@@ -71,8 +68,11 @@ test("initial advisor posture is materiality-aware and keeps the facility-level 
 });
 
 test("reclassifying water rights and grid interconnection resolves their active emphasis", () => {
-  const evidence = withMaterialClassification(0);
-  const questions = prioritizeAdvisorQuestions(INITIAL_EVIDENCE);
+  const evidence = reclassify(
+    ["water_rights", "grid_interconnection"],
+    "Verified Evidence",
+  );
+  const questions = prioritizeAdvisorQuestions(evidence);
 
   const waterPresentation = getAdvisorQuestionPresentation(
     "water-rights",
@@ -123,10 +123,10 @@ test("Management Assertion counts as materially sufficient while active gaps rem
 });
 
 test("material sufficiency follows active classifications rather than optional model classifications", () => {
-  const evidence = withMaterialClassification(0);
+  const evidence = withMaterialClassification(3);
   evidence[MATERIAL_EVIDENCE_IDS[0]].modelClassification = "Missing Evidence";
   evidence[MATERIAL_EVIDENCE_IDS[1]].modelClassification = "Verified Evidence";
-  const summary = getAdvisorEvidenceSummary(withMaterialClassification(2, "Management Assertion"));
+  const summary = getAdvisorEvidenceSummary(evidence);
 
   assert.equal(summary.materialVerifiedCount, 3);
   assert.equal(summary.materialGapCount, 4);
@@ -142,7 +142,7 @@ test("four non-material verified inputs cannot outrank an under-half material po
   for (const id of nonMaterialIds.slice(0, 4)) {
     evidence[id].classification = "Verified Evidence";
   }
-  const summary = getAdvisorEvidenceSummary(withMaterialClassification(2, "Management Assertion"));
+  const summary = getAdvisorEvidenceSummary(evidence);
 
   assert.equal(summary.verifiedCount, 4);
   assert.equal(summary.materialVerifiedCount, 0);

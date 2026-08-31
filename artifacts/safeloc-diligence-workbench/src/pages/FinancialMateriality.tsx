@@ -1,7 +1,4 @@
 import {
-  useMemo
-} from "react";
-import {
   ClassificationBadge,
   SectionKicker,
   MetricCard,
@@ -19,11 +16,10 @@ import {
   TriangleAlert
 } from "lucide-react";
 import {
-  Classification,
   useDiligence
 } from "@/context/DiligenceContext";
 import {
-  calculateCashFlowModel
+  formatImpactDelta
 } from "@/model/cashFlowEngine";
 
 
@@ -55,30 +51,9 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
   const chartMin = Math.min(...chartValues, 0);
   const chartMax = Math.max(...chartValues, 0);
   const irrDelta = currentIRR === null || baseIRR === null ? null : currentIRR - baseIRR;
-  const waterfallSteps = useMemo(() => {
-    const baselineEvidence = Object.fromEntries(Object.entries(evidence).map(([id, item]) => [id, {
-      ...item,
-      classification: "Verified Evidence" as Classification,
-      modelClassification: item.modelClassification
-        ? "Verified Evidence" as Classification
-        : undefined,
-    }]));
-    let beforeEvidence = baselineEvidence;
-    return impacts.map((impact) => {
-      const afterEvidence = {
-        ...beforeEvidence,
-        [impact.id]: {
-          ...beforeEvidence[impact.id],
-          classification: evidence[impact.id].classification,
-          modelClassification: evidence[impact.id].modelClassification,
-        },
-      };
-      const before = calculateCashFlowModel(beforeEvidence, project.capacityMW).projectIRR;
-      const after = calculateCashFlowModel(afterEvidence, project.capacityMW).projectIRR;
-      beforeEvidence = afterEvidence;
-      return { ...impact, before, after };
-    }).map((step, index) => ({ ...step, index, change: step.before === null || step.after === null ? null : Number((step.after - step.before).toFixed(1)) }));
-  }, [evidence, impacts, project.capacityMW]);
+  const waterfallSteps = metrics.waterfall;
+  const noAdjustmentCount = waterfallSteps.filter((step) => step.impactRole === "no-adjustment").length;
+  const decisionGateCount = waterfallSteps.filter((step) => step.impactRole === "decision-gate").length;
   return (
     <div>
       <PageIntro
@@ -129,11 +104,33 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
           <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#9dafb8]">Sequential · baseline to current</span>
         </div>
          <p id="irr-waterfall-description" data-testid="waterfall-description" className="mt-3 max-w-3xl text-[11px] leading-5 text-[#c4d0d6]">Lower evidence quality applies progressively conservative assumptions. This is a stress test, not a prediction. Unverified inputs are assigned worst-case values, not because negative outcomes are certain, but because conservative underwriting requires assuming the downside until evidence proves otherwise.</p>
-        <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+         <div className="mt-5 flex flex-wrap items-center gap-2">
+           <div data-testid="waterfall-no-adjustment-summary" role="status" className="rounded-md border border-white/15 bg-white/5 px-3 py-2 font-mono text-[10px] text-[#c4d0d6]">
+             {noAdjustmentCount} {noAdjustmentCount === 1 ? "item has" : "items have"} no adjustment at current classification
+           </div>
+           {decisionGateCount > 0 && <div data-testid="waterfall-decision-gate-summary" className="rounded-md border border-[#f1cb8b]/40 bg-[#f1cb8b]/10 px-3 py-2 font-mono text-[10px] text-[#f7dca7]">
+             {decisionGateCount} decision {decisionGateCount === 1 ? "gate" : "gates"} only
+           </div>}
+         </div>
+         <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
            <div className="rounded-lg border border-[#b9d43a]/40 bg-[#b9d43a]/10 p-3"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#b9d43a]">Base Case (All Inputs Verified)</div><div data-testid="waterfall-base-irr" className="mt-1 font-mono text-2xl font-bold text-[#d4e86b]">{formatIRR(baseIRR)}</div></div>
           {waterfallSteps.map((step) => {
-            const tone = step.change !== null && step.change < 0 ? "text-[#f5ddd5]" : "text-[#b9d43a]";
-            return <div key={step.id} data-testid={`waterfall-step-${step.id}`} className="rounded-lg border border-white/10 bg-white/5 p-3"><div className="truncate text-[10px] font-semibold text-[#e3eaed]">{evidence[step.id].label}</div><div className="mt-1 flex items-baseline justify-between gap-2"><span className={`font-mono text-sm font-bold ${tone}`}>{formatIRR(step.after)}</span><span className={`font-mono text-[9px] font-bold ${tone}`}>{step.change === null ? "N/M" : `${step.change >= 0 ? "+" : ""}${step.change.toFixed(1)} pts`}</span></div><div className="mt-1 text-[9px] text-[#9dafb8]">{evidence[step.id].classification}</div></div>;
+             const tone = step.deltaIRR < 0 ? "text-[#f5ddd5]" : "text-[#b9d43a]";
+             const item = evidence[step.id];
+             return <div key={step.id} data-testid={`waterfall-step-${step.id}`} className="rounded-lg border border-white/10 bg-white/5 p-3">
+               <div className="truncate text-[10px] font-semibold text-[#e3eaed]">{item.label}</div>
+               <div className="mt-1 flex items-baseline justify-between gap-2">
+                 <span className={`font-mono text-sm font-bold ${tone}`}>{formatIRR(step.after)}</span>
+                 <span data-testid={`waterfall-impact-${step.id}`} className={`font-mono text-[9px] font-bold ${tone}`}>{formatImpactDelta(step.deltaIRR)}</span>
+               </div>
+               <div data-testid={`waterfall-explanation-${step.id}`} className="mt-2 text-[9px] font-semibold text-[#d4e86b]">
+                 {step.impactRole === "decision-gate"
+                   ? <span data-testid={`waterfall-gate-${step.id}`} className="inline-flex rounded border border-[#f1cb8b]/50 bg-[#f1cb8b]/10 px-1.5 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#f7dca7]">{step.impactExplanation}</span>
+                   : step.impactExplanation}
+               </div>
+               <div className="mt-1 text-[9px] text-[#9dafb8]">Evidence: {item.classification}</div>
+               {item.modelClassification && <div className="mt-1 text-[9px] text-[#9dafb8]">Modeled as: {item.modelClassification}</div>}
+             </div>;
           })}
            <div className="rounded-lg border-2 border-[#f5ddd5]/60 bg-[#f5ddd5]/10 p-3"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#f5ddd5]">Conservative Case (Evidence-Adjusted)</div><div data-testid="waterfall-current-irr" className="mt-1 font-mono text-2xl font-bold text-[#f5ddd5]">{formatIRR(currentIRR)}</div></div>
         </div>
@@ -144,14 +141,17 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
         <section className="rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-6">
           <div className="flex items-end justify-between border-b border-[#e5eae8] pb-4"><div><SectionKicker>Evidence → financial materiality</SectionKicker><h2 className="text-[19px] font-semibold tracking-[-0.025em] text-[#122232]">Where the model feels the uncertainty</h2></div><span className="font-mono text-[10px] text-[#52616b]">Δ IRR / variable</span></div>
           <div className="mt-2 divide-y divide-[#e5eae8]">
-            {impacts.map((impact) => {
+             {impacts.map((impact) => {
               const item = evidence[impact.id];
               const effectTone = impact.deltaIRR < 0 ? "text-[#ba2f45]" : impact.deltaIRR > 0 ? "text-[#0b7a63]" : "text-[#63717a]";
               return <div key={impact.id} data-testid={`row-materiality-${impact.id}`} className="grid grid-cols-[1fr_auto] gap-4 py-4 sm:grid-cols-[1.2fr_0.9fr_0.75fr_0.5fr] sm:items-center">
                 <div><div className="text-[12px] font-semibold text-[#243844]">{item.label}</div><div className="mt-1 text-[10px] text-[#52616b]">{impact.driver}</div></div>
                 <div className="sm:col-auto"><ClassificationBadge value={item.classification} compact /></div>
                 <div className="text-right font-mono text-[11px] font-bold text-[#4d5c65] sm:text-left">{formatLineItemValue(impact.value, impact.unit)}</div>
-                <div className={`hidden text-right font-mono text-[12px] font-bold sm:block ${effectTone}`}>{impact.deltaIRR > 0 ? "+" : ""}{impact.deltaIRR.toFixed(1)} pts</div>
+                 <div className={`text-right font-mono text-[11px] font-bold sm:text-left ${effectTone}`}>
+                   <div data-testid={`materiality-impact-${impact.id}`}>{formatImpactDelta(impact.deltaIRR)}</div>
+                   <div data-testid={`materiality-explanation-${impact.id}`} className="mt-1 font-sans text-[9px] font-semibold leading-4 text-[#52616b]">{impact.impactExplanation}</div>
+                 </div>
               </div>;
             })}
           </div>

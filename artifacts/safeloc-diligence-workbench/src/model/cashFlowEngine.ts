@@ -61,8 +61,11 @@ export type ModelLineItem = {
   value: number;
   unit: string;
   deltaIRR: number;
+  impactRole: ImpactRole;
+  impactExplanation: string;
 };
 
+export type ImpactRole = "financial-effect" | "no-adjustment" | "decision-gate";
 export type ModelAssumptions = {
   capacityMW: number;
   leaseRatePerKwMonth: number;
@@ -130,6 +133,7 @@ export type CashFlowModel = {
   schedule: CashFlowYear[];
   assumptions: ModelAssumptions;
   lineItems: Record<string, ModelLineItem>;
+  waterfall: WaterfallStep[];
   mechanicalDisclaimer: boolean;
   baseIRR?: number | null;
   baseModel?: CashFlowModel;
@@ -397,14 +401,23 @@ function buildVerifiedEvidence(evidence: EvidenceRecord): EvidenceRecord {
       {
         ...item,
         classification: "Verified Evidence" as Classification,
-        modelClassification: item.modelClassification
-          ? "Verified Evidence" as Classification
-          : undefined,
+        modelClassification: undefined,
       },
     ]),
   );
 }
 
+export function formatImpactDelta(deltaIRR: number | null) {
+  if (deltaIRR === null || !Number.isFinite(deltaIRR)) return "N/M";
+  if (deltaIRR === 0) return "No adjustment at current classification";
+
+  const direction = deltaIRR < 0 ? "down" : "up";
+  const absoluteDelta = Math.abs(deltaIRR);
+  if (absoluteDelta < 0.01) return `less than 0.01 pts ${direction}`;
+
+  const decimals = absoluteDelta < 0.1 ? 2 : 1;
+  return `${deltaIRR >= 0 ? "+" : ""}${deltaIRR.toFixed(decimals)} pts`;
+}
 function normalizeCapacityMW(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? Math.min(value, 100_000)
@@ -758,22 +771,22 @@ function runModel(evidence: EvidenceRecord, capacityMW: number): CashFlowModel {
   };
 
   const lineItems: Record<string, ModelLineItem> = {
-    electricity_cost: { id: "electricity_cost", driver: "Power OPEX", value: electricityRate, unit: "$/MWh", deltaIRR: 0 },
-    water_consumption: { id: "water_consumption", driver: "Water OPEX", value: annualCoolingWaterMgal, unit: "M gal / yr", deltaIRR: 0 },
-    grid_interconnection: { id: "grid_interconnection", driver: "Revenue delay", value: revenueDelayMonths, unit: "months", deltaIRR: 0 },
-    water_escalation: { id: "water_escalation", driver: "Water OPEX growth", value: adjustedWaterEscalationRate * 100, unit: "%", deltaIRR: 0 },
-    community_risk: { id: "community_risk", driver: "Permitting delay / CAPEX", value: communityDelayMonths, unit: "months", deltaIRR: 0 },
-    renewable_percentage: { id: "renewable_percentage", driver: "Power cost differential", value: powerCostDifferential * 100, unit: "%", deltaIRR: 0 },
-    cooling_capex: { id: "cooling_capex", driver: "Direct CAPEX", value: coolingCapex + capexContingency, unit: "$M", deltaIRR: 0 },
-    electricity_escalation: { id: "electricity_escalation", driver: "Power OPEX escalation", value: electricityEscalationRate * 100, unit: "%", deltaIRR: 0 },
-    carbon_compliance: { id: "carbon_compliance", driver: "Carbon compliance OPEX", value: annualCarbonCompliance, unit: "$M / yr", deltaIRR: 0 },
-    permitting_timeline: { id: "permitting_timeline", driver: "Revenue delay", value: permittingMonths, unit: "months", deltaIRR: 0 },
-    customer_concentration: { id: "customer_concentration", driver: "Utilization discount", value: (1 - customerUtilizationMultiplier) * 100, unit: "%", deltaIRR: 0 },
-    water_rights: { id: "water_rights", driver: "Water cost contingency", value: (waterRightsCostMultiplier - 1) * 100, unit: "%", deltaIRR: 0 },
-    site_hazard_exposure: { id: "site_hazard_exposure", driver: "Climate disruption OPEX", value: adjustedHazardProbability * 100, unit: "%", deltaIRR: 0 },
-    backup_power_capacity: { id: "backup_power_capacity", driver: "Backup power CAPEX / OPEX", value: backupPowerCapex, unit: "$M", deltaIRR: 0 },
-    water_source_resilience: { id: "water_source_resilience", driver: "Water conversion CAPEX", value: waterConversionCapex, unit: "$M", deltaIRR: 0 },
-    downtime_cost: { id: "downtime_cost", driver: "Climate disruption OPEX", value: adjustedDowntimeCostPerDay / 1_000_000, unit: "$M / day", deltaIRR: 0 },
+    electricity_cost: { id: "electricity_cost", driver: "Power OPEX", value: electricityRate, unit: "$/MWh", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment") },
+    water_consumption: { id: "water_consumption", driver: "Water OPEX", value: annualCoolingWaterMgal, unit: "M gal / yr", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment") },
+    grid_interconnection: { id: "grid_interconnection", driver: "Revenue delay", value: revenueDelayMonths, unit: "months", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment") },
+    water_escalation: { id: "water_escalation", driver: "Water OPEX growth", value: adjustedWaterEscalationRate * 100, unit: "%", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment") },
+    community_risk: { id: "community_risk", driver: "Permitting delay / CAPEX", value: communityDelayMonths, unit: "months", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment") },
+    renewable_percentage: { id: "renewable_percentage", driver: "Power cost differential", value: powerCostDifferential * 100, unit: "%", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment") },
+    cooling_capex: { id: "cooling_capex", driver: "Direct CAPEX", value: coolingCapex + capexContingency, unit: "$M", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment") },
+    electricity_escalation: { id: "electricity_escalation", driver: "Power OPEX escalation", value: electricityEscalationRate * 100, unit: "%", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment") },
+    carbon_compliance: { id: "carbon_compliance", driver: "Carbon compliance OPEX", value: annualCarbonCompliance, unit: "$M / yr", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment") },
+    permitting_timeline: { id: "permitting_timeline", driver: "Revenue delay", value: permittingMonths, unit: "months", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment") },
+    customer_concentration: { id: "customer_concentration", driver: "Utilization discount", value: (1 - customerUtilizationMultiplier) * 100, unit: "%", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment") },
+    water_rights: { id: "water_rights", driver: "Water cost contingency", value: (waterRightsCostMultiplier - 1) * 100, unit: "%", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment") },
+    site_hazard_exposure: { id: "site_hazard_exposure", driver: "Climate disruption OPEX", value: adjustedHazardProbability * 100, unit: "%", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment") },
+    backup_power_capacity: { id: "backup_power_capacity", driver: "Backup power CAPEX / OPEX", value: backupPowerCapex, unit: "$M", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment") },
+    water_source_resilience: { id: "water_source_resilience", driver: "Water conversion CAPEX", value: waterConversionCapex, unit: "$M", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment") },
+    downtime_cost: { id: "downtime_cost", driver: "Climate disruption OPEX", value: adjustedDowntimeCostPerDay / 1_000_000, unit: "$M / day", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment") },
   };
 
   return {
@@ -796,6 +809,7 @@ function runModel(evidence: EvidenceRecord, capacityMW: number): CashFlowModel {
     schedule,
     assumptions,
     lineItems,
+    waterfall: [],
     mechanicalDisclaimer: confidenceScore === 0,
   };
 }
@@ -812,27 +826,93 @@ export function calculateCashFlowModel(evidence: EvidenceRecord, requestedCapaci
         [id]: {
           ...evidence[id],
           classification: "Verified Evidence" as Classification,
-          modelClassification: evidence[id].modelClassification
-            ? "Verified Evidence" as Classification
-            : undefined,
+          modelClassification: undefined,
         },
       }, capacityMW);
-      const deltaIRR =
+      const rawDeltaIRR =
         current.projectIRR === null || repairedModel.projectIRR === null
           ? 0
           : current.projectIRR - repairedModel.projectIRR;
-      return [id, { ...lineItem, deltaIRR }];
+      const deltaIRR = rawDeltaIRR === 0 ? 0 : rawDeltaIRR;
+      const impactRole = getImpactRole(id, evidence[id].classification, deltaIRR);
+      return [
+        id,
+        {
+          ...lineItem,
+          deltaIRR,
+          impactRole,
+          impactExplanation: getImpactExplanation(impactRole),
+        },
+      ];
     }),
   );
+
+  let beforeEvidence = buildVerifiedEvidence(evidence);
+  let beforeModel = verifiedBaseline;
+  const waterfall = Object.entries(current.lineItems).map(([id, lineItem], index) => {
+    const afterEvidence = {
+      ...beforeEvidence,
+      [id]: evidence[id],
+    };
+    const afterModel = runModel(afterEvidence, capacityMW);
+    const rawDeltaIRR =
+      beforeModel.projectIRR === null || afterModel.projectIRR === null
+        ? 0
+        : afterModel.projectIRR - beforeModel.projectIRR;
+    const deltaIRR = rawDeltaIRR === 0 ? 0 : rawDeltaIRR;
+    const impactRole = getImpactRole(id, evidence[id].classification, deltaIRR);
+    const step = {
+      ...lineItems[id],
+      ...lineItem,
+      deltaIRR,
+      impactRole,
+      impactExplanation: getImpactExplanation(impactRole),
+      index,
+      before: beforeModel.projectIRR,
+      after: afterModel.projectIRR,
+    };
+    beforeEvidence = afterEvidence;
+    beforeModel = afterModel;
+    return [id, step] as const;
+  });
 
   return {
     ...current,
     baseIRR: verifiedBaseline.projectIRR,
     baseModel: verifiedBaseline,
     lineItems,
+    waterfall: waterfall.map(([, step]) => step),
   };
 }
 
+export type WaterfallStep = ModelLineItem & {
+  index: number;
+  before: number | null;
+  after: number | null;
+};
+
 export function isMaterialEvidenceId(id: string): id is MaterialEvidenceId {
   return MATERIAL_EVIDENCE_IDS.includes(id as MaterialEvidenceId);
+}
+
+function getImpactRole(
+  id: string,
+  classification: Classification,
+  deltaIRR: number,
+): ImpactRole {
+  if (deltaIRR !== 0) return "financial-effect";
+  return isMaterialEvidenceId(id) && classification !== "Verified Evidence"
+    ? "decision-gate"
+    : "no-adjustment";
+}
+
+function getImpactExplanation(role: ImpactRole) {
+  switch (role) {
+    case "decision-gate":
+      return "Decision gate only";
+    case "no-adjustment":
+      return "No adjustment at current classification";
+    default:
+      return "Financial effect";
+  }
 }

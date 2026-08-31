@@ -1,5 +1,4 @@
 import { expect, test, type Page } from "@playwright/test";
-import { MATERIAL_EVIDENCE_IDS } from "../src/model/cashFlowEngine";
 
 const routes = [
   ["brief", "Case Brief"],
@@ -314,6 +313,32 @@ test.describe("hash routing and browser history", () => {
     await expect(waterfall).toContainText(conservativeCaseLabel);
     await expect(waterfall.getByTestId("waterfall-underwriting-note")).toHaveText(note);
     await expect(waterfall).not.toContainText("Every classification moves the same live model.");
+    await expect(waterfall.getByTestId("waterfall-no-adjustment-summary")).toContainText(
+      "2 items have no adjustment at current classification",
+    );
+    await expect(waterfall.getByTestId("waterfall-decision-gate-summary")).toContainText(
+      "2 decision gates only",
+    );
+    await expect(waterfall.getByTestId("waterfall-impact-water_escalation")).toHaveText(
+      "less than 0.01 pts down",
+    );
+    await expect(waterfall.getByTestId("waterfall-explanation-grid_interconnection")).toHaveText(
+      "No adjustment at current classification",
+    );
+    await expect(waterfall.getByTestId("waterfall-gate-backup_power_capacity")).toHaveText(
+      "Decision gate only",
+    );
+    await expect(waterfall.getByTestId("waterfall-step-site_hazard_exposure")).toContainText(
+      "Modeled as: Model Inference",
+    );
+    await expect(page.getByTestId("materiality-impact-water_escalation")).toHaveText(
+      "less than 0.01 pts down",
+    );
+    await expect(page.getByTestId("materiality-explanation-backup_power_capacity")).toHaveText(
+      "Decision gate only",
+    );
+    await expect(page.locator("body")).not.toContainText("+0.0 pts");
+    await expect(page.locator("body")).not.toContainText("-0.0 pts");
 
     const baselineIrr = await waterfall.getByTestId("waterfall-base-irr").textContent();
     const currentIrr = await page.getByTestId("waterfall-current-irr").textContent();
@@ -328,14 +353,11 @@ test.describe("hash routing and browser history", () => {
     expect(baselineValue - currentValue).toBeGreaterThanOrEqual(5);
     expect(baselineValue - currentValue).toBeLessThanOrEqual(7);
 
-    const metricLabels = await page.locator("#materiality-summary [data-testid^='metric-']").evaluateAll(
-      (cards) => cards.map((card) => card.textContent?.trim() ?? ""),
-    );
-    expect(metricLabels[0]).toContain("Project IRR");
-    expect(metricLabels[1]).toContain("MOIC");
-    expect(metricLabels[2]).toContain("Cash-on-cash");
-    expect(metricLabels[3]).toContain("Payback");
-    expect(metricLabels[4]).toContain("NPV @ 10%");
+    await expect(page.getByTestId("metric-project-irr")).toContainText("Project IRR");
+    await expect(page.getByTestId("metric-moic")).toContainText("MOIC");
+    await expect(page.getByTestId("metric-coc")).toContainText("Cash-on-cash");
+    await expect(page.getByTestId("metric-payback")).toContainText("Payback");
+    await expect(page.getByTestId("metric-npv")).toContainText("NPV @ 10%");
 
     const waterfallChanges = await waterfall.locator("[data-testid^='waterfall-step-']").evaluateAll(
       (steps) => steps.map((step) => step.textContent ?? ""),
@@ -348,13 +370,17 @@ test.describe("hash routing and browser history", () => {
     await expect(page.getByTestId("panel-decision-return")).toContainText(baselineIrr ?? "");
 
     await page.goto("/#evidence");
-    await page.getByTestId("select-classification-electricity_cost").selectOption("Missing Evidence");
+    await page.getByTestId("select-classification-grid_interconnection").selectOption("Management Assertion");
     await page.goto("/#materiality");
     await expect(waterfall.getByTestId("waterfall-underwriting-note")).toHaveText(note);
     await expect(waterfall).toContainText(baseCaseLabel);
     await expect(waterfall).toContainText(conservativeCaseLabel);
     await expect(waterfall.getByTestId("waterfall-current-irr")).not.toHaveText(currentIrr ?? "");
     await expect(waterfall.getByTestId("waterfall-base-irr")).toHaveText(baselineIrr ?? "");
+    await expect(waterfall.getByTestId("waterfall-gate-backup_power_capacity")).toHaveCount(0);
+    await expect(waterfall.getByTestId("waterfall-explanation-backup_power_capacity")).toHaveText(
+      "Financial effect",
+    );
   });
 
   test("shows the complete SRI origin story in the product tour", async ({ page }) => {
@@ -377,10 +403,30 @@ test.describe("hash routing and browser history", () => {
     await expectContextNoteToStayReadable(page, "holdings-connection-indicator", "holdings-connection-message");
   });
 
-  test("keeps Decision Review material blockers aligned with the cash-flow contract", async ({ page }) => {
-    await page.goto("/#decision");
+  test("keeps the opening and builder story readable at every browser size", async ({ page }) => {
+    await page.goto("/#how-it-works");
+    await expect(page.getByTestId("tour-sri-context")).toBeVisible();
+    await expect(page.getByTestId("tour-builder-story")).toBeVisible();
 
-    const dependencyCopy = page.getByTestId("text-climate-material-dependencies");
+    await expectTourLayoutToStayReadable(page, "#tour-context");
+    await expect(page.locator("#tour-context")).toHaveScreenshot("how-it-works-opening.png", {
+      animations: "disabled",
+      caret: "hide",
+    });
+
+    await page.getByTestId("link-tour-chapter-tour-built-by").click();
+    await expect(page.getByTestId("tour-builder-story")).toBeInViewport();
+    await expectTourLayoutToStayReadable(page, "#tour-built-by");
+    await expect(page.locator("#tour-built-by")).toHaveScreenshot("how-it-works-builder-story.png", {
+      animations: "disabled",
+      caret: "hide",
+    });
+  });
+
+  test("keeps reduced-motion tour jumps immediate without changing interaction", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/#how-it-works");
+    await page.evaluate(() => {
       const calls: unknown[] = [];
       const originalScrollIntoView = Element.prototype.scrollIntoView;
       Element.prototype.scrollIntoView = function (options) {
@@ -597,16 +643,111 @@ test.describe("hash routing and browser history", () => {
     await expect(page.getByTestId("advisor-risk-stat-earnings")).toContainText("other 493 S&P companies");
 
     const conversations = page.getByTestId("section-client-conversations");
+    await expect(conversations).toContainText("Is my fund still aligned with my values?");
+    await expect(conversations).toContainText("Should I be worried about AI risk?");
+    await expect(conversations).toContainText("What should I do?");
+    await expect(page.getByTestId("client-conversation-01")).toContainText("Ask your fund manager");
+    await expect(page.getByTestId("client-conversation-02")).toContainText("Review concentration in AI infrastructure-dependent holdings");
+    await expect(page.getByTestId("client-conversation-03")).toContainText("Not sell. Engage.");
+    await expect(page.getByTestId("client-conversation-03")).toContainText("governance gap");
 
-     const fundCards = [
-       page.getByTestId("card-fund-ishares"),
-       page.getByTestId("card-fund-msci"),
-     ];
+    await expect(page.getByTestId("section-practice-value")).toContainText("79%");
+    await expect(page.getByTestId("section-practice-value")).toContainText("3%");
+    await expect(page.getByTestId("section-practice-value")).toContainText("4x");
+    await expect(page.getByTestId("section-practice-value")).toContainText("zero statistical association with financial fulfillment");
+     await expect(page.getByTestId("text-governed-ai-connection")).toHaveText("You just experienced governed AI in this tool. An AI proposed evidence classifications. You decided which to accept. That interaction is the future of financial advising: AI accelerates the analysis, the advisor makes the judgment call. The Gallup data confirms what you already felt: 79% of Americans trust advisors. 3% trust AI. The advisor who can work with AI and govern its output has the most defensible position in the industry.");
+    await expect(page.getByTestId("text-governance-irr-gap")).toHaveText(/-?\d+\.\d pts/);
+    await expect(page.getByTestId("card-fund-ishares")).toBeVisible();
+    await expect(page.getByTestId("advisor-question-water-rights")).toBeVisible();
+     await expect(page.getByTestId("text-advisor-summary")).toContainText(
+       "MODERATE: 5 of 7 material inputs verified. 3 of 16 total inputs verified.",
+     );
+     await expect(page.getByTestId("badge-advisor-summary-risk")).toHaveAttribute(
+       "aria-label",
+       "MODERATE unverified exposure risk",
+     );
+     await expect(page.getByTestId("badge-fund-ishares-risk")).toHaveAttribute(
+       "aria-label",
+       "MODERATE unverified exposure risk",
+     );
+     await expect(page.getByTestId("badge-fund-msci-risk")).toHaveAttribute(
+       "aria-label",
+       "MODERATE unverified exposure risk",
+     );
+     await expect(page.getByTestId("text-advisor-summary")).toContainText("Management Assertion");
+     await expect(page.getByTestId("text-advisor-summary")).not.toContainText("HIGH < 4 verified");
 
-    const thirdConversation = page.getByTestId("client-conversation-03");
     const initialGap = await page.getByTestId("text-governance-irr-gap").textContent();
+    await page.goto("/#evidence");
+    await page.getByTestId("select-classification-water_rights").selectOption("Verified Evidence");
+    await page.goto("/#advisor");
+     await expect(page.getByTestId("text-advisor-summary")).toContainText(
+       "MODERATE: 6 of 7 material inputs verified. 4 of 16 total inputs verified.",
+     );
+    await expect(page.getByTestId("advisor-question-water-rights")).not.toHaveClass(/border-2/);
+    await expect(page.getByTestId("text-governance-irr-gap")).not.toHaveText(initialGap ?? "");
+     await page.goto("/#evidence");
+     await page.getByTestId("select-classification-water_source_resilience").selectOption("Verified Evidence");
+     await page.goto("/#advisor");
+     await expect(page.getByTestId("text-advisor-summary")).toContainText(
+       "LOW: 7 of 7 material inputs verified. 5 of 16 total inputs verified.",
+     );
+     await expect(page.getByTestId("badge-advisor-summary-risk")).toHaveAttribute(
+       "aria-label",
+       "LOW unverified exposure risk",
+     );
+     await expect(page.getByTestId("badge-fund-ishares-risk")).toHaveAttribute(
+       "aria-label",
+       "LOW unverified exposure risk",
+     );
+     await expect(page.getByTestId("badge-fund-msci-risk")).toHaveAttribute(
+       "aria-label",
+       "LOW unverified exposure risk",
+     );
+    await expect(page.getByTestId("button-return-decision")).toBeVisible();
+    await page.getByTestId("button-return-decision").click();
+    await expect(page).toHaveURL(/#decision$/);
+  });
 
-     const fundSection = page.getByTestId("section-client-fund-indicators");
+  test("rounds financial metrics only at the presentation boundary", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/#materiality");
+
+    await expect(page.getByTestId("metric-project-irr")).toContainText(/Project IRR/);
+    await expect(page.getByTestId("metric-project-irr")).toContainText(/\d+\.\d%/);
+    await expect(page.getByTestId("metric-moic")).toContainText(/\d+\.\d{2}x/);
+    await expect(page.getByTestId("metric-coc")).toContainText(/\d+\.\d%/);
+    await expect(page.getByTestId("metric-payback")).toContainText(/\d+\.\d years|Not reached/);
+    await expect(page.getByTestId("metric-npv")).toContainText(/[$−]\d+M/);
+    await expect(page.getByTestId("waterfall-step-water_rights")).toContainText(/[-+]\d+\.\d{1,2} pts|less than 0\.01 pts (?:up|down)|N\/M/);
+    await expect(page.getByTestId("live-current-irr")).toContainText(/Current IRR is now -?\d+\.\d%\./);
+
+    await page.goto("/#evidence");
+    await page.getByTestId("select-classification-water_rights").selectOption("Verified Evidence");
+    await expect(page.getByTestId("toast-reclassification")).toContainText(/[-+]\d+\.\d pts IRR/);
+    await expect(page.getByTestId("toast-reclassification")).not.toContainText(/\d+\.\d{2,}%/);
+
+    await page.goto("/#decision");
+    await expect(page.getByTestId("text-decision-irr")).toContainText(/\d+\.\d%/);
+    await expect(page.getByTestId("panel-decision-return")).toContainText(/\d+\.\d{2}x/);
+    await expect(page.getByTestId("panel-decision-return")).toContainText(/[$−]\d+M/);
+
+    await page.goto("/#advisor");
+    await expect(page.getByTestId("text-governance-irr-gap")).toHaveText(/-?\d+\.\d pts/);
+
+    await page.goto("/");
+    await expect(page.getByTestId("home-hero-heading")).toContainText("Which side are your holdings on?");
+  });
+
+  test("keeps market comparisons adjacent to their provenance boundary", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.route("**/api/eia/electricity", (route) => route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ status: "fallback" }),
+    }));
+    await page.goto("/#evidence");
+
     const initialEvidence = await page.locator("select[data-testid^='select-classification-']").evaluateAll((selects) =>
       Object.fromEntries(selects.map((select) => [select.getAttribute("data-testid"), (select as HTMLSelectElement).value])),
     );

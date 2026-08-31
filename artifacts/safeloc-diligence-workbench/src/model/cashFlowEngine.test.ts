@@ -6,6 +6,7 @@ import {
   BACKUP_POWER_CAPEX_BY_CLASSIFICATION,
   calculateCashFlowModel,
   CLIMATE_QUALITY_MULTIPLIERS,
+  formatImpactDelta,
   MATERIAL_EVIDENCE_IDS,
   type Classification,
   type EvidenceRecord,
@@ -27,9 +28,7 @@ function allVerified(): EvidenceRecord {
       {
         ...item,
         classification: "Verified Evidence" as const,
-        modelClassification: item.modelClassification
-          ? "Verified Evidence" as const
-          : undefined,
+        modelClassification: undefined,
       },
     ]),
   );
@@ -348,6 +347,54 @@ test("financial metrics retain model precision beyond their display formats", ()
   assert.notEqual(
     model.lineItems.downtime_cost.deltaIRR,
     Number(model.lineItems.downtime_cost.deltaIRR.toFixed(1)),
+  );
+});
+
+test("impact semantics preserve precision without emitting signed zero", () => {
+  assert.equal(formatImpactDelta(-0), "No adjustment at current classification");
+  assert.equal(formatImpactDelta(0.004), "less than 0.01 pts up");
+  assert.equal(formatImpactDelta(-0.004), "less than 0.01 pts down");
+  assert.equal(formatImpactDelta(0.04), "+0.04 pts");
+  assert.equal(formatImpactDelta(-0.04), "-0.04 pts");
+  assert.equal(formatImpactDelta(0.14), "+0.1 pts");
+});
+
+test("the verified waterfall resets modeled classifications and reconciles to current IRR", () => {
+  const model = calculateCashFlowModel(INITIAL_EVIDENCE);
+  const verified = calculateCashFlowModel(allVerified());
+  const hazardStep = model.waterfall.find((step) => step.id === "site_hazard_exposure");
+
+  assert.equal(model.baseIRR, verified.projectIRR);
+  assert.equal(model.baseModel?.assumptions.adjustedHazardProbability, 0.05);
+  assert.equal(model.waterfall.at(-1)?.after, model.projectIRR);
+  assert.equal(hazardStep?.impactRole, "financial-effect");
+  assert.ok((hazardStep?.deltaIRR ?? 0) < 0);
+});
+
+test("zero impacts distinguish no adjustment from context-dependent decision gates", () => {
+  const model = calculateCashFlowModel(INITIAL_EVIDENCE);
+
+  assert.equal(model.lineItems.grid_interconnection.impactRole, "no-adjustment");
+  assert.equal(
+    model.lineItems.grid_interconnection.impactExplanation,
+    "No adjustment at current classification",
+  );
+  assert.equal(model.lineItems.permitting_timeline.impactRole, "decision-gate");
+  assert.equal(model.lineItems.backup_power_capacity.impactRole, "decision-gate");
+  assert.equal(model.lineItems.water_escalation.impactRole, "financial-effect");
+  assert.equal(
+    formatImpactDelta(model.lineItems.water_escalation.deltaIRR),
+    "less than 0.01 pts down",
+  );
+
+  const gridReclassified = calculateCashFlowModel(
+    classify(INITIAL_EVIDENCE, "grid_interconnection", "Management Assertion"),
+  );
+  assert.equal(gridReclassified.lineItems.backup_power_capacity.impactRole, "financial-effect");
+  assert.ok(gridReclassified.lineItems.backup_power_capacity.deltaIRR < 0);
+  assert.equal(
+    gridReclassified.waterfall.find((step) => step.id === "backup_power_capacity")?.impactRole,
+    "financial-effect",
   );
 });
 

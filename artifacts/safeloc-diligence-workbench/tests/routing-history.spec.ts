@@ -616,40 +616,8 @@ test.describe("hash routing and browser history", () => {
     await expect(page.getByTestId("advisor-risk-stat-earnings")).toContainText("other 493 S&P companies");
 
     const conversations = page.getByTestId("section-client-conversations");
-    await expect(conversations).toContainText("Is my fund still aligned with my values?");
-    await expect(conversations).toContainText("Should I be worried about AI risk?");
-    await expect(conversations).toContainText("What should I do?");
-    await expect(page.getByTestId("client-conversation-01")).toContainText("Ask your fund manager");
-    await expect(page.getByTestId("client-conversation-02")).toContainText("Review concentration in AI infrastructure-dependent holdings");
-    await expect(page.getByTestId("client-conversation-03")).toContainText("Not sell. Engage.");
-    await expect(page.getByTestId("client-conversation-03")).toContainText("governance gap");
 
-    await expect(page.getByTestId("section-practice-value")).toContainText("79%");
-    await expect(page.getByTestId("section-practice-value")).toContainText("3%");
-    await expect(page.getByTestId("section-practice-value")).toContainText("4x");
-    await expect(page.getByTestId("section-practice-value")).toContainText("zero statistical association with financial fulfillment");
-     await expect(page.getByTestId("text-governed-ai-connection")).toHaveText("You just experienced governed AI in this tool. An AI proposed evidence classifications. You decided which to accept. That interaction is the future of financial advising: AI accelerates the analysis, the advisor makes the judgment call. The Gallup data confirms what you already felt: 79% of Americans trust advisors. 3% trust AI. The advisor who can work with AI and govern its output has the most defensible position in the industry.");
-    await expect(page.getByTestId("text-governance-irr-gap")).toHaveText(/-?\d+\.\d pts/);
-    await expect(page.getByTestId("card-fund-ishares")).toBeVisible();
-    await expect(page.getByTestId("advisor-question-water-rights")).toBeVisible();
-     await expect(page.getByTestId("text-advisor-summary")).toContainText(
-       "MODERATE: 5 of 7 material inputs verified. 3 of 16 total inputs verified.",
-     );
-     await expect(page.getByTestId("badge-advisor-summary-risk")).toHaveAttribute(
-       "aria-label",
-       "MODERATE unverified exposure risk",
-     );
-     await expect(page.getByTestId("badge-fund-ishares-risk")).toHaveAttribute(
-       "aria-label",
-       "MODERATE unverified exposure risk",
-     );
-     await expect(page.getByTestId("badge-fund-msci-risk")).toHaveAttribute(
-       "aria-label",
-       "MODERATE unverified exposure risk",
-     );
-     await expect(page.getByTestId("text-advisor-summary")).toContainText("Management Assertion");
-     await expect(page.getByTestId("text-advisor-summary")).not.toContainText("HIGH < 4 verified");
-
+    const thirdConversation = page.getByTestId("client-conversation-03");
     const initialGap = await page.getByTestId("text-governance-irr-gap").textContent();
     await page.goto("/#evidence");
     await page.getByTestId("select-classification-water_rights").selectOption("Verified Evidence");

@@ -29,17 +29,12 @@ const directoryResponse = {
   ],
 };
 
-    const viewportLayout = await page.evaluate(() => {
-      const actions = document.querySelector<HTMLElement>("[data-testid='home-primary-actions']");
-      return {
-        bodyWidth: document.body.scrollWidth,
-        documentWidth: document.documentElement.scrollWidth,
-        viewportWidth: window.innerWidth,
-        actionPositions: actions
-          ? Array.from(actions.querySelectorAll<HTMLElement>("button")).map((button) => button.getBoundingClientRect().top)
-          : [],
-      };
-    });
+test.describe("stock-first company exposure flow", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.route("**/api/directory**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(directoryResponse) }));
+  });
+
+  test("does not fetch Compute Atlas while Home and holdings context render", async ({ page }) => {
     const directoryRequests: string[] = [];
     page.on("request", (request) => {
       if (request.url().includes("/api/directory")) directoryRequests.push(request.url());
@@ -69,10 +64,12 @@ const directoryResponse = {
     await expect(page.getByTestId("company-summary-tier2")).toContainText("1");
     await page.getByTestId("company-project-open-project-kilby").click();
     await expect(page).toHaveURL(/#brief$/);
-    await expect(page.getByTestId("workbench-breadcrumb")).toContainText("Microsoft → Project Kilby → Case Brief");
+    await expect(page.getByTestId("workbench-breadcrumb")).toContainText("Microsoft → Stargate Abilene → Case Brief");
     await page.goto("/#advisor");
     await expect(page.getByTestId("advisor-originating-company")).toContainText("Microsoft");
-    await expect(page.getByTestId("text-advisor-summary")).toContainText("values-aligned funds");
+    await expect(page.getByTestId("section-client-exposure")).toContainText(
+      "Starting from Microsoft, this review follows the selected project into the evidence record.",
+    );
   });
 
   test("shows the requested connection badge on each company detail selection", async ({ page }) => {
@@ -95,6 +92,52 @@ const directoryResponse = {
     }
   });
 
+  test("places Home analysis actions before context and opens the custom project dialog", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/#home");
+
+    await expect(page.getByTestId("home-product-definition")).toHaveText(
+      "Trace a public company to the infrastructure supporting its growth. Test the evidence. See what changes financially.",
+    );
+    await expect(page.getByTestId("button-start-nvidia")).toBeVisible();
+    await expect(page.getByTestId("button-run-stargate")).toBeVisible();
+    await expect(page.getByTestId("button-analyze-another-project")).toBeVisible();
+
+    const viewportLayout = await page.evaluate(() => {
+      const definition = document.querySelector<HTMLElement>("[data-testid='home-product-definition']");
+      const actions = document.querySelector<HTMLElement>("[data-testid='home-primary-actions']");
+      const bifurcation = document.querySelector<HTMLElement>("[data-testid='home-bifurcation']");
+      const holdings = document.querySelector<HTMLElement>("[data-testid='home-stock-picker']");
+      if (!definition || !actions || !bifurcation || !holdings) return null;
+      return {
+        bodyWidth: document.body.scrollWidth,
+        documentWidth: document.documentElement.scrollWidth,
+        viewportWidth: window.innerWidth,
+        definitionBottom: definition.getBoundingClientRect().bottom,
+        actionsBottom: actions.getBoundingClientRect().bottom,
+        actionsBeforeBifurcation: Boolean(actions.compareDocumentPosition(bifurcation) & Node.DOCUMENT_POSITION_FOLLOWING),
+        bifurcationBeforeHoldings: Boolean(bifurcation.compareDocumentPosition(holdings) & Node.DOCUMENT_POSITION_FOLLOWING),
+      };
+    });
+
+    expect(viewportLayout).not.toBeNull();
+    expect(viewportLayout?.bodyWidth).toBeLessThanOrEqual(viewportLayout?.viewportWidth ?? 0);
+    expect(viewportLayout?.documentWidth).toBeLessThanOrEqual(viewportLayout?.viewportWidth ?? 0);
+    expect(viewportLayout?.definitionBottom).toBeLessThanOrEqual(900);
+    expect(viewportLayout?.actionsBottom).toBeLessThanOrEqual(900);
+    expect(viewportLayout?.actionsBeforeBifurcation).toBe(true);
+    expect(viewportLayout?.bifurcationBeforeHoldings).toBe(true);
+
+    const customDialog = page.getByTestId("custom-project-dialog");
+    await expect(customDialog).not.toBeVisible();
+    await page.getByTestId("button-analyze-another-project").click();
+    await expect(customDialog).toBeVisible();
+    await expect(customDialog).toHaveAttribute("role", "dialog");
+    await expect(customDialog.getByRole("heading", { name: "Analyze a different project" })).toBeVisible();
+    await customDialog.getByTestId("button-close-custom-project").click();
+    await expect(customDialog).not.toBeVisible();
+  });
+
   test("keeps the directory on its secondary route and clears company context on reset", async ({ page }) => {
     await page.goto("/#directory");
     await expect(page.getByTestId("compute-atlas-page")).toBeVisible();
@@ -110,16 +153,3 @@ const directoryResponse = {
     await expect(page.getByTestId("advisor-originating-company")).toContainText("No company selected");
   });
 });
-
-    const customDialog = page.getByTestId("custom-project-dialog");
-
-    const order = await page.evaluate(() => {
-      const actions = document.querySelector("[data-testid='home-primary-actions']");
-      const bifurcation = document.querySelector("[data-testid='home-bifurcation']");
-      const holdings = document.querySelector("[data-testid='home-stock-picker']");
-      if (!actions || !bifurcation || !holdings) return null;
-      return {
-        actionsBeforeBifurcation: Boolean(actions.compareDocumentPosition(bifurcation) & Node.DOCUMENT_POSITION_FOLLOWING),
-        bifurcationBeforeHoldings: Boolean(bifurcation.compareDocumentPosition(holdings) & Node.DOCUMENT_POSITION_FOLLOWING),
-      };
-    });

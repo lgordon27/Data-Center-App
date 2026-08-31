@@ -102,8 +102,8 @@ export function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => vo
       number: "03",
       topic: "The client’s next step",
       question: "What should I do?",
-        framework: "Not sell. Engage. The sustainability community helped build this. Walking away forfeits the standing to steer it. The advisor’s role is to interpret evidence quality, ask questions no screening tool asks, and decide whether unverified assumptions are acceptable for the client’s values, risk tolerance, and time horizon.",
-        action: "Use the governance gap from this tool in your next client review as a conversation starter.",
+      framework: "This evidence gap does not independently produce a sell recommendation. For values-aligned investors, engagement may be an appropriate next step before portfolio action, subject to the client's mandate, risk tolerance, and circumstances. The advisor's role is to interpret evidence quality and determine whether unverified assumptions are acceptable for this specific client.",
+      action: "Use the governance gap from this tool in your next client review as a conversation starter.",
       accent: "lime",
     },
   ] as const;

@@ -37,6 +37,10 @@ export type DirectoryResponse = {
   facilities: DirectoryFacility[];
   sourceMetadata: DirectorySourceMetadata;
   diagnostics?: Record<string, unknown>;
+  totalFacilities?: number;
+  offset?: number;
+  limit?: number;
+  hasMore?: boolean;
 };
 
 export type DirectoryStats = {
@@ -174,10 +178,15 @@ export function directoryFreshness(source: DirectorySourceMetadata | undefined, 
 
 export function parseDirectoryResponse(value: unknown): DirectoryResponse {
   if (!isRecord(value) || !Array.isArray(value.facilities)) throw new Error("Directory returned an incomplete response.");
+  const nonNegativeInteger = (candidate: unknown) => typeof candidate === "number" && Number.isInteger(candidate) && candidate >= 0 ? candidate : undefined;
   return {
     facilities: value.facilities.map(parseFacility),
     sourceMetadata: parseSource(value.sourceMetadata),
     diagnostics: isRecord(value.diagnostics) ? value.diagnostics : undefined,
+    ...(nonNegativeInteger(value.totalFacilities) !== undefined ? { totalFacilities: nonNegativeInteger(value.totalFacilities) } : {}),
+    ...(nonNegativeInteger(value.offset) !== undefined ? { offset: nonNegativeInteger(value.offset) } : {}),
+    ...(nonNegativeInteger(value.limit) !== undefined ? { limit: nonNegativeInteger(value.limit) } : {}),
+    ...(typeof value.hasMore === "boolean" ? { hasMore: value.hasMore } : {}),
   };
 }
 
@@ -223,8 +232,26 @@ async function getJson(url: string, fetchImpl: typeof fetch): Promise<unknown> {
   }
 }
 
-export async function fetchDirectory(fetchImpl: typeof fetch = fetch): Promise<DirectoryResponse> {
-  return parseDirectoryResponse(await getJson(DIRECTORY_ENDPOINT, fetchImpl));
+export type DirectoryQuery = {
+  offset?: number;
+  limit?: number;
+  search?: string;
+  state?: string;
+  company?: string;
+};
+
+function directoryUrl(query: DirectoryQuery = {}) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== null && String(value).trim()) params.set(key, String(value));
+  }
+  const search = params.toString();
+  return search ? `${DIRECTORY_ENDPOINT}?${search}` : DIRECTORY_ENDPOINT;
+}
+
+export async function fetchDirectory(fetchOrQuery: typeof fetch | DirectoryQuery = fetch, fetchImpl: typeof fetch = fetch): Promise<DirectoryResponse> {
+  if (typeof fetchOrQuery === "function") return parseDirectoryResponse(await getJson(DIRECTORY_ENDPOINT, fetchOrQuery));
+  return parseDirectoryResponse(await getJson(directoryUrl(fetchOrQuery), fetchImpl));
 }
 
 export async function fetchDirectoryStats(fetchImpl: typeof fetch = fetch): Promise<DirectoryStatsResponse> {

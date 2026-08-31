@@ -378,9 +378,6 @@ function CompanyProjectCard({
 
 function CompanyExposure({
   company,
-  facilities,
-  loading,
-  error,
   researchError,
   researchingProjectId,
   onBack,
@@ -388,9 +385,6 @@ function CompanyExposure({
   onResearch,
 }: {
   company: CompanyKey;
-  facilities: DirectoryFacility[];
-  loading: boolean;
-  error: string | null;
   researchError: string | null;
   researchingProjectId: string | null;
   onBack: () => void;
@@ -398,7 +392,7 @@ function CompanyExposure({
   onResearch: (project: CompanyProject, company: CompanyKey) => void;
 }) {
   const profile = profileForCompany(company);
-  const projects = companyProjects(company, facilities);
+  const projects = companyProjects(company, []);
   const summary = projectSummary(projects);
   return (
     <section data-testid="company-exposure-view" aria-labelledby="company-exposure-heading" className="border-y border-[#d9e0e4] bg-[#f1f5f3] px-5 py-9 text-[#122232] sm:px-8 md:py-12 xl:px-10">
@@ -418,8 +412,6 @@ function CompanyExposure({
             <div className="mt-2 border-t border-[#cbb7ec]/60 pt-2 font-mono text-[8px] uppercase tracking-[0.08em]">Mapped context: {profile.marketFunds.join(", ")}</div>
           </div>
         </div>
-        {loading && <div data-testid="company-exposure-loading" role="status" className="mt-6 rounded-lg border border-[#aac6f4] bg-[#e5efff] px-4 py-3 text-[11px] text-[#255bb7]">Loading connected public directory records…</div>}
-        {error && <div data-testid="company-exposure-error" role="alert" className="mt-6 rounded-lg border border-[#f1cb8b] bg-[#fff8e9] px-4 py-3 text-[11px] leading-5 text-[#704508]">The directory could not be reached. Reviewed company context remains available; discovery records may be incomplete.</div>}
         {researchError && <div data-testid="company-research-error" role="alert" className="mt-6 rounded-lg border border-[#efabb8] bg-[#fde8eb] px-4 py-3 text-[11px] leading-5 text-[#7f2635]">{researchError}</div>}
         <div className="mt-6 grid gap-3 sm:grid-cols-4">
           <div data-testid="company-summary-project-count" className="rounded-lg bg-[#122232] p-4 text-white"><div className="font-mono text-[8px] uppercase tracking-[0.12em] text-[#a4b4bd]">Connected projects</div><div className="mt-2 font-mono text-[25px] font-bold text-[#d4e86b]">{summary.count}</div></div>
@@ -679,29 +671,8 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
   const { loadCustomProject, resetToDefault, originatingCompany } = useDiligence();
   const initialCompany = COMPANY_PROFILES.some((profile) => profile.key === originatingCompany) ? originatingCompany as CompanyKey : null;
   const [selectedCompany, setSelectedCompany] = useState<CompanyKey | null>(initialCompany);
-  const [companyDirectory, setCompanyDirectory] = useState<DirectoryResponse | null>(null);
-  const [companyDirectoryLoading, setCompanyDirectoryLoading] = useState(false);
-  const [companyDirectoryError, setCompanyDirectoryError] = useState<string | null>(null);
   const [companyResearchingId, setCompanyResearchingId] = useState<string | null>(null);
   const [companyResearchError, setCompanyResearchError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!selectedCompany || companyDirectory) return undefined;
-    let active = true;
-    setCompanyDirectoryLoading(true);
-    setCompanyDirectoryError(null);
-    void fetchDirectory()
-      .then((response) => {
-        if (active) setCompanyDirectory(response);
-      })
-      .catch((requestError) => {
-        if (active) setCompanyDirectoryError(requestError instanceof Error ? requestError.message : "Directory unavailable.");
-      })
-      .finally(() => {
-        if (active) setCompanyDirectoryLoading(false);
-      });
-    return () => { active = false; };
-  }, [companyDirectory, selectedCompany]);
 
   const handleResearchSuccess = (research: CustomResearchResponse, company: CompanyKey | null = null) => {
     loadCustomProject(research, company);
@@ -797,9 +768,6 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
          {selectedCompany && (
            <CompanyExposure
              company={selectedCompany}
-             facilities={companyDirectory?.facilities ?? []}
-             loading={companyDirectoryLoading}
-             error={companyDirectoryError}
              researchError={companyResearchError}
              researchingProjectId={companyResearchingId}
              onBack={() => setSelectedCompany(null)}

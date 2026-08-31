@@ -351,12 +351,43 @@ function sendJson(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
+function pageDirectoryResponse(response, requestUrl) {
+  const url = new URL(requestUrl || "/api/directory", "http://localhost");
+  const parseInteger = (value, fallback, maximum = Number.MAX_SAFE_INTEGER) => {
+    const parsed = Number.parseInt(value ?? "", 10);
+    return Number.isInteger(parsed) && parsed >= 0 ? Math.min(parsed, maximum) : fallback;
+  };
+  const limit = Math.max(1, parseInteger(url.searchParams.get("limit"), 24, 100));
+  const offset = parseInteger(url.searchParams.get("offset"), 0);
+  const query = (url.searchParams.get("search") ?? "").trim().toLowerCase();
+  const state = (url.searchParams.get("state") ?? "").trim().toUpperCase();
+  const company = (url.searchParams.get("company") ?? "").trim();
+  const matches = response.facilities.filter((facility) => {
+    const matchesState = !state ||
+      (state === "OTHER" ? !["TX", "AZ", "VA", "GA", "OH"].includes(facility.state) : facility.state === state);
+    const haystack = `${facility.name} ${facility.operator} ${facility.city} ${facility.county} ${facility.state} ${facility.aiClassification ?? ""}`.toLowerCase();
+    const matchesSearch = !query || haystack.includes(query);
+    const matchesCompany = !company || facility.connectedCompanies.includes(company);
+    return matchesState && matchesSearch && matchesCompany;
+  });
+  const facilities = matches.slice(offset, offset + limit);
+  return {
+    ...response,
+    facilities,
+    totalFacilities: matches.length,
+    offset,
+    limit,
+    hasMore: offset + facilities.length < matches.length,
+    diagnostics: { ...response.diagnostics, pagination: { offset, limit, totalFacilities: matches.length } },
+  };
+}
+
 export async function handleDirectoryRequest(req, res, options = {}) {
   if (req.method !== "GET") {
     sendJson(res, 405, { error: "Method not allowed", sourceMetadata: sourceMetadata("embedded", new Date().toISOString(), null) });
     return;
   }
-  sendJson(res, 200, await getDirectory(options));
+  sendJson(res, 200, pageDirectoryResponse(await getDirectory(options), req.url));
 }
 
 export async function handleDirectoryStatsRequest(req, res, options = {}) {

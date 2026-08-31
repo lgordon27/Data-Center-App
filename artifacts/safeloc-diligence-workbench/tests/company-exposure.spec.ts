@@ -29,12 +29,17 @@ const directoryResponse = {
   ],
 };
 
-test.describe("stock-first company exposure flow", () => {
-  test.beforeEach(async ({ page }) => {
-    await page.route("**/api/directory**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(directoryResponse) }));
-  });
-
-  test("does not fetch Compute Atlas while Home and holdings context render", async ({ page }) => {
+    const viewportLayout = await page.evaluate(() => {
+      const actions = document.querySelector<HTMLElement>("[data-testid='home-primary-actions']");
+      return {
+        bodyWidth: document.body.scrollWidth,
+        documentWidth: document.documentElement.scrollWidth,
+        viewportWidth: window.innerWidth,
+        actionPositions: actions
+          ? Array.from(actions.querySelectorAll<HTMLElement>("button")).map((button) => button.getBoundingClientRect().top)
+          : [],
+      };
+    });
     const directoryRequests: string[] = [];
     page.on("request", (request) => {
       if (request.url().includes("/api/directory")) directoryRequests.push(request.url());
@@ -105,3 +110,16 @@ test.describe("stock-first company exposure flow", () => {
     await expect(page.getByTestId("advisor-originating-company")).toContainText("No company selected");
   });
 });
+
+    const customDialog = page.getByTestId("custom-project-dialog");
+
+    const order = await page.evaluate(() => {
+      const actions = document.querySelector("[data-testid='home-primary-actions']");
+      const bifurcation = document.querySelector("[data-testid='home-bifurcation']");
+      const holdings = document.querySelector("[data-testid='home-stock-picker']");
+      if (!actions || !bifurcation || !holdings) return null;
+      return {
+        actionsBeforeBifurcation: Boolean(actions.compareDocumentPosition(bifurcation) & Node.DOCUMENT_POSITION_FOLLOWING),
+        bifurcationBeforeHoldings: Boolean(bifurcation.compareDocumentPosition(holdings) & Node.DOCUMENT_POSITION_FOLLOWING),
+      };
+    });

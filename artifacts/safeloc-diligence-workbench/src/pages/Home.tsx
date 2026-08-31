@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -390,6 +390,7 @@ function CompanyExposure({
   onBack,
   onCurated,
   onResearch,
+  sectionRef,
 }: {
   company: CompanyKey;
   researchError: string | null;
@@ -397,12 +398,13 @@ function CompanyExposure({
   onBack: () => void;
   onCurated: (company: CompanyKey) => void;
   onResearch: (project: CompanyProject, company: CompanyKey) => void;
+  sectionRef?: React.RefObject<HTMLElement | null>;
 }) {
   const profile = profileForCompany(company);
   const projects = companyProjects(company, []);
   const summary = projectSummary(projects);
   return (
-    <section data-testid="company-exposure-view" aria-labelledby="company-exposure-heading" className="border-y border-[#d9e0e4] bg-[#f1f5f3] px-5 py-9 text-[#122232] sm:px-8 md:py-12 xl:px-10">
+    <section ref={sectionRef} tabIndex={-1} data-testid="company-exposure-view" aria-labelledby="company-exposure-heading" className="border-y border-[#d9e0e4] bg-[#f1f5f3] px-5 py-9 text-[#122232] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#255bb7] sm:px-8 md:py-12 xl:px-10">
       <div className="mx-auto max-w-[1240px]">
         <button data-testid="button-company-back" type="button" onClick={onBack} className="mb-6 inline-flex min-h-10 items-center gap-2 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-[#52616b] hover:text-[#122232]">
           <ArrowLeft aria-hidden="true" className="h-3.5 w-3.5" /> Back to companies
@@ -706,6 +708,17 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
   const [selectedCompany, setSelectedCompany] = useState<CompanyKey | null>(initialCompany);
   const [companyResearchingId, setCompanyResearchingId] = useState<string | null>(null);
   const [companyResearchError, setCompanyResearchError] = useState<string | null>(null);
+  const companyExposureRef = useRef<HTMLElement>(null);
+
+  const focusCompanyExposure = () => {
+    window.setTimeout(() => {
+      companyExposureRef.current?.scrollIntoView({
+        behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ? "auto" : "smooth",
+        block: "start",
+      });
+      companyExposureRef.current?.focus({ preventScroll: true });
+    }, 0);
+  };
 
   const handleResearchSuccess = (research: CustomResearchResponse, company: CompanyKey | null = null) => {
     loadCustomProject(research, company);
@@ -739,7 +752,43 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
                 <h1 data-testid="home-hero-heading" className="max-w-3xl text-[42px] font-semibold leading-[0.98] tracking-[-0.06em] sm:text-[54px] md:text-[60px] xl:text-[64px]">
                   The AI infrastructure market is splitting in two. <span className="text-[#d4e86b]">Which side are your holdings on?</span>
                 </h1>
-                <div data-testid="home-supporting-lines" className="mt-6 max-w-2xl space-y-2 text-[14px] leading-6 text-[#c4d0d6] md:text-[16px]">
+                <p data-testid="home-product-definition" className="mt-5 max-w-2xl text-[16px] font-medium leading-6 text-white md:text-[19px] md:leading-7">
+                  Trace a public company to the infrastructure supporting its growth. Test the evidence. See what changes financially.
+                </p>
+                <div data-testid="home-primary-actions" className="mt-6 flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center">
+                  <button
+                    data-testid="button-start-nvidia"
+                    type="button"
+                    onClick={() => {
+                      setCompanyResearchError(null);
+                      setSelectedCompany("NVIDIA");
+                      focusCompanyExposure();
+                    }}
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-[#d4e86b] px-4 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#122232] transition-transform hover:-translate-y-0.5 hover:bg-[#e3f18d] focus:outline-none focus:ring-2 focus:ring-[#d4e86b] focus:ring-offset-2 focus:ring-offset-[#0a1b2a]"
+                  >
+                    Start with NVIDIA <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    data-testid="button-run-stargate"
+                    type="button"
+                    onClick={() => {
+                      resetToDefault(null);
+                      window.location.hash = "brief";
+                    }}
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-[#d4e86b]/70 bg-[#173247] px-4 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#d4e86b] transition-colors hover:border-[#d4e86b] hover:bg-[#203f50] focus:outline-none focus:ring-2 focus:ring-[#d4e86b] focus:ring-offset-2 focus:ring-offset-[#0a1b2a]"
+                  >
+                    Run the Stargate Case <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    data-testid="button-analyze-another-project"
+                    type="button"
+                    onClick={() => window.dispatchEvent(new Event("safeloc-open-custom-project"))}
+                    className="inline-flex min-h-11 items-center justify-center gap-1 rounded-md px-3 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#b9e1f2] underline decoration-[#718894] underline-offset-4 transition-colors hover:text-[#d4e86b] hover:decoration-[#d4e86b] focus:outline-none focus:ring-2 focus:ring-[#d4e86b] focus:ring-offset-2 focus:ring-offset-[#0a1b2a]"
+                  >
+                    Analyze Another Project <ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <div data-testid="home-supporting-lines" className="mt-7 max-w-2xl space-y-2 text-[14px] leading-6 text-[#c4d0d6] md:text-[16px]">
                   <p data-testid="home-context-sentence">$725 billion is being invested in AI infrastructure this year. $130 billion has already stalled.</p>
                   <p>Projects that solved their constraints are proceeding. Projects that didn&apos;t are stuck. The evidence determines which is which.</p>
                 </div>
@@ -752,35 +801,35 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
                  </div>
               </div>
 
-              <section data-testid="home-bifurcation" aria-labelledby="home-bifurcation-heading" className="lg:pt-8">
-                <div className="mb-4">
-                  <div className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-[#8299a5]">Public context / the market split</div>
-                  <h2 id="home-bifurcation-heading" className="mt-2 max-w-xl text-[27px] font-semibold leading-[1.04] tracking-[-0.04em] text-white md:text-[35px]">Evidence determines who gets to build.</h2>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-                  <BifurcationCard
-                    tier="Tier 1: Proceeding"
-                    title="Built independently"
-                    constraints="Behind-the-meter power. Secured water. No grid dependency."
-                    example="Chevron/Microsoft Project Kilby"
-                    evidence="Evidence: Mostly Verified"
-                    tone="proceeding"
-                    icon={ShieldCheck}
-                  />
-                  <BifurcationCard
-                    tier="Tier 2: Stalling"
-                    title="Waiting on public systems"
-                    constraints="Grid-dependent. Municipal water. Public permitting."
-                    example="OpenAI Stargate Abilene"
-                    evidence="Evidence: Key Gaps"
-                    tone="stalling"
-                    icon={TriangleAlert}
-                  />
-                </div>
-                <p data-testid="home-bifurcation-direction" className="mt-4 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-[#d4e86b]">Analyze any project to see which tier it falls in.</p>
-                <p data-testid="home-bifurcation-qualifier" className="mt-3 font-mono text-[9px] uppercase leading-4 tracking-[0.08em] text-[#8299a5]">Public market context/examples — not facility-level Stargate evidence or synthetic financial inputs.</p>
-              </section>
             </div>
+            <section data-testid="home-bifurcation" aria-labelledby="home-bifurcation-heading" className="mt-10 border-t border-white/10 pt-8 md:mt-12 md:pt-10">
+              <div className="mb-4">
+                <div className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-[#8299a5]">Public context / the market split</div>
+                <h2 id="home-bifurcation-heading" className="mt-2 max-w-xl text-[27px] font-semibold leading-[1.04] tracking-[-0.04em] text-white md:text-[35px]">Evidence determines who gets to build.</h2>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <BifurcationCard
+                  tier="Tier 1: Proceeding"
+                  title="Built independently"
+                  constraints="Behind-the-meter power. Secured water. No grid dependency."
+                  example="Chevron/Microsoft Project Kilby"
+                  evidence="Evidence: Mostly Verified"
+                  tone="proceeding"
+                  icon={ShieldCheck}
+                />
+                <BifurcationCard
+                  tier="Tier 2: Stalling"
+                  title="Waiting on public systems"
+                  constraints="Grid-dependent. Municipal water. Public permitting."
+                  example="OpenAI Stargate Abilene"
+                  evidence="Evidence: Key Gaps"
+                  tone="stalling"
+                  icon={TriangleAlert}
+                />
+              </div>
+              <p data-testid="home-bifurcation-direction" className="mt-4 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-[#d4e86b]">Analyze any project to see which tier it falls in.</p>
+              <p data-testid="home-bifurcation-qualifier" className="mt-3 font-mono text-[9px] uppercase leading-4 tracking-[0.08em] text-[#8299a5]">Public market context/examples — not facility-level Stargate evidence or synthetic financial inputs.</p>
+            </section>
           </div>
         </section>
          <section data-testid="home-stock-picker" aria-labelledby="home-stock-picker-heading" className="border-y border-white/10 bg-[#0d2435] px-5 py-10 sm:px-8 md:py-14 xl:px-10">
@@ -803,6 +852,7 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
              company={selectedCompany}
              researchError={companyResearchError}
              researchingProjectId={companyResearchingId}
+            sectionRef={companyExposureRef}
              onBack={() => setSelectedCompany(null)}
              onCurated={(company) => {
                resetToDefault(company);

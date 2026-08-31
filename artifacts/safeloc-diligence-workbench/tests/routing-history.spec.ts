@@ -294,6 +294,11 @@ test.describe("hash routing and browser history", () => {
   });
 
   test("frames the financial waterfall as an evidence-quality stress test", async ({ page }) => {
+    await page.route("**/api/eia/electricity", (route) => route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ diagnostics: { error: "Calibration test uses the bundled baseline" } }),
+    }));
     await page.goto("/#materiality");
 
     const waterfall = page.getByTestId("panel-irr-waterfall");
@@ -311,6 +316,35 @@ test.describe("hash routing and browser history", () => {
 
     const baselineIrr = await waterfall.getByTestId("waterfall-base-irr").textContent();
     const currentIrr = await page.getByTestId("waterfall-current-irr").textContent();
+    const parsePercent = (value: string | null) => Number.parseFloat(value?.replace("%", "") ?? "NaN");
+    const baselineValue = parsePercent(baselineIrr);
+    const currentValue = parsePercent(currentIrr);
+
+    expect(baselineValue).toBeGreaterThanOrEqual(15);
+    expect(baselineValue).toBeLessThanOrEqual(16);
+    expect(currentValue).toBeGreaterThanOrEqual(8);
+    expect(currentValue).toBeLessThanOrEqual(11);
+    expect(baselineValue - currentValue).toBeGreaterThanOrEqual(5);
+    expect(baselineValue - currentValue).toBeLessThanOrEqual(7);
+
+    const metricLabels = await page.locator("#materiality-summary [data-testid^='metric-']").evaluateAll(
+      (cards) => cards.map((card) => card.textContent?.trim() ?? ""),
+    );
+    expect(metricLabels[0]).toContain("Project IRR");
+    expect(metricLabels[1]).toContain("MOIC");
+    expect(metricLabels[2]).toContain("Cash-on-cash");
+    expect(metricLabels[3]).toContain("Payback");
+    expect(metricLabels[4]).toContain("NPV @ 10%");
+
+    const waterfallChanges = await waterfall.locator("[data-testid^='waterfall-step-']").evaluateAll(
+      (steps) => steps.map((step) => step.textContent ?? ""),
+    );
+    expect(waterfallChanges.filter((text) => /-\d+\.\d pts/.test(text)).length).toBeGreaterThan(3);
+    await expect(waterfall.locator("[data-testid^='waterfall-step-']").last()).toContainText(currentIrr ?? "");
+
+    await page.goto("/#decision");
+    await expect(page.getByTestId("text-decision-irr")).toHaveText(currentIrr ?? "");
+    await expect(page.getByTestId("panel-decision-return")).toContainText(baselineIrr ?? "");
 
     await page.goto("/#evidence");
     await page.getByTestId("select-classification-electricity_cost").selectOption("Missing Evidence");

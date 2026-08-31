@@ -149,14 +149,14 @@ const INTEREST_RATE = 0.075;
 const AMORTIZATION_YEARS = 10;
 // Representative acquisition economics scaled to the 1.2 GW Stargate target.
 // These are explicit synthetic assumptions, not reported transaction terms.
-const EXIT_MULTIPLE = 2.15;
+const EXIT_MULTIPLE = 2.2;
 const DISCOUNT_RATE = 0.1;
 
 export const CLIMATE_QUALITY_MULTIPLIERS: Record<Classification, number> = {
   "Verified Evidence": 1,
   "Management Assertion": 1.25,
   "Model Inference": 1.5,
-  "User Assumption": 2,
+  "User Assumption": 1.15,
   "Missing Evidence": 2,
 };
 
@@ -213,7 +213,7 @@ const QUALITY_POLICY = {
     electricityEscalationAdder: 0.01,
     waterEscalationAdder: 0.015,
     carbonMultiplier: 1.1,
-    customerLossRate: 0.1,
+    customerLossRate: 0.07,
     waterRightsMultiplier: 1.1,
     climateMultiplier: 1.25,
   },
@@ -233,11 +233,11 @@ const QUALITY_POLICY = {
     climateMultiplier: 1.5,
   },
   "User Assumption": {
-    costMultiplier: 1.25,
+    costMultiplier: 1.05,
     waterConsumptionMultiplier: 1.3,
     timelineAdder: 6,
     communityDelay: 10,
-    coolingContingency: 0.15,
+    coolingContingency: 0.1,
     communityContingency: 0.15,
     renewableCoverage: 0.65,
     electricityEscalationAdder: 0.03,
@@ -245,20 +245,20 @@ const QUALITY_POLICY = {
     carbonMultiplier: 1.35,
     customerLossRate: 0.22,
     waterRightsMultiplier: 1.35,
-    climateMultiplier: 2,
+    climateMultiplier: 1.15,
   },
   "Missing Evidence": {
-    costMultiplier: 1.45,
+    costMultiplier: 1.2,
     waterConsumptionMultiplier: 1.5,
-    timelineAdder: 10,
-    communityDelay: 14,
-    coolingContingency: 0.25,
-    communityContingency: 0.25,
+    timelineAdder: 5,
+    communityDelay: 8,
+    coolingContingency: 0.12,
+    communityContingency: 0.12,
     renewableCoverage: 0.4,
     electricityEscalationAdder: 0.05,
     waterEscalationAdder: 0.08,
     carbonMultiplier: 1.5,
-    customerLossRate: 0.35,
+    customerLossRate: 0.1,
     waterRightsMultiplier: 1.6,
     climateMultiplier: 2,
   },

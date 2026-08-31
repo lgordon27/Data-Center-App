@@ -56,10 +56,23 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
   const chartMax = Math.max(...chartValues, 0);
   const irrDelta = currentIRR === null || baseIRR === null ? null : currentIRR - baseIRR;
   const waterfallSteps = useMemo(() => {
-    const baselineEvidence = Object.fromEntries(Object.entries(evidence).map(([id, item]) => [id, { ...item, classification: "Verified Evidence" as Classification }]));
+    const baselineEvidence = Object.fromEntries(Object.entries(evidence).map(([id, item]) => [id, {
+      ...item,
+      classification: "Verified Evidence" as Classification,
+      modelClassification: item.modelClassification
+        ? "Verified Evidence" as Classification
+        : undefined,
+    }]));
     let beforeEvidence = baselineEvidence;
     return impacts.map((impact) => {
-      const afterEvidence = { ...beforeEvidence, [impact.id]: { ...beforeEvidence[impact.id], classification: evidence[impact.id].classification } };
+      const afterEvidence = {
+        ...beforeEvidence,
+        [impact.id]: {
+          ...beforeEvidence[impact.id],
+          classification: evidence[impact.id].classification,
+          modelClassification: evidence[impact.id].modelClassification,
+        },
+      };
       const before = calculateCashFlowModel(beforeEvidence, project.capacityMW).projectIRR;
       const after = calculateCashFlowModel(afterEvidence, project.capacityMW).projectIRR;
       beforeEvidence = afterEvidence;

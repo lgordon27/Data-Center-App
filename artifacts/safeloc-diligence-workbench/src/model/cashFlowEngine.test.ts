@@ -23,7 +23,28 @@ function allVerified(): EvidenceRecord {
   return Object.fromEntries(
     Object.entries(INITIAL_EVIDENCE).map(([id, item]) => [
       id,
-      { ...item, classification: "Verified Evidence" as const },
+      {
+        ...item,
+        classification: "Verified Evidence" as const,
+        modelClassification: item.modelClassification
+          ? "Verified Evidence" as const
+          : undefined,
+      },
+    ]),
+  );
+}
+
+function allMissing(): EvidenceRecord {
+  return Object.fromEntries(
+    Object.entries(INITIAL_EVIDENCE).map(([id, item]) => [
+      id,
+      {
+        ...item,
+        classification: "Missing Evidence" as const,
+        modelClassification: item.modelClassification
+          ? "Missing Evidence" as const
+          : undefined,
+      },
     ]),
   );
 }
@@ -56,6 +77,92 @@ test("the canonical evidence contract has 16 items and a 16-item confidence deno
   assert.equal(model.assumptions.downtimeCostPerDay, 2_850_000);
   assert.equal(model.assumptions.capacityMW, 1_200);
   assert.equal(model.assumptions.entryValue, 4_800);
+});
+
+test("synthetic return calibration separates verified, default, and all-missing cases", () => {
+  const verified = calculateCashFlowModel(allVerified());
+  const current = calculateCashFlowModel(INITIAL_EVIDENCE);
+  const missing = calculateCashFlowModel(allMissing());
+
+  assert.notEqual(verified.projectIRR, null);
+  assert.notEqual(current.projectIRR, null);
+  assert.notEqual(missing.projectIRR, null);
+  assert.ok(verified.projectIRR! >= 15 && verified.projectIRR! <= 16);
+  assert.ok(current.projectIRR! >= 8 && current.projectIRR! <= 11);
+  assert.ok(missing.projectIRR! < 0);
+
+  const defaultSpread = verified.projectIRR! - current.projectIRR!;
+  assert.ok(defaultSpread >= 5 && defaultSpread <= 7);
+  assert.equal(current.baseIRR, verified.projectIRR);
+  assert.equal(missing.mechanicalDisclaimer, true);
+
+  for (const metric of ["moic", "npv", "cashOnCash", "terminalValue"] as const) {
+    assert.ok(verified[metric] > current[metric], `${metric} should fall in the default case`);
+    assert.ok(current[metric] > missing[metric], `${metric} should fall again when all evidence is missing`);
+  }
+  assert.ok(verified.payback! < current.payback!);
+  assert.equal(missing.payback, null);
+  assert.ok(verified.totalDistributions > current.totalDistributions);
+  assert.ok(current.totalDistributions > missing.totalDistributions);
+  assert.ok(verified.equityInvested < current.equityInvested);
+  assert.ok(current.equityInvested < missing.equityInvested);
+
+  assert.equal(verified.schedule.length, 6);
+  assert.equal(current.schedule.length, 6);
+  assert.equal(missing.schedule.length, 6);
+  for (let index = 0; index < verified.schedule.length; index += 1) {
+    assert.ok(
+      verified.schedule[index].netEquityCashFlow >= current.schedule[index].netEquityCashFlow,
+      `verified cash flow should not trail default in year ${index}`,
+    );
+    assert.ok(
+      current.schedule[index].netEquityCashFlow >= missing.schedule[index].netEquityCashFlow,
+      `default cash flow should not trail all-missing in year ${index}`,
+    );
+  }
+  for (const model of [verified, current, missing]) {
+    let cumulative = 0;
+    for (const year of model.schedule) {
+      cumulative += year.netEquityCashFlow;
+      assert.ok(Math.abs(year.cumulativeEquityCashFlow - cumulative) < 0.000001);
+    }
+    assert.equal(model.terminalValue, model.schedule[5].terminalValue);
+    assert.equal(model.assumptions.terminalValue, model.schedule[5].terminalValue);
+  }
+});
+
+test("single-item missing-evidence sensitivity is visible and bounded", () => {
+  const verifiedEvidence = allVerified();
+  const verified = calculateCashFlowModel(verifiedEvidence);
+  const current = calculateCashFlowModel(INITIAL_EVIDENCE);
+  assert.notEqual(verified.projectIRR, null);
+  assert.notEqual(current.projectIRR, null);
+
+  const representative = calculateCashFlowModel(
+    classify(verifiedEvidence, "downtime_cost", "Missing Evidence"),
+  );
+  assert.notEqual(representative.projectIRR, null);
+  const representativePenalty = verified.projectIRR! - representative.projectIRR!;
+  assert.ok(representativePenalty >= 1 && representativePenalty <= 3);
+
+  const defaultDeterioration = verified.projectIRR! - current.projectIRR!;
+  const singleItemPenalties = Object.keys(verifiedEvidence).map((id) => {
+    const item = verifiedEvidence[id];
+    const stressed = calculateCashFlowModel({
+      ...verifiedEvidence,
+      [id]: {
+        ...item,
+        classification: "Missing Evidence",
+        modelClassification: item.modelClassification
+          ? "Missing Evidence"
+          : undefined,
+      },
+    });
+    return stressed.projectIRR === null ? Number.POSITIVE_INFINITY : verified.projectIRR! - stressed.projectIRR;
+  });
+
+  assert.ok(Math.max(...singleItemPenalties) < defaultDeterioration);
+  assert.deepEqual(Object.keys(current.lineItems), Object.keys(INITIAL_EVIDENCE));
 });
 
 test("climate quality multipliers adjust hazard probability and downtime cost", () => {
@@ -202,7 +309,7 @@ test("a structured EIA electricity rate flows through the existing quality polic
     },
   };
   const model = calculateCashFlowModel(eiaEvidence);
-   assert.equal(model.assumptions.electricityRate, 55 * 1.25);
+   assert.equal(model.assumptions.electricityRate, 55 * 1.05);
 
   const inferred = {
     ...eiaEvidence,
@@ -216,6 +323,10 @@ test("a structured EIA electricity rate flows through the existing quality polic
 
 test("financial metrics retain model precision beyond their display formats", () => {
   const precisionEvidence = allVerified();
+  precisionEvidence.site_hazard_exposure = {
+    ...precisionEvidence.site_hazard_exposure,
+    modelClassification: "User Assumption",
+  };
   precisionEvidence.downtime_cost = {
     ...precisionEvidence.downtime_cost,
     classification: "User Assumption",

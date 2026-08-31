@@ -1,0 +1,85 @@
+Restructure the Home page to lead with stocks/companies, not projects. The current project directory is too confusing as the primary entry point. Users should start from what they know (holdings) and discover the projects connected to them.
+
+NEW HOME PAGE FLOW:
+
+Keep the existing hero section with the $725B headline, bifurcation visual, and key stats. Those work.
+
+Replace the project directory as the primary interaction with a STOCK PICKER:
+
+Title: "Start from what your clients hold."
+Subtitle: "Select a company to see the AI infrastructure its revenue depends on."
+
+Show 6 large, clickable company cards in a 2x3 or 3x2 grid:
+
+NVIDIA card:
+- "Largest contributor to S&P 500 earnings growth"
+- "20%+ of iShares ESG Advanced MSCI USA ETF"
+- "GPU revenue depends on data center buildout rate"
+
+Microsoft card:
+- "Partially hedged: Tier 1 and Tier 2 projects"
+- "Project Kilby (behind-the-meter) + grid-dependent projects"
+
+Meta card:
+- "Grid-dependent Texas projects"
+- "More exposed to Tier 2 delays"
+
+Google (Alphabet) card:
+- "$40B+ Texas investment dependent on grid"
+- "Subject to Abbott's audit"
+
+Oracle card:
+- "15-year Stargate lease for 450,000+ GPUs"
+- "Directly tied to Stargate's evidence profile"
+
+Amazon card:
+- "AWS largest cloud infrastructure provider"
+- "Major Virginia and Ohio data center operator"
+
+WHEN USER CLICKS A COMPANY:
+
+Navigate to a company detail view (or expand inline) showing:
+
+Header: "[Company Name] AI Infrastructure Exposure"
+Fund context: "Held in: iShares ESG Advanced MSCI USA ETF, MSCI KLD 400 Social Index" (show relevant funds from the company mappings)
+
+Then a list of connected projects, showing:
+- Project name
+- Location
+- Capacity
+- Status badge
+- Tier badge (Tier 1 green, Tier 2 amber)
+- One-line description
+
+For projects in our curated data (Stargate, Kilby, etc): show them with real data
+For projects from Compute Atlas: match by operator name and show facility data
+
+Below the project list, a summary: "[Company] is connected to X projects totaling Y GW. Z are Tier 1 (proceeding), W are Tier 2 (at risk of delay)."
+
+WHEN USER CLICKS A PROJECT FROM THE COMPANY VIEW:
+
+If it's Stargate: load the curated workbench with hand-verified evidence
+If it's any other project: trigger the AI research analysis (POST /api/research-project)
+
+The flow is now: Stock → Connected Projects → Pick One → Evidence Analysis
+
+SECONDARY PATHS (keep but deprioritize):
+
+Move the full Compute Atlas directory to a separate "Browse All Facilities" link below the stock picker. Small text, not prominent. "Or browse all 1,280+ tracked facilities by state." This links to a separate #directory page with the tabbed state filter and paginated cards.
+
+Keep the "Analyze Stargate Abilene" button as a prominent standalone option: "Or dive straight into the curated deep dive: Stargate Abilene"
+
+Keep the search input as a tertiary option: "Don't see your project? Search by name..."
+
+WORKBENCH HEADER UPDATE:
+
+When the user arrives at the workbench from the stock picker path, show a breadcrumb: "NVIDIA → Stargate Abilene → Evidence Room" so they always know how they got there and can navigate back to the company view.
+
+The Advisor Lens (Screen 5) should reference the specific company the user started from. If they came through NVIDIA, emphasize NVIDIA exposure. If through Microsoft, emphasize both Kilby (Tier 1) and grid-dependent (Tier 2) exposure.
+
+DESIGN:
+- Company cards should be large, tappable, visually distinct from each other
+- Each card should feel like a stock ticker card, not a project description
+- The transition from company view to project list should feel like drilling down, not navigating away
+- Keep total home page text minimal. The stock picker speaks for itself.
+- Mobile: company cards stack 2 per row, project lists stack vertically

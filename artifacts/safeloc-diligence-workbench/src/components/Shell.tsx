@@ -1,4 +1,5 @@
 
+import { useEffect, useState } from "react";
 import type {
   ReactNode,
   RefObject
@@ -35,6 +36,7 @@ import {
 import {
   type RiskTier
 } from "@/model/advisorLens";
+import { CustomProjectDialog } from "@/pages/Home";
 
 export type Screen = "brief" | "evidence" | "materiality" | "decision" | "advisor";
 type AppRoute = Screen | "home" | "value-chain" | "how-it-works";
@@ -229,8 +231,14 @@ export function ProgressNav({ current, onNavigate }: { current: Screen; onNaviga
   );
 }
 
-export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, onWorkbench, route, sessionRestored, mobileOpen, menuButtonRef }: { onMenu: () => void; onReset: () => void; onHome: () => void; onHowItWorks: () => void; onValueChain: () => void; onWorkbench: () => void; route: AppRoute; sessionRestored: boolean; mobileOpen: boolean; menuButtonRef: RefObject<HTMLButtonElement | null> }) {
-  const { sessionMigrated } = useDiligence();
+export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, onWorkbench, onAnalyzeCustom, route, sessionRestored, mobileOpen, menuButtonRef }: { onMenu: () => void; onReset: () => void; onHome: () => void; onHowItWorks: () => void; onValueChain: () => void; onWorkbench: () => void; onAnalyzeCustom?: () => void; route: AppRoute; sessionRestored: boolean; mobileOpen: boolean; menuButtonRef: RefObject<HTMLButtonElement | null> }) {
+  const { sessionMigrated, project, loadCustomProject } = useDiligence();
+  const [customProjectOpen, setCustomProjectOpen] = useState(false);
+  useEffect(() => {
+    const openCustomProject = () => setCustomProjectOpen(true);
+    window.addEventListener("safeloc-open-custom-project", openCustomProject);
+    return () => window.removeEventListener("safeloc-open-custom-project", openCustomProject);
+  }, []);
   return (
     <>
     <header className="border-b border-[#d9e0e4] bg-[#122232] px-4 py-4 text-[#f6f7f2] md:px-8 md:py-5">
@@ -259,8 +267,8 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
         </div>
         <div className="hidden flex-1 items-center justify-center lg:flex">
           <div className="text-center">
-            <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-[#b9d43a]">Evidence-Governed Investment Intelligence</div>
-            <div className="mt-1 text-[10px] text-[#96a4ad]">Taylor County, Texas / ERCOT · IC pre-read</div>
+             <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-[#b9d43a]">{project.kind === "custom" ? "AI-researched · high-level project" : "Evidence-Governed Investment Intelligence"}</div>
+             <div className="mt-1 text-[10px] text-[#96a4ad]">{project.name} / {project.location} · IC pre-read</div>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -282,6 +290,14 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
           >
             The AI Chain
           </button>
+           <button
+             data-testid="button-analyze-different-project"
+             type="button"
+             onClick={onAnalyzeCustom ?? (() => setCustomProjectOpen(true))}
+             className="hidden min-h-11 items-center rounded border border-[#60717f] px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#d4e86b] transition-colors hover:border-[#d4e86b] hover:bg-white/10 lg:inline-flex"
+           >
+             Analyze a different project
+           </button>
            <button
              data-testid="button-how-it-works"
              type="button"
@@ -308,21 +324,32 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
         </div>
       </div>
     </header>
+    <CustomProjectDialog
+      open={customProjectOpen}
+      onClose={() => setCustomProjectOpen(false)}
+      onSuccess={(research) => {
+        loadCustomProject(research);
+        setCustomProjectOpen(false);
+        window.location.hash = "brief";
+      }}
+    />
+    <CustomResearchBanner />
     </>
   );
 }
 
 export function ShellAside({ screen, metrics, onNavigate, onReset }: { screen: Screen; metrics: ReturnType<typeof useDiligence>["metrics"]; onNavigate: (screen: Screen) => void; onReset: () => void }) {
+  const { project } = useDiligence();
   return (
     <aside className="hidden w-[246px] shrink-0 border-r border-[#d9e0e4] bg-[#eef2f1] px-5 py-7 lg:block">
       <SectionKicker>Active mandate</SectionKicker>
       <div className="mb-7">
-        <div className="font-mono text-[11px] font-bold text-[#122232]">STARGATE / ABI-26-001</div>
-         <div className="mt-1 text-xs leading-5 text-[#52616b]">AI infrastructure diligence case</div>
+         <div className="font-mono text-[11px] font-bold text-[#122232]">{project.kind === "custom" ? "CUSTOM / SESSION-ONLY" : "STARGATE / ABI-26-001"}</div>
+          <div className="mt-1 text-xs leading-5 text-[#52616b]">{project.kind === "custom" ? "AI-researched project" : "AI infrastructure diligence case"}</div>
       </div>
       <div className="mb-8 rounded-lg border border-[#cbd8d4] bg-[#f9faf8] p-3.5">
         <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#60707d]">
-          <MapPin className="h-3.5 w-3.5 text-[#ba2f45]" /> Taylor County, TX
+           <MapPin className="h-3.5 w-3.5 text-[#ba2f45]" /> {project.location}
         </div>
         <div className="mt-3 h-px bg-[#dfe6e3]" />
         <div className="mt-3 flex justify-between text-[10px]">
@@ -361,6 +388,17 @@ export function ShellAside({ screen, metrics, onNavigate, onReset }: { screen: S
         </div>
          <div className="mt-2 text-[10px] leading-4 text-[#52616b]">Weighted by source quality and recency.</div>
       </div>
+    </aside>
+  );
+}
+
+export function CustomResearchBanner() {
+  const { project } = useDiligence();
+  if (project.kind !== "custom") return null;
+  return (
+    <aside data-testid="custom-research-banner" role="note" className="mb-5 flex items-start gap-3 rounded-lg border-2 border-[#f1cb8b] bg-[#fff8e9] px-4 py-3 text-[#6f460e]">
+      <TriangleAlert aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+      <p className="text-[11px] leading-5"><strong className="font-semibold">AI-researched · high-level custom analysis: {project.name}.</strong> Public findings and regional context are shown for interpretation; they are not facility-level proof unless the cited source supports that project. Financial outputs remain synthetic standardized economics.</p>
     </aside>
   );
 }

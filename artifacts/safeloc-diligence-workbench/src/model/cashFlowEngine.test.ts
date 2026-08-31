@@ -264,3 +264,13 @@ test("climate uncertainty propagates through returns and material recommendation
   assert.equal(sourceInferred.recommendationStatus, "CONDITIONAL");
   assert.equal(sourceInferred.materialUnverifiedCount, 1);
 });
+
+test("custom project capacity scales standardized economics without changing the model contract", () => {
+  const baseline = calculateCashFlowModel(INITIAL_EVIDENCE);
+  const halfScale = calculateCashFlowModel(INITIAL_EVIDENCE, 600);
+
+  assert.equal(halfScale.assumptions.capacityMW, 600);
+  assert.equal(halfScale.assumptions.electricityRate, baseline.assumptions.electricityRate);
+  assert.ok(halfScale.assumptions.annualRevenueAtFullUtilization < baseline.assumptions.annualRevenueAtFullUtilization);
+  assert.equal(halfScale.lineItems.electricity_cost.id, "electricity_cost");
+});

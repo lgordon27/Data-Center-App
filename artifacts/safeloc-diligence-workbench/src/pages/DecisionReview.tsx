@@ -66,7 +66,15 @@ const holdingsConnectionCopy: Record<RecommendationStatus, string> = {
 };
 
 export function DecisionReview({ onNavigate, onResolve }: { onNavigate: (screen: Screen) => void; onResolve: (id: string) => void }) {
-  const { evidence, metrics, scenarios, saveScenario, renameScenario, removeScenario } = useDiligence();
+  const { evidence, metrics, scenarios, saveScenario, renameScenario, removeScenario, project } = useDiligence();
+  const scenarioItems = project.kind === "custom" ? [] : scenarios;
+  const holdingsCopy = project.kind === "custom"
+    ? {
+        BLOCKED: "The selected project has unresolved evidence gaps. This blocked status is a diligence signal—not facility-level proof or a holdings recommendation.",
+        CONDITIONAL: "The selected project remains conditional while unverified assumptions are carried into review. This is project context, not a holdings recommendation.",
+        "READY FOR REVIEW": "The selected project evidence is ready for review, while any portfolio connection remains context—not proof of facility-level exposure or a holdings recommendation.",
+      }
+    : holdingsConnectionCopy;
   const items = Object.values(evidence);
   const [saveOpen, setSaveOpen] = useState(false);
   const [scenarioName, setScenarioName] = useState("");
@@ -78,7 +86,7 @@ export function DecisionReview({ onNavigate, onResolve }: { onNavigate: (screen:
   const [renameFeedback, setRenameFeedback] = useState("");
   const [removeScenarioId, setRemoveScenarioId] = useState<string | null>(null);
   const lowConfidence = metrics.confidenceScore < 25;
-  const scenarioToRemove = scenarios.find((scenario) => scenario.id === removeScenarioId);
+  const scenarioToRemove = scenarioItems.find((scenario) => scenario.id === removeScenarioId);
   const statusMeta = {
     BLOCKED: { color: "#ba2f45", bg: "#fde8eb", border: "#efabb8" },
     CONDITIONAL: { color: "#a65a00", bg: "#fff0d6", border: "#f1cb8b" },
@@ -119,12 +127,13 @@ export function DecisionReview({ onNavigate, onResolve }: { onNavigate: (screen:
         eyebrow="04 / make the call"
         title="A return without provenance is not a decision."
         description="Bring the evidence quality and the financial outcome into the same frame. The recommendation is derived from the status of material evidence, not from the return alone."
-        right={<div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-end"><div data-testid="card-recommendation-status" className="rounded-lg border px-4 py-3" style={{ color: statusMeta.color, backgroundColor: statusMeta.bg, borderColor: statusMeta.border }}><div className="text-[9px] font-bold uppercase tracking-[0.14em]">Recommendation status</div><div data-testid="status-recommendation" className="mt-1 font-mono text-sm font-bold">{metrics.recommendationStatus}</div></div><div className="flex gap-2"><button data-testid="button-save-scenario" disabled={scenarios.length >= 5} onClick={() => { setSaveFeedback(""); setSaveOpen(true); }} className="inline-flex flex-1 items-center justify-center gap-2 rounded-md bg-[#122232] px-3 py-2.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[#d4e86b] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:bg-[#87939a] disabled:text-white">Save Scenario <span className="font-mono text-[9px] opacity-70">({scenarios.length}/5)</span></button><button data-testid="button-compare-scenarios" onClick={() => setShowComparison((value) => !value)} className="inline-flex flex-1 items-center justify-center gap-2 rounded-md border border-[#cbd8d4] bg-white px-3 py-2.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[#122232] hover:border-[#122232]">{showComparison ? "Hide comparison" : "Compare Scenarios"}</button></div></div>}
+        right={<div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-end"><div data-testid="card-recommendation-status" className="rounded-lg border px-4 py-3" style={{ color: statusMeta.color, backgroundColor: statusMeta.bg, borderColor: statusMeta.border }}><div className="text-[9px] font-bold uppercase tracking-[0.14em]">Recommendation status</div><div data-testid="status-recommendation" className="mt-1 font-mono text-sm font-bold">{metrics.recommendationStatus}</div></div><div className="flex gap-2"><button data-testid="button-save-scenario" disabled={project.kind === "custom" || scenarioItems.length >= 5} onClick={() => { setSaveFeedback(""); setSaveOpen(true); }} className="inline-flex flex-1 items-center justify-center gap-2 rounded-md bg-[#122232] px-3 py-2.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[#d4e86b] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:bg-[#87939a] disabled:text-white">Save Scenario <span className="font-mono text-[9px] opacity-70">({scenarioItems.length}/5)</span></button><button data-testid="button-compare-scenarios" onClick={() => setShowComparison((value) => !value)} disabled={project.kind === "custom"} className="inline-flex flex-1 items-center justify-center gap-2 rounded-md border border-[#cbd8d4] bg-white px-3 py-2.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[#122232] hover:border-[#122232] disabled:cursor-not-allowed disabled:opacity-60">{showComparison ? "Hide comparison" : "Compare Scenarios"}</button></div></div>}
       />
-      {scenarios.length >= 5 && <div role="status" data-testid="text-scenario-capacity" className="mb-5 rounded-lg border border-[#ecd39d] bg-[#fff8e9] px-4 py-3 text-[11px] font-semibold text-[#7f6337]">Scenario capacity reached (5/5). Save Scenario is disabled; named snapshots remain independent of the live case.</div>}
+      {project.kind === "custom" && <div role="status" data-testid="custom-scenario-disabled" className="mb-5 rounded-lg border border-[#f1cb8b] bg-[#fff8e9] px-4 py-3 text-[11px] leading-5 font-semibold text-[#7f6337]">Named scenarios and comparisons are disabled for custom research. Custom results remain session-only and are not saved to browser storage.</div>}
+      {project.kind !== "custom" && scenarioItems.length >= 5 && <div role="status" data-testid="text-scenario-capacity" className="mb-5 rounded-lg border border-[#ecd39d] bg-[#fff8e9] px-4 py-3 text-[11px] font-semibold text-[#7f6337]">Scenario capacity reached (5/5). Save Scenario is disabled; named snapshots remain independent of the live case.</div>}
       {saveFeedback && <div role="status" data-testid="text-scenario-feedback" className={`mb-5 rounded-lg border px-4 py-3 text-[11px] font-semibold ${saveFeedback.startsWith("A scenario") || saveFeedback.startsWith("Five") ? "border-[#efabb8] bg-[#fff3f4] text-[#ba2f45]" : "border-[#9bd8c5] bg-[#e0f4ed] text-[#0b7a63]"}`}>{saveFeedback}</div>}
        <SavedScenarioList
-         scenarios={scenarios}
+         scenarios={scenarioItems}
          onRename={(scenario) => {
            setRenameScenarioId(scenario.id);
            setRenameName(scenario.name);
@@ -133,7 +142,7 @@ export function DecisionReview({ onNavigate, onResolve }: { onNavigate: (screen:
          }}
          onRemove={(scenario) => setRemoveScenarioId(scenario.id)}
        />
-      {showComparison && <ScenarioComparison scenarios={scenarios} />}
+      {showComparison && <ScenarioComparison scenarios={scenarioItems} />}
       {metrics.recommendationStatus === "BLOCKED" && <div data-testid="banner-recommendation-blocked" className="mb-5 flex items-start gap-3 rounded-xl border-2 border-[#ba2f45] bg-[#fff3f4] px-5 py-4 text-[#7f2635]"><CircleAlert className="mt-0.5 h-5 w-5 shrink-0" /><div><div className="font-mono text-[12px] font-bold tracking-[0.08em]">RECOMMENDATION BLOCKED: {metrics.missingMaterialCount} material items are missing evidence</div><div className="mt-1 text-[11px] leading-5 text-[#96525d]">Resolve the material evidence gaps below before treating the base return as investment-grade.</div></div></div>}
       {metrics.recommendationStatus === "CONDITIONAL" && <div data-testid="banner-recommendation-conditional" className="mb-5 flex items-start gap-3 rounded-xl border-2 border-[#a65a00] bg-[#fff8e9] px-5 py-4 text-[#6f460e]"><CircleAlert className="mt-0.5 h-5 w-5 shrink-0" /><div><div className="font-mono text-[12px] font-bold tracking-[0.08em]">CONDITIONAL: {metrics.materialUnverifiedCount} material assumptions depend on unverified evidence</div><div className="mt-1 text-[11px] leading-5 text-[#806d51]">Name the evidence owners and carry these conditions into review.</div></div></div>}
       {metrics.recommendationStatus === "READY FOR REVIEW" && <div data-testid="banner-recommendation-ready" className="mb-5 flex items-start gap-3 rounded-xl border-2 border-[#0b7a63] bg-[#f0faf5] px-5 py-4 text-[#0b6351]"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0" /><div><div className="font-mono text-[12px] font-bold tracking-[0.08em]">READY FOR REVIEW: all material evidence is supported</div><div className="mt-1 text-[11px] leading-5 text-[#4b756b]">The return is ready for an IC discussion with its provenance preserved.</div></div></div>}
@@ -177,7 +186,7 @@ export function DecisionReview({ onNavigate, onResolve }: { onNavigate: (screen:
           <div className="mt-2 flex items-start gap-3"><div className={`rounded-md p-2.5 ${metrics.recommendationStatus === "BLOCKED" ? "bg-[#f5ddd5] text-[#ba2f45]" : metrics.recommendationStatus === "CONDITIONAL" ? "bg-[#fff0d6] text-[#a65a00]" : "bg-[#d4e86b] text-[#314207]"}`}>{decisionCopy.icon}</div><div><h2 className="text-[20px] font-semibold leading-tight tracking-[-0.03em] text-[#122232]">{decisionCopy.title}</h2><p className="mt-2 text-[11px] leading-5 text-[#65737d]">{decisionCopy.description}</p></div></div>
            <aside data-testid="holdings-connection-indicator" role="note" aria-labelledby="holdings-connection-title" className="mt-5 rounded-lg border bg-white/70 px-3 py-3" style={{ borderColor: statusMeta.border }}>
              <h3 id="holdings-connection-title" className="font-mono text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: statusMeta.color }}>What This Means for Holdings</h3>
-              <p data-testid="holdings-connection-message" aria-live="polite" className="mt-2 min-w-0 break-words text-[11px] leading-5 text-[#344550]">{holdingsConnectionCopy[metrics.recommendationStatus]}</p>
+              <p data-testid="holdings-connection-message" aria-live="polite" className="mt-2 min-w-0 break-words text-[11px] leading-5 text-[#344550]">{holdingsCopy[metrics.recommendationStatus]}</p>
            </aside>
           <button data-testid="button-open-advisor-lens" onClick={() => onNavigate("advisor")} className="mt-6 inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#122232] hover:text-[#607500]">Carry this into the advisor lens <ArrowRight className="h-3.5 w-3.5" /></button>
         </section>

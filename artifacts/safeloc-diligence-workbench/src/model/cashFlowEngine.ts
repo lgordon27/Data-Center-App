@@ -135,7 +135,7 @@ export type CashFlowModel = {
   baseModel?: CashFlowModel;
 };
 
-const CAPACITY_MW = 1_200;
+export const DEFAULT_CAPACITY_MW = 1_200;
 const LEASE_RATE_PER_KW_MONTH = 185;
 const UTILIZATION_RAMP = [0.6, 0.8, 0.92, 0.92, 0.92];
 const HOURS_PER_YEAR = 8_760;
@@ -402,7 +402,14 @@ function buildVerifiedEvidence(evidence: EvidenceRecord): EvidenceRecord {
   );
 }
 
-function runModel(evidence: EvidenceRecord): CashFlowModel {
+function normalizeCapacityMW(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.min(value, 100_000)
+    : DEFAULT_CAPACITY_MW;
+}
+
+function runModel(evidence: EvidenceRecord, capacityMW: number): CashFlowModel {
+  const capacityScale = capacityMW / DEFAULT_CAPACITY_MW;
   const electricityItem = evidence.electricity_cost;
   const waterConsumptionItem = evidence.water_consumption;
   const gridItem = evidence.grid_interconnection;
@@ -441,7 +448,8 @@ function runModel(evidence: EvidenceRecord): CashFlowModel {
     finiteNumericValue(electricityItem.numericValue, 42) * electricityQuality.costMultiplier;
   const annualCoolingWaterMgal =
     finiteNumericValue(waterConsumptionItem.numericValue, 23) *
-    waterQuality.waterConsumptionMultiplier;
+    waterQuality.waterConsumptionMultiplier *
+    capacityScale;
   const waterEscalationRate =
     finiteNumericValue(waterEscalationItem.numericValue, 7) / 100 +
     waterEscalationQuality.waterEscalationAdder;
@@ -475,7 +483,7 @@ function runModel(evidence: EvidenceRecord): CashFlowModel {
     0.4,
     1,
   );
-  const coolingCapex = finiteNumericValue(coolingItem.numericValue, 450);
+  const coolingCapex = finiteNumericValue(coolingItem.numericValue, 450) * capacityScale;
   const communityCapexContingency = communityQuality.communityContingency;
   const coolingCapexContingency = coolingQuality.coolingContingency;
   const hazardExposureLevel = isHazardExposureLevel(hazardItem.qualitativeValue)
@@ -505,7 +513,7 @@ function runModel(evidence: EvidenceRecord): CashFlowModel {
   const backupPowerContingencyTriggered =
     backupPowerHours < 72 && gridItem.classification !== "Verified Evidence";
   const backupPowerCapex = backupPowerContingencyTriggered
-    ? BACKUP_POWER_CAPEX_BY_CLASSIFICATION[backupPowerItem.classification]
+    ? BACKUP_POWER_CAPEX_BY_CLASSIFICATION[backupPowerItem.classification] * capacityScale
     : 0;
   const waterSourceResilienceState = isWaterSourceResilienceState(
     waterSourceItem.qualitativeValue,
@@ -520,21 +528,22 @@ function runModel(evidence: EvidenceRecord): CashFlowModel {
     waterSourceItem.classification !== "Verified Evidence" &&
     waterRightsItem.classification !== "Verified Evidence";
   const waterConversionCapex = waterConversionContingencyTriggered
-    ? WATER_CONVERSION_CAPEX_BY_CLASSIFICATION[waterSourceItem.classification]
+    ? WATER_CONVERSION_CAPEX_BY_CLASSIFICATION[waterSourceItem.classification] * capacityScale
     : 0;
   const climateCapexContingency = backupPowerCapex + waterConversionCapex;
   const capexContingency =
     coolingCapex * (communityCapexContingency + coolingCapexContingency) +
     climateCapexContingency;
-  const totalCapex = ENTRY_VALUE + coolingCapex + capexContingency;
-  const debtAmount = ENTRY_VALUE * DEBT_LTV;
+  const entryValue = ENTRY_VALUE * capacityScale;
+  const totalCapex = entryValue + coolingCapex + capexContingency;
+  const debtAmount = entryValue * DEBT_LTV;
   const annualPrincipalPayment = debtAmount / AMORTIZATION_YEARS;
   const annualCarbonCompliance =
     finiteNumericValue(carbonItem.numericValue, 20) * carbonQuality.carbonMultiplier;
   const waterRightsCostMultiplier = waterRightsQuality.waterRightsMultiplier;
-  const totalDirectCapex = ENTRY_VALUE + coolingCapex;
+  const totalDirectCapex = entryValue + coolingCapex;
   const annualRevenueAtFullUtilization =
-    CAPACITY_MW * 1_000 * LEASE_RATE_PER_KW_MONTH * 12 / 1_000_000;
+    capacityMW * 1_000 * LEASE_RATE_PER_KW_MONTH * 12 / 1_000_000;
 
   const adjustedWaterEscalationRate = waterEscalationRate * waterSourceEscalationMultiplier;
   const schedule: CashFlowYear[] = [];
@@ -581,7 +590,7 @@ function runModel(evidence: EvidenceRecord): CashFlowModel {
       (activeMonths / 12) *
       customerUtilizationMultiplier;
     const electricityMwh =
-      CAPACITY_MW * HOURS_PER_YEAR * operatingUtilization;
+      capacityMW * HOURS_PER_YEAR * operatingUtilization;
     const powerRate =
       electricityRate *
       (1 + powerCostDifferential) *
@@ -597,12 +606,13 @@ function runModel(evidence: EvidenceRecord): CashFlowModel {
     const maintenanceOpex =
       totalDirectCapex * MAINTENANCE_RATE * operatingUtilization;
     const laborOpex =
-      ANNUAL_LABOR_AT_FULL_UTILIZATION * operatingUtilization;
+      ANNUAL_LABOR_AT_FULL_UTILIZATION * capacityScale * operatingUtilization;
     const insuranceOpex =
       totalDirectCapex * INSURANCE_RATE * operatingUtilization;
-    const carbonComplianceOpex = annualCarbonCompliance * operatingUtilization;
+    const carbonComplianceOpex = annualCarbonCompliance * capacityScale * operatingUtilization;
     const climateDisruptionOpex =
       (adjustedDowntimeCostPerDay *
+        capacityScale *
         adjustedHazardProbability *
         365 *
         operatingUtilization) /
@@ -698,7 +708,7 @@ function runModel(evidence: EvidenceRecord): CashFlowModel {
   const firstOperatingYear = schedule.find((year) => year.year > 0 && year.operatingUtilization > 0);
 
   const assumptions: ModelAssumptions = {
-    capacityMW: CAPACITY_MW,
+    capacityMW,
     leaseRatePerKwMonth: LEASE_RATE_PER_KW_MONTH,
     annualRevenueAtFullUtilization,
     utilizationRamp: UTILIZATION_RAMP,
@@ -709,7 +719,7 @@ function runModel(evidence: EvidenceRecord): CashFlowModel {
     waterEscalationRate: adjustedWaterEscalationRate,
     waterRightsCostMultiplier,
     maintenanceRate: MAINTENANCE_RATE,
-    annualLaborAtFullUtilization: ANNUAL_LABOR_AT_FULL_UTILIZATION,
+    annualLaborAtFullUtilization: ANNUAL_LABOR_AT_FULL_UTILIZATION * capacityScale,
     insuranceRate: INSURANCE_RATE,
     annualCarbonCompliance,
     siteHazardExposure,
@@ -729,7 +739,7 @@ function runModel(evidence: EvidenceRecord): CashFlowModel {
     communityDelayMonths,
     revenueDelayMonths,
     customerUtilizationMultiplier,
-    entryValue: ENTRY_VALUE,
+    entryValue,
     coolingCapex,
     capexContingency,
     totalCapex,
@@ -787,9 +797,10 @@ function runModel(evidence: EvidenceRecord): CashFlowModel {
   };
 }
 
-export function calculateCashFlowModel(evidence: EvidenceRecord) {
-  const current = runModel(evidence);
-  const verifiedBaseline = runModel(buildVerifiedEvidence(evidence));
+export function calculateCashFlowModel(evidence: EvidenceRecord, requestedCapacityMW = DEFAULT_CAPACITY_MW) {
+  const capacityMW = normalizeCapacityMW(requestedCapacityMW);
+  const current = runModel(evidence, capacityMW);
+  const verifiedBaseline = runModel(buildVerifiedEvidence(evidence), capacityMW);
 
   const lineItems = Object.fromEntries(
     Object.entries(current.lineItems).map(([id, lineItem]) => {
@@ -802,7 +813,7 @@ export function calculateCashFlowModel(evidence: EvidenceRecord) {
             ? "Verified Evidence" as Classification
             : undefined,
         },
-      });
+      }, capacityMW);
       const deltaIRR =
         current.projectIRR === null || repairedModel.projectIRR === null
           ? 0

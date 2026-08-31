@@ -14,6 +14,7 @@ import {
   TrendingDown,
   TrendingUp
 } from "lucide-react";
+import { researchProject, type CustomResearchResponse } from "@/services/researchProjectService";
 
 
 
@@ -134,7 +135,84 @@ const homeEntryPoints = [
   },
 ] as const;
 
-export function Home() {
+export function CustomProjectDialog({
+  open,
+  onClose,
+  onSuccess,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSuccess: (research: CustomResearchResponse) => void;
+}) {
+  const [name, setName] = useState("");
+  const [location, setLocation] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      setName("");
+      setLocation("");
+      setBusy(false);
+      setError(null);
+    }
+  }, [open]);
+
+  if (!open) return null;
+
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!name.trim() || !location.trim()) {
+      setError("Enter a project name and location to begin research.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await researchProject(name.trim(), location.trim());
+      onSuccess(result);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Project research is unavailable. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div data-testid="custom-project-dialog" className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#071521]/75 px-4 py-8 md:items-center" role="dialog" aria-modal="true" aria-labelledby="custom-project-title">
+      <div className="w-full max-w-xl rounded-xl border border-[#cbd8d4] bg-[#f9faf8] p-5 shadow-2xl md:p-7">
+        <div className="flex items-start justify-between gap-5">
+          <div>
+            <div className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-[#607500]">New analysis / AI research</div>
+            <h2 id="custom-project-title" className="mt-2 text-[25px] font-semibold tracking-[-0.04em] text-[#122232]">Analyze a different project</h2>
+            <p className="mt-2 text-[12px] leading-5 text-[#63717a]">SafeLoc will research a high-level public-source summary and return the same 16 modeled evidence inputs used by the workbench.</p>
+          </div>
+          <button data-testid="button-close-custom-project" type="button" onClick={onClose} className="rounded-md px-2 py-1 text-xl leading-none text-[#52616b] hover:bg-[#e7ecef]" aria-label="Close custom project form">×</button>
+        </div>
+        <form className="mt-6 space-y-4" onSubmit={(event) => void submit(event)}>
+          <label className="block">
+            <span className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#52616b]">Project name</span>
+            <input data-testid="input-custom-project-name" value={name} onChange={(event) => setName(event.target.value)} disabled={busy} autoFocus={!busy} maxLength={160} placeholder="Example: Project Atlas" className="mt-1.5 w-full rounded-md border border-[#cbd8d4] bg-white px-3 py-3 text-[13px] text-[#122232] outline-none focus:border-[#255bb7] focus:ring-2 focus:ring-[#255bb7]/20" />
+          </label>
+          <label className="block">
+            <span className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#52616b]">Location</span>
+            <input data-testid="input-custom-project-location" value={location} onChange={(event) => setLocation(event.target.value)} disabled={busy} maxLength={160} placeholder="City, county, state, or country" className="mt-1.5 w-full rounded-md border border-[#cbd8d4] bg-white px-3 py-3 text-[13px] text-[#122232] outline-none focus:border-[#255bb7] focus:ring-2 focus:ring-[#255bb7]/20" />
+          </label>
+          {error && <div data-testid="custom-project-error" role="alert" className="rounded-md border border-[#efabb8] bg-[#fde8eb] px-3 py-2.5 text-[11px] leading-5 text-[#7f2635]">{error}</div>}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#e5eae8] pt-4">
+            <p className="max-w-xs text-[10px] leading-4 text-[#7d898f]">The active custom result is session-only and is not saved locally. The project name and location are sent to SafeLoc’s research service and OpenAI to retrieve sources; the curated Stargate case remains available through Reset to Default.</p>
+            <button data-testid="button-submit-custom-project" type="submit" disabled={busy} className="inline-flex min-h-11 items-center gap-2 rounded-md bg-[#122232] px-4 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-[#d4e86b] disabled:cursor-wait disabled:opacity-60">
+              {busy ? "Researching project…" : "Research project"} <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          {busy && <div data-testid="custom-project-loading" role="status" aria-live="polite" className="rounded-md bg-[#eef5ff] px-3 py-2.5 text-[10px] text-[#255bb7]">Searching public sources and building the 16-item evidence set. This can take up to 45 seconds.</div>}
+        </form>
+      </div>
+    </div>
+  );
+}
+
+export function Home({ onAnalyzeCustom }: { onAnalyzeCustom?: () => void }) {
   const contextMetrics = [
     ["$725B", "Hyperscaler AI infrastructure spending in 2026 alone"],
     ["$130B", "In projects paused or blocked in Q1 2026"],
@@ -221,6 +299,10 @@ export function Home() {
                 </div>
               </a>
             ))}
+            <button data-testid="home-entry-custom" type="button" onClick={onAnalyzeCustom ?? (() => window.dispatchEvent(new Event("safeloc-open-custom-project")))} className="group flex min-h-[164px] flex-col justify-between rounded-xl border border-[#f1cb8b]/45 bg-[#f1cb8b]/[0.07] p-4 text-left text-[#f1cb8b] transition-transform hover:-translate-y-1">
+              <div className="flex items-start justify-between gap-3"><ClipboardCheck aria-hidden="true" className="h-5 w-5" /><ArrowUpRight aria-hidden="true" className="h-4 w-4 opacity-50" /></div>
+              <div><h3 className="text-[17px] font-semibold tracking-[-0.025em] text-white">New Analysis</h3><p className="mt-1 text-[11px] leading-5 text-[#b6c4ca]">Research a different data-center project with the same evidence frame.</p></div>
+            </button>
           </div>
         </section>
       </main>

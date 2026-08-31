@@ -444,8 +444,8 @@ repeat until NPV(rate) ≈ 0:
                        <span className="flex h-9 w-9 items-center justify-center rounded-md bg-[#122232] font-mono text-[11px] font-bold text-[#d4e86b]">05</span>
                        <div className="font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#255bb7]">Custom Project Research</div>
                      </div>
-                     <h3 className="mt-5 text-[24px] font-semibold leading-tight tracking-[-0.035em] text-[#122232]">A future surface with an explicit boundary.</h3>
-                     <p className="mt-4 text-[13px] leading-6 text-[#52616b]">The intended future concept is to enter any data center project and have AI research public sources for 16 evidence variables, propose classifications, and populate the financial model. That capability is <strong className="text-[#122232]">not available in the current workbench.</strong></p>
+                     <h3 className="mt-5 text-[24px] font-semibold leading-tight tracking-[-0.035em] text-[#122232]">A live surface with an explicit boundary.</h3>
+                     <p className="mt-4 text-[13px] leading-6 text-[#52616b]">You can enter a data-center project and have SafeLoc retrieve public sources, research the same 16 evidence variables, propose classifications, and populate the financial model. The result is <strong className="text-[#122232]">retrieval-backed, high-level context—not verified project truth.</strong></p>
                    </div>
                    <div data-testid="tour-under-the-hood-research-visual" className="grid gap-3 sm:grid-cols-2">
                      <div className="rounded-lg border-2 border-[#0b7a63] bg-[#e0f4ed] p-4">
@@ -454,7 +454,7 @@ repeat until NPV(rate) ≈ 0:
                        <p className="mt-2 text-[11px] leading-5 text-[#34584f]">Hand-verified sources, explicit synthetic assumptions, and a documented evidence boundary.</p>
                      </div>
                      <div className="rounded-lg border-2 border-[#255bb7] bg-[#e5efff] p-4">
-                       <div className="font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-[#255bb7]">Future / AI-researched</div>
+                       <div className="font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-[#255bb7]">Available / AI-researched</div>
                        <div className="mt-3 rounded border border-[#aac6f4] bg-white px-3 py-2 font-mono text-[10px] text-[#52616b]" aria-label="Illustration of a future project name input">project name →</div>
                        <p className="mt-2 text-[11px] leading-5 text-[#3f5577]">Public-source research would remain a proposal with transparent limitations—not verified project truth.</p>
                      </div>

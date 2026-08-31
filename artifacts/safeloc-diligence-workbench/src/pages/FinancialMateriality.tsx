@@ -42,7 +42,9 @@ import type {
 } from "@/components/Shell";
 import { formatElectricityCostAttribution } from "@/data/sources";
 export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
-  const { evidence, hasChangedClassification, metrics, sourceStates } = useDiligence();
+  const { evidence, hasChangedClassification, metrics, sourceStates, project } = useDiligence();
+  const projectName = project.name;
+  const customProject = project.kind === "custom";
   const impacts = Object.values(metrics.lineItems);
   const lowConfidence = metrics.confidenceScore < 25;
   const currentIRR = metrics.projectIRR;
@@ -58,12 +60,12 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
     let beforeEvidence = baselineEvidence;
     return impacts.map((impact) => {
       const afterEvidence = { ...beforeEvidence, [impact.id]: { ...beforeEvidence[impact.id], classification: evidence[impact.id].classification } };
-      const before = calculateCashFlowModel(beforeEvidence).projectIRR;
-      const after = calculateCashFlowModel(afterEvidence).projectIRR;
+      const before = calculateCashFlowModel(beforeEvidence, project.capacityMW).projectIRR;
+      const after = calculateCashFlowModel(afterEvidence, project.capacityMW).projectIRR;
       beforeEvidence = afterEvidence;
       return { ...impact, before, after };
     }).map((step, index) => ({ ...step, index, change: step.before === null || step.after === null ? null : Number((step.after - step.before).toFixed(1)) }));
-  }, [evidence, impacts]);
+  }, [evidence, impacts, project.capacityMW]);
   return (
     <div>
       <PageIntro
@@ -105,7 +107,7 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
        <aside data-testid="portfolio-connection-strip" role="note" aria-labelledby="portfolio-connection-title" className="mt-4 rounded-lg border border-[#cbd8d4] bg-[#f1f5f3] px-4 py-3">
          <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:gap-4">
            <h2 id="portfolio-connection-title" className="shrink-0 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#52616b]">Portfolio Connection</h2>
-            <p data-testid="portfolio-connection-message" className="min-w-0 flex-1 text-[11px] leading-5 text-[#344550]">NVIDIA GPU contracts and hyperscaler CAPEX connect values-aligned funds to the infrastructure buildout. Evidence gaps at the project level can become exposure gaps in portfolio returns. This is market context, not facility-level Stargate evidence or a new modeled input.</p>
+            <p data-testid="portfolio-connection-message" className="min-w-0 flex-1 text-[11px] leading-5 text-[#344550]">NVIDIA GPU contracts and hyperscaler CAPEX connect values-aligned funds to the infrastructure buildout. Evidence gaps at the project level can become exposure gaps in portfolio returns. This is market context, not facility-level {customProject ? `${projectName} evidence` : "Stargate evidence"} or a new modeled input.</p>
          </div>
        </aside>
       <section id="materiality-drivers" data-testid="panel-irr-waterfall" aria-labelledby="irr-waterfall-title" className="mt-5 scroll-mt-24 rounded-xl border-2 border-[#122232] bg-[#122232] p-5 text-white md:p-6">
@@ -113,7 +115,7 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
           <div><SectionKicker tone="lime" className="!text-[#d4e86b]">Evidence → return waterfall</SectionKicker><h2 id="irr-waterfall-title" className="text-[22px] font-semibold tracking-[-0.035em]">Every classification moves the same live model.</h2></div>
           <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#9dafb8]">Sequential · baseline to current</span>
         </div>
-        <p className="mt-3 max-w-3xl text-[11px] leading-5 text-[#c4d0d6]">This waterfall starts with every input treated as Verified Evidence, then applies the current classification one variable at a time. It is a model sensitivity view, not reported Stargate transaction performance.</p>
+        <p className="mt-3 max-w-3xl text-[11px] leading-5 text-[#c4d0d6]">This waterfall starts with every input treated as Verified Evidence, then applies the current classification one variable at a time. It is a model sensitivity view, not reported {projectName} transaction performance.</p>
         <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-lg border border-[#b9d43a]/40 bg-[#b9d43a]/10 p-3"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#b9d43a]">Verified baseline</div><div className="mt-1 font-mono text-2xl font-bold text-[#d4e86b]">{formatIRR(baseIRR)}</div></div>
           {waterfallSteps.map((step) => {
@@ -237,7 +239,7 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
             ["05", "Return", `${formatIRR(currentIRR)} current project IRR.`],
           ].map(([number, title, detail], index) => <div key={title} className="relative rounded-lg border border-[#d9e0e4] bg-[#f1f5f3] p-3 md:min-h-[116px]"><div className="font-mono text-[9px] font-bold text-[#255bb7]">{number}</div><div className="mt-2 text-[12px] font-semibold text-[#122232]">{title}</div><div className="mt-1 text-[10px] leading-4 text-[#52616b]">{detail}</div>{index < 4 && <ArrowRight aria-hidden="true" className="absolute -right-3 top-1/2 z-10 hidden h-5 w-5 -translate-y-1/2 rounded-full bg-white text-[#b9d43a] md:block" />}</div>)}
         </div>
-        <p className="mt-4 rounded-lg border border-[#f1cb8b] bg-[#fff8e9] px-3 py-2 text-[10px] leading-4 text-[#6f460e]"><strong>SYNTHETIC transaction assumptions:</strong> entry value, lease rate, CAPEX, debt, and terminal multiple are representative underwriting inputs—not reported Stargate terms.</p>
+        <p className="mt-4 rounded-lg border border-[#f1cb8b] bg-[#fff8e9] px-3 py-2 text-[10px] leading-4 text-[#6f460e]"><strong>SYNTHETIC transaction assumptions:</strong> entry value, lease rate, CAPEX, debt, and terminal multiple are representative underwriting inputs—not reported {projectName} terms.</p>
       </section>
       <BottomNav screen="materiality" onNavigate={onNavigate} />
     </div>

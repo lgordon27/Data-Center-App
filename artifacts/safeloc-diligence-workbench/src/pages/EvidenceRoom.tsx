@@ -168,7 +168,7 @@ function EvidenceRow({
   analysisDisabled: boolean;
 }) {
   const meta = classMeta[item.classification];
-  const { sourceStates } = useDiligence();
+  const { sourceStates, project } = useDiligence();
   const source = item.sourceId ? sourceStates[item.sourceId] : null;
   const providerSource = item.providerSourceId ? sourceStates[item.providerSourceId] : null;
   const [open, setOpen] = useState(false);
@@ -178,7 +178,7 @@ function EvidenceRow({
   return (
     <details id={`evidence-item-${item.id}`} open={open} onToggle={(event) => setOpen(event.currentTarget.open)} tabIndex={-1} data-testid={`row-evidence-${item.id}`} className="group border-b border-[#e4e9e8] last:border-0 focus-within:bg-[#fbfcfa]">
       <summary className="grid cursor-pointer list-none gap-3 px-4 py-3 transition-colors hover:bg-[#fbfcfa] md:grid-cols-[1.55fr_0.8fr_1.55fr] md:items-center md:px-5 [&::-webkit-details-marker]:hidden">
-        <span className="flex min-w-0 items-center gap-2"><span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: meta.color }} /><span className="truncate text-[12px] font-semibold text-[#243844]">{item.label}</span></span>
+         <span className="flex min-w-0 items-center gap-2"><span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: meta.color }} /><span className="min-w-0"><span className="block truncate text-[12px] font-semibold text-[#243844]">{item.label}</span>{project.kind === "custom" && <span data-testid={`badge-ai-researched-${item.id}`} className="mt-1 inline-flex rounded-full bg-[#e9e0f7] px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#7049b7]">AI-researched</span>}</span></span>
          <span className="min-w-0"><span className="flex flex-wrap items-center gap-2"><span className="font-mono text-[12px] font-bold text-[#122232]">{item.value}</span> <span className="text-[10px] text-[#52616b]">{item.unit}</span>{source ? <SourceStatusBadge source={source} compact testId={`evidence-source-status-${item.id}`} /> : <span data-testid={`evidence-origin-${item.id}`} className="rounded-full bg-[#e7ecef] px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.09em] text-[#52616b]">Embedded</span>}</span></span>
          <span className="flex flex-wrap items-center justify-between gap-2"><span className="flex min-w-0 flex-1 items-center gap-2"><span className="relative min-w-0 flex-1 md:max-w-[220px]"><select data-testid={`select-classification-${item.id}`} aria-label={`Classification for ${item.label}`} value={item.classification} onChange={(event) => onChange(item.id, event.target.value as Classification)} onClick={(event) => event.stopPropagation()} className="w-full appearance-none rounded-md border bg-white py-2 pl-3 pr-8 text-[10px] font-semibold text-[#243844] outline-none focus:ring-2 focus:ring-[#b9d43a]/50" style={{ borderColor: meta.border }}>{classifications.map((classification) => <option key={classification} value={classification}>{classification}</option>)}</select><ChevronDown aria-hidden="true" className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-[#52616b]" /></span><button data-testid={`button-analyze-ai-${item.id}`} type="button" aria-label={`Analyze ${item.label} with AI`} aria-busy={analysisBusy} disabled={analysisDisabled} onClick={(event) => { event.preventDefault(); event.stopPropagation(); setOpen(true); onAnalyze(item); }} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[#cbd8d4] bg-white px-2 py-2 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#52616b] hover:border-[#7d898f] hover:text-[#243844] disabled:cursor-wait disabled:opacity-60"><Sparkles aria-hidden="true" className="h-3 w-3 text-[#607500]" />{analysisBusy ? "Analyzing…" : "Analyze with AI"}</button></span><ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-[#52616b] transition-transform group-open:rotate-180 md:hidden" /></span>
       </summary>
@@ -235,12 +235,14 @@ function EiaElectricityEvidence({
   source,
   classification,
   onSuggestVerified,
+  projectName,
 }: {
   data: EiaElectricityData;
   loading: boolean;
   source: ReturnType<typeof useDiligence>["sourceStates"]["eia"];
   classification: Classification;
   onSuggestVerified: () => void;
+  projectName: string;
 }) {
   const mix = data.latestGenerationMix;
   const historyText = data.priceHistory.map((point) => `${monthLabel(point.period)}: $${point.pricePerMwh.toFixed(1)} per MWh`).join("; ");
@@ -309,7 +311,7 @@ function EiaElectricityEvidence({
                 ))}
               </dl>
             ) : <p className="mt-3 text-[10px] text-[#52616b]">Generation mix unavailable.</p>}
-            <p className="mt-3 text-[9px] leading-4 text-[#6f460e]">Statewide generation mix is market context only. It does not prove Stargate’s delivered renewable procurement or contract supply.</p>
+            <p className="mt-3 text-[9px] leading-4 text-[#6f460e]">Statewide generation mix is market context only. It does not prove {projectName}’s delivered renewable procurement or contract supply.</p>
             {data.consumptionHistory.at(-1) && <p className="mt-2 text-[9px] text-[#7d898f]">Latest total consumption: {Math.round(data.consumptionHistory.at(-1)!.consumptionMwh).toLocaleString()} MWh.</p>}
           </section>
         </div>
@@ -324,7 +326,8 @@ function EiaElectricityEvidence({
 }
 
 export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
-  const { evidence, updateClassification, metrics, ercotQueue, eiaData, eiaLoading, sourceStates } = useDiligence();
+  const { evidence, updateClassification, metrics, ercotQueue, eiaData, eiaLoading, sourceStates, project } = useDiligence();
+  const customProject = project.kind === "custom";
   const items = useMemo(() => Object.values(evidence), [evidence]);
   const counts = useMemo(() => classifications.map((classification) => ({ classification, count: items.filter((item) => item.classification === classification).length })), [items]);
   const match = ercotQueue.matchingProject;
@@ -432,7 +435,7 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
               <button
                 data-testid="button-analyze-all-ai"
                 type="button"
-                disabled={isAnalysisBusy}
+                disabled={isAnalysisBusy || customProject}
                 aria-busy={isAnalysisBusy}
                 onClick={() => void analyzeAll()}
                 className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-[#9aaec0] bg-[#122232] px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#d4e86b] hover:border-[#d4e86b] disabled:cursor-wait disabled:opacity-60"
@@ -440,7 +443,9 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
                 <Sparkles aria-hidden="true" className="h-3.5 w-3.5" />
                 {batchProgress ? `Analyzing ${batchProgress.current} of ${batchProgress.total}…` : "Analyze All with AI"}
               </button>
-              {batchProgress && <span data-testid="status-ai-batch" role="status" aria-live="polite" className="text-right font-mono text-[8px] uppercase tracking-[0.08em] text-[#60707d]">One item at a time · suggestions only</span>}
+              {customProject
+                ? <span data-testid="custom-ai-reassessment-note" role="note" className="text-right font-mono text-[8px] uppercase tracking-[0.08em] text-[#7d898f]">Custom research classifications are manual-review only</span>
+                : batchProgress && <span data-testid="status-ai-batch" role="status" aria-live="polite" className="text-right font-mono text-[8px] uppercase tracking-[0.08em] text-[#60707d]">One item at a time · suggestions only</span>}
             </div>
           </div>
         }
@@ -508,19 +513,20 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
                   assessment={assessments[item.id]}
                   notice={notices[item.id]}
                   analysisBusy={activeAnalysisId === item.id}
-                  analysisDisabled={isAnalysisBusy}
+                  analysisDisabled={isAnalysisBusy || customProject}
                 />
               ))}
               {category.id === "power-grid" && (
                 <>
-                  <EiaElectricityEvidence
+                  {!customProject && <EiaElectricityEvidence
                     data={eiaData}
                     loading={eiaLoading}
                     source={sourceStates.eia}
                     classification={evidence.electricity_cost.classification}
                     onSuggestVerified={() => updateClassification("electricity_cost", "Verified Evidence")}
-                  />
-                <article data-testid="ercot-grid-evidence" className="border-t border-[#d9e0e4] bg-[#f7faf8] px-4 py-4 md:px-5">
+                    projectName={project.name}
+                  />}
+                {!customProject && <article data-testid="ercot-grid-evidence" className="border-t border-[#d9e0e4] bg-[#f7faf8] px-4 py-4 md:px-5">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#60707d]">ERCOT Interconnection Queue citation</div>
@@ -557,7 +563,7 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
                       </span>
                     )}
                   </div>
-                </article>
+                </article>}
                 </>
               )}
             </section>

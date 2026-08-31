@@ -226,7 +226,7 @@ test.describe("hash routing and browser history", () => {
      await expect(page.getByTestId("tour-under-the-hood-layer-data")).toContainText("Embedded");
      await expect(page.getByTestId("tour-under-the-hood-layer-ai")).toContainText("Human accepts or overrides");
      await expect(page.getByTestId("tour-under-the-hood-layer-ai")).toContainText("Only the human decision changes");
-     await expect(page.getByTestId("tour-under-the-hood-layer-research")).toContainText("not available in the current workbench");
+     await expect(page.getByTestId("tour-under-the-hood-layer-research")).toContainText("retrieval-backed, high-level context");
      await expect(page.getByTestId("tour-under-the-hood-bottom-line")).toContainText("Built by one person using Claude, Replit, and public data APIs.");
     await expect(page.getByTestId("button-return-workbench-top")).toBeVisible();
     await expect(page.getByTestId("button-return-workbench-bottom")).toBeVisible();
@@ -334,7 +334,7 @@ test.describe("hash routing and browser history", () => {
      await expectTourLayoutToStayReadable(page, "#tour-under-the-hood");
      await expect(page.getByTestId("tour-under-the-hood-cash-flow-visual")).toContainText("Newton method");
      await expect(page.getByTestId("tour-under-the-hood-ai-visual")).toContainText("OpenAI suggestion");
-     await expect(page.getByTestId("tour-under-the-hood-research-visual")).toContainText("Future / AI-researched");
+     await expect(page.getByTestId("tour-under-the-hood-research-visual")).toContainText("Available / AI-researched");
    });
 
   test("uses SRI terminology while preserving formal fund names", async ({ page }) => {

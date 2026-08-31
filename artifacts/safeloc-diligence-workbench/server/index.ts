@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { handleErcotQueueRequest } from "./ercotProxy.mjs";
 import { handleEiaElectricityRequest } from "./eiaProxy.mjs";
 import { handleAnalyzeEvidenceRequest } from "./aiEvidenceProxy.mjs";
+import { handleResearchProjectRequest } from "./researchProjectProxy.mjs";
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
 const artifactDir = path.resolve(serverDir, "..");
@@ -14,6 +15,9 @@ export async function createApp(): Promise<Express> {
   app.use(express.json());
   app.all("/api/analyze-evidence", async (request: Request, response: Response) => {
     await handleAnalyzeEvidenceRequest(request, response);
+  });
+  app.all("/api/research-project", async (request: Request, response: Response) => {
+    await handleResearchProjectRequest(request, response);
   });
   app.all("/api/ercot-queue", async (request: Request, response: Response) => {
     await handleErcotQueueRequest(request, response);

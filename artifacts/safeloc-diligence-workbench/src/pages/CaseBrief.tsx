@@ -29,8 +29,60 @@ import {
   FEMA_NRI_ATTRIBUTION,
   getTopFemaHazards,
 } from "@/data/femaNRI";
+
+function ScopeLimitationsDisclosure() {
+  return (
+    <Disclosure title="Scope and Limitations" testId="disclosure-scope-limitations">
+      <div data-testid="scope-limitations-content" className="text-[11px] leading-5 text-[#52616b]">
+        <p>SafeLoc models 16 power, water, grid, climate, community, and financial variables. The following factors are relevant context for interpreting the analysis, but they are not additional modeled evidence inputs:</p>
+        <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+          {[
+            "Electrical-equipment lead times",
+            "Local electricity-rate impacts",
+            "Noise and operational impacts",
+            "Jurisdictional moratoriums",
+            "Semiconductor and memory supply constraints",
+            "Speculative or phantom grid-load requests",
+          ].map((factor) => <li key={factor} className="flex gap-2"><span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#255bb7]" />{factor}</li>)}
+        </ul>
+        <p className="mt-3 border-t border-[#e5eae8] pt-3 font-mono text-[9px] uppercase tracking-[0.08em] text-[#60707d]">Context only — these factors do not change the five-screen workbench flow, evidence classifications, or the 16-variable financial model.</p>
+      </div>
+    </Disclosure>
+  );
+}
+
+function CustomCaseBrief({ project, onNavigate }: { project: ReturnType<typeof useDiligence>["project"]; onNavigate: (screen: Screen) => void }) {
+  const { evidence } = useDiligence();
+  return (
+    <div>
+      <PageIntro
+        eyebrow="01 / frame the opportunity"
+        title={project.name}
+        description={project.description}
+        right={<div data-testid="custom-project-status" className="flex items-center gap-2 self-start rounded-full border border-[#f1cb8b] bg-[#fff8e9] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#6f460e] md:self-auto"><span className="h-2 w-2 rounded-full bg-[#a65a00]" /> AI-researched · high-level</div>}
+      />
+      <section data-testid="custom-project-summary" className="rounded-xl border border-[#cbd8d4] bg-white p-5 md:p-7">
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[#e5eae8] pb-5">
+          <div><SectionKicker>Custom project summary</SectionKicker><h2 className="text-[29px] font-semibold tracking-[-0.04em] text-[#122232]">{project.name}</h2><p className="mt-2 flex items-center gap-2 text-[12px] text-[#52616b]"><MapPin className="h-3.5 w-3.5 text-[#ba2f45]" />{project.location}</p></div>
+          <div className="rounded-lg bg-[#122232] px-4 py-3 text-right text-white"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#a4b4bd]">Standardized model capacity</div><div data-testid="custom-project-capacity" className="mt-1 font-mono text-xl font-bold text-[#d4e86b]">{project.capacityMW.toLocaleString()} MW</div><div className="mt-1 max-w-[180px] text-[9px] leading-4 text-[#c4d0d6]">Reported capacity is not verified or used; conservative default applied.</div></div>
+        </div>
+        <p data-testid="custom-project-description" className="mt-5 max-w-4xl text-[13px] leading-6 text-[#344550]">{project.description}</p>
+        <div className="mt-5 rounded-lg border border-[#f1cb8b] bg-[#fff8e9] p-4 text-[10px] leading-5 text-[#6f460e]">This high-level AI research is context for diligence. Findings are not facility-level proof unless the cited project source supports them; the modeled set remains exactly {Object.keys(evidence).length} variables.</div>
+      </section>
+      <div className="mt-5"><ScopeLimitationsDisclosure /></div>
+      <div className="mt-5 rounded-xl bg-[#d4e86b] p-5 text-[#1c2a16]">
+        <div className="flex items-center justify-between"><SectionKicker tone="lime">Next step</SectionKicker><Target className="h-5 w-5 opacity-60" /></div>
+        <div className="mt-1 text-[19px] font-semibold leading-tight tracking-[-0.025em]">Review the researched evidence before relying on the return.</div>
+        <button data-testid="button-open-evidence-from-custom-brief" onClick={() => onNavigate("evidence")} className="mt-5 inline-flex items-center gap-2 border-b border-[#1c2a16] pb-1 text-[10px] font-bold uppercase tracking-[0.15em]">Open evidence room <ArrowRight className="h-3.5 w-3.5" /></button>
+      </div>
+      <BottomNav screen="brief" onNavigate={onNavigate} />
+    </div>
+  );
+}
+
 export function CaseBrief({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
-  const { ercotQueue } = useDiligence();
+  const { ercotQueue, project } = useDiligence();
+  if (project.kind === "custom") return <CustomCaseBrief project={project} onNavigate={onNavigate} />;
   const topHazards = getTopFemaHazards(ACTIVE_FEMA_NRI_PROFILE);
   const queueStatus = ercotQueue.status === "live" ? "Live" : ercotQueue.status === "cached" ? "Cached" : "Embedded";
   const queueStatusClasses = ercotQueue.status === "live"
@@ -44,6 +96,7 @@ export function CaseBrief({ onNavigate }: { onNavigate: (screen: Screen) => void
         description="A public-source diligence case for Stargate Abilene, paired with clearly labeled synthetic acquisition economics. The operating facts are real-world evidence; the returns are a representative underwriting lens, not reported transaction terms."
         right={<div className="flex items-center gap-2 self-start rounded-full border border-[#cbd8d4] bg-[#f9faf8] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#60707d] md:self-auto"><span className="h-2 w-2 rounded-full bg-[#ba2f45]" /> Location · Taylor County, TX</div>}
       />
+      <div className="mb-5"><ScopeLimitationsDisclosure /></div>
       <div className="grid gap-5 xl:grid-cols-[1.4fr_0.8fr]">
         <section className="relative min-h-[360px] overflow-hidden rounded-xl bg-[#122232] p-6 text-white md:p-8">
           <div className="absolute right-0 top-0 h-full w-1/2 opacity-40 [background-image:linear-gradient(#345063_1px,transparent_1px),linear-gradient(90deg,#345063_1px,transparent_1px)] [background-size:30px_30px] [mask-image:linear-gradient(90deg,transparent,black)]" />

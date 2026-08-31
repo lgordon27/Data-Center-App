@@ -8,6 +8,7 @@ import runtimeErrorOverlay from '@replit/vite-plugin-runtime-error-modal';
 import { handleErcotQueueRequest } from './server/ercotProxy.mjs';
 import { handleEiaElectricityRequest } from './server/eiaProxy.mjs';
 import { handleAnalyzeEvidenceRequest } from './server/aiEvidenceProxy.mjs';
+import { handleResearchProjectRequest } from './server/researchProjectProxy.mjs';
 
 const rawPort = process.env.PORT;
 
@@ -79,12 +80,29 @@ function analyzeEvidenceApiPlugin(): Plugin {
   };
 }
 
+function researchProjectApiPlugin(): Plugin {
+  return {
+    name: 'safeloc-research-project-api',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        const pathname = new URL(req.url ?? '/', 'http://127.0.0.1').pathname;
+        if (pathname !== '/api/research-project') {
+          next();
+          return;
+        }
+        await handleResearchProjectRequest(req, res);
+      });
+    },
+  };
+}
+
 export default defineConfig({
   base: basePath,
   plugins: [
     ercotQueueApiPlugin(),
     eiaElectricityApiPlugin(),
     analyzeEvidenceApiPlugin(),
+    researchProjectApiPlugin(),
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),

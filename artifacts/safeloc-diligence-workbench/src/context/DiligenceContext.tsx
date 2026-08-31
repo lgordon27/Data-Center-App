@@ -3,6 +3,7 @@ import {
   calculateCashFlowModel,
   Classification,
   EvidenceRecord,
+  DEFAULT_CAPACITY_MW,
   type QualitativeEvidenceValue,
 } from '@/model/cashFlowEngine';
 import {
@@ -29,6 +30,10 @@ import {
   clearDecisionHistory,
   recordManualClassificationChange,
 } from "@/services/sessionLog";
+import {
+  CUSTOM_EVIDENCE_IDS,
+  type CustomResearchResponse,
+} from "@/services/researchProjectService";
 
 export type { Classification } from '@/model/cashFlowEngine';
 
@@ -60,6 +65,9 @@ export type ScenarioMetrics = {
   payback: number | null;
   confidence: number;
 };
+export type ProjectContext = CustomResearchResponse["projectSummary"] & {
+  kind: "curated" | "custom";
+};
 type DiligenceState = {
   evidence: Record<string, EvidenceItem>;
   hasChangedClassification: boolean;
@@ -67,6 +75,8 @@ type DiligenceState = {
   clearLastChange: () => void;
   metrics: FinancialMetrics;
   resetToDefault: () => void;
+  loadCustomProject: (research: CustomResearchResponse) => void;
+  project: ProjectContext;
   sessionRestored: boolean;
   sessionMigrated: boolean;
   scenarios: SavedScenario[];
@@ -179,6 +189,13 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   stateRef.current = state;
   const [sessionRestored, setSessionRestored] = useState(initialSession.restored);
   const [sessionMigrated] = useState(initialSession.migrated);
+  const [project, setProject] = useState<ProjectContext>({
+    kind: "curated",
+    name: "Stargate Abilene",
+    location: "Taylor County, TX",
+    description: "A public-source diligence case paired with clearly labeled synthetic acquisition economics.",
+    capacityMW: DEFAULT_CAPACITY_MW,
+  });
   const [scenarios, setScenarios] = useState<SavedScenario[]>(loadScenarios);
   const [ercotQueue, setErcotQueue] = useState<ErcotQueueResult>(FALLBACK_ERCOT_RESULT);
   const [eiaData, setEiaData] = useState<EiaElectricityData>(() => createEiaFallback());
@@ -188,8 +205,8 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     eia: eiaData.sourceMetadata,
   }), [eiaData.sourceMetadata, ercotQueue.sourceMetadata]);
   const effectiveEvidence = useMemo(
-    () => applyEiaEvidence(state.evidence, eiaData),
-    [state.evidence, eiaData],
+    () => project.kind === "custom" ? state.evidence : applyEiaEvidence(state.evidence, eiaData),
+    [state.evidence, eiaData, project.kind],
   );
 
   useEffect(() => {
@@ -225,12 +242,18 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     const previous = currentState.evidence[id]?.classification;
     if (!previous || previous === classification || !isClassification(classification)) return;
 
-    const previousIrr = calculateCashFlowModel(applyEiaEvidence(currentState.evidence, eiaData) as EvidenceRecord).projectIRR;
+    const previousIrr = calculateCashFlowModel(
+      (project.kind === "custom" ? currentState.evidence : applyEiaEvidence(currentState.evidence, eiaData)) as EvidenceRecord,
+      project.capacityMW,
+    ).projectIRR;
     const nextEvidence = {
       ...currentState.evidence,
       [id]: { ...currentState.evidence[id], classification },
     };
-    const nextIrr = calculateCashFlowModel(applyEiaEvidence(nextEvidence, eiaData) as EvidenceRecord).projectIRR;
+    const nextIrr = calculateCashFlowModel(
+      (project.kind === "custom" ? nextEvidence : applyEiaEvidence(nextEvidence, eiaData)) as EvidenceRecord,
+      project.capacityMW,
+    ).projectIRR;
     const nextState = {
       evidence: nextEvidence,
       hasChangedClassification: true,
@@ -245,8 +268,10 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     if (source === "manual") {
       recordManualClassificationChange(id, previous, classification);
     }
-    writeStorage(CURRENT_SESSION_STORAGE_KEY, createSessionPayload(nextEvidence, true));
-  }, [eiaData]);
+    if (project.kind === "curated") {
+      writeStorage(CURRENT_SESSION_STORAGE_KEY, createSessionPayload(nextEvidence, true));
+    }
+  }, [eiaData, project]);
 
   const clearLastChange = useCallback(() => {
     const nextState = { ...stateRef.current, lastChange: null };
@@ -258,6 +283,44 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     const nextState = { evidence: cloneEvidence(INITIAL_EVIDENCE), hasChangedClassification: false, lastChange: null };
     stateRef.current = nextState;
     setState(nextState);
+    setProject({
+      kind: "curated",
+      name: "Stargate Abilene",
+      location: "Taylor County, TX",
+      description: "A public-source diligence case paired with clearly labeled synthetic acquisition economics.",
+      capacityMW: DEFAULT_CAPACITY_MW,
+    });
+    clearStorage(CURRENT_SESSION_STORAGE_KEY);
+    clearDecisionHistory();
+  }, []);
+
+  const loadCustomProject = useCallback((research: CustomResearchResponse) => {
+    const researchById = new Map(research.evidence.map((item) => [item.id, item]));
+    const customEvidence = Object.fromEntries(
+      CUSTOM_EVIDENCE_IDS.map((id) => {
+        const item = researchById.get(id);
+        return [id, {
+          ...item,
+          id,
+          sourceId: null,
+          providerSourceId: null,
+          sourceRole: `AI-researched · ${item?.sourceRole ?? "High-level public research"}`,
+        }];
+      }),
+    ) as Record<string, EvidenceItem>;
+    const nextState = { evidence: customEvidence, hasChangedClassification: false, lastChange: null as FinancialMetrics["lastChange"] };
+    stateRef.current = nextState;
+    setState(nextState);
+    setProject({
+      kind: "custom",
+      name: research.projectSummary.name,
+      location: research.projectSummary.location,
+      description: research.projectSummary.description,
+      // Custom capacity is not independently sourced by this contract. Keep
+      // the financial model on the documented standardized capacity even when
+      // the research provider returns a finite project estimate.
+      capacityMW: DEFAULT_CAPACITY_MW,
+    });
     clearStorage(CURRENT_SESSION_STORAGE_KEY);
     clearDecisionHistory();
   }, []);
@@ -265,6 +328,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   const saveScenario = (name: string): SaveScenarioResult => {
     const trimmedName = name.trim();
     if (!trimmedName) return { ok: false, reason: 'empty-name' };
+    if (project.kind === "custom") return { ok: false, reason: 'custom-project' };
     if (scenarios.length >= 5) return { ok: false, reason: 'capacity' };
     if (scenarios.some((scenario) => scenario.name.toLowerCase() === trimmedName.toLowerCase())) {
       return { ok: false, reason: 'duplicate-name' };
@@ -319,12 +383,12 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   };
 
   const metrics = useMemo(
-    () => ({ ...calculateCashFlowModel(effectiveEvidence as EvidenceRecord), lastChange: state.lastChange }),
-    [effectiveEvidence, state.lastChange],
+    () => ({ ...calculateCashFlowModel(effectiveEvidence as EvidenceRecord, project.capacityMW), lastChange: state.lastChange }),
+    [effectiveEvidence, project.capacityMW, state.lastChange],
   );
 
   return (
-    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, clearLastChange, metrics, resetToDefault, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading }}>
+    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, clearLastChange, metrics, resetToDefault, loadCustomProject, project, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading }}>
       {children}
     </DiligenceContext.Provider>
   );
@@ -352,7 +416,7 @@ function isFiniteNumber(value: unknown): value is number {
 
 export type SaveScenarioResult =
   | { ok: true; scenario: SavedScenario }
-  | { ok: false; reason: 'empty-name' | 'duplicate-name' | 'capacity' };
+  | { ok: false; reason: 'empty-name' | 'duplicate-name' | 'capacity' | 'custom-project' };
 
 export type RenameScenarioResult =
   | { ok: true; scenario: SavedScenario }

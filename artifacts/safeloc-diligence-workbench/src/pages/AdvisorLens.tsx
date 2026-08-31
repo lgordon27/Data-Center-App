@@ -38,21 +38,32 @@ import type {
   Screen
 } from "@/components/Shell";
 export function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
-  const { evidence, metrics } = useDiligence();
+  const { evidence, metrics, project } = useDiligence();
+  const projectName = project.name;
+  const customProject = project.kind === "custom";
   const verifiedCount = Object.values(evidence).filter((item) => item.classification === "Verified Evidence").length;
   const evidenceCount = Object.keys(evidence).length;
   const riskTier = getRiskTier(verifiedCount);
   const currentIRR = metrics.projectIRR ?? null;
   const baseIRR = metrics.baseIRR ?? null;
   const governanceGap = getGovernanceIRRGap(baseIRR, currentIRR);
-  const prioritizedQuestions = useMemo(() => prioritizeAdvisorQuestions(evidence), [evidence]);
+  const prioritizedQuestions = useMemo(
+    () => prioritizeAdvisorQuestions(evidence).map((question) => customProject
+      ? {
+          ...question,
+          question: question.question.replaceAll("Stargate Abilene", projectName),
+          activeDetail: question.activeDetail.replaceAll("Stargate Abilene", projectName),
+        }
+      : question),
+    [evidence, customProject, projectName],
+  );
   const exposureChain = [
     { label: "Client’s Values-Aligned Portfolio", detail: "The allocation expresses the client’s values", tone: "neutral" },
     { label: "Sustainable Investment Fund", detail: "The fund screens for values-aligned exposure", tone: "blue" },
     { label: "NVIDIA", detail: "20%+ of the iShares fund", tone: "coral" },
     { label: "GPU Orders", detail: "Forward demand for accelerated computing", tone: "lime" },
     { label: "Hyperscaler CAPEX", detail: "$650B in planned spending", tone: "violet" },
-    { label: "Stargate Abilene", detail: "Physical infrastructure under diligence", tone: "navy" },
+    { label: projectName, detail: customProject ? "Selected project under diligence" : "Physical infrastructure under diligence", tone: "navy" },
   ] as const;
   const exposureTone: Record<(typeof exposureChain)[number]["tone"], { background: string; border: string; color: string }> = {
     neutral: { background: "#f1f5f3", border: "#cbd8d4", color: "#344550" },
@@ -99,7 +110,7 @@ export function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => vo
       <PageIntro
         eyebrow="05 / advisor handoff"
         title="Turn evidence quality into a client conversation."
-        description="A practical handoff for advisors reviewing how Stargate Abilene’s physical infrastructure assumptions may connect to public-market exposure. Use the live evidence posture, not a generic sustainability label, to frame the next question."
+        description={`A practical handoff for advisors reviewing how ${projectName}’s physical infrastructure assumptions may connect to public-market exposure. Use the live evidence posture, not a generic sustainability label, to frame the next question.`}
         right={<div className="flex items-center gap-2 rounded-md border border-[#cbb7ec] bg-[#eee7fa] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#7049b7]"><Leaf className="h-3.5 w-3.5" /> Advisor handoff</div>}
       />
       <section data-testid="text-advisor-summary" className="mb-5 rounded-xl border border-[#cbd8d4] bg-[#f9faf8] p-5 md:p-6" aria-labelledby="advisor-live-posture-heading">
@@ -118,7 +129,7 @@ export function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => vo
           <div>
             <SectionKicker tone="lime" className="!text-[#d4e86b]">Section 1 / client exposure</SectionKicker>
             <h2 id="client-exposure-heading" className="max-w-2xl text-[26px] font-semibold leading-tight tracking-[-0.035em] md:text-[31px]">Your Clients’ Values Are Invested Here</h2>
-            <p className="mt-3 max-w-4xl text-[11px] leading-5 text-[#afbdc4]">A values-aligned fund can connect a client’s capital to NVIDIA, GPU demand, hyperscaler CAPEX, and the Stargate Abilene buildout. The exposure chain turns that connection into diligence questions; it is not proof that every link or statistic is independently verified.</p>
+            <p className="mt-3 max-w-4xl text-[11px] leading-5 text-[#afbdc4]">{customProject ? `This custom-project review focuses on ${projectName}. Any connection to NVIDIA, GPU demand, or hyperscaler CAPEX is regional market context, not proof of this facility or a portfolio holding.` : "A values-aligned fund can connect a client’s capital to NVIDIA, GPU demand, hyperscaler CAPEX, and the Stargate Abilene buildout. The exposure chain turns that connection into diligence questions; it is not proof that every link or statistic is independently verified."}</p>
           </div>
           <div className="flex shrink-0 items-center gap-2 rounded-md border border-white/15 bg-white/5 px-3 py-2 text-[9px] font-bold uppercase tracking-[0.13em] text-[#c4d0d6]"><Network className="h-3.5 w-3.5 text-[#d4e86b]" /> Exposure chain</div>
         </div>
@@ -144,7 +155,7 @@ export function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => vo
               <h3 className="mt-1 text-[19px] font-semibold tracking-[-0.025em] text-white">Your Clients Are on Both Sides</h3>
             </div>
           </div>
-          <p data-testid="advisor-exposure-qualifier" className="mt-2 max-w-md text-[10px] leading-4 text-[#9dafb8]">Exposure is not uniform. These are public market-context examples, not facility-level Stargate evidence and not modeled financial inputs.</p>
+          <p data-testid="advisor-exposure-qualifier" className="mt-2 max-w-md text-[10px] leading-4 text-[#9dafb8]">Exposure is not uniform. These are public market-context examples, not facility-level {customProject ? `${projectName} evidence` : "Stargate evidence"} and not modeled financial inputs.</p>
           <div data-testid="advisor-exposure-comparisons" className="mt-4 grid gap-2 sm:grid-cols-2">
             {infrastructureExposure.map((entry) => (
               <div key={entry.id} data-testid={`advisor-tier-${entry.id}`} className="rounded-lg border border-white/10 bg-white/5 p-3">

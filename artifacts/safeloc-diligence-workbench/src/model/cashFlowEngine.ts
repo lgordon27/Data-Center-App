@@ -266,7 +266,7 @@ const QUALITY_POLICY = {
 
 // Shared with Advisor Lens so materiality has one source of truth across
 // recommendation status and evidence-completeness posture.
-export const MATERIAL_EVIDENCE_IDS: readonly string[] = [
+export const MATERIAL_EVIDENCE_IDS = [
   "community_risk",
   "water_rights",
   "grid_interconnection",
@@ -274,8 +274,9 @@ export const MATERIAL_EVIDENCE_IDS: readonly string[] = [
   "permitting_timeline",
   "backup_power_capacity",
   "water_source_resilience",
-];
+] as const;
 
+export type MaterialEvidenceId = (typeof MATERIAL_EVIDENCE_IDS)[number];
 function finiteNumericValue(value: unknown, fallback: number) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
@@ -686,11 +687,11 @@ function runModel(evidence: EvidenceRecord, capacityMW: number): CashFlowModel {
       ? ((schedule[3]?.netEquityCashFlow ?? 0) / equityInvested) * 100
       : 0;
   const missingMaterialCount = Object.values(evidence).filter(
-    (item) => item.classification === "Missing Evidence" && MATERIAL_EVIDENCE_IDS.includes(item.id),
+    (item) => item.classification === "Missing Evidence" && isMaterialEvidenceId(item.id),
   ).length;
   const materialUnverifiedCount = Object.values(evidence).filter(
     (item) =>
-      MATERIAL_EVIDENCE_IDS.includes(item.id) &&
+      isMaterialEvidenceId(item.id) &&
       (item.classification === "Model Inference" || item.classification === "User Assumption"),
   ).length;
   const recommendationStatus: RecommendationStatus =
@@ -830,4 +831,8 @@ export function calculateCashFlowModel(evidence: EvidenceRecord, requestedCapaci
     baseModel: verifiedBaseline,
     lineItems,
   };
+}
+
+export function isMaterialEvidenceId(id: string): id is MaterialEvidenceId {
+  return MATERIAL_EVIDENCE_IDS.includes(id as MaterialEvidenceId);
 }

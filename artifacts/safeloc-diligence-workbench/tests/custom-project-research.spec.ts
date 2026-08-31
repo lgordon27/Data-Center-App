@@ -98,6 +98,13 @@ test.describe("custom project research", () => {
     await expect(page.getByTestId("button-save-scenario")).toBeDisabled();
     await expect(page.getByTestId("button-compare-scenarios")).toBeDisabled();
     await expect(page.getByTestId("panel-saved-scenarios")).toHaveCount(0);
+    await expect(page.getByTestId("status-recommendation")).toHaveText("BLOCKED");
+    await expect(page.getByTestId("material-gap-row-grid_interconnection")).toBeVisible();
+    await expect(page.getByTestId("material-gap-row-community_risk")).toBeVisible();
+    await expect(page.getByTestId("material-gap-row-customer_concentration")).toBeVisible();
+    await expect(page.getByTestId("material-gap-row-water_source_resilience")).toBeVisible();
+    await expect(page.getByTestId("material-gap-row-electricity_cost")).toHaveCount(0);
+    await expect(page.getByTestId("material-gap-row-water_consumption")).toHaveCount(0);
     await expect.poll(() => page.evaluate((key) => window.localStorage.getItem(key), scenariosKey)).toBeNull();
 
     await page.getByTestId("button-reset-default").click();

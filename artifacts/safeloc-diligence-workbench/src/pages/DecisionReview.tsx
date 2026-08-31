@@ -23,7 +23,10 @@ import {
   SavedScenario,
   useDiligence
 } from "@/context/DiligenceContext";
-import type { RecommendationStatus } from "@/model/cashFlowEngine";
+import {
+  isMaterialEvidenceId,
+  type RecommendationStatus,
+} from "@/model/cashFlowEngine";
 
 import {
   AlertDialog,
@@ -76,6 +79,9 @@ export function DecisionReview({ onNavigate, onResolve }: { onNavigate: (screen:
       }
     : holdingsConnectionCopy;
   const items = Object.values(evidence);
+  const materialItems = items.filter((item) => isMaterialEvidenceId(item.id));
+  const materialGapItems = materialItems.filter((item) => item.classification === "Missing Evidence");
+  const materialDependencyLabels = materialItems.map((item) => item.label);
   const [saveOpen, setSaveOpen] = useState(false);
   const [scenarioName, setScenarioName] = useState("");
   const [saveFeedback, setSaveFeedback] = useState("");
@@ -175,10 +181,10 @@ export function DecisionReview({ onNavigate, onResolve }: { onNavigate: (screen:
       <div className="mt-5 grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
         <section className="rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-6">
           <div className="flex items-center justify-between"><div><SectionKicker tone="warning">Material evidence gaps</SectionKicker><h2 className="text-[18px] font-semibold tracking-[-0.025em] text-[#122232]">Items that need a named owner</h2></div><CircleAlert className="h-5 w-5 text-[#ba2f45]" /></div>
-          <p data-testid="text-climate-material-dependencies" className="mt-3 rounded-md bg-[#fff8e9] px-3 py-2 text-[10px] leading-4 text-[#7f6337]">Backup power capacity and water-source resilience are material recommendation dependencies. Missing evidence blocks review; model inference or user assumption keeps the decision conditional.</p>
+          <p data-testid="text-climate-material-dependencies" className="mt-3 rounded-md bg-[#fff8e9] px-3 py-2 text-[10px] leading-4 text-[#7f6337]">Material recommendation dependencies: {materialDependencyLabels.join(", ")}. Missing evidence blocks review; model inference or user assumption keeps the decision conditional.</p>
           <div className="mt-4 divide-y divide-[#e5eae8]">
-            {items.filter((item) => item.classification === "Missing Evidence").map((item) => <div key={item.id} className="flex items-center justify-between gap-4 py-3"><div><div className="text-[11px] font-semibold text-[#344550]">{item.label}</div><div className="mt-1 text-[10px] text-[#52616b]">{item.citation}</div></div><button type="button" data-testid={`button-resolve-${item.id}`} onClick={() => onResolve(item.id)} className="shrink-0 rounded bg-[#fde8eb] px-2.5 py-2 text-[9px] font-bold uppercase tracking-[0.11em] text-[#ba2f45] hover:bg-[#ba2f45] hover:text-white">Resolve <ArrowRight aria-hidden="true" className="ml-1 inline h-3 w-3" /></button></div>)}
-            {items.filter((item) => item.classification === "Missing Evidence").length === 0 && <div className="rounded-md bg-[#e0f4ed] p-3 text-[11px] text-[#0b7a63]">No missing evidence items. The recommendation can move to review.</div>}
+            {materialGapItems.map((item) => <div key={item.id} data-testid={`material-gap-row-${item.id}`} className="flex items-center justify-between gap-4 py-3"><div><div className="text-[11px] font-semibold text-[#344550]">{item.label}</div><div className="mt-1 text-[10px] text-[#52616b]">{item.citation}</div></div><button type="button" data-testid={`button-resolve-${item.id}`} onClick={() => onResolve(item.id)} className="shrink-0 rounded bg-[#fde8eb] px-2.5 py-2 text-[9px] font-bold uppercase tracking-[0.11em] text-[#ba2f45] hover:bg-[#ba2f45] hover:text-white">Resolve <ArrowRight aria-hidden="true" className="ml-1 inline h-3 w-3" /></button></div>)}
+            {materialGapItems.length === 0 && <div data-testid="material-gap-empty" className="rounded-md bg-[#e0f4ed] p-3 text-[11px] text-[#0b7a63]">No material evidence gaps. The recommendation is not blocked by missing evidence.</div>}
           </div>
         </section>
         <section className="rounded-xl border border-[#d9e0e4] bg-[#f1f5f3] p-5 md:p-6">

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { MATERIAL_EVIDENCE_IDS } from "../src/model/cashFlowEngine";
 
 const routes = [
   ["brief", "Case Brief"],
@@ -376,30 +377,10 @@ test.describe("hash routing and browser history", () => {
     await expectContextNoteToStayReadable(page, "holdings-connection-indicator", "holdings-connection-message");
   });
 
-  test("keeps the opening and builder story readable at every browser size", async ({ page }) => {
-    await page.goto("/#how-it-works");
-    await expect(page.getByTestId("tour-sri-context")).toBeVisible();
-    await expect(page.getByTestId("tour-builder-story")).toBeVisible();
+  test("keeps Decision Review material blockers aligned with the cash-flow contract", async ({ page }) => {
+    await page.goto("/#decision");
 
-    await expectTourLayoutToStayReadable(page, "#tour-context");
-    await expect(page.locator("#tour-context")).toHaveScreenshot("how-it-works-opening.png", {
-      animations: "disabled",
-      caret: "hide",
-    });
-
-    await page.getByTestId("link-tour-chapter-tour-built-by").click();
-    await expect(page.getByTestId("tour-builder-story")).toBeInViewport();
-    await expectTourLayoutToStayReadable(page, "#tour-built-by");
-    await expect(page.locator("#tour-built-by")).toHaveScreenshot("how-it-works-builder-story.png", {
-      animations: "disabled",
-      caret: "hide",
-    });
-  });
-
-  test("keeps reduced-motion tour jumps immediate without changing interaction", async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.goto("/#how-it-works");
-    await page.evaluate(() => {
+    const dependencyCopy = page.getByTestId("text-climate-material-dependencies");
       const calls: unknown[] = [];
       const originalScrollIntoView = Element.prototype.scrollIntoView;
       Element.prototype.scrollIntoView = function (options) {

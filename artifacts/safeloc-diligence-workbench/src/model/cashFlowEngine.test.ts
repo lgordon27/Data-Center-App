@@ -6,6 +6,7 @@ import {
   BACKUP_POWER_CAPEX_BY_CLASSIFICATION,
   calculateCashFlowModel,
   CLIMATE_QUALITY_MULTIPLIERS,
+  MATERIAL_EVIDENCE_IDS,
   type Classification,
   type EvidenceRecord,
   WATER_CONVERSION_CAPEX_BY_CLASSIFICATION,
@@ -67,7 +68,7 @@ test("the canonical evidence contract has 16 items and a 16-item confidence deno
   assert.equal(INITIAL_EVIDENCE.electricity_cost.classification, "User Assumption");
   assert.equal(INITIAL_EVIDENCE.electricity_escalation.classification, "Model Inference");
   assert.equal(INITIAL_EVIDENCE.customer_concentration.classification, "Management Assertion");
-   assert.equal(model.confidenceScore, 48);
+  assert.equal(model.confidenceScore, 48);
   assert.equal(
     model.assumptions.siteHazardExposure,
     "Extreme heat high; drought moderate; winter storm documented",
@@ -202,7 +203,7 @@ test("climate quality multipliers adjust hazard probability and downtime cost", 
 });
 
 test("climate disruption is annual OPEX and reduces NOI and terminal value once", () => {
-  const model = calculateCashFlowModel(INITIAL_EVIDENCE);
+  const model = calculateCashFlowModel(allVerified());
   const yearFive = model.schedule[5];
   const expected =
     (model.assumptions.adjustedDowntimeCostPerDay *
@@ -309,7 +310,7 @@ test("a structured EIA electricity rate flows through the existing quality polic
     },
   };
   const model = calculateCashFlowModel(eiaEvidence);
-   assert.equal(model.assumptions.electricityRate, 55 * 1.05);
+  assert.equal(model.assumptions.electricityRate, 55 * 1.05);
 
   const inferred = {
     ...eiaEvidence,
@@ -374,6 +375,44 @@ test("climate uncertainty propagates through returns and material recommendation
   );
   assert.equal(sourceInferred.recommendationStatus, "CONDITIONAL");
   assert.equal(sourceInferred.materialUnverifiedCount, 1);
+});
+
+test("the material evidence contract governs every recommendation transition", () => {
+  assert.deepEqual(MATERIAL_EVIDENCE_IDS, [
+    "community_risk",
+    "water_rights",
+    "grid_interconnection",
+    "customer_concentration",
+    "permitting_timeline",
+    "backup_power_capacity",
+    "water_source_resilience",
+  ]);
+
+  for (const id of MATERIAL_EVIDENCE_IDS) {
+    for (const classification of CLASSIFICATIONS) {
+      const model = calculateCashFlowModel(classify(allVerified(), id, classification));
+      if (classification === "Missing Evidence") {
+        assert.equal(model.recommendationStatus, "BLOCKED", `${id} should block when missing`);
+        assert.equal(model.missingMaterialCount, 1);
+      } else if (
+        classification === "Model Inference" ||
+        classification === "User Assumption"
+      ) {
+        assert.equal(model.recommendationStatus, "CONDITIONAL", `${id} should be conditional`);
+        assert.equal(model.materialUnverifiedCount, 1);
+      } else {
+        assert.equal(model.recommendationStatus, "READY FOR REVIEW", `${id} should be supported`);
+        assert.equal(model.materialUnverifiedCount, 0);
+      }
+    }
+  }
+
+  const nonMaterialMissing = calculateCashFlowModel(
+    classify(allVerified(), "water_consumption", "Missing Evidence"),
+  );
+  assert.equal(nonMaterialMissing.recommendationStatus, "READY FOR REVIEW");
+  assert.equal(nonMaterialMissing.missingMaterialCount, 0);
+  assert.equal(nonMaterialMissing.materialUnverifiedCount, 0);
 });
 
 test("custom project capacity scales standardized economics without changing the model contract", () => {

@@ -1,4 +1,7 @@
-import type { Classification } from "./cashFlowEngine";
+import {
+  MATERIAL_EVIDENCE_IDS,
+  type Classification,
+} from "./cashFlowEngine";
 
 export type AdvisorQuestion = {
   id: string;
@@ -10,6 +13,15 @@ export type AdvisorQuestion = {
 export type ClassifiedEvidence = {
   classification: Classification;
   modelClassification?: Classification;
+};
+
+export type AdvisorEvidenceSummary = {
+  materialTotal: number;
+  materialVerifiedCount: number;
+  materialGapCount: number;
+  materialMissingCount: number;
+  verifiedCount: number;
+  totalInputCount: number;
 };
 
 export type PrioritizedAdvisorQuestion = AdvisorQuestion & {
@@ -64,10 +76,48 @@ export function countVerifiedEvidence(evidence: Record<string, ClassifiedEvidenc
   return Object.values(evidence).filter((item) => item.classification === "Verified Evidence").length;
 }
 
-export function getRiskTier(verifiedCount: number): RiskTier {
-  if (verifiedCount < 4) return "HIGH";
-  if (verifiedCount <= 8) return "MODERATE";
-  return "LOW";
+const MATERIAL_SUFFICIENT_CLASSIFICATIONS: readonly Classification[] = [
+  "Verified Evidence",
+  "Management Assertion",
+];
+
+export function getAdvisorEvidenceSummary(
+  evidence: Record<string, ClassifiedEvidence>,
+): AdvisorEvidenceSummary {
+  const materialEvidence = MATERIAL_EVIDENCE_IDS
+    .map((id) => evidence[id])
+    .filter((item): item is ClassifiedEvidence => item !== undefined);
+  const isMateriallySufficient = (item: ClassifiedEvidence) =>
+    MATERIAL_SUFFICIENT_CLASSIFICATIONS.includes(item.classification);
+
+  return {
+    materialTotal: materialEvidence.length,
+    materialVerifiedCount: materialEvidence.filter(isMateriallySufficient).length,
+    materialGapCount: materialEvidence.filter((item) => !isMateriallySufficient(item)).length,
+    materialMissingCount: materialEvidence.filter(
+      (item) => item.classification === "Missing Evidence",
+    ).length,
+    verifiedCount: countVerifiedEvidence(evidence),
+    totalInputCount: Object.keys(evidence).length,
+  };
+}
+
+export function getRiskTier(
+  summary: Pick<
+    AdvisorEvidenceSummary,
+    "materialTotal" | "materialVerifiedCount" | "materialMissingCount"
+  >,
+): RiskTier {
+  if (summary.materialTotal === 0 || summary.materialVerifiedCount * 2 < summary.materialTotal) {
+    return "HIGH";
+  }
+  if (
+    summary.materialVerifiedCount === summary.materialTotal &&
+    summary.materialMissingCount === 0
+  ) {
+    return "LOW";
+  }
+  return "MODERATE";
 }
 
 export function prioritizeAdvisorQuestions(

@@ -569,13 +569,51 @@ test.describe("hash routing and browser history", () => {
     await expect(page.getByTestId("text-governance-irr-gap")).toHaveText(/-?\d+\.\d pts/);
     await expect(page.getByTestId("card-fund-ishares")).toBeVisible();
     await expect(page.getByTestId("advisor-question-water-rights")).toBeVisible();
+     await expect(page.getByTestId("text-advisor-summary")).toContainText(
+       "MODERATE: 5 of 7 material inputs verified. 3 of 16 total inputs verified.",
+     );
+     await expect(page.getByTestId("badge-advisor-summary-risk")).toHaveAttribute(
+       "aria-label",
+       "MODERATE unverified exposure risk",
+     );
+     await expect(page.getByTestId("badge-fund-ishares-risk")).toHaveAttribute(
+       "aria-label",
+       "MODERATE unverified exposure risk",
+     );
+     await expect(page.getByTestId("badge-fund-msci-risk")).toHaveAttribute(
+       "aria-label",
+       "MODERATE unverified exposure risk",
+     );
+     await expect(page.getByTestId("text-advisor-summary")).toContainText("Management Assertion");
+     await expect(page.getByTestId("text-advisor-summary")).not.toContainText("HIGH < 4 verified");
 
     const initialGap = await page.getByTestId("text-governance-irr-gap").textContent();
     await page.goto("/#evidence");
     await page.getByTestId("select-classification-water_rights").selectOption("Verified Evidence");
     await page.goto("/#advisor");
+     await expect(page.getByTestId("text-advisor-summary")).toContainText(
+       "MODERATE: 6 of 7 material inputs verified. 4 of 16 total inputs verified.",
+     );
     await expect(page.getByTestId("advisor-question-water-rights")).not.toHaveClass(/border-2/);
     await expect(page.getByTestId("text-governance-irr-gap")).not.toHaveText(initialGap ?? "");
+     await page.goto("/#evidence");
+     await page.getByTestId("select-classification-water_source_resilience").selectOption("Verified Evidence");
+     await page.goto("/#advisor");
+     await expect(page.getByTestId("text-advisor-summary")).toContainText(
+       "LOW: 7 of 7 material inputs verified. 5 of 16 total inputs verified.",
+     );
+     await expect(page.getByTestId("badge-advisor-summary-risk")).toHaveAttribute(
+       "aria-label",
+       "LOW unverified exposure risk",
+     );
+     await expect(page.getByTestId("badge-fund-ishares-risk")).toHaveAttribute(
+       "aria-label",
+       "LOW unverified exposure risk",
+     );
+     await expect(page.getByTestId("badge-fund-msci-risk")).toHaveAttribute(
+       "aria-label",
+       "LOW unverified exposure risk",
+     );
     await expect(page.getByTestId("button-return-decision")).toBeVisible();
     await page.getByTestId("button-return-decision").click();
     await expect(page).toHaveURL(/#decision$/);

@@ -264,7 +264,9 @@ const QUALITY_POLICY = {
   },
 } satisfies Record<Classification, Record<string, number>>;
 
-const MATERIAL_IDS = [
+// Shared with Advisor Lens so materiality has one source of truth across
+// recommendation status and exposure-risk posture.
+export const MATERIAL_EVIDENCE_IDS: readonly string[] = [
   "community_risk",
   "water_rights",
   "grid_interconnection",
@@ -684,11 +686,11 @@ function runModel(evidence: EvidenceRecord, capacityMW: number): CashFlowModel {
       ? ((schedule[3]?.netEquityCashFlow ?? 0) / equityInvested) * 100
       : 0;
   const missingMaterialCount = Object.values(evidence).filter(
-    (item) => item.classification === "Missing Evidence" && MATERIAL_IDS.includes(item.id),
+    (item) => item.classification === "Missing Evidence" && MATERIAL_EVIDENCE_IDS.includes(item.id),
   ).length;
   const materialUnverifiedCount = Object.values(evidence).filter(
     (item) =>
-      MATERIAL_IDS.includes(item.id) &&
+      MATERIAL_EVIDENCE_IDS.includes(item.id) &&
       (item.classification === "Model Inference" || item.classification === "User Assumption"),
   ).length;
   const recommendationStatus: RecommendationStatus =

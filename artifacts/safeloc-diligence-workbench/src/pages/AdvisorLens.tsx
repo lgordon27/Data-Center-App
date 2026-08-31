@@ -28,6 +28,7 @@ import {
 
 
 import {
+  getAdvisorEvidenceSummary,
   getAdvisorQuestionPresentation,
   getGovernanceIRRGap,
   getRiskTier,
@@ -42,9 +43,9 @@ export function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => vo
   const projectName = project.name;
   const customProject = project.kind === "custom";
   const originatingLabel = originatingCompany ?? "No company selected";
-  const verifiedCount = Object.values(evidence).filter((item) => item.classification === "Verified Evidence").length;
-  const evidenceCount = Object.keys(evidence).length;
-  const riskTier = getRiskTier(verifiedCount);
+  const evidenceSummary = getAdvisorEvidenceSummary(evidence);
+  const evidenceCount = evidenceSummary.totalInputCount;
+  const riskTier = getRiskTier(evidenceSummary);
   const currentIRR = metrics.projectIRR ?? null;
   const baseIRR = metrics.baseIRR ?? null;
   const governanceGap = getGovernanceIRRGap(baseIRR, currentIRR);
@@ -118,11 +119,11 @@ export function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => vo
         <SectionKicker>Live evidence posture</SectionKicker>
          <h2 id="advisor-live-posture-heading" className="sr-only">Live evidence posture</h2>
         <p className="max-w-4xl text-[18px] font-semibold leading-7 tracking-[-0.025em] text-[#122232] md:text-[21px]">
-          Based on current evidence quality, {verifiedCount} of {evidenceCount} inputs are verified. Data center exposure in common values-aligned funds carries {riskTier} unverified risk.
+          {riskTier}: {evidenceSummary.materialVerifiedCount} of {evidenceSummary.materialTotal} material inputs verified. {evidenceSummary.verifiedCount} of {evidenceSummary.totalInputCount} total inputs verified.
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-[#e1e8e5] pt-4">
           <RiskIndicator tier={riskTier} testId="badge-advisor-summary-risk" />
-          <span className="text-[10px] text-[#6b7882]">Tier thresholds: HIGH &lt; 4 verified · MODERATE 4–8 · LOW 9+</span>
+          <span className="text-[10px] text-[#6b7882]">Material sufficiency includes Verified Evidence and Management Assertion; Model Inference, User Assumption, and Missing Evidence remain material gaps.</span>
         </div>
       </section>
       <section data-testid="section-client-exposure" className="rounded-xl bg-[#122232] p-5 text-white md:p-7" aria-labelledby="client-exposure-heading">

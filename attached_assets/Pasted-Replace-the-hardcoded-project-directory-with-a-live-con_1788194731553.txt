@@ -1,0 +1,82 @@
+Replace the hardcoded project directory with a live connection to the Compute Atlas public API (compute-atlas.com). This is a free, open-source, CORS-open JSON API with no authentication required. License: CC-BY-4.0 for data, MIT for code.
+
+BACKEND:
+
+Add a new proxy endpoint: GET /api/directory
+
+This endpoint should:
+1. Fetch from https://www.compute-atlas.com/api/facilities with appropriate query parameters to filter for data center facilities
+2. Cache the response for 24 hours (this data updates daily, not in real time)
+3. Transform each facility record into our directory format:
+   - name: facility name
+   - operator: operator/company
+   - location: city/county from the facility record
+   - state: state code
+   - capacity: MW if available, "Undisclosed" if not
+   - status: map Compute Atlas status to our categories (Operational, Under Construction, Planned, Paused, Blocked, Cancelled)
+   - confidence: map their confidence field (confirmed, reported, rumored) to display labels
+   - sourceUrl: the source citation URL from Compute Atlas
+   - aiClassification: their AI angle classification (confirmed, likely, mixed_use, or null)
+4. Return the transformed array sorted by state, then by capacity descending
+5. If Compute Atlas API is unavailable, fall back to a hardcoded snapshot of 20-25 major projects (the list from our source research: Stargate, Kilby, Rock Creek, Dove Creek, CloudHQ, Meta El Paso, Google Ellis County, Fermi, Pacifico, plus Arizona and Virginia projects)
+
+Also add: GET /api/directory/stats
+Returns aggregate counts by state, by status, and total capacity. Sourced from Compute Atlas /api/stats endpoint.
+
+FRONTEND - HOME PAGE:
+
+Replace the free-text project input with a browsable directory:
+
+A tabbed filter bar showing states with the most projects: "All" | "TX" | "AZ" | "VA" | "GA" | "OH" | "Other"
+State counts should be pulled from the live data, not hardcoded.
+
+Below the tabs, show project cards in a compact list. Each card shows:
+- Project/facility name
+- Operator
+- Location, State
+- Capacity (if available)
+- Status badge (color-coded: green Operational, blue Under Construction, yellow Planned, amber Paused, red Blocked)
+- Confidence badge from Compute Atlas (confirmed = solid, reported = outline, rumored = dashed)
+- AI classification badge if present (shows whether this is a confirmed AI facility)
+
+For Stargate Abilene: show a distinct "Curated Deep Dive" badge. Clicking it loads the hand-verified workbench data.
+
+For all other projects: clicking the card triggers the existing AI research analysis (POST /api/research-project) using the facility name and location from Compute Atlas.
+
+Add a search/filter input above the directory: "Filter by name, operator, or state..."
+
+Keep a total count header: "Tracking X data center facilities across Y states" with numbers from the live API.
+
+FUND/STOCK CONNECTION:
+
+Add a manual mapping layer on top of Compute Atlas data. Create a data file at src/data/companyMappings.ts that maps known operators to parent public companies and fund exposure:
+
+{
+  "Oracle": { parentCompanies: ["Oracle"], funds: ["iShares ESG Advanced MSCI USA ETF"] },
+  "OpenAI": { parentCompanies: ["NVIDIA", "Microsoft", "Oracle"], funds: ["iShares ESG Advanced MSCI USA ETF", "MSCI KLD 400 Social Index"] },
+  "Meta": { parentCompanies: ["Meta"], funds: ["iShares ESG Advanced MSCI USA ETF", "MSCI KLD 400 Social Index"] },
+  "Microsoft": { parentCompanies: ["Microsoft"], funds: ["iShares ESG Advanced MSCI USA ETF", "MSCI KLD 400 Social Index"] },
+  "Google": { parentCompanies: ["Alphabet/Google"], funds: ["iShares ESG Advanced MSCI USA ETF", "MSCI KLD 400 Social Index"] },
+  "Amazon": { parentCompanies: ["Amazon"], funds: ["iShares ESG Advanced MSCI USA ETF"] },
+  "Chevron": { parentCompanies: ["Chevron"], funds: [] },
+  "Crusoe": { parentCompanies: ["NVIDIA"], funds: ["iShares ESG Advanced MSCI USA ETF"] }
+}
+
+When a Compute Atlas facility's operator matches a key in this mapping, display the connected companies and funds on the card.
+
+Add filter chips above the directory: "NVIDIA" | "Microsoft" | "Meta" | "Google" | "Amazon" | "Oracle"
+Clicking a chip filters to facilities whose operator maps to that parent company.
+Show a subtitle when filtered: "NVIDIA is connected to X tracked facilities. NVIDIA is the largest holding in the iShares ESG Advanced MSCI USA ETF at 20%+."
+
+ATTRIBUTION:
+
+Add "Facility data: Compute Atlas (CC BY 4.0)" in the directory footer and in the Data Sources section of How It Works. Include a link to compute-atlas.com.
+
+DESIGN:
+- Directory should feel fast and browsable
+- Default sort by state, then capacity
+- Compact cards, one facility per row in list view
+- The Stargate "Curated Deep Dive" card should stand out visually from AI-researched projects
+- Loading state while Compute Atlas data fetches
+- Graceful fallback to cached/hardcoded data if API is down
+- Mobile: horizontally scrollable state tabs, cards stack vertically

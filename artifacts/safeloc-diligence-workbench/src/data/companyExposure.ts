@@ -2,6 +2,16 @@ import type { DirectoryFacility } from "@/services/directoryService";
 
 export type CompanyKey = "NVIDIA" | "Microsoft" | "Meta" | "Google" | "Oracle" | "Amazon";
 
+export const COMPANY_CONNECTION_TYPES = [
+  "Supplier Relationship",
+  "Thematic Exposure",
+  "Developer/Operator",
+  "Customer Dependency",
+  "Direct Contractual",
+] as const;
+
+export type CompanyConnectionType = typeof COMPANY_CONNECTION_TYPES[number];
+
 export type CompanyProfile = {
   key: CompanyKey;
   ticker: string;
@@ -22,6 +32,7 @@ export type CompanyProject = {
   status: string;
   tier: 1 | 2;
   tierLabel: string;
+  connectionType: CompanyConnectionType;
   description: string;
   kind: "curated" | "directory";
   facility?: DirectoryFacility;
@@ -101,6 +112,7 @@ const CURATED_PROJECTS: Partial<Record<CompanyKey, CompanyProject[]>> = {
       status: "Under construction",
       tier: 2,
       tierLabel: "Tier 2 · at risk of delay",
+      connectionType: "Supplier Relationship",
       description: "Reported NVIDIA GPU deployment connects the chip supplier to a grid-dependent Stargate buildout.",
       kind: "curated",
     },
@@ -115,6 +127,7 @@ const CURATED_PROJECTS: Partial<Record<CompanyKey, CompanyProject[]>> = {
       status: "Proceeding",
       tier: 1,
       tierLabel: "Tier 1 · proceeding",
+      connectionType: "Developer/Operator",
       description: "Public market context describes behind-the-meter generation that bypasses the grid.",
       kind: "curated",
     },
@@ -127,6 +140,7 @@ const CURATED_PROJECTS: Partial<Record<CompanyKey, CompanyProject[]>> = {
       status: "Construction",
       tier: 2,
       tierLabel: "Tier 2 · review required",
+      connectionType: "Customer Dependency",
       description: "Bundled Compute Atlas discovery context matched by operator/company name; power, water, and ownership relationships require project-level verification.",
       kind: "directory",
       facility: {
@@ -158,6 +172,7 @@ const CURATED_PROJECTS: Partial<Record<CompanyKey, CompanyProject[]>> = {
       status: "Under construction",
       tier: 2,
       tierLabel: "Tier 2 · at risk of delay",
+      connectionType: "Direct Contractual",
       description: "Oracle's reported lease and customer relationship are reviewed alongside Stargate's public evidence profile.",
       kind: "curated",
     },
@@ -172,6 +187,7 @@ const CURATED_PROJECTS: Partial<Record<CompanyKey, CompanyProject[]>> = {
       status: "Planned",
       tier: 2,
       tierLabel: "Tier 2 · review required",
+      connectionType: "Developer/Operator",
       description: "Bundled Compute Atlas discovery context matched by operator/company name; power, water, and ownership relationships require project-level verification.",
       kind: "directory",
       facility: {
@@ -203,6 +219,7 @@ const CURATED_PROJECTS: Partial<Record<CompanyKey, CompanyProject[]>> = {
       status: "Construction",
       tier: 2,
       tierLabel: "Tier 2 · review required",
+      connectionType: "Developer/Operator",
       description: "Bundled Compute Atlas discovery context matched by operator/company name; power, water, and ownership relationships require project-level verification.",
       kind: "directory",
       facility: {
@@ -234,6 +251,7 @@ const CURATED_PROJECTS: Partial<Record<CompanyKey, CompanyProject[]>> = {
       status: "Operating",
       tier: 2,
       tierLabel: "Tier 2 · review required",
+      connectionType: "Developer/Operator",
       description: "Bundled Compute Atlas discovery context matched by operator/company name; power, water, and ownership relationships require project-level verification.",
       kind: "directory",
       facility: {
@@ -256,6 +274,32 @@ const CURATED_PROJECTS: Partial<Record<CompanyKey, CompanyProject[]>> = {
     },
   ],
 };
+
+const COMPANY_DEFAULT_CONNECTION_TYPES: Record<CompanyKey, CompanyConnectionType> = {
+  NVIDIA: "Thematic Exposure",
+  Microsoft: "Customer Dependency",
+  Meta: "Developer/Operator",
+  Google: "Developer/Operator",
+  Oracle: "Thematic Exposure",
+  Amazon: "Developer/Operator",
+};
+
+function normalizedProjectName(projectName: string) {
+  return projectName.trim().toLowerCase();
+}
+
+/**
+ * Relationship labels describe public-market context only. Project names are
+ * used for the reviewed exceptions; directory metadata never upgrades a
+ * relationship to a stronger claim.
+ */
+export function connectionTypeForCompanyProject(company: CompanyKey, projectName: string): CompanyConnectionType {
+  const name = normalizedProjectName(projectName);
+  if (company === "NVIDIA" && name === "stargate abilene") return "Supplier Relationship";
+  if (company === "Microsoft" && name === "project kilby") return "Developer/Operator";
+  if (company === "Oracle" && name === "stargate abilene") return "Direct Contractual";
+  return COMPANY_DEFAULT_CONNECTION_TYPES[company];
+}
 
 export function profileForCompany(company: CompanyKey) {
   return COMPANY_PROFILES.find((profile) => profile.key === company) ?? COMPANY_PROFILES[0];
@@ -288,6 +332,7 @@ export function companyProjects(company: CompanyKey, facilities: DirectoryFacili
       }[facility.status],
       tier: 2,
       tierLabel: "Tier 2 · review required",
+       connectionType: connectionTypeForCompanyProject(company, facility.name),
       description: "Compute Atlas discovery metadata matched by operator/company name; power, water, and ownership relationships require project-level verification.",
       kind: "directory",
       facility,

@@ -346,6 +346,13 @@ function CompanyProjectCard({
             <span data-testid={`company-project-tier-${project.id}`} className={`rounded-full border px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.08em] ${isTierOne ? "border-[#9bd8c5] bg-[#e0f4ed] text-[#0b624f]" : "border-[#e6cf70] bg-[#fff6c7] text-[#8a6400]"}`}>
               {project.tierLabel}
             </span>
+             <span
+               data-testid={`company-project-connection-${project.id}`}
+               aria-label={`Connection type: ${project.connectionType}`}
+               className="max-w-full rounded-full border border-[#8dc8e8] bg-[#e5f5fb] px-2 py-1 font-mono text-[8px] font-bold tracking-[0.04em] text-[#164c67]"
+             >
+               {project.connectionType}
+             </span>
           </div>
           <p className="mt-1 text-[10px] text-[#63717a]">{project.operator}</p>
         </div>
@@ -405,6 +412,7 @@ function CompanyExposure({
             <div className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-[#607500]">Holdings / infrastructure exposure</div>
             <h2 id="company-exposure-heading" className="mt-2 text-[32px] font-semibold leading-none tracking-[-0.05em] md:text-[46px]">{profile.displayName} AI Infrastructure Exposure</h2>
             <p className="mt-3 max-w-2xl text-[12px] leading-5 text-[#52616b]">{profile.headline}. The projects below show public market-context connections and discovery metadata—not proof that {profile.displayName} owns or controls a facility.</p>
+           <p data-testid="company-connection-note" className="mt-3 max-w-2xl text-[11px] font-semibold leading-5 text-[#314207]">Connection types indicate the nature of the relationship, not the magnitude of financial exposure.</p>
           </div>
           <div data-testid="company-fund-context" className="max-w-xs rounded-lg border border-[#cbb7ec] bg-[#eee7fa] p-4 text-[10px] leading-4 text-[#482873]">
             <div className="font-mono text-[8px] font-bold uppercase tracking-[0.12em]">Held in:</div>

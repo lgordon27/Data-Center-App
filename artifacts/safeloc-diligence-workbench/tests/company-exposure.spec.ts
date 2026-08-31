@@ -55,8 +55,10 @@ test.describe("stock-first company exposure flow", () => {
     await expect(page.locator("[data-testid^='company-card-']")).toHaveCount(6);
     await page.getByTestId("company-card-microsoft").click();
     await expect(page.getByTestId("company-exposure-view")).toBeVisible();
+    await expect(page.getByTestId("company-connection-note")).toHaveText("Connection types indicate the nature of the relationship, not the magnitude of financial exposure.");
     await expect(page.getByTestId("company-fund-context")).toContainText("iShares ESG Advanced MSCI USA ETF");
     await expect(page.getByTestId("company-project-list")).toContainText("Project Kilby");
+    await expect(page.getByTestId("company-project-connection-project-kilby")).toHaveText("Developer/Operator");
     await expect(page.getByTestId("company-project-list")).toContainText("Project Rainier");
     await expect(page.getByTestId("company-summary-tier1")).toContainText("1");
     await expect(page.getByTestId("company-summary-tier2")).toContainText("1");
@@ -66,6 +68,26 @@ test.describe("stock-first company exposure flow", () => {
     await page.goto("/#advisor");
     await expect(page.getByTestId("advisor-originating-company")).toContainText("Microsoft");
     await expect(page.getByTestId("text-advisor-summary")).toContainText("values-aligned funds");
+  });
+
+  test("shows the requested connection badge on each company detail selection", async ({ page }) => {
+    await page.goto("/#home");
+    const expected = [
+      ["nvidia", "Supplier Relationship"],
+      ["microsoft", "Developer/Operator"],
+      ["meta", "Developer/Operator"],
+      ["google", "Developer/Operator"],
+      ["oracle", "Direct Contractual"],
+      ["amazon", "Developer/Operator"],
+    ] as const;
+
+    for (const [company, connectionType] of expected) {
+      await page.getByTestId(`company-card-${company}`).click();
+      await expect(page.getByTestId("company-exposure-view")).toBeVisible();
+      await expect(page.locator("[data-testid^='company-project-connection-']").first()).toHaveText(connectionType);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+      await page.getByTestId("button-company-back").click();
+    }
   });
 
   test("keeps the directory on its secondary route and clears company context on reset", async ({ page }) => {

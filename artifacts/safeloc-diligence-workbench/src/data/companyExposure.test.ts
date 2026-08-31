@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { COMPANY_PROFILES, companyProjects, projectSummary } from "./companyExposure";
+import { COMPANY_CONNECTION_TYPES, COMPANY_PROFILES, companyProjects, connectionTypeForCompanyProject, projectSummary } from "./companyExposure";
 import type { DirectoryFacility } from "@/services/directoryService";
 
 const facility = (overrides: Partial<DirectoryFacility> = {}): DirectoryFacility => ({
@@ -32,8 +32,43 @@ test("company projects combine reviewed context with operator-matched directory 
   const projects = companyProjects("Microsoft", [facility()]);
   assert.equal(projects.length, 2);
   assert.equal(projects[0].tier, 1);
+  assert.equal(projects[0].connectionType, "Developer/Operator");
   assert.equal(projects[1].tier, 2);
+  assert.equal(projects[1].connectionType, "Customer Dependency");
   assert.equal(projects[1].capacityMW, 315);
+});
+
+test("connection types cover every company lens and preserve reviewed exceptions", () => {
+  assert.deepEqual(COMPANY_CONNECTION_TYPES, [
+    "Supplier Relationship",
+    "Thematic Exposure",
+    "Developer/Operator",
+    "Customer Dependency",
+    "Direct Contractual",
+  ]);
+
+  assert.equal(connectionTypeForCompanyProject("NVIDIA", "Stargate Abilene"), "Supplier Relationship");
+  assert.equal(connectionTypeForCompanyProject("NVIDIA", "Project Rainier"), "Thematic Exposure");
+  assert.equal(connectionTypeForCompanyProject("Microsoft", "Project Kilby"), "Developer/Operator");
+  assert.equal(connectionTypeForCompanyProject("Microsoft", "Project Rainier"), "Customer Dependency");
+  assert.equal(connectionTypeForCompanyProject("Oracle", "Stargate Abilene"), "Direct Contractual");
+  assert.equal(connectionTypeForCompanyProject("Meta", "Project Volcano"), "Developer/Operator");
+  assert.equal(connectionTypeForCompanyProject("Google", "Google New Albany Campus"), "Developer/Operator");
+  assert.equal(connectionTypeForCompanyProject("Amazon", "Amazon Central Ohio Campus"), "Developer/Operator");
+});
+
+test("directory projects always receive a connection type through the shared mapping", () => {
+  const projects = companyProjects("Meta", [
+    facility({
+      id: "meta-volcano",
+      name: "Project Volcano",
+      operator: "Meta",
+      connectedCompanies: ["Meta"],
+    }),
+  ]);
+  assert.equal(projects.length, 1);
+  assert.equal(projects[0].kind, "directory");
+  assert.equal(projects[0].connectionType, "Developer/Operator");
 });
 
 test("project summary keeps undisclosed capacity out of disclosed totals", () => {

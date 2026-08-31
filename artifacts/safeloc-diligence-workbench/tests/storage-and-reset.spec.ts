@@ -18,13 +18,27 @@ test.describe("current-session recovery and reset isolation", () => {
 
     await classification.selectOption("Missing Evidence");
     await expect.poll(() => page.evaluate((key) => window.localStorage.getItem(key), currentSessionKey)).not.toBeNull();
+    const marker = page.getByTestId("review-marker-electricity_cost");
+    await expect(marker).toContainText("Reviewed by analyst");
+    const storedReview = await page.evaluate((key) => {
+      const session = JSON.parse(window.localStorage.getItem(key) ?? "{}");
+      return session.reviewMetadata?.electricity_cost;
+    }, currentSessionKey);
+    expect(storedReview.kind).toBe("manual");
+    expect(storedReview.reviewedAt).toMatch(/^\d{4}-\d{2}-\d{2}T.*Z$/);
 
     await page.reload();
     await expect(classification).toHaveValue("Missing Evidence");
+    await expect(marker).toContainText("Reviewed by analyst");
+    await expect(marker.locator("time")).toHaveAttribute("datetime", storedReview.reviewedAt);
     await expect(page.getByTestId("text-session-restored")).toHaveText("Session restored");
     await page.waitForTimeout(3_000);
     await expect(page.getByTestId("text-session-restored")).toBeVisible();
     await expect(page.getByTestId("text-session-restored")).toBeHidden({ timeout: 2_000 });
+
+    await page.goto("/#materiality");
+    await page.goto("/#evidence");
+    await expect(marker).toContainText("Reviewed by analyst");
   });
 
   test("guides the first classification interaction and remembers the tip dismissal", async ({ page }) => {
@@ -91,6 +105,10 @@ test.describe("current-session recovery and reset isolation", () => {
         version: 1,
         hasChangedClassification: true,
         classifications,
+        reviewMetadata: {
+          water_consumption: { kind: "not-a-review-kind", reviewedAt: "2026-08-31T12:00:00.000Z" },
+          grid_interconnection: { kind: "manual", reviewedAt: "not-a-date" },
+        },
       })),
       { key: currentSessionKey, classifications: legacyClassifications },
     );
@@ -111,12 +129,15 @@ test.describe("current-session recovery and reset isolation", () => {
       customer_concentration: "Missing Evidence",
       water_consumption: "Verified Evidence",
     });
+    expect(migrated.reviewMetadata).toEqual({});
+    await expect(page.locator("[data-testid^='review-marker-']")).toHaveCount(0);
   });
 
   test("requires reset confirmation and preserves named scenarios", async ({ page }) => {
     await page.goto("/#evidence");
     const classification = page.getByTestId("select-classification-electricity_cost");
     await classification.selectOption("Missing Evidence");
+    await expect(page.getByTestId("review-marker-electricity_cost")).toContainText("Reviewed by analyst");
 
     const savedScenarios = JSON.stringify({
       version: 1,
@@ -152,6 +173,7 @@ test.describe("current-session recovery and reset isolation", () => {
 
     await page.goto("/#evidence");
     await expect(classification).toHaveValue("User Assumption");
+    await expect(page.getByTestId("review-marker-electricity_cost")).toHaveCount(0);
     await page.goto("/#materiality");
     await expect(page.getByTestId("materiality-classification-prompt")).toBeVisible();
   });

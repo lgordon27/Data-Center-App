@@ -44,6 +44,7 @@ export type EvidenceItem = {
   value: string | number;
   unit: string;
   classification: Classification;
+  review?: EvidenceReview;
   modelClassification?: Classification;
   citation: string;
   description: string;
@@ -61,6 +62,7 @@ export type EvidenceItem = {
   qualitativeValue?: QualitativeEvidenceValue;
 };
 
+export type EvidenceReviewKind = "manual" | "ai-accepted" | "ai-overridden";
 export type FinancialMetrics = Omit<ReturnType<typeof calculateCashFlowModel>, 'lastChange'> & {
   lastChange: { from: number; to: number; delta: number } | null;
 };
@@ -79,7 +81,12 @@ export type ProjectContext = CustomResearchResponse["projectSummary"] & {
 type DiligenceState = {
   evidence: Record<string, EvidenceItem>;
   hasChangedClassification: boolean;
-  updateClassification: (id: string, classification: Classification, source?: "manual" | "ai") => void;
+  updateClassification: (
+    id: string,
+    classification: Classification,
+    source?: "manual" | "ai",
+    reviewKind?: EvidenceReviewKind,
+  ) => boolean;
   clearLastChange: () => void;
   metrics: FinancialMetrics;
   resetToDefault: (originatingCompany?: string | null) => void;
@@ -251,40 +258,58 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     return () => window.clearTimeout(timer);
   }, [sessionRestored]);
 
-  const updateClassification = useCallback((id: string, classification: Classification, source: "manual" | "ai" = "manual") => {
+  const updateClassification = useCallback((
+    id: string,
+    classification: Classification,
+    source: "manual" | "ai" = "manual",
+    reviewKind: EvidenceReviewKind = source === "ai" ? "ai-accepted" : "manual",
+  ) => {
     const currentState = stateRef.current;
     const previous = currentState.evidence[id]?.classification;
-    if (!previous || previous === classification || !isClassification(classification)) return;
+    if (!previous || !isClassification(classification)) return false;
+    const classificationChanged = previous !== classification;
+    if (!classificationChanged && reviewKind === "manual") return false;
 
-    const previousIrr = calculateCashFlowModel(
-      (project.kind === "custom" ? currentState.evidence : applyEiaEvidence(currentState.evidence, eiaData)) as EvidenceRecord,
-      project.capacityMW,
-    ).projectIRR;
+    const previousIrr = classificationChanged
+      ? calculateCashFlowModel(
+        (project.kind === "custom" ? currentState.evidence : applyEiaEvidence(currentState.evidence, eiaData)) as EvidenceRecord,
+        project.capacityMW,
+      ).projectIRR
+      : null;
     const nextEvidence = {
       ...currentState.evidence,
-      [id]: { ...currentState.evidence[id], classification },
+      [id]: {
+        ...currentState.evidence[id],
+        ...(classificationChanged ? { classification } : {}),
+        review: { kind: reviewKind, reviewedAt: new Date().toISOString() },
+      },
     };
-    const nextIrr = calculateCashFlowModel(
-      (project.kind === "custom" ? nextEvidence : applyEiaEvidence(nextEvidence, eiaData)) as EvidenceRecord,
-      project.capacityMW,
-    ).projectIRR;
+    const nextIrr = classificationChanged
+      ? calculateCashFlowModel(
+        (project.kind === "custom" ? nextEvidence : applyEiaEvidence(nextEvidence, eiaData)) as EvidenceRecord,
+        project.capacityMW,
+      ).projectIRR
+      : null;
     const nextState = {
       evidence: nextEvidence,
-      hasChangedClassification: true,
-      lastChange: {
-        from: previousIrr ?? 0,
-        to: nextIrr ?? 0,
-        delta: (nextIrr ?? 0) - (previousIrr ?? 0),
-      },
+      hasChangedClassification: classificationChanged ? true : currentState.hasChangedClassification,
+      lastChange: classificationChanged
+        ? {
+          from: previousIrr ?? 0,
+          to: nextIrr ?? 0,
+          delta: (nextIrr ?? 0) - (previousIrr ?? 0),
+        }
+        : currentState.lastChange,
     };
     stateRef.current = nextState;
     setState(nextState);
-    if (source === "manual") {
+    if (source === "manual" && classificationChanged) {
       recordManualClassificationChange(id, previous, classification);
     }
     if (project.kind === "curated") {
-      writeStorage(CURRENT_SESSION_STORAGE_KEY, createSessionPayload(nextEvidence, true));
+      writeStorage(CURRENT_SESSION_STORAGE_KEY, createSessionPayload(nextEvidence, nextState.hasChangedClassification));
     }
+    return true;
   }, [eiaData, project]);
 
   const clearLastChange = useCallback(() => {
@@ -487,6 +512,9 @@ function isClassification(value: unknown): value is Classification {
   return typeof value === 'string' && VALID_CLASSIFICATIONS.includes(value as Classification);
 }
 
+function isEvidenceReviewKind(value: unknown): value is EvidenceReviewKind {
+  return value === "manual" || value === "ai-accepted" || value === "ai-overridden";
+}
 function isScenario(value: unknown): value is SavedScenario {
   if (!value || typeof value !== 'object') return false;
   const scenario = value as Partial<SavedScenario>;
@@ -530,6 +558,7 @@ type SessionPayload = {
   hasChangedClassification: boolean;
   classifications: Record<string, Classification>;
   overrides: Record<string, Classification>;
+  reviewMetadata: Record<string, EvidenceReview>;
 };
 
 function createSessionPayload(
@@ -544,9 +573,19 @@ function createSessionPayload(
       Object.entries(evidence).map(([id, item]) => [id, item.classification]),
     ),
     overrides: getClassificationOverrides(evidence),
+    reviewMetadata: getReviewMetadata(evidence),
   };
 }
 
+function getReviewMetadata(
+  evidence: Record<string, EvidenceItem>,
+): Record<string, EvidenceReview> {
+  return Object.fromEntries(
+    Object.entries(evidence)
+      .filter(([, item]) => item.review && isEvidenceReview(item.review))
+      .map(([id, item]) => [id, item.review as EvidenceReview]),
+  );
+}
 function getClassificationOverrides(
   evidence: Record<string, EvidenceItem>,
 ): Record<string, Classification> {
@@ -604,6 +643,7 @@ function loadCurrentSession() {
       ? parsed as Record<string, unknown>
       : null;
     const storedOverrides = parsedRecord ? parseClassificationOverrides(parsedRecord.overrides) : null;
+    const storedReviewMetadata = parsedRecord ? parseReviewMetadata(parsedRecord.reviewMetadata) : {};
     const isCurrentProvenance = parsedRecord?.canonicalProvenanceVersion === CURRENT_PROVENANCE_VERSION;
     let evidence: Record<string, EvidenceItem>;
     let migrated = false;
@@ -631,6 +671,7 @@ function loadCurrentSession() {
       evidence = applyClassificationOverrides(overrides);
       migrated = true;
     }
+    evidence = applyReviewMetadata(evidence, storedReviewMetadata);
     const hasChangedClassification = Boolean(
       parsedRecord?.hasChangedClassification === true ||
       Object.keys(getClassificationOverrides(evidence)).length > 0,
@@ -707,3 +748,36 @@ function isScenarioMetrics(value: unknown): value is ScenarioMetrics {
 export type RemoveScenarioResult =
   | { ok: true; scenario: SavedScenario }
   | { ok: false; reason: 'not-found' };
+
+function parseReviewMetadata(value: unknown): Record<string, EvidenceReview> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const metadata = value as Record<string, unknown>;
+  const expectedIds = new Set(Object.keys(INITIAL_EVIDENCE));
+  return Object.fromEntries(
+    Object.entries(metadata)
+      .filter(([id, review]) => expectedIds.has(id) && isEvidenceReview(review))
+      .map(([id, review]) => [id, review as EvidenceReview]),
+  );
+}
+
+function isEvidenceReview(value: unknown): value is EvidenceReview {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const review = value as Partial<EvidenceReview>;
+  if (!isEvidenceReviewKind(review.kind) || typeof review.reviewedAt !== 'string') return false;
+  return Number.isFinite(new Date(review.reviewedAt).getTime());
+}
+
+export type EvidenceReview = {
+  kind: EvidenceReviewKind;
+  reviewedAt: string;
+};
+
+function applyReviewMetadata(
+  evidence: Record<string, EvidenceItem>,
+  reviewMetadata: Record<string, EvidenceReview>,
+): Record<string, EvidenceItem> {
+  for (const [id, review] of Object.entries(reviewMetadata)) {
+    if (evidence[id]) evidence[id] = { ...evidence[id], review };
+  }
+  return evidence;
+}

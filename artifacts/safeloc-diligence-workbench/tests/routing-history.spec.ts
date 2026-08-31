@@ -194,9 +194,39 @@ test.describe("hash routing and browser history", () => {
     await page.goto("/");
     await expect(page).toHaveURL(/\/$/);
     await expect(page).toHaveTitle("SafeLoc · Home");
-    await expect(page.getByTestId("home-bifurcation-framing")).toContainText("The AI infrastructure market is splitting in two.");
-    await expect(page.getByTestId("home-bifurcation-framing")).toContainText("The companies in your portfolio are on both sides.");
-    await expect(page.getByTestId("home-bifurcation-qualifier")).toHaveText(/public market context only.*not facility-level Stargate evidence.*not a modeled financial input/i);
+    await expect(page.getByTestId("home-hero-heading")).toHaveText("The AI infrastructure market is splitting in two. Which side are your holdings on?");
+    await expect(page.getByTestId("home-supporting-lines")).toContainText("$725 billion is being invested in AI infrastructure this year. $130 billion has already stalled.");
+    await expect(page.getByTestId("home-supporting-lines")).toContainText("Projects that solved their constraints are proceeding. Projects that didn't are stuck. The evidence determines which is which.");
+    await expect(page.getByTestId("input-custom-project-name")).toHaveAttribute("placeholder", "Enter any data center project...");
+    await expect(page.getByTestId("button-run-ai-analysis")).toHaveText(/Run AI Analysis/);
+    await expect(page.getByTestId("home-analysis-subtitle")).toHaveText("AI researches public sources and classifies 16 evidence variables.");
+    await expect(page.getByTestId("button-analyze-stargate")).toContainText("Analyze Stargate Abilene");
+    await expect(page.getByTestId("button-analyze-stargate")).toContainText("OpenAI's $500B flagship. The curated deep dive.");
+    await expect(page.getByTestId("home-tier-proceeding")).toContainText("Tier 1: Proceeding");
+    await expect(page.getByTestId("home-tier-proceeding")).toContainText("Behind-the-meter power. Secured water. No grid dependency.");
+    await expect(page.getByTestId("home-tier-proceeding")).toContainText("Chevron/Microsoft Project Kilby");
+    await expect(page.getByTestId("home-tier-proceeding")).toContainText("Evidence: Mostly Verified");
+    await expect(page.getByTestId("home-tier-stalling")).toContainText("Tier 2: Stalling");
+    await expect(page.getByTestId("home-tier-stalling")).toContainText("Grid-dependent. Municipal water. Public permitting.");
+    await expect(page.getByTestId("home-tier-stalling")).toContainText("OpenAI Stargate Abilene");
+    await expect(page.getByTestId("home-tier-stalling")).toContainText("Evidence: Key Gaps");
+    await expect(page.getByTestId("home-bifurcation-direction")).toHaveText("Analyze any project to see which tier it falls in.");
+    await expect(page.getByTestId("home-bifurcation-qualifier")).toHaveText(/public market context\/examples.*not facility-level Stargate evidence.*synthetic financial inputs/i);
+    await expect(page.getByTestId("home-context-strip")).toContainText("$725B");
+    await expect(page.getByTestId("home-context-strip")).toContainText("$130B");
+    await expect(page.getByTestId("home-context-strip")).toContainText("474 GW");
+    await expect(page.getByTestId("home-context-strip")).toContainText("1.6%");
+    await expect(page.getByTestId("home-trust-anchor")).toContainText("79% of Americans trust financial advisors. 3% trust AI.");
+    await expect(page.getByTestId("home-entry-points").locator("a")).toHaveCount(3);
+    await expect(page.getByTestId("home-entry-value-chain")).toHaveAttribute("href", "#value-chain");
+    await expect(page.getByTestId("home-entry-how-it-works")).toHaveAttribute("href", "#how-it-works");
+    await expect(page.getByTestId("home-entry-advisor")).toHaveAttribute("href", "#advisor");
+    await expect(page.getByTestId("home-footer")).toContainText("Built by LeAndrew Gordon | SafeLoc | Growth for Impact Conference, November 2026");
+    await expect(page.getByTestId("home-footer")).toContainText("Public Context · Synthetic Returns");
+
+    await page.goto("/#home");
+    await expect(page).toHaveURL(/#home$/);
+    await expect(page.getByTestId("home-hero-heading")).toBeVisible();
 
     await page.goto("/#how-it-works");
     await expect(page).toHaveURL(/#how-it-works$/);
@@ -379,8 +409,8 @@ test.describe("hash routing and browser history", () => {
   test("shows infrastructure bifurcation framing on each editorial route", async ({ page }) => {
     await page.goto("/");
     await expectPageToStayWithinViewport(page);
-    await expect(page.getByTestId("home-bifurcation-framing")).toContainText("Projects that solved their constraints independently are proceeding");
-    await expect(page.getByTestId("home-bifurcation-framing")).toContainText("Projects dependent on public infrastructure are stalling");
+    await expect(page.getByTestId("home-tier-proceeding")).toContainText("Behind-the-meter power. Secured water. No grid dependency.");
+    await expect(page.getByTestId("home-tier-stalling")).toContainText("Grid-dependent. Municipal water. Public permitting.");
 
     await page.goto("/#brief");
     await expectPageToStayWithinViewport(page);
@@ -578,8 +608,7 @@ test.describe("hash routing and browser history", () => {
     await expect(page.getByTestId("text-governance-irr-gap")).toHaveText(/-?\d+\.\d pts/);
 
     await page.goto("/");
-    await expect(page.getByTestId("home-irr-verified")).toHaveText("18.4%");
-    await expect(page.getByTestId("home-evidence-visual")).toHaveAttribute("aria-label", /18\.4%/);
+    await expect(page.getByTestId("home-hero-heading")).toContainText("Which side are your holdings on?");
   });
 
   test("keeps market comparisons adjacent to their provenance boundary", async ({ page }) => {
@@ -605,10 +634,7 @@ test.describe("hash routing and browser history", () => {
     ]);
 
     await page.goto("/");
-    const homeComparison = page.getByTestId("home-bifurcation-comparison");
-    await expect(homeComparison).toContainText("The companies in your portfolio are on both sides.");
-    await expect(homeComparison.locator("xpath=following-sibling::*[1]")).toHaveAttribute("data-testid", "home-bifurcation-qualifier");
-    await expect(page.getByTestId("home-bifurcation-qualifier")).toHaveText(/public market context only.*not facility-level Stargate evidence.*not a modeled financial input/i);
+    await expect(page.getByTestId("home-bifurcation-qualifier")).toHaveText(/public market context\/examples.*not facility-level Stargate evidence.*synthetic financial inputs/i);
 
     await page.goto("/#brief");
     const briefComparison = page.getByTestId("brief-tier-2-comparison");

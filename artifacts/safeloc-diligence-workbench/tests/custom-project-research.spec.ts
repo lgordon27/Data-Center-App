@@ -54,12 +54,11 @@ test.describe("custom project research", () => {
 
   test("launches research from Home, preserves 16 items, and resets to Stargate", async ({ page }) => {
     await page.goto("/");
-    await page.getByTestId("home-entry-custom").click();
-    await expect(page.getByTestId("custom-project-dialog")).toBeVisible();
+    await expect(page.getByTestId("home-custom-analysis")).toBeVisible();
     await page.getByTestId("input-custom-project-name").fill("Project Atlas");
     await page.getByTestId("input-custom-project-location").fill("Maricopa County, Arizona");
-    await page.getByTestId("button-submit-custom-project").click();
-    await expect(page.getByTestId("custom-project-loading")).toBeVisible();
+    await page.getByTestId("button-run-ai-analysis").click();
+    await expect(page.getByTestId("home-custom-analysis-loading")).toBeVisible();
     await expect(page).toHaveURL(/#brief$/);
     await expect(page.getByTestId("custom-project-status")).toContainText("AI-researched");
     await expect(page.getByTestId("custom-project-description")).toContainText("equipment procurement");

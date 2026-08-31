@@ -75,9 +75,10 @@ type DiligenceState = {
   updateClassification: (id: string, classification: Classification, source?: "manual" | "ai") => void;
   clearLastChange: () => void;
   metrics: FinancialMetrics;
-  resetToDefault: () => void;
-  loadCustomProject: (research: CustomResearchResponse) => void;
+  resetToDefault: (originatingCompany?: string | null) => void;
+  loadCustomProject: (research: CustomResearchResponse, originatingCompany?: string | null) => void;
   project: ProjectContext;
+  originatingCompany: string | null;
   sessionRestored: boolean;
   sessionMigrated: boolean;
   scenarios: SavedScenario[];
@@ -197,6 +198,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     description: "A public-source diligence case paired with clearly labeled synthetic acquisition economics.",
     capacityMW: DEFAULT_CAPACITY_MW,
   });
+  const [originatingCompany, setOriginatingCompany] = useState<string | null>(null);
   const [scenarios, setScenarios] = useState<SavedScenario[]>(loadScenarios);
   const [ercotQueue, setErcotQueue] = useState<ErcotQueueResult>(FALLBACK_ERCOT_RESULT);
   const [eiaData, setEiaData] = useState<EiaElectricityData>(() => createEiaFallback());
@@ -280,7 +282,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     setState(nextState);
   }, []);
 
-  const resetToDefault = useCallback(() => {
+  const resetToDefault = useCallback((company: string | null = null) => {
     const nextState = { evidence: cloneEvidence(INITIAL_EVIDENCE), hasChangedClassification: false, lastChange: null };
     stateRef.current = nextState;
     setState(nextState);
@@ -291,11 +293,12 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       description: "A public-source diligence case paired with clearly labeled synthetic acquisition economics.",
       capacityMW: DEFAULT_CAPACITY_MW,
     });
+    setOriginatingCompany(company);
     clearStorage(CURRENT_SESSION_STORAGE_KEY);
     clearDecisionHistory();
   }, []);
 
-  const loadCustomProject = useCallback((research: CustomResearchResponse) => {
+  const loadCustomProject = useCallback((research: CustomResearchResponse, company: string | null = null) => {
     const researchById = new Map(research.evidence.map((item) => [item.id, item]));
     const customEvidence = Object.fromEntries(
       CUSTOM_EVIDENCE_IDS.map((id) => {
@@ -322,6 +325,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       // the research provider returns a finite project estimate.
       capacityMW: DEFAULT_CAPACITY_MW,
     });
+    setOriginatingCompany(company);
     clearStorage(CURRENT_SESSION_STORAGE_KEY);
     clearDecisionHistory();
   }, []);
@@ -389,7 +393,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, clearLastChange, metrics, resetToDefault, loadCustomProject, project, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading }}>
+    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, clearLastChange, metrics, resetToDefault, loadCustomProject, project, originatingCompany, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading }}>
       {children}
     </DiligenceContext.Provider>
   );

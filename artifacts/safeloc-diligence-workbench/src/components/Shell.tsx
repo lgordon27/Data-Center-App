@@ -39,7 +39,7 @@ import {
 import { CustomProjectDialog } from "@/pages/Home";
 
 export type Screen = "brief" | "evidence" | "materiality" | "decision" | "advisor";
-type AppRoute = Screen | "home" | "value-chain" | "how-it-works";
+type AppRoute = Screen | "home" | "directory" | "value-chain" | "how-it-works";
 
 export const screens: { id: Screen; number: string; label: string; short: string; icon: typeof BookOpen }[] = [
   { id: "brief", number: "01", label: "Case Brief", short: "Frame", icon: BookOpen },
@@ -184,13 +184,15 @@ export function LowConfidenceWarning({ testId }: { testId: string }) {
   );
 }
 export function ProgressNav({ current, onNavigate }: { current: Screen; onNavigate: (screen: Screen) => void }) {
+  const { project, originatingCompany } = useDiligence();
   const currentIndex = screens.findIndex((screen) => screen.id === current);
   return (
     <div className="border-b border-[#d9e0e4] bg-[#f9faf8]/90 px-4 backdrop-blur-md md:px-8">
       <div className="mx-auto flex max-w-[1480px] items-center justify-between">
         <div className="hidden items-center gap-2 py-3 text-[10px] font-bold uppercase tracking-[0.17em] text-[#52616b] md:flex">
-          <span className="font-mono text-[#122232]">WORKBENCH /</span>
-          <span>CASE ABI-26-001</span>
+          <span data-testid="workbench-breadcrumb" className="font-mono text-[#122232]">
+            {originatingCompany ? `${originatingCompany} → ${project.name} → ${screens.find((screen) => screen.id === current)?.label}` : "WORKBENCH / CASE ABI-26-001"}
+          </span>
         </div>
         <nav aria-label="Diligence progress" className="flex w-full items-stretch justify-between gap-1 md:w-auto md:gap-2">
           {screens.map((screen, index) => {

@@ -38,9 +38,10 @@ import type {
   Screen
 } from "@/components/Shell";
 export function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
-  const { evidence, metrics, project } = useDiligence();
+  const { evidence, metrics, project, originatingCompany } = useDiligence();
   const projectName = project.name;
   const customProject = project.kind === "custom";
+  const originatingLabel = originatingCompany ?? "No company selected";
   const verifiedCount = Object.values(evidence).filter((item) => item.classification === "Verified Evidence").length;
   const evidenceCount = Object.keys(evidence).length;
   const riskTier = getRiskTier(verifiedCount);
@@ -129,10 +130,11 @@ export function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => vo
           <div>
             <SectionKicker tone="lime" className="!text-[#d4e86b]">Section 1 / client exposure</SectionKicker>
             <h2 id="client-exposure-heading" className="max-w-2xl text-[26px] font-semibold leading-tight tracking-[-0.035em] md:text-[31px]">Your Clients’ Values Are Invested Here</h2>
-            <p className="mt-3 max-w-4xl text-[11px] leading-5 text-[#afbdc4]">{customProject ? `This custom-project review focuses on ${projectName}. Any connection to NVIDIA, GPU demand, or hyperscaler CAPEX is regional market context, not proof of this facility or a portfolio holding.` : "A values-aligned fund can connect a client’s capital to NVIDIA, GPU demand, hyperscaler CAPEX, and the Stargate Abilene buildout. The exposure chain turns that connection into diligence questions; it is not proof that every link or statistic is independently verified."}</p>
+             <p className="mt-3 max-w-4xl text-[11px] leading-5 text-[#afbdc4]">{customProject ? `This custom-project review focuses on ${projectName}. Any connection to ${originatingCompany ?? "NVIDIA"}, GPU demand, or hyperscaler CAPEX is regional market context, not proof of this facility or a portfolio holding.` : originatingCompany ? `Starting from ${originatingCompany}, this review follows the selected project into the evidence record. The company connection is public market context—not proof that ${originatingCompany} owns or controls ${projectName}.` : "A values-aligned fund can connect a client’s capital to NVIDIA, GPU demand, hyperscaler CAPEX, and the Stargate Abilene buildout. The exposure chain turns that connection into diligence questions; it is not proof that every link or statistic is independently verified."}</p>
           </div>
-          <div className="flex shrink-0 items-center gap-2 rounded-md border border-white/15 bg-white/5 px-3 py-2 text-[9px] font-bold uppercase tracking-[0.13em] text-[#c4d0d6]"><Network className="h-3.5 w-3.5 text-[#d4e86b]" /> Exposure chain</div>
+           <div className="flex shrink-0 items-center gap-2 rounded-md border border-white/15 bg-white/5 px-3 py-2 text-[9px] font-bold uppercase tracking-[0.13em] text-[#c4d0d6]"><Network className="h-3.5 w-3.5 text-[#d4e86b]" /> Exposure chain</div>
         </div>
+         <div data-testid="advisor-originating-company" className="mt-5 inline-flex items-center gap-2 rounded-md border border-[#d4e86b]/35 bg-[#d4e86b]/10 px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#d4e86b]">Originating company: {originatingLabel}</div>
         <div className="mt-7 flex flex-col items-stretch gap-2 md:flex-row md:items-center md:gap-1.5" aria-label="Client exposure chain">
           {exposureChain.map((node, index) => {
             const tone = exposureTone[node.tone];

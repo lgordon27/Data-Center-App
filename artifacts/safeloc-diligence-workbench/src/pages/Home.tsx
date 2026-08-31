@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  ArrowLeft,
   ArrowRight,
   ArrowUpRight,
   Building2,
@@ -24,6 +25,16 @@ import {
   type DirectoryResponse,
   type DirectoryStatsResponse,
 } from "@/services/directoryService";
+import {
+  COMPANY_PROFILES,
+  companyProjects,
+  profileForCompany,
+  projectSummary,
+  type CompanyKey,
+  type CompanyProject,
+} from "@/data/companyExposure";
+
+type HomeRoute = "advisor" | "directory" | "how-it-works" | "value-chain";
 
 const homeEntryPoints = [
   {
@@ -275,6 +286,163 @@ const ETF_CONTEXT: Record<string, string[]> = {
   Oracle: ["QQQ", "XLK"],
 };
 
+const companyAccentClasses = {
+  lime: "border-[#c9db70]/45 bg-[#eef5cd] text-[#314207]",
+  blue: "border-[#aac6f4]/55 bg-[#e5efff] text-[#173f85]",
+  coral: "border-[#efabb8]/55 bg-[#fde8eb] text-[#7f2635]",
+  violet: "border-[#cbb7ec]/55 bg-[#eee7fa] text-[#482873]",
+  sky: "border-[#8dc8e8]/55 bg-[#e5f5fb] text-[#164c67]",
+  gold: "border-[#f1cb8b]/65 bg-[#fff3d8] text-[#704508]",
+} as const;
+
+function formatCapacityGW(capacityMW: number) {
+  return `${(capacityMW / 1000).toFixed(capacityMW >= 1000 ? 1 : 2)} GW`;
+}
+
+function CompanyCard({ company, onSelect }: { company: typeof COMPANY_PROFILES[number]; onSelect: () => void }) {
+  return (
+    <button
+      data-testid={`company-card-${company.key.toLowerCase()}`}
+      type="button"
+      onClick={onSelect}
+      className="group min-w-0 rounded-xl border border-white/15 bg-[#102b3b] p-4 text-left transition-transform hover:-translate-y-1 hover:border-[#d4e86b]/70 focus:outline-none focus:ring-2 focus:ring-[#d4e86b] sm:p-5"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className={`flex h-10 w-10 items-center justify-center rounded-md border font-mono text-[11px] font-bold ${companyAccentClasses[company.accent]}`}>
+          {company.ticker}
+        </div>
+        <ArrowUpRight aria-hidden="true" className="h-4 w-4 text-[#718894] transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+      </div>
+      <div className="mt-6">
+        <div className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-[#d4e86b]">Public company</div>
+        <h3 className="mt-1 text-[19px] font-semibold tracking-[-0.03em] text-white">{company.displayName}</h3>
+        <p className="mt-3 text-[11px] font-semibold leading-4 text-[#f6f7f2]">{company.headline}</p>
+        <p className="mt-2 min-h-[32px] text-[10px] leading-4 text-[#9dafb8]">{company.detail}</p>
+      </div>
+      <div className="mt-5 flex items-center justify-between gap-2 border-t border-white/10 pt-3 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#b9e1f2]">
+        <span>View infrastructure exposure</span>
+        <ArrowRight aria-hidden="true" className="h-3.5 w-3.5 text-[#d4e86b]" />
+      </div>
+    </button>
+  );
+}
+
+function CompanyProjectCard({
+  project,
+  onSelect,
+  researching,
+}: {
+  project: CompanyProject;
+  onSelect: () => void;
+  researching: boolean;
+}) {
+  const isTierOne = project.tier === 1;
+  return (
+    <article data-testid={`company-project-${project.id}`} className="rounded-lg border border-[#d9e0e4] bg-white p-4">
+      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-[15px] font-semibold tracking-[-0.02em] text-[#122232]">{project.name}</h3>
+            <span data-testid={`company-project-tier-${project.id}`} className={`rounded-full border px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.08em] ${isTierOne ? "border-[#9bd8c5] bg-[#e0f4ed] text-[#0b624f]" : "border-[#e6cf70] bg-[#fff6c7] text-[#8a6400]"}`}>
+              {project.tierLabel}
+            </span>
+          </div>
+          <p className="mt-1 text-[10px] text-[#63717a]">{project.operator}</p>
+        </div>
+        <button
+          data-testid={`company-project-open-${project.id}`}
+          type="button"
+          onClick={onSelect}
+          disabled={researching}
+          aria-busy={researching}
+          className={`inline-flex min-h-10 shrink-0 items-center justify-center gap-1 rounded-md px-3 font-mono text-[9px] font-bold uppercase tracking-[0.08em] disabled:cursor-wait disabled:opacity-60 ${project.kind === "curated" ? "bg-[#122232] text-[#d4e86b] hover:bg-[#203a4c]" : "border border-[#255bb7] text-[#255bb7] hover:bg-[#e5efff]"}`}
+        >
+          {researching ? "Researching…" : project.kind === "curated" ? "Open curated deep dive" : "Research with AI"}
+          <ArrowRight aria-hidden="true" className="h-3 w-3" />
+        </button>
+      </div>
+      <div className="mt-4 grid gap-3 border-y border-[#e5eae8] py-3 sm:grid-cols-3">
+        <div><div className="font-mono text-[8px] font-bold uppercase tracking-[0.11em] text-[#71808a]">Location</div><div className="mt-1 text-[11px] font-semibold text-[#344550]">{project.location}</div></div>
+        <div><div className="font-mono text-[8px] font-bold uppercase tracking-[0.11em] text-[#71808a]">Capacity</div><div className="mt-1 font-mono text-[11px] font-bold text-[#122232]">{project.capacityMW === null ? "Undisclosed" : `${project.capacityMW.toLocaleString()} MW`}</div></div>
+        <div><div className="font-mono text-[8px] font-bold uppercase tracking-[0.11em] text-[#71808a]">Status</div><div className="mt-1 text-[11px] font-semibold text-[#344550]">{project.status}</div></div>
+      </div>
+      <p className="mt-3 text-[11px] leading-5 text-[#52616b]">{project.description}</p>
+      <div className="mt-3 flex flex-wrap items-center gap-2 font-mono text-[8px] uppercase tracking-[0.08em] text-[#71808a]">
+        <span>{project.kind === "curated" ? "Reviewed case context" : "Compute Atlas discovery metadata"}</span>
+        <span aria-hidden="true">·</span>
+        <span>Not ownership proof or a modeled input</span>
+      </div>
+    </article>
+  );
+}
+
+function CompanyExposure({
+  company,
+  facilities,
+  loading,
+  error,
+  researchError,
+  researchingProjectId,
+  onBack,
+  onCurated,
+  onResearch,
+}: {
+  company: CompanyKey;
+  facilities: DirectoryFacility[];
+  loading: boolean;
+  error: string | null;
+  researchError: string | null;
+  researchingProjectId: string | null;
+  onBack: () => void;
+  onCurated: (company: CompanyKey) => void;
+  onResearch: (project: CompanyProject, company: CompanyKey) => void;
+}) {
+  const profile = profileForCompany(company);
+  const projects = companyProjects(company, facilities);
+  const summary = projectSummary(projects);
+  return (
+    <section data-testid="company-exposure-view" aria-labelledby="company-exposure-heading" className="border-y border-[#d9e0e4] bg-[#f1f5f3] px-5 py-9 text-[#122232] sm:px-8 md:py-12 xl:px-10">
+      <div className="mx-auto max-w-[1240px]">
+        <button data-testid="button-company-back" type="button" onClick={onBack} className="mb-6 inline-flex min-h-10 items-center gap-2 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-[#52616b] hover:text-[#122232]">
+          <ArrowLeft aria-hidden="true" className="h-3.5 w-3.5" /> Back to companies
+        </button>
+        <div className="flex flex-col justify-between gap-5 border-b border-[#cbd8d4] pb-6 md:flex-row md:items-end">
+          <div>
+            <div className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-[#607500]">Holdings / infrastructure exposure</div>
+            <h2 id="company-exposure-heading" className="mt-2 text-[32px] font-semibold leading-none tracking-[-0.05em] md:text-[46px]">{profile.displayName} AI Infrastructure Exposure</h2>
+            <p className="mt-3 max-w-2xl text-[12px] leading-5 text-[#52616b]">{profile.headline}. The projects below show public market-context connections and discovery metadata—not proof that {profile.displayName} owns or controls a facility.</p>
+          </div>
+          <div data-testid="company-fund-context" className="max-w-xs rounded-lg border border-[#cbb7ec] bg-[#eee7fa] p-4 text-[10px] leading-4 text-[#482873]">
+            <div className="font-mono text-[8px] font-bold uppercase tracking-[0.12em]">Held in:</div>
+            <div className="mt-2 font-semibold">{profile.funds.join(", ")}</div>
+            <div className="mt-2 border-t border-[#cbb7ec]/60 pt-2 font-mono text-[8px] uppercase tracking-[0.08em]">Mapped context: {profile.marketFunds.join(", ")}</div>
+          </div>
+        </div>
+        {loading && <div data-testid="company-exposure-loading" role="status" className="mt-6 rounded-lg border border-[#aac6f4] bg-[#e5efff] px-4 py-3 text-[11px] text-[#255bb7]">Loading connected public directory records…</div>}
+        {error && <div data-testid="company-exposure-error" role="alert" className="mt-6 rounded-lg border border-[#f1cb8b] bg-[#fff8e9] px-4 py-3 text-[11px] leading-5 text-[#704508]">The directory could not be reached. Reviewed company context remains available; discovery records may be incomplete.</div>}
+        {researchError && <div data-testid="company-research-error" role="alert" className="mt-6 rounded-lg border border-[#efabb8] bg-[#fde8eb] px-4 py-3 text-[11px] leading-5 text-[#7f2635]">{researchError}</div>}
+        <div className="mt-6 grid gap-3 sm:grid-cols-4">
+          <div data-testid="company-summary-project-count" className="rounded-lg bg-[#122232] p-4 text-white"><div className="font-mono text-[8px] uppercase tracking-[0.12em] text-[#a4b4bd]">Connected projects</div><div className="mt-2 font-mono text-[25px] font-bold text-[#d4e86b]">{summary.count}</div></div>
+          <div data-testid="company-summary-capacity" className="rounded-lg bg-[#d4e86b] p-4 text-[#1c2a16]"><div className="font-mono text-[8px] uppercase tracking-[0.12em] opacity-65">Disclosed capacity</div><div className="mt-2 font-mono text-[25px] font-bold">{formatCapacityGW(summary.capacityMW)}</div></div>
+          <div data-testid="company-summary-tier1" className="rounded-lg border border-[#9bd8c5] bg-[#e0f4ed] p-4 text-[#0b624f]"><div className="font-mono text-[8px] uppercase tracking-[0.12em]">Tier 1 / proceeding</div><div className="mt-2 font-mono text-[25px] font-bold">{summary.tier1}</div></div>
+          <div data-testid="company-summary-tier2" className="rounded-lg border border-[#e6cf70] bg-[#fff6c7] p-4 text-[#8a6400]"><div className="font-mono text-[8px] uppercase tracking-[0.12em]">Tier 2 / review</div><div className="mt-2 font-mono text-[25px] font-bold">{summary.tier2}</div></div>
+        </div>
+        <p data-testid="company-summary-sentence" className="mt-4 text-[11px] leading-5 text-[#52616b]">
+          {profile.displayName} is connected to <strong>{summary.count} projects</strong> totaling <strong>{formatCapacityGW(summary.capacityMW)}</strong> in disclosed capacity. <strong>{summary.tier1}</strong> are Tier 1 (proceeding) and <strong>{summary.tier2}</strong> are Tier 2 (at risk of delay or requiring review). {summary.undisclosedCapacity > 0 ? `${summary.undisclosedCapacity} project has undisclosed capacity.` : ""}
+        </p>
+        <div className="mt-6 flex items-end justify-between gap-3">
+          <div><div className="font-mono text-[9px] font-bold uppercase tracking-[0.16em] text-[#607500]">Connected project trail</div><h3 className="mt-1 text-[20px] font-semibold tracking-[-0.03em]">Pick one to inspect the evidence path.</h3></div>
+          <span className="hidden font-mono text-[8px] uppercase tracking-[0.1em] text-[#71808a] sm:block">Public context only</span>
+        </div>
+        <div data-testid="company-project-list" className="mt-4 space-y-3">
+          {projects.length === 0 && <div data-testid="company-project-empty" className="rounded-lg border border-dashed border-[#cbd8d4] bg-white p-6 text-[12px] text-[#52616b]">No operator-mapped facilities are available for this company in the current directory snapshot. That is an evidence boundary, not a claim of no exposure.</div>}
+          {projects.map((project) => <CompanyProjectCard key={project.id} project={project} researching={researchingProjectId === project.id} onSelect={() => project.kind === "curated" ? onCurated(company) : onResearch(project, company)} />)}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function statusLabel(status: DirectoryFacility["status"]) {
   return { operating: "Operating", construction: "Construction", planned: "Planned", delayed: "Delayed", cancelled: "Cancelled", unknown: "Unknown" }[status];
 }
@@ -507,11 +675,41 @@ export function ComputeAtlasDirectory({ onCurated, onResearchSuccess }: { onCura
   );
 }
 
-export function Home() {
-  const { loadCustomProject, resetToDefault } = useDiligence();
-  const handleResearchSuccess = (research: CustomResearchResponse) => {
-    loadCustomProject(research);
+export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void } = {}) {
+  const { loadCustomProject, resetToDefault, originatingCompany } = useDiligence();
+  const initialCompany = COMPANY_PROFILES.some((profile) => profile.key === originatingCompany) ? originatingCompany as CompanyKey : null;
+  const [selectedCompany, setSelectedCompany] = useState<CompanyKey | null>(initialCompany);
+  const [companyDirectory, setCompanyDirectory] = useState<DirectoryResponse | null>(null);
+  const [companyDirectoryLoading, setCompanyDirectoryLoading] = useState(false);
+  const [companyDirectoryError, setCompanyDirectoryError] = useState<string | null>(null);
+  const [companyResearchingId, setCompanyResearchingId] = useState<string | null>(null);
+  const [companyResearchError, setCompanyResearchError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!selectedCompany || companyDirectory) return undefined;
+    let active = true;
+    setCompanyDirectoryLoading(true);
+    setCompanyDirectoryError(null);
+    void fetchDirectory()
+      .then((response) => {
+        if (active) setCompanyDirectory(response);
+      })
+      .catch((requestError) => {
+        if (active) setCompanyDirectoryError(requestError instanceof Error ? requestError.message : "Directory unavailable.");
+      })
+      .finally(() => {
+        if (active) setCompanyDirectoryLoading(false);
+      });
+    return () => { active = false; };
+  }, [companyDirectory, selectedCompany]);
+
+  const handleResearchSuccess = (research: CustomResearchResponse, company: CompanyKey | null = null) => {
+    loadCustomProject(research, company);
     window.location.hash = "brief";
+  };
+  const goSecondary = (route: HomeRoute) => {
+    if (onNavigate) onNavigate(route);
+    else window.location.hash = route;
   };
   const accentClasses = {
     blue: "border-[#8dc8e8]/35 bg-[#8dc8e8]/[0.07] text-[#8dc8e8]",
@@ -581,13 +779,65 @@ export function Home() {
             </div>
           </div>
         </section>
-        <ComputeAtlasDirectory
-          onCurated={() => {
-            resetToDefault();
-            window.location.hash = "brief";
-          }}
-          onResearchSuccess={handleResearchSuccess}
-        />
+         <section data-testid="home-stock-picker" aria-labelledby="home-stock-picker-heading" className="border-y border-white/10 bg-[#0d2435] px-5 py-10 sm:px-8 md:py-14 xl:px-10">
+           <div className="mx-auto max-w-[1240px]">
+             <div className="flex flex-col justify-between gap-4 border-b border-white/10 pb-6 md:flex-row md:items-end">
+               <div>
+                 <div className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-[#d4e86b]">Holdings / start here</div>
+                 <h2 id="home-stock-picker-heading" className="mt-2 text-[31px] font-semibold leading-none tracking-[-0.05em] text-white md:text-[45px]">Start from what your clients hold.</h2>
+                 <p className="mt-3 max-w-2xl text-[13px] leading-5 text-[#c4d0d6]">Select a company to see the AI infrastructure its revenue depends on.</p>
+               </div>
+               <span className="font-mono text-[9px] uppercase tracking-[0.13em] text-[#718894]">Six public-company lenses</span>
+             </div>
+             <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3">
+               {COMPANY_PROFILES.map((company) => <CompanyCard key={company.key} company={company} onSelect={() => setSelectedCompany(company.key)} />)}
+             </div>
+           </div>
+         </section>
+         {selectedCompany && (
+           <CompanyExposure
+             company={selectedCompany}
+             facilities={companyDirectory?.facilities ?? []}
+             loading={companyDirectoryLoading}
+             error={companyDirectoryError}
+             researchError={companyResearchError}
+             researchingProjectId={companyResearchingId}
+             onBack={() => setSelectedCompany(null)}
+             onCurated={(company) => {
+               resetToDefault(company);
+               window.location.hash = "brief";
+             }}
+             onResearch={(project, company) => {
+               if (!project.facility) return;
+               setCompanyResearchingId(project.id);
+               setCompanyResearchError(null);
+               void researchProject(project.name, project.location)
+                 .then((research) => handleResearchSuccess(research, company))
+                 .catch(() => setCompanyResearchError("AI research is unavailable. Try again."))
+                 .finally(() => setCompanyResearchingId(null));
+             }}
+           />
+         )}
+         <section data-testid="home-secondary-paths" className="mx-auto max-w-[1240px] px-5 py-9 sm:px-8 md:py-12 xl:px-10">
+           <div className="grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
+             <div className="rounded-xl border border-[#d4e86b]/35 bg-[#102b3b] p-5">
+               <div className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-[#d4e86b]">Curated case</div>
+               <h2 className="mt-2 text-[21px] font-semibold tracking-[-0.03em] text-white">Or dive straight into Stargate Abilene.</h2>
+               <p className="mt-2 text-[11px] leading-5 text-[#b9c5c9]">OpenAI&apos;s $500B flagship. The curated deep dive.</p>
+               <button data-testid="button-analyze-stargate" type="button" onClick={() => { resetToDefault(null); window.location.hash = "brief"; }} className="mt-5 inline-flex min-h-11 flex-wrap items-center gap-2 rounded-md bg-[#d4e86b] px-3 py-2.5 text-left font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#122232] hover:bg-[#e3f18d]">Analyze Stargate Abilene <span className="normal-case tracking-normal">OpenAI&apos;s $500B flagship. The curated deep dive.</span> <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" /></button>
+             </div>
+             <div className="rounded-xl border border-white/15 bg-[#102b3b] p-5">
+               <div className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-[#d4e86b]">Tertiary paths</div>
+               <h2 className="mt-2 text-[21px] font-semibold tracking-[-0.03em] text-white">Don&apos;t see your project?</h2>
+               <p className="mt-2 text-[11px] leading-5 text-[#b9c5c9]">Search by name and location. SafeLoc will research public sources, then open the same evidence workbench.</p>
+               <div className="mt-4"><CustomProjectForm compact onSuccess={(research) => handleResearchSuccess(research)} /></div>
+               <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-white/10 pt-4">
+                 <button data-testid="button-browse-all-facilities" type="button" onClick={() => goSecondary("directory")} className="inline-flex min-h-10 items-center gap-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#b9e1f2] hover:text-[#d4e86b]">Browse All Facilities <ArrowRight aria-hidden="true" className="h-3 w-3" /></button>
+                 <span className="font-mono text-[9px] text-[#718894]">Or browse all 1,280+ tracked facilities by state.</span>
+               </div>
+             </div>
+           </div>
+         </section>
 
         <section data-testid="home-context-strip" aria-label="Public editorial market context" className="border-y border-white/10 bg-[#0d2435]">
           <div className="mx-auto max-w-[1240px] px-5 py-5 sm:px-8 md:py-6 xl:px-10">
@@ -651,4 +901,8 @@ export function Home() {
       </footer>
     </div>
   );
+}
+
+export function DirectoryPage({ onCurated, onResearchSuccess }: { onCurated: () => void; onResearchSuccess: (research: CustomResearchResponse) => void }) {
+  return <ComputeAtlasDirectory onCurated={onCurated} onResearchSuccess={onResearchSuccess} />;
 }

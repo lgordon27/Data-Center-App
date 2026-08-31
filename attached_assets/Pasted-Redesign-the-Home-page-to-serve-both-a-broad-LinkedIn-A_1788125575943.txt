@@ -1,0 +1,72 @@
+Redesign the Home page to serve both a broad LinkedIn/AI audience and the SRI/GFI conference audience without alienating either. The principle: lead with the market reality everyone shares, let the SRI thread surface as depth, not surface.
+
+HERO SECTION (above the fold):
+
+Headline in large type:
+"The AI infrastructure market is splitting in two. Which side are your holdings on?"
+
+Two supporting lines (not a paragraph):
+"$725 billion is being invested in AI infrastructure this year. $130 billion has already stalled."
+"Projects that solved their constraints are proceeding. Projects that didn't are stuck. The evidence determines which is which."
+
+PRIMARY INTERACTION (the main action area, prominent):
+
+Two options side by side with a subtle "or" divider between them:
+
+Left: Text input field with placeholder "Enter any data center project..." and a "Run AI Analysis" button beneath it. Subtitle below: "AI researches public sources and classifies 16 evidence variables."
+
+Right: A distinct button: "Analyze Stargate Abilene" with subtitle: "OpenAI's $500B flagship. The curated deep dive."
+
+BIFURCATION VISUAL (the most visually striking element after the headline):
+
+Two cards side by side:
+
+Left card (green/positive accent): 
+Title: "TIER 1: PROCEEDING"
+One line: "Behind-the-meter power. Secured water. No grid dependency."
+Example: "Chevron/Microsoft Project Kilby"
+Badge: "Evidence: Mostly Verified"
+
+Right card (amber/caution accent):
+Title: "TIER 2: STALLING" 
+One line: "Grid-dependent. Municipal water. Public permitting."
+Example: "OpenAI Stargate Abilene"
+Badge: "Evidence: Key Gaps"
+
+Below both cards, one line: "Analyze any project to see which tier it falls in."
+
+KEY NUMBERS (compact horizontal strip, not large cards):
+$725B spent / $130B paused / 474 GW queued / 1.6% operating
+One line beneath: "The largest technology infrastructure investment in human history."
+
+TRUST LINE (single sentence, subtle, below the numbers):
+"79% of Americans trust financial advisors. 3% trust AI. This tool uses AI to accelerate the analysis. You make the call."
+
+ENTRY POINTS (three cards):
+
+Card 1: "The AI Chain" - "Trace the $725B from chip fabs to your portfolio." Links to #value-chain.
+Card 2: "How It Works" - "Evidence methodology, sources, and the builder's story." Links to #how-it-works.
+Card 3: "Advisor Lens" - "What this means for client conversations Monday morning." Links to #advisor.
+
+BLEND LINE (one sentence above the footer, the bridge between audiences):
+"The AI infrastructure boom was partly financed by values-aligned investors. Now the evidence behind it is being tested by physical reality. This tool shows what that looks like, whether you are an infrastructure investor, a fund manager, or an advisor explaining it to a client."
+
+This is the ONLY place on the home page where values-aligned investing is mentioned. It appears near the bottom, after the market case has been made. The SRI audience recognizes it. The LinkedIn audience reads it as context. Nobody is excluded.
+
+FOOTER:
+"Built by LeAndrew Gordon | SafeLoc | Growth for Impact Conference, November 2026"
+"Public Context · Synthetic Returns · AI-Assisted Evidence Classification"
+
+REMOVE from the current home page:
+- Any SRI/values-aligned narrative that appears above the fold or before the bifurcation visual
+- The old four large stat cards (replaced by the compact strip)
+- The old "Open the Workbench" button as the sole primary action (replaced by the dual input/Stargate choice)
+- Any paragraph-length text blocks. Maximum two lines for any text element on this page.
+
+DESIGN:
+- Dark theme consistent with workbench
+- Bifurcation cards should be the most eye-catching visual element after the headline
+- The project input field should feel like the primary interactive element
+- Above the fold on desktop: headline, two supporting lines, the dual input/Stargate action, and the bifurcation visual. Everything else below the fold.
+- Mobile: stack vertically, input field full width, Stargate button full width below it, bifurcation cards stack vertically
+- Total word count on the entire home page should be under 200 words. Every word earns its place.

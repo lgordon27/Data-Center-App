@@ -272,12 +272,13 @@ export function HowItWorks({ onReturn, onOpenScreen }: HowItWorksProps) {
              <section data-testid="tour-data-sources" aria-labelledby="tour-data-sources-title" className="mt-8 rounded-xl border-2 border-[#122232] bg-[#122232] p-5 text-white md:p-6">
                <div className="flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#d4e86b]"><Gauge aria-hidden="true" className="h-4 w-4" /> Data Sources</div>
                <h3 id="tour-data-sources-title" className="mt-3 text-[24px] font-semibold tracking-[-0.035em]">Provider identity and freshness stay visible.</h3>
-               <p className="mt-3 max-w-3xl text-[12px] leading-5 text-[#c4d0d6]">{SOURCE_FALLBACK_EXPLANATION}</p>
+                <p className="mt-3 max-w-3xl text-[12px] leading-5 text-[#c4d0d6]">{SOURCE_FALLBACK_EXPLANATION} The Home directory uses <a href="https://compute-atlas.com" target="_blank" rel="noreferrer" className="text-[#d4e86b] underline underline-offset-2">Compute Atlas</a> public facility metadata under CC BY 4.0; it is discovery context, not facility-level proof or a modeled financial input.</p>
                <div className="mt-5 grid gap-3 sm:grid-cols-2">
                  {[
                     ["ERCOTQueue.com", "Grid interconnection queue and timing context; live or cached when provider metadata is available."],
                     ["U.S. EIA Open Data", "Electricity market and price context; live or cached when provider metadata is available."],
-                    ["FEMA National Risk Index v1.20", "Versioned hazard exposure profile embedded in this proof-of-concept."],
+                     ["FEMA National Risk Index v1.20", "Versioned hazard exposure profile embedded in this proof-of-concept."],
+                     ["Compute Atlas directory", "Public facility metadata for discovery; live, retained-cache, or embedded snapshot state is shown in the Home directory."],
                  ].map(([name, detail]) => (
                    <div key={name} className="rounded-lg border border-white/15 bg-white/5 p-4">
                      <div className="text-[12px] font-semibold text-[#f6f7f2]">{name}</div>

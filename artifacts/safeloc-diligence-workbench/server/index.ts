@@ -5,6 +5,7 @@ import { handleErcotQueueRequest } from "./ercotProxy.mjs";
 import { handleEiaElectricityRequest } from "./eiaProxy.mjs";
 import { handleAnalyzeEvidenceRequest } from "./aiEvidenceProxy.mjs";
 import { handleResearchProjectRequest } from "./researchProjectProxy.mjs";
+import { handleDirectoryRequest, handleDirectoryStatsRequest } from "./computeAtlasProxy.mjs";
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
 const artifactDir = path.resolve(serverDir, "..");
@@ -24,6 +25,12 @@ export async function createApp(): Promise<Express> {
   });
   app.all("/api/eia/electricity", async (request: Request, response: Response) => {
     await handleEiaElectricityRequest(request, response);
+  });
+  app.all("/api/directory", async (request: Request, response: Response) => {
+    await handleDirectoryRequest(request, response);
+  });
+  app.all("/api/directory/stats", async (request: Request, response: Response) => {
+    await handleDirectoryStatsRequest(request, response);
   });
   if (process.env.NODE_ENV === "production") {
     const publicDir = path.join(artifactDir, "dist/public");

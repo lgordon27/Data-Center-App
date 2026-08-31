@@ -76,6 +76,12 @@ test("production entry point serves active API routes without retired endpoints"
     const eia = await waitForJson(`${baseUrl}/api/eia/electricity`, child);
     assert.ok(["live", "cached", "unavailable", "error"].includes(String(eia.status)));
     assert.equal(typeof eia.diagnostics, "object");
+    const directory = await waitForJson(`${baseUrl}/api/directory`, child);
+    assert.ok(Array.isArray(directory.facilities));
+    assert.ok(["live", "cached", "embedded"].includes(String((directory.sourceMetadata as Record<string, unknown>)?.status)));
+    const directoryStats = await waitForJson(`${baseUrl}/api/directory/stats`, child);
+    assert.equal(typeof directoryStats.stats, "object");
+    assert.ok(["live", "cached", "embedded"].includes(String((directoryStats.sourceMetadata as Record<string, unknown>)?.status)));
     const aiMethod = await fetch(`${baseUrl}/api/analyze-evidence`);
     assert.equal(aiMethod.status, 405);
     for (const retiredPath of ["/api/grid/status", "/api/grid/diagnostics", "/api/grid/query"]) {

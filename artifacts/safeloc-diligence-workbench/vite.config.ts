@@ -9,6 +9,7 @@ import { handleErcotQueueRequest } from './server/ercotProxy.mjs';
 import { handleEiaElectricityRequest } from './server/eiaProxy.mjs';
 import { handleAnalyzeEvidenceRequest } from './server/aiEvidenceProxy.mjs';
 import { handleResearchProjectRequest } from './server/researchProjectProxy.mjs';
+import { handleDirectoryRequest, handleDirectoryStatsRequest } from './server/computeAtlasProxy.mjs';
 
 const rawPort = process.env.PORT;
 
@@ -96,6 +97,26 @@ function researchProjectApiPlugin(): Plugin {
   };
 }
 
+function directoryApiPlugin(): Plugin {
+  return {
+    name: 'safeloc-compute-atlas-directory-api',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        const pathname = new URL(req.url ?? '/', 'http://127.0.0.1').pathname;
+        if (pathname === '/api/directory') {
+          await handleDirectoryRequest(req, res);
+          return;
+        }
+        if (pathname === '/api/directory/stats') {
+          await handleDirectoryStatsRequest(req, res);
+          return;
+        }
+        next();
+      });
+    },
+  };
+}
+
 export default defineConfig({
   base: basePath,
   plugins: [
@@ -103,6 +124,7 @@ export default defineConfig({
     eiaElectricityApiPlugin(),
     analyzeEvidenceApiPlugin(),
     researchProjectApiPlugin(),
+    directoryApiPlugin(),
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),

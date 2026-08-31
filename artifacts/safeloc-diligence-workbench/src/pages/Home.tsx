@@ -2,15 +2,21 @@ import { useEffect, useState } from "react";
 import {
   ArrowRight,
   ArrowUpRight,
+  Building2,
+  ExternalLink,
   Info,
   Leaf,
+  Loader2,
+  MapPin,
   Network,
+  Search,
   ShieldCheck,
   TriangleAlert,
   Zap,
 } from "lucide-react";
 import { useDiligence } from "@/context/DiligenceContext";
 import { researchProject, type CustomResearchResponse } from "@/services/researchProjectService";
+import { fetchDirectory, fetchDirectoryStats, type DirectoryFacility, type DirectoryResponse, type DirectoryStatsResponse } from "@/services/directoryService";
 
 const homeEntryPoints = [
   {
@@ -250,8 +256,220 @@ function BifurcationCard({
   );
 }
 
+const DIRECTORY_STATES = ["All", "TX", "AZ", "VA", "GA", "OH", "Other"] as const;
+const DIRECTORY_COMPANIES = ["NVIDIA", "Microsoft", "Meta", "Google", "Amazon", "Oracle"] as const;
+const ETF_CONTEXT: Record<string, string[]> = {
+  NVIDIA: ["QQQ", "SMH"],
+  Microsoft: ["QQQ", "XLK"],
+  Meta: ["QQQ", "XLC"],
+  Google: ["QQQ", "XLK"],
+  Amazon: ["QQQ", "XLY"],
+  Oracle: ["QQQ", "XLK"],
+};
+
+function statusLabel(status: DirectoryFacility["status"]) {
+  return { operating: "Operating", construction: "Construction", planned: "Planned", delayed: "Delayed", cancelled: "Cancelled", unknown: "Unknown" }[status];
+}
+
+function capacityLabel(capacity: number | null) {
+  if (capacity === null) return "Undisclosed";
+  return `${capacity.toLocaleString("en-US", { maximumFractionDigits: 1 })} MW`;
+}
+
+function locationLabel(facility: DirectoryFacility) {
+  return [facility.city, facility.county ? `${facility.county} County` : "", facility.state].filter(Boolean).join(" · ");
+}
+
+function sourceLabel(response: DirectoryResponse | DirectoryStatsResponse | null) {
+  const source = response?.sourceMetadata;
+  if (!source) return "Source unavailable";
+  if (source.status === "live") return "Live provider data";
+  if (source.status === "cached") return "Retained provider data";
+  return "Embedded snapshot";
+}
+
+function isStargate(facility: DirectoryFacility) {
+  return facility.name.toLowerCase().includes("stargate") && facility.city.toLowerCase().includes("abilene");
+}
+
+function DirectoryCard({
+  facility,
+  onCurated,
+  onResearch,
+  researchState,
+}: {
+  facility: DirectoryFacility;
+  onCurated: () => void;
+  onResearch: () => void;
+  researchState: { busy: boolean; error: string | null };
+}) {
+  const confidenceTone = {
+    confirmed: "border-[#83d6b8]/50 bg-[#e0f4ed] text-[#0b624f]",
+    reported: "border-[#f1cb8b]/60 bg-[#fff8e9] text-[#8a6400]",
+    rumored: "border-[#efabb8]/60 bg-[#fde8eb] text-[#ba2f45]",
+  }[facility.confidence];
+  return (
+    <article
+      data-testid={`compute-atlas-record-${facility.id}`}
+      className="rounded-lg border border-white/15 bg-[#102b3b] p-4 transition-colors hover:border-[#8dc8e8]/55 sm:p-3.5"
+    >
+      <div className="grid gap-3 lg:grid-cols-[minmax(220px,1.35fr)_minmax(190px,1fr)_120px_120px_minmax(145px,auto)] lg:items-center">
+        <div className="min-w-0">
+          <div className="flex items-start gap-2">
+            <Building2 aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#d4e86b]" />
+            <div className="min-w-0">
+              <h3 data-testid={`compute-atlas-record-name-${facility.id}`} className="truncate text-[14px] font-semibold text-white">{facility.name}</h3>
+              <p className="mt-1 truncate text-[10px] text-[#9dafb8]">{facility.operator}</p>
+            </div>
+          </div>
+        </div>
+        <div data-testid={`compute-atlas-record-location-${facility.id}`} className="flex min-w-0 items-start gap-2 text-[11px] text-[#c4d0d6]">
+          <MapPin aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#f5ddd5]" />
+          <span className="truncate">{locationLabel(facility)}</span>
+        </div>
+        <div>
+          <div className="font-mono text-[8px] uppercase tracking-[0.12em] text-[#718894]">Capacity</div>
+          <div className="mt-1 font-mono text-[12px] font-bold text-[#d4e86b]">{capacityLabel(facility.capacityMW)}</div>
+        </div>
+        <div>
+          <div className="font-mono text-[8px] uppercase tracking-[0.12em] text-[#718894]">Status</div>
+          <span data-testid={`compute-atlas-record-status-${facility.id}`} className="mt-1 inline-flex rounded-full border border-[#8dc8e8]/40 bg-[#0d2435] px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-[0.08em] text-[#b9e1f2]">{statusLabel(facility.status)}</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+          <span className={`rounded-full border px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.08em] ${confidenceTone}`}>{facility.confidence}</span>
+          {facility.sourceUrl && (
+            <a data-testid={`compute-atlas-source-${facility.id}`} href={facility.sourceUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center gap-1 rounded border border-white/20 px-2 text-[9px] font-bold uppercase tracking-[0.08em] text-[#b9e1f2] hover:border-[#d4e86b] hover:text-[#d4e86b]">
+              Source <ExternalLink aria-hidden="true" className="h-3 w-3" />
+            </a>
+          )}
+          {isStargate(facility) ? (
+            <button data-testid={`compute-atlas-open-${facility.id}`} type="button" onClick={onCurated} className="inline-flex min-h-9 items-center gap-1 rounded bg-[#d4e86b] px-2.5 font-mono text-[9px] font-bold uppercase tracking-[0.08em] text-[#122232] hover:bg-[#e3f18d]">
+              Curated Deep Dive <ArrowRight aria-hidden="true" className="h-3 w-3" />
+            </button>
+          ) : (
+            <button data-testid={`compute-atlas-open-${facility.id}`} type="button" onClick={onResearch} disabled={researchState.busy} className="inline-flex min-h-9 items-center gap-1 rounded border border-[#d4e86b]/60 px-2.5 font-mono text-[9px] font-bold uppercase tracking-[0.08em] text-[#d4e86b] hover:bg-[#d4e86b]/10 disabled:cursor-wait disabled:opacity-60">
+              {researchState.busy ? <Loader2 aria-hidden="true" className="h-3 w-3 animate-spin" /> : null}
+              {researchState.busy ? "Researching…" : "Research with AI"}
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-white/10 pt-2.5">
+        {facility.aiClassification && <span className="rounded-full border border-[#cbb7ec]/45 bg-[#482873]/40 px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#e9e0f7]">AI: {facility.aiClassification.replaceAll("_", " ")}</span>}
+        {facility.connectedCompanies.map((company) => <span key={company} className="text-[9px] text-[#b9e1f2]">Mapped: {company}</span>)}
+        {facility.connectedFunds.length > 0 && <span className="text-[9px] text-[#718894]">Market context: {facility.connectedFunds.join(", ")}</span>}
+      </div>
+      {researchState.error && <div data-testid={`compute-atlas-error-${facility.id}`} role="alert" className="mt-2 rounded border border-[#efabb8]/60 bg-[#552c3a] px-2.5 py-2 text-[10px] leading-4 text-[#ffc8ce]">{researchState.error}</div>}
+    </article>
+  );
+}
+
+export function ComputeAtlasDirectory({ onCurated, onResearchSuccess }: { onCurated: () => void; onResearchSuccess: (research: CustomResearchResponse) => void }) {
+  const [directory, setDirectory] = useState<DirectoryResponse | null>(null);
+  const [statsResponse, setStatsResponse] = useState<DirectoryStatsResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [stateFilter, setStateFilter] = useState<(typeof DIRECTORY_STATES)[number]>("All");
+  const [companyFilter, setCompanyFilter] = useState<string | null>(null);
+  const [researching, setResearching] = useState<Record<string, { busy: boolean; error: string | null }>>({});
+
+  useEffect(() => {
+    let active = true;
+    Promise.all([fetchDirectory(), fetchDirectoryStats()])
+      .then(([records, totals]) => {
+        if (!active) return;
+        setDirectory(records);
+        setStatsResponse(totals);
+      })
+      .catch((requestError) => {
+        if (active) setError(requestError instanceof Error ? requestError.message : "The directory is unavailable. Try again.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, []);
+
+  const facilities = directory?.facilities ?? [];
+  const filteredFacilities = facilities.filter((facility) => {
+    const matchesState = stateFilter === "All" || (stateFilter === "Other" ? !["TX", "AZ", "VA", "GA", "OH"].includes(facility.state) : facility.state === stateFilter);
+    const haystack = `${facility.name} ${facility.operator} ${facility.city} ${facility.county} ${facility.state} ${facility.aiClassification ?? ""}`.toLowerCase();
+    const matchesQuery = !query.trim() || haystack.includes(query.trim().toLowerCase());
+    const matchesCompany = !companyFilter || facility.connectedCompanies.includes(companyFilter);
+    return matchesState && matchesQuery && matchesCompany;
+  });
+  const connectedCount = companyFilter ? filteredFacilities.length : 0;
+  const contextFunds = companyFilter ? [...new Set(filteredFacilities.flatMap((facility) => facility.connectedFunds).concat(ETF_CONTEXT[companyFilter] ?? []))] : [];
+  const total = statsResponse?.stats.totalFacilities ?? facilities.length;
+
+  const handleResearch = async (facility: DirectoryFacility) => {
+    setResearching((current) => ({ ...current, [facility.id]: { busy: true, error: null } }));
+    try {
+      const result = await researchProject(facility.name, locationLabel(facility));
+      onResearchSuccess(result);
+    } catch (requestError) {
+      setResearching((current) => ({ ...current, [facility.id]: { busy: false, error: requestError instanceof Error ? requestError.message : "AI research is unavailable. Try again." } }));
+    }
+  };
+
+  return (
+    <section data-testid="compute-atlas-page" aria-labelledby="compute-atlas-heading" className="border-t border-white/10 bg-[#0a1b2a] px-5 py-10 sm:px-8 md:py-14 xl:px-10">
+      <div className="mx-auto max-w-[1240px]">
+        <div className="flex flex-col justify-between gap-5 border-b border-white/10 pb-7 lg:flex-row lg:items-end">
+          <div>
+            <div className="mb-3 flex items-center gap-2 font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-[#d4e86b]"><span className="h-1.5 w-1.5 rounded-full bg-[#d4e86b]" /> Compute Atlas / public directory</div>
+            <h2 id="compute-atlas-heading" className="max-w-3xl text-[34px] font-semibold leading-[0.98] tracking-[-0.055em] text-white md:text-[48px]">Find the facilities behind the buildout.</h2>
+            <p className="mt-4 max-w-2xl text-[13px] leading-6 text-[#c4d0d6]">Browse public facility metadata, then open a curated workbench or ask AI to research a different project. Directory records are provider context—not facility-level proof or modeled economics.</p>
+          </div>
+          <div data-testid="compute-atlas-live-count" className="shrink-0 rounded-lg border border-[#8dc8e8]/30 bg-[#102b3b] px-4 py-3">
+            <div className="font-mono text-[9px] font-bold uppercase tracking-[0.13em] text-[#718894]">{sourceLabel(directory)}</div>
+            <div className="mt-1 font-mono text-[24px] font-bold tracking-[-0.05em] text-[#d4e86b]">{total.toLocaleString()}</div>
+            <div className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#9dafb8]">facilities in directory</div>
+          </div>
+        </div>
+        {loading && <div data-testid="compute-atlas-loading" role="status" className="mt-6 space-y-2"><div className="h-16 animate-pulse rounded-lg bg-[#102b3b]" /><div className="h-16 animate-pulse rounded-lg bg-[#102b3b]" /><p className="font-mono text-[10px] text-[#9dafb8]">Loading public facility directory…</p></div>}
+        {error && <div data-testid="compute-atlas-error" role="alert" className="mt-6 rounded-lg border border-[#f1cb8b]/60 bg-[#3d2d24] px-4 py-3 text-[11px] leading-5 text-[#ffe0a9]">The provider could not be reached. {error} The embedded directory snapshot remains available when supplied by the server.</div>}
+        {!loading && (
+          <>
+            <div data-testid="compute-atlas-controls" className="mt-6 space-y-4">
+              <label className="relative block max-w-xl">
+                <span className="sr-only">Search facilities</span>
+                <Search aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#718894]" />
+                <input data-testid="compute-atlas-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search facility, operator, city, or county" className="min-h-11 w-full rounded-md border border-white/20 bg-[#102b3b] py-3 pl-10 pr-3 text-[12px] text-white placeholder:text-[#718894] outline-none focus:border-[#d4e86b] focus:ring-2 focus:ring-[#d4e86b]/30" />
+              </label>
+              <div role="tablist" aria-label="Filter directory by state" className="flex gap-2 overflow-x-auto pb-1">
+                {DIRECTORY_STATES.map((state) => <button key={state} data-testid={`compute-atlas-state-${state.toLowerCase()}`} type="button" role="tab" aria-selected={stateFilter === state} onClick={() => setStateFilter(state)} className={`min-h-10 shrink-0 rounded-full border px-3 font-mono text-[9px] font-bold uppercase tracking-[0.1em] ${stateFilter === state ? "border-[#d4e86b] bg-[#d4e86b] text-[#122232]" : "border-white/20 text-[#b9e1f2] hover:border-[#8dc8e8]"}`}>{state}</button>)}
+              </div>
+              <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Filter by mapped company">
+                {DIRECTORY_COMPANIES.map((company) => <button key={company} data-testid={`compute-atlas-company-${company.toLowerCase()}`} type="button" aria-pressed={companyFilter === company} onClick={() => setCompanyFilter(companyFilter === company ? null : company)} className={`min-h-10 shrink-0 rounded-md border px-3 font-mono text-[9px] font-bold uppercase tracking-[0.08em] ${companyFilter === company ? "border-[#8dc8e8] bg-[#173b52] text-[#d4e86b]" : "border-white/15 bg-[#102b3b] text-[#9dafb8] hover:border-[#8dc8e8] hover:text-white"}`}>{company}</button>)}
+              </div>
+              <button data-testid="compute-atlas-analyze-custom" type="button" onClick={() => window.dispatchEvent(new Event("safeloc-open-custom-project"))} className="inline-flex min-h-10 items-center rounded border border-white/20 px-3 font-mono text-[9px] font-bold uppercase tracking-[0.08em] text-[#b9e1f2] hover:border-[#d4e86b] hover:text-[#d4e86b]">Analyze a different project</button>
+            </div>
+            <div data-testid="compute-atlas-result-count" aria-live="polite" className="mt-5 flex flex-wrap items-center justify-between gap-2 font-mono text-[10px] uppercase tracking-[0.1em] text-[#9dafb8]">
+              <span>Showing {filteredFacilities.length.toLocaleString()} of {total.toLocaleString()} facilities</span>
+              {companyFilter && <span className="text-[#d4e86b]">{connectedCount.toLocaleString()} connected to {companyFilter}</span>}
+            </div>
+            {companyFilter && <p className="mt-2 text-[10px] leading-4 text-[#8299a5]">ETF context: {contextFunds.join(", ") || "No mapped fund context"}. This is market exposure context, not evidence that a fund owns or controls a facility.</p>}
+            <div data-testid="compute-atlas-results" className="mt-3 space-y-2">
+              {filteredFacilities.length === 0 ? (
+                <div data-testid="compute-atlas-empty" className="rounded-lg border border-white/15 bg-[#102b3b] px-4 py-8 text-center text-[12px] text-[#b9c5c9]">No facilities match these filters. Try another state, company, or search term.</div>
+              ) : filteredFacilities.map((facility) => (
+                <DirectoryCard key={facility.id} facility={facility} onCurated={onCurated} onResearch={() => void handleResearch(facility)} researchState={researching[facility.id] ?? { busy: false, error: null }} />
+              ))}
+            </div>
+            <div data-testid="compute-atlas-attribution" className="mt-6 border-t border-white/10 pt-4 text-[10px] leading-5 text-[#8299a5]">
+              Directory metadata by <a href="https://compute-atlas.com" target="_blank" rel="noreferrer" className="text-[#b9e1f2] underline underline-offset-2 hover:text-[#d4e86b]">Compute Atlas</a>, CC BY 4.0. {sourceLabel(directory)} is shown explicitly; it does not change the SafeLoc public-facts versus synthetic-economics boundary.
+            </div>
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
 export function Home() {
-  const { loadCustomProject } = useDiligence();
+  const { loadCustomProject, resetToDefault } = useDiligence();
   const handleResearchSuccess = (research: CustomResearchResponse) => {
     loadCustomProject(research);
     window.location.hash = "brief";
@@ -285,24 +503,12 @@ export function Home() {
                   <p>Projects that solved their constraints are proceeding. Projects that didn&apos;t are stuck. The evidence determines which is which.</p>
                 </div>
 
-                <div data-testid="home-analysis-choice" className="mt-8 rounded-xl border border-white/15 bg-[#102b3b]/90 p-4 shadow-2xl shadow-black/20 sm:p-5">
-                  <div className="mb-4 flex items-center gap-2 font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-[#d4e86b]">
-                    <Zap aria-hidden="true" className="h-3.5 w-3.5" /> Start with a project
-                  </div>
-                  <CustomProjectForm compact onSuccess={handleResearchSuccess} />
-                  <div className="my-4 flex items-center gap-3 text-[#718894]" aria-hidden="true">
-                    <span className="h-px flex-1 bg-white/15" />
-                    <span className="font-mono text-[9px] uppercase tracking-[0.18em]">or</span>
-                    <span className="h-px flex-1 bg-white/15" />
-                  </div>
-                  <a data-testid="button-analyze-stargate" href="#brief" className="group flex min-h-11 w-full items-center justify-between gap-4 rounded-md border border-[#f1cb8b]/50 bg-[#f1cb8b]/[0.08] px-4 py-3 transition-colors hover:border-[#f1cb8b] hover:bg-[#f1cb8b]/[0.14]">
-                    <span>
-                      <span className="block font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-[#f1cb8b]">Analyze Stargate Abilene</span>
-                      <span className="mt-1 block text-[10px] leading-4 text-[#b9c5c9]">OpenAI&apos;s $500B flagship. The curated deep dive.</span>
-                    </span>
-                    <ArrowRight aria-hidden="true" className="h-4 w-4 shrink-0 text-[#f1cb8b] transition-transform group-hover:translate-x-1" />
-                  </a>
-                </div>
+                 <div data-testid="home-analysis-choice" className="mt-8 rounded-xl border border-white/15 bg-[#102b3b]/90 p-4 shadow-2xl shadow-black/20 sm:p-5">
+                   <div className="mb-4 flex items-center gap-2 font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-[#d4e86b]">
+                     <Zap aria-hidden="true" className="h-3.5 w-3.5" /> Start with the directory
+                   </div>
+                   <p className="text-[11px] leading-5 text-[#c4d0d6]">Search public facility metadata first. Choose the curated Stargate case or launch session-only AI research from any other record.</p>
+                 </div>
               </div>
 
               <section data-testid="home-bifurcation" aria-labelledby="home-bifurcation-heading" className="lg:pt-8">
@@ -336,6 +542,13 @@ export function Home() {
             </div>
           </div>
         </section>
+        <ComputeAtlasDirectory
+          onCurated={() => {
+            resetToDefault();
+            window.location.hash = "brief";
+          }}
+          onResearchSuccess={handleResearchSuccess}
+        />
 
         <section data-testid="home-context-strip" aria-label="Public editorial market context" className="border-y border-white/10 bg-[#0d2435]">
           <div className="mx-auto max-w-[1240px] px-5 py-5 sm:px-8 md:py-6 xl:px-10">
@@ -393,8 +606,8 @@ export function Home() {
       </main>
       <footer data-testid="home-footer" className="border-t border-white/10 bg-[#071521] px-5 py-6 sm:px-8">
         <div className="mx-auto flex max-w-[1240px] flex-col justify-between gap-2 font-mono text-[9px] uppercase tracking-[0.12em] text-[#8299a5] sm:flex-row sm:items-center">
-          <span>Built by LeAndrew Gordon | SafeLoc | Growth for Impact Conference, November 2026</span>
-          <span className="text-[#526f7c]">Public Context · Synthetic Returns</span>
+           <span>Built by LeAndrew Gordon | SafeLoc | Growth for Impact Conference, November 2026</span>
+           <span className="text-[#526f7c]">Public Context · Synthetic Returns · Compute Atlas directory</span>
         </div>
       </footer>
     </div>

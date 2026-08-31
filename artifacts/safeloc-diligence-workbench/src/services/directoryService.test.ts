@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { fetchDirectory, parseDirectoryResponse, parseDirectoryStatsResponse } from "./directoryService";
+import { DIRECTORY_CACHE_WARNING_MS, directoryFreshness, fetchDirectory, formatDirectoryAge, parseDirectoryResponse, parseDirectoryStatsResponse } from "./directoryService";
 
 const sourceMetadata = {
   provider: "Compute Atlas",
@@ -48,4 +48,29 @@ test("fetches directory through same-origin JSON and parses it", async () => {
     });
   });
   assert.equal(result.facilities[0].id, "facility-1");
+});
+
+test("formats provider and retained ages without conflating embedded snapshots", () => {
+  const now = Date.parse("2026-08-31T12:00:00.000Z");
+  assert.equal(formatDirectoryAge("2026-08-31T11:45:00.000Z", now), "15 min ago");
+  assert.deepEqual(directoryFreshness({
+    ...sourceMetadata,
+    status: "cached",
+    dataOrigin: "provider",
+    fetchedAt: new Date(now - DIRECTORY_CACHE_WARNING_MS).toISOString(),
+    sourceUpdatedAt: "2026-08-31T10:00:00.000Z",
+  }, now), {
+    label: "Provider updated 2 hr ago · retained 20 hr ago",
+    caution: true,
+  });
+  assert.deepEqual(directoryFreshness({
+    ...sourceMetadata,
+    status: "embedded",
+    dataOrigin: "embedded",
+    snapshotVersion: "2026-08-31",
+    fetchedAt: new Date(now).toISOString(),
+  }, now), {
+    label: "Embedded snapshot · 2026-08-31",
+    caution: false,
+  });
 });

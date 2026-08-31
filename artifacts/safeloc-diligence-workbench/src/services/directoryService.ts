@@ -1,6 +1,8 @@
 export const DIRECTORY_ENDPOINT = "/api/directory";
 export const DIRECTORY_STATS_ENDPOINT = "/api/directory/stats";
 export const DIRECTORY_TIMEOUT_MS = 10_000;
+export const DIRECTORY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+export const DIRECTORY_CACHE_WARNING_MS = 20 * 60 * 60 * 1000;
 
 export type DirectorySourceMetadata = {
   provider: "Compute Atlas";
@@ -68,6 +70,10 @@ function isSource(value: unknown): value is DirectorySourceMetadata {
     typeof value.attributionUrl === "string";
 }
 
+function validTimestamp(value: unknown): value is string {
+  return typeof value === "string" && Number.isFinite(Date.parse(value));
+}
+
 function safeUrl(value: unknown): string | null {
   if (typeof value !== "string" || !value.trim()) return null;
   try {
@@ -108,7 +114,62 @@ function parseFacility(value: unknown): DirectoryFacility {
 
 function parseSource(value: unknown): DirectorySourceMetadata {
   if (!isSource(value)) throw new Error("Directory returned invalid source metadata.");
-  return value as DirectorySourceMetadata;
+  return {
+    provider: "Compute Atlas",
+    attributionUrl: value.attributionUrl,
+    status: value.status as DirectorySourceMetadata["status"],
+    dataOrigin: value.dataOrigin as DirectorySourceMetadata["dataOrigin"],
+    ...(validTimestamp(value.fetchedAt) ? { fetchedAt: value.fetchedAt } : {}),
+    ...(value.sourceUpdatedAt === null || validTimestamp(value.sourceUpdatedAt) ? { sourceUpdatedAt: value.sourceUpdatedAt ?? null } : {}),
+    ...(typeof value.snapshotVersion === "string" && value.snapshotVersion.trim() ? { snapshotVersion: value.snapshotVersion.trim() } : {}),
+    ...(typeof value.reason === "string" && value.reason.trim() ? { reason: value.reason.trim() } : {}),
+  };
+}
+
+export function formatDirectoryAge(timestamp: string | null | undefined, now = Date.now()): string | null {
+  if (!timestamp) return null;
+  const parsed = Date.parse(timestamp);
+  if (!Number.isFinite(parsed)) return null;
+  const ageMs = Math.max(0, now - parsed);
+  if (ageMs < 60_000) return "just now";
+  const minutes = Math.floor(ageMs / 60_000);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hr ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+}
+
+export function directoryFreshness(source: DirectorySourceMetadata | undefined, now = Date.now()) {
+  if (!source) return { label: "Freshness unavailable", caution: false };
+  if (source.status === "embedded") {
+    return {
+      label: source.snapshotVersion ? `Embedded snapshot · ${source.snapshotVersion}` : "Embedded snapshot",
+      caution: false,
+    };
+  }
+
+  const providerAge = formatDirectoryAge(source.sourceUpdatedAt, now);
+  const retainedAge = formatDirectoryAge(source.fetchedAt, now);
+  const fetchedAtMs = source.fetchedAt ? Date.parse(source.fetchedAt) : NaN;
+  const retainedWindowAge = Number.isFinite(fetchedAtMs) ? Math.max(0, now - fetchedAtMs) : null;
+  const caution = source.status === "cached" &&
+    retainedWindowAge !== null &&
+    retainedWindowAge >= DIRECTORY_CACHE_WARNING_MS;
+
+  if (source.status === "cached") {
+    return {
+      label: [
+        providerAge ? `Provider updated ${providerAge}` : "Provider update time not reported",
+        retainedAge ? `retained ${retainedAge}` : "retention age unavailable",
+      ].join(" · "),
+      caution,
+    };
+  }
+  return {
+    label: providerAge ? `Provider updated ${providerAge}` : "Provider update time not reported",
+    caution: false,
+  };
 }
 
 export function parseDirectoryResponse(value: unknown): DirectoryResponse {

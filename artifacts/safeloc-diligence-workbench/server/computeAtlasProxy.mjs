@@ -68,6 +68,32 @@ function safePublicSourceUrl(value) {
   }
 }
 
+function validTimestamp(value) {
+  return typeof value === "string" && Number.isFinite(Date.parse(value)) ? value : null;
+}
+
+function providerUpdatedAt(payload) {
+  if (!isRecord(payload)) return null;
+  const candidates = [
+    payload.lastUpdated,
+    payload.last_updated,
+    payload.updatedAt,
+    payload.updated_at,
+    isRecord(payload.metadata) ? payload.metadata.lastUpdated : null,
+    isRecord(payload.metadata) ? payload.metadata.last_updated : null,
+    isRecord(payload.metadata) ? payload.metadata.updatedAt : null,
+    isRecord(payload.metadata) ? payload.metadata.updated_at : null,
+  ];
+  const envelopeTimestamp = candidates.map(validTimestamp).find(Boolean);
+  if (envelopeTimestamp) return envelopeTimestamp;
+  const records = Array.isArray(payload.facilities) ? payload.facilities : [];
+  return records
+    .flatMap((record) => isRecord(record) ? [record.lastUpdated, record.last_updated, record.updatedAt, record.updated_at] : [])
+    .map(validTimestamp)
+    .filter(Boolean)
+    .sort((a, b) => Date.parse(b) - Date.parse(a))[0] ?? null;
+}
+
 function normalizeStatus(value) {
   const text = String(value ?? "").trim().toLowerCase().replace(/[-\s]+/g, "_");
   if (["operational", "operating", "live", "in_operation"].includes(text)) return "operating";
@@ -162,7 +188,7 @@ function normalizeFacility(raw, index = 0) {
     sourceUrl: sourceUrlForFacility(raw, id),
     connectedCompanies: exposure.companies,
     connectedFunds: exposure.funds,
-    lastUpdated: typeof raw.lastUpdated === "string" && Number.isFinite(Date.parse(raw.lastUpdated)) ? raw.lastUpdated : null,
+    lastUpdated: validTimestamp(raw.lastUpdated ?? raw.last_updated ?? raw.updatedAt ?? raw.updated_at),
   };
 }
 
@@ -245,7 +271,7 @@ async function fetchJson(url, fetchImpl, now) {
     const contentType = response.headers.get?.("content-type") ?? "";
     if (contentType && !contentType.includes("json")) throw new Error("Compute Atlas upstream returned a non-JSON response.");
     const payload = await response.json();
-    return { payload, sourceUpdatedAt: isRecord(payload) && typeof payload.lastUpdated === "string" ? payload.lastUpdated : new Date(now()).toISOString() };
+    return { payload, sourceUpdatedAt: providerUpdatedAt(payload) };
   } finally {
     clearTimeout(timeout);
   }
@@ -277,17 +303,18 @@ async function fetchStatsFromProvider({ fetchImpl = fetch, now = Date.now } = {}
   if (!isRecord(statsResult.payload)) throw new Error("Compute Atlas stats response was not an object.");
   const response = {
     stats: aggregateStats(facilities, statsResult.payload),
-    sourceMetadata: sourceMetadata("live", fetchedAt, statsResult.sourceUpdatedAt),
+    sourceMetadata: sourceMetadata("live", fetchedAt, statsResult.sourceUpdatedAt ?? facilitiesResult.sourceUpdatedAt),
     diagnostics: { endpoint: "/api/directory/stats", cache: "miss", provider: COMPUTE_ATLAS_STATS_URL, responseStatus: 200 },
   };
   return { ...response, cachedAt: now() };
 }
 
 function retainedResponse(entry, status, endpoint, error) {
+  const { cachedAt: _cachedAt, ...response } = entry;
   return {
-    ...entry,
-    sourceMetadata: { ...entry.sourceMetadata, status, dataOrigin: "provider" },
-    diagnostics: { ...entry.diagnostics, endpoint, cache: "hit", responseStatus: 200, error },
+    ...response,
+    sourceMetadata: { ...response.sourceMetadata, status, dataOrigin: "provider" },
+    diagnostics: { ...response.diagnostics, endpoint, cache: "hit", responseStatus: 200, error },
   };
 }
 
@@ -359,6 +386,7 @@ export {
   normalizeFacility,
   normalizeLocation,
   normalizeStatus,
+  providerUpdatedAt,
   parseFacilitiesPayload,
   safePublicSourceUrl,
   selectAvailableCapacityMW,

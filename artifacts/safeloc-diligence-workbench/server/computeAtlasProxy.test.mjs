@@ -12,6 +12,7 @@ import {
   mapOperatorExposure,
   normalizeFacility,
   normalizeStatus,
+  providerUpdatedAt,
   selectAvailableCapacityMW,
   sortFacilities,
 } from "./computeAtlasProxy.mjs";
@@ -74,6 +75,13 @@ test("normalizes statuses, nested capacity, location, AI classification, and saf
   assert.deepEqual(mapOperatorExposure("Google / Amazon"), { companies: ["Google", "Amazon"], funds: ["QQQ", "XLK", "XLY"] });
 });
 
+test("uses only validated provider timestamps for freshness", () => {
+  assert.equal(providerUpdatedAt({}), null);
+  assert.equal(providerUpdatedAt({ lastUpdated: "not-a-date", updated_at: "2026-08-31T12:00:00.000Z" }), "2026-08-31T12:00:00.000Z");
+  assert.equal(providerUpdatedAt({ metadata: { updatedAt: "2026-08-30T12:00:00.000Z" } }), "2026-08-30T12:00:00.000Z");
+  assert.equal(providerUpdatedAt({ facilities: [{ lastUpdated: "2026-08-29T12:00:00.000Z" }, { updatedAt: "2026-08-31T12:00:00.000Z" }] }), "2026-08-31T12:00:00.000Z");
+});
+
 test("sorts by state, descending available capacity, then name and aggregates totals", () => {
   const records = [
     normalizeFacility(facility({ id: "b", name: "B", location: { state: "AZ", city: "Mesa" }, capacityMw: { operational: 80 } })),
@@ -100,6 +108,7 @@ test("uses live provider data, then a retained response for 24 hours, then embed
   const cached = await getDirectory({ fetchImpl: upstreamFetch({ fail: true }), now: () => now + DIRECTORY_CACHE_TTL_MS - 1 });
   assert.equal(cached.sourceMetadata.status, "cached");
   assert.equal(cached.sourceMetadata.dataOrigin, "provider");
+  assert.equal("cachedAt" in cached, false);
 
   const embedded = await getDirectory({ fetchImpl: upstreamFetch({ fail: true }), now: () => now + DIRECTORY_CACHE_TTL_MS + 1 });
   assert.equal(embedded.sourceMetadata.status, "embedded");

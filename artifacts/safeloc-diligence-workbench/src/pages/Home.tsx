@@ -16,7 +16,14 @@ import {
 } from "lucide-react";
 import { useDiligence } from "@/context/DiligenceContext";
 import { researchProject, type CustomResearchResponse } from "@/services/researchProjectService";
-import { fetchDirectory, fetchDirectoryStats, type DirectoryFacility, type DirectoryResponse, type DirectoryStatsResponse } from "@/services/directoryService";
+import {
+  directoryFreshness,
+  fetchDirectory,
+  fetchDirectoryStats,
+  type DirectoryFacility,
+  type DirectoryResponse,
+  type DirectoryStatsResponse,
+} from "@/services/directoryService";
 
 const homeEntryPoints = [
   {
@@ -402,6 +409,7 @@ export function ComputeAtlasDirectory({ onCurated, onResearchSuccess }: { onCura
   const connectedCount = companyFilter ? filteredFacilities.length : 0;
   const contextFunds = companyFilter ? [...new Set(filteredFacilities.flatMap((facility) => facility.connectedFunds).concat(ETF_CONTEXT[companyFilter] ?? []))] : [];
   const total = statsResponse?.stats.totalFacilities ?? facilities.length;
+  const freshness = directoryFreshness(directory?.sourceMetadata);
 
   const handleResearch = async (facility: DirectoryFacility) => {
     setResearching((current) => ({ ...current, [facility.id]: { busy: true, error: null } }));
@@ -426,6 +434,7 @@ export function ComputeAtlasDirectory({ onCurated, onResearchSuccess }: { onCura
             <div className="font-mono text-[9px] font-bold uppercase tracking-[0.13em] text-[#718894]">{sourceLabel(directory)}</div>
             <div className="mt-1 font-mono text-[24px] font-bold tracking-[-0.05em] text-[#d4e86b]">{total.toLocaleString()}</div>
             <div className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#9dafb8]">facilities in directory</div>
+            <div data-testid="compute-atlas-freshness" className="mt-2 border-t border-white/10 pt-2 font-mono text-[9px] leading-4 text-[#b9e1f2]">{freshness.label}</div>
           </div>
         </div>
         {loading && <div data-testid="compute-atlas-loading" role="status" className="mt-6 space-y-2"><div className="h-16 animate-pulse rounded-lg bg-[#102b3b]" /><div className="h-16 animate-pulse rounded-lg bg-[#102b3b]" /><p className="font-mono text-[10px] text-[#9dafb8]">Loading public facility directory…</p></div>}
@@ -450,6 +459,12 @@ export function ComputeAtlasDirectory({ onCurated, onResearchSuccess }: { onCura
               <span>Showing {filteredFacilities.length.toLocaleString()} of {total.toLocaleString()} facilities</span>
               {companyFilter && <span className="text-[#d4e86b]">{connectedCount.toLocaleString()} connected to {companyFilter}</span>}
             </div>
+            {freshness.caution && (
+              <div data-testid="compute-atlas-retained-warning" role="alert" className="mt-4 flex items-start gap-2 rounded-lg border border-[#f1cb8b]/70 bg-[#3d2d24] px-3 py-2.5 text-[11px] leading-5 text-[#ffe0a9]">
+                <TriangleAlert aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+                <span><strong className="font-semibold">Retained directory data is nearing its 24-hour refresh window.</strong> Treat this as discovery context and verify current details before relying on it.</span>
+              </div>
+            )}
             {companyFilter && <p className="mt-2 text-[10px] leading-4 text-[#8299a5]">ETF context: {contextFunds.join(", ") || "No mapped fund context"}. This is market exposure context, not evidence that a fund owns or controls a facility.</p>}
             <div data-testid="compute-atlas-results" className="mt-3 space-y-2">
               {filteredFacilities.length === 0 ? (

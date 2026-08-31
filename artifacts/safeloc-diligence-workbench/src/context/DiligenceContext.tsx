@@ -46,6 +46,7 @@ export type EvidenceItem = {
   modelClassification?: Classification;
   citation: string;
   description: string;
+  sourceUrl?: string;
   sourceId: SourceId | null;
   providerSourceId: SourceId | null;
   sourceRole: string;

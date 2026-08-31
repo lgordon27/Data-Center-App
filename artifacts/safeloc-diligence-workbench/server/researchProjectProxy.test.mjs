@@ -13,6 +13,7 @@ import {
   handleResearchProjectRequest,
   parseResearchResponse,
   createResearchProjectRateLimiter,
+  safePublicSourceUrl,
 } from "./researchProjectProxy.mjs";
 
 function responseRecorder() {
@@ -54,6 +55,7 @@ function validResearchResponse() {
       citation: "Public source searched for Project Atlas (2026): https://example.com/atlas/source",
       description: "The public record does not establish a facility-level value.",
       sourceRole: "AI-researched public-source review",
+      ...(index === 1 ? { sourceUrl: "https://example.com/atlas/source" } : {}),
       ...(index === 0 ? { numericValue: 42 } : {}),
       ...(id === "site_hazard_exposure" ? { qualitativeValue: "high" } : {}),
       ...(id === "water_source_resilience" ? { qualitativeValue: "single-source" } : {}),
@@ -168,6 +170,33 @@ test("returns exactly 16 normalized evidence items and safely falls back for inv
     projectSummary: { ...validResearchResponse().projectSummary, capacityMW: 600 },
   }, [retrievedSource]);
   assert.equal(unsupportedCapacity.projectSummary.capacityMW, DEFAULT_RESEARCH_CAPACITY_MW);
+});
+
+test("only exposes direct links that are safe and present in the retrieved source packet", () => {
+  const parsed = parseResearchResponse(validResearchResponse(), [retrievedSource]);
+  assert.equal(parsed.evidence[0].sourceUrl, retrievedSource.url);
+  assert.equal(parsed.evidence[1].sourceUrl, retrievedSource.url);
+
+  const untrusted = validResearchResponse();
+  untrusted.evidence[0].sourceUrl = "javascript:alert(1)";
+  untrusted.evidence[1].sourceUrl = "https://example.com/not-in-packet";
+  const untrustedParsed = parseResearchResponse(untrusted, [retrievedSource]);
+  assert.equal(untrustedParsed.evidence[0].sourceUrl, retrievedSource.url);
+  assert.equal(untrustedParsed.evidence[1].sourceUrl, retrievedSource.url);
+
+  assert.equal(safePublicSourceUrl("javascript:alert(1)"), null);
+  assert.equal(safePublicSourceUrl("https://user:pass@example.com/source"), null);
+  assert.equal(safePublicSourceUrl("https://example.com/source"), "https://example.com/source");
+});
+
+test("does not turn a missing or unsupported citation into facility-level evidence", () => {
+  const body = validResearchResponse();
+  body.evidence[0].citation = "Regional market report without a matching packet URL.";
+  body.evidence[0].sourceUrl = "https://example.com/not-in-packet";
+  const parsed = parseResearchResponse(body, [retrievedSource]);
+  assert.equal(parsed.evidence[0].classification, "Missing Evidence");
+  assert.equal(parsed.evidence[0].sourceUrl, undefined);
+  assert.match(parsed.evidence[0].citation, /No supporting retrieved source/);
 });
 
 test("downgrades model-only verified claims when no retrieved source supports them", () => {

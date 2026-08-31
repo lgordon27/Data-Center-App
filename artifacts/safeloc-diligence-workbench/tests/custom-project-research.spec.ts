@@ -35,6 +35,7 @@ function customResponse() {
       unit: index === 0 ? "$/MWh" : "Project context",
       classification: index % 2 === 0 ? "Missing Evidence" : "Management Assertion",
       citation: "Public source searched for Project Atlas (2026).",
+      ...(index === 0 ? { sourceUrl: "https://example.com/atlas/source" } : {}),
       description: "The public record does not establish a facility-level value.",
       sourceRole: "AI-researched public-source review",
       ...(index === 0 ? { numericValue: 48 } : {}),
@@ -82,6 +83,9 @@ test.describe("custom project research", () => {
     await expect(page.getByTestId("button-analyze-all-ai")).toBeDisabled();
     await expect(page.getByTestId("button-analyze-ai-electricity_cost")).toBeDisabled();
     await expect(page.getByTestId("custom-ai-reassessment-note")).toContainText("manual-review only");
+    await expect(page.getByTestId("link-custom-source-electricity_cost")).toHaveAttribute("href", "https://example.com/atlas/source");
+    await expect(page.getByTestId("custom-source-context-electricity_cost")).toContainText("not facility-level proof");
+    await expect(page.getByTestId("custom-source-missing-water_consumption")).toContainText("No validated direct source link returned");
 
     for (const route of ["materiality", "decision", "advisor"]) {
       await page.goto(`/#${route}`);

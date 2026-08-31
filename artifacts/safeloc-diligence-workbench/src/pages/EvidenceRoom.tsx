@@ -14,6 +14,7 @@ import {
 
 import {
   ChevronDown,
+  ExternalLink,
   FileText,
   Lightbulb,
   LoaderCircle,
@@ -185,7 +186,32 @@ function EvidenceRow({
        {analysisBusy && <div data-testid={`status-ai-analysis-${item.id}`} role="status" aria-live="polite" className="border-t border-[#d9e0e4] bg-[#f7faf8] px-4 py-2 text-[10px] text-[#60707d] md:px-5"><LoaderCircle aria-hidden="true" className="mr-1.5 inline h-3 w-3 animate-spin" />Analyzing source quality…</div>}
       <div className="grid gap-3 bg-[#fbfcfa] px-4 pb-4 pt-1 md:grid-cols-[1.55fr_0.8fr_1.55fr] md:px-5">
         <p className="text-[10px] leading-4 text-[#52616b] md:col-span-2">{item.description}</p>
-         <div className="flex items-start gap-1.5 text-[10px] leading-4 text-[#52616b]"><FileText aria-hidden="true" className="mt-0.5 h-3 w-3 shrink-0" /><span>{item.citation}<span className="mt-1 block text-[9px] uppercase tracking-[0.08em] text-[#7d898f]">Role: {item.sourceRole}{source ? ` · ${source.fullName}` : " · Embedded case record"}{providerSource ? ` · Provider-ready: ${providerSource.shortName}` : ""}</span></span></div>
+         <div className="flex items-start gap-1.5 text-[10px] leading-4 text-[#52616b]">
+           <FileText aria-hidden="true" className="mt-0.5 h-3 w-3 shrink-0" />
+           <span>
+             {item.citation}
+             <span className="mt-1 block text-[9px] uppercase tracking-[0.08em] text-[#7d898f]">Role: {item.sourceRole}{source ? ` · ${source.fullName}` : " · Embedded case record"}{providerSource ? ` · Provider-ready: ${providerSource.shortName}` : ""}</span>
+             {project.kind === "custom" && (
+               item.sourceUrl ? (
+                 <span className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 normal-case tracking-normal">
+                   <a
+                     data-testid={`link-custom-source-${item.id}`}
+                     href={item.sourceUrl}
+                     target="_blank"
+                     rel="noopener noreferrer"
+                     className="inline-flex items-center gap-1 font-semibold text-[#255bb7] underline decoration-[#8dc8e8] underline-offset-2 hover:text-[#122232]"
+                   >
+                     Open cited public source
+                     <ExternalLink aria-hidden="true" className="h-3 w-3" />
+                   </a>
+                   <span data-testid={`custom-source-context-${item.id}`} className="font-mono text-[8px] uppercase tracking-[0.08em] text-[#7d898f]">Context only · not facility-level proof</span>
+                 </span>
+               ) : (
+                 <span data-testid={`custom-source-missing-${item.id}`} className="mt-2 block font-mono text-[8px] uppercase tracking-[0.08em] text-[#a65a00]">No validated direct source link returned · citation is research context only</span>
+               )
+             )}
+           </span>
+         </div>
       </div>
        <EvidenceAssessment item={item} assessment={assessment} notice={notice} onAccept={onAccept} onOverride={onOverride} />
     </details>

@@ -24,7 +24,7 @@ export const CUSTOM_EVIDENCE_IDS = [
 
 export type CustomEvidenceRecord = Pick<
   EvidenceItem,
-  "id" | "label" | "value" | "unit" | "classification" | "citation" | "description" | "sourceRole"
+  "id" | "label" | "value" | "unit" | "classification" | "citation" | "description" | "sourceRole" | "sourceUrl"
 > & {
   numericValue?: number;
   qualitativeValue?: EvidenceItem["qualitativeValue"];
@@ -46,6 +46,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function safePublicSourceUrl(value: unknown): string | undefined {
+  if (!isNonEmptyString(value)) return undefined;
+  try {
+    const url = new URL(value.trim());
+    if (!["http:", "https:"].includes(url.protocol) || !url.hostname || url.username || url.password) {
+      return undefined;
+    }
+    return url.href;
+  } catch {
+    return undefined;
+  }
 }
 
 const VALID_CLASSIFICATIONS: Classification[] = [
@@ -105,6 +118,7 @@ function parseResponse(value: unknown): CustomResearchResponse {
       citation: candidate.citation as string,
       description: candidate.description as string,
       sourceRole: candidate.sourceRole as string,
+      ...(safePublicSourceUrl(candidate.sourceUrl) ? { sourceUrl: safePublicSourceUrl(candidate.sourceUrl) } : {}),
       ...(candidate.numericValue === undefined ? {} : { numericValue: candidate.numericValue as number }),
       ...(candidate.qualitativeValue === undefined ? {} : { qualitativeValue: candidate.qualitativeValue as EvidenceItem["qualitativeValue"] }),
     };

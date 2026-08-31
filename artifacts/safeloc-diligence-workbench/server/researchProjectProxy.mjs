@@ -42,7 +42,7 @@ SafeLoc models exactly 16 evidence variables: electricity_cost, water_consumptio
 
 The projectSummary.description must explicitly report relevant findings, when available, about electrical-equipment procurement and lead times, jurisdictional bans or moratoriums, noise ordinances and operational impacts, local electricity-rate concerns, and semiconductor and memory supply-chain constraints. It must also identify speculative or phantom grid-load requests when that context is relevant. These are contextual research areas, not additional modeled evidence inputs: do not add them to the evidence array, assign them evidence classifications, or imply that market-wide statistics prove facility-level facts.
 
-Respond with one JSON object with exactly two top-level fields: projectSummary and evidence. projectSummary must contain name, location, description, and capacityMW. evidence must contain exactly 16 records with id, label, value, unit, classification, citation, description, and sourceRole. numericValue is optional for numeric model inputs; qualitativeValue is optional and may only be low, moderate, high, single-source, or diversified. Use concise plain language. Do not include markdown, commentary, or any other top-level fields.`;
+Respond with one JSON object with exactly two top-level fields: projectSummary and evidence. projectSummary must contain name, location, description, and capacityMW. evidence must contain exactly 16 records with id, label, value, unit, classification, citation, description, and sourceRole. sourceUrl is optional: when a cited source in the retrieved packet directly supports the finding, return that source's exact URL; never invent or return a URL that is not in the packet. A source URL is a research aid only and never facility-level proof by itself. numericValue is optional for numeric model inputs; qualitativeValue is optional and may only be low, moderate, high, single-source, or diversified. Use concise plain language. Do not include markdown, commentary, or any other top-level fields.`;
 
 function sendJson(res, status, body) {
   res.statusCode = status;
@@ -67,6 +67,19 @@ function nonEmptyString(value, field, maxLength = 4_000) {
     throw new Error(`Research field "${field}" is too long.`);
   }
   return result;
+}
+
+function safePublicSourceUrl(value) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  try {
+    const url = new URL(value.trim());
+    if (!["http:", "https:"].includes(url.protocol) || !url.hostname || url.username || url.password) {
+      return null;
+    }
+    return url.href;
+  } catch {
+    return null;
+  }
 }
 
 function parseResearchProjectBody(body) {
@@ -102,7 +115,11 @@ function parseResearchResponse(body, retrievedSources = []) {
   }
 
   const expectedIds = new Set(RESEARCH_EVIDENCE_IDS);
-  const sourceUrls = new Set(retrievedSources.map((source) => source.url));
+  const sourceUrls = new Set(
+    retrievedSources
+      .map((source) => safePublicSourceUrl(source.url))
+      .filter(Boolean),
+  );
   const seenIds = new Set();
   const evidence = body.evidence.map((item, index) => {
     if (!isRecord(item)) throw new Error(`Research evidence record ${index + 1} is invalid.`);
@@ -112,8 +129,12 @@ function parseResearchResponse(body, retrievedSources = []) {
     }
     seenIds.add(id);
     const citation = nonEmptyString(item.citation, `evidence[${index}].citation`, 2_000);
-    const citedUrl = citation.match(/https?:\/\/[^\s)]+/)?.[0]?.replace(/[.,;]+$/, "");
-    const supportedByRetrievedSource = Boolean(citedUrl && sourceUrls.has(citedUrl));
+    const citedUrl = safePublicSourceUrl(
+      citation.match(/https?:\/\/[^\s)]+/)?.[0]?.replace(/[.,;]+$/, ""),
+    );
+    const returnedSourceUrl = safePublicSourceUrl(item.sourceUrl);
+    const sourceUrl = [returnedSourceUrl, citedUrl].find((url) => url && sourceUrls.has(url)) ?? null;
+    const supportedByRetrievedSource = Boolean(sourceUrl);
     const record = {
       id,
       label: nonEmptyString(item.label, `evidence[${index}].label`, 160),
@@ -126,6 +147,7 @@ function parseResearchResponse(body, retrievedSources = []) {
       description: nonEmptyString(item.description, `evidence[${index}].description`, 2_000),
       sourceRole: nonEmptyString(item.sourceRole, `evidence[${index}].sourceRole`, 200),
     };
+    if (sourceUrl) record.sourceUrl = sourceUrl;
     if (!VALID_CLASSIFICATIONS.includes(record.classification)) {
       throw new Error(`Research evidence record ${id} has an invalid classification.`);
     }
@@ -169,7 +191,7 @@ function normalizeRetrievedSources(body) {
   const seen = new Set();
   return candidates
     .map((source) => ({
-      url: typeof source.url === "string" ? source.url.trim() : "",
+      url: safePublicSourceUrl(source.url) ?? "",
       title: typeof source.title === "string" ? source.title.trim() : "Retrieved public source",
       date: typeof source.published_date === "string" ? source.published_date : typeof source.date === "string" ? source.date : null,
       excerpt: typeof source.snippet === "string" ? source.snippet.trim() : typeof source.excerpt === "string" ? source.excerpt.trim() : "",
@@ -372,6 +394,7 @@ export {
   parseResearchProjectBody,
   parseResearchResponse,
   normalizeRetrievedSources,
+  safePublicSourceUrl,
   retrievePublicSources,
   createResearchProjectRateLimiter,
 };

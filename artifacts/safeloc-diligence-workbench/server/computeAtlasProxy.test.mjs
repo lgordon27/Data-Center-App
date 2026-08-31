@@ -7,6 +7,7 @@ import {
   EMBEDDED_SNAPSHOT,
   aggregateStats,
   clearDirectoryCache,
+  handleDirectoryRequest,
   getDirectory,
   getDirectoryStats,
   mapOperatorExposure,
@@ -137,4 +138,26 @@ test("malformed provider payloads do not escape as live data", async () => {
   const result = await getDirectory({ fetchImpl: malformedFetch, now: () => 3_000_000 });
   assert.equal(result.sourceMetadata.status, "embedded");
   assert.equal(result.sourceMetadata.dataOrigin, "embedded");
+});
+
+test("paginates directory responses at the server boundary", async () => {
+  clearDirectoryCache();
+  const records = Array.from({ length: 30 }, (_, index) => facility({
+    id: `facility-${index}`,
+    name: `Facility ${index}`,
+    location: { city: "Austin", county: "Travis", state: "TX" },
+  }));
+  const response = { statusCode: 0, body: "", setHeader() {}, end(body) { this.body = body; } };
+  await handleDirectoryRequest(
+    { method: "GET", url: "/api/directory?limit=24&offset=24&state=TX" },
+    response,
+    { fetchImpl: upstreamFetch({ records }), now: () => 4_000_000 },
+  );
+  const page = JSON.parse(response.body);
+  assert.equal(response.statusCode, 200);
+  assert.equal(page.facilities.length, 6);
+  assert.equal(page.totalFacilities, 30);
+  assert.equal(page.offset, 24);
+  assert.equal(page.limit, 24);
+  assert.equal(page.hasMore, false);
 });

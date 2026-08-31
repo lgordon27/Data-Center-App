@@ -536,19 +536,31 @@ export function ComputeAtlasDirectory({ onCurated, onResearchSuccess }: { onCura
   const [directory, setDirectory] = useState<DirectoryResponse | null>(null);
   const [statsResponse, setStatsResponse] = useState<DirectoryStatsResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [stateFilter, setStateFilter] = useState<(typeof DIRECTORY_STATES)[number]>("All");
   const [companyFilter, setCompanyFilter] = useState<string | null>(null);
-  const [visibleCount, setVisibleCount] = useState(DIRECTORY_PAGE_SIZE);
+  const [facilities, setFacilities] = useState<DirectoryFacility[]>([]);
+  const [totalMatching, setTotalMatching] = useState(0);
   const [researching, setResearching] = useState<Record<string, { busy: boolean; error: string | null }>>({});
 
   useEffect(() => {
     let active = true;
-    void fetchDirectory()
+    setLoading(true);
+    setError(null);
+    void fetchDirectory({
+      limit: DIRECTORY_PAGE_SIZE,
+      offset: 0,
+      search: query.trim() || undefined,
+      state: stateFilter === "All" ? undefined : stateFilter === "Other" ? "OTHER" : stateFilter,
+      company: companyFilter ?? undefined,
+    })
       .then((records) => {
         if (!active) return;
         setDirectory(records);
+        setFacilities(records.facilities);
+        setTotalMatching(records.totalFacilities ?? records.facilities.length);
       })
       .catch((requestError) => {
         if (active) setError(requestError instanceof Error ? requestError.message : "The directory is unavailable. Try again.");
@@ -557,7 +569,7 @@ export function ComputeAtlasDirectory({ onCurated, onResearchSuccess }: { onCura
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, []);
+  }, [companyFilter, query, stateFilter]);
 
   useEffect(() => {
     let active = true;
@@ -571,19 +583,31 @@ export function ComputeAtlasDirectory({ onCurated, onResearchSuccess }: { onCura
     return () => { active = false; };
   }, []);
 
-  const facilities = directory?.facilities ?? [];
-  const filteredFacilities = facilities.filter((facility) => {
-    const matchesState = stateFilter === "All" || (stateFilter === "Other" ? !["TX", "AZ", "VA", "GA", "OH"].includes(facility.state) : facility.state === stateFilter);
-    const haystack = `${facility.name} ${facility.operator} ${facility.city} ${facility.county} ${facility.state} ${facility.aiClassification ?? ""}`.toLowerCase();
-    const matchesQuery = !query.trim() || haystack.includes(query.trim().toLowerCase());
-    const matchesCompany = !companyFilter || facility.connectedCompanies.includes(companyFilter);
-    return matchesState && matchesQuery && matchesCompany;
-  });
-  const connectedCount = companyFilter ? filteredFacilities.length : 0;
-  const contextFunds = companyFilter ? [...new Set(filteredFacilities.flatMap((facility) => facility.connectedFunds).concat(ETF_CONTEXT[companyFilter] ?? []))] : [];
-  const visibleFacilities = filteredFacilities.slice(0, visibleCount);
-  const total = statsResponse?.stats.totalFacilities ?? facilities.length;
+  const connectedCount = companyFilter ? facilities.length : 0;
+  const contextFunds = companyFilter ? [...new Set(facilities.flatMap((facility) => facility.connectedFunds).concat(ETF_CONTEXT[companyFilter] ?? []))] : [];
+  const visibleFacilities = facilities;
+  const total = statsResponse?.stats.totalFacilities ?? directory?.totalFacilities ?? totalMatching;
   const freshness = directoryFreshness(directory?.sourceMetadata);
+
+  const handleLoadMore = async () => {
+    setLoadingMore(true);
+    try {
+      const records = await fetchDirectory({
+        limit: DIRECTORY_PAGE_SIZE,
+        offset: facilities.length,
+        search: query.trim() || undefined,
+        state: stateFilter === "All" ? undefined : stateFilter === "Other" ? "OTHER" : stateFilter,
+        company: companyFilter ?? undefined,
+      });
+      setDirectory(records);
+      setFacilities((current) => [...current, ...records.facilities]);
+      setTotalMatching(records.totalFacilities ?? totalMatching);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "The directory is unavailable. Try again.");
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const handleResearch = async (facility: DirectoryFacility) => {
     setResearching((current) => ({ ...current, [facility.id]: { busy: true, error: null } }));
@@ -630,7 +654,7 @@ export function ComputeAtlasDirectory({ onCurated, onResearchSuccess }: { onCura
               <button data-testid="compute-atlas-analyze-custom" type="button" onClick={() => window.dispatchEvent(new Event("safeloc-open-custom-project"))} className="inline-flex min-h-10 items-center rounded border border-white/20 px-3 font-mono text-[9px] font-bold uppercase tracking-[0.08em] text-[#b9e1f2] hover:border-[#d4e86b] hover:text-[#d4e86b]">Analyze a different project</button>
             </div>
             <div data-testid="compute-atlas-result-count" aria-live="polite" className="mt-5 flex flex-wrap items-center justify-between gap-2 font-mono text-[10px] uppercase tracking-[0.1em] text-[#9dafb8]">
-              <span>Showing {visibleFacilities.length.toLocaleString()} of {filteredFacilities.length.toLocaleString()} matching · {total.toLocaleString()} total</span>
+              <span>Showing {visibleFacilities.length.toLocaleString()} of {totalMatching.toLocaleString()} matching · {total.toLocaleString()} total</span>
               {companyFilter && <span className="text-[#d4e86b]">{connectedCount.toLocaleString()} connected to {companyFilter}</span>}
             </div>
             {freshness.caution && (
@@ -641,20 +665,21 @@ export function ComputeAtlasDirectory({ onCurated, onResearchSuccess }: { onCura
             )}
             {companyFilter && <p className="mt-2 text-[10px] leading-4 text-[#8299a5]">ETF context: {contextFunds.join(", ") || "No mapped fund context"}. This is market exposure context, not evidence that a fund owns or controls a facility.</p>}
             <div data-testid="compute-atlas-results" className="mt-3 space-y-2">
-              {filteredFacilities.length === 0 ? (
+              {totalMatching === 0 ? (
                 <div data-testid="compute-atlas-empty" className="rounded-lg border border-white/15 bg-[#102b3b] px-4 py-8 text-center text-[12px] text-[#b9c5c9]">No facilities match these filters. Try another state, company, or search term.</div>
               ) : visibleFacilities.map((facility) => (
                 <DirectoryCard key={facility.id} facility={facility} onCurated={onCurated} onResearch={() => void handleResearch(facility)} researchState={researching[facility.id] ?? { busy: false, error: null }} />
               ))}
             </div>
-            {visibleFacilities.length < filteredFacilities.length && (
+            {visibleFacilities.length < totalMatching && (
               <button
                 data-testid="compute-atlas-load-more"
                 type="button"
-                onClick={() => setVisibleCount((count) => Math.min(count + DIRECTORY_PAGE_SIZE, filteredFacilities.length))}
+                onClick={() => void handleLoadMore()}
+                disabled={loadingMore}
                 className="mt-4 min-h-11 w-full rounded-md border border-white/20 bg-[#102b3b] px-4 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#b9e1f2] hover:border-[#d4e86b] hover:text-[#d4e86b]"
               >
-                Show next {Math.min(DIRECTORY_PAGE_SIZE, filteredFacilities.length - visibleFacilities.length)} facilities
+                {loadingMore ? "Loading more facilities…" : `Show next ${Math.min(DIRECTORY_PAGE_SIZE, totalMatching - visibleFacilities.length)} facilities`}
               </button>
             )}
             <div data-testid="compute-atlas-attribution" className="mt-6 border-t border-white/10 pt-4 text-[10px] leading-5 text-[#8299a5]">

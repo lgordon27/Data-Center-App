@@ -31,7 +31,22 @@ const directoryResponse = {
 
 test.describe("stock-first company exposure flow", () => {
   test.beforeEach(async ({ page }) => {
-    await page.route("**/api/directory", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(directoryResponse) }));
+    await page.route("**/api/directory**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(directoryResponse) }));
+  });
+
+  test("does not fetch Compute Atlas while Home and holdings context render", async ({ page }) => {
+    const directoryRequests: string[] = [];
+    page.on("request", (request) => {
+      if (request.url().includes("/api/directory")) directoryRequests.push(request.url());
+    });
+    await page.goto("/#home");
+    await expect(page.getByTestId("home-stock-picker")).toBeVisible();
+    await page.getByTestId("company-card-microsoft").click();
+    await expect(page.getByTestId("company-exposure-view")).toBeVisible();
+    expect(directoryRequests).toHaveLength(0);
+    await page.goto("/#directory");
+    await expect(page.getByTestId("compute-atlas-page")).toBeVisible();
+    await expect.poll(() => directoryRequests.length).toBeGreaterThan(0);
   });
 
   test("shows all six companies, drill-down summaries, and curated handoff context", async ({ page }) => {

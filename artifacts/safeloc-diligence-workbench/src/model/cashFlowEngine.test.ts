@@ -398,6 +398,48 @@ test("zero impacts distinguish no adjustment from context-dependent decision gat
   );
 });
 
+test("impact treatments expose the finalized assumptions and update after reclassification", () => {
+  const initial = calculateCashFlowModel(INITIAL_EVIDENCE);
+
+  assert.equal(
+    initial.lineItems.electricity_cost.impactTreatment,
+    "Applied rate: $44.1/MWh.",
+  );
+  assert.equal(
+    initial.lineItems.customer_concentration.impactTreatment,
+    "Applied utilization multiplier: 0.93x (7.0% discount).",
+  );
+  assert.equal(
+    initial.lineItems.grid_interconnection.impactTreatment,
+    "No adjustment applied at current classification.",
+  );
+  assert.equal(
+    initial.lineItems.backup_power_capacity.impactTreatment,
+    "Decision gate only; no financial adjustment applied at current classification.",
+  );
+  assert.ok(
+    Object.values(initial.lineItems)
+      .filter((item) => item.impactRole === "financial-effect")
+      .every((item) => item.impactTreatment.startsWith("Applied ")),
+  );
+
+  const electricityReclassified = calculateCashFlowModel(
+    classify(INITIAL_EVIDENCE, "electricity_cost", "Missing Evidence"),
+  );
+  assert.equal(
+    electricityReclassified.lineItems.electricity_cost.impactTreatment,
+    "Applied rate: $50.4/MWh.",
+  );
+
+  const gridReclassified = calculateCashFlowModel(
+    classify(INITIAL_EVIDENCE, "grid_interconnection", "Management Assertion"),
+  );
+  assert.equal(
+    gridReclassified.lineItems.backup_power_capacity.impactTreatment,
+    "Applied backup-power contingency: $35.0M and $2.0M/year OPEX.",
+  );
+});
+
 test("climate uncertainty propagates through returns and material recommendation rules", () => {
   const verified = calculateCashFlowModel(allVerified());
   const current = calculateCashFlowModel(INITIAL_EVIDENCE);

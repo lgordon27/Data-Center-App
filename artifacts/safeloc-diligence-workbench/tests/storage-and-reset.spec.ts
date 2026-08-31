@@ -63,11 +63,11 @@ test.describe("current-session recovery and reset isolation", () => {
 
     await page.goto("/#evidence");
     await page.getByTestId("select-classification-electricity_cost").selectOption("Missing Evidence");
-    await expect(page.getByTestId("toast-reclassification")).toContainText("Return updated");
+    await expect(page.getByTestId("toast-reclassification")).toContainText("Conservative stress case updated");
 
     await page.goto("/#materiality");
     await expect(page.getByTestId("materiality-classification-prompt")).toHaveCount(0);
-    await expect(page.getByTestId("live-current-irr")).toContainText("Current IRR is now");
+    await expect(page.getByTestId("live-current-irr")).toContainText("Conservative stress case IRR is now");
     await page.reload();
     await expect(page.getByTestId("materiality-classification-prompt")).toHaveCount(0);
   });

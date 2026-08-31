@@ -86,7 +86,7 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
         </div>
       )}
       <div id="materiality-summary" className="scroll-mt-24 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-         <MetricCard testId="metric-project-irr" label="Project IRR" value={formatIRR(currentIRR)} detail={`${irrDelta === null ? "N/M" : `${irrDelta >= 0 ? "+" : ""}${irrDelta.toFixed(1)} pts`} vs verified baseline`} accent="lime" />
+        <MetricCard testId="metric-project-irr" label="Project IRR" value={formatIRR(currentIRR)} detail={`${irrDelta === null ? "N/M" : `${irrDelta >= 0 ? "+" : ""}${irrDelta.toFixed(1)} pts`} vs Underwriting Baseline`} accent="lime" />
          <MetricCard testId="metric-moic" label="MOIC" value={formatScenarioMetric(metrics.moic, "moic")} detail="5-year hold period" accent="navy" />
          <MetricCard testId="metric-coc" label="Cash-on-cash" value={formatScenarioMetric(metrics.cashOnCash, "cashOnCash")} detail="Stabilized year 3" accent="violet" />
         <MetricCard testId="metric-payback" label="Payback" value={formatPayback(metrics.payback)} detail="Cumulative equity breakeven" accent="coral" />
@@ -98,12 +98,13 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
             <p data-testid="portfolio-connection-message" className="min-w-0 flex-1 text-[11px] leading-5 text-[#344550]">NVIDIA GPU contracts and hyperscaler CAPEX connect values-aligned funds to the infrastructure buildout. Evidence gaps at the project level can become exposure gaps in portfolio returns. This is market context, not facility-level {customProject ? `${projectName} evidence` : "Stargate evidence"} or a new modeled input.</p>
          </div>
        </aside>
-       <section id="materiality-drivers" data-testid="panel-irr-waterfall" aria-labelledby="irr-waterfall-title" aria-describedby="irr-waterfall-description" className="mt-5 scroll-mt-24 rounded-xl border-2 border-[#122232] bg-[#122232] p-5 text-white md:p-6">
+        <section id="materiality-drivers" data-testid="panel-irr-waterfall" aria-labelledby="irr-waterfall-title" aria-describedby="irr-waterfall-description irr-waterfall-methodology" className="mt-5 scroll-mt-24 rounded-xl border-2 border-[#122232] bg-[#122232] p-5 text-white md:p-6">
         <div className="flex flex-col justify-between gap-3 border-b border-white/15 pb-4 md:flex-row md:items-end">
            <div><SectionKicker tone="lime" className="!text-[#d4e86b]">Evidence-Quality Stress Test</SectionKicker><h2 id="irr-waterfall-title" className="text-[22px] font-semibold tracking-[-0.035em]">Evidence-Quality Stress Test</h2></div>
-          <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#9dafb8]">Sequential · baseline to current</span>
+          <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#9dafb8]">Sequential · Underwriting Baseline to Conservative stress</span>
         </div>
-         <p id="irr-waterfall-description" data-testid="waterfall-description" className="mt-3 max-w-3xl text-[11px] leading-5 text-[#c4d0d6]">Lower evidence quality applies progressively conservative assumptions. This is a stress test, not a prediction. Unverified inputs are assigned worst-case values, not because negative outcomes are certain, but because conservative underwriting requires assuming the downside until evidence proves otherwise.</p>
+          <p id="irr-waterfall-description" data-testid="waterfall-description" className="mt-3 max-w-3xl text-[11px] leading-5 text-[#c4d0d6]">Lower evidence quality applies progressively conservative underwriting assumptions. This is a stress test, not a prediction. Unverified inputs are assigned worst-case values, not because negative outcomes are certain, but because conservative underwriting requires assuming the downside until evidence proves otherwise.</p>
+          <p id="irr-waterfall-methodology" data-testid="waterfall-methodology" role="note" className="mt-3 max-w-3xl rounded-lg border border-[#8dc8e8]/35 bg-[#0d2b3d] px-3 py-2 text-[11px] leading-5 text-[#d7e8ee]">Evidence classifications do not predict whether an unknown outcome will be favorable or unfavorable. For this demonstration, weaker evidence triggers predefined conservative underwriting treatments to show the potential cost of unresolved uncertainty.</p>
          <div className="mt-5 flex flex-wrap items-center gap-2">
            <div data-testid="waterfall-no-adjustment-summary" role="status" className="rounded-md border border-white/15 bg-white/5 px-3 py-2 font-mono text-[10px] text-[#c4d0d6]">
              {noAdjustmentCount} {noAdjustmentCount === 1 ? "item has" : "items have"} no adjustment at current classification
@@ -113,7 +114,7 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
            </div>}
          </div>
          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-           <div className="rounded-lg border border-[#b9d43a]/40 bg-[#b9d43a]/10 p-3"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#b9d43a]">Base Case (All Inputs Verified)</div><div data-testid="waterfall-base-irr" className="mt-1 font-mono text-2xl font-bold text-[#d4e86b]">{formatIRR(baseIRR)}</div></div>
+              <div className="rounded-lg border border-[#b9d43a]/40 bg-[#b9d43a]/10 p-3"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#b9d43a]">Underwriting Baseline (All Inputs Verified)</div><div data-testid="waterfall-base-irr" className="mt-1 font-mono text-2xl font-bold text-[#d4e86b]">{formatIRR(baseIRR)}</div></div>
           {waterfallSteps.map((step) => {
              const tone = step.deltaIRR < 0 ? "text-[#f5ddd5]" : "text-[#b9d43a]";
              const item = evidence[step.id];
@@ -123,19 +124,20 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
                  <span className={`font-mono text-sm font-bold ${tone}`}>{formatIRR(step.after)}</span>
                  <span data-testid={`waterfall-impact-${step.id}`} className={`font-mono text-[9px] font-bold ${tone}`}>{formatImpactDelta(step.deltaIRR)}</span>
                </div>
-               <div data-testid={`waterfall-explanation-${step.id}`} className="mt-2 text-[9px] font-semibold text-[#d4e86b]">
+                <div data-testid={`waterfall-explanation-${step.id}`} className="mt-2 text-[9px] font-semibold text-[#d4e86b]">
                  {step.impactRole === "decision-gate"
                    ? <span data-testid={`waterfall-gate-${step.id}`} className="inline-flex rounded border border-[#f1cb8b]/50 bg-[#f1cb8b]/10 px-1.5 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#f7dca7]">{step.impactExplanation}</span>
                    : step.impactExplanation}
                </div>
-               <div className="mt-1 text-[9px] text-[#9dafb8]">Evidence: {item.classification}</div>
+                <div className="mt-1 text-[9px] text-[#9dafb8]">Current classification: {item.classification}</div>
                {item.modelClassification && <div className="mt-1 text-[9px] text-[#9dafb8]">Modeled as: {item.modelClassification}</div>}
+                <div data-testid={`waterfall-treatment-${step.id}`} aria-label={`Applied stress treatment for ${item.label}: ${step.impactTreatment}`} className="mt-2 border-t border-white/10 pt-2 text-[9px] leading-4 text-[#e3eaed]"><span className="font-semibold text-[#b9d43a]">Applied treatment:</span> {step.impactTreatment}</div>
              </div>;
           })}
-           <div className="rounded-lg border-2 border-[#f5ddd5]/60 bg-[#f5ddd5]/10 p-3"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#f5ddd5]">Conservative Case (Evidence-Adjusted)</div><div data-testid="waterfall-current-irr" className="mt-1 font-mono text-2xl font-bold text-[#f5ddd5]">{formatIRR(currentIRR)}</div></div>
+            <div className="rounded-lg border-2 border-[#f5ddd5]/60 bg-[#f5ddd5]/10 p-3"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#f5ddd5]">Conservative Case (Stress-Adjusted)</div><div data-testid="waterfall-current-irr" className="mt-1 font-mono text-2xl font-bold text-[#f5ddd5]">{formatIRR(currentIRR)}</div></div>
         </div>
-         <aside data-testid="waterfall-underwriting-note" role="note" className="mt-5 rounded-lg border border-[#b9d43a]/40 bg-[#b9d43a]/10 px-3 py-2 text-[11px] leading-5 text-[#e8f0d1]">A management assertion that proves accurate would improve the return. This stress test shows the cost of not knowing, not the cost of a negative outcome.</aside>
-         <div className="sr-only" aria-live="polite">Base Case (All Inputs Verified) {formatIRR(baseIRR)}. Conservative Case (Evidence-Adjusted) {formatIRR(currentIRR)}. Change {irrDelta === null ? "unavailable" : `${irrDelta.toFixed(1)} percentage points`}.</div>
+          <aside data-testid="waterfall-underwriting-note" role="note" className="mt-5 rounded-lg border border-[#b9d43a]/40 bg-[#b9d43a]/10 px-3 py-2 text-[11px] leading-5 text-[#e8f0d1]">A management assertion that proves accurate would improve the return. The conservative stress case shows the cost of not knowing, not the cost of a negative outcome.</aside>
+          <div className="sr-only" aria-live="polite">Underwriting Baseline (All Inputs Verified) {formatIRR(baseIRR)}. Conservative Case (Stress-Adjusted) {formatIRR(currentIRR)}. Change {irrDelta === null ? "unavailable" : `${irrDelta.toFixed(1)} percentage points`}.</div>
       </section>
       <div className="mt-5 grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
         <section className="rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-6">
@@ -157,14 +159,14 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
           </div>
         </section>
         <section data-testid="panel-baseline-current" className="rounded-xl border-2 border-[#d4e86b]/35 bg-[#122232] p-5 text-white md:p-6">
-          <div className="flex items-start justify-between"><div><SectionKicker tone="lime" className="!text-[#d4e86b]">Return path</SectionKicker><h2 className="text-[19px] font-semibold tracking-[-0.025em]">Verified baseline → current case</h2></div>{irrDelta !== null && irrDelta < 0 ? <TrendingDown className="h-5 w-5 text-[#f5ddd5]" /> : <TrendingUp className="h-5 w-5 text-[#d4e86b]" />}</div>
+          <div className="flex items-start justify-between"><div><SectionKicker tone="lime" className="!text-[#d4e86b]">Return path</SectionKicker><h2 className="text-[19px] font-semibold tracking-[-0.025em]">Underwriting Baseline → Conservative stress</h2></div>{irrDelta !== null && irrDelta < 0 ? <TrendingDown className="h-5 w-5 text-[#f5ddd5]" /> : <TrendingUp className="h-5 w-5 text-[#d4e86b]" />}</div>
           {lowConfidence && <div className="mt-4"><LowConfidenceWarning testId="warning-low-confidence-materiality-return" /></div>}
           <div className="mt-8 flex items-end gap-5">
-             <div><div className="font-mono text-[9px] uppercase tracking-[0.15em] text-[#9dafb8]">Verified IRR baseline</div><div className="mt-2 font-mono text-[46px] font-bold leading-none tracking-[-0.07em] text-[#b9d43a]">{formatIRR(baseIRR)}</div></div>
+             <div><div className="font-mono text-[9px] uppercase tracking-[0.15em] text-[#9dafb8]">Underwriting Baseline IRR</div><div className="mt-2 font-mono text-[46px] font-bold leading-none tracking-[-0.07em] text-[#b9d43a]">{formatIRR(baseIRR)}</div></div>
             <ArrowRight className="mb-2 h-5 w-5 text-[#7c909d]" />
-             <div><div className="font-mono text-[9px] uppercase tracking-[0.15em] text-[#9dafb8]">Current evidence-adjusted IRR</div><div data-testid="text-current-irr-materiality" className="mt-2 font-mono text-[46px] font-bold leading-none tracking-[-0.07em] text-[#f5ddd5]">{formatIRR(currentIRR)}</div></div>
+             <div><div className="font-mono text-[9px] uppercase tracking-[0.15em] text-[#9dafb8]">Conservative Stress Case IRR</div><div data-testid="text-current-irr-materiality" className="mt-2 font-mono text-[46px] font-bold leading-none tracking-[-0.07em] text-[#f5ddd5]">{formatIRR(currentIRR)}</div></div>
           </div>
-          <div className="mt-4 rounded-lg border border-[#f5ddd5]/30 bg-[#f5ddd5]/10 px-3 py-2 font-mono text-[12px] font-bold text-[#f5ddd5]">{irrDelta === null ? "Baseline delta unavailable" : `${irrDelta >= 0 ? "+" : ""}${irrDelta.toFixed(1)} percentage points from verified baseline`}</div>
+          <div className="mt-4 rounded-lg border border-[#f5ddd5]/30 bg-[#f5ddd5]/10 px-3 py-2 font-mono text-[12px] font-bold text-[#f5ddd5]">{irrDelta === null ? "Underwriting Baseline delta unavailable" : `${irrDelta >= 0 ? "+" : ""}${irrDelta.toFixed(1)} percentage points from Underwriting Baseline`}</div>
           {metrics.lastChange && metrics.lastChange.from !== metrics.lastChange.to && (
             <div className="mt-3 flex items-center gap-2 font-mono text-[10px] text-[#f5ddd5]">
               <span className="line-through opacity-60">{metrics.lastChange.from}% prior</span>
@@ -179,7 +181,7 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
               </svg>
             </div>
           </div>
-          <div className="mt-2 grid grid-cols-2 gap-2 text-[9px] text-[#c4d0d6]"><span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-[#b9d43a]" />Verified baseline</span><span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-[#f5ddd5]" />Current case</span></div>
+          <div className="mt-2 grid grid-cols-2 gap-2 text-[9px] text-[#c4d0d6]"><span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-[#b9d43a]" />Underwriting Baseline</span><span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-[#f5ddd5]" />Conservative stress</span></div>
           <div className="mt-2 flex justify-between font-mono text-[9px] text-[#8299a6]"><span>Y0 / close</span><span>Y5 / exit</span><span>cumulative equity cash flow · $M</span></div>
           <div className="mt-5 grid grid-cols-2 gap-3">
             <div className="rounded border border-white/10 bg-white/5 p-3"><div className="text-[9px] uppercase tracking-[0.12em] text-[#9dafb8]">Revenue delay</div><div className="mt-1 font-mono text-sm text-[#f5ddd5]">+{metrics.revenueDelayMonths} mo</div></div>

@@ -285,8 +285,8 @@ test.describe("hash routing and browser history", () => {
 
     await page.goto("/#evidence");
     await page.getByTestId("select-classification-electricity_cost").selectOption("Missing Evidence");
-    await expect(page.getByTestId("toast-reclassification")).toContainText("Return updated");
-    await expect(page.getByTestId("live-current-irr")).toContainText("Current IRR is now");
+    await expect(page.getByTestId("toast-reclassification")).toContainText("Conservative stress case updated");
+    await expect(page.getByTestId("live-current-irr")).toContainText("Conservative stress case IRR is now");
 
     await page.goto("/#materiality");
     await expect(page.getByTestId("materiality-classification-prompt")).toHaveCount(0);
@@ -302,13 +302,16 @@ test.describe("hash routing and browser history", () => {
     await page.goto("/#materiality");
 
     const waterfall = page.getByTestId("panel-irr-waterfall");
-    const baseCaseLabel = "Base Case (All Inputs Verified)";
-    const conservativeCaseLabel = "Conservative Case (Evidence-Adjusted)";
-    const description = "Lower evidence quality applies progressively conservative assumptions. This is a stress test, not a prediction. Unverified inputs are assigned worst-case values, not because negative outcomes are certain, but because conservative underwriting requires assuming the downside until evidence proves otherwise.";
-    const note = "A management assertion that proves accurate would improve the return. This stress test shows the cost of not knowing, not the cost of a negative outcome.";
+    const baseCaseLabel = "Underwriting Baseline (All Inputs Verified)";
+    const conservativeCaseLabel = "Conservative Case (Stress-Adjusted)";
+    const description = "Lower evidence quality applies progressively conservative underwriting assumptions. This is a stress test, not a prediction. Unverified inputs are assigned worst-case values, not because negative outcomes are certain, but because conservative underwriting requires assuming the downside until evidence proves otherwise.";
+    const methodology = "Evidence classifications do not predict whether an unknown outcome will be favorable or unfavorable. For this demonstration, weaker evidence triggers predefined conservative underwriting treatments to show the potential cost of unresolved uncertainty.";
+    const note = "A management assertion that proves accurate would improve the return. The conservative stress case shows the cost of not knowing, not the cost of a negative outcome.";
 
     await expect(waterfall.getByRole("heading", { name: "Evidence-Quality Stress Test" })).toBeVisible();
     await expect(waterfall.getByTestId("waterfall-description")).toHaveText(description);
+    await expect(waterfall.getByTestId("waterfall-methodology")).toHaveText(methodology);
+    await expect(waterfall).toHaveAttribute("aria-describedby", "irr-waterfall-description irr-waterfall-methodology");
     await expect(waterfall).toContainText(baseCaseLabel);
     await expect(waterfall).toContainText(conservativeCaseLabel);
     await expect(waterfall.getByTestId("waterfall-underwriting-note")).toHaveText(note);
@@ -330,6 +333,25 @@ test.describe("hash routing and browser history", () => {
     );
     await expect(waterfall.getByTestId("waterfall-step-site_hazard_exposure")).toContainText(
       "Modeled as: Model Inference",
+    );
+    await expect(waterfall.getByTestId("waterfall-step-electricity_cost")).toContainText(
+      "Current classification: User Assumption",
+    );
+    await expect(waterfall.getByTestId("waterfall-treatment-electricity_cost")).toHaveText(
+      "Applied treatment: Applied rate: $44.1/MWh.",
+    );
+    await expect(waterfall.getByTestId("waterfall-treatment-customer_concentration")).toContainText(
+      "Applied utilization multiplier: 0.93x (7.0% discount).",
+    );
+    await expect(waterfall.getByTestId("waterfall-treatment-grid_interconnection")).toContainText(
+      "No adjustment applied at current classification.",
+    );
+    await expect(waterfall.getByTestId("waterfall-treatment-backup_power_capacity")).toContainText(
+      "Decision gate only; no financial adjustment applied at current classification.",
+    );
+    await expect(waterfall.getByTestId("waterfall-treatment-electricity_cost")).toHaveAttribute(
+      "aria-label",
+      "Applied stress treatment for Electricity Cost / MWh: Applied rate: $44.1/MWh.",
     );
     await expect(page.getByTestId("materiality-impact-water_escalation")).toHaveText(
       "less than 0.01 pts down",
@@ -380,6 +402,46 @@ test.describe("hash routing and browser history", () => {
     await expect(waterfall.getByTestId("waterfall-gate-backup_power_capacity")).toHaveCount(0);
     await expect(waterfall.getByTestId("waterfall-explanation-backup_power_capacity")).toHaveText(
       "Financial effect",
+    );
+    await expect(waterfall.getByTestId("waterfall-treatment-backup_power_capacity")).toContainText(
+      "Applied backup-power contingency: $35.0M and $2.0M/year OPEX.",
+    );
+  });
+
+  test("keeps canonical stress vocabulary on rendered and assistive surfaces", async ({ page }) => {
+    const routesToAudit = [
+      "home",
+      "brief",
+      "evidence",
+      "materiality",
+      "decision",
+      "advisor",
+      "value-chain",
+      "how-it-works",
+    ] as const;
+    const legacyFinancialCopy = /verified baseline|evidence-adjusted|current case|current irr is now|base case \(all inputs verified\)|conservative case \(evidence-adjusted\)|verified underwriting|prominent base return|return updated|every classification has a financial consequence|entire model recalculates/i;
+
+    for (const route of routesToAudit) {
+      await page.goto(`/#${route}`);
+      expect(await page.locator("body").textContent()).not.toMatch(legacyFinancialCopy);
+    }
+
+    await page.goto("/#materiality");
+    await expect(page.getByTestId("panel-irr-waterfall")).toContainText("Underwriting Baseline");
+    await expect(page.getByTestId("panel-irr-waterfall")).toContainText("Conservative Case (Stress-Adjusted)");
+
+    await page.goto("/#decision");
+    await expect(page.getByTestId("panel-decision-return")).toContainText("Conservative Stress Case project IRR");
+    await expect(page.getByTestId("panel-decision-return")).toContainText("Underwriting Baseline");
+
+    await page.goto("/#advisor");
+    await expect(page.getByTestId("advisor-governance-gap-description")).toHaveText(
+      "The difference between the underwriting baseline and the conservative stress case.",
+    );
+
+    await page.goto("/#how-it-works");
+    await expect(page.getByTestId("tour-under-the-hood-layer-wiring")).toContainText(
+      "Lower evidence quality applies progressively conservative underwriting assumptions",
     );
   });
 
@@ -720,7 +782,7 @@ test.describe("hash routing and browser history", () => {
     await expect(page.getByTestId("metric-payback")).toContainText(/\d+\.\d years|Not reached/);
     await expect(page.getByTestId("metric-npv")).toContainText(/[$−]\d+M/);
     await expect(page.getByTestId("waterfall-step-water_rights")).toContainText(/[-+]\d+\.\d{1,2} pts|less than 0\.01 pts (?:up|down)|N\/M/);
-    await expect(page.getByTestId("live-current-irr")).toContainText(/Current IRR is now -?\d+\.\d%\./);
+    await expect(page.getByTestId("live-current-irr")).toContainText(/Conservative stress case IRR is now -?\d+\.\d%\./);
 
     await page.goto("/#evidence");
     await page.getByTestId("select-classification-water_rights").selectOption("Verified Evidence");

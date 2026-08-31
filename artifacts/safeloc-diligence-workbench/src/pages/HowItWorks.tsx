@@ -361,8 +361,8 @@ repeat until NPV(rate) ≈ 0:
                        <span className="flex h-9 w-9 items-center justify-center rounded-md bg-[#122232] font-mono text-[11px] font-bold text-[#d4e86b]">02</span>
                        <div className="font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#255bb7]">Evidence-to-Model Wiring</div>
                      </div>
-                     <h3 className="mt-5 text-[24px] font-semibold leading-tight tracking-[-0.035em] text-[#122232]">Every classification has a financial consequence.</h3>
-                     <p className="mt-4 text-[13px] leading-6 text-[#52616b]">Each of the 16 evidence inputs is wired to a specific financial line item. Change one classification and the entire model recalculates because the inputs are structurally linked, not cosmetically connected.</p>
+                      <h3 className="mt-5 text-[24px] font-semibold leading-tight tracking-[-0.035em] text-[#122232]">Evidence quality makes the underwriting treatment inspectable.</h3>
+                      <p className="mt-4 text-[13px] leading-6 text-[#52616b]">Each of the 16 evidence inputs is wired to a specific financial line item. Lower evidence quality applies progressively conservative underwriting assumptions; some classifications remain honest no-adjustment states or decision gates when they do not change the financial model.</p>
                    </div>
                    <div data-testid="tour-under-the-hood-wiring-visual" className="rounded-lg border border-[#cbd8d4] bg-[#eef2f1] p-4">
                      <div className="mb-3 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#52616b]">Input → linked model line item</div>
@@ -380,7 +380,7 @@ repeat until NPV(rate) ≈ 0:
                          </li>
                        ))}
                      </ul>
-                     <div className="mt-3 rounded-md border border-[#9bd8c5] bg-[#e0f4ed] p-3 text-[11px] font-semibold leading-5 text-[#0b624f]"><span className="font-mono text-[9px] uppercase tracking-[0.1em]">Reclassify one input</span><span aria-hidden="true" className="mx-2">→</span>structurally linked model recalculates</div>
+                      <div className="mt-3 rounded-md border border-[#9bd8c5] bg-[#e0f4ed] p-3 text-[11px] font-semibold leading-5 text-[#0b624f]"><span className="font-mono text-[9px] uppercase tracking-[0.1em]">Reclassify one input</span><span aria-hidden="true" className="mx-2">→</span>linked conservative treatment updates</div>
                    </div>
                  </div>
                </article>

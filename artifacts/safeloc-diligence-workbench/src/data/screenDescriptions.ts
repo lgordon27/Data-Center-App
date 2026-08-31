@@ -25,7 +25,7 @@ export const walkthrough = [
     icon: BarChart3,
     purpose: "Traces evidence quality into revenue timing, costs, cash flow, and the project return.",
     why: "Not every unknown deserves the same amount of research. This screen shows which uncertainty can move IRR, payback, or terminal value, so diligence effort follows financial consequence rather than volume of information.",
-    lookFor: "Look for the verified baseline beside the current case, the evidence-to-return bridge, and the mechanical-outputs warning when confidence is low.",
+    lookFor: "Look for the Underwriting Baseline beside the Conservative Case (Stress-Adjusted), the evidence-to-return bridge, and the mechanical-outputs warning when confidence is low.",
   },
   {
     id: "decision",

@@ -63,6 +63,7 @@ export type ModelLineItem = {
   deltaIRR: number;
   impactRole: ImpactRole;
   impactExplanation: string;
+  impactTreatment: string;
 };
 
 export type ImpactRole = "financial-effect" | "no-adjustment" | "decision-gate";
@@ -91,6 +92,7 @@ export type ModelAssumptions = {
   waterSourceResilience: string;
   waterSourceEscalationMultiplier: number;
   waterConversionCapex: number;
+  waterConversionContingencyTriggered: boolean;
   effectiveRenewableProcurement: number;
   powerCostDifferential: number;
   gridInterconnectionMonths: number;
@@ -98,6 +100,9 @@ export type ModelAssumptions = {
   communityDelayMonths: number;
   revenueDelayMonths: number;
   customerUtilizationMultiplier: number;
+  coolingCapexContingencyRate: number;
+  communityCapexContingencyRate: number;
+  backupPowerContingencyTriggered: boolean;
   entryValue: number;
   coolingCapex: number;
   capexContingency: number;
@@ -748,6 +753,7 @@ function runModel(evidence: EvidenceRecord, capacityMW: number): CashFlowModel {
     waterSourceResilience,
     waterSourceEscalationMultiplier,
     waterConversionCapex,
+    waterConversionContingencyTriggered,
     effectiveRenewableProcurement,
     powerCostDifferential,
     gridInterconnectionMonths,
@@ -755,6 +761,9 @@ function runModel(evidence: EvidenceRecord, capacityMW: number): CashFlowModel {
     communityDelayMonths,
     revenueDelayMonths,
     customerUtilizationMultiplier,
+    coolingCapexContingencyRate: coolingCapexContingency,
+    communityCapexContingencyRate: communityCapexContingency,
+    backupPowerContingencyTriggered,
     entryValue,
     coolingCapex,
     capexContingency,
@@ -771,22 +780,22 @@ function runModel(evidence: EvidenceRecord, capacityMW: number): CashFlowModel {
   };
 
   const lineItems: Record<string, ModelLineItem> = {
-    electricity_cost: { id: "electricity_cost", driver: "Power OPEX", value: electricityRate, unit: "$/MWh", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment") },
-    water_consumption: { id: "water_consumption", driver: "Water OPEX", value: annualCoolingWaterMgal, unit: "M gal / yr", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment") },
-    grid_interconnection: { id: "grid_interconnection", driver: "Revenue delay", value: revenueDelayMonths, unit: "months", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment") },
-    water_escalation: { id: "water_escalation", driver: "Water OPEX growth", value: adjustedWaterEscalationRate * 100, unit: "%", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment") },
-    community_risk: { id: "community_risk", driver: "Permitting delay / CAPEX", value: communityDelayMonths, unit: "months", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment") },
-    renewable_percentage: { id: "renewable_percentage", driver: "Power cost differential", value: powerCostDifferential * 100, unit: "%", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment") },
-    cooling_capex: { id: "cooling_capex", driver: "Direct CAPEX", value: coolingCapex + capexContingency, unit: "$M", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment") },
-    electricity_escalation: { id: "electricity_escalation", driver: "Power OPEX escalation", value: electricityEscalationRate * 100, unit: "%", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment") },
-    carbon_compliance: { id: "carbon_compliance", driver: "Carbon compliance OPEX", value: annualCarbonCompliance, unit: "$M / yr", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment") },
-    permitting_timeline: { id: "permitting_timeline", driver: "Revenue delay", value: permittingMonths, unit: "months", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment") },
-    customer_concentration: { id: "customer_concentration", driver: "Utilization discount", value: (1 - customerUtilizationMultiplier) * 100, unit: "%", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment") },
-    water_rights: { id: "water_rights", driver: "Water cost contingency", value: (waterRightsCostMultiplier - 1) * 100, unit: "%", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment") },
-    site_hazard_exposure: { id: "site_hazard_exposure", driver: "Climate disruption OPEX", value: adjustedHazardProbability * 100, unit: "%", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment") },
-    backup_power_capacity: { id: "backup_power_capacity", driver: "Backup power CAPEX / OPEX", value: backupPowerCapex, unit: "$M", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment") },
-    water_source_resilience: { id: "water_source_resilience", driver: "Water conversion CAPEX", value: waterConversionCapex, unit: "$M", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment") },
-    downtime_cost: { id: "downtime_cost", driver: "Climate disruption OPEX", value: adjustedDowntimeCostPerDay / 1_000_000, unit: "$M / day", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment") },
+    electricity_cost: { id: "electricity_cost", driver: "Power OPEX", value: electricityRate, unit: "$/MWh", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment"), impactTreatment: "" },
+    water_consumption: { id: "water_consumption", driver: "Water OPEX", value: annualCoolingWaterMgal, unit: "M gal / yr", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment"), impactTreatment: "" },
+    grid_interconnection: { id: "grid_interconnection", driver: "Revenue delay", value: revenueDelayMonths, unit: "months", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment"), impactTreatment: "" },
+    water_escalation: { id: "water_escalation", driver: "Water OPEX growth", value: adjustedWaterEscalationRate * 100, unit: "%", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment"), impactTreatment: "" },
+    community_risk: { id: "community_risk", driver: "Permitting delay / CAPEX", value: communityDelayMonths, unit: "months", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment"), impactTreatment: "" },
+    renewable_percentage: { id: "renewable_percentage", driver: "Power cost differential", value: powerCostDifferential * 100, unit: "%", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment"), impactTreatment: "" },
+    cooling_capex: { id: "cooling_capex", driver: "Direct CAPEX", value: coolingCapex + capexContingency, unit: "$M", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment"), impactTreatment: "" },
+    electricity_escalation: { id: "electricity_escalation", driver: "Power OPEX escalation", value: electricityEscalationRate * 100, unit: "%", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment"), impactTreatment: "" },
+    carbon_compliance: { id: "carbon_compliance", driver: "Carbon compliance OPEX", value: annualCarbonCompliance, unit: "$M / yr", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment"), impactTreatment: "" },
+    permitting_timeline: { id: "permitting_timeline", driver: "Revenue delay", value: permittingMonths, unit: "months", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment"), impactTreatment: "" },
+    customer_concentration: { id: "customer_concentration", driver: "Utilization discount", value: (1 - customerUtilizationMultiplier) * 100, unit: "%", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment"), impactTreatment: "" },
+    water_rights: { id: "water_rights", driver: "Water cost contingency", value: (waterRightsCostMultiplier - 1) * 100, unit: "%", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment"), impactTreatment: "" },
+    site_hazard_exposure: { id: "site_hazard_exposure", driver: "Climate disruption OPEX", value: adjustedHazardProbability * 100, unit: "%", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment"), impactTreatment: "" },
+    backup_power_capacity: { id: "backup_power_capacity", driver: "Backup power CAPEX / OPEX", value: backupPowerCapex, unit: "$M", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment"), impactTreatment: "" },
+    water_source_resilience: { id: "water_source_resilience", driver: "Water conversion CAPEX", value: waterConversionCapex, unit: "$M", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment"), impactTreatment: "" },
+    downtime_cost: { id: "downtime_cost", driver: "Climate disruption OPEX", value: adjustedDowntimeCostPerDay / 1_000_000, unit: "$M / day", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment"), impactTreatment: "" },
   };
 
   return {
@@ -842,6 +851,7 @@ export function calculateCashFlowModel(evidence: EvidenceRecord, requestedCapaci
           deltaIRR,
           impactRole,
           impactExplanation: getImpactExplanation(impactRole),
+          impactTreatment: getImpactTreatment(id, impactRole, current.assumptions),
         },
       ];
     }),
@@ -866,7 +876,8 @@ export function calculateCashFlowModel(evidence: EvidenceRecord, requestedCapaci
       ...lineItem,
       deltaIRR,
       impactRole,
-      impactExplanation: getImpactExplanation(impactRole),
+       impactExplanation: getImpactExplanation(impactRole),
+       impactTreatment: getImpactTreatment(id, impactRole, afterModel.assumptions),
       index,
       before: beforeModel.projectIRR,
       after: afterModel.projectIRR,
@@ -914,5 +925,51 @@ function getImpactExplanation(role: ImpactRole) {
       return "No adjustment at current classification";
     default:
       return "Financial effect";
+  }
+}
+
+function getImpactTreatment(id: string, role: ImpactRole, assumptions: ModelAssumptions) {
+  if (role === "no-adjustment") return "No adjustment applied at current classification.";
+  if (role === "decision-gate") return "Decision gate only; no financial adjustment applied at current classification.";
+
+  switch (id) {
+    case "electricity_cost":
+      return `Applied rate: $${assumptions.electricityRate.toFixed(1)}/MWh.`;
+    case "water_consumption":
+      return `Applied water consumption: ${assumptions.annualCoolingWaterMgal.toFixed(1)} M gal/yr.`;
+    case "grid_interconnection":
+      return `Applied interconnection delay: ${assumptions.gridInterconnectionMonths.toFixed(0)} months; total revenue delay: ${assumptions.revenueDelayMonths} months.`;
+    case "water_escalation":
+      return `Applied water escalation: ${(assumptions.waterEscalationRate * 100).toFixed(1)}% annually.`;
+    case "community_risk":
+      return `Applied community delay: ${assumptions.communityDelayMonths} months; CAPEX contingency: ${(assumptions.communityCapexContingencyRate * 100).toFixed(1)}%.`;
+    case "renewable_percentage":
+      return `Applied renewable coverage: ${assumptions.effectiveRenewableProcurement.toFixed(1)}%; power cost differential: ${(assumptions.powerCostDifferential * 100).toFixed(1)}%.`;
+    case "cooling_capex":
+      return `Applied cooling CAPEX: $${assumptions.coolingCapex.toFixed(1)}M; total CAPEX contingency: $${assumptions.capexContingency.toFixed(1)}M.`;
+    case "electricity_escalation":
+      return `Applied electricity escalation: ${(assumptions.electricityEscalationRate * 100).toFixed(1)}% annually.`;
+    case "carbon_compliance":
+      return `Applied annual carbon compliance cost: $${assumptions.annualCarbonCompliance.toFixed(1)}M.`;
+    case "permitting_timeline":
+      return `Applied permitting delay: ${assumptions.permittingMonths.toFixed(0)} months; total revenue delay: ${assumptions.revenueDelayMonths} months.`;
+    case "customer_concentration":
+      return `Applied utilization multiplier: ${assumptions.customerUtilizationMultiplier.toFixed(2)}x (${((1 - assumptions.customerUtilizationMultiplier) * 100).toFixed(1)}% discount).`;
+    case "water_rights":
+      return `Applied water cost multiplier: ${assumptions.waterRightsCostMultiplier.toFixed(2)}x.`;
+    case "site_hazard_exposure":
+      return `Applied annual hazard probability: ${(assumptions.adjustedHazardProbability * 100).toFixed(1)}%; climate disruption cost: $${(assumptions.adjustedDowntimeCostPerDay / 1_000_000).toFixed(2)}M/day.`;
+    case "backup_power_capacity":
+      return assumptions.backupPowerContingencyTriggered
+        ? `Applied backup-power contingency: $${assumptions.backupPowerCapex.toFixed(1)}M and $${(assumptions.backupPowerCapex > 0 ? 2 : 0).toFixed(1)}M/year OPEX.`
+        : "Applied backup-power contingency: none; threshold is satisfied.";
+    case "water_source_resilience":
+      return assumptions.waterConversionContingencyTriggered
+        ? `Applied water-conversion contingency: $${assumptions.waterConversionCapex.toFixed(1)}M; source escalation multiplier: ${assumptions.waterSourceEscalationMultiplier.toFixed(2)}x.`
+        : `Applied water-conversion contingency: none; source escalation multiplier: ${assumptions.waterSourceEscalationMultiplier.toFixed(2)}x.`;
+    case "downtime_cost":
+      return `Applied downtime cost: $${(assumptions.adjustedDowntimeCostPerDay / 1_000_000).toFixed(2)}M/day.`;
+    default:
+      return "Applied conservative underwriting treatment.";
   }
 }

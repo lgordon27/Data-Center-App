@@ -450,7 +450,7 @@ export function DiligenceLiveRegions({ metrics }: { metrics: ReturnType<typeof u
         Evidence confidence is now {metrics.confidenceScore} percent.
       </div>
       <div data-testid="live-current-irr" aria-live="polite" aria-atomic="true">
-        Current IRR is now {formatIRR(metrics.projectIRR)}.
+        Conservative stress case IRR is now {formatIRR(metrics.projectIRR)}.
       </div>
       <div data-testid="live-recommendation" aria-live="polite" aria-atomic="true">
         Recommendation status is now {metrics.recommendationStatus}.

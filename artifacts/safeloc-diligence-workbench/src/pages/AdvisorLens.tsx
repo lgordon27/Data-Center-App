@@ -25,8 +25,6 @@ import {
 } from "@/context/DiligenceContext";
 
 
-
-
 import {
   getAdvisorEvidenceSummary,
   getAdvisorQuestionPresentation,
@@ -346,7 +344,7 @@ export function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => vo
             <div data-testid="text-governance-irr-gap" className="mt-1 font-mono text-[28px] font-bold leading-tight tracking-[-0.05em] text-[#482873]">
               {governanceGap === null ? "N/M" : `${governanceGap.toFixed(1)} pts`}
             </div>
-            <div className="mt-1 text-[10px] leading-4 text-[#5e5870]">assuming everything versus verifying everything</div>
+            <div data-testid="advisor-governance-gap-description" className="mt-1 text-[10px] leading-4 text-[#5e5870]">The difference between the underwriting baseline and the conservative stress case.</div>
             {governanceGap === null && <div className="mt-2 text-[10px] leading-4 text-[#706681]">The return gap is unavailable because one or both IRR calculations are non-numeric.</div>}
           </div>
         </div>
@@ -356,5 +354,4 @@ export function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => vo
     </div>
   );
 }
-
 

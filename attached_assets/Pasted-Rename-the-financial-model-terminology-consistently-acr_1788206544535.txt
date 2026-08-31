@@ -1,0 +1,36 @@
+Rename the financial model terminology consistently across EVERY screen in the application. This is not just a waterfall label change. Every reference must use the same language.
+
+RENAME EVERYWHERE:
+
+Old: "Verified Baseline" or "Verified baseline"
+New: "Underwriting Baseline"
+
+Old: "Evidence-adjusted return" or "Evidence-adjusted project IRR" or "evidence-adjusted"  
+New: "Conservative Stress Case" or "Conservative stress"
+
+Old: "Current Case"
+New: "Conservative Case (Stress-Adjusted)"
+
+Old: "Evidence → Return Waterfall"
+New: "Evidence-Quality Stress Test"
+
+Old: Any variation of "every classification moves the same live model"
+New: "Lower evidence quality applies progressively conservative underwriting assumptions"
+
+Old: "The difference between assuming everything and verifying everything"
+New: "The difference between the underwriting baseline and the conservative stress case"
+
+Search every file in the application for these terms and replace them. Check: Home page, Case Brief, Evidence Room, Financial Materiality, Decision Review, Advisor Lens, Value Chain, How It Works, and any toast notifications or dynamic text.
+
+ADD a methodology statement that appears on Screen 3 (Financial Materiality) near the waterfall:
+
+"Evidence classifications do not predict whether an unknown outcome will be favorable or unfavorable. For this demonstration, weaker evidence triggers predefined conservative underwriting treatments to show the potential cost of unresolved uncertainty."
+
+ADD visible stress treatment labels to the waterfall or driver detail. For each variable in the waterfall that shows a financial effect, display what the conservative treatment actually is:
+
+Example format next to each waterfall step:
+- "Grid interconnection: Missing → 27-month stress delay applied"
+- "Electricity cost: User Assumption → conservative rate $X/MWh applied"
+- "Customer concentration: Management Assertion → 10% utilization discount applied"
+
+This makes the existing logic inspectable without rebuilding the engine.

@@ -42,7 +42,7 @@ SafeLoc models exactly 16 evidence variables: electricity_cost, water_consumptio
 
 The projectSummary.description must explicitly report relevant findings, when available, about electrical-equipment procurement and lead times, jurisdictional bans or moratoriums, noise ordinances and operational impacts, local electricity-rate concerns, and semiconductor and memory supply-chain constraints. It must also identify speculative or phantom grid-load requests when that context is relevant. These are contextual research areas, not additional modeled evidence inputs: do not add them to the evidence array, assign them evidence classifications, or imply that market-wide statistics prove facility-level facts.
 
-Respond with one JSON object with exactly two top-level fields: projectSummary and evidence. projectSummary must contain name, location, description, and capacityMW. evidence must contain exactly 16 records with id, label, value, unit, classification, citation, description, and sourceRole. sourceUrl is optional: when a cited source in the retrieved packet directly supports the finding, return that source's exact URL; never invent or return a URL that is not in the packet. A source URL is a research aid only and never facility-level proof by itself. numericValue is optional for numeric model inputs; qualitativeValue is optional and may only be low, moderate, high, single-source, or diversified. Use concise plain language. Do not include markdown, commentary, or any other top-level fields.`;
+Respond with one JSON object with exactly two top-level fields: projectSummary and evidence. projectSummary must contain name, location, description, and capacityMW. evidence must contain exactly 16 records with id, label, value, unit, classification, citation, description, and sourceRole. sourceUrl is optional: when a cited source in the retrieved packet directly supports the finding, return that source's exact URL; never invent or return a URL that is not in the packet. The server will attach the validated source title, publisher, publication date, access date, and access constraint from the retrieved packet. A source URL is a research aid only and never facility-level proof by itself. numericValue is optional for numeric model inputs; qualitativeValue is optional and may only be low, moderate, high, single-source, or diversified. Use concise plain language. Do not include markdown, commentary, or any other top-level fields.`;
 
 function sendJson(res, status, body) {
   res.statusCode = status;
@@ -97,7 +97,7 @@ function normalizeCapacityMW(value) {
     : DEFAULT_RESEARCH_CAPACITY_MW;
 }
 
-function parseResearchResponse(body, retrievedSources = []) {
+function parseResearchResponse(body, retrievedSources = [], accessedAt = new Date().toISOString().slice(0, 10)) {
   if (!isRecord(body) || !isRecord(body.projectSummary) || !Array.isArray(body.evidence)) {
     throw new Error("Research response must include projectSummary and evidence.");
   }
@@ -115,10 +115,10 @@ function parseResearchResponse(body, retrievedSources = []) {
   }
 
   const expectedIds = new Set(RESEARCH_EVIDENCE_IDS);
-  const sourceUrls = new Set(
+  const sourceByUrl = new Map(
     retrievedSources
-      .map((source) => safePublicSourceUrl(source.url))
-      .filter(Boolean),
+      .map((source) => [safePublicSourceUrl(source.url), source])
+      .filter(([url]) => Boolean(url)),
   );
   const seenIds = new Set();
   const evidence = body.evidence.map((item, index) => {
@@ -133,7 +133,7 @@ function parseResearchResponse(body, retrievedSources = []) {
       citation.match(/https?:\/\/[^\s)]+/)?.[0]?.replace(/[.,;]+$/, ""),
     );
     const returnedSourceUrl = safePublicSourceUrl(item.sourceUrl);
-    const sourceUrl = [returnedSourceUrl, citedUrl].find((url) => url && sourceUrls.has(url)) ?? null;
+    const sourceUrl = [returnedSourceUrl, citedUrl].find((url) => url && sourceByUrl.has(url)) ?? null;
     const supportedByRetrievedSource = Boolean(sourceUrl);
     const record = {
       id,
@@ -147,7 +147,20 @@ function parseResearchResponse(body, retrievedSources = []) {
       description: nonEmptyString(item.description, `evidence[${index}].description`, 2_000),
       sourceRole: nonEmptyString(item.sourceRole, `evidence[${index}].sourceRole`, 200),
     };
-    if (sourceUrl) record.sourceUrl = sourceUrl;
+    if (sourceUrl) {
+      const metadata = sourceByUrl.get(sourceUrl);
+      const publishedAt = normalizePublicDate(metadata?.date);
+      record.sourceUrl = sourceUrl;
+      record.sourceTitle = typeof metadata?.title === "string" && metadata.title.trim()
+        ? metadata.title.trim().slice(0, 500)
+        : "not provided";
+      record.sourcePublisher = new URL(sourceUrl).hostname.replace(/^www\./, "");
+      record.sourcePublishedAt = publishedAt;
+      record.sourceAccessedAt = normalizePublicDate(accessedAt);
+      record.sourceAccessStatus = metadata?.accessStatus === "open" || metadata?.accessStatus === "paywall" || metadata?.accessStatus === "registration"
+        ? metadata.accessStatus
+        : "not provided";
+    }
     if (!VALID_CLASSIFICATIONS.includes(record.classification)) {
       throw new Error(`Research evidence record ${id} has an invalid classification.`);
     }
@@ -169,11 +182,19 @@ function parseResearchResponse(body, retrievedSources = []) {
   return { projectSummary: summaryFields, evidence };
 }
 
+function normalizePublicDate(value) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const match = value.trim().match(/^\d{4}-\d{2}-\d{2}/);
+  if (!match || !Number.isFinite(Date.parse(`${match[0]}T00:00:00.000Z`))) return null;
+  return match[0];
+}
+
 function buildResearchProjectPrompt({ name, location }, retrievedSources = []) {
+  const sourcePacket = retrievedSources.map(({ url, title, date, excerpt }) => ({ url, title, date, excerpt }));
   return `Analyze this data-center project using only the retrieved sources below: ${name}. Location: ${location}. Preserve exact source URLs in citations, distinguish facility-level findings from regional context, and return the exact JSON contract from the system instruction.
 
 Retrieved source packet:
-${JSON.stringify(retrievedSources)}`;
+${JSON.stringify(sourcePacket)}`;
 }
 
 function normalizeRetrievedSources(body) {
@@ -195,6 +216,7 @@ function normalizeRetrievedSources(body) {
       title: typeof source.title === "string" ? source.title.trim() : "Retrieved public source",
       date: typeof source.published_date === "string" ? source.published_date : typeof source.date === "string" ? source.date : null,
       excerpt: typeof source.snippet === "string" ? source.snippet.trim() : typeof source.excerpt === "string" ? source.excerpt.trim() : "",
+      accessStatus: ["open", "paywall", "registration"].includes(source.access_status) ? source.access_status : "not provided",
     }))
     .filter((source) => {
       if (!/^https?:\/\//i.test(source.url) || seen.has(source.url)) return false;
@@ -394,6 +416,7 @@ export {
   parseResearchProjectBody,
   parseResearchResponse,
   normalizeRetrievedSources,
+  normalizePublicDate,
   safePublicSourceUrl,
   retrievePublicSources,
   createResearchProjectRateLimiter,

@@ -61,6 +61,7 @@ import {
 import type {
   Screen
 } from "@/components/Shell";
+import { ClaimCitation } from "@/components/ClaimCitation";
 
 const holdingsConnectionCopy: Record<RecommendationStatus, string> = {
   BLOCKED: "NVIDIA GPU contracts and hyperscaler CAPEX may connect values-aligned funds to this buildout, but unresolved project evidence leaves a material exposure gap. This blocked status is a diligence signal—not a facility-level Stargate fact or a holdings recommendation.",
@@ -193,6 +194,7 @@ export function DecisionReview({ onNavigate, onResolve }: { onNavigate: (screen:
            <aside data-testid="holdings-connection-indicator" role="note" aria-labelledby="holdings-connection-title" className="mt-5 rounded-lg border bg-white/70 px-3 py-3" style={{ borderColor: statusMeta.border }}>
              <h3 id="holdings-connection-title" className="font-mono text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: statusMeta.color }}>What This Means for Holdings</h3>
               <p data-testid="holdings-connection-message" aria-live="polite" className="mt-2 min-w-0 break-words text-[11px] leading-5 text-[#344550]">{holdingsCopy[metrics.recommendationStatus]}</p>
+              {project.kind === "curated" && <div className="flex flex-wrap gap-2"><ClaimCitation claimId="stargate-oracle-gpus" /><ClaimCitation claimId="fund-usxf" /></div>}
            </aside>
           <button data-testid="button-open-advisor-lens" onClick={() => onNavigate("advisor")} className="mt-6 inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#122232] hover:text-[#607500]">Carry this into the advisor lens <ArrowRight className="h-3.5 w-3.5" /></button>
         </section>
@@ -420,4 +422,3 @@ function SavedScenarioList({
     </section>
   );
 }
-

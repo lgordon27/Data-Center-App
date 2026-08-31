@@ -173,9 +173,14 @@ test("returns exactly 16 normalized evidence items and safely falls back for inv
 });
 
 test("only exposes direct links that are safe and present in the retrieved source packet", () => {
-  const parsed = parseResearchResponse(validResearchResponse(), [retrievedSource]);
+  const parsed = parseResearchResponse(validResearchResponse(), [retrievedSource], "2026-08-30");
   assert.equal(parsed.evidence[0].sourceUrl, retrievedSource.url);
   assert.equal(parsed.evidence[1].sourceUrl, retrievedSource.url);
+  assert.equal(parsed.evidence[0].sourceTitle, retrievedSource.title);
+  assert.equal(parsed.evidence[0].sourcePublisher, "example.com");
+  assert.equal(parsed.evidence[0].sourcePublishedAt, "2026-06-01");
+  assert.equal(parsed.evidence[0].sourceAccessedAt, "2026-08-30");
+  assert.equal(parsed.evidence[0].sourceAccessStatus, "not provided");
 
   const untrusted = validResearchResponse();
   untrusted.evidence[0].sourceUrl = "javascript:alert(1)";

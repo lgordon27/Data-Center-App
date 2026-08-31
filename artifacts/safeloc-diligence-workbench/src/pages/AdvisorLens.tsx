@@ -25,17 +25,20 @@ import {
 } from "@/context/DiligenceContext";
 
 
+
+
 import {
   getAdvisorEvidenceSummary,
-  getEvidenceCompletenessTier,
   getAdvisorQuestionPresentation,
   getGovernanceIRRGap,
+  getEvidenceCompletenessTier,
   prioritizeAdvisorQuestions
 } from "@/model/advisorLens";
 
 import type {
   Screen
 } from "@/components/Shell";
+import { ClaimCitation } from "@/components/ClaimCitation";
 export function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
   const { evidence, metrics, project, originatingCompany } = useDiligence();
   const projectName = project.name;
@@ -43,7 +46,7 @@ export function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => vo
   const originatingLabel = originatingCompany ?? "No company selected";
   const evidenceSummary = getAdvisorEvidenceSummary(evidence);
   const evidenceCount = evidenceSummary.totalInputCount;
-  const completenessTier = getEvidenceCompletenessTier(evidenceSummary);
+  const riskTier = getEvidenceCompletenessTier(evidenceSummary);
   const currentIRR = metrics.projectIRR ?? null;
   const baseIRR = metrics.baseIRR ?? null;
   const governanceGap = getGovernanceIRRGap(baseIRR, currentIRR);
@@ -100,8 +103,8 @@ export function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => vo
       number: "03",
       topic: "The client’s next step",
       question: "What should I do?",
-      framework: "This evidence gap does not independently produce a sell recommendation. For values-aligned investors, engagement may be an appropriate next step before portfolio action, subject to the client's mandate, risk tolerance, and circumstances. The advisor's role is to interpret evidence quality and determine whether unverified assumptions are acceptable for this specific client.",
-      action: "Use the governance gap from this tool in your next client review as a conversation starter.",
+        framework: "Not sell. Engage. The sustainability community helped build this. Walking away forfeits the standing to steer it. The advisor’s role is to interpret evidence quality, ask questions no screening tool asks, and decide whether unverified assumptions are acceptable for the client’s values, risk tolerance, and time horizon.",
+        action: "Use the governance gap from this tool in your next client review as a conversation starter.",
       accent: "lime",
     },
   ] as const;
@@ -114,14 +117,13 @@ export function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => vo
         right={<div className="flex items-center gap-2 rounded-md border border-[#cbb7ec] bg-[#eee7fa] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#7049b7]"><Leaf className="h-3.5 w-3.5" /> Advisor handoff</div>}
       />
       <section data-testid="text-advisor-summary" className="mb-5 rounded-xl border border-[#cbd8d4] bg-[#f9faf8] p-5 md:p-6" aria-labelledby="advisor-live-posture-heading">
-         <SectionKicker>Live Stargate infrastructure evidence completeness</SectionKicker>
+        <SectionKicker>Live evidence posture</SectionKicker>
          <h2 id="advisor-live-posture-heading" className="sr-only">Live evidence posture</h2>
         <p className="max-w-4xl text-[18px] font-semibold leading-7 tracking-[-0.025em] text-[#122232] md:text-[21px]">
-           {completenessTier} completeness: {evidenceSummary.materialVerifiedCount} of {evidenceSummary.materialTotal} material inputs meet the evidence threshold. {evidenceSummary.verifiedCount} of {evidenceSummary.totalInputCount} total inputs are Verified Evidence.
+          {riskTier}: {evidenceSummary.materialVerifiedCount} of {evidenceSummary.materialTotal} material inputs verified. {evidenceSummary.verifiedCount} of {evidenceSummary.totalInputCount} total inputs verified.
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-[#e1e8e5] pt-4">
-           <EvidenceCompletenessIndicator tier={completenessTier} testId="badge-advisor-summary-completeness" />
-           <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#344550]">Stargate infrastructure evidence completeness</span>
+          <EvidenceCompletenessIndicator tier={riskTier} testId="badge-advisor-summary-risk" />
           <span className="text-[10px] text-[#6b7882]">Material sufficiency includes Verified Evidence and Management Assertion; Model Inference, User Assumption, and Missing Evidence remain material gaps.</span>
         </div>
       </section>
@@ -135,6 +137,8 @@ export function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => vo
            <div className="flex shrink-0 items-center gap-2 rounded-md border border-white/15 bg-white/5 px-3 py-2 text-[9px] font-bold uppercase tracking-[0.13em] text-[#c4d0d6]"><Network className="h-3.5 w-3.5 text-[#d4e86b]" /> Exposure chain</div>
         </div>
          <div data-testid="advisor-originating-company" className="mt-5 inline-flex items-center gap-2 rounded-md border border-[#d4e86b]/35 bg-[#d4e86b]/10 px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#d4e86b]">Originating company: {originatingLabel}</div>
+        {!customProject && <div className="flex flex-wrap gap-2"><ClaimCitation claimId="fund-usxf" dark /><ClaimCitation claimId="stargate-initiative" dark /></div>}
+        {!customProject && <div className="flex flex-wrap gap-2"><ClaimCitation claimId="fund-usxf" dark /><ClaimCitation claimId="stargate-initiative" dark /></div>}
         <div className="mt-7 flex flex-col items-stretch gap-2 md:flex-row md:items-center md:gap-1.5" aria-label="Client exposure chain">
           {exposureChain.map((node, index) => {
             const tone = exposureTone[node.tone];
@@ -172,16 +176,22 @@ export function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => vo
             <div className="font-mono text-[24px] font-bold tracking-[-0.05em] text-[#f5ddd5]">$130B</div>
             <div className="mt-1 text-[10px] font-bold uppercase tracking-[0.1em] text-[#c4d0d6]">Projects paused</div>
             <p className="mt-2 text-[10px] leading-4 text-[#9dafb8]">Reported aggregate context: $130B in AI projects paused in Q1 2026.</p>
+            <ClaimCitation claimId="stargate-cancellation" dark />
+            <ClaimCitation claimId="stargate-cancellation" dark />
           </div>
           <div data-testid="advisor-risk-stat-revenue" className="rounded-lg border border-white/10 bg-white/5 p-4">
             <div className="font-mono text-[24px] font-bold tracking-[-0.05em] text-[#d4e86b]">$8B</div>
             <div className="mt-1 text-[10px] font-bold uppercase tracking-[0.1em] text-[#c4d0d6]">Estimated revenue loss</div>
             <p className="mt-2 text-[10px] leading-4 text-[#9dafb8]">Estimated BloombergNEF context for data-center revenue losses by Q1 2027.</p>
+            <ClaimCitation claimId="stargate-cancellation" dark />
+            <ClaimCitation claimId="stargate-cancellation" dark />
           </div>
           <div data-testid="advisor-risk-stat-earnings" className="rounded-lg border border-white/10 bg-white/5 p-4">
             <div className="font-mono text-[24px] font-bold tracking-[-0.05em] text-[#cbb7ec]">22.8% → 6.4%</div>
             <div className="mt-1 text-[10px] font-bold uppercase tracking-[0.1em] text-[#c4d0d6]">S&amp;P 500 earnings context</div>
             <p className="mt-2 text-[10px] leading-4 text-[#9dafb8]">Reported market comparison: NVIDIA is the single largest contributor to S&amp;P 500 earnings growth; without NVIDIA’s AI leadership, the other 493 S&amp;P companies trail. This is market context, not a facility fact or modeled return.</p>
+            <ClaimCitation claimId="fund-usxf" dark />
+            <ClaimCitation claimId="fund-usxf" dark />
           </div>
         </div>
         <div className="mt-5 rounded-lg border border-[#b9d43a]/35 bg-[#d4e86b] p-4 text-[#1c2a16] md:p-5">
@@ -190,6 +200,8 @@ export function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => vo
             <div>
               <div className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#607500]">The epistemic gap</div>
               <p data-testid="text-epistemic-gap" className="mt-2 text-[12px] font-semibold leading-5">The sustainability rating tells your client what NVIDIA reported: MSCI’s AAA sustainability rating is based on corporate disclosures. This tool tests whether the physical infrastructure that rating depends on has been independently verified. Those are two different questions.</p>
+              <ClaimCitation claimId="fund-kld400" />
+              <ClaimCitation claimId="fund-kld400" />
             </div>
           </div>
         </div>
@@ -198,49 +210,20 @@ export function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => vo
         <div className="rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-6">
           <div className="flex items-end justify-between gap-3">
             <div>
-              <SectionKicker>Live project posture in fund context</SectionKicker>
-              <h2 id="fund-indicators-heading" className="text-[20px] font-semibold tracking-[-0.03em] text-[#122232]">Carry the evidence completeness into stewardship.</h2>
+              <SectionKicker>Live fund indicators</SectionKicker>
+              <h2 id="fund-indicators-heading" className="text-[20px] font-semibold tracking-[-0.03em] text-[#122232]">Carry the current posture into stewardship.</h2>
             </div>
             <span className="hidden font-mono text-[9px] uppercase tracking-[0.12em] text-[#60707d] sm:block">Updates with evidence</span>
           </div>
-          <p className="mt-3 max-w-2xl text-[11px] leading-5 text-[#63717a]">These indicators show the live Stargate infrastructure evidence completeness posture alongside two public-market contexts. They do not quantify a fund, issuer, or portfolio.</p>
+          <p className="mt-3 max-w-2xl text-[11px] leading-5 text-[#63717a]">These indicators show the live unverified-exposure tier for funds and benchmarks that may carry AI infrastructure dependence. They are not a claim about fund quality by themselves.</p>
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <div data-testid="card-fund-ishares" className="rounded-lg border border-[#d9e0e4] bg-[#f9faf8] p-4">
-              <div className="flex items-start gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-[#e9e0f7] text-[#482873]"><Landmark aria-hidden="true" className="h-4 w-4" /></div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div className="min-w-0 text-[11px] font-bold text-[#122232]">iShares ESG Advanced MSCI USA ETF</div>
-                    <EvidenceCompletenessIndicator tier={completenessTier} testId="badge-fund-ishares-completeness" />
-                  </div>
-                  <div className="mt-1 text-[10px] text-[#6b7882]">Public equity exposure · sustainability-screened broad market</div>
-                  <dl className="mt-4 grid gap-2 border-t border-[#e1e8e5] pt-3 text-[10px] leading-4">
-                    <div className="grid gap-0.5 sm:grid-cols-[7.5rem_1fr] sm:gap-2"><dt className="font-semibold text-[#60707d]">Issuer connection:</dt><dd className="text-[#344550]">Reported supplier relationship</dd></div>
-                    <div className="grid gap-0.5 sm:grid-cols-[7.5rem_1fr] sm:gap-2"><dt className="font-semibold text-[#60707d]">Fund connection:</dt><dd className="text-[#344550]">Holding-level exposure (NVIDIA at 20%+)</dd></div>
-                    <div className="grid gap-0.5 sm:grid-cols-[7.5rem_1fr] sm:gap-2"><dt className="font-semibold text-[#60707d]">Portfolio materiality:</dt><dd className="text-[#344550]">Not established by this analysis</dd></div>
-                  </dl>
-                </div>
-              </div>
-            </div>
-            <div data-testid="card-fund-msci" className="rounded-lg border border-[#d9e0e4] bg-[#f9faf8] p-4">
-              <div className="flex items-start gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-[#d4e86b] text-[#314207]"><BarChart3 aria-hidden="true" className="h-4 w-4" /></div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div className="min-w-0 text-[11px] font-bold text-[#122232]">MSCI KLD 400 Social Index</div>
-                    <EvidenceCompletenessIndicator tier={completenessTier} testId="badge-fund-msci-completeness" />
-                  </div>
-                  <div className="mt-1 text-[10px] text-[#6b7882]">Socially screened benchmark · stewardship reference</div>
-                  <dl className="mt-4 grid gap-2 border-t border-[#e1e8e5] pt-3 text-[10px] leading-4">
-                    <div className="grid gap-0.5 sm:grid-cols-[7.5rem_1fr] sm:gap-2"><dt className="font-semibold text-[#60707d]">Issuer connection:</dt><dd className="text-[#344550]">Reported supplier relationship</dd></div>
-                    <div className="grid gap-0.5 sm:grid-cols-[7.5rem_1fr] sm:gap-2"><dt className="font-semibold text-[#60707d]">Fund connection:</dt><dd className="text-[#344550]">Holding-level exposure (NVIDIA at 20%+)</dd></div>
-                    <div className="grid gap-0.5 sm:grid-cols-[7.5rem_1fr] sm:gap-2"><dt className="font-semibold text-[#60707d]">Portfolio materiality:</dt><dd className="text-[#344550]">Not established by this analysis</dd></div>
-                  </dl>
-                </div>
-              </div>
-            </div>
+            <div data-testid="card-fund-ishares" className="rounded-lg border border-[#d9e0e4] bg-[#f9faf8] p-4"><div className="flex items-start gap-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-[#e9e0f7] text-[#482873]"><Landmark aria-hidden="true" className="h-4 w-4" /></div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-start justify-between gap-2"><div className="text-[11px] font-bold text-[#122232]">iShares ESG Advanced MSCI USA ETF</div><EvidenceCompletenessIndicator tier={riskTier} testId="badge-fund-ishares-risk" /></div><div className="mt-1 text-[10px] text-[#6b7882]">Public equity exposure · sustainability-screened broad market</div></div></div></div>
+            <div data-testid="card-fund-msci" className="rounded-lg border border-[#d9e0e4] bg-[#f9faf8] p-4"><div className="flex items-start gap-3"><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-[#d4e86b] text-[#314207]"><BarChart3 aria-hidden="true" className="h-4 w-4" /></div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-start justify-between gap-2"><div className="text-[11px] font-bold text-[#122232]">MSCI KLD 400 Social Index</div><EvidenceCompletenessIndicator tier={riskTier} testId="badge-fund-msci-risk" /></div><div className="mt-1 text-[10px] text-[#6b7882]">Socially screened benchmark · stewardship reference</div></div></div></div>
+            <ClaimCitation claimId="fund-usxf" />
+            <ClaimCitation claimId="fund-kld400" />
+            <ClaimCitation claimId="fund-usxf" />
+            <ClaimCitation claimId="fund-kld400" />
           </div>
-          <p data-testid="text-advisor-analysis-boundary" className="mt-5 border-t border-[#d9e0e4] pt-4 text-[10px] font-medium leading-4 text-[#52616b]">This analysis establishes the evidence posture of one project. The degree to which this affects a specific fund depends on the fund's total exposure to AI infrastructure holdings, which requires portfolio-level analysis beyond the scope of this tool.</p>
         </div>
         <div className="rounded-xl border border-[#d9e0e4] bg-[#f1f5f3] p-5 md:p-6">
           <SectionKicker>What the chain means</SectionKicker>
@@ -307,6 +290,8 @@ export function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => vo
         </div>
        <div data-testid="text-governed-ai-connection" className="mt-5 rounded-lg border border-[#607500]/25 bg-white/45 p-4 md:p-5">
          <p className="text-[12px] font-semibold leading-5">You just experienced governed AI in this tool. An AI proposed evidence classifications. You decided which to accept. That interaction is the future of financial advising: AI accelerates the analysis, the advisor makes the judgment call. The Gallup data confirms what you already felt: 79% of Americans trust advisors. 3% trust AI. The advisor who can work with AI and govern its output has the most defensible position in the industry.</p>
+         <ClaimCitation claimId="advisor-trust-statistics" />
+         <ClaimCitation claimId="advisor-trust-statistics" />
        </div>
         <div className="mt-5 grid gap-3 border-t border-[#607500]/25 pt-5 md:grid-cols-2">
           <div className="rounded-lg border border-[#607500]/25 bg-white/35 p-4"><div className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#607500]">Traditional screening</div><p className="mt-2 text-[13px] font-semibold leading-5">Reads corporate disclosures, assigns a rating, and treats the reported record as the decision surface.</p></div>
@@ -371,4 +356,5 @@ export function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => vo
     </div>
   );
 }
+
 

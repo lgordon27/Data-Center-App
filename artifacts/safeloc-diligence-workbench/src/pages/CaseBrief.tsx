@@ -29,6 +29,7 @@ import {
   FEMA_NRI_ATTRIBUTION,
   getTopFemaHazards,
 } from "@/data/femaNRI";
+import { ClaimCitation } from "@/components/ClaimCitation";
 
 function ScopeLimitationsDisclosure() {
   return (
@@ -106,6 +107,7 @@ export function CaseBrief({ onNavigate }: { onNavigate: (screen: Screen) => void
                 <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#b9d43a]">Case brief / STARGATE-ABI-26</div>
                 <h2 className="mt-5 max-w-lg text-[30px] font-semibold leading-[1.06] tracking-[-0.04em] md:text-[39px]">Stargate<br /><span className="text-[#b9d43a]">Abilene</span></h2>
                 <p className="mt-4 max-w-xl text-[11px] leading-5 text-[#c4d0d6]">OpenAI · Oracle · Crusoe Energy<br />Part of the $500 billion Stargate initiative backed by OpenAI, SoftBank, Oracle, and MGX.</p>
+                <ClaimCitation claimId="stargate-initiative" dark />
               </div>
               <div className="hidden rounded-md border border-white/15 px-3 py-2 text-right sm:block">
                 <div className="text-[9px] uppercase tracking-[0.14em] text-[#a0b0b8]">Stage</div>
@@ -124,6 +126,7 @@ export function CaseBrief({ onNavigate }: { onNavigate: (screen: Screen) => void
           <SectionKicker>Investment thesis</SectionKicker>
           <h3 className="text-[21px] font-semibold leading-tight tracking-[-0.03em] text-[#122232]">Contracted AI demand meets physical infrastructure limits.</h3>
           <p className="mt-4 text-[12px] leading-5 text-[#63717a]">Public reporting ties the campus to more than 450,000 NVIDIA GB200 GPUs under a reported 15-year Oracle lease. The core tension is no longer hypothetical: an expansion was cancelled after grid delays, while winter storms exposed cooling-system fragility.</p>
+          <div className="flex flex-wrap gap-2"><ClaimCitation claimId="stargate-oracle-gpus" /><ClaimCitation claimId="stargate-cancellation" /><ClaimCitation claimId="stargate-cooling-damage" /></div>
           <div className="mt-6 space-y-3 border-t border-[#d9e0e4] pt-5">
             {[
               ["Catalyst", "Oracle-backed contracted GPU capacity supports a long-duration demand case."],
@@ -134,6 +137,8 @@ export function CaseBrief({ onNavigate }: { onNavigate: (screen: Screen) => void
               <div key={key} className="grid grid-cols-[76px_1fr] gap-3 text-[11px]"><span className="font-mono uppercase tracking-[0.1em] text-[#52616b]">{key}</span><span className="font-medium leading-4 text-[#344550]">{value}</span></div>
             ))}
           </div>
+          <ClaimCitation claimId="stargate-cancellation" />
+          <ClaimCitation claimId="unresolved-water" />
         </section>
       </div>
       <aside data-testid="brief-tier-2-callout" className="mt-5 border-l-2 border-[#255bb7] bg-[#eef2f1] px-4 py-4 md:px-5">
@@ -144,6 +149,7 @@ export function CaseBrief({ onNavigate }: { onNavigate: (screen: Screen) => void
         <p data-testid="brief-tier-2-qualifier" className="mt-2 max-w-5xl font-mono text-[9px] uppercase leading-4 tracking-[0.08em] text-[#60707d]">
           Project Kilby is public market context only — not facility-level Stargate evidence and not a synthetic transaction input.
         </p>
+        <div className="flex flex-wrap gap-2"><ClaimCitation claimId="abbott-data-center-audit" /><ClaimCitation claimId="stargate-cancellation" /></div>
       </aside>
       <section data-testid="ercot-queue-statistics" className="mt-5 rounded-xl border border-[#cbd8d4] bg-white p-5 md:p-6" aria-labelledby="ercot-queue-title">
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#e5eae8] pb-4">
@@ -176,6 +182,7 @@ export function CaseBrief({ onNavigate }: { onNavigate: (screen: Screen) => void
         <p data-testid="ercot-source-attribution" className="mt-4 font-mono text-[9px] leading-4 text-[#52616b]">
           Source: ERCOTQueue.com, updated {formatSourceTimestamp(ercotQueue.sourceUpdatedAt ?? undefined)}. Aggregate queue activity is market context, not a named Stargate or Oracle confirmation.
         </p>
+        <ClaimCitation claimId="ercot-market-pressure" />
       </section>
       <section data-testid="card-fema-climate-risk" className="mt-5 rounded-xl border border-[#cbd8d4] bg-white p-5 md:p-6" aria-labelledby="fema-climate-risk-title">
         <div className="flex flex-col justify-between gap-3 border-b border-[#e5eae8] pb-4 sm:flex-row sm:items-start">
@@ -205,12 +212,13 @@ export function CaseBrief({ onNavigate }: { onNavigate: (screen: Screen) => void
           </div>
         </div>
         <p className="mt-3 text-[10px] leading-4 text-[#60707d]">FEMA county measurements are public evidence. They do not replace SafeLoc’s separate synthetic transaction economics or CRVA/model assumptions.</p>
+        <ClaimCitation claimId="fema-taylor-county" />
       </section>
       <div className="mt-5 grid gap-3 md:grid-cols-2">
         <Disclosure title="Public-site context · Taylor County buildout" testId="disclosure-public-site-context">
           <div className="flex gap-3">
             <div className="mt-0.5 rounded bg-[#f5ddd5] p-2 text-[#ba2f45]"><MapPin className="h-4 w-4" /></div>
-            <div><p className="text-[11px] leading-5 text-[#6b7882]">The campus sits outside Abilene. Public reporting describes two buildings and roughly 0.3 GW operational since September 2025, with the eight-building core targeting approximately 1.2 GW.</p><div data-testid="text-climate-methodology" className="mt-3 border-t border-[#e5eae8] pt-2 font-mono text-[9px] leading-4 text-[#52616b]">Climate risk methodology: ISO 14091 CRVA framework</div></div>
+            <div><p className="text-[11px] leading-5 text-[#6b7882]">The campus sits outside Abilene. Public reporting describes two buildings and roughly 0.3 GW operational since September 2025, with the eight-building core targeting approximately 1.2 GW.</p><ClaimCitation claimId="stargate-campus" /><div data-testid="text-climate-methodology" className="mt-3 border-t border-[#e5eae8] pt-2 font-mono text-[9px] leading-4 text-[#52616b]">Climate risk methodology: ISO 14091 CRVA framework</div></div>
           </div>
         </Disclosure>
         <Disclosure title="Transmission corridor · power mix" testId="disclosure-transmission-corridor">
@@ -218,6 +226,7 @@ export function CaseBrief({ onNavigate }: { onNavigate: (screen: Screen) => void
             <Zap className="h-4 w-4 text-[#a65a00]" /><span className="font-mono text-sm font-bold">On-site gas + ERCOT grid</span>
           </div>
           <p className="mt-2 text-[11px] leading-5 text-[#6b7882]">The power mix combines on-site natural-gas generation with ERCOT supply, including locally referenced wind. The delivered renewable percentage is not publicly verified.</p>
+          <ClaimCitation claimId="stargate-campus" />
         </Disclosure>
         <div className="rounded-xl bg-[#d4e86b] p-5 text-[#1c2a16]">
           <div className="flex items-center justify-between"><SectionKicker tone="lime">The governing question</SectionKicker><Target className="h-5 w-5 opacity-60" /></div>
@@ -247,6 +256,8 @@ export function CaseBrief({ onNavigate }: { onNavigate: (screen: Screen) => void
         ))}
       </div>
       </section>
+      <ClaimCitation claimId="stargate-cancellation" />
+      <ClaimCitation claimId="stargate-cooling-damage" />
       <div className="mt-5 rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-6">
         <div className="flex items-end justify-between border-b border-[#e5eae8] pb-4">
           <div>
@@ -269,6 +280,7 @@ export function CaseBrief({ onNavigate }: { onNavigate: (screen: Screen) => void
             </div>
           ))}
         </div>
+        <ClaimCitation claimId="synthetic-transaction" />
       </div>
       <BottomNav screen="brief" onNavigate={onNavigate} />
     </div>

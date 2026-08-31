@@ -24,7 +24,7 @@ export const CUSTOM_EVIDENCE_IDS = [
 
 export type CustomEvidenceRecord = Pick<
   EvidenceItem,
-  "id" | "label" | "value" | "unit" | "classification" | "citation" | "description" | "sourceRole" | "sourceUrl"
+  "id" | "label" | "value" | "unit" | "classification" | "citation" | "description" | "sourceRole" | "sourceUrl" | "sourceTitle" | "sourcePublisher" | "sourcePublishedAt" | "sourceAccessedAt" | "sourceAccessStatus"
 > & {
   numericValue?: number;
   qualitativeValue?: EvidenceItem["qualitativeValue"];
@@ -59,6 +59,19 @@ function safePublicSourceUrl(value: unknown): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+function optionalString(value: unknown): string | undefined {
+  return isNonEmptyString(value) ? value.trim() : undefined;
+}
+
+function optionalDate(value: unknown): string | null | undefined {
+  if (value === null) return null;
+  if (!isNonEmptyString(value)) return undefined;
+  const date = value.trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(Date.parse(`${date}T00:00:00.000Z`))
+    ? date
+    : undefined;
 }
 
 const VALID_CLASSIFICATIONS: Classification[] = [
@@ -109,6 +122,10 @@ function parseResponse(value: unknown): CustomResearchResponse {
     if (candidate.numericValue !== undefined && (typeof candidate.numericValue !== "number" || !Number.isFinite(candidate.numericValue))) {
       throw new Error("Project research returned an invalid numeric evidence value.");
     }
+    const sourceUrl = safePublicSourceUrl(candidate.sourceUrl);
+    const accessStatus = ["open", "paywall", "registration", "not provided"].includes(String(candidate.sourceAccessStatus))
+      ? candidate.sourceAccessStatus as EvidenceItem["sourceAccessStatus"]
+      : undefined;
     return {
       id,
       label: candidate.label as string,
@@ -118,7 +135,14 @@ function parseResponse(value: unknown): CustomResearchResponse {
       citation: candidate.citation as string,
       description: candidate.description as string,
       sourceRole: candidate.sourceRole as string,
-      ...(safePublicSourceUrl(candidate.sourceUrl) ? { sourceUrl: safePublicSourceUrl(candidate.sourceUrl) } : {}),
+      ...(sourceUrl ? {
+        sourceUrl,
+        sourceTitle: optionalString(candidate.sourceTitle),
+        sourcePublisher: optionalString(candidate.sourcePublisher),
+        sourcePublishedAt: optionalDate(candidate.sourcePublishedAt),
+        sourceAccessedAt: optionalDate(candidate.sourceAccessedAt),
+        sourceAccessStatus: accessStatus ?? "not provided",
+      } : {}),
       ...(candidate.numericValue === undefined ? {} : { numericValue: candidate.numericValue as number }),
       ...(candidate.qualitativeValue === undefined ? {} : { qualitativeValue: candidate.qualitativeValue as EvidenceItem["qualitativeValue"] }),
     };

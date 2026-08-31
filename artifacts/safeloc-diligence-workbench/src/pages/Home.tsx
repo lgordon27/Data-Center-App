@@ -33,6 +33,7 @@ import {
   type CompanyKey,
   type CompanyProject,
 } from "@/data/companyExposure";
+import { ClaimCitation } from "@/components/ClaimCitation";
 
 type HomeRoute = "advisor" | "directory" | "how-it-works" | "value-chain";
 
@@ -415,6 +416,7 @@ function CompanyExposure({
             <h2 id="company-exposure-heading" className="mt-2 text-[32px] font-semibold leading-none tracking-[-0.05em] md:text-[46px]">{profile.displayName} AI Infrastructure Exposure</h2>
             <p className="mt-3 max-w-2xl text-[12px] leading-5 text-[#52616b]">{profile.headline}. The projects below show public market-context connections and discovery metadata—not proof that {profile.displayName} owns or controls a facility.</p>
            <p data-testid="company-connection-note" className="mt-3 max-w-2xl text-[11px] font-semibold leading-5 text-[#314207]">Connection types indicate the nature of the relationship, not the magnitude of financial exposure.</p>
+           <div className="flex flex-wrap gap-2">{profile.claimIds.map((claimId) => <ClaimCitation key={claimId} claimId={claimId} />)}</div>
           </div>
           <div data-testid="company-fund-context" className="max-w-xs rounded-lg border border-[#cbb7ec] bg-[#eee7fa] p-4 text-[10px] leading-4 text-[#482873]">
             <div className="font-mono text-[8px] font-bold uppercase tracking-[0.12em]">Held in:</div>
@@ -791,6 +793,7 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
                 <div data-testid="home-supporting-lines" className="mt-7 max-w-2xl space-y-2 text-[14px] leading-6 text-[#c4d0d6] md:text-[16px]">
                   <p data-testid="home-context-sentence">$725 billion is being invested in AI infrastructure this year. $130 billion has already stalled.</p>
                   <p>Projects that solved their constraints are proceeding. Projects that didn&apos;t are stuck. The evidence determines which is which.</p>
+                  <div className="flex flex-wrap gap-2"><ClaimCitation claimId="stargate-initiative" dark /><ClaimCitation claimId="stargate-cancellation" dark /></div>
                 </div>
 
                  <div data-testid="home-analysis-choice" className="mt-8 rounded-xl border border-white/15 bg-[#102b3b]/90 p-4 shadow-2xl shadow-black/20 sm:p-5">
@@ -829,6 +832,7 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
               </div>
               <p data-testid="home-bifurcation-direction" className="mt-4 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-[#d4e86b]">Analyze any project to see which tier it falls in.</p>
               <p data-testid="home-bifurcation-qualifier" className="mt-3 font-mono text-[9px] uppercase leading-4 tracking-[0.08em] text-[#8299a5]">Public market context/examples — not facility-level Stargate evidence or synthetic financial inputs.</p>
+              <div className="flex flex-wrap gap-2"><ClaimCitation claimId="stargate-cancellation" dark /><ClaimCitation claimId="abbott-data-center-audit" dark /></div>
             </section>
           </div>
         </section>

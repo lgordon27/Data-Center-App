@@ -1,5 +1,6 @@
 export declare const AI_EVIDENCE_TEMPORAL_CONFIG: {
   readonly cutoffDate: string;
+  readonly reviewWindowDays: number;
   readonly validReportingYears: readonly number[];
   readonly temporalRecord: readonly string[];
 };

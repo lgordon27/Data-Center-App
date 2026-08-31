@@ -53,6 +53,8 @@ import {
 import type {
   Screen
 } from "@/components/Shell";
+import { ClaimCitation } from "@/components/ClaimCitation";
+import { formatClaimDate } from "@/data/claimSources";
 
 type AssessmentNotice = "accepted" | "overridden";
 
@@ -191,9 +193,12 @@ function EvidenceRow({
            <span>
              {item.citation}
              <span className="mt-1 block text-[9px] uppercase tracking-[0.08em] text-[#7d898f]">Role: {item.sourceRole}{source ? ` · ${source.fullName}` : " · Embedded case record"}{providerSource ? ` · Provider-ready: ${providerSource.shortName}` : ""}</span>
-             {project.kind === "custom" && (
+              {project.kind === "curated" && item.claimIds.map((claimId) => (
+                <ClaimCitation key={claimId} claimId={claimId} />
+              ))}
+              {project.kind === "custom" && (
                item.sourceUrl ? (
-                 <span className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 normal-case tracking-normal">
+                  <span className="mt-2 block normal-case tracking-normal">
                    <a
                      data-testid={`link-custom-source-${item.id}`}
                      href={item.sourceUrl}
@@ -201,10 +206,16 @@ function EvidenceRow({
                      rel="noopener noreferrer"
                      className="inline-flex items-center gap-1 font-semibold text-[#255bb7] underline decoration-[#8dc8e8] underline-offset-2 hover:text-[#122232]"
                    >
-                     Open cited public source
+                      Open {item.sourceTitle ?? "cited public source"}
                      <ExternalLink aria-hidden="true" className="h-3 w-3" />
                    </a>
-                   <span data-testid={`custom-source-context-${item.id}`} className="font-mono text-[8px] uppercase tracking-[0.08em] text-[#7d898f]">Context only · not facility-level proof</span>
+                    <dl data-testid={`custom-source-metadata-${item.id}`} className="mt-2 grid gap-1 font-mono text-[8px] text-[#60707d] sm:grid-cols-2">
+                      <div><dt className="inline font-bold">Publisher: </dt><dd className="inline">{item.sourcePublisher ?? "not provided"}</dd></div>
+                      <div><dt className="inline font-bold">Published: </dt><dd className="inline">{formatClaimDate(item.sourcePublishedAt ?? null)}</dd></div>
+                      <div><dt className="inline font-bold">Last accessed: </dt><dd className="inline">{formatClaimDate(item.sourceAccessedAt ?? null)}</dd></div>
+                      <div><dt className="inline font-bold">Access: </dt><dd className="inline">{item.sourceAccessStatus ?? "not provided"}</dd></div>
+                    </dl>
+                    <span data-testid={`custom-source-context-${item.id}`} className="mt-2 block font-mono text-[8px] uppercase tracking-[0.08em] text-[#7d898f]">Context only · not facility-level proof</span>
                  </span>
                ) : (
                  <span data-testid={`custom-source-missing-${item.id}`} className="mt-2 block font-mono text-[8px] uppercase tracking-[0.08em] text-[#a65a00]">No validated direct source link returned · citation is research context only</span>

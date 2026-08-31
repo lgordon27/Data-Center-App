@@ -1,5 +1,6 @@
 const AI_EVIDENCE_TEMPORAL_CONFIG = Object.freeze({
   cutoffDate: "2026-08-30",
+  reviewWindowDays: 30,
   validReportingYears: Object.freeze([2025, 2026]),
   temporalRecord: Object.freeze([
     "2026 Epoch AI, WinBuzzer, and SiliconReport reporting that the planned Stargate Abilene expansion was cancelled after grid-interconnection delays exceeded 12 months",

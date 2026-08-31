@@ -13,7 +13,14 @@ const response = {
     citation: "Public source searched.",
     description: "Not established at facility level.",
     sourceRole: "AI-researched",
-    ...(id === CUSTOM_EVIDENCE_IDS[0] ? { sourceUrl: "https://example.com/atlas/source" } : {}),
+    ...(id === CUSTOM_EVIDENCE_IDS[0] ? {
+      sourceUrl: "https://example.com/atlas/source",
+      sourceTitle: "Atlas filing",
+      sourcePublisher: "example.com",
+      sourcePublishedAt: "2026-06-01",
+      sourceAccessedAt: "2026-08-30",
+      sourceAccessStatus: "not provided",
+    } : {}),
   })),
 };
 
@@ -28,6 +35,9 @@ test("rejects custom responses with a missing modeled item", () => {
 test("keeps only safe direct source links from custom responses", () => {
   const parsed = parseResponse(response);
   assert.equal(parsed.evidence[0].sourceUrl, "https://example.com/atlas/source");
+  assert.equal(parsed.evidence[0].sourceTitle, "Atlas filing");
+  assert.equal(parsed.evidence[0].sourcePublishedAt, "2026-06-01");
+  assert.equal(parsed.evidence[0].sourceAccessStatus, "not provided");
 
   const unsafe = {
     ...response,

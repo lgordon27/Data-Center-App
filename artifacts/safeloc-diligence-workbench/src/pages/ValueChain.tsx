@@ -14,6 +14,7 @@ import {
   Network,
   Droplets
 } from "lucide-react";
+import { ClaimCitation } from "@/components/ClaimCitation";
 
 
 
@@ -79,6 +80,7 @@ export function ValueChain({ onWorkbench }: { onWorkbench: () => void }) {
                   <div className={`mt-4 border-t pt-3 ${isFocal ? "border-[#75851e]/40" : "border-white/15"}`}>
                     <div className={`font-mono text-[8px] font-bold uppercase tracking-[0.16em] ${isFocal ? "text-[#4d6200]" : accent.label}`}>Why evidence matters here</div>
                     <p className={`mt-1.5 text-[10px] leading-4 ${isFocal ? "text-[#263416]" : "text-[#c4d0d6]"}`}>{stage.evidence}</p>
+                    {stage.claimIds.map((claimId) => <ClaimCitation key={claimId} claimId={claimId} dark={!isFocal} />)}
                   </div>
                   {isFocal && <div className="mt-5 flex items-center gap-2 border-t border-[#75851e]/40 pt-4 font-mono text-[10px] font-bold uppercase tracking-[0.08em] text-[#ba2f45]"><Droplets className="h-3.5 w-3.5" /> Power · water · land · grid · community</div>}
                   </div>
@@ -92,6 +94,7 @@ export function ValueChain({ onWorkbench }: { onWorkbench: () => void }) {
             <div className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#f5ddd5]">The pause signal</div>
             <div className="mt-2 text-[22px] font-semibold tracking-[-0.04em] text-white">$130 billion in projects paused in Q1 2026.</div>
             <p className="mt-2 text-[10px] leading-4 text-[#e5c6c7]">Capital is meeting physical constraints before it reaches the model or application layer.</p>
+            <ClaimCitation claimId="stargate-cancellation" dark />
           </div>
         </div>
       </section>

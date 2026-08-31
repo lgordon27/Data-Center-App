@@ -22,6 +22,7 @@ import {
   Target,
   Zap
 } from "lucide-react";
+import { ClaimCitation } from "@/components/ClaimCitation";
 
 
 type HowItWorksProps = {
@@ -105,6 +106,7 @@ export function HowItWorks({ onReturn, onOpenScreen }: HowItWorksProps) {
                 </h1>
                 <div data-testid="tour-sri-context" className="mt-7 max-w-3xl text-[15px] leading-7 text-[#d1dbe0] md:text-[17px] md:leading-8">
                   <p>Responsible investors helped capitalize the AI revolution; now its physical infrastructure is testing environmental stewardship, community impact, transparent governance, and evidence-based decision-making. With $130 billion in AI projects blocked or delayed in Q1 2026 and Texas pausing new grid connections for an energy and water audit, this tour asks whether the forward-looking assumptions behind a specific project are actually verified.</p>
+                  <div className="flex flex-wrap gap-2"><ClaimCitation claimId="stargate-cancellation" dark /><ClaimCitation claimId="abbott-data-center-audit" dark /></div>
                   <p data-testid="tour-bifurcation-context" className="mt-4">The market is bifurcating between projects that solved their constraints independently and projects still waiting on public infrastructure. This tool tests which side a specific project falls on.</p>
                 </div>
                 <div className="mt-8 flex flex-wrap items-center gap-4">
@@ -158,6 +160,7 @@ export function HowItWorks({ onReturn, onOpenScreen }: HowItWorksProps) {
                   <div className="font-mono text-[22px] font-bold tracking-[-0.05em] text-[#122232]">{milestone.signal}</div>
                   <h3 className="mt-2 text-[14px] font-semibold leading-5 text-[#243844]">{milestone.title}</h3>
                   <p className="mt-3 text-[11px] leading-5 text-[#52616b]">{milestone.detail}</p>
+                  {milestone.claimIds.map((claimId) => <ClaimCitation key={claimId} claimId={claimId} />)}
                 </li>
               ))}
             </ol>
@@ -272,7 +275,8 @@ export function HowItWorks({ onReturn, onOpenScreen }: HowItWorksProps) {
              <section data-testid="tour-data-sources" aria-labelledby="tour-data-sources-title" className="mt-8 rounded-xl border-2 border-[#122232] bg-[#122232] p-5 text-white md:p-6">
                <div className="flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#d4e86b]"><Gauge aria-hidden="true" className="h-4 w-4" /> Data Sources</div>
                <h3 id="tour-data-sources-title" className="mt-3 text-[24px] font-semibold tracking-[-0.035em]">Provider identity and freshness stay visible.</h3>
-                <p className="mt-3 max-w-3xl text-[12px] leading-5 text-[#c4d0d6]">{SOURCE_FALLBACK_EXPLANATION} The Home directory uses <a href="https://compute-atlas.com" target="_blank" rel="noreferrer" className="text-[#d4e86b] underline underline-offset-2">Compute Atlas</a> public facility metadata under CC BY 4.0; it is discovery context, not facility-level proof or a modeled financial input.</p>
+                <p className="mt-3 max-w-3xl text-[12px] leading-5 text-[#c4d0d6]">{SOURCE_FALLBACK_EXPLANATION} The Home directory uses Compute Atlas public facility metadata under CC BY 4.0; it is discovery context, not facility-level proof or a modeled financial input.</p>
+                <div className="flex flex-wrap gap-2"><ClaimCitation claimId="ercot-market-pressure" dark /><ClaimCitation claimId="eia-texas-electricity" dark /><ClaimCitation claimId="fema-taylor-county" dark /></div>
                <div className="mt-5 grid gap-3 sm:grid-cols-2">
                  {[
                     ["ERCOTQueue.com", "Grid interconnection queue and timing context; live or cached when provider metadata is available."],
@@ -291,6 +295,7 @@ export function HowItWorks({ onReturn, onOpenScreen }: HowItWorksProps) {
               <aside className="rounded-xl border-2 border-[#f1cb8b] bg-[#fff8e9] p-5">
                 <div className="flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#a65a00]"><Landmark aria-hidden="true" className="h-4 w-4" /> Methodology note</div>
                 <p className="mt-3 text-[13px] font-semibold leading-6 text-[#6f460e]">Transaction assumptions are synthetic. Environmental and infrastructure data are from public records.</p>
+                <ClaimCitation claimId="synthetic-transaction" />
               </aside>
               <aside className="rounded-xl border border-[#cbd8d4] bg-[#eef2f1] p-5">
                 <div className="flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#255bb7]"><Gauge aria-hidden="true" className="h-4 w-4" /> How to read the boundary</div>

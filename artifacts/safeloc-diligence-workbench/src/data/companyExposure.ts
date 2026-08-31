@@ -1,4 +1,5 @@
 import type { DirectoryFacility } from "@/services/directoryService";
+import type { ClaimId } from "@/data/claimSources";
 
 export type CompanyKey = "NVIDIA" | "Microsoft" | "Meta" | "Google" | "Oracle" | "Amazon";
 
@@ -21,6 +22,7 @@ export type CompanyProfile = {
   funds: string[];
   marketFunds: string[];
   accent: "lime" | "blue" | "coral" | "violet" | "sky" | "gold";
+  claimIds: ClaimId[];
 };
 
 export type CompanyProject = {
@@ -48,6 +50,7 @@ export const COMPANY_PROFILES: CompanyProfile[] = [
     funds: ["iShares ESG Advanced MSCI USA ETF", "MSCI KLD 400 Social Index"],
     marketFunds: ["QQQ", "SMH"],
     accent: "lime",
+    claimIds: ["fund-usxf", "fund-kld400"],
   },
   {
     key: "Microsoft",
@@ -58,6 +61,7 @@ export const COMPANY_PROFILES: CompanyProfile[] = [
     funds: ["iShares ESG Advanced MSCI USA ETF", "MSCI KLD 400 Social Index"],
     marketFunds: ["QQQ", "XLK"],
     accent: "blue",
+    claimIds: ["stargate-initiative"],
   },
   {
     key: "Meta",
@@ -68,6 +72,7 @@ export const COMPANY_PROFILES: CompanyProfile[] = [
     funds: ["iShares ESG Advanced MSCI USA ETF", "MSCI KLD 400 Social Index"],
     marketFunds: ["QQQ", "XLC"],
     accent: "coral",
+    claimIds: ["abbott-data-center-audit"],
   },
   {
     key: "Google",
@@ -78,6 +83,7 @@ export const COMPANY_PROFILES: CompanyProfile[] = [
     funds: ["iShares ESG Advanced MSCI USA ETF", "MSCI KLD 400 Social Index"],
     marketFunds: ["QQQ", "XLK"],
     accent: "violet",
+    claimIds: ["abbott-data-center-audit"],
   },
   {
     key: "Oracle",
@@ -88,6 +94,7 @@ export const COMPANY_PROFILES: CompanyProfile[] = [
     funds: ["iShares ESG Advanced MSCI USA ETF", "MSCI KLD 400 Social Index"],
     marketFunds: ["QQQ", "XLK"],
     accent: "sky",
+    claimIds: ["stargate-oracle-gpus"],
   },
   {
     key: "Amazon",
@@ -98,6 +105,7 @@ export const COMPANY_PROFILES: CompanyProfile[] = [
     funds: ["iShares ESG Advanced MSCI USA ETF", "MSCI KLD 400 Social Index"],
     marketFunds: ["QQQ", "XLY"],
     accent: "gold",
+    claimIds: [],
   },
 ];
 

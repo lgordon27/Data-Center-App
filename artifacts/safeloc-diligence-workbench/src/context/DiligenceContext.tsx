@@ -34,6 +34,7 @@ import {
   CUSTOM_EVIDENCE_IDS,
   type CustomResearchResponse,
 } from "@/services/researchProjectService";
+import type { ClaimId, PublicAccessStatus } from "@/data/claimSources";
 
 export type { Classification } from '@/model/cashFlowEngine';
 
@@ -47,9 +48,15 @@ export type EvidenceItem = {
   citation: string;
   description: string;
   sourceUrl?: string;
+  sourceTitle?: string;
+  sourcePublisher?: string;
+  sourcePublishedAt?: string | null;
+  sourceAccessedAt?: string | null;
+  sourceAccessStatus?: PublicAccessStatus;
   sourceId: SourceId | null;
   providerSourceId: SourceId | null;
   sourceRole: string;
+  claimIds: ClaimId[];
   numericValue?: number;
   qualitativeValue?: QualitativeEvidenceValue;
 };
@@ -95,18 +102,18 @@ export const CURRENT_SESSION_STORAGE_KEY = 'safeloc:diligence:current-session:v1
 export const EVIDENCE_TIP_DISMISSED_STORAGE_KEY = 'safeloc:diligence:evidence-room-tip-dismissed:v1';
 export const CURRENT_PROVENANCE_VERSION = 2;
 export const INITIAL_EVIDENCE: Record<string, EvidenceItem> = {
-  electricity_cost: { id: 'electricity_cost', label: 'Electricity Cost / MWh', value: 42, numericValue: 42, unit: '$/MWh', classification: 'User Assumption', citation: 'U.S. Energy Information Administration Electric Power Monthly (2025); Oncor Electric Delivery Company tariff filings (2026)', description: 'Representative West Texas blended power rate selected for underwriting; it is a synthetic input anchored to public EIA and Oncor data, not a disclosed Stargate contract tariff.', sourceId: null, providerSourceId: 'eia', sourceRole: 'Synthetic electricity-cost assumption' },
-  water_consumption: { id: 'water_consumption', label: 'Annual Cooling Water', value: 'Not disclosed', numericValue: 23, unit: 'Facility total', classification: 'Missing Evidence', citation: 'City of Abilene water utility records (2025–2026) and Stargate/Crusoe project disclosures (2025–2026) searched; no facility-level annual total found', description: 'The dated municipal records and project disclosures searched do not establish Stargate Abilene facility-level water consumption.', sourceId: null, providerSourceId: null, sourceRole: 'Searched public records and project disclosures' },
-  grid_interconnection: { id: 'grid_interconnection', label: 'Grid Interconnection Timeline', value: 'Expansion cancelled; delays exceeded 12 months', numericValue: 14, unit: 'Verified event', classification: 'Verified Evidence', citation: 'Epoch AI (2026); WinBuzzer (2026); SiliconReport (2026) reporting on the Stargate Abilene expansion cancellation and grid delays', description: 'Independent 2026 reporting states that the planned expansion beyond the 1.2 GW core was cancelled after grid-interconnection delays exceeded one year.', sourceId: null, providerSourceId: 'ercot-queue', sourceRole: 'Independent 2026 public reporting' },
-  water_escalation: { id: 'water_escalation', label: '5-Yr Water Cost Escalation', value: 7, numericValue: 7, unit: '%', classification: 'Model Inference', citation: 'City of Abilene water-rate schedules (2022–2026); Taylor County public records (2025–2026); analyst trend inference', description: 'Representative five-year escalation inferred from local municipal water-rate history, not a disclosed Stargate contract rate or observed facility cost.', sourceId: null, providerSourceId: null, sourceRole: 'Analyst inference from dated public records' },
-  community_risk: { id: 'community_risk', label: 'Community Infrastructure Strain', value: 'Documented', unit: 'Local impact', classification: 'Verified Evidence', citation: `Texas Standard (2025); Abilene Reporter-News (2025); ${FEMA_NRI_ATTRIBUTION}, FIPS ${ACTIVE_FEMA_NRI_PROFILE.fips}`, description: `Independent local reporting documents pressure on housing, childcare, and roads as construction employment peaks near 6,400 while permanent jobs are expected in the low hundreds. Separate FEMA county context for ${ACTIVE_FEMA_NRI_PROFILE.county} (FIPS ${ACTIVE_FEMA_NRI_PROFILE.fips}): Social Vulnerability ${ACTIVE_FEMA_NRI_PROFILE.socialVulnerabilityScore.toFixed(2)}, ${ACTIVE_FEMA_NRI_PROFILE.socialVulnerabilityRating}; it is not treated as project-specific proof.`, sourceId: null, providerSourceId: null, sourceRole: 'Independent local reporting with separate FEMA county context' },
-  renewable_percentage: { id: 'renewable_percentage', label: 'Renewable Procurement', value: 'Local wind referenced; percentage unverified', numericValue: 25, unit: 'Power mix', classification: 'Management Assertion', citation: 'Lancium Abilene project announcement (2025); Crusoe Stargate Abilene public statement (2025); ERCOT generation context (2025)', description: 'Company statements reference local wind in the campus power story, but the renewable share delivered to Stargate is not independently verified or publicly quantified.', sourceId: null, providerSourceId: null, sourceRole: 'Dated company disclosures with unverified facility share' },
-  cooling_capex: { id: 'cooling_capex', label: 'Cooling Infrastructure CAPEX', value: 450, numericValue: 450, unit: '$M', classification: 'User Assumption', citation: 'SiliconReport (2026) reporting on winter-storm cooling damage; synthetic analyst estimate scaled to the 1.2 GW model (2026)', description: 'Representative liquid-cooling and heat-rejection CAPEX selected by the analyst. The 2026 storm report is context for resilience risk, not evidence of Stargate CAPEX or a disclosed project cost.', sourceId: null, providerSourceId: null, sourceRole: 'Synthetic underwriting input' },
-  electricity_escalation: { id: 'electricity_escalation', label: '5-Yr Electricity Price Increase', value: 6, numericValue: 6, unit: '%', classification: 'Model Inference', citation: 'ERCOT 2025 State of the Market Report; BloombergNEF Texas power-market reporting (2026); analyst trend inference', description: 'Representative West Texas power-cost escalation inferred from public ERCOT and market conditions; it is not an observed Stargate tariff or project fact.', sourceId: null, providerSourceId: 'eia', sourceRole: 'Analyst inference from public market context' },
-  carbon_compliance: { id: 'carbon_compliance', label: 'Carbon Compliance Cost', value: 20, numericValue: 20, unit: '$M/yr', classification: 'Model Inference', citation: 'ERCOT 2025 State of the Market Report; U.S. EPA eGRID (2025); analyst emissions-cost inference (2026)', description: 'Synthetic annual allowance inferred from public grid-intensity and on-site natural-gas context for the modeled campus scale; it is not a reported Stargate charge.', sourceId: null, providerSourceId: null, sourceRole: 'Analyst inference from public energy data' },
-  permitting_timeline: { id: 'permitting_timeline', label: 'Core Build Timeline', value: 'Eight-building core targeted for completion in 2026–2027', numericValue: 10, unit: 'Management schedule', classification: 'Management Assertion', citation: 'OpenAI Stargate announcement (2025); Oracle Stargate announcement (2025); Abilene Reporter-News project update (2026)', description: 'Company announcements targeted the eight-building core for 2026, while a later local update described construction continuing into 2027; the schedule remains a management-reported target.', sourceId: null, providerSourceId: null, sourceRole: 'Dated company announcements and local project reporting' },
-  customer_concentration: { id: 'customer_concentration', label: 'Customer Terms & Concentration', value: 100, numericValue: 100, unit: '% concentrated', classification: 'Management Assertion', citation: 'Oracle Corporation Form 10-K for fiscal year 2025; OpenAI/Oracle Stargate announcement (2025); Crusoe Stargate project disclosure (2025)', description: 'Company filings and disclosures report an Oracle lease and a concentrated Stargate customer relationship, but the modeled 100% concentration and reported 15-year, 450,000-plus-GPU terms are not independently verified facility economics.', sourceId: null, providerSourceId: null, sourceRole: 'Dated company filings and disclosures' },
-  water_rights: { id: 'water_rights', label: 'Local Water Rights & Allocation', value: 'Not disclosed', unit: 'Taylor County facility', classification: 'Missing Evidence', citation: 'Taylor County public records (2025–2026), City of Abilene water utility records (2025–2026), and Stargate/Crusoe disclosures (2025–2026) searched; no facility-level rights, allocation, or curtailment terms found', description: 'The dated county records, municipal records, and project disclosures searched do not establish Stargate water rights, allocation seniority, or drought curtailment protection.', sourceId: null, providerSourceId: null, sourceRole: 'Searched public records and project disclosures' },
+  electricity_cost: { id: 'electricity_cost', label: 'Electricity Cost / MWh', value: 42, numericValue: 42, unit: '$/MWh', classification: 'User Assumption', citation: 'Synthetic analyst-selected electricity-cost input (2026); public market context does not establish a Stargate contract tariff', description: 'Representative West Texas blended power rate selected for underwriting; it is a synthetic input anchored to public EIA and Oncor data, not a disclosed Stargate contract tariff.', sourceId: null, providerSourceId: 'eia', sourceRole: 'Synthetic electricity-cost assumption', claimIds: ['synthetic-transaction'] },
+  water_consumption: { id: 'water_consumption', label: 'Annual Cooling Water', value: 'Not disclosed', numericValue: 23, unit: 'Facility total', classification: 'Missing Evidence', citation: 'City of Abilene water utility records (2025–2026) and Stargate/Crusoe project disclosures (2025–2026) searched; no facility-level annual total found', description: 'The dated municipal records and project disclosures searched do not establish Stargate Abilene facility-level water consumption.', sourceId: null, providerSourceId: null, sourceRole: 'Searched public records and project disclosures', claimIds: ['unresolved-water'] },
+  grid_interconnection: { id: 'grid_interconnection', label: 'Grid Interconnection Timeline', value: 'Expansion cancelled; delays exceeded 12 months', numericValue: 14, unit: 'Verified event', classification: 'Verified Evidence', citation: 'Epoch AI (2026), SiliconReport (2026), Data Center Dynamics (2026), and WinBuzzer (2026) reporting on the Stargate Abilene expansion cancellation and grid delays', description: 'Independent 2026 reporting states that the planned expansion beyond the 1.2 GW core was cancelled after grid-interconnection delays exceeded one year.', sourceId: null, providerSourceId: 'ercot-queue', sourceRole: 'Independent 2026 public reporting', claimIds: ['stargate-cancellation'] },
+  water_escalation: { id: 'water_escalation', label: '5-Yr Water Cost Escalation', value: 7, numericValue: 7, unit: '%', classification: 'Model Inference', citation: 'Analyst inference from reviewed municipal context (2022–2026); no project rate is cited', description: 'Representative five-year escalation inferred from local municipal water-rate history, not a disclosed Stargate contract rate or observed facility cost.', sourceId: null, providerSourceId: null, sourceRole: 'Analyst inference from dated public records', claimIds: ['analyst-inference'] },
+  community_risk: { id: 'community_risk', label: 'Community Infrastructure Strain', value: 'Documented', unit: 'Local impact', classification: 'Verified Evidence', citation: `Local reporting (2025) with separate ${FEMA_NRI_ATTRIBUTION}, FIPS ${ACTIVE_FEMA_NRI_PROFILE.fips}`, description: `Independent local reporting documents pressure on housing, childcare, and roads as construction employment peaks near 6,400 while permanent jobs are expected in the low hundreds. Separate FEMA county context for ${ACTIVE_FEMA_NRI_PROFILE.county} (FIPS ${ACTIVE_FEMA_NRI_PROFILE.fips}): Social Vulnerability ${ACTIVE_FEMA_NRI_PROFILE.socialVulnerabilityScore.toFixed(2)}, ${ACTIVE_FEMA_NRI_PROFILE.socialVulnerabilityRating}; it is not treated as project-specific proof.`, sourceId: null, providerSourceId: null, sourceRole: 'Independent local reporting with separate FEMA county context', claimIds: ['fema-taylor-county'] },
+  renewable_percentage: { id: 'renewable_percentage', label: 'Renewable Procurement', value: 'Local wind referenced; percentage unverified', numericValue: 25, unit: 'Power mix', classification: 'Management Assertion', citation: 'OpenAI and Crusoe Stargate program and Abilene company disclosures (2025); delivered renewable share remains unverified', description: 'Company statements reference local wind in the campus power story, but the renewable share delivered to Stargate is not independently verified or publicly quantified.', sourceId: null, providerSourceId: null, sourceRole: 'Dated company disclosures with unverified facility share', claimIds: ['stargate-campus'] },
+  cooling_capex: { id: 'cooling_capex', label: 'Cooling Infrastructure CAPEX', value: 450, numericValue: 450, unit: '$M', classification: 'User Assumption', citation: 'Synthetic analyst estimate scaled to the 1.2 GW model (2026); no public project CAPEX citation', description: 'Representative liquid-cooling and heat-rejection CAPEX selected by the analyst. The 2026 storm report is context for resilience risk, not evidence of Stargate CAPEX or a disclosed project cost.', sourceId: null, providerSourceId: null, sourceRole: 'Synthetic underwriting input', claimIds: ['synthetic-transaction'] },
+  electricity_escalation: { id: 'electricity_escalation', label: '5-Yr Electricity Price Increase', value: 6, numericValue: 6, unit: '%', classification: 'Model Inference', citation: 'Analyst trend inference from public Texas power-market context (2025–2026); no project tariff is cited', description: 'Representative West Texas power-cost escalation inferred from public ERCOT and market conditions; it is not an observed Stargate tariff or project fact.', sourceId: null, providerSourceId: 'eia', sourceRole: 'Analyst inference from public market context', claimIds: ['analyst-inference'] },
+  carbon_compliance: { id: 'carbon_compliance', label: 'Carbon Compliance Cost', value: 20, numericValue: 20, unit: '$M/yr', classification: 'Model Inference', citation: 'Analyst emissions-cost inference (2026); no reported Stargate charge is cited', description: 'Synthetic annual allowance inferred from public grid-intensity and on-site natural-gas context for the modeled campus scale; it is not a reported Stargate charge.', sourceId: null, providerSourceId: null, sourceRole: 'Analyst inference from public energy data', claimIds: ['analyst-inference'] },
+  permitting_timeline: { id: 'permitting_timeline', label: 'Core Build Timeline', value: 'Eight-building core targeted for completion in 2026–2027', numericValue: 10, unit: 'Management schedule', classification: 'Management Assertion', citation: 'OpenAI Stargate disclosure (2025) and independent campus reporting (2026)', description: 'Company announcements targeted the eight-building core for 2026, while a later local update described construction continuing into 2027; the schedule remains a management-reported target.', sourceId: null, providerSourceId: null, sourceRole: 'Dated company announcements and local project reporting', claimIds: ['stargate-campus'] },
+  customer_concentration: { id: 'customer_concentration', label: 'Customer Terms & Concentration', value: 100, numericValue: 100, unit: '% concentrated', classification: 'Management Assertion', citation: 'OpenAI Stargate disclosure (2025) and independent Abilene program reporting (2026)', description: 'Company filings and disclosures report an Oracle lease and a concentrated Stargate customer relationship, but the modeled 100% concentration and reported 15-year, 450,000-plus-GPU terms are not independently verified facility economics.', sourceId: null, providerSourceId: null, sourceRole: 'Dated company filings and disclosures', claimIds: ['stargate-oracle-gpus'] },
+  water_rights: { id: 'water_rights', label: 'Local Water Rights & Allocation', value: 'Not disclosed', unit: 'Taylor County facility', classification: 'Missing Evidence', citation: 'Taylor County public records (2025–2026), City of Abilene water utility records (2025–2026), and Stargate/Crusoe disclosures (2025–2026) searched; no facility-level rights, allocation, or curtailment terms found', description: 'The dated county records, municipal records, and project disclosures searched do not establish Stargate water rights, allocation seniority, or drought curtailment protection.', sourceId: null, providerSourceId: null, sourceRole: 'Searched public records and project disclosures', claimIds: ['unresolved-water'] },
   site_hazard_exposure: {
     id: 'site_hazard_exposure',
     label: 'Site Hazard Exposure Profile',
@@ -120,6 +127,7 @@ export const INITIAL_EVIDENCE: Record<string, EvidenceItem> = {
     sourceId: 'fema-nri',
     providerSourceId: null,
     sourceRole: 'Embedded FEMA county hazard profile',
+    claimIds: ['fema-taylor-county'],
   },
   backup_power_capacity: {
     id: 'backup_power_capacity',
@@ -133,6 +141,7 @@ export const INITIAL_EVIDENCE: Record<string, EvidenceItem> = {
     sourceId: null,
      providerSourceId: null,
      sourceRole: 'Dated company disclosures with independent context',
+      claimIds: ['stargate-campus'],
   },
   water_source_resilience: {
     id: 'water_source_resilience',
@@ -146,6 +155,7 @@ export const INITIAL_EVIDENCE: Record<string, EvidenceItem> = {
     sourceId: null,
     providerSourceId: null,
      sourceRole: 'Analyst inference from dated public records',
+      claimIds: ['analyst-inference'],
   },
   downtime_cost: {
     id: 'downtime_cost',
@@ -159,6 +169,7 @@ export const INITIAL_EVIDENCE: Record<string, EvidenceItem> = {
     sourceId: null,
     providerSourceId: null,
     sourceRole: 'Synthetic underwriting input',
+    claimIds: ['synthetic-transaction'],
   },
 };
 
@@ -309,6 +320,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
           sourceId: null,
           providerSourceId: null,
           sourceRole: `AI-researched · ${item?.sourceRole ?? "High-level public research"}`,
+          claimIds: [],
         }];
       }),
     ) as Record<string, EvidenceItem>;

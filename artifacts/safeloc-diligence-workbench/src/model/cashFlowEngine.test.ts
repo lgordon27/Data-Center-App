@@ -3,14 +3,12 @@ import test from "node:test";
 
 import { INITIAL_EVIDENCE } from "@/context/DiligenceContext";
 import {
-  BACKUP_POWER_CAPEX_BY_CLASSIFICATION,
   calculateCashFlowModel,
   CLIMATE_QUALITY_MULTIPLIERS,
   formatImpactDelta,
   MATERIAL_EVIDENCE_IDS,
   type Classification,
   type EvidenceRecord,
-  WATER_CONVERSION_CAPEX_BY_CLASSIFICATION,
 } from "./cashFlowEngine";
 
 const CLASSIFICATIONS: Classification[] = [
@@ -87,12 +85,12 @@ test("synthetic return calibration separates verified, default, and all-missing 
   assert.notEqual(verified.projectIRR, null);
   assert.notEqual(current.projectIRR, null);
   assert.notEqual(missing.projectIRR, null);
-  assert.ok(verified.projectIRR! >= 15 && verified.projectIRR! <= 16);
+  assert.ok(verified.projectIRR! >= 13 && verified.projectIRR! <= 14);
   assert.ok(current.projectIRR! >= 8 && current.projectIRR! <= 11);
   assert.ok(missing.projectIRR! < 0);
 
   const defaultSpread = verified.projectIRR! - current.projectIRR!;
-  assert.ok(defaultSpread >= 5 && defaultSpread <= 7);
+  assert.ok(defaultSpread >= 3 && defaultSpread <= 5);
   assert.equal(current.baseIRR, verified.projectIRR);
   assert.equal(missing.mechanicalDisclaimer, true);
 
@@ -223,63 +221,34 @@ test("climate disruption is annual OPEX and reduces NOI and terminal value once"
   );
 });
 
-test("backup power contingency follows its trigger and classification mapping", () => {
+test("backup power remains a decision gate without a cash-flow contingency", () => {
   const verified = allVerified();
-  assert.equal(calculateCashFlowModel(verified).assumptions.backupPowerCapex, 0);
+  const reference = calculateCashFlowModel(classify(verified, "grid_interconnection", "Management Assertion"));
 
   for (const classification of CLASSIFICATIONS) {
     let evidence = classify(verified, "grid_interconnection", "Management Assertion");
     evidence = classify(evidence, "backup_power_capacity", classification);
     const model = calculateCashFlowModel(evidence);
-    assert.equal(
-      model.assumptions.backupPowerCapex,
-      BACKUP_POWER_CAPEX_BY_CLASSIFICATION[classification],
-    );
-    assert.equal(model.schedule[5].backupPowerOpex, 2 * model.schedule[5].operatingUtilization);
+    assert.equal(model.assumptions.backupPowerCapex, 0);
+    assert.equal(model.schedule[5].backupPowerOpex, 0);
+    assert.equal(model.projectIRR, reference.projectIRR);
   }
-
-  const sufficientBackup = classify(
-    classify(verified, "grid_interconnection", "Management Assertion"),
-    "backup_power_capacity",
-    "Missing Evidence",
-  );
-  sufficientBackup.backup_power_capacity = {
-    ...sufficientBackup.backup_power_capacity,
-    numericValue: 96,
-    classification: "Verified Evidence",
-  };
-  assert.equal(calculateCashFlowModel(sufficientBackup).assumptions.backupPowerCapex, 0);
 });
 
-test("water conversion contingency and stressed-basin escalation follow their branches", () => {
+test("water access and resilience gates keep fixed economics while posture changes", () => {
   const verified = allVerified();
   const base = calculateCashFlowModel(verified);
   assert.equal(base.assumptions.waterSourceEscalationMultiplier, 1.5);
   assert.ok(Math.abs(base.assumptions.waterEscalationRate - 0.105) < 0.000001);
-  assert.equal(base.assumptions.waterConversionCapex, 0);
-
-  for (const classification of CLASSIFICATIONS.slice(1)) {
-    let evidence = classify(verified, "water_rights", "Management Assertion");
-    evidence = classify(evidence, "water_source_resilience", classification);
-    assert.equal(
-      calculateCashFlowModel(evidence).assumptions.waterConversionCapex,
-      WATER_CONVERSION_CAPEX_BY_CLASSIFICATION[classification],
-    );
+  assert.equal(base.assumptions.waterConversionCapex, 80);
+  assert.equal(base.assumptions.waterRightsCostMultiplier, 1.5);
+  for (const id of ["water_rights", "water_source_resilience"] as const) {
+    for (const classification of CLASSIFICATIONS) {
+      const model = calculateCashFlowModel(classify(verified, id, classification));
+      assert.equal(model.projectIRR, base.projectIRR);
+      assert.equal(model.assumptions.waterConversionCapex, 80);
+    }
   }
-
-  let protectedSource = classify(verified, "water_rights", "Verified Evidence");
-  protectedSource = classify(protectedSource, "water_source_resilience", "Missing Evidence");
-  assert.equal(calculateCashFlowModel(protectedSource).assumptions.waterConversionCapex, 0);
-
-  const diversifiedSource = allVerified();
-  diversifiedSource.water_source_resilience = {
-    ...diversifiedSource.water_source_resilience,
-    qualitativeValue: "diversified",
-  };
-  assert.equal(
-    calculateCashFlowModel(diversifiedSource).assumptions.waterSourceEscalationMultiplier,
-    1,
-  );
 });
 
 test("display copy changes do not change structured model outputs", () => {
@@ -367,21 +336,24 @@ test("the verified waterfall resets modeled classifications and reconciles to cu
   assert.equal(model.baseIRR, verified.projectIRR);
   assert.equal(model.baseModel?.assumptions.adjustedHazardProbability, 0.05);
   assert.equal(model.waterfall.at(-1)?.after, model.projectIRR);
-  assert.equal(hazardStep?.impactRole, "financial-effect");
+  assert.equal(model.waterfall.length, 10);
+  assert.ok(model.waterfall.every((step) => step.impactRole === "Financial Driver"));
+  assert.equal(hazardStep?.impactRole, "Financial Driver");
   assert.ok((hazardStep?.deltaIRR ?? 0) < 0);
 });
 
-test("zero impacts distinguish no adjustment from context-dependent decision gates", () => {
+test("impact roles come from the audited taxonomy rather than rounded IRR output", () => {
   const model = calculateCashFlowModel(INITIAL_EVIDENCE);
 
-  assert.equal(model.lineItems.grid_interconnection.impactRole, "no-adjustment");
+  assert.equal(model.lineItems.grid_interconnection.impactRole, "Financial Driver");
   assert.equal(
     model.lineItems.grid_interconnection.impactExplanation,
-    "No adjustment at current classification",
+    "Financial stress case",
   );
-  assert.equal(model.lineItems.permitting_timeline.impactRole, "decision-gate");
-  assert.equal(model.lineItems.backup_power_capacity.impactRole, "decision-gate");
-  assert.equal(model.lineItems.water_escalation.impactRole, "financial-effect");
+  assert.equal(model.lineItems.permitting_timeline.impactRole, "Financial Driver");
+  assert.equal(model.lineItems.backup_power_capacity.impactRole, "Decision Gate");
+  assert.equal(model.lineItems.community_risk.impactRole, "Context Indicator");
+  assert.equal(model.lineItems.water_escalation.impactRole, "Financial Driver");
   assert.equal(
     formatImpactDelta(model.lineItems.water_escalation.deltaIRR),
     "less than 0.01 pts down",
@@ -390,12 +362,9 @@ test("zero impacts distinguish no adjustment from context-dependent decision gat
   const gridReclassified = calculateCashFlowModel(
     classify(INITIAL_EVIDENCE, "grid_interconnection", "Management Assertion"),
   );
-  assert.equal(gridReclassified.lineItems.backup_power_capacity.impactRole, "financial-effect");
-  assert.ok(gridReclassified.lineItems.backup_power_capacity.deltaIRR < 0);
-  assert.equal(
-    gridReclassified.waterfall.find((step) => step.id === "backup_power_capacity")?.impactRole,
-    "financial-effect",
-  );
+  assert.equal(gridReclassified.lineItems.backup_power_capacity.impactRole, "Decision Gate");
+  assert.equal(gridReclassified.lineItems.backup_power_capacity.deltaIRR, 0);
+  assert.equal(gridReclassified.waterfall.some((step) => step.id === "backup_power_capacity"), false);
 });
 
 test("impact treatments expose the finalized assumptions and update after reclassification", () => {
@@ -407,19 +376,16 @@ test("impact treatments expose the finalized assumptions and update after reclas
   );
   assert.equal(
     initial.lineItems.customer_concentration.impactTreatment,
-    "Applied utilization multiplier: 0.93x (7.0% discount).",
+    "Decision posture only; no financial adjustment is derived from this evidence item.",
   );
-  assert.equal(
-    initial.lineItems.grid_interconnection.impactTreatment,
-    "No adjustment applied at current classification.",
-  );
+  assert.match(initial.lineItems.grid_interconnection.impactTreatment, /^Applied interconnection delay:/);
   assert.equal(
     initial.lineItems.backup_power_capacity.impactTreatment,
-    "Decision gate only; no financial adjustment applied at current classification.",
+    "Decision posture only; no financial adjustment is derived from this evidence item.",
   );
   assert.ok(
     Object.values(initial.lineItems)
-      .filter((item) => item.impactRole === "financial-effect")
+      .filter((item) => item.impactRole === "Financial Driver")
       .every((item) => item.impactTreatment.startsWith("Applied ")),
   );
 
@@ -436,8 +402,24 @@ test("impact treatments expose the finalized assumptions and update after reclas
   );
   assert.equal(
     gridReclassified.lineItems.backup_power_capacity.impactTreatment,
-    "Applied backup-power contingency: $35.0M and $2.0M/year OPEX.",
+    "Decision posture only; no financial adjustment is derived from this evidence item.",
   );
+});
+
+test("decision gates and context indicators never alter financial outputs", () => {
+  const verified = allVerified();
+  const baseline = calculateCashFlowModel(verified);
+  const ids = ["backup_power_capacity", "water_rights", "customer_concentration", "water_source_resilience", "community_risk", "renewable_percentage"] as const;
+  for (const id of ids) {
+    for (const classification of CLASSIFICATIONS) {
+      const model = calculateCashFlowModel(classify(verified, id, classification));
+      assert.equal(model.projectIRR, baseline.projectIRR, `${id} must not change IRR`);
+      assert.equal(model.npv, baseline.npv, `${id} must not change NPV`);
+      assert.equal(model.moic, baseline.moic, `${id} must not change MOIC`);
+      assert.equal(model.lineItems[id].deltaIRR, 0);
+      assert.equal(model.waterfall.some((step) => step.id === id), false);
+    }
+  }
 });
 
 test("climate uncertainty propagates through returns and material recommendation rules", () => {
@@ -468,11 +450,8 @@ test("climate uncertainty propagates through returns and material recommendation
 
 test("the material evidence contract governs every recommendation transition", () => {
   assert.deepEqual(MATERIAL_EVIDENCE_IDS, [
-    "community_risk",
     "water_rights",
-    "grid_interconnection",
     "customer_concentration",
-    "permitting_timeline",
     "backup_power_capacity",
     "water_source_resilience",
   ]);

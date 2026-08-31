@@ -361,8 +361,8 @@ repeat until NPV(rate) ≈ 0:
                        <span className="flex h-9 w-9 items-center justify-center rounded-md bg-[#122232] font-mono text-[11px] font-bold text-[#d4e86b]">02</span>
                        <div className="font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#255bb7]">Evidence-to-Model Wiring</div>
                      </div>
-                      <h3 className="mt-5 text-[24px] font-semibold leading-tight tracking-[-0.035em] text-[#122232]">Evidence quality makes the underwriting treatment inspectable.</h3>
-                      <p className="mt-4 text-[13px] leading-6 text-[#52616b]">Each of the 16 evidence inputs is wired to a specific financial line item. Lower evidence quality applies progressively conservative underwriting assumptions; some classifications remain honest no-adjustment states or decision gates when they do not change the financial model.</p>
+                       <h3 data-testid="impact-role-product-claim" className="mt-5 text-[24px] font-semibold leading-tight tracking-[-0.035em] text-[#122232]">Every evidence item affects the financial stress case, decision posture, or contextual assessment.</h3>
+                       <p className="mt-4 text-[13px] leading-6 text-[#52616b]">Each of the 16 evidence inputs has one audited impact role, separate from provenance. Financial Drivers recalculate the stress case, Decision Gates shape the recommendation posture, and Context Indicators preserve relevant diligence context.</p>
                    </div>
                    <div data-testid="tour-under-the-hood-wiring-visual" className="rounded-lg border border-[#cbd8d4] bg-[#eef2f1] p-4">
                      <div className="mb-3 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#52616b]">Input → linked model line item</div>
@@ -370,7 +370,7 @@ repeat until NPV(rate) ≈ 0:
                        {[
                          ["Electricity cost", "Power OPEX", "rate × MWh"],
                          ["Grid delays", "Revenue timing", "months → ramp"],
-                         ["Water rights", "CAPEX contingency", "classification → reserve"],
+                         ["Water rights", "Decision posture", "classification → gate"],
                          ["Hazard exposure", "Downtime risk", "quality → loss"],
                        ].map(([input, lineItem, formula]) => (
                          <li key={input} className="grid min-w-0 items-center gap-2 rounded-md border border-[#d9e0e4] bg-white p-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
@@ -380,7 +380,7 @@ repeat until NPV(rate) ≈ 0:
                          </li>
                        ))}
                      </ul>
-                      <div className="mt-3 rounded-md border border-[#9bd8c5] bg-[#e0f4ed] p-3 text-[11px] font-semibold leading-5 text-[#0b624f]"><span className="font-mono text-[9px] uppercase tracking-[0.1em]">Reclassify one input</span><span aria-hidden="true" className="mx-2">→</span>linked conservative treatment updates</div>
+                       <div className="mt-3 rounded-md border border-[#9bd8c5] bg-[#e0f4ed] p-3 text-[11px] font-semibold leading-5 text-[#0b624f]"><span className="font-mono text-[9px] uppercase tracking-[0.1em]">Reclassify one input</span><span aria-hidden="true" className="mx-2">→</span>its financial, decision, or context treatment updates</div>
                    </div>
                  </div>
                </article>

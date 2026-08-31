@@ -1,5 +1,6 @@
 import {
   ClassificationBadge,
+  ImpactRoleBadge,
   SectionKicker,
   MetricCard,
   LowConfidenceWarning,
@@ -21,6 +22,7 @@ import {
 import {
   formatImpactDelta
 } from "@/model/cashFlowEngine";
+import { getEvidenceImpactRoleDefinition } from "@/data/evidenceImpactRoles";
 
 
 
@@ -41,7 +43,8 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
   const { evidence, hasChangedClassification, metrics, sourceStates, project } = useDiligence();
   const projectName = project.name;
   const customProject = project.kind === "custom";
-  const impacts = Object.values(metrics.lineItems);
+  const impacts = Object.values(metrics.lineItems).filter((impact) => impact.impactRole === "Financial Driver");
+  const decisionAndContextItems = Object.values(evidence).filter((item) => item.impactRole !== "Financial Driver");
   const lowConfidence = metrics.confidenceScore < 25;
   const currentIRR = metrics.projectIRR;
   const baseIRR = metrics.baseIRR ?? null;
@@ -52,20 +55,18 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
   const chartMax = Math.max(...chartValues, 0);
   const irrDelta = currentIRR === null || baseIRR === null ? null : currentIRR - baseIRR;
   const waterfallSteps = metrics.waterfall;
-  const noAdjustmentCount = waterfallSteps.filter((step) => step.impactRole === "no-adjustment").length;
-  const decisionGateCount = waterfallSteps.filter((step) => step.impactRole === "decision-gate").length;
   return (
     <div>
       <PageIntro
         eyebrow="03 / quantify the uncertainty"
         title="Trace each uncertainty into the return."
-        description="A five-year annual equity cash-flow engine ties revenue timing, operating costs, CAPEX, debt service, and terminal value to each evidence classification."
+        description="Every evidence item affects the financial stress case, decision posture, or contextual assessment."
         right={<div className="flex items-center gap-2 rounded-md border border-[#9bd8c5] bg-[#e0f4ed] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#0b7a63]"><Sparkles className="h-3.5 w-3.5" /> Derived locally</div>}
       />
       {!hasChangedClassification && (
         <aside data-testid="materiality-classification-prompt" role="note" className="mb-5 flex items-start gap-3 rounded-lg border border-[#aac6f4] bg-[#eef5ff] px-4 py-3 text-[11px] leading-5 text-[#344550]">
           <Sparkles aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#255bb7]" />
-          <p><strong className="font-semibold text-[#122232]">Change a classification</strong> to see the return update.</p>
+          <p><strong className="font-semibold text-[#122232]">Change a classification</strong> to see the financial stress case, decision posture, or contextual assessment update.</p>
         </aside>
       )}
       <nav aria-label="Financial materiality sections" className="sticky top-0 z-10 mb-4 flex gap-1 overflow-x-auto rounded-lg border border-[#d9e0e4] bg-[#f9faf8]/95 p-1.5 backdrop-blur-md">
@@ -105,30 +106,18 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
         </div>
           <p id="irr-waterfall-description" data-testid="waterfall-description" className="mt-3 max-w-3xl text-[11px] leading-5 text-[#c4d0d6]">Lower evidence quality applies progressively conservative underwriting assumptions. This is a stress test, not a prediction. Unverified inputs are assigned worst-case values, not because negative outcomes are certain, but because conservative underwriting requires assuming the downside until evidence proves otherwise.</p>
           <p id="irr-waterfall-methodology" data-testid="waterfall-methodology" role="note" className="mt-3 max-w-3xl rounded-lg border border-[#8dc8e8]/35 bg-[#0d2b3d] px-3 py-2 text-[11px] leading-5 text-[#d7e8ee]">Evidence classifications do not predict whether an unknown outcome will be favorable or unfavorable. For this demonstration, weaker evidence triggers predefined conservative underwriting treatments to show the potential cost of unresolved uncertainty.</p>
-         <div className="mt-5 flex flex-wrap items-center gap-2">
-           <div data-testid="waterfall-no-adjustment-summary" role="status" className="rounded-md border border-white/15 bg-white/5 px-3 py-2 font-mono text-[10px] text-[#c4d0d6]">
-             {noAdjustmentCount} {noAdjustmentCount === 1 ? "item has" : "items have"} no adjustment at current classification
-           </div>
-           {decisionGateCount > 0 && <div data-testid="waterfall-decision-gate-summary" className="rounded-md border border-[#f1cb8b]/40 bg-[#f1cb8b]/10 px-3 py-2 font-mono text-[10px] text-[#f7dca7]">
-             {decisionGateCount} decision {decisionGateCount === 1 ? "gate" : "gates"} only
-           </div>}
-         </div>
          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded-lg border border-[#b9d43a]/40 bg-[#b9d43a]/10 p-3"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#b9d43a]">Underwriting Baseline (All Inputs Verified)</div><div data-testid="waterfall-base-irr" className="mt-1 font-mono text-2xl font-bold text-[#d4e86b]">{formatIRR(baseIRR)}</div></div>
           {waterfallSteps.map((step) => {
              const tone = step.deltaIRR < 0 ? "text-[#f5ddd5]" : "text-[#b9d43a]";
              const item = evidence[step.id];
              return <div key={step.id} data-testid={`waterfall-step-${step.id}`} className="rounded-lg border border-white/10 bg-white/5 p-3">
-               <div className="truncate text-[10px] font-semibold text-[#e3eaed]">{item.label}</div>
+                <div className="flex flex-wrap items-start justify-between gap-2"><div className="min-w-0 flex-1 truncate text-[10px] font-semibold text-[#e3eaed]">{item.label}</div><ImpactRoleBadge role="Financial Driver" compact testId={`waterfall-role-${step.id}`} /></div>
                <div className="mt-1 flex items-baseline justify-between gap-2">
                  <span className={`font-mono text-sm font-bold ${tone}`}>{formatIRR(step.after)}</span>
                  <span data-testid={`waterfall-impact-${step.id}`} className={`font-mono text-[9px] font-bold ${tone}`}>{formatImpactDelta(step.deltaIRR)}</span>
                </div>
-                <div data-testid={`waterfall-explanation-${step.id}`} className="mt-2 text-[9px] font-semibold text-[#d4e86b]">
-                 {step.impactRole === "decision-gate"
-                   ? <span data-testid={`waterfall-gate-${step.id}`} className="inline-flex rounded border border-[#f1cb8b]/50 bg-[#f1cb8b]/10 px-1.5 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#f7dca7]">{step.impactExplanation}</span>
-                   : step.impactExplanation}
-               </div>
+                 <div data-testid={`waterfall-explanation-${step.id}`} className="mt-2 text-[9px] font-semibold text-[#d4e86b]">{step.impactExplanation}</div>
                 <div className="mt-1 text-[9px] text-[#9dafb8]">Current classification: {item.classification}</div>
                {item.modelClassification && <div className="mt-1 text-[9px] text-[#9dafb8]">Modeled as: {item.modelClassification}</div>}
                 <div data-testid={`waterfall-treatment-${step.id}`} aria-label={`Applied stress treatment for ${item.label}: ${step.impactTreatment}`} className="mt-2 border-t border-white/10 pt-2 text-[9px] leading-4 text-[#e3eaed]"><span className="font-semibold text-[#b9d43a]">Applied treatment:</span> {step.impactTreatment}</div>
@@ -139,6 +128,21 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
           <aside data-testid="waterfall-underwriting-note" role="note" className="mt-5 rounded-lg border border-[#b9d43a]/40 bg-[#b9d43a]/10 px-3 py-2 text-[11px] leading-5 text-[#e8f0d1]">A management assertion that proves accurate would improve the return. The conservative stress case shows the cost of not knowing, not the cost of a negative outcome.</aside>
           <div className="sr-only" aria-live="polite">Underwriting Baseline (All Inputs Verified) {formatIRR(baseIRR)}. Conservative Case (Stress-Adjusted) {formatIRR(currentIRR)}. Change {irrDelta === null ? "unavailable" : `${irrDelta.toFixed(1)} percentage points`}.</div>
       </section>
+       <section data-testid="panel-decision-context-treatment" aria-labelledby="decision-context-treatment-title" className="mt-5 rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-6">
+         <SectionKicker>Decision & context treatment</SectionKicker>
+         <h2 id="decision-context-treatment-title" className="text-[19px] font-semibold tracking-[-0.025em] text-[#122232]">Decision gates and context indicators</h2>
+         <p data-testid="decision-context-treatment-copy" className="mt-2 max-w-3xl text-[11px] leading-5 text-[#52616b]">These items affect the decision posture or provide diligence context but do not directly change the financial stress case.</p>
+         <div className="mt-4 grid gap-3 md:grid-cols-2">
+           {decisionAndContextItems.map((item) => {
+             const definition = getEvidenceImpactRoleDefinition(item.id);
+             return <article key={item.id} data-testid={`decision-context-item-${item.id}`} className="rounded-lg border border-[#d9e0e4] bg-[#f7faf8] p-4">
+               <div className="flex flex-wrap items-start justify-between gap-2"><h3 className="text-[12px] font-semibold text-[#243844]">{item.label}</h3><ImpactRoleBadge role={item.impactRole} compact testId={`decision-context-role-${item.id}`} /></div>
+               <p className="mt-2 text-[10px] leading-4 text-[#52616b]">{definition.description}</p>
+               <div className="mt-3 flex flex-wrap items-center gap-2 text-[9px] text-[#60707d]"><span className="font-bold uppercase tracking-[0.1em]">Current provenance</span><ClassificationBadge value={item.classification} compact /></div>
+             </article>;
+           })}
+         </div>
+       </section>
       <div className="mt-5 grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
         <section className="rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-6">
           <div className="flex items-end justify-between border-b border-[#e5eae8] pb-4"><div><SectionKicker>Evidence → financial materiality</SectionKicker><h2 className="text-[19px] font-semibold tracking-[-0.025em] text-[#122232]">Where the model feels the uncertainty</h2></div><span className="font-mono text-[10px] text-[#52616b]">Δ IRR / variable</span></div>

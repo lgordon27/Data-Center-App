@@ -24,7 +24,7 @@ export const walkthrough = [
     title: "Financial Materiality",
     icon: BarChart3,
     purpose: "Traces evidence quality into revenue timing, costs, cash flow, and the project return.",
-    why: "Not every unknown deserves the same amount of research. This screen shows which uncertainty can move IRR, payback, or terminal value, so diligence effort follows financial consequence rather than volume of information.",
+    why: "Not every unknown deserves the same treatment. This screen separates Financial Drivers from Decision Gates and Context Indicators so diligence effort follows the role each item plays.",
     lookFor: "Look for the Underwriting Baseline beside the Conservative Case (Stress-Adjusted), the evidence-to-return bridge, and the mechanical-outputs warning when confidence is low.",
   },
   {

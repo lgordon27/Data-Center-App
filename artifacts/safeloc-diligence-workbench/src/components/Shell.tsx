@@ -31,12 +31,11 @@ import {
 } from "@/context/DiligenceContext";
 
 
-
-
 import {
   type EvidenceCompletenessTier
 } from "@/model/advisorLens";
 import { CustomProjectDialog } from "@/pages/Home";
+import type { ImpactRole } from "@/data/evidenceImpactRoles";
 
 export type Screen = "brief" | "evidence" | "materiality" | "decision" | "advisor";
 type AppRoute = Screen | "home" | "directory" | "value-chain" | "how-it-works";
@@ -113,6 +112,12 @@ export function ClassificationBadge({ value, compact = false }: { value: Classif
     </span>
   );
 }
+
+const impactRoleMeta: Record<ImpactRole, { color: string; bg: string; border: string }> = {
+  "Financial Driver": { color: "#255bb7", bg: "#e5efff", border: "#aac6f4" },
+  "Decision Gate": { color: "#8a6400", bg: "#fff6c7", border: "#e6cf70" },
+  "Context Indicator": { color: "#5d477b", bg: "#f0eafb", border: "#cbbbe5" },
+};
 const evidenceCompletenessMeta: Record<EvidenceCompletenessTier, { color: string; bg: string; border: string }> = {
   HIGH: { color: "#ba2f45", bg: "#fde8eb", border: "#efabb8" },
   MODERATE: { color: "#8a6400", bg: "#fff6c7", border: "#e6cf70" },
@@ -462,3 +467,18 @@ export function DiligenceLiveRegions({ metrics }: { metrics: ReturnType<typeof u
   );
 }
 export function formatScenarioDelta(first: number | null, second: number | null, metric: "irr" | "moic" | "npv" | "cashOnCash" | "payback" | "confidence") { if (first === null || second === null) return "Unavailable"; const delta = second - first; const sign = delta >= 0 ? "+" : ""; if (metric === "irr") return `${sign}${delta.toFixed(1)} pts`; if (metric === "moic") return `${sign}${delta.toFixed(2)}x`; if (metric === "npv") return `${delta >= 0 ? "+" : "−"}$${Math.abs(delta).toFixed(0)}M`; if (metric === "payback") return `${sign}${delta.toFixed(1)} years`; return `${sign}${delta.toFixed(1)}%`; }
+
+export function ImpactRoleBadge({ role, testId, compact = false }: { role: ImpactRole; testId?: string; compact?: boolean }) {
+  const meta = impactRoleMeta[role];
+  return (
+    <span
+      data-testid={testId}
+      aria-label={`Impact role: ${role}`}
+      className={`inline-flex items-center gap-1.5 rounded-full border font-mono text-[9px] font-bold uppercase tracking-[0.09em] ${compact ? "px-2 py-0.5" : "px-2.5 py-1"}`}
+      style={{ color: meta.color, backgroundColor: meta.bg, borderColor: meta.border }}
+    >
+      <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: meta.color }} />
+      {role}
+    </span>
+  );
+}

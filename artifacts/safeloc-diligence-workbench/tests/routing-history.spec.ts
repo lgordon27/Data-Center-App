@@ -316,20 +316,17 @@ test.describe("hash routing and browser history", () => {
     await expect(waterfall).toContainText(conservativeCaseLabel);
     await expect(waterfall.getByTestId("waterfall-underwriting-note")).toHaveText(note);
     await expect(waterfall).not.toContainText("Every classification moves the same live model.");
-    await expect(waterfall.getByTestId("waterfall-no-adjustment-summary")).toContainText(
-      "2 items have no adjustment at current classification",
-    );
-    await expect(waterfall.getByTestId("waterfall-decision-gate-summary")).toContainText(
-      "2 decision gates only",
-    );
+    await expect(waterfall.locator("[data-testid^='waterfall-step-']")).toHaveCount(10);
+    await expect(waterfall.locator("[data-testid^='waterfall-role-']")).toHaveCount(10);
+    await expect(waterfall.getByTestId("waterfall-step-backup_power_capacity")).toHaveCount(0);
+    await expect(waterfall.getByTestId("waterfall-step-water_rights")).toHaveCount(0);
+    await expect(waterfall.getByTestId("waterfall-step-community_risk")).toHaveCount(0);
+    await expect(waterfall.getByTestId("waterfall-step-renewable_percentage")).toHaveCount(0);
     await expect(waterfall.getByTestId("waterfall-impact-water_escalation")).toHaveText(
       "less than 0.01 pts down",
     );
     await expect(waterfall.getByTestId("waterfall-explanation-grid_interconnection")).toHaveText(
-      "No adjustment at current classification",
-    );
-    await expect(waterfall.getByTestId("waterfall-gate-backup_power_capacity")).toHaveText(
-      "Decision gate only",
+      "Financial stress case",
     );
     await expect(waterfall.getByTestId("waterfall-step-site_hazard_exposure")).toContainText(
       "Modeled as: Model Inference",
@@ -340,14 +337,8 @@ test.describe("hash routing and browser history", () => {
     await expect(waterfall.getByTestId("waterfall-treatment-electricity_cost")).toHaveText(
       "Applied treatment: Applied rate: $44.1/MWh.",
     );
-    await expect(waterfall.getByTestId("waterfall-treatment-customer_concentration")).toContainText(
-      "Applied utilization multiplier: 0.93x (7.0% discount).",
-    );
     await expect(waterfall.getByTestId("waterfall-treatment-grid_interconnection")).toContainText(
-      "No adjustment applied at current classification.",
-    );
-    await expect(waterfall.getByTestId("waterfall-treatment-backup_power_capacity")).toContainText(
-      "Decision gate only; no financial adjustment applied at current classification.",
+      "Applied interconnection delay:",
     );
     await expect(waterfall.getByTestId("waterfall-treatment-electricity_cost")).toHaveAttribute(
       "aria-label",
@@ -356,9 +347,13 @@ test.describe("hash routing and browser history", () => {
     await expect(page.getByTestId("materiality-impact-water_escalation")).toHaveText(
       "less than 0.01 pts down",
     );
-    await expect(page.getByTestId("materiality-explanation-backup_power_capacity")).toHaveText(
-      "Decision gate only",
+    const decisionContext = page.getByTestId("panel-decision-context-treatment");
+    await expect(decisionContext.getByTestId("decision-context-treatment-copy")).toHaveText(
+      "These items affect the decision posture or provide diligence context but do not directly change the financial stress case.",
     );
+    await expect(decisionContext.locator("[data-testid^='decision-context-item-']")).toHaveCount(6);
+    await expect(decisionContext.getByTestId("decision-context-role-backup_power_capacity")).toHaveAccessibleName("Impact role: Decision Gate");
+    await expect(decisionContext.getByTestId("decision-context-role-community_risk")).toHaveAccessibleName("Impact role: Context Indicator");
     await expect(page.locator("body")).not.toContainText("+0.0 pts");
     await expect(page.locator("body")).not.toContainText("-0.0 pts");
 
@@ -368,12 +363,12 @@ test.describe("hash routing and browser history", () => {
     const baselineValue = parsePercent(baselineIrr);
     const currentValue = parsePercent(currentIrr);
 
-    expect(baselineValue).toBeGreaterThanOrEqual(15);
-    expect(baselineValue).toBeLessThanOrEqual(16);
+    expect(baselineValue).toBeGreaterThanOrEqual(13);
+    expect(baselineValue).toBeLessThanOrEqual(14);
     expect(currentValue).toBeGreaterThanOrEqual(8);
     expect(currentValue).toBeLessThanOrEqual(11);
-    expect(baselineValue - currentValue).toBeGreaterThanOrEqual(5);
-    expect(baselineValue - currentValue).toBeLessThanOrEqual(7);
+    expect(baselineValue - currentValue).toBeGreaterThanOrEqual(3);
+    expect(baselineValue - currentValue).toBeLessThanOrEqual(5);
 
     await expect(page.getByTestId("metric-project-irr")).toContainText("Project IRR");
     await expect(page.getByTestId("metric-moic")).toContainText("MOIC");
@@ -399,13 +394,46 @@ test.describe("hash routing and browser history", () => {
     await expect(waterfall).toContainText(conservativeCaseLabel);
     await expect(waterfall.getByTestId("waterfall-current-irr")).not.toHaveText(currentIrr ?? "");
     await expect(waterfall.getByTestId("waterfall-base-irr")).toHaveText(baselineIrr ?? "");
-    await expect(waterfall.getByTestId("waterfall-gate-backup_power_capacity")).toHaveCount(0);
-    await expect(waterfall.getByTestId("waterfall-explanation-backup_power_capacity")).toHaveText(
-      "Financial effect",
-    );
-    await expect(waterfall.getByTestId("waterfall-treatment-backup_power_capacity")).toContainText(
-      "Applied backup-power contingency: $35.0M and $2.0M/year OPEX.",
-    );
+    await expect(waterfall.getByTestId("waterfall-step-backup_power_capacity")).toHaveCount(0);
+    await expect(decisionContext.getByTestId("decision-context-role-backup_power_capacity")).toHaveText("Decision Gate");
+  });
+
+  test("keeps impact roles accessible and model behavior aligned with provenance changes", async ({ page }) => {
+    await page.addInitScript(() => window.localStorage.clear());
+    await page.goto("/#materiality");
+    const initialIrr = await page.getByTestId("text-current-irr-materiality").textContent();
+    await page.goto("/#evidence");
+
+    await expect(page.locator("[data-testid^='badge-impact-role-']")).toHaveCount(16);
+    await expect(page.getByTestId("badge-impact-role-electricity_cost")).toHaveAccessibleName("Impact role: Financial Driver");
+    await expect(page.getByTestId("badge-impact-role-backup_power_capacity")).toHaveAccessibleName("Impact role: Decision Gate");
+    await expect(page.getByTestId("badge-impact-role-renewable_percentage")).toHaveAccessibleName("Impact role: Context Indicator");
+
+    await page.getByTestId("select-classification-water_rights").selectOption("Verified Evidence");
+    await page.getByTestId("select-classification-water_source_resilience").selectOption("Verified Evidence");
+    await page.goto("/#decision");
+    await expect(page.getByTestId("status-recommendation")).toHaveText("READY FOR REVIEW");
+    await page.goto("/#materiality");
+    await expect(page.getByTestId("text-current-irr-materiality")).toHaveText(initialIrr ?? "");
+
+    await page.goto("/#evidence");
+    await page.getByTestId("select-classification-backup_power_capacity").selectOption("Missing Evidence");
+    await page.getByTestId("select-classification-renewable_percentage").selectOption("Missing Evidence");
+    await page.goto("/#decision");
+    await expect(page.getByTestId("status-recommendation")).toHaveText("BLOCKED");
+    await page.goto("/#materiality");
+    await expect(page.getByTestId("text-current-irr-materiality")).toHaveText(initialIrr ?? "");
+
+    await page.goto("/#evidence");
+    await page.getByTestId("select-classification-electricity_cost").selectOption("Verified Evidence");
+    await page.goto("/#materiality");
+    await expect(page.getByTestId("text-current-irr-materiality")).not.toHaveText(initialIrr ?? "");
+
+    await page.goto("/#evidence");
+    await page.getByTestId("button-reset-default").click();
+    await page.getByTestId("button-confirm-reset-default").click();
+    await expect(page.getByTestId("select-classification-backup_power_capacity")).toHaveValue("Management Assertion");
+    await expect(page.getByTestId("badge-impact-role-backup_power_capacity")).toHaveText("Decision Gate");
   });
 
   test("keeps canonical stress vocabulary on rendered and assistive surfaces", async ({ page }) => {
@@ -781,7 +809,7 @@ test.describe("hash routing and browser history", () => {
     await expect(page.getByTestId("metric-coc")).toContainText(/\d+\.\d%/);
     await expect(page.getByTestId("metric-payback")).toContainText(/\d+\.\d years|Not reached/);
     await expect(page.getByTestId("metric-npv")).toContainText(/[$−]\d+M/);
-    await expect(page.getByTestId("waterfall-step-water_rights")).toContainText(/[-+]\d+\.\d{1,2} pts|less than 0\.01 pts (?:up|down)|N\/M/);
+    await expect(page.getByTestId("decision-context-item-water_rights")).toContainText("Decision Gate");
     await expect(page.getByTestId("live-current-irr")).toContainText(/Conservative stress case IRR is now -?\d+\.\d%\./);
 
     await page.goto("/#evidence");

@@ -1,3 +1,8 @@
+import {
+  getEvidenceImpactRole,
+  type ImpactRole,
+} from "@/data/evidenceImpactRoles";
+
 export type Classification =
   | "Verified Evidence"
   | "Management Assertion"
@@ -66,7 +71,6 @@ export type ModelLineItem = {
   impactTreatment: string;
 };
 
-export type ImpactRole = "financial-effect" | "no-adjustment" | "decision-gate";
 export type ModelAssumptions = {
   capacityMW: number;
   leaseRatePerKwMonth: number;
@@ -276,11 +280,8 @@ const QUALITY_POLICY = {
 // Shared with Advisor Lens so materiality has one source of truth across
 // recommendation status and evidence-completeness posture.
 export const MATERIAL_EVIDENCE_IDS = [
-  "community_risk",
   "water_rights",
-  "grid_interconnection",
   "customer_concentration",
-  "permitting_timeline",
   "backup_power_capacity",
   "water_source_resilience",
 ] as const;
@@ -478,34 +479,28 @@ function runModel(evidence: EvidenceRecord, capacityMW: number): CashFlowModel {
     finiteNumericValue(electricityEscalationItem.numericValue, 6) / 100 +
     electricityEscalationQuality.electricityEscalationAdder;
   const effectiveRenewableProcurement = clamp(
-    finiteNumericValue(renewableItem.numericValue, 25) * renewableQuality.renewableCoverage,
+    finiteNumericValue(renewableItem.numericValue, 25),
     0,
     100,
   );
-  const powerCostDifferential =
-    ((100 - effectiveRenewableProcurement) / 100) * 0.12;
+  // Fixed synthetic transaction economics, not an effect of the Context
+  // Indicator. Changing renewable provenance never changes cash flow.
+  const powerCostDifferential = 0.0945;
   const gridInterconnectionMonths =
     finiteNumericValue(gridItem.numericValue, 14) + gridQuality.timelineAdder;
   const permittingMonths =
     finiteNumericValue(permittingItem.numericValue, 10) + permittingQuality.timelineAdder;
-  const communityDelayMonths = communityQuality.communityDelay;
-  // Interconnection and permitting are parallel gates; the later gate controls
-  // the start date, while community risk adds an independent permitting delay.
+  const communityDelayMonths = 0;
+  // Interconnection and permitting are parallel Financial Drivers; the later
+  // timeline controls the start date. Community risk remains context only.
   const revenueDelayMonths = Math.round(
     Math.max(gridInterconnectionMonths, permittingMonths) + communityDelayMonths,
   );
-  const concentration = clamp(
-    finiteNumericValue(concentrationItem.numericValue, 100) / 100,
-    0,
-    1,
-  );
-  const customerUtilizationMultiplier = clamp(
-    1 - concentration * concentrationQuality.customerLossRate,
-    0.4,
-    1,
-  );
+  // Customer concentration is a Decision Gate. Preserve the calibrated base
+  // utilization assumption without deriving it from gate provenance or value.
+  const customerUtilizationMultiplier = 0.9;
   const coolingCapex = finiteNumericValue(coolingItem.numericValue, 450) * capacityScale;
-  const communityCapexContingency = communityQuality.communityContingency;
+  const communityCapexContingency = 0;
   const coolingCapexContingency = coolingQuality.coolingContingency;
   const hazardExposureLevel = isHazardExposureLevel(hazardItem.qualitativeValue)
     ? hazardItem.qualitativeValue
@@ -531,26 +526,19 @@ function runModel(evidence: EvidenceRecord, capacityMW: number): CashFlowModel {
     backupPowerItem.classification === "Missing Evidence"
       ? 0
       : clamp(finiteNumericValue(backupPowerItem.numericValue, 0), 0, 8760);
-  const backupPowerContingencyTriggered =
-    backupPowerHours < 72 && gridItem.classification !== "Verified Evidence";
-  const backupPowerCapex = backupPowerContingencyTriggered
-    ? BACKUP_POWER_CAPEX_BY_CLASSIFICATION[backupPowerItem.classification] * capacityScale
-    : 0;
+  const backupPowerContingencyTriggered = false;
+  const backupPowerCapex = 0;
   const waterSourceResilienceState = isWaterSourceResilienceState(
     waterSourceItem.qualitativeValue,
   )
     ? waterSourceItem.qualitativeValue
     : "single-source";
   const waterSourceResilience = WATER_SOURCE_RESILIENCE_LABELS[waterSourceResilienceState];
-  const stressedSingleSourceWater =
-    hazardExposureLevel === "high" && waterSourceResilienceState === "single-source";
-  const waterSourceEscalationMultiplier = stressedSingleSourceWater ? 1.5 : 1;
-  const waterConversionContingencyTriggered =
-    waterSourceItem.classification !== "Verified Evidence" &&
-    waterRightsItem.classification !== "Verified Evidence";
-  const waterConversionCapex = waterConversionContingencyTriggered
-    ? WATER_CONVERSION_CAPEX_BY_CLASSIFICATION[waterSourceItem.classification] * capacityScale
-    : 0;
+  // Fixed synthetic assumptions rather than effects of the water-source
+  // Decision Gates. Reclassification changes recommendation posture only.
+  const waterSourceEscalationMultiplier = 1.5;
+  const waterConversionContingencyTriggered = false;
+  const waterConversionCapex = 80 * capacityScale;
   const climateCapexContingency = backupPowerCapex + waterConversionCapex;
   const capexContingency =
     coolingCapex * (communityCapexContingency + coolingCapexContingency) +
@@ -561,7 +549,7 @@ function runModel(evidence: EvidenceRecord, capacityMW: number): CashFlowModel {
   const annualPrincipalPayment = debtAmount / AMORTIZATION_YEARS;
   const annualCarbonCompliance =
     finiteNumericValue(carbonItem.numericValue, 20) * carbonQuality.carbonMultiplier;
-  const waterRightsCostMultiplier = waterRightsQuality.waterRightsMultiplier;
+  const waterRightsCostMultiplier = 1.5;
   const totalDirectCapex = entryValue + coolingCapex;
   const annualRevenueAtFullUtilization =
     capacityMW * 1_000 * LEASE_RATE_PER_KW_MONTH * 12 / 1_000_000;
@@ -779,23 +767,27 @@ function runModel(evidence: EvidenceRecord, capacityMW: number): CashFlowModel {
     terminalDebtRepayment: yearFive?.terminalDebtRepayment ?? 0,
   };
 
+  const createLineItem = (id: string, driver: string, value: number, unit: string): ModelLineItem => {
+    const impactRole = getEvidenceImpactRole(id);
+    return { id, driver, value, unit, deltaIRR: 0, impactRole, impactExplanation: getImpactExplanation(impactRole), impactTreatment: "" };
+  };
   const lineItems: Record<string, ModelLineItem> = {
-    electricity_cost: { id: "electricity_cost", driver: "Power OPEX", value: electricityRate, unit: "$/MWh", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment"), impactTreatment: "" },
-    water_consumption: { id: "water_consumption", driver: "Water OPEX", value: annualCoolingWaterMgal, unit: "M gal / yr", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment"), impactTreatment: "" },
-    grid_interconnection: { id: "grid_interconnection", driver: "Revenue delay", value: revenueDelayMonths, unit: "months", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment"), impactTreatment: "" },
-    water_escalation: { id: "water_escalation", driver: "Water OPEX growth", value: adjustedWaterEscalationRate * 100, unit: "%", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment"), impactTreatment: "" },
-    community_risk: { id: "community_risk", driver: "Permitting delay / CAPEX", value: communityDelayMonths, unit: "months", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment"), impactTreatment: "" },
-    renewable_percentage: { id: "renewable_percentage", driver: "Power cost differential", value: powerCostDifferential * 100, unit: "%", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment"), impactTreatment: "" },
-    cooling_capex: { id: "cooling_capex", driver: "Direct CAPEX", value: coolingCapex + capexContingency, unit: "$M", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment"), impactTreatment: "" },
-    electricity_escalation: { id: "electricity_escalation", driver: "Power OPEX escalation", value: electricityEscalationRate * 100, unit: "%", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment"), impactTreatment: "" },
-    carbon_compliance: { id: "carbon_compliance", driver: "Carbon compliance OPEX", value: annualCarbonCompliance, unit: "$M / yr", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment"), impactTreatment: "" },
-    permitting_timeline: { id: "permitting_timeline", driver: "Revenue delay", value: permittingMonths, unit: "months", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment"), impactTreatment: "" },
-    customer_concentration: { id: "customer_concentration", driver: "Utilization discount", value: (1 - customerUtilizationMultiplier) * 100, unit: "%", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment"), impactTreatment: "" },
-    water_rights: { id: "water_rights", driver: "Water cost contingency", value: (waterRightsCostMultiplier - 1) * 100, unit: "%", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment"), impactTreatment: "" },
-    site_hazard_exposure: { id: "site_hazard_exposure", driver: "Climate disruption OPEX", value: adjustedHazardProbability * 100, unit: "%", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment"), impactTreatment: "" },
-    backup_power_capacity: { id: "backup_power_capacity", driver: "Backup power CAPEX / OPEX", value: backupPowerCapex, unit: "$M", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment"), impactTreatment: "" },
-    water_source_resilience: { id: "water_source_resilience", driver: "Water conversion CAPEX", value: waterConversionCapex, unit: "$M", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment"), impactTreatment: "" },
-    downtime_cost: { id: "downtime_cost", driver: "Climate disruption OPEX", value: adjustedDowntimeCostPerDay / 1_000_000, unit: "$M / day", deltaIRR: 0, impactRole: "no-adjustment", impactExplanation: getImpactExplanation("no-adjustment"), impactTreatment: "" },
+    electricity_cost: createLineItem("electricity_cost", "Power OPEX", electricityRate, "$/MWh"),
+    water_consumption: createLineItem("water_consumption", "Water OPEX", annualCoolingWaterMgal, "M gal / yr"),
+    grid_interconnection: createLineItem("grid_interconnection", "Revenue delay", revenueDelayMonths, "months"),
+    water_escalation: createLineItem("water_escalation", "Water OPEX growth", adjustedWaterEscalationRate * 100, "%"),
+    community_risk: createLineItem("community_risk", "Community diligence context", communityDelayMonths, "context"),
+    renewable_percentage: createLineItem("renewable_percentage", "Renewable procurement context", effectiveRenewableProcurement, "%"),
+    cooling_capex: createLineItem("cooling_capex", "Direct CAPEX", coolingCapex + capexContingency, "$M"),
+    electricity_escalation: createLineItem("electricity_escalation", "Power OPEX escalation", electricityEscalationRate * 100, "%"),
+    carbon_compliance: createLineItem("carbon_compliance", "Carbon compliance OPEX", annualCarbonCompliance, "$M / yr"),
+    permitting_timeline: createLineItem("permitting_timeline", "Revenue delay", permittingMonths, "months"),
+    customer_concentration: createLineItem("customer_concentration", "Customer exposure review", 0, "gate"),
+    water_rights: createLineItem("water_rights", "Water access review", 0, "gate"),
+    site_hazard_exposure: createLineItem("site_hazard_exposure", "Climate disruption OPEX", adjustedHazardProbability * 100, "%"),
+    backup_power_capacity: createLineItem("backup_power_capacity", "Resilience review", backupPowerHours, "hours"),
+    water_source_resilience: createLineItem("water_source_resilience", "Water resilience review", 0, "gate"),
+    downtime_cost: createLineItem("downtime_cost", "Climate disruption OPEX", adjustedDowntimeCostPerDay / 1_000_000, "$M / day"),
   };
 
   return {
@@ -842,8 +834,8 @@ export function calculateCashFlowModel(evidence: EvidenceRecord, requestedCapaci
         current.projectIRR === null || repairedModel.projectIRR === null
           ? 0
           : current.projectIRR - repairedModel.projectIRR;
-      const deltaIRR = rawDeltaIRR === 0 ? 0 : rawDeltaIRR;
-      const impactRole = getImpactRole(id, evidence[id].classification, deltaIRR);
+      const impactRole = getEvidenceImpactRole(id);
+      const deltaIRR = impactRole === "Financial Driver" && rawDeltaIRR !== 0 ? rawDeltaIRR : 0;
       return [
         id,
         {
@@ -859,7 +851,7 @@ export function calculateCashFlowModel(evidence: EvidenceRecord, requestedCapaci
 
   let beforeEvidence = buildVerifiedEvidence(evidence);
   let beforeModel = verifiedBaseline;
-  const waterfall = Object.entries(current.lineItems).map(([id, lineItem], index) => {
+  const waterfall = Object.entries(current.lineItems).flatMap(([id, lineItem]) => {
     const afterEvidence = {
       ...beforeEvidence,
       [id]: evidence[id],
@@ -869,8 +861,8 @@ export function calculateCashFlowModel(evidence: EvidenceRecord, requestedCapaci
       beforeModel.projectIRR === null || afterModel.projectIRR === null
         ? 0
         : afterModel.projectIRR - beforeModel.projectIRR;
-    const deltaIRR = rawDeltaIRR === 0 ? 0 : rawDeltaIRR;
-    const impactRole = getImpactRole(id, evidence[id].classification, deltaIRR);
+    const impactRole = getEvidenceImpactRole(id);
+    const deltaIRR = impactRole === "Financial Driver" && rawDeltaIRR !== 0 ? rawDeltaIRR : 0;
     const step = {
       ...lineItems[id],
       ...lineItem,
@@ -878,13 +870,16 @@ export function calculateCashFlowModel(evidence: EvidenceRecord, requestedCapaci
       impactRole,
        impactExplanation: getImpactExplanation(impactRole),
        impactTreatment: getImpactTreatment(id, impactRole, afterModel.assumptions),
-      index,
+      index: 0,
       before: beforeModel.projectIRR,
       after: afterModel.projectIRR,
     };
     beforeEvidence = afterEvidence;
     beforeModel = afterModel;
-    return [id, step] as const;
+    return impactRole === "Financial Driver" ? [step] : [];
+  });
+  waterfall.forEach((step, index) => {
+    step.index = index;
   });
 
   return {
@@ -892,7 +887,7 @@ export function calculateCashFlowModel(evidence: EvidenceRecord, requestedCapaci
     baseIRR: verifiedBaseline.projectIRR,
     baseModel: verifiedBaseline,
     lineItems,
-    waterfall: waterfall.map(([, step]) => step),
+    waterfall,
   };
 }
 
@@ -906,31 +901,20 @@ export function isMaterialEvidenceId(id: string): id is MaterialEvidenceId {
   return MATERIAL_EVIDENCE_IDS.includes(id as MaterialEvidenceId);
 }
 
-function getImpactRole(
-  id: string,
-  classification: Classification,
-  deltaIRR: number,
-): ImpactRole {
-  if (deltaIRR !== 0) return "financial-effect";
-  return isMaterialEvidenceId(id) && classification !== "Verified Evidence"
-    ? "decision-gate"
-    : "no-adjustment";
-}
-
 function getImpactExplanation(role: ImpactRole) {
   switch (role) {
-    case "decision-gate":
-      return "Decision gate only";
-    case "no-adjustment":
-      return "No adjustment at current classification";
+    case "Decision Gate":
+      return "Decision posture";
+    case "Context Indicator":
+      return "Contextual assessment";
     default:
-      return "Financial effect";
+      return "Financial stress case";
   }
 }
 
 function getImpactTreatment(id: string, role: ImpactRole, assumptions: ModelAssumptions) {
-  if (role === "no-adjustment") return "No adjustment applied at current classification.";
-  if (role === "decision-gate") return "Decision gate only; no financial adjustment applied at current classification.";
+  if (role === "Decision Gate") return "Decision posture only; no financial adjustment is derived from this evidence item.";
+  if (role === "Context Indicator") return "Contextual assessment only; no financial adjustment is derived from this evidence item.";
 
   switch (id) {
     case "electricity_cost":
@@ -941,10 +925,6 @@ function getImpactTreatment(id: string, role: ImpactRole, assumptions: ModelAssu
       return `Applied interconnection delay: ${assumptions.gridInterconnectionMonths.toFixed(0)} months; total revenue delay: ${assumptions.revenueDelayMonths} months.`;
     case "water_escalation":
       return `Applied water escalation: ${(assumptions.waterEscalationRate * 100).toFixed(1)}% annually.`;
-    case "community_risk":
-      return `Applied community delay: ${assumptions.communityDelayMonths} months; CAPEX contingency: ${(assumptions.communityCapexContingencyRate * 100).toFixed(1)}%.`;
-    case "renewable_percentage":
-      return `Applied renewable coverage: ${assumptions.effectiveRenewableProcurement.toFixed(1)}%; power cost differential: ${(assumptions.powerCostDifferential * 100).toFixed(1)}%.`;
     case "cooling_capex":
       return `Applied cooling CAPEX: $${assumptions.coolingCapex.toFixed(1)}M; total CAPEX contingency: $${assumptions.capexContingency.toFixed(1)}M.`;
     case "electricity_escalation":
@@ -953,20 +933,8 @@ function getImpactTreatment(id: string, role: ImpactRole, assumptions: ModelAssu
       return `Applied annual carbon compliance cost: $${assumptions.annualCarbonCompliance.toFixed(1)}M.`;
     case "permitting_timeline":
       return `Applied permitting delay: ${assumptions.permittingMonths.toFixed(0)} months; total revenue delay: ${assumptions.revenueDelayMonths} months.`;
-    case "customer_concentration":
-      return `Applied utilization multiplier: ${assumptions.customerUtilizationMultiplier.toFixed(2)}x (${((1 - assumptions.customerUtilizationMultiplier) * 100).toFixed(1)}% discount).`;
-    case "water_rights":
-      return `Applied water cost multiplier: ${assumptions.waterRightsCostMultiplier.toFixed(2)}x.`;
     case "site_hazard_exposure":
       return `Applied annual hazard probability: ${(assumptions.adjustedHazardProbability * 100).toFixed(1)}%; climate disruption cost: $${(assumptions.adjustedDowntimeCostPerDay / 1_000_000).toFixed(2)}M/day.`;
-    case "backup_power_capacity":
-      return assumptions.backupPowerContingencyTriggered
-        ? `Applied backup-power contingency: $${assumptions.backupPowerCapex.toFixed(1)}M and $${(assumptions.backupPowerCapex > 0 ? 2 : 0).toFixed(1)}M/year OPEX.`
-        : "Applied backup-power contingency: none; threshold is satisfied.";
-    case "water_source_resilience":
-      return assumptions.waterConversionContingencyTriggered
-        ? `Applied water-conversion contingency: $${assumptions.waterConversionCapex.toFixed(1)}M; source escalation multiplier: ${assumptions.waterSourceEscalationMultiplier.toFixed(2)}x.`
-        : `Applied water-conversion contingency: none; source escalation multiplier: ${assumptions.waterSourceEscalationMultiplier.toFixed(2)}x.`;
     case "downtime_cost":
       return `Applied downtime cost: $${(assumptions.adjustedDowntimeCostPerDay / 1_000_000).toFixed(2)}M/day.`;
     default:

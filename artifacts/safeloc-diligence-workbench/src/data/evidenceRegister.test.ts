@@ -2,6 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { INITIAL_EVIDENCE } from "@/context/DiligenceContext";
+import {
+  assertEvidenceImpactRoleCoverage,
+  EVIDENCE_IMPACT_ROLES,
+  getEvidenceImpactRole,
+  type ImpactRole,
+} from "@/data/evidenceImpactRoles";
 import type { Classification } from "@/model/cashFlowEngine";
 
 const EXPECTED_IDS = [
@@ -42,6 +48,25 @@ const EXPECTED_CLASSIFICATIONS: Record<(typeof EXPECTED_IDS)[number], Classifica
   downtime_cost: "User Assumption",
 };
 
+const EXPECTED_IMPACT_ROLES: Record<(typeof EXPECTED_IDS)[number], ImpactRole> = {
+  electricity_cost: "Financial Driver",
+  water_consumption: "Financial Driver",
+  grid_interconnection: "Financial Driver",
+  water_escalation: "Financial Driver",
+  community_risk: "Context Indicator",
+  renewable_percentage: "Context Indicator",
+  cooling_capex: "Financial Driver",
+  electricity_escalation: "Financial Driver",
+  carbon_compliance: "Financial Driver",
+  permitting_timeline: "Financial Driver",
+  customer_concentration: "Decision Gate",
+  water_rights: "Decision Gate",
+  site_hazard_exposure: "Financial Driver",
+  backup_power_capacity: "Decision Gate",
+  water_source_resilience: "Decision Gate",
+  downtime_cost: "Financial Driver",
+};
+
 const DATED_CITATION = /\b20(?:2[0-9])\b/;
 
 test("the canonical evidence register keeps all 16 complete and dated", () => {
@@ -56,6 +81,23 @@ test("the canonical evidence register keeps all 16 complete and dated", () => {
     assert.ok(item.citation.trim(), `${id} needs a citation`);
     assert.match(item.citation, DATED_CITATION, `${id} citation must name a source year`);
     assert.equal(item.classification, EXPECTED_CLASSIFICATIONS[id], `${id} has an unexpected default provenance`);
+    assert.equal(item.impactRole, EXPECTED_IMPACT_ROLES[id], `${id} has an unexpected impact role`);
+  }
+});
+
+test("the impact-role taxonomy is complete, unique, and independent from provenance", () => {
+  assert.deepEqual(EVIDENCE_IMPACT_ROLES, EXPECTED_IMPACT_ROLES);
+  assert.doesNotThrow(() => assertEvidenceImpactRoleCoverage(EXPECTED_IDS));
+  assert.throws(() => assertEvidenceImpactRoleCoverage(EXPECTED_IDS.slice(1)), /coverage mismatch/i);
+  assert.throws(() => assertEvidenceImpactRoleCoverage([...EXPECTED_IDS.slice(0, -1), EXPECTED_IDS[0]]), /duplicates/i);
+  assert.throws(() => getEvidenceImpactRole("not_an_evidence_id"), /no evidence impact role/i);
+
+  for (const id of EXPECTED_IDS) {
+    const changedProvenance = {
+      ...INITIAL_EVIDENCE[id],
+      classification: "Missing Evidence" as const,
+    };
+    assert.equal(changedProvenance.impactRole, EXPECTED_IMPACT_ROLES[id]);
   }
 });
 

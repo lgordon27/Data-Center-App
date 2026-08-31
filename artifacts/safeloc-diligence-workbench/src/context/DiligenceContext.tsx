@@ -35,6 +35,11 @@ import {
   type CustomResearchResponse,
 } from "@/services/researchProjectService";
 import type { ClaimId, PublicAccessStatus } from "@/data/claimSources";
+import {
+  assertEvidenceImpactRoleCoverage,
+  getEvidenceImpactRole,
+  type ImpactRole,
+} from "@/data/evidenceImpactRoles";
 
 export type { Classification } from '@/model/cashFlowEngine';
 
@@ -44,6 +49,7 @@ export type EvidenceItem = {
   value: string | number;
   unit: string;
   classification: Classification;
+  impactRole: ImpactRole;
   review?: EvidenceReview;
   modelClassification?: Classification;
   citation: string;
@@ -108,7 +114,7 @@ type DiligenceState = {
 export const CURRENT_SESSION_STORAGE_KEY = 'safeloc:diligence:current-session:v1';
 export const EVIDENCE_TIP_DISMISSED_STORAGE_KEY = 'safeloc:diligence:evidence-room-tip-dismissed:v1';
 export const CURRENT_PROVENANCE_VERSION = 2;
-export const INITIAL_EVIDENCE: Record<string, EvidenceItem> = {
+const INITIAL_EVIDENCE_SOURCE: Record<string, Omit<EvidenceItem, "impactRole">> = {
   electricity_cost: { id: 'electricity_cost', label: 'Electricity Cost / MWh', value: 42, numericValue: 42, unit: '$/MWh', classification: 'User Assumption', citation: 'Synthetic analyst-selected electricity-cost input (2026); public market context does not establish a Stargate contract tariff', description: 'Representative West Texas blended power rate selected for underwriting; it is a synthetic input anchored to public EIA and Oncor data, not a disclosed Stargate contract tariff.', sourceId: null, providerSourceId: 'eia', sourceRole: 'Synthetic electricity-cost assumption', claimIds: ['synthetic-transaction'] },
   water_consumption: { id: 'water_consumption', label: 'Annual Cooling Water', value: 'Not disclosed', numericValue: 23, unit: 'Facility total', classification: 'Missing Evidence', citation: 'City of Abilene water utility records (2025–2026) and Stargate/Crusoe project disclosures (2025–2026) searched; no facility-level annual total found', description: 'The dated municipal records and project disclosures searched do not establish Stargate Abilene facility-level water consumption.', sourceId: null, providerSourceId: null, sourceRole: 'Searched public records and project disclosures', claimIds: ['unresolved-water'] },
   grid_interconnection: { id: 'grid_interconnection', label: 'Grid Interconnection Timeline', value: 'Expansion cancelled; delays exceeded 12 months', numericValue: 14, unit: 'Verified event', classification: 'Verified Evidence', citation: 'Epoch AI (2026), SiliconReport (2026), Data Center Dynamics (2026), and WinBuzzer (2026) reporting on the Stargate Abilene expansion cancellation and grid delays', description: 'Independent 2026 reporting states that the planned expansion beyond the 1.2 GW core was cancelled after grid-interconnection delays exceeded one year.', sourceId: null, providerSourceId: 'ercot-queue', sourceRole: 'Independent 2026 public reporting', claimIds: ['stargate-cancellation'] },
@@ -179,6 +185,15 @@ export const INITIAL_EVIDENCE: Record<string, EvidenceItem> = {
     claimIds: ['synthetic-transaction'],
   },
 };
+
+assertEvidenceImpactRoleCoverage(Object.keys(INITIAL_EVIDENCE_SOURCE));
+
+export const INITIAL_EVIDENCE: Record<string, EvidenceItem> = Object.fromEntries(
+  Object.entries(INITIAL_EVIDENCE_SOURCE).map(([id, item]) => [
+    id,
+    { ...item, impactRole: getEvidenceImpactRole(id) },
+  ]),
+);
 
 const DiligenceContext = createContext<DiligenceState | undefined>(undefined);
 
@@ -342,6 +357,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         return [id, {
           ...item,
           id,
+          impactRole: getEvidenceImpactRole(id),
           sourceId: null,
           providerSourceId: null,
           sourceRole: `AI-researched · ${item?.sourceRole ?? "High-level public research"}`,

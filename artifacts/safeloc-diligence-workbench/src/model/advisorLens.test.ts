@@ -93,43 +93,43 @@ test("reclassifying water rights and grid interconnection resolves their active 
 });
 
 test("evidence completeness tiers use fewer-than-half, half-or-more, and all-material-ready boundaries", () => {
-  const belowHalf = getAdvisorEvidenceSummary(withMaterialClassification(3));
-  assert.equal(belowHalf.materialVerifiedCount, 3);
+  const belowHalf = getAdvisorEvidenceSummary(withMaterialClassification(1));
+  assert.equal(belowHalf.materialVerifiedCount, 1);
   assert.equal(getEvidenceCompletenessTier(belowHalf), "HIGH");
 
-  const exactlyHalfOrMore = getAdvisorEvidenceSummary(withMaterialClassification(4));
-  assert.equal(exactlyHalfOrMore.materialVerifiedCount, 4);
+  const exactlyHalfOrMore = getAdvisorEvidenceSummary(withMaterialClassification(2));
+  assert.equal(exactlyHalfOrMore.materialVerifiedCount, 2);
   assert.equal(getEvidenceCompletenessTier(exactlyHalfOrMore), "MODERATE");
 
-  const allMaterialReady = getAdvisorEvidenceSummary(withMaterialClassification(7));
-  assert.equal(allMaterialReady.materialVerifiedCount, 7);
+  const allMaterialReady = getAdvisorEvidenceSummary(withMaterialClassification(4));
+  assert.equal(allMaterialReady.materialVerifiedCount, 4);
   assert.equal(allMaterialReady.materialMissingCount, 0);
   assert.equal(getEvidenceCompletenessTier(allMaterialReady), "LOW");
 });
 
 test("Management Assertion counts as materially sufficient while active gaps remain completeness-driving", () => {
   const managementAssertions = getAdvisorEvidenceSummary(
-    withMaterialClassification(4, "Management Assertion"),
+    withMaterialClassification(2, "Management Assertion"),
   );
-  assert.equal(managementAssertions.materialVerifiedCount, 4);
-  assert.equal(managementAssertions.materialGapCount, 3);
+  assert.equal(managementAssertions.materialVerifiedCount, 2);
+  assert.equal(managementAssertions.materialGapCount, 2);
   assert.equal(getEvidenceCompletenessTier(managementAssertions), "MODERATE");
 
   const materialGap = getAdvisorEvidenceSummary(
-    withMaterialClassification(2, "Management Assertion"),
+    withMaterialClassification(1, "Management Assertion"),
   );
-  assert.equal(materialGap.materialMissingCount, 5);
+  assert.equal(materialGap.materialMissingCount, 3);
   assert.equal(getEvidenceCompletenessTier(materialGap), "HIGH");
 });
 
 test("material sufficiency follows active classifications rather than optional model classifications", () => {
-  const evidence = withMaterialClassification(3);
+  const evidence = withMaterialClassification(1);
   evidence[MATERIAL_EVIDENCE_IDS[0]].modelClassification = "Missing Evidence";
   evidence[MATERIAL_EVIDENCE_IDS[1]].modelClassification = "Verified Evidence";
   const summary = getAdvisorEvidenceSummary(evidence);
 
-  assert.equal(summary.materialVerifiedCount, 3);
-  assert.equal(summary.materialGapCount, 4);
+  assert.equal(summary.materialVerifiedCount, 1);
+  assert.equal(summary.materialGapCount, 3);
   assert.equal(getEvidenceCompletenessTier(summary), "HIGH");
 });
 
@@ -149,9 +149,9 @@ test("four non-material verified inputs cannot outrank an under-half material po
   assert.equal(getEvidenceCompletenessTier(summary), "HIGH");
 });
 
-test("two adequate material inputs remain high-gap completeness even when they are the only reassuring inputs", () => {
-  const summary = getAdvisorEvidenceSummary(withMaterialClassification(2, "Management Assertion"));
-  assert.equal(summary.materialVerifiedCount, 2);
+test("one adequate decision gate remains high-gap completeness when it is the only reassuring input", () => {
+  const summary = getAdvisorEvidenceSummary(withMaterialClassification(1, "Management Assertion"));
+  assert.equal(summary.materialVerifiedCount, 1);
   assert.equal(summary.totalInputCount, 16);
   assert.equal(getEvidenceCompletenessTier(summary), "HIGH");
 });

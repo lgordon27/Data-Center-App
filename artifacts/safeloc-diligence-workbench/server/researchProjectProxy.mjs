@@ -1,7 +1,7 @@
 const OPENAI_CHAT_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const RESEARCH_PROJECT_MODEL = "gpt-4o";
-const RESEARCH_PROJECT_MAX_TOKENS = 5_000;
+const RESEARCH_PROJECT_MAX_TOKENS = 8_192;
 const RESEARCH_PROJECT_TIMEOUT_MS = 45_000;
 const DEFAULT_RESEARCH_CAPACITY_MW = 1_200;
 const RESEARCH_PROJECT_REQUEST_LIMIT = 10;
@@ -36,13 +36,74 @@ const VALID_CLASSIFICATIONS = [
   "Missing Evidence",
 ];
 
+const RESEARCH_EVIDENCE_RECORD_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    label: { type: "string", minLength: 1 },
+    value: { anyOf: [{ type: "number" }, { type: "string", minLength: 1 }] },
+    unit: { type: "string", minLength: 1 },
+    classification: { type: "string", enum: VALID_CLASSIFICATIONS },
+    citation: { type: "string", minLength: 1 },
+    description: { type: "string", minLength: 1 },
+    sourceRole: { type: "string", minLength: 1 },
+    sourceUrl: { anyOf: [{ type: "string" }, { type: "null" }] },
+    numericValue: { anyOf: [{ type: "number" }, { type: "null" }] },
+    qualitativeValue: {
+      anyOf: [
+        { type: "string", enum: ["low", "moderate", "high", "single-source", "diversified"] },
+        { type: "null" },
+      ],
+    },
+  },
+  required: [
+    "label",
+    "value",
+    "unit",
+    "classification",
+    "citation",
+    "description",
+    "sourceRole",
+    "sourceUrl",
+    "numericValue",
+    "qualitativeValue",
+  ],
+};
+
+const RESEARCH_PROJECT_RESPONSE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    projectSummary: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        name: { type: "string", minLength: 1 },
+        location: { type: "string", minLength: 1 },
+        description: { type: "string", minLength: 1 },
+        capacityMW: { anyOf: [{ type: "number" }, { type: "null" }] },
+      },
+      required: ["name", "location", "description", "capacityMW"],
+    },
+    evidence: {
+      type: "object",
+      additionalProperties: false,
+      properties: Object.fromEntries(
+        RESEARCH_EVIDENCE_IDS.map((id) => [id, RESEARCH_EVIDENCE_RECORD_SCHEMA]),
+      ),
+      required: RESEARCH_EVIDENCE_IDS,
+    },
+  },
+  required: ["projectSummary", "evidence"],
+};
+
 const RESEARCH_PROJECT_SYSTEM_PROMPT = `You are a careful infrastructure diligence researcher. Research the named data-center project and location using current, attributable public sources. Separate facility-level evidence from market, regional, or industry context. Independent public records or reporting are Verified Evidence; dated company announcements, filings, or disclosures with limited independent confirmation are Management Assertion; analyst-derived estimates from related facts are Model Inference; synthetic analyst-selected values are User Assumption; and a fact not established in the searched public record is Missing Evidence.
 
-SafeLoc models exactly 16 evidence variables: electricity_cost, water_consumption, grid_interconnection, water_escalation, community_risk, renewable_percentage, cooling_capex, electricity_escalation, carbon_compliance, permitting_timeline, customer_concentration, water_rights, site_hazard_exposure, backup_power_capacity, water_source_resilience, and downtime_cost. Return exactly one record for each identifier, no additional records, and preserve those identifiers exactly.
+SafeLoc models exactly 16 evidence variables: electricity_cost, water_consumption, grid_interconnection, water_escalation, community_risk, renewable_percentage, cooling_capex, electricity_escalation, carbon_compliance, permitting_timeline, customer_concentration, water_rights, site_hazard_exposure, backup_power_capacity, water_source_resilience, and downtime_cost. The evidence object is keyed by those exact identifiers. Complete every key exactly once.
 
 The projectSummary.description must explicitly report relevant findings, when available, about electrical-equipment procurement and lead times, jurisdictional bans or moratoriums, noise ordinances and operational impacts, local electricity-rate concerns, and semiconductor and memory supply-chain constraints. It must also identify speculative or phantom grid-load requests when that context is relevant. These are contextual research areas, not additional modeled evidence inputs: do not add them to the evidence array, assign them evidence classifications, or imply that market-wide statistics prove facility-level facts.
 
-Respond with one JSON object with exactly two top-level fields: projectSummary and evidence. projectSummary must contain name, location, description, and capacityMW. evidence must contain exactly 16 records with id, label, value, unit, classification, citation, description, and sourceRole. sourceUrl is optional: when a cited source in the retrieved packet directly supports the finding, return that source's exact URL; never invent or return a URL that is not in the packet. The server will attach the validated source title, publisher, publication date, access date, and access constraint from the retrieved packet. A source URL is a research aid only and never facility-level proof by itself. numericValue is optional for numeric model inputs; qualitativeValue is optional and may only be low, moderate, high, single-source, or diversified. Use concise plain language. Do not include markdown, commentary, or any other top-level fields.`;
+Respond with one JSON object matching the supplied schema. projectSummary must contain name, location, description, and capacityMW. Every evidence record must contain label, value, unit, classification, citation, description, sourceRole, sourceUrl, numericValue, and qualitativeValue. Use null for sourceUrl, numericValue, or qualitativeValue when unavailable. When a cited source in the retrieved packet directly supports the finding, return that source's exact URL; never invent or return a URL that is not in the packet. The server will attach the validated source title, publisher, publication date, access date, and access constraint from the retrieved packet. A source URL is a research aid only and never facility-level proof by itself. qualitativeValue may only be low, moderate, high, single-source, or diversified. Use concise plain language. Do not include markdown or commentary.`;
 
 function sendJson(res, status, body) {
   res.statusCode = status;
@@ -67,6 +128,11 @@ function nonEmptyString(value, field, maxLength = 4_000) {
     throw new Error(`Research field "${field}" is too long.`);
   }
   return result;
+}
+
+function stringOrFallback(value, fallback, maxLength = 4_000) {
+  if (typeof value !== "string" || !value.trim()) return fallback;
+  return value.trim().slice(0, maxLength);
 }
 
 function safePublicSourceUrl(value) {
@@ -98,7 +164,7 @@ function normalizeCapacityMW(value) {
 }
 
 function parseResearchResponse(body, retrievedSources = [], accessedAt = new Date().toISOString().slice(0, 10)) {
-  if (!isRecord(body) || !isRecord(body.projectSummary) || !Array.isArray(body.evidence)) {
+  if (!isRecord(body) || !isRecord(body.projectSummary) || (!Array.isArray(body.evidence) && !isRecord(body.evidence))) {
     throw new Error("Research response must include projectSummary and evidence.");
   }
 
@@ -110,7 +176,13 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
     capacityMW: DEFAULT_RESEARCH_CAPACITY_MW,
   };
 
-  if (body.evidence.length !== RESEARCH_EVIDENCE_IDS.length) {
+  const evidenceCandidates = Array.isArray(body.evidence)
+    ? body.evidence
+    : RESEARCH_EVIDENCE_IDS.map((id) => ({ id, ...body.evidence[id] }));
+  if (
+    evidenceCandidates.length !== RESEARCH_EVIDENCE_IDS.length ||
+    (!Array.isArray(body.evidence) && Object.keys(body.evidence).some((id) => !RESEARCH_EVIDENCE_IDS.includes(id)))
+  ) {
     throw new Error("Research response must contain exactly 16 evidence records.");
   }
 
@@ -121,14 +193,18 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
       .filter(([url]) => Boolean(url)),
   );
   const seenIds = new Set();
-  const evidence = body.evidence.map((item, index) => {
+  const evidence = evidenceCandidates.map((item, index) => {
     if (!isRecord(item)) throw new Error(`Research evidence record ${index + 1} is invalid.`);
     const id = nonEmptyString(item.id, `evidence[${index}].id`, 80);
     if (!expectedIds.has(id) || seenIds.has(id)) {
       throw new Error("Research response must contain each modeled evidence identifier exactly once.");
     }
     seenIds.add(id);
-    const citation = nonEmptyString(item.citation, `evidence[${index}].citation`, 2_000);
+    const citation = stringOrFallback(
+      item.citation,
+      "No supporting retrieved source was returned for this evidence item.",
+      2_000,
+    );
     const citedUrl = safePublicSourceUrl(
       citation.match(/https?:\/\/[^\s)]+/)?.[0]?.replace(/[.,;]+$/, ""),
     );
@@ -137,15 +213,15 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
     const supportedByRetrievedSource = Boolean(sourceUrl);
     const record = {
       id,
-      label: nonEmptyString(item.label, `evidence[${index}].label`, 160),
+      label: stringOrFallback(item.label, id.replaceAll("_", " "), 160),
       value: typeof item.value === "number" && Number.isFinite(item.value)
         ? item.value
-        : nonEmptyString(item.value, `evidence[${index}].value`, 1_000),
-      unit: nonEmptyString(item.unit, `evidence[${index}].unit`, 100),
+        : stringOrFallback(item.value, "Not established", 1_000),
+      unit: stringOrFallback(item.unit, "Not disclosed", 100),
       classification: supportedByRetrievedSource ? nonEmptyString(item.classification, `evidence[${index}].classification`, 60) : "Missing Evidence",
       citation: supportedByRetrievedSource ? citation : `No supporting retrieved source for this claim. ${citation}`,
-      description: nonEmptyString(item.description, `evidence[${index}].description`, 2_000),
-      sourceRole: nonEmptyString(item.sourceRole, `evidence[${index}].sourceRole`, 200),
+      description: stringOrFallback(item.description, "The searched public record did not establish a facility-level value.", 2_000),
+      sourceRole: stringOrFallback(item.sourceRole, "AI-researched public-source review", 200),
     };
     if (sourceUrl) {
       const metadata = sourceByUrl.get(sourceUrl);
@@ -164,13 +240,13 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
     if (!VALID_CLASSIFICATIONS.includes(record.classification)) {
       throw new Error(`Research evidence record ${id} has an invalid classification.`);
     }
-    if (supportedByRetrievedSource && item.numericValue !== undefined) {
+    if (supportedByRetrievedSource && item.numericValue !== undefined && item.numericValue !== null) {
       if (typeof item.numericValue !== "number" || !Number.isFinite(item.numericValue)) {
         throw new Error(`Research evidence record ${id} has an invalid numericValue.`);
       }
       record.numericValue = item.numericValue;
     }
-    if (supportedByRetrievedSource && item.qualitativeValue !== undefined) {
+    if (supportedByRetrievedSource && item.qualitativeValue !== undefined && item.qualitativeValue !== null) {
       if (!["low", "moderate", "high", "single-source", "diversified"].includes(item.qualitativeValue)) {
         throw new Error(`Research evidence record ${id} has an invalid qualitativeValue.`);
       }
@@ -357,7 +433,14 @@ export async function handleResearchProjectRequest(
       body: JSON.stringify({
         model: RESEARCH_PROJECT_MODEL,
         max_tokens: RESEARCH_PROJECT_MAX_TOKENS,
-        response_format: { type: "json_object" },
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "safeloc_research_project",
+            strict: true,
+            schema: RESEARCH_PROJECT_RESPONSE_SCHEMA,
+          },
+        },
         messages: [
           { role: "system", content: `${RESEARCH_PROJECT_SYSTEM_PROMPT}${RETRIEVED_SOURCE_BOUNDARY_PROMPT}` },
           { role: "user", content: buildResearchProjectPrompt(project, retrievedSources) },
@@ -386,7 +469,11 @@ export async function handleResearchProjectRequest(
     let parsed;
     try {
       parsed = parseResearchResponse(JSON.parse(content), retrievedSources);
-    } catch {
+    } catch (error) {
+      console.warn(
+        "[research-project] Rejected structured research response:",
+        error instanceof Error ? error.message : "unknown validation error",
+      );
       sendJson(res, 502, { error: "Project research returned an invalid 16-item response." });
       return;
     }
@@ -409,6 +496,7 @@ export {
   RESEARCH_EVIDENCE_IDS,
   RESEARCH_PROJECT_MAX_TOKENS,
   RESEARCH_PROJECT_MODEL,
+  RESEARCH_PROJECT_RESPONSE_SCHEMA,
   RESEARCH_PROJECT_SYSTEM_PROMPT,
   RESEARCH_PROJECT_TIMEOUT_MS,
   buildResearchProjectPrompt,

@@ -8,6 +8,7 @@ import {
   RESEARCH_EVIDENCE_IDS,
   RESEARCH_PROJECT_MAX_TOKENS,
   RESEARCH_PROJECT_MODEL,
+  RESEARCH_PROJECT_RESPONSE_SCHEMA,
   RESEARCH_PROJECT_SYSTEM_PROMPT,
   buildResearchProjectPrompt,
   handleResearchProjectRequest,
@@ -142,7 +143,9 @@ test("sends bounded research settings and the expanded out-of-model instruction"
   const body = JSON.parse(requestInit.body);
   assert.equal(body.model, RESEARCH_PROJECT_MODEL);
   assert.equal(body.max_tokens, RESEARCH_PROJECT_MAX_TOKENS);
-  assert.equal(body.response_format.type, "json_object");
+  assert.equal(body.response_format.type, "json_schema");
+  assert.equal(body.response_format.json_schema.strict, true);
+  assert.deepEqual(body.response_format.json_schema.schema, RESEARCH_PROJECT_RESPONSE_SCHEMA);
   assert.equal(body.messages[1].content, buildResearchProjectPrompt({ name: "Project Atlas", location: "Texas" }, [retrievedSource]));
   for (const phrase of [
     "electrical-equipment procurement",
@@ -170,6 +173,42 @@ test("returns exactly 16 normalized evidence items and safely falls back for inv
     projectSummary: { ...validResearchResponse().projectSummary, capacityMW: 600 },
   }, [retrievedSource]);
   assert.equal(unsupportedCapacity.projectSummary.capacityMW, DEFAULT_RESEARCH_CAPACITY_MW);
+});
+
+test("normalizes the strict keyed evidence contract and ignores nullable optional values", () => {
+  const arrayResponse = validResearchResponse();
+  const keyedResponse = {
+    projectSummary: arrayResponse.projectSummary,
+    evidence: Object.fromEntries(arrayResponse.evidence.map(({ id, ...record }) => [
+      id,
+      { ...record, sourceUrl: null, numericValue: null, qualitativeValue: null },
+    ])),
+  };
+  const response = parseResearchResponse(keyedResponse);
+  assert.equal(response.evidence.length, 16);
+  assert.deepEqual(response.evidence.map((item) => item.id), RESEARCH_EVIDENCE_IDS);
+  assert.equal(response.evidence[0].numericValue, undefined);
+  assert.equal(response.evidence[0].qualitativeValue, undefined);
+});
+
+test("keeps a complete response when missing-evidence narrative fields are empty", () => {
+  const body = validResearchResponse();
+  body.evidence[0] = {
+    ...body.evidence[0],
+    label: "",
+    value: "",
+    unit: "",
+    citation: "",
+    description: "",
+    sourceRole: "",
+    sourceUrl: null,
+  };
+  const response = parseResearchResponse(body, [retrievedSource]);
+  assert.equal(response.evidence.length, 16);
+  assert.equal(response.evidence[0].classification, "Missing Evidence");
+  assert.equal(response.evidence[0].value, "Not established");
+  assert.match(response.evidence[0].citation, /No supporting retrieved source/);
+  assert.match(response.evidence[0].description, /did not establish/i);
 });
 
 test("only exposes direct links that are safe and present in the retrieved source packet", () => {

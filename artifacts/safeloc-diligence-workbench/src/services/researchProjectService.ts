@@ -82,6 +82,19 @@ export type ResearchProjectOptions = {
   onProgress?: (progress: ResearchProgress) => void;
 };
 
+export function summarizeSourceCoverage(evidence: CustomEvidenceRecord[]) {
+  return evidence.reduce((summary, item) => {
+    if (item.classification === "Missing Evidence") {
+      summary.missing += 1;
+    } else if (item.sourceUrl || item.sources?.length) {
+      summary.supported += 1;
+    } else {
+      summary.aiKnowledge += 1;
+    }
+    return summary;
+  }, { supported: 0, aiKnowledge: 0, missing: 0 });
+}
+
 const DEFAULT_EVIDENCE_DEFINITIONS: Record<(typeof CUSTOM_EVIDENCE_IDS)[number], { label: string; unit: string }> = {
   electricity_cost: { label: "Electricity Cost / MWh", unit: "$/MWh" },
   water_consumption: { label: "Annual Cooling Water", unit: "Facility total" },

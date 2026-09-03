@@ -30,6 +30,7 @@ import {
   getTopFemaHazards,
 } from "@/data/femaNRI";
 import { ClaimCitation } from "@/components/ClaimCitation";
+import { summarizeSourceCoverage } from "@/services/researchProjectService";
 
 function ScopeLimitationsDisclosure() {
   return (
@@ -55,11 +56,7 @@ function ScopeLimitationsDisclosure() {
 function CustomCaseBrief({ project, onNavigate }: { project: ReturnType<typeof useDiligence>["project"]; onNavigate: (screen: Screen) => void }) {
   const { evidence } = useDiligence();
   const evidenceItems = Object.values(evidence);
-  const sourceCoverage = {
-    supported: evidenceItems.filter((item) => Boolean(item.sourceUrl || item.sources?.length)).length,
-    aiKnowledge: evidenceItems.filter((item) => !item.sourceUrl && !item.sources?.length && item.classification !== "Missing Evidence").length,
-    missing: evidenceItems.filter((item) => item.classification === "Missing Evidence").length,
-  };
+  const sourceCoverage = summarizeSourceCoverage(evidenceItems);
   const isDefaultAssumptions = project.researchMode === "default-assumptions";
   const capacityLabel = project.capacityProvenance === "directory-reported"
     ? "Directory-reported model capacity"

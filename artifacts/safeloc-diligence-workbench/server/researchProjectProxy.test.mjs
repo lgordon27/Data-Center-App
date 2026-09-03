@@ -14,6 +14,7 @@ import {
   RESEARCH_PROJECT_RESPONSE_SCHEMA,
   RESEARCH_PROJECT_SYSTEM_PROMPT,
   buildResearchProjectPrompt,
+  mergeRetrievedSources,
   handleResearchProjectRequest,
   parseResearchResponse,
   createResearchProjectRateLimiter,
@@ -21,6 +22,7 @@ import {
   normalizeCapacityMW,
   normalizeReportedCapacityMW,
   parseResearchProjectBody,
+  normalizeRetrievedSources,
 } from "./researchProjectProxy.mjs";
 
 function responseRecorder() {
@@ -122,6 +124,32 @@ test("grounds the prompt in known data without treating it as SafeLoc evidence",
   }, [retrievedSource]);
   assert.match(prompt, /Compute Atlas public database/);
   assert.match(prompt, /not as SafeLoc evidence or verified project economics/);
+  assert.doesNotMatch(prompt, /using only the retrieved sources/i);
+  assert.match(prompt, /Management Assertion or lower/);
+});
+
+test("enforces per-search and combined source caps while prioritizing targeted results", () => {
+  const retrieval = normalizeRetrievedSources({
+    output: [{ type: "web_search_call", action: { sources: Array.from({ length: 12 }, (_, index) => ({
+      url: `https://example.com/search/${index}`,
+      title: `Result ${index}`,
+    })) } }],
+  });
+  assert.equal(retrieval.length, 10);
+
+  const source = (group, index) => ({
+    url: `https://example.com/${group}/${index}`,
+    title: `${group} ${index}`,
+    excerpt: "Project-specific source.",
+    sourceClass: "secondary-reporting",
+    searchDomain: group,
+  });
+  const merged = mergeRetrievedSources(
+    Array.from({ length: 40 }, (_, index) => source("initial", index)),
+    Array.from({ length: 5 }, (_, index) => source("targeted", index)),
+  );
+  assert.equal(merged.length, 40);
+  assert.deepEqual(merged.slice(0, 5).map(({ searchDomain }) => searchDomain), Array(5).fill("targeted"));
 });
 
 test("rejects malformed custom research requests before calling OpenAI", async () => {
@@ -171,8 +199,13 @@ test("sends bounded research settings and the expanded out-of-model instruction"
   let requestUrl;
   let requestInit;
   let retrievalCalls = 0;
+  let synthesisCalls = 0;
   const retrievalInputs = [];
-  await handleResearchProjectRequest(request({ name: "Project Atlas", location: "Texas" }), response, {
+  await handleResearchProjectRequest(request({
+    name: "Project Atlas",
+    location: "Texas",
+    knownData: { operator: "Atlas Compute" },
+  }), response, {
     apiKey: "server-secret-for-test",
     fetchImpl: async (url, init) => {
       if (url === OPENAI_RESPONSES_URL) {
@@ -183,19 +216,29 @@ test("sends bounded research settings and the expanded out-of-model instruction"
       }
       requestUrl = url;
       requestInit = init;
+      synthesisCalls += 1;
+      const synthesized = validResearchResponse();
+      if (synthesisCalls === 2) {
+        synthesized.evidence[1].value = "Company-reported cooling arrangement";
+        synthesized.evidence[1].classification = "Management Assertion";
+        synthesized.evidence[1].sourceUrl = retrievedSource.url;
+        synthesized.evidence[1].sourceUrls = [retrievedSource.url];
+      }
       return new Response(JSON.stringify({
-        choices: [{ message: { content: JSON.stringify(validResearchResponse()) } }],
+        choices: [{ message: { content: JSON.stringify(synthesized) } }],
       }), { status: 200 });
     },
   });
   assert.equal(response.statusCode, 200);
   assert.equal(retrievalCalls, 26);
-  assert.deepEqual(
-    retrievalInputs.slice(0, 10),
-    RESEARCH_SEARCH_DOMAINS.map((domain) =>
-      `Find current public sources for the exact data-center project "Project Atlas" in "Texas". Search focus: ${domain.query({ name: "Project Atlas", location: "Texas" })}. Verify project/operator/location identity and do not mix similarly named facilities. Prefer direct government, regulator, utility, land, permit, environmental, and filed company records over summaries. Return source URLs, dates, titles, and claim-specific excerpts.`
-    ),
-  );
+  assert.equal(synthesisCalls, 2);
+  assert.equal(response.json().evidence[1].classification, "Management Assertion");
+  assert.equal(response.json().evidence[1].sourceUrl, retrievedSource.url);
+  for (const input of retrievalInputs.slice(0, 10)) {
+    assert.match(input, /Project Atlas/);
+    assert.match(input, /Texas/);
+    assert.match(input, /Atlas Compute/);
+  }
   assert.deepEqual(
     RESEARCH_SEARCH_DOMAINS.map((domain) => domain.id),
     ["project-general", "industry-context", "operator-location", "sec-filings", "press-releases", "operator-infrastructure", "community-zoning", "grid-interconnection", "environmental-water", "technical-capacity"],
@@ -208,11 +251,8 @@ test("sends bounded research settings and the expanded out-of-model instruction"
   assert.equal(body.response_format.type, "json_schema");
   assert.equal(body.response_format.json_schema.strict, true);
   assert.deepEqual(body.response_format.json_schema.schema, RESEARCH_PROJECT_RESPONSE_SCHEMA);
-  assert.equal(body.messages[1].content, buildResearchProjectPrompt({ name: "Project Atlas", location: "Texas" }, [{
-    ...retrievedSource,
-    sourceClass: "primary-company",
-    searchDomain: "project-general",
-  }]));
+  assert.match(body.messages[1].content, /targeted-electricity_cost/);
+  assert.match(body.messages[1].content, /https:\/\/example\.com\/atlas\/source/);
   for (const phrase of [
     "electrical-equipment procurement",
     "jurisdictional bans or moratoriums",

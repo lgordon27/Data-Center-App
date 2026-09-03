@@ -7,6 +7,8 @@ const DEFAULT_RESEARCH_CAPACITY_MW = 1_200;
 const MAX_RESEARCH_CAPACITY_MW = 10_000;
 const RESEARCH_PROJECT_REQUEST_LIMIT = 10;
 const RESEARCH_PROJECT_REQUEST_WINDOW_MS = 60_000;
+const RESEARCH_SEARCH_TIMEOUT_MS = 20_000;
+const TARGETED_FOLLOW_UP_START_BUDGET_MS = 45_000;
 const RESEARCH_PROJECT_RATE_LIMIT_MESSAGE =
   "Custom research request limit reached. Please wait before trying again or use the curated case.";
 const MAX_RETRIEVED_SOURCES = 40;
@@ -152,7 +154,7 @@ function sendJson(res, status, body) {
 }
 
 const RETRIEVED_SOURCE_BOUNDARY_PROMPT = `
-Use the retrieved source packet supplied in the user message as the strongest validation boundary. Never invent a source, URL, date, excerpt, or facility-level fact. An exact URL match in the packet supports the returned classification. If an AI-cited URL is not in the packet, do not present it as independently verified: preserve Management Assertion, Model Inference, User Assumption, or Missing Evidence when appropriate, and downgrade an unmatched Verified Evidence claim to Management Assertion with an explicit citation note. You may use well-established training knowledge only at a Management Assertion ceiling and must say that no retrieved source independently confirmed it. Do not classify contextual market or industry reporting as facility-level Verified Evidence.`;
+Use the retrieved source packet supplied in the user message as the strongest validation boundary. Never invent a source, URL, date, excerpt, or facility-level fact. An exact URL match in the packet supports the returned classification. If an AI-cited URL is not in the packet, do not present it as independently verified: preserve Management Assertion, Model Inference, User Assumption, or Missing Evidence when appropriate, and downgrade an unmatched Verified Evidence claim to Management Assertion with an explicit citation note. You may use well-established training knowledge only at a Management Assertion ceiling and must say that no retrieved source independently confirmed it. Apply this consistently: if projectSummary states an exact-project fact such as a named customer or offtaker, a behind-the-meter power arrangement, disclosed capacity, or a stated water source, map that same fact into the relevant evidence variable as Management Assertion or lower rather than calling the variable Missing Evidence. Do not classify contextual market or industry reporting as facility-level Verified Evidence.`;
 
 function isRecord(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -449,7 +451,7 @@ function buildResearchProjectPrompt({ name, location, knownData }, retrievedSour
   const knownDataPrompt = knownData
     ? `\n\nThe following facts are already confirmed from the Compute Atlas public database: ${JSON.stringify(knownData)}. Use them as directory discovery context for project identity and summary fields, not as SafeLoc evidence or verified project economics. Focus your research on the 16 evidence variables, not on rediscovering basic project facts.`
     : "";
-  return `Analyze this data-center project using only the retrieved sources below: ${name}. Location: ${location}. Preserve exact source URLs in citations, distinguish facility-level findings from regional context, and return the exact JSON contract from the system instruction.${knownDataPrompt}
+  return `Analyze this data-center project using the retrieved sources below as the strongest validation boundary: ${name}. Location: ${location}. Preserve exact source URLs in citations, distinguish facility-level findings from regional context, and return the exact JSON contract from the system instruction. If the packet does not support a variable but you have well-established training knowledge about the exact project, you may return it only as Management Assertion or lower, with no source URL and an explicit statement that no retrieved source independently confirmed it and that it must be verified before reliance. Do not replace genuine public information with Missing Evidence merely because the packet lacks a matching URL.${knownDataPrompt}
 
 Retrieved source packet:
 ${JSON.stringify(sourcePacket)}`;
@@ -491,6 +493,9 @@ function normalizeRetrievedSources(body, searchDomain = "project-identity") {
 }
 
 async function retrievePublicSourcesForDomain(project, domain, apiKey, fetchImpl, signal) {
+  const searchSignal = typeof AbortSignal.any === "function" && typeof AbortSignal.timeout === "function"
+    ? AbortSignal.any([signal, AbortSignal.timeout(RESEARCH_SEARCH_TIMEOUT_MS)])
+    : signal;
   const response = await fetchImpl(OPENAI_RESPONSES_URL, {
     method: "POST",
     headers: {
@@ -505,7 +510,7 @@ async function retrievePublicSourcesForDomain(project, domain, apiKey, fetchImpl
       max_output_tokens: 1_800,
       include: ["web_search_call.action.sources"],
     }),
-    signal,
+    signal: searchSignal,
   });
   if (!response.ok) throw new Error("Source retrieval failed.");
   let body;
@@ -520,9 +525,13 @@ async function retrievePublicSourcesForDomain(project, domain, apiKey, fetchImpl
 }
 
 async function retrievePublicSources(project, apiKey, fetchImpl, signal) {
+  const queryContext = {
+    ...project,
+    operator: project.knownData?.operator,
+  };
   const domains = RESEARCH_SEARCH_DOMAINS.map((domain) => ({
     ...domain,
-    query: domain.query(project),
+    query: domain.query(queryContext),
   }));
   const results = await Promise.allSettled(
     domains.map((domain) => retrievePublicSourcesForDomain(project, domain, apiKey, fetchImpl, signal)),
@@ -557,10 +566,15 @@ async function retrievePublicSources(project, apiKey, fetchImpl, signal) {
 }
 
 async function retrieveTargetedSources(project, evidenceIds, apiKey, fetchImpl, signal) {
+  const identityTerms = [
+    `"${project.name}"`,
+    `"${project.location}"`,
+    project.knownData?.operator ? `"${project.knownData.operator}"` : null,
+  ].filter(Boolean).join(" ");
   const domains = evidenceIds.map((id) => ({
     id: `targeted-${id}`,
     label: `Targeted ${id.replaceAll("_", " ")} follow-up`,
-    query: `"${project.name}" ${TARGETED_EVIDENCE_TERMS[id]}`,
+    query: `${identityTerms} ${TARGETED_EVIDENCE_TERMS[id]}`,
   }));
   const results = await Promise.allSettled(
     domains.map((domain) => retrievePublicSourcesForDomain(project, domain, apiKey, fetchImpl, signal)),
@@ -571,6 +585,17 @@ async function retrieveTargetedSources(project, evidenceIds, apiKey, fetchImpl, 
     searchedDomains: domains.filter((_, index) => results[index].status === "fulfilled").map((domain) => domain.id),
     failedDomains: domains.filter((_, index) => results[index].status === "rejected").map((domain) => domain.id),
   };
+}
+
+function mergeRetrievedSources(initialSources, targetedSources) {
+  const seen = new Set();
+  const rankAndDeduplicate = (sources) => sources
+    .sort((a, b) => sourcePriority(a.sourceClass) - sourcePriority(b.sourceClass))
+    .filter((source) => !seen.has(source.url) && seen.add(source.url));
+  return [
+    ...rankAndDeduplicate([...targetedSources]),
+    ...rankAndDeduplicate([...initialSources]),
+  ].slice(0, MAX_RETRIEVED_SOURCES);
 }
 
 async function synthesizeResearch(project, retrievedSources, apiKey, fetchImpl, signal) {
@@ -703,6 +728,7 @@ export async function handleResearchProjectRequest(
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), RESEARCH_PROJECT_TIMEOUT_MS);
+  const startedAt = Date.now();
   try {
     let sourcePacket = await retrievePublicSources(project, apiKey, fetchImpl, controller.signal);
     let retrievedSources = sourcePacket.sources;
@@ -713,21 +739,22 @@ export async function handleResearchProjectRequest(
       const unsupportedIds = parsed.evidence
         .filter((item) => item.classification === "Missing Evidence")
         .map((item) => item.id);
-      if (unsupportedIds.length > 0) {
-        const targeted = await retrieveTargetedSources(project, unsupportedIds, apiKey, fetchImpl, controller.signal);
-        if (targeted.sources.length > 0) {
-          const seen = new Set();
-          retrievedSources = [...retrievedSources, ...targeted.sources]
-            .sort((a, b) => sourcePriority(a.sourceClass) - sourcePriority(b.sourceClass))
-            .filter((source) => !seen.has(source.url) && seen.add(source.url))
-            .slice(0, MAX_RETRIEVED_SOURCES);
-          sourcePacket = {
-            sources: retrievedSources,
-            searchedDomains: [...sourcePacket.searchedDomains, ...targeted.searchedDomains],
-            failedDomains: [...sourcePacket.failedDomains, ...targeted.failedDomains],
-          };
-          synthesis = await synthesizeResearch(project, retrievedSources, apiKey, fetchImpl, controller.signal);
-          parsed = parseResearchResponse(synthesis, retrievedSources, new Date().toISOString().slice(0, 10), sourcePacket, project.knownData);
+      if (unsupportedIds.length > 0 && Date.now() - startedAt < TARGETED_FOLLOW_UP_START_BUDGET_MS) {
+        try {
+          const targeted = await retrieveTargetedSources(project, unsupportedIds, apiKey, fetchImpl, controller.signal);
+          if (targeted.sources.length > 0) {
+            retrievedSources = mergeRetrievedSources(retrievedSources, targeted.sources);
+            sourcePacket = {
+              sources: retrievedSources,
+              searchedDomains: [...sourcePacket.searchedDomains, ...targeted.searchedDomains],
+              failedDomains: [...sourcePacket.failedDomains, ...targeted.failedDomains],
+            };
+            synthesis = await synthesizeResearch(project, retrievedSources, apiKey, fetchImpl, controller.signal);
+            parsed = parseResearchResponse(synthesis, retrievedSources, new Date().toISOString().slice(0, 10), sourcePacket, project.knownData);
+          }
+        } catch (error) {
+          if (!(error instanceof Error && error.name === "AbortError")) throw error;
+          console.warn("[research-project] Targeted follow-up exceeded the request budget; returning the validated first synthesis.");
         }
       }
     } catch (error) {
@@ -774,5 +801,6 @@ export {
   supportsExplicitZero,
   safePublicSourceUrl,
   retrievePublicSources,
+  mergeRetrievedSources,
   createResearchProjectRateLimiter,
 };

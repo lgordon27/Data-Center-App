@@ -6,6 +6,7 @@ import {
   parseResponse,
   researchProject,
   RESEARCH_PROJECT_TIMEOUT_MS,
+  summarizeSourceCoverage,
 } from "./researchProjectService";
 
 const response = {
@@ -35,6 +36,22 @@ test("accepts the exact 16-item custom research contract", () => {
   assert.equal(parsed.evidence.length, 16);
   assert.equal(parsed.projectSummary.capacityMW, 600);
   assert.equal(parsed.projectSummary.capacityProvenance, "ai-reported");
+});
+
+test("reports mutually exclusive source coverage counts that total sixteen", () => {
+  const parsed = parseResponse({
+    ...response,
+    evidence: response.evidence.map((item, index) => index === 1
+      ? {
+          ...item,
+          value: "Company-reported arrangement",
+          classification: "Management Assertion" as const,
+        }
+      : item),
+  });
+  const coverage = summarizeSourceCoverage(parsed.evidence);
+  assert.deepEqual(coverage, { supported: 0, aiKnowledge: 1, missing: 15 });
+  assert.equal(coverage.supported + coverage.aiKnowledge + coverage.missing, 16);
 });
 
 test("uses the standardized capacity fallback for malformed or implausible capacity", () => {

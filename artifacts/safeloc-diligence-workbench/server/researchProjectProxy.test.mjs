@@ -4,17 +4,14 @@ import test from "node:test";
 import {
   DEFAULT_RESEARCH_CAPACITY_MW,
   MAX_RESEARCH_CAPACITY_MW,
-  OPENAI_CHAT_COMPLETIONS_URL,
   OPENAI_RESPONSES_URL,
   RESEARCH_EVIDENCE_IDS,
-  RESEARCH_SEARCH_DOMAINS,
   RESEARCH_PROJECT_MAX_TOKENS,
   RESEARCH_PROJECT_MODEL,
   RESEARCH_PROJECT_TIMEOUT_MS,
   RESEARCH_PROJECT_RESPONSE_SCHEMA,
   RESEARCH_PROJECT_SYSTEM_PROMPT,
   buildResearchProjectPrompt,
-  mergeRetrievedSources,
   handleResearchProjectRequest,
   parseResearchResponse,
   createResearchProjectRateLimiter,
@@ -82,14 +79,28 @@ const retrievedSource = {
   excerpt: "A public source excerpt about Project Atlas.",
 };
 
-function retrievalResponse() {
+function singleCallResponse(research = validResearchResponse(), sources = [retrievedSource]) {
   return new Response(JSON.stringify({
-    output: [{ type: "web_search_call", action: { sources: [retrievedSource] } }],
+    output: [
+      { type: "web_search_call", action: { sources } },
+      {
+        type: "message",
+        content: [{
+          type: "output_text",
+          text: JSON.stringify(research),
+          annotations: sources.map((source) => ({
+            type: "url_citation",
+            url: source.url,
+            title: source.title,
+          })),
+        }],
+      },
+    ],
   }), { status: 200 });
 }
 
-test("uses a 60-second server research budget", () => {
-  assert.equal(RESEARCH_PROJECT_TIMEOUT_MS, 60_000);
+test("uses a 90-second server research budget", () => {
+  assert.equal(RESEARCH_PROJECT_TIMEOUT_MS, 90_000);
 });
 
 test("validates and preserves optional Compute Atlas known data", () => {
@@ -159,7 +170,7 @@ test("grounds the prompt in known data without treating it as SafeLoc evidence",
   assert.match(prompt, /Management Assertion or lower/);
 });
 
-test("enforces per-search and combined source caps while prioritizing targeted results", () => {
+test("normalizes and caps sources returned by the single web-search response", () => {
   const retrieval = normalizeRetrievedSources({
     output: [{ type: "web_search_call", action: { sources: Array.from({ length: 12 }, (_, index) => ({
       url: `https://example.com/search/${index}`,
@@ -167,20 +178,6 @@ test("enforces per-search and combined source caps while prioritizing targeted r
     })) } }],
   });
   assert.equal(retrieval.length, 10);
-
-  const source = (group, index) => ({
-    url: `https://example.com/${group}/${index}`,
-    title: `${group} ${index}`,
-    excerpt: "Project-specific source.",
-    sourceClass: "secondary-reporting",
-    searchDomain: group,
-  });
-  const merged = mergeRetrievedSources(
-    Array.from({ length: 40 }, (_, index) => source("initial", index)),
-    Array.from({ length: 5 }, (_, index) => source("targeted", index)),
-  );
-  assert.equal(merged.length, 40);
-  assert.deepEqual(merged.slice(0, 5).map(({ searchDomain }) => searchDomain), Array(5).fill("targeted"));
 });
 
 test("preserves annotated retrieval text as the claim-specific source excerpt", () => {
@@ -228,9 +225,7 @@ test("limits paid custom research requests by client IP", async () => {
   const options = {
     apiKey: "server-secret-for-test",
     rateLimiter,
-    fetchImpl: async (_, init) => init.body.includes("web_search_preview")
-      ? retrievalResponse()
-      : new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(validResearchResponse()) } }] }), { status: 200 }),
+    fetchImpl: async () => singleCallResponse(),
   };
   await handleResearchProjectRequest(request({ name: "Atlas", location: "Texas" }), responseRecorder(), options);
   const limited = responseRecorder();
@@ -244,13 +239,11 @@ test("limits paid custom research requests by client IP", async () => {
   assert.equal(allowedAgain.statusCode, 200);
 });
 
-test("sends bounded research settings and the expanded out-of-model instruction", async () => {
+test("uses exactly one web-search-enabled API call with the strict 16-item schema", async () => {
   const response = responseRecorder();
   let requestUrl;
   let requestInit;
-  let retrievalCalls = 0;
-  let synthesisCalls = 0;
-  const retrievalInputs = [];
+  let calls = 0;
   await handleResearchProjectRequest(request({
     name: "Project Atlas",
     location: "Texas",
@@ -258,51 +251,30 @@ test("sends bounded research settings and the expanded out-of-model instruction"
   }), response, {
     apiKey: "server-secret-for-test",
     fetchImpl: async (url, init) => {
-      if (url === OPENAI_RESPONSES_URL) {
-        retrievalCalls += 1;
-        retrievalInputs.push(JSON.parse(init.body).input);
-        assert.equal(url, OPENAI_RESPONSES_URL);
-        return retrievalResponse();
-      }
       requestUrl = url;
       requestInit = init;
-      synthesisCalls += 1;
-      const synthesized = validResearchResponse();
-      if (synthesisCalls === 2) {
-        synthesized.evidence[1].value = "Company-reported cooling arrangement";
-        synthesized.evidence[1].classification = "Management Assertion";
-        synthesized.evidence[1].sourceUrl = retrievedSource.url;
-        synthesized.evidence[1].sourceUrls = [retrievedSource.url];
-      }
-      return new Response(JSON.stringify({
-        choices: [{ message: { content: JSON.stringify(synthesized) } }],
-      }), { status: 200 });
+      calls += 1;
+      const researched = validResearchResponse();
+      researched.evidence[1].value = "Company-reported cooling arrangement";
+      return singleCallResponse(researched);
     },
   });
   assert.equal(response.statusCode, 200);
-  assert.equal(retrievalCalls, 26);
-  assert.equal(synthesisCalls, 2);
+  assert.equal(calls, 1);
   assert.equal(response.json().evidence[1].classification, "Management Assertion");
   assert.equal(response.json().evidence[1].sourceUrl, retrievedSource.url);
-  for (const input of retrievalInputs.slice(0, 10)) {
-    assert.match(input, /Project Atlas/);
-    assert.match(input, /Texas/);
-    assert.match(input, /Atlas Compute/);
-  }
-  assert.deepEqual(
-    RESEARCH_SEARCH_DOMAINS.map((domain) => domain.id),
-    ["project-general", "industry-context", "operator-location", "sec-filings", "press-releases", "operator-infrastructure", "community-zoning", "grid-interconnection", "environmental-water", "technical-capacity"],
-  );
-  assert.match(retrievalInputs[12], /grid interconnection ERCOT behind the meter/);
-  assert.equal(requestUrl, OPENAI_CHAT_COMPLETIONS_URL);
+  assert.equal(requestUrl, OPENAI_RESPONSES_URL);
   const body = JSON.parse(requestInit.body);
   assert.equal(body.model, RESEARCH_PROJECT_MODEL);
-  assert.equal(body.max_tokens, RESEARCH_PROJECT_MAX_TOKENS);
-  assert.equal(body.response_format.type, "json_schema");
-  assert.equal(body.response_format.json_schema.strict, true);
-  assert.deepEqual(body.response_format.json_schema.schema, RESEARCH_PROJECT_RESPONSE_SCHEMA);
-  assert.match(body.messages[1].content, /targeted-electricity_cost/);
-  assert.match(body.messages[1].content, /https:\/\/example\.com\/atlas\/source/);
+  assert.equal(body.max_output_tokens, RESEARCH_PROJECT_MAX_TOKENS);
+  assert.deepEqual(body.tools, [{ type: "web_search_preview" }]);
+  assert.equal(body.text.format.type, "json_schema");
+  assert.equal(body.text.format.strict, true);
+  assert.deepEqual(body.text.format.schema, RESEARCH_PROJECT_RESPONSE_SCHEMA);
+  assert.equal(body.input.length, 2);
+  assert.match(body.input[1].content, /Project Atlas/);
+  assert.match(body.input[1].content, /Texas/);
+  assert.match(body.input[1].content, /Atlas Compute/);
   for (const phrase of [
     "electrical-equipment procurement",
     "jurisdictional bans or moratoriums",
@@ -591,10 +563,8 @@ test("rejects an incomplete provider response without leaking provider details",
   await handleResearchProjectRequest(request({ name: "Project Atlas", location: "Texas" }), response, {
     apiKey: "server-secret-for-test",
     fetchImpl: async (_, init) => {
-      if (init.body.includes("web_search_preview")) return retrievalResponse();
-      return new Response(JSON.stringify({
-        choices: [{ message: { content: JSON.stringify(incomplete) } }],
-      }), { status: 200 });
+      assert.match(init.body, /web_search_preview/);
+      return singleCallResponse(incomplete);
     },
   });
   assert.equal(response.statusCode, 502);
@@ -602,14 +572,32 @@ test("rejects an incomplete provider response without leaking provider details",
   assert.doesNotMatch(response.body, /server-secret-for-test|provider/i);
 });
 
-test("returns safe upstream and timeout errors", async () => {
+test("returns specific safe quota, authentication, parse, and timeout errors", async () => {
   const providerResponse = responseRecorder();
   await handleResearchProjectRequest(request({ name: "Project Atlas", location: "Texas" }), providerResponse, {
     apiKey: "server-secret-for-test",
     fetchImpl: async () => new Response("provider private detail", { status: 429 }),
   });
-  assert.equal(providerResponse.statusCode, 502);
+  assert.equal(providerResponse.statusCode, 429);
+  assert.match(providerResponse.body, /quota is exhausted.*429/i);
   assert.doesNotMatch(providerResponse.body, /provider private detail/i);
+
+  const authenticationResponse = responseRecorder();
+  await handleResearchProjectRequest(request({ name: "Project Atlas", location: "Texas" }), authenticationResponse, {
+    apiKey: "server-secret-for-test",
+    fetchImpl: async () => new Response(JSON.stringify({ error: { message: "invalid key" } }), { status: 401 }),
+  });
+  assert.equal(authenticationResponse.statusCode, 502);
+  assert.match(authenticationResponse.body, /authentication failed.*401/i);
+  assert.doesNotMatch(authenticationResponse.body, /invalid key|server-secret-for-test/i);
+
+  const parseResponse = responseRecorder();
+  await handleResearchProjectRequest(request({ name: "Project Atlas", location: "Texas" }), parseResponse, {
+    apiKey: "server-secret-for-test",
+    fetchImpl: async () => new Response("not json", { status: 200 }),
+  });
+  assert.equal(parseResponse.statusCode, 502);
+  assert.match(parseResponse.body, /invalid JSON/i);
 
   const timeoutResponse = responseRecorder();
   await handleResearchProjectRequest(request({ name: "Project Atlas", location: "Texas" }), timeoutResponse, {

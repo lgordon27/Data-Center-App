@@ -86,8 +86,8 @@ test("keeps only safe direct source links from custom responses", () => {
   assert.equal(parseResponse(unsafe).evidence.every((item) => item.sourceUrl === undefined), true);
 });
 
-test("uses a 60-second request budget", () => {
-  assert.equal(RESEARCH_PROJECT_TIMEOUT_MS, 60_000);
+test("uses a 90-second request budget", () => {
+  assert.equal(RESEARCH_PROJECT_TIMEOUT_MS, 90_000);
 });
 
 test("retries one timeout response and reports retry progress", async () => {

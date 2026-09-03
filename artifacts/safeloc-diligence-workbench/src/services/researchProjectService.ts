@@ -1,7 +1,7 @@
 import type { Classification, EvidenceItem } from "@/context/DiligenceContext";
 
 export const RESEARCH_PROJECT_ENDPOINT = "/api/research-project";
-export const RESEARCH_PROJECT_TIMEOUT_MS = 60_000;
+export const RESEARCH_PROJECT_TIMEOUT_MS = 90_000;
 export const DEFAULT_RESEARCH_CAPACITY_MW = 1_200;
 export const MAX_RESEARCH_CAPACITY_MW = 10_000;
 

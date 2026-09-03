@@ -205,7 +205,7 @@ export function CustomProjectForm({ onSuccess, compact = false }: CustomProjectF
         >
           {progress === "retrying"
             ? "Research taking longer than expected, retrying..."
-            : "Searching public sources and building the 16-item evidence set. This can take up to 60 seconds."}
+            : "Searching public sources and building the 16-item evidence set. This can take up to 90 seconds."}
         </div>
       )}
     </form>
@@ -568,7 +568,7 @@ function DirectoryCard({
       </div>
       {researchState.busy && (
         <div data-testid={`compute-atlas-research-status-${facility.id}`} role="status" aria-live="polite" className="mt-2 rounded border border-[#8dc8e8]/35 bg-[#0d2b3d] px-2.5 py-2 text-[10px] leading-4 text-[#b9e1f2]">
-          {researchState.progress === "retrying" ? "Research taking longer than expected, retrying..." : "Researching public sources. This can take up to 60 seconds."}
+          {researchState.progress === "retrying" ? "Research taking longer than expected, retrying..." : "Researching public sources. This can take up to 90 seconds."}
         </div>
       )}
       {researchState.error && (

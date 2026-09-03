@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Info, Network, Target } from "lucide-react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { ArrowLeft, Info, Loader2, Network, RotateCcw, Target } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,9 +19,12 @@ import { FinancialMateriality } from "@/pages/FinancialMateriality";
 import { DecisionReview } from "@/pages/DecisionReview";
 import { AdvisorLens } from "@/pages/AdvisorLens";
 import { ValueChain } from "@/pages/ValueChain";
-import { DirectoryPage, Home } from "@/pages/Home";
+import { Home } from "@/pages/Home";
 import { HowItWorks } from "@/pages/HowItWorks";
 import { Footer } from "@/components/Footer";
+import { ErrorBoundary, type ErrorFallbackProps } from "@/components/error-boundary";
+
+const DirectoryRoute = lazy(() => import("@/pages/DirectoryRoute"));
 
 export type Screen = "brief" | "evidence" | "materiality" | "decision" | "advisor";
 export type AppRoute = Screen | "home" | "directory" | "value-chain" | "how-it-works";
@@ -31,6 +34,36 @@ function routeFromHash(hash: string): AppRoute | null {
   if (!route) return "home";
   return (["home", "directory", "value-chain", "how-it-works", ...screens.map((screen) => screen.id)] as readonly string[])
     .includes(route) ? route as AppRoute : null;
+}
+
+function DirectoryLoading() {
+  return (
+    <section data-testid="directory-route-loading" role="status" aria-live="polite" className="flex min-h-[52vh] items-center justify-center rounded-xl border border-[#cbd8d4] bg-white px-6 text-center">
+      <div>
+        <Loader2 aria-hidden="true" className="mx-auto h-6 w-6 animate-spin text-[#255bb7]" />
+        <h1 className="mt-4 text-xl font-semibold text-[#122232]">Loading facility directory</h1>
+        <p className="mt-2 text-[12px] text-[#63717a]">The optional Compute Atlas workspace is loading separately.</p>
+      </div>
+    </section>
+  );
+}
+
+function DirectoryFailure({ resetError }: ErrorFallbackProps) {
+  return (
+    <section data-testid="directory-route-error" role="alert" className="flex min-h-[52vh] items-center justify-center rounded-xl border border-[#efabb8] bg-white px-6 text-center">
+      <div className="max-w-lg">
+        <div className="font-mono text-[9px] font-bold uppercase tracking-[0.16em] text-[#ba2f45]">Directory isolated</div>
+        <h1 className="mt-3 text-2xl font-semibold tracking-[-0.03em] text-[#122232]">The facility directory could not load.</h1>
+        <p className="mt-3 text-[12px] leading-5 text-[#63717a]">The diligence workbench is still available. Retry the directory, or return Home without waiting for Compute Atlas.</p>
+        <div className="mt-5 flex flex-wrap justify-center gap-3">
+          <button data-testid="button-retry-directory-route" type="button" onClick={() => { resetError(); window.location.reload(); }} className="inline-flex min-h-11 items-center gap-2 rounded-md bg-[#122232] px-4 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#d4e86b]">
+            <RotateCcw aria-hidden="true" className="h-3.5 w-3.5" /> Retry directory
+          </button>
+          <a data-testid="link-directory-error-home" href="#home" className="inline-flex min-h-11 items-center rounded-md border border-[#cbd8d4] px-4 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#52616b]">Return Home</a>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 function AppShell() {
@@ -239,7 +272,13 @@ function AppShell() {
               <main className="min-w-0 flex-1 px-4 py-7 md:px-8 md:py-10 xl:px-12">
                 <div className={`mx-auto ${route === "value-chain" || route === "directory" ? "max-w-[1320px]" : "max-w-[1160px]"}`}>
                   {route === "value-chain" && <ValueChain onWorkbench={() => go("brief")} />}
-                  {route === "directory" && <DirectoryPage onCurated={() => { diligence.resetToDefault(); go("brief"); }} onResearchSuccess={(research) => { diligence.loadCustomProject(research); go("brief"); }} />}
+                   {route === "directory" && (
+                     <ErrorBoundary resetKey={route} FallbackComponent={DirectoryFailure}>
+                       <Suspense fallback={<DirectoryLoading />}>
+                         <DirectoryRoute onCurated={() => { diligence.resetToDefault(); go("brief"); }} onResearchSuccess={(research) => { diligence.loadCustomProject(research); go("brief"); }} />
+                       </Suspense>
+                     </ErrorBoundary>
+                   )}
                   {route === "brief" && <CaseBrief onNavigate={go} />}
                   {route === "evidence" && <EvidenceRoom onNavigate={go} />}
                   {route === "materiality" && <FinancialMateriality onNavigate={go} />}

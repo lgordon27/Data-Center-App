@@ -24,9 +24,6 @@ import {
   type ResearchProgress,
 } from "@/services/researchProjectService";
 import {
-  directoryFreshness,
-  fetchDirectory,
-  fetchDirectoryStats,
   type DirectoryFacility,
   type DirectoryResponse,
   type DirectoryStatsResponse,
@@ -310,6 +307,53 @@ const ETF_CONTEXT: Record<string, string[]> = {
   Amazon: ["QQQ", "XLY"],
   Oracle: ["QQQ", "XLK"],
 };
+
+async function requestDirectory(query: Parameters<typeof import("@/services/directoryService")["fetchDirectory"]>[0]) {
+  const { fetchDirectory } = await import("@/services/directoryService");
+  return fetchDirectory(query);
+}
+
+async function requestDirectoryStats() {
+  const { fetchDirectoryStats } = await import("@/services/directoryService");
+  return fetchDirectoryStats();
+}
+
+function directoryFreshness(source: DirectoryResponse["sourceMetadata"] | undefined, now = Date.now()) {
+  if (!source) return { label: "Freshness unavailable", caution: false };
+  if (source.status === "embedded") {
+    return {
+      label: source.snapshotVersion ? `Embedded snapshot · ${source.snapshotVersion}` : "Embedded snapshot",
+      caution: false,
+    };
+  }
+  const formatAge = (timestamp: string | null | undefined) => {
+    if (!timestamp) return null;
+    const parsed = Date.parse(timestamp);
+    if (!Number.isFinite(parsed)) return null;
+    const minutes = Math.floor(Math.max(0, now - parsed) / 60_000);
+    if (minutes < 1) return "just now";
+    if (minutes < 60) return `${minutes} min ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours} hr ago`;
+    const days = Math.floor(hours / 24);
+    return `${days} day${days === 1 ? "" : "s"} ago`;
+  };
+  const providerAge = formatAge(source.sourceUpdatedAt);
+  const retainedAge = formatAge(source.fetchedAt);
+  const fetchedAtMs = source.fetchedAt ? Date.parse(source.fetchedAt) : NaN;
+  const caution = source.status === "cached" &&
+    Number.isFinite(fetchedAtMs) &&
+    Math.max(0, now - fetchedAtMs) >= 20 * 60 * 60 * 1000;
+  return {
+    label: source.status === "cached"
+      ? [
+          providerAge ? `Provider updated ${providerAge}` : "Provider update time not reported",
+          retainedAge ? `retained ${retainedAge}` : "retention age unavailable",
+        ].join(" · ")
+      : providerAge ? `Provider updated ${providerAge}` : "Provider update time not reported",
+    caution,
+  };
+}
 
 const companyAccentClasses = {
   lime: "border-[#c9db70]/45 bg-[#eef5cd] text-[#314207]",
@@ -613,6 +657,7 @@ export function ComputeAtlasDirectory({ onCurated, onResearchSuccess }: { onCura
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [stateFilter, setStateFilter] = useState<(typeof DIRECTORY_STATES)[number]>("All");
   const [companyFilter, setCompanyFilter] = useState<string | null>(null);
   const [facilities, setFacilities] = useState<DirectoryFacility[]>([]);
@@ -620,20 +665,25 @@ export function ComputeAtlasDirectory({ onCurated, onResearchSuccess }: { onCura
   const [researching, setResearching] = useState<Record<string, { busy: boolean; error: string | null; progress: ResearchProgress }>>({});
 
   useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedQuery(query), 200);
+    return () => window.clearTimeout(timer);
+  }, [query]);
+
+  useEffect(() => {
     let active = true;
     setLoading(true);
     setError(null);
-    void fetchDirectory({
+    void requestDirectory({
       limit: DIRECTORY_PAGE_SIZE,
       offset: 0,
-      search: query.trim() || undefined,
+      search: debouncedQuery.trim() || undefined,
       state: stateFilter === "All" ? undefined : stateFilter === "Other" ? "OTHER" : stateFilter,
       company: companyFilter ?? undefined,
     })
       .then((records) => {
         if (!active) return;
         setDirectory(records);
-        setFacilities(records.facilities);
+        setFacilities(records.facilities.slice(0, DIRECTORY_PAGE_SIZE));
         setTotalMatching(records.totalFacilities ?? records.facilities.length);
       })
       .catch((requestError) => {
@@ -643,11 +693,11 @@ export function ComputeAtlasDirectory({ onCurated, onResearchSuccess }: { onCura
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, [companyFilter, query, stateFilter]);
+  }, [companyFilter, debouncedQuery, stateFilter]);
 
   useEffect(() => {
     let active = true;
-    void fetchDirectoryStats()
+    void requestDirectoryStats()
       .then((totals) => {
         if (active) setStatsResponse(totals);
       })
@@ -666,15 +716,15 @@ export function ComputeAtlasDirectory({ onCurated, onResearchSuccess }: { onCura
   const handleLoadMore = async () => {
     setLoadingMore(true);
     try {
-      const records = await fetchDirectory({
+      const records = await requestDirectory({
         limit: DIRECTORY_PAGE_SIZE,
         offset: facilities.length,
-        search: query.trim() || undefined,
+        search: debouncedQuery.trim() || undefined,
         state: stateFilter === "All" ? undefined : stateFilter === "Other" ? "OTHER" : stateFilter,
         company: companyFilter ?? undefined,
       });
       setDirectory(records);
-      setFacilities((current) => [...current, ...records.facilities]);
+      setFacilities((current) => [...current, ...records.facilities.slice(0, DIRECTORY_PAGE_SIZE)]);
       setTotalMatching(records.totalFacilities ?? totalMatching);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "The directory is unavailable. Try again.");

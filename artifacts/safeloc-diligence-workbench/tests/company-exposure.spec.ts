@@ -36,17 +36,117 @@ test.describe("stock-first company exposure flow", () => {
 
   test("does not fetch Compute Atlas while Home and holdings context render", async ({ page }) => {
     const directoryRequests: string[] = [];
+    const directoryChunks: string[] = [];
     page.on("request", (request) => {
       if (request.url().includes("/api/directory")) directoryRequests.push(request.url());
+      if (
+        request.resourceType() === "script" &&
+        /DirectoryRoute|directoryService/.test(request.url())
+      ) directoryChunks.push(request.url());
     });
     await page.goto("/#home");
     await expect(page.getByTestId("home-stock-picker")).toBeVisible();
     await page.getByTestId("company-card-microsoft").click();
     await expect(page.getByTestId("company-exposure-view")).toBeVisible();
     expect(directoryRequests).toHaveLength(0);
+    expect(directoryChunks).toHaveLength(0);
     await page.goto("/#directory");
     await expect(page.getByTestId("compute-atlas-page")).toBeVisible();
     await expect.poll(() => directoryRequests.length).toBeGreaterThan(0);
+    await expect.poll(() => directoryChunks.some((url) => url.includes("DirectoryRoute"))).toBe(true);
+    await expect.poll(() => directoryChunks.some((url) => url.includes("directoryService"))).toBe(true);
+  });
+
+  test("opens alternate-project actions within the interaction budget without directory work", async ({ page }) => {
+    const directoryRequests: string[] = [];
+    const directoryChunks: string[] = [];
+    page.on("request", (request) => {
+      if (request.url().includes("/api/directory")) directoryRequests.push(request.url());
+      if (request.resourceType() === "script" && /DirectoryRoute|directoryService/.test(request.url())) directoryChunks.push(request.url());
+    });
+    await page.goto("/#home");
+    const elapsed = await page.getByTestId("button-analyze-another-project").evaluate((button) => new Promise<number>((resolve) => {
+      const started = performance.now();
+      (button as HTMLButtonElement).click();
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve(performance.now() - started)));
+    }));
+    expect(elapsed).toBeLessThan(2_000);
+    await expect(page.getByTestId("custom-project-dialog")).toBeVisible();
+    expect(directoryRequests).toHaveLength(0);
+    expect(directoryChunks).toHaveLength(0);
+    await page.getByTestId("button-close-custom-project").click();
+    await page.goto("/#brief");
+    const shellElapsed = await page.getByTestId("button-analyze-different-project").evaluate((button) => new Promise<number>((resolve) => {
+      const started = performance.now();
+      (button as HTMLButtonElement).click();
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve(performance.now() - started)));
+    }));
+    expect(shellElapsed).toBeLessThan(2_000);
+    await expect(page.getByTestId("custom-project-dialog")).toBeVisible();
+    expect(directoryRequests).toHaveLength(0);
+    expect(directoryChunks).toHaveLength(0);
+  });
+
+  test("contains directory render failures inside the route and keeps Home usable", async ({ page }) => {
+    await page.addInitScript(() => {
+      window.__safelocForceDirectoryRenderError = true;
+    });
+    await page.goto("/#directory");
+    await expect(page.getByTestId("directory-route-error")).toBeVisible();
+    await expect(page.getByTestId("button-retry-directory-route")).toBeVisible();
+    await page.getByTestId("link-directory-error-home").click();
+    await expect(page).toHaveURL(/#home$/);
+    await expect(page.getByTestId("home-stock-picker")).toBeVisible();
+  });
+
+  test("keeps workbench navigation responsive while the directory API stalls", async ({ page }) => {
+    await page.unroute("**/api/directory**");
+    await page.route("**/api/directory**", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 5_000));
+      await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Provider unavailable" }) });
+    });
+    await page.goto("/#directory");
+    await expect(page.getByTestId("compute-atlas-loading")).toBeVisible();
+    const navigationFrameDelay = await page.evaluate(() => new Promise<number>((resolve) => {
+      const started = performance.now();
+      window.location.hash = "home";
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve(performance.now() - started)));
+    }));
+    expect(navigationFrameDelay).toBeLessThan(2_000);
+    await expect(page.getByTestId("home-stock-picker")).toBeVisible();
+    await page.goto("/#evidence");
+    await expect(page.getByTestId("text-evidence-count")).toContainText("16 / 16");
+  });
+
+  test("can leave a representative large directory response without a main-thread lock", async ({ page }) => {
+    const facilities = Array.from({ length: 600 }, (_, index) => ({
+      ...directoryResponse.facilities[0],
+      id: `large-facility-${index}`,
+      name: `Large Facility ${index}`,
+    }));
+    await page.unroute("**/api/directory**");
+    await page.route("**/api/directory**", (route) => route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...directoryResponse,
+        facilities,
+        totalFacilities: facilities.length,
+        offset: 0,
+        limit: facilities.length,
+        hasMore: false,
+      }),
+    }));
+    await page.goto("/#directory");
+    await expect(page.getByTestId("compute-atlas-page")).toBeVisible();
+    await expect(page.locator("[data-testid^='compute-atlas-record-large-facility-']")).toHaveCount(24);
+    const navigationFrameDelay = await page.evaluate(() => new Promise<number>((resolve) => {
+      const started = performance.now();
+      window.location.hash = "home";
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve(performance.now() - started)));
+    }));
+    expect(navigationFrameDelay).toBeLessThan(2_000);
+    await expect(page.getByTestId("home-stock-picker")).toBeVisible();
   });
 
   test("shows all six companies, drill-down summaries, and curated handoff context", async ({ page }) => {

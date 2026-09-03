@@ -1,47 +1,14 @@
 const OPENAI_CHAT_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const RESEARCH_PROJECT_MODEL = "gpt-4o";
-const RESEARCH_PROJECT_MAX_TOKENS = 8_192;
-const RESEARCH_PROJECT_TIMEOUT_MS = 60_000;
+const RESEARCH_PROJECT_MAX_TOKENS = 4_000;
+const RESEARCH_PROJECT_TIMEOUT_MS = 90_000;
 const DEFAULT_RESEARCH_CAPACITY_MW = 1_200;
 const MAX_RESEARCH_CAPACITY_MW = 10_000;
 const RESEARCH_PROJECT_REQUEST_LIMIT = 10;
 const RESEARCH_PROJECT_REQUEST_WINDOW_MS = 60_000;
-const RESEARCH_SEARCH_TIMEOUT_MS = 20_000;
-const TARGETED_FOLLOW_UP_START_BUDGET_MS = 45_000;
 const RESEARCH_PROJECT_RATE_LIMIT_MESSAGE =
   "Custom research request limit reached. Please wait before trying again or use the curated case.";
-const MAX_RETRIEVED_SOURCES = 40;
-const RESEARCH_SEARCH_DOMAINS = [
-  { id: "project-general", label: "General project identity", query: ({ name, location }) => `"${name}" "${location}"` },
-  { id: "industry-context", label: "Data-center industry context", query: ({ name }) => `"${name}" data center` },
-  { id: "operator-location", label: "Operator-specific project records", query: ({ name, location, operator }) => `"${operator ?? name}" data center "${location}"` },
-  { id: "sec-filings", label: "SEC filings and investor disclosures", query: ({ name }) => `"${name}" SEC filing` },
-  { id: "press-releases", label: "Project and company press releases", query: ({ name }) => `"${name}" press release announcement` },
-  { id: "operator-infrastructure", label: "Operator power and water infrastructure", query: ({ name, location, operator }) => `"${operator ?? name}" power water infrastructure "${location}"` },
-  { id: "community-zoning", label: "Community and zoning records", query: ({ name }) => `"${name}" community opposition zoning` },
-  { id: "grid-interconnection", label: "Grid and interconnection records", query: ({ name, location }) => `"${location}" data center ERCOT interconnection "${name}"` },
-  { id: "environmental-water", label: "Environmental and water records", query: ({ name }) => `"${name}" environmental water` },
-  { id: "technical-capacity", label: "Technical specifications and capacity", query: ({ name, location, operator }) => `"${operator ?? name}" "${location}" MW capacity "${name}"` },
-];
-const TARGETED_EVIDENCE_TERMS = {
-  electricity_cost: "electricity rate tariff power cost",
-  water_consumption: "water consumption cooling gallons",
-  grid_interconnection: "grid interconnection ERCOT behind the meter",
-  water_escalation: "water rate escalation utility",
-  community_risk: "community opposition infrastructure zoning noise",
-  renewable_percentage: "renewable energy procurement percentage",
-  cooling_capex: "cooling infrastructure capital cost",
-  electricity_escalation: "electricity price escalation forecast",
-  carbon_compliance: "carbon emissions compliance cost",
-  permitting_timeline: "permit construction timeline zoning",
-  customer_concentration: "customer lease offtake agreement",
-  water_rights: "water rights allocation permit",
-  site_hazard_exposure: "site flood wildfire severe weather hazard",
-  backup_power_capacity: "backup power generation capacity",
-  water_source_resilience: "water source resilience backup supply",
-  downtime_cost: "outage downtime operating cost",
-};
 
 const RESEARCH_EVIDENCE_IDS = [
   "electricity_cost",

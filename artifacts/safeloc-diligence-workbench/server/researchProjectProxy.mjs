@@ -529,6 +529,33 @@ function normalizeRetrievedSources(body, searchDomain = "project-identity") {
     .slice(0, 10);
 }
 
+function redactUpstreamDetail(value) {
+  return String(value ?? "")
+    .replace(/Bearer\s+\S+/gi, "Bearer [redacted]")
+    .replace(/\bsk-[A-Za-z0-9_-]+/g, "[redacted-key]")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 500);
+}
+
+async function createUpstreamRequestError(response, stage) {
+  const rawBody = await response.text();
+  let detail = "";
+  try {
+    const body = JSON.parse(rawBody);
+    const providerError = body?.error;
+    detail = typeof providerError === "string"
+      ? providerError
+      : providerError?.message ?? body?.message ?? "";
+  } catch {
+    detail = rawBody;
+  }
+  const suffix = redactUpstreamDetail(detail);
+  const error = new Error(`${stage} upstream returned HTTP ${response.status}${suffix ? `: ${suffix}` : ""}`);
+  error.name = "UpstreamRequestError";
+  return error;
+}
+
 async function retrievePublicSourcesForDomain(project, domain, apiKey, fetchImpl, signal) {
   const searchSignal = typeof AbortSignal.any === "function" && typeof AbortSignal.timeout === "function"
     ? AbortSignal.any([signal, AbortSignal.timeout(RESEARCH_SEARCH_TIMEOUT_MS)])
@@ -549,7 +576,7 @@ async function retrievePublicSourcesForDomain(project, domain, apiKey, fetchImpl
     }),
     signal: searchSignal,
   });
-  if (!response.ok) throw new Error("Source retrieval failed.");
+  if (!response.ok) throw await createUpstreamRequestError(response, `Web search (${domain.id})`);
   let body;
   try {
     body = JSON.parse(await response.text());
@@ -583,6 +610,10 @@ async function retrievePublicSources(project, apiKey, fetchImpl, signal) {
       candidates.push(...result.value);
     } else {
       failedDomains.push(domain.id);
+      console.warn(
+        `[research-project] Web search failed domain=${domain.id}:`,
+        result.reason instanceof Error ? result.reason.message : "unknown search error",
+      );
     }
   });
   const seen = new Set();
@@ -616,6 +647,14 @@ async function retrieveTargetedSources(project, evidenceIds, apiKey, fetchImpl, 
   const results = await Promise.allSettled(
     domains.map((domain) => retrievePublicSourcesForDomain(project, domain, apiKey, fetchImpl, signal)),
   );
+  results.forEach((result, index) => {
+    if (result.status === "rejected") {
+      console.warn(
+        `[research-project] Targeted web search failed domain=${domains[index].id}:`,
+        result.reason instanceof Error ? result.reason.message : "unknown search error",
+      );
+    }
+  });
   const sources = results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
   const searchedByEvidence = {};
   const failedByEvidence = {};
@@ -676,7 +715,7 @@ async function synthesizeResearch(project, retrievedSources, apiKey, fetchImpl, 
   } catch {
     body = null;
   }
-  if (!response.ok) throw new Error("Research synthesis failed.");
+  if (!response.ok) throw await createUpstreamRequestError(response, "Research synthesis");
   const content = body?.choices?.[0]?.message?.content;
   if (typeof content !== "string") throw new Error("Research synthesis returned invalid data.");
   console.info("[research-project] Raw synthesis response before parsing:", content);
@@ -816,8 +855,13 @@ export async function handleResearchProjectRequest(
     sendJson(res, 200, parsed);
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
+      console.error("[research-project] Request failed: upstream timeout after 60 seconds.");
       sendJson(res, 504, { error: "Project research upstream request timed out." });
     } else {
+      console.error(
+        "[research-project] Request failed:",
+        error instanceof Error ? `${error.name}: ${redactUpstreamDetail(error.message)}` : "unknown upstream failure",
+      );
       sendJson(res, 502, { error: "Project research upstream request failed." });
     }
   } finally {

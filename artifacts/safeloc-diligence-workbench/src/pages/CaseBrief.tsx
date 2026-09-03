@@ -54,6 +54,12 @@ function ScopeLimitationsDisclosure() {
 
 function CustomCaseBrief({ project, onNavigate }: { project: ReturnType<typeof useDiligence>["project"]; onNavigate: (screen: Screen) => void }) {
   const { evidence } = useDiligence();
+  const evidenceItems = Object.values(evidence);
+  const sourceCoverage = {
+    supported: evidenceItems.filter((item) => Boolean(item.sourceUrl || item.sources?.length)).length,
+    aiKnowledge: evidenceItems.filter((item) => !item.sourceUrl && !item.sources?.length && item.classification !== "Missing Evidence").length,
+    missing: evidenceItems.filter((item) => item.classification === "Missing Evidence").length,
+  };
   const isDefaultAssumptions = project.researchMode === "default-assumptions";
   const capacityLabel = project.capacityProvenance === "directory-reported"
     ? "Directory-reported model capacity"
@@ -79,6 +85,16 @@ function CustomCaseBrief({ project, onNavigate }: { project: ReturnType<typeof u
           <div className="rounded-lg bg-[#122232] px-4 py-3 text-right text-white"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#a4b4bd]">{capacityLabel}</div><div data-testid="custom-project-capacity" className="mt-1 font-mono text-xl font-bold text-[#d4e86b]">{project.capacityMW.toLocaleString()} MW</div><div data-testid="custom-project-capacity-note" className="mt-1 max-w-[180px] text-[9px] leading-4 text-[#c4d0d6]">{capacityNote}</div></div>
         </div>
         <p data-testid="custom-project-description" className="mt-5 max-w-4xl text-[13px] leading-6 text-[#344550]">{project.description}</p>
+        {!isDefaultAssumptions && (
+          <div data-testid="source-coverage-summary" className="mt-5 rounded-lg border border-[#d9e0e4] bg-[#f5f7f6] p-4">
+            <div className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#52616b]">Source Coverage</div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <div><strong data-testid="source-coverage-supported" className="font-mono text-lg text-[#08644f]">{sourceCoverage.supported} of 16</strong><p className="mt-1 text-[10px] leading-4 text-[#52616b]">supported by retrieved sources</p></div>
+              <div><strong data-testid="source-coverage-ai-knowledge" className="font-mono text-lg text-[#a65a00]">{sourceCoverage.aiKnowledge} of 16</strong><p className="mt-1 text-[10px] leading-4 text-[#52616b]">classified from AI knowledge — verify independently</p></div>
+              <div><strong data-testid="source-coverage-missing" className="font-mono text-lg text-[#ba2f45]">{sourceCoverage.missing} of 16</strong><p className="mt-1 text-[10px] leading-4 text-[#52616b]">with no information found</p></div>
+            </div>
+          </div>
+        )}
         <div className="mt-5 rounded-lg border border-[#f1cb8b] bg-[#fff8e9] p-4 text-[10px] leading-5 text-[#6f460e]">{isDefaultAssumptions ? "AI research did not complete. All 16 evidence variables are Missing Evidence, so no project-specific finding changes the synthetic return until a reviewer supplies and accepts evidence." : `This high-level AI research is context for diligence. Findings are not facility-level proof unless the cited project source supports them; the modeled set remains exactly ${Object.keys(evidence).length} variables.`}</div>
       </section>
       <div className="mt-5"><ScopeLimitationsDisclosure /></div>

@@ -130,3 +130,31 @@ test("creates an explicitly labeled 16-item Missing Evidence fallback", () => {
   assert.equal(fallback.evidence.every((item) => item.classification === "Missing Evidence"), true);
   assert.equal(fallback.evidence.every((item) => item.sourceUrl === undefined), true);
 });
+
+test("preserves server-normalized varied classifications and partial coverage", () => {
+  const varied = {
+    ...response,
+    evidence: response.evidence.map((item, index) => ({
+      ...item,
+      value: index === 0 ? 48 : `Finding ${index + 1}`,
+      classification: index === 0
+        ? "Management Assertion"
+        : index === 1
+          ? "Model Inference"
+          : index === 2
+            ? "User Assumption"
+            : item.classification,
+      coverageStatus: index < 3 ? "partial" : "searched-no-support",
+      citation: index === 0
+        ? "AI classification downgraded: cited source not in retrieved search results. Original classification: Verified Evidence."
+        : item.citation,
+    })),
+  };
+  const parsed = parseResponse(varied);
+  assert.deepEqual(
+    parsed.evidence.slice(0, 3).map((item) => item.classification),
+    ["Management Assertion", "Model Inference", "User Assumption"],
+  );
+  assert.equal(parsed.evidence[0].coverageStatus, "partial");
+  assert.match(parsed.evidence[0].citation, /classification downgraded/i);
+});

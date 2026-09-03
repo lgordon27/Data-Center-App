@@ -9,15 +9,37 @@ const RESEARCH_PROJECT_REQUEST_LIMIT = 10;
 const RESEARCH_PROJECT_REQUEST_WINDOW_MS = 60_000;
 const RESEARCH_PROJECT_RATE_LIMIT_MESSAGE =
   "Custom research request limit reached. Please wait before trying again or use the curated case.";
-const MAX_RETRIEVED_SOURCES = 24;
+const MAX_RETRIEVED_SOURCES = 40;
 const RESEARCH_SEARCH_DOMAINS = [
-  { id: "project-identity", label: "Project identity and operator records", query: "exact project name operator owner address site announcement filing" },
-  { id: "power-grid", label: "Power, grid, and utility records", query: "utility tariff interconnection queue power generation renewable procurement backup power regulator filing" },
-  { id: "water-environment", label: "Water, land, environmental, and permitting records", query: "site permit land decision environmental review water rights water allocation emissions carbon compliance government" },
-  { id: "community-commercial", label: "Community, resilience, and commercial records", query: "local ordinance noise community hearing customer lease construction schedule outage cooling resilience reputable reporting" },
-  { id: "sec-filings", label: "SEC filings and investor disclosures", query: "SEC filing 10-K 10-Q 8-K investor disclosure project financing power water customer agreement" },
-  { id: "press-releases", label: "Project and company press releases", query: "company press release project announcement power water construction customer agreement site" },
+  { id: "project-general", label: "General project identity", query: ({ name, location }) => `"${name}" "${location}"` },
+  { id: "industry-context", label: "Data-center industry context", query: ({ name }) => `"${name}" data center` },
+  { id: "operator-location", label: "Operator-specific project records", query: ({ name, location, operator }) => `"${operator ?? name}" data center "${location}"` },
+  { id: "sec-filings", label: "SEC filings and investor disclosures", query: ({ name }) => `"${name}" SEC filing` },
+  { id: "press-releases", label: "Project and company press releases", query: ({ name }) => `"${name}" press release announcement` },
+  { id: "operator-infrastructure", label: "Operator power and water infrastructure", query: ({ name, location, operator }) => `"${operator ?? name}" power water infrastructure "${location}"` },
+  { id: "community-zoning", label: "Community and zoning records", query: ({ name }) => `"${name}" community opposition zoning` },
+  { id: "grid-interconnection", label: "Grid and interconnection records", query: ({ name, location }) => `"${location}" data center ERCOT interconnection "${name}"` },
+  { id: "environmental-water", label: "Environmental and water records", query: ({ name }) => `"${name}" environmental water` },
+  { id: "technical-capacity", label: "Technical specifications and capacity", query: ({ name, location, operator }) => `"${operator ?? name}" "${location}" MW capacity "${name}"` },
 ];
+const TARGETED_EVIDENCE_TERMS = {
+  electricity_cost: "electricity rate tariff power cost",
+  water_consumption: "water consumption cooling gallons",
+  grid_interconnection: "grid interconnection ERCOT behind the meter",
+  water_escalation: "water rate escalation utility",
+  community_risk: "community opposition infrastructure zoning noise",
+  renewable_percentage: "renewable energy procurement percentage",
+  cooling_capex: "cooling infrastructure capital cost",
+  electricity_escalation: "electricity price escalation forecast",
+  carbon_compliance: "carbon emissions compliance cost",
+  permitting_timeline: "permit construction timeline zoning",
+  customer_concentration: "customer lease offtake agreement",
+  water_rights: "water rights allocation permit",
+  site_hazard_exposure: "site flood wildfire severe weather hazard",
+  backup_power_capacity: "backup power generation capacity",
+  water_source_resilience: "water source resilience backup supply",
+  downtime_cost: "outage downtime operating cost",
+};
 
 const RESEARCH_EVIDENCE_IDS = [
   "electricity_cost",
@@ -130,7 +152,7 @@ function sendJson(res, status, body) {
 }
 
 const RETRIEVED_SOURCE_BOUNDARY_PROMPT = `
-Use the retrieved source packet supplied in the user message as the strongest validation boundary. Never invent a source, URL, date, excerpt, or facility-level fact. An exact URL match in the packet supports the returned classification. If an AI-cited URL is not in the packet, do not present it as independently verified: preserve Management Assertion, Model Inference, User Assumption, or Missing Evidence when appropriate, and downgrade an unmatched Verified Evidence claim to Management Assertion with an explicit citation note. Do not classify contextual market or industry reporting as facility-level Verified Evidence.`;
+Use the retrieved source packet supplied in the user message as the strongest validation boundary. Never invent a source, URL, date, excerpt, or facility-level fact. An exact URL match in the packet supports the returned classification. If an AI-cited URL is not in the packet, do not present it as independently verified: preserve Management Assertion, Model Inference, User Assumption, or Missing Evidence when appropriate, and downgrade an unmatched Verified Evidence claim to Management Assertion with an explicit citation note. You may use well-established training knowledge only at a Management Assertion ceiling and must say that no retrieved source independently confirmed it. Do not classify contextual market or industry reporting as facility-level Verified Evidence.`;
 
 function isRecord(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -295,9 +317,11 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
       : rawClassification === "Verified Evidence"
         ? "Management Assertion"
         : rawClassification;
-    const sourceMismatchNote = !supportedByRetrievedSource && rawClassification !== "Missing Evidence"
-      ? ` AI classification adjusted because the cited source was not in retrieved search results. Original classification: ${rawClassification}.`
-      : "";
+    const sourceMismatchNote = !supportedByRetrievedSource && rawClassification === "Verified Evidence"
+      ? " AI classification downgraded: cited source not in retrieved search results. Original classification: Verified Evidence."
+      : !supportedByRetrievedSource && rawClassification !== "Missing Evidence"
+        ? ` Based on AI training knowledge. No retrieved source independently confirmed this claim. Verify before relying on this ${rawClassification} classification.`
+        : "";
     const record = {
       id,
       label: stringOrFallback(item.label, id.replaceAll("_", " "), 160),
@@ -311,7 +335,11 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
       sourceRole: stringOrFallback(item.sourceRole, "AI-researched public-source review", 200),
       coverageStatus: supportedByRetrievedSource && ["supported", "partial", "conflicting"].includes(item.coverageStatus)
         ? item.coverageStatus
-        : supportedByRetrievedSource ? "supported" : "searched-no-support",
+        : supportedByRetrievedSource
+          ? "supported"
+          : classification === "Missing Evidence" || explicitUnknownValue
+            ? "searched-no-support"
+            : "partial",
       searchCoverage: Array.isArray(coverage?.searchedDomains) ? coverage.searchedDomains : [],
       failedSearchDomains: Array.isArray(coverage?.failedDomains) ? coverage.failedDomains : [],
     };
@@ -459,7 +487,7 @@ function normalizeRetrievedSources(body, searchDomain = "project-identity") {
       seen.add(source.url);
       return true;
     })
-    .slice(0, 8);
+    .slice(0, 10);
 }
 
 async function retrievePublicSourcesForDomain(project, domain, apiKey, fetchImpl, signal) {
@@ -492,14 +520,18 @@ async function retrievePublicSourcesForDomain(project, domain, apiKey, fetchImpl
 }
 
 async function retrievePublicSources(project, apiKey, fetchImpl, signal) {
+  const domains = RESEARCH_SEARCH_DOMAINS.map((domain) => ({
+    ...domain,
+    query: domain.query(project),
+  }));
   const results = await Promise.allSettled(
-    RESEARCH_SEARCH_DOMAINS.map((domain) => retrievePublicSourcesForDomain(project, domain, apiKey, fetchImpl, signal)),
+    domains.map((domain) => retrievePublicSourcesForDomain(project, domain, apiKey, fetchImpl, signal)),
   );
   const searchedDomains = [];
   const failedDomains = [];
   const candidates = [];
   results.forEach((result, index) => {
-    const domain = RESEARCH_SEARCH_DOMAINS[index];
+    const domain = domains[index];
     if (result.status === "fulfilled") {
       searchedDomains.push(domain.id);
       candidates.push(...result.value);
@@ -522,6 +554,63 @@ async function retrievePublicSources(project, apiKey, fetchImpl, signal) {
     throw new Error("Source retrieval returned no usable sources.");
   }
   return { sources, searchedDomains, failedDomains };
+}
+
+async function retrieveTargetedSources(project, evidenceIds, apiKey, fetchImpl, signal) {
+  const domains = evidenceIds.map((id) => ({
+    id: `targeted-${id}`,
+    label: `Targeted ${id.replaceAll("_", " ")} follow-up`,
+    query: `"${project.name}" ${TARGETED_EVIDENCE_TERMS[id]}`,
+  }));
+  const results = await Promise.allSettled(
+    domains.map((domain) => retrievePublicSourcesForDomain(project, domain, apiKey, fetchImpl, signal)),
+  );
+  const sources = results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
+  return {
+    sources,
+    searchedDomains: domains.filter((_, index) => results[index].status === "fulfilled").map((domain) => domain.id),
+    failedDomains: domains.filter((_, index) => results[index].status === "rejected").map((domain) => domain.id),
+  };
+}
+
+async function synthesizeResearch(project, retrievedSources, apiKey, fetchImpl, signal) {
+  const response = await fetchImpl(OPENAI_CHAT_COMPLETIONS_URL, {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: RESEARCH_PROJECT_MODEL,
+      max_tokens: RESEARCH_PROJECT_MAX_TOKENS,
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "safeloc_research_project",
+          strict: true,
+          schema: RESEARCH_PROJECT_RESPONSE_SCHEMA,
+        },
+      },
+      messages: [
+        { role: "system", content: `${RESEARCH_PROJECT_SYSTEM_PROMPT}${RETRIEVED_SOURCE_BOUNDARY_PROMPT}` },
+        { role: "user", content: buildResearchProjectPrompt(project, retrievedSources) },
+      ],
+    }),
+    signal,
+  });
+  const rawText = await response.text();
+  let body;
+  try {
+    body = JSON.parse(rawText);
+  } catch {
+    body = null;
+  }
+  if (!response.ok) throw new Error("Research synthesis failed.");
+  const content = body?.choices?.[0]?.message?.content;
+  if (typeof content !== "string") throw new Error("Research synthesis returned invalid data.");
+  console.info("[research-project] Raw synthesis response before parsing:", content);
+  return JSON.parse(content);
 }
 
 async function readRequestBody(req) {
@@ -615,58 +704,32 @@ export async function handleResearchProjectRequest(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), RESEARCH_PROJECT_TIMEOUT_MS);
   try {
-    const sourcePacket = await retrievePublicSources(project, apiKey, fetchImpl, controller.signal);
-    const retrievedSources = sourcePacket.sources;
-    const response = await fetchImpl(OPENAI_CHAT_COMPLETIONS_URL, {
-      method: "POST",
-      headers: {
-        accept: "application/json",
-        "content-type": "application/json",
-        authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: RESEARCH_PROJECT_MODEL,
-        max_tokens: RESEARCH_PROJECT_MAX_TOKENS,
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: "safeloc_research_project",
-            strict: true,
-            schema: RESEARCH_PROJECT_RESPONSE_SCHEMA,
-          },
-        },
-        messages: [
-          { role: "system", content: `${RESEARCH_PROJECT_SYSTEM_PROMPT}${RETRIEVED_SOURCE_BOUNDARY_PROMPT}` },
-          { role: "user", content: buildResearchProjectPrompt(project, retrievedSources) },
-        ],
-      }),
-      signal: controller.signal,
-    });
-
-    const rawText = await response.text();
-    let body;
-    try {
-      body = JSON.parse(rawText);
-    } catch {
-      body = null;
-    }
-    if (!response.ok) {
-      sendJson(res, 502, { error: "Project research unavailable. Please try again or use the curated case." });
-      return;
-    }
-
-    const content = body?.choices?.[0]?.message?.content;
-    if (typeof content !== "string") {
-      sendJson(res, 502, { error: "Project research returned an invalid structured response." });
-      return;
-    }
-    // The synthesis payload contains no request credentials. Keep it in the
-    // server logs so classification loss can be located before normalization,
-    // while leaving the user-facing error contract intentionally generic.
-    console.info("[research-project] Raw synthesis response before parsing:", content);
+    let sourcePacket = await retrievePublicSources(project, apiKey, fetchImpl, controller.signal);
+    let retrievedSources = sourcePacket.sources;
+    let synthesis = await synthesizeResearch(project, retrievedSources, apiKey, fetchImpl, controller.signal);
     let parsed;
     try {
-      parsed = parseResearchResponse(JSON.parse(content), retrievedSources, new Date().toISOString().slice(0, 10), sourcePacket, project.knownData);
+      parsed = parseResearchResponse(synthesis, retrievedSources, new Date().toISOString().slice(0, 10), sourcePacket, project.knownData);
+      const unsupportedIds = parsed.evidence
+        .filter((item) => item.classification === "Missing Evidence")
+        .map((item) => item.id);
+      if (unsupportedIds.length > 0) {
+        const targeted = await retrieveTargetedSources(project, unsupportedIds, apiKey, fetchImpl, controller.signal);
+        if (targeted.sources.length > 0) {
+          const seen = new Set();
+          retrievedSources = [...retrievedSources, ...targeted.sources]
+            .sort((a, b) => sourcePriority(a.sourceClass) - sourcePriority(b.sourceClass))
+            .filter((source) => !seen.has(source.url) && seen.add(source.url))
+            .slice(0, MAX_RETRIEVED_SOURCES);
+          sourcePacket = {
+            sources: retrievedSources,
+            searchedDomains: [...sourcePacket.searchedDomains, ...targeted.searchedDomains],
+            failedDomains: [...sourcePacket.failedDomains, ...targeted.failedDomains],
+          };
+          synthesis = await synthesizeResearch(project, retrievedSources, apiKey, fetchImpl, controller.signal);
+          parsed = parseResearchResponse(synthesis, retrievedSources, new Date().toISOString().slice(0, 10), sourcePacket, project.knownData);
+        }
+      }
     } catch (error) {
       console.warn(
         "[research-project] Rejected structured research response:",
@@ -700,6 +763,7 @@ export {
   RESEARCH_PROJECT_RESPONSE_SCHEMA,
   RESEARCH_PROJECT_SYSTEM_PROMPT,
   buildResearchProjectPrompt,
+  retrieveTargetedSources,
   normalizeCapacityMW,
   normalizeReportedCapacityMW,
   parseResearchProjectBody,

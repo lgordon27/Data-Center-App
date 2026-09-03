@@ -261,6 +261,38 @@ test.describe("custom project research", () => {
     await expect(page.getByTestId("custom-project-capacity-note")).toContainText("standardized 1,200 MW default used");
   });
 
+  test("shows preserved and downgraded AI findings with partial source coverage", async ({ page }) => {
+    await page.unroute("**/api/research-project");
+    await page.route("**/api/research-project", async (route) => {
+      const result = customResponse();
+      const power = result.evidence.find((item) => item.id === "electricity_cost")!;
+      power.classification = "Management Assertion";
+      power.value = 48;
+      power.citation = "AI classification downgraded: cited source not in retrieved search results. Original classification: Verified Evidence.";
+      Object.assign(power, { coverageStatus: "partial" });
+      delete power.sourceUrl;
+      const grid = result.evidence.find((item) => item.id === "grid_interconnection")!;
+      grid.classification = "Model Inference";
+      grid.value = "Behind-the-meter arrangement reported";
+      grid.citation = "AI-cited source not in retrieved search results; Model Inference retained pending reviewer verification.";
+      Object.assign(grid, { coverageStatus: "partial" });
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(result) });
+    });
+
+    await page.goto("/");
+    await page.getByTestId("input-custom-project-name").fill("Project Kilby");
+    await page.getByTestId("input-custom-project-location").fill("Reeves County, Texas");
+    await page.getByTestId("button-run-ai-analysis").click();
+    await expect(page).toHaveURL(/#brief$/);
+    await page.goto("/#evidence");
+
+    await expect(page.getByTestId("select-classification-electricity_cost")).toHaveValue("Management Assertion");
+    await expect(page.getByTestId("coverage-status-electricity_cost")).toHaveText("partial");
+    await expect(page.getByTestId("row-evidence-electricity_cost")).toContainText("AI classification downgraded");
+    await expect(page.getByTestId("select-classification-grid_interconnection")).toHaveValue("Model Inference");
+    await expect(page.getByTestId("coverage-status-grid_interconnection")).toHaveText("partial");
+  });
+
   test("offers a clearly labeled default-assumptions case after the timeout retry fails", async ({ page }) => {
     let calls = 0;
     await page.unroute("**/api/research-project");

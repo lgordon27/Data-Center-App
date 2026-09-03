@@ -1,0 +1,40 @@
+The research source retrieval is still too narrow even with 6 searches. The core architectural issue is that the system restricts the AI's classification to only what was found in a small set of web searches, discarding the AI's broader knowledge. For well-documented projects like Project Kilby, the AI knows the facts but can't use them because the specific confirming URLs weren't retrieved.
+
+BROADEN THE SEARCH STRATEGY:
+
+1. Instead of 4-6 domain-bounded searches, run 8-10 searches with varied query strategies:
+   - "[project name] [location]" (general)
+   - "[project name] data center" (industry context)
+   - "[operator name] data center [location]" (operator-specific)
+   - "[project name] SEC filing" (regulatory)
+   - "[project name] press release announcement" (corporate)
+   - "[operator name] power water infrastructure [state]" (infrastructure)
+   - "[project name] community opposition zoning" (community)
+   - "[location] data center ERCOT interconnection" (grid)
+   - "[project name] environmental water" (environmental)
+   - "[operator name] [location] MW capacity" (technical specs)
+
+   Construct these dynamically from the project name, operator (if known from Compute Atlas), and location.
+
+2. Increase the per-search result retention from 8 to 10, and the total cap from 24 to 40. More source URLs means more potential matches with the AI's citations.
+
+3. CRITICAL CHANGE: Add a two-pass classification approach:
+
+   PASS 1 (current approach, improved): Run the web searches, build the source packet, ask OpenAI to classify evidence using the retrieved sources. Items with matched source URLs get their classifications preserved.
+
+   PASS 2 (new): For any item that was downgraded to Missing Evidence because of a source URL mismatch, run a SECOND targeted search specifically for that evidence variable. For example, if "Grid Interconnection" was downgraded, search "[project name] grid interconnection ERCOT behind the meter". If this targeted search finds a relevant result, re-evaluate the classification.
+
+   This two-pass approach means the system doesn't give up on a variable just because the initial broad searches didn't happen to return the right URL.
+
+4. Allow the AI to use training knowledge with a lower classification ceiling. If the AI knows a fact from training but no retrieved source confirms it, allow "Management Assertion" classification (not Verified Evidence) with a citation note: "Based on AI training knowledge. No retrieved source independently confirmed this claim. Verify before relying on this classification."
+
+   This preserves the principle that Verified Evidence requires an independent source while acknowledging that the AI legitimately knows things that a 6-query web search might not surface.
+
+5. When the research completes, show the user a "Source Coverage" summary:
+   - "X of 16 items supported by retrieved sources"
+   - "Y of 16 items classified from AI knowledge (verify independently)"
+   - "Z of 16 items with no information found"
+   
+   This is transparent about what level of verification each classification received.
+
+After implementing, test with "Project Kilby, Reeves County, Texas" and verify that the research returns a mix of classifications reflecting the project's extensive public documentation, not 16/16 Missing Evidence.

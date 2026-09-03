@@ -7,6 +7,7 @@ import {
   OPENAI_CHAT_COMPLETIONS_URL,
   OPENAI_RESPONSES_URL,
   RESEARCH_EVIDENCE_IDS,
+  RESEARCH_SEARCH_DOMAINS,
   RESEARCH_PROJECT_MAX_TOKENS,
   RESEARCH_PROJECT_MODEL,
   RESEARCH_PROJECT_TIMEOUT_MS,
@@ -170,11 +171,13 @@ test("sends bounded research settings and the expanded out-of-model instruction"
   let requestUrl;
   let requestInit;
   let retrievalCalls = 0;
+  const retrievalInputs = [];
   await handleResearchProjectRequest(request({ name: "Project Atlas", location: "Texas" }), response, {
     apiKey: "server-secret-for-test",
     fetchImpl: async (url, init) => {
       if (url === OPENAI_RESPONSES_URL) {
         retrievalCalls += 1;
+        retrievalInputs.push(JSON.parse(init.body).input);
         assert.equal(url, OPENAI_RESPONSES_URL);
         return retrievalResponse();
       }
@@ -186,7 +189,18 @@ test("sends bounded research settings and the expanded out-of-model instruction"
     },
   });
   assert.equal(response.statusCode, 200);
-  assert.equal(retrievalCalls, 6);
+  assert.equal(retrievalCalls, 26);
+  assert.deepEqual(
+    retrievalInputs.slice(0, 10),
+    RESEARCH_SEARCH_DOMAINS.map((domain) =>
+      `Find current public sources for the exact data-center project "Project Atlas" in "Texas". Search focus: ${domain.query({ name: "Project Atlas", location: "Texas" })}. Verify project/operator/location identity and do not mix similarly named facilities. Prefer direct government, regulator, utility, land, permit, environmental, and filed company records over summaries. Return source URLs, dates, titles, and claim-specific excerpts.`
+    ),
+  );
+  assert.deepEqual(
+    RESEARCH_SEARCH_DOMAINS.map((domain) => domain.id),
+    ["project-general", "industry-context", "operator-location", "sec-filings", "press-releases", "operator-infrastructure", "community-zoning", "grid-interconnection", "environmental-water", "technical-capacity"],
+  );
+  assert.match(retrievalInputs[12], /grid interconnection ERCOT behind the meter/);
   assert.equal(requestUrl, OPENAI_CHAT_COMPLETIONS_URL);
   const body = JSON.parse(requestInit.body);
   assert.equal(body.model, RESEARCH_PROJECT_MODEL);
@@ -197,7 +211,7 @@ test("sends bounded research settings and the expanded out-of-model instruction"
   assert.equal(body.messages[1].content, buildResearchProjectPrompt({ name: "Project Atlas", location: "Texas" }, [{
     ...retrievedSource,
     sourceClass: "primary-company",
-    searchDomain: "project-identity",
+    searchDomain: "project-general",
   }]));
   for (const phrase of [
     "electrical-equipment procurement",
@@ -371,13 +385,18 @@ test("preserves conservative AI classifications and downgrades unmatched Verifie
   body.evidence[0].classification = "Verified Evidence";
   body.evidence[0].citation = "Invented filing with no URL";
   body.evidence[0].numericValue = 1;
+  body.evidence[1].value = "Company-reported arrangement";
+  body.evidence[3].value = "Analyst-estimated escalation";
   body.evidence[12].qualitativeValue = "low";
   const parsed = parseResearchResponse(body, []);
   assert.equal(parsed.evidence[0].classification, "Management Assertion");
-  assert.match(parsed.evidence[0].citation, /Original classification: Verified Evidence/);
+  assert.match(parsed.evidence[0].citation, /AI classification downgraded.*Original classification: Verified Evidence/);
+  assert.equal(parsed.evidence[0].coverageStatus, "partial");
   assert.equal(parsed.evidence[0].numericValue, undefined);
   assert.equal(parsed.evidence[12].qualitativeValue, undefined);
   assert.equal(parsed.evidence[1].classification, "Management Assertion");
+  assert.equal(parsed.evidence[1].coverageStatus, "partial");
+  assert.match(parsed.evidence[1].citation, /Based on AI training knowledge.*Verify before relying/);
   assert.equal(parsed.evidence[3].classification, "Management Assertion");
 });
 

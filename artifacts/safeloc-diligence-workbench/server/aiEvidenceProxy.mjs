@@ -3,6 +3,9 @@ const AI_EVIDENCE_MODEL = "gpt-4o-mini";
 const AI_EVIDENCE_MAX_TOKENS = 300;
 const REQUEST_TIMEOUT_MS = 10_000;
 import {
+  AI_EVIDENCE_CUTOFF_LABEL,
+  AI_EVIDENCE_REPORTING_WINDOW,
+  AI_EVIDENCE_VALID_REPORTING_YEARS_LABEL,
   buildAIEvidenceTemporalInstruction,
 } from "../src/data/aiEvidenceTemporal.mjs";
 
@@ -13,8 +16,17 @@ const AI_EVIDENCE_REQUEST_LIMIT = 30;
 const AI_EVIDENCE_REQUEST_WINDOW_MS = 60_000;
 const AI_EVIDENCE_RATE_LIMIT_MESSAGE =
   "AI analysis request limit reached. Please wait before trying again and classify manually.";
+const AI_EVIDENCE_CLASSIFICATION_POLICY =
+  "Classify independent public records or reporting as Verified Evidence; dated company announcements, filings, or disclosures as Management Assertion when independent confirmation is limited; analyst-derived estimates from related facts as Model Inference; synthetic analyst-selected inputs as User Assumption; and a fact not established by the supplied citation as Missing Evidence. Do not treat statewide, regional, market-level, or similarly named-project context as facility-level proof.";
+const AI_EVIDENCE_RESPONSE_INSTRUCTION =
+  "Respond with exactly two JSON fields and no others: classification (one of exactly: Verified Evidence, Management Assertion, Model Inference, User Assumption, Missing Evidence) and reasoning (one sentence explaining why). Do not add markdown or extra commentary.";
 const AI_EVIDENCE_SYSTEM_PROMPT =
-  `You are an infrastructure diligence analyst specializing in AI data center investments. ${buildAIEvidenceTemporalInstruction()} Assess the Stargate Abilene data center project (OpenAI and Oracle, with project infrastructure reported in Taylor County, Texas) for investment underwriting. Use those publications and events only for the claims they support. Do not treat statewide or market-level context as facility-level Stargate proof. Classify independent public records or reporting as Verified Evidence; dated company announcements, filings, or disclosures as Management Assertion when independent confirmation is limited; analyst-derived estimates from related facts as Model Inference; synthetic analyst-selected inputs as User Assumption; and a fact not found in the dated records or disclosures searched as Missing Evidence. Respond with exactly two JSON fields and no others: classification (one of exactly: Verified Evidence, Management Assertion, Model Inference, User Assumption, Missing Evidence) and reasoning (one sentence explaining why). Do not add markdown or extra commentary.`;
+  `You are an infrastructure diligence analyst specializing in AI data center investments. ${buildAIEvidenceTemporalInstruction()} Assess the curated Stargate Abilene data center project for investment underwriting. Use the curated publications and events only for the claims they support. ${AI_EVIDENCE_CLASSIFICATION_POLICY} ${AI_EVIDENCE_RESPONSE_INSTRUCTION}`;
+
+function buildAIEvidenceSystemPrompt({ projectKind }) {
+  if (projectKind === "curated") return AI_EVIDENCE_SYSTEM_PROMPT;
+  return `You are an infrastructure diligence analyst specializing in AI data center investments. Today is ${AI_EVIDENCE_CUTOFF_LABEL}. The active reporting window is ${AI_EVIDENCE_REPORTING_WINDOW}; treat dated ${AI_EVIDENCE_VALID_REPORTING_YEARS_LABEL} reporting as potentially current as of the cutoff. This is a custom researched project: assess only the supplied evidence value and citation. Do not apply facts or events from the curated Stargate Abilene record, do not assume similarly named facilities are the same project, and do not claim to have performed new web research. ${AI_EVIDENCE_CLASSIFICATION_POLICY} ${AI_EVIDENCE_RESPONSE_INSTRUCTION}`;
+}
 
 function sendJson(res, status, body) {
   res.statusCode = status;
@@ -29,20 +41,26 @@ function isRecord(value) {
 
 function parseEvidenceBody(body) {
   if (!isRecord(body)) throw new Error("Evidence body must be a JSON object.");
-  for (const field of ["name", "value", "source"]) {
+  for (const field of ["name", "value", "source", "projectName", "projectLocation"]) {
     if (typeof body[field] !== "string" || !body[field].trim()) {
       throw new Error(`Evidence field "${field}" must be a non-empty string.`);
     }
+  }
+  if (!["curated", "custom"].includes(body.projectKind)) {
+    throw new Error('Evidence field "projectKind" must be curated or custom.');
   }
   return {
     name: body.name.trim(),
     value: body.value.trim(),
     source: body.source.trim(),
+    projectName: body.projectName.trim(),
+    projectLocation: body.projectLocation.trim(),
+    projectKind: body.projectKind,
   };
 }
 
-function buildAIEvidencePrompt({ name, value, source }) {
-  return `Assess the evidence quality of this data point for the Stargate Abilene data center project (OpenAI/Oracle, Taylor County, Texas): Variable: ${name}. Current value: ${value}. Cited source: ${source}. Based on the source type and what is publicly verifiable about this project, classify the evidence quality.`;
+function buildAIEvidencePrompt({ name, value, source, projectName, projectLocation, projectKind }) {
+  return `Assess the evidence quality of this supplied data point for the ${projectKind === "curated" ? "curated" : "custom researched"} project "${projectName}" in "${projectLocation}". Variable: ${name}. Current value: ${value}. Supplied citation: ${source}. Classify only whether this citation supports this value for this exact project. If it does not establish a facility-level claim for this project, return Missing Evidence.`;
 }
 
 async function readRequestBody(req) {
@@ -152,7 +170,7 @@ export async function handleAnalyzeEvidenceRequest(
         max_tokens: AI_EVIDENCE_MAX_TOKENS,
         response_format: { type: "json_object" },
         messages: [
-          { role: "system", content: AI_EVIDENCE_SYSTEM_PROMPT },
+          { role: "system", content: buildAIEvidenceSystemPrompt(evidence) },
           { role: "user", content: buildAIEvidencePrompt(evidence) },
         ],
       }),
@@ -210,6 +228,7 @@ export {
   AI_EVIDENCE_MAX_TOKENS,
   AI_EVIDENCE_MODEL,
   AI_EVIDENCE_SYSTEM_PROMPT,
+  buildAIEvidenceSystemPrompt,
   OPENAI_CHAT_COMPLETIONS_URL,
   buildAIEvidencePrompt,
   parseEvidenceBody,

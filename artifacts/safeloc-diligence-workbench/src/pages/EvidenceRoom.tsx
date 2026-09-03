@@ -376,7 +376,7 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
   const [activeAnalysisId, setActiveAnalysisId] = useState<string | null>(null);
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
   const [decisionHistory, setDecisionHistory] = useState<DecisionHistoryEntry[]>(getDecisionHistory);
-  const isAnalysisBusy = activeAnalysisId !== null;
+  const isAnalysisBusy = activeAnalysisId !== null || batchProgress !== null;
 
   useEffect(() => {
     const syncDecisionHistory = () => setDecisionHistory(getDecisionHistory());
@@ -399,7 +399,7 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
     setNotices((current) => ({ ...current, [item.id]: undefined }));
     setActiveAnalysisId(item.id);
     try {
-      const result = await analyzeEvidence(item);
+      const result = await analyzeEvidence(item, project);
       setAssessments((current) => ({ ...current, [item.id]: result }));
     } catch {
       setAssessments((current) => ({
@@ -420,7 +420,7 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
       setActiveAnalysisId(item.id);
       setBatchProgress({ current: index + 1, total: items.length });
       try {
-        const result = await analyzeEvidence(item);
+        const result = await analyzeEvidence(item, project);
         setAssessments((current) => ({ ...current, [item.id]: result }));
       } catch {
         setAssessments((current) => ({
@@ -474,7 +474,7 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
               <button
                 data-testid="button-analyze-all-ai"
                 type="button"
-                disabled={isAnalysisBusy || customProject}
+                disabled={isAnalysisBusy}
                 aria-busy={isAnalysisBusy}
                 onClick={() => void analyzeAll()}
                 className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-[#9aaec0] bg-[#122232] px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#d4e86b] hover:border-[#d4e86b] disabled:cursor-wait disabled:opacity-60"
@@ -482,8 +482,8 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
                 <Sparkles aria-hidden="true" className="h-3.5 w-3.5" />
                 {batchProgress ? `Analyzing ${batchProgress.current} of ${batchProgress.total}…` : "Analyze All with AI"}
               </button>
-              {customProject
-                ? <span data-testid="custom-ai-reassessment-note" role="note" className="text-right font-mono text-[8px] uppercase tracking-[0.08em] text-[#7d898f]">Custom research classifications are manual-review only</span>
+              {customProject && !batchProgress
+                ? <span data-testid="custom-ai-reassessment-note" role="note" className="text-right font-mono text-[8px] uppercase tracking-[0.08em] text-[#7d898f]">Reassesses supplied citations · human acceptance required</span>
                 : batchProgress && <span data-testid="status-ai-batch" role="status" aria-live="polite" className="text-right font-mono text-[8px] uppercase tracking-[0.08em] text-[#60707d]">One item at a time · suggestions only</span>}
             </div>
           </div>
@@ -552,7 +552,7 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
                   assessment={assessments[item.id]}
                   notice={notices[item.id]}
                   analysisBusy={activeAnalysisId === item.id}
-                  analysisDisabled={isAnalysisBusy || customProject}
+                  analysisDisabled={isAnalysisBusy}
                 />
               ))}
               {category.id === "power-grid" && (

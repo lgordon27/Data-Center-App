@@ -56,7 +56,22 @@ test.describe("custom project research", () => {
   test.beforeEach(async ({ page }) => {
     await page.route("**/api/research-project", async (route) => {
       await new Promise((resolve) => setTimeout(resolve, 150));
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(customResponse()) });
+      const request = route.request().postDataJSON() as { name: string; location: string };
+      const response = customResponse();
+      response.projectSummary.name = request.name;
+      response.projectSummary.location = request.location;
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(response) });
+    });
+    await page.route("**/api/analyze-evidence", async (route) => {
+      const request = route.request().postDataJSON() as { projectName: string };
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          classification: "Verified Evidence",
+          reasoning: `The supplied citation was assessed for ${request.projectName}; human acceptance is still required.`,
+        }),
+      });
     });
   });
 
@@ -87,9 +102,9 @@ test.describe("custom project research", () => {
     await expect(page.getByTestId("select-classification-electricity_cost")).toBeVisible();
     await expect(page.getByTestId("custom-research-banner")).toBeVisible();
     await expect(page.getByTestId("eia-electricity-evidence")).toHaveCount(0);
-    await expect(page.getByTestId("button-analyze-all-ai")).toBeDisabled();
-    await expect(page.getByTestId("button-analyze-ai-electricity_cost")).toBeDisabled();
-    await expect(page.getByTestId("custom-ai-reassessment-note")).toContainText("manual-review only");
+    await expect(page.getByTestId("button-analyze-all-ai")).toBeEnabled();
+    await expect(page.getByTestId("button-analyze-ai-electricity_cost")).toBeEnabled();
+    await expect(page.getByTestId("custom-ai-reassessment-note")).toContainText("human acceptance required");
     await expect(page.getByTestId("link-custom-source-electricity_cost")).toHaveAttribute("href", "https://example.com/atlas/source");
     await expect(page.getByTestId("link-custom-source-electricity_cost")).toHaveAttribute("target", "_blank");
     await expect(page.getByTestId("link-custom-source-electricity_cost")).toHaveAttribute("rel", "noopener noreferrer");
@@ -112,10 +127,11 @@ test.describe("custom project research", () => {
     await expect(page.getByTestId("button-compare-scenarios")).toBeDisabled();
     await expect(page.getByTestId("panel-saved-scenarios")).toHaveCount(0);
     await expect(page.getByTestId("status-recommendation")).toHaveText("BLOCKED");
-    await expect(page.getByTestId("material-gap-row-grid_interconnection")).toBeVisible();
-    await expect(page.getByTestId("material-gap-row-community_risk")).toBeVisible();
     await expect(page.getByTestId("material-gap-row-customer_concentration")).toBeVisible();
     await expect(page.getByTestId("material-gap-row-water_source_resilience")).toBeVisible();
+    await expect(page.locator('[data-testid^="material-gap-row-"]')).toHaveCount(2);
+    await expect(page.getByTestId("material-gap-row-grid_interconnection")).toHaveCount(0);
+    await expect(page.getByTestId("material-gap-row-community_risk")).toHaveCount(0);
     await expect(page.getByTestId("material-gap-row-electricity_cost")).toHaveCount(0);
     await expect(page.getByTestId("material-gap-row-water_consumption")).toHaveCount(0);
     await expect.poll(() => page.evaluate((key) => window.localStorage.getItem(key), scenariosKey)).toBeNull();
@@ -129,6 +145,80 @@ test.describe("custom project research", () => {
     await page.reload();
     await expect(page.getByTestId("custom-research-banner")).toHaveCount(0);
     await expect(page).toHaveURL(/#brief$/);
+  });
+
+  test("runs all 16 project-aware assessments after researching a directory facility", async ({ page }) => {
+    const assessmentRequests: Array<{
+      projectName: string;
+      projectLocation: string;
+      projectKind: string;
+      name: string;
+    }> = [];
+    page.on("request", (request) => {
+      if (new URL(request.url()).pathname.endsWith("/api/analyze-evidence")) {
+        assessmentRequests.push(request.postDataJSON());
+      }
+    });
+    await page.route("**/api/directory?**", (route) => route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceMetadata: {
+          provider: "Compute Atlas",
+          attributionUrl: "https://compute-atlas.com",
+          status: "embedded",
+          dataOrigin: "embedded",
+          snapshotVersion: "test-snapshot",
+        },
+        facilities: [{
+          id: "qts-irving-1",
+          name: "QTS Irving 1",
+          operator: "QTS Data Centers",
+          city: "Irving",
+          county: "Dallas",
+          state: "TX",
+          capacityMW: 165,
+          availableCapacityMW: 165,
+          status: "operating",
+          confidence: "reported",
+          aiClassification: null,
+          sourceUrl: "https://compute-atlas.com/facilities/qts-irving-1",
+          connectedCompanies: [],
+          connectedFunds: [],
+          lastUpdated: null,
+        }],
+        totalFacilities: 1,
+        offset: 0,
+        limit: 24,
+        hasMore: false,
+      }),
+    }));
+
+    await page.goto("/#directory");
+    await expect(page.getByTestId("compute-atlas-record-qts-irving-1")).toBeVisible();
+    await page.getByTestId("compute-atlas-open-qts-irving-1").click();
+    await expect(page).toHaveURL(/#brief$/);
+    await expect(page.getByTestId("custom-project-status")).toContainText("AI-researched");
+    await expect(page.getByTestId("custom-project-summary")).toContainText("QTS Irving 1");
+
+    await page.goto("/#evidence");
+    await expect(page.getByTestId("button-analyze-all-ai")).toBeEnabled();
+    await page.getByTestId("button-analyze-all-ai").click();
+    await expect.poll(() => assessmentRequests.length).toBe(16);
+    await expect(page.getByTestId("button-analyze-all-ai")).toBeEnabled();
+
+    expect(assessmentRequests.map((request) => request.name)).toEqual(evidenceIds.map((id) => id.replaceAll("_", " ")));
+    for (const request of assessmentRequests) {
+      expect(request.projectName).toBe("QTS Irving 1");
+      expect(request.projectLocation).toBe("Irving · Dallas County · TX");
+      expect(request.projectKind).toBe("custom");
+    }
+
+    await expect(page.getByTestId("ai-assessment-electricity_cost")).toContainText("QTS Irving 1");
+    await page.getByTestId("button-accept-ai-electricity_cost").click();
+    await expect(page.getByTestId("select-classification-electricity_cost")).toHaveValue("Verified Evidence");
+    await expect(page.getByTestId("ai-decision-history")).toContainText("Accepted by human");
+    await expect(page.getByTestId("ai-decision-history")).toContainText("electricity cost");
   });
 
   test("keeps the scope disclosure closed by default on the curated case", async ({ page }) => {

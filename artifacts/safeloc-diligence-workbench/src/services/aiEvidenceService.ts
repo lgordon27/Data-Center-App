@@ -1,4 +1,4 @@
-import type { Classification, EvidenceItem } from "@/context/DiligenceContext";
+import type { Classification, EvidenceItem, ProjectContext } from "@/context/DiligenceContext";
 
 export const AI_EVIDENCE_ENDPOINT = "/api/analyze-evidence";
 export const AI_EVIDENCE_TIMEOUT_MS = 10_000;
@@ -102,6 +102,7 @@ function parseAssessment(rawText: string): AIEvidenceResult {
 
 export async function analyzeEvidence(
   item: Pick<EvidenceItem, "label" | "value" | "citation">,
+  project: Pick<ProjectContext, "name" | "location" | "kind">,
   fetchImpl: typeof fetch = fetch,
 ): Promise<AIEvidenceResult> {
   const controller = new AbortController();
@@ -114,7 +115,14 @@ export async function analyzeEvidence(
         accept: "application/json",
         "content-type": "application/json",
       },
-      body: JSON.stringify({ name: item.label, value: String(item.value), source: item.citation }),
+      body: JSON.stringify({
+        name: item.label,
+        value: String(item.value),
+        source: item.citation,
+        projectName: project.name,
+        projectLocation: project.location,
+        projectKind: project.kind,
+      }),
       signal: controller.signal,
     });
 

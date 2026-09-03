@@ -11,6 +11,11 @@ const item = {
   value: "Not disclosed",
   citation: "No public disclosure as of Aug 2026",
 };
+const project = {
+  name: "Project Atlas",
+  location: "Maricopa County, Arizona",
+  kind: "custom",
+} as const;
 
 function proxyResponse(text: string, status = 200) {
   return new Response(text, {
@@ -21,7 +26,7 @@ function proxyResponse(text: string, status = 200) {
 
 test("sends the same-origin evidence contract and normalizes a valid assessment", async () => {
   let request: Request | undefined;
-  const result = await analyzeEvidence(item, async (input, init) => {
+  const result = await analyzeEvidence(item, project, async (input, init) => {
     request = new Request(new URL(String(input), "http://localhost"), init);
     return proxyResponse(JSON.stringify({
       classification: "missing evidence",
@@ -41,19 +46,22 @@ test("sends the same-origin evidence contract and normalizes a valid assessment"
     name: item.label,
     value: item.value,
     source: item.citation,
+    projectName: project.name,
+    projectLocation: project.location,
+    projectKind: project.kind,
   });
 });
 
 test("returns raw text for non-JSON and structurally invalid responses", async () => {
   const rawText = "I would review this manually.";
-  const nonJson = await analyzeEvidence(item, async () => new Response(rawText, { status: 200 }));
+  const nonJson = await analyzeEvidence(item, project, async () => new Response(rawText, { status: 200 }));
   assert.deepEqual(nonJson, {
     status: "unparseable",
     message: "Could not parse structured assessment. Review manually.",
     rawText,
   });
 
-  const invalid = await analyzeEvidence(item, async () => proxyResponse(JSON.stringify({
+  const invalid = await analyzeEvidence(item, project, async () => proxyResponse(JSON.stringify({
     classification: "Verified Evidence",
     reasoning: "",
   })));
@@ -62,13 +70,13 @@ test("returns raw text for non-JSON and structurally invalid responses", async (
 });
 
 test("normalizes transport failures and abort timeouts", async () => {
-  const failed = await analyzeEvidence(item, async () => {
+  const failed = await analyzeEvidence(item, project, async () => {
     throw new Error("network unavailable");
   });
   assert.equal(failed.status, "error");
   assert.match(failed.message, /Classify manually/);
 
-  const timedOut = await analyzeEvidence(item, async () => {
+  const timedOut = await analyzeEvidence(item, project, async () => {
     const error = new Error("aborted");
     error.name = "AbortError";
     throw error;
@@ -80,7 +88,7 @@ test("normalizes transport failures and abort timeouts", async () => {
 });
 
 test("uses a safe manual-review message for a rate-limited response", async () => {
-  const result = await analyzeEvidence(item, async () => new Response(JSON.stringify({
+  const result = await analyzeEvidence(item, project, async () => new Response(JSON.stringify({
     error: "provider-internal detail should not be shown",
   }), { status: 429 }));
 
@@ -101,7 +109,7 @@ test("makes a fresh request for every analysis", async () => {
     }));
   };
 
-  await analyzeEvidence(item, fetchImpl);
-  await analyzeEvidence(item, fetchImpl);
+  await analyzeEvidence(item, project, fetchImpl);
+  await analyzeEvidence(item, project, fetchImpl);
   assert.equal(requests, 2);
 });

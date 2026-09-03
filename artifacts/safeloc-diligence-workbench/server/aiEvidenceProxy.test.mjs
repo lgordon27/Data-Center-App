@@ -8,6 +8,7 @@ import {
   AI_EVIDENCE_SYSTEM_PROMPT,
   OPENAI_CHAT_COMPLETIONS_URL,
   buildAIEvidencePrompt,
+  buildAIEvidenceSystemPrompt,
   createAIEvidenceRateLimiter,
   handleAnalyzeEvidenceRequest,
 } from "./aiEvidenceProxy.mjs";
@@ -21,6 +22,9 @@ const evidence = {
   name: "Annual Cooling Water",
   value: "Not disclosed",
   source: "No public disclosure as of Aug 2026",
+  projectName: "Stargate Abilene",
+  projectLocation: "Taylor County, Texas",
+  projectKind: "curated",
 };
 
 function responseRecorder() {
@@ -101,7 +105,7 @@ test("sends the exact OpenAI contract and returns parsed assessment JSON", async
     max_tokens: AI_EVIDENCE_MAX_TOKENS,
     response_format: { type: "json_object" },
     messages: [
-      { role: "system", content: AI_EVIDENCE_SYSTEM_PROMPT },
+      { role: "system", content: buildAIEvidenceSystemPrompt(evidence) },
       { role: "user", content: buildAIEvidencePrompt(evidence) },
     ],
   });
@@ -122,6 +126,23 @@ test("grounds the system instruction in the shared temporal contract", () => {
   assert.match(AI_EVIDENCE_SYSTEM_PROMPT, /exactly two JSON fields/i);
   assert.match(AI_EVIDENCE_SYSTEM_PROMPT, /and no others/i);
   assert.match(AI_EVIDENCE_SYSTEM_PROMPT, /reasoning \(one sentence explaining why\)/i);
+});
+
+test("keeps custom-project assessments separate from the curated Stargate record", () => {
+  const customEvidence = {
+    ...evidence,
+    projectName: "QTS Irving 1",
+    projectLocation: "Irving, Dallas County, Texas",
+    projectKind: "custom",
+  };
+  const systemPrompt = buildAIEvidenceSystemPrompt(customEvidence);
+  const userPrompt = buildAIEvidencePrompt(customEvidence);
+  assert.match(systemPrompt, /assess only the supplied evidence value and citation/i);
+  assert.match(systemPrompt, /do not apply facts or events from the curated Stargate Abilene record/i);
+  assert.doesNotMatch(systemPrompt, /expansion was cancelled|winter storms damaged cooling equipment/i);
+  assert.match(userPrompt, /QTS Irving 1/);
+  assert.match(userPrompt, /Irving, Dallas County, Texas/);
+  assert.match(userPrompt, /this exact project/i);
 });
 
 test("preserves upstream status without leaking provider error details", async () => {
@@ -201,4 +222,13 @@ test("rejects methods and malformed evidence before an upstream request", async 
     },
   });
   assert.equal(invalidResponse.statusCode, 400);
+
+  const invalidProjectResponse = responseRecorder();
+  await handleAnalyzeEvidenceRequest(requestWithBody({ ...evidence, projectKind: "unknown" }), invalidProjectResponse, {
+    apiKey: "server-secret-for-test",
+    fetchImpl: async () => {
+      throw new Error("should not be called");
+    },
+  });
+  assert.equal(invalidProjectResponse.statusCode, 400);
 });

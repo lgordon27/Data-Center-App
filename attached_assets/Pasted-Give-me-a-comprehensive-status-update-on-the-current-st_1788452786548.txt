@@ -1,0 +1,20 @@
+Give me a comprehensive status update on the current state of the application. List every task that has been completed recently by name. Then confirm yes/no for each of these:
+
+1. What is the current verified baseline IRR and default evidence-adjusted IRR?
+2. Has the global terminology rename been applied? (Underwriting baseline, conservative stress case, etc.)
+3. Has the Decision Review copy inconsistency been fixed? (material dependencies matching listed gaps)
+4. Has the home page been restructured with three prominent CTA buttons above the fold?
+5. Have Don't Make Me Think progressive disclosure changes been applied? (collapsed/expandable sections on Case Brief, Evidence Room, Financial Materiality, Advisor Lens)
+6. Is the Advisor Lens fund-level risk label fixed? (project evidence posture instead of fund-level HIGH/MODERATE/LOW)
+7. Have direct source citations with clickable links been added to evidence items and factual claims?
+8. Has "Not sell. Engage." been qualified with professional boundaries?
+9. Have zero-impact variables been classified as Financial Driver / Decision Gate / Context Indicator?
+10. Has the waterfall been relabeled as Evidence-Quality Stress Test with visible stress treatments per variable?
+11. Have analyst review timestamps been added to evidence items?
+12. Have company-project connection type labels been added? (Direct Contractual, Supplier Relationship, Developer/Operator, Customer Dependency, Thematic Exposure)
+13. Is the navigation simplified? (POC/v0.9 removed, AD avatar removed, header subtitle removed, left sidebar streamlined)
+14. Are next-step buttons present on each screen? (Continue to Evidence Room, See Financial Impact, View Decision, etc.)
+15. Is the Evidence Room using accordion-style progressive disclosure? (one-line default per item, expand on click for details)
+16. What is the current test count and do all tests pass?
+17. Does the app build and run without errors?
+18. List any other changes made that are not covered above.

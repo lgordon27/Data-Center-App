@@ -172,13 +172,64 @@ function EvidenceRow({
   analysisDisabled: boolean;
 }) {
   const meta = classMeta[item.classification];
-  const { sourceStates, project } = useDiligence();
+  const { sourceStates, project, applyEvidenceCorrection } = useDiligence();
   const source = item.sourceId ? sourceStates[item.sourceId] : null;
   const providerSource = item.providerSourceId ? sourceStates[item.providerSourceId] : null;
   const [open, setOpen] = useState(false);
+  const [correctionOpen, setCorrectionOpen] = useState(false);
+  const [correctionUrl, setCorrectionUrl] = useState("");
+  const [correctionClaim, setCorrectionClaim] = useState("");
+  const [correctionValue, setCorrectionValue] = useState(String(item.value));
+  const [correctionAssessment, setCorrectionAssessment] = useState<AIEvidenceSuccess | null>(null);
+  const [correctionBusy, setCorrectionBusy] = useState(false);
+  const [correctionError, setCorrectionError] = useState("");
   useEffect(() => {
     if (assessment || notice) setOpen(true);
   }, [assessment, notice]);
+  const proposeCorrection = async () => {
+    setCorrectionError("");
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(correctionUrl);
+      if (!["http:", "https:"].includes(parsedUrl.protocol) || parsedUrl.username || parsedUrl.password) throw new Error();
+    } catch {
+      setCorrectionError("Enter a public HTTP or HTTPS source URL.");
+      return;
+    }
+    if (!correctionClaim.trim() || !correctionValue.trim()) {
+      setCorrectionError("Add the claim this source supports and the proposed value.");
+      return;
+    }
+    setCorrectionBusy(true);
+    const result = await analyzeEvidence({
+      label: item.label,
+      value: correctionValue.trim(),
+      citation: `${correctionClaim.trim()} ${parsedUrl.href}`,
+    }, project);
+    setCorrectionBusy(false);
+    if (result.status === "success") {
+      setCorrectionAssessment(result);
+    } else {
+      setCorrectionError(result.message);
+    }
+  };
+  const acceptCorrection = () => {
+    if (!correctionAssessment) return;
+    const accepted = applyEvidenceCorrection(item.id, {
+      value: correctionValue,
+      claim: correctionClaim,
+      sourceUrl: correctionUrl,
+      classification: correctionAssessment.classification,
+    });
+    if (!accepted) {
+      setCorrectionError("The correction could not be applied.");
+      return;
+    }
+    logSessionAction("Reviewer source attached, AI-proposed, human-accepted", item.id);
+    recordAIDecision(item.id, correctionAssessment.classification, correctionAssessment.reasoning, "accepted", correctionAssessment.classification);
+    setCorrectionAssessment(null);
+    setCorrectionOpen(false);
+  };
   return (
     <details id={`evidence-item-${item.id}`} open={open} onToggle={(event) => setOpen(event.currentTarget.open)} tabIndex={-1} data-testid={`row-evidence-${item.id}`} className="group border-b border-[#e4e9e8] last:border-0 focus-within:bg-[#fbfcfa]">
       <summary className="grid cursor-pointer list-none gap-3 px-4 py-3 transition-colors hover:bg-[#fbfcfa] md:grid-cols-[1.55fr_0.8fr_1.55fr] md:items-center md:px-5 [&::-webkit-details-marker]:hidden">
@@ -222,6 +273,54 @@ function EvidenceRow({
                  <span data-testid={`custom-source-missing-${item.id}`} className="mt-2 block font-mono text-[8px] uppercase tracking-[0.08em] text-[#a65a00]">No validated direct source link returned · citation is research context only</span>
                )
              )}
+              {project.kind === "custom" && (
+                <span className="mt-3 block border-t border-[#e1e8e5] pt-3">
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span data-testid={`coverage-status-${item.id}`} className={`rounded-full px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.08em] ${item.coverageStatus === "conflicting" ? "bg-[#fde8eb] text-[#ba2f45]" : item.coverageStatus === "supported" ? "bg-[#e0f4ed] text-[#08644f]" : "bg-[#fff0d5] text-[#8a5200]"}`}>
+                      {item.coverageStatus === "searched-no-support" ? "Searched · no support" : item.coverageStatus ?? "Coverage unknown"}
+                    </span>
+                    {item.failedSearchDomains?.length ? <span data-testid={`coverage-failures-${item.id}`} className="font-mono text-[8px] uppercase tracking-[0.08em] text-[#a65a00]">{item.failedSearchDomains.length} search domain{item.failedSearchDomains.length === 1 ? "" : "s"} unavailable</span> : null}
+                  </span>
+                  {item.conflictSummary && <span data-testid={`source-conflict-${item.id}`} className="mt-2 block rounded border border-[#efbac3] bg-[#fff4f6] p-2 text-[9px] text-[#8f2437]"><strong>Conflict:</strong> {item.conflictSummary}</span>}
+                  {(item.sources?.length ?? 0) > 1 && (
+                    <span data-testid={`custom-sources-${item.id}`} className="mt-2 block">
+                      <span className="font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#60707d]">{item.sources?.length} claim-specific sources</span>
+                      {item.sources?.map((evidenceSource) => (
+                        <a key={evidenceSource.url} href={evidenceSource.url} target="_blank" rel="noopener noreferrer" className="mt-1 flex items-start justify-between gap-2 rounded border border-[#d9e0e4] bg-white p-2 text-[9px] text-[#255bb7] hover:border-[#8dc8e8]">
+                          <span><strong>{evidenceSource.title}</strong><span className="mt-0.5 block text-[#60707d]">{evidenceSource.sourceClass.replaceAll("-", " ")} · {evidenceSource.relationship}</span></span>
+                          <ExternalLink aria-hidden="true" className="h-3 w-3 shrink-0" />
+                        </a>
+                      ))}
+                    </span>
+                  )}
+                  <button data-testid={`button-correct-source-${item.id}`} type="button" onClick={() => setCorrectionOpen((value) => !value)} className="mt-3 rounded-md border border-[#9aaec0] bg-white px-3 py-2 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#344550] hover:border-[#255bb7]">
+                    {correctionOpen ? "Cancel source correction" : "Add or replace a missed source"}
+                  </button>
+                  {correctionOpen && (
+                    <span data-testid={`source-correction-form-${item.id}`} className="mt-3 block rounded-lg border border-[#cbd8d4] bg-[#f7faf8] p-3">
+                      <span className="block text-[10px] font-semibold text-[#243844]">Stage a reviewer source</span>
+                      <span className="mt-1 block text-[9px] text-[#60707d]">AI checks the claim context only. Open and verify the source yourself; nothing changes until you accept.</span>
+                      <label className="mt-3 block text-[9px] font-semibold text-[#344550]">Public source URL<input data-testid={`input-correction-url-${item.id}`} type="url" value={correctionUrl} onChange={(event) => { setCorrectionUrl(event.target.value); setCorrectionAssessment(null); }} className="mt-1 block w-full rounded border border-[#cbd8d4] bg-white px-2.5 py-2 text-[10px]" placeholder="https://agency.gov/decision" /></label>
+                      <label className="mt-2 block text-[9px] font-semibold text-[#344550]">Claim supported<textarea data-testid={`input-correction-claim-${item.id}`} value={correctionClaim} onChange={(event) => { setCorrectionClaim(event.target.value); setCorrectionAssessment(null); }} className="mt-1 block min-h-16 w-full rounded border border-[#cbd8d4] bg-white px-2.5 py-2 text-[10px]" placeholder="Quote or summarize the exact project-specific finding." /></label>
+                      <label className="mt-2 block text-[9px] font-semibold text-[#344550]">Proposed model value<input data-testid={`input-correction-value-${item.id}`} value={correctionValue} onChange={(event) => { setCorrectionValue(event.target.value); setCorrectionAssessment(null); }} className="mt-1 block w-full rounded border border-[#cbd8d4] bg-white px-2.5 py-2 text-[10px]" /></label>
+                      {correctionError && <span role="alert" className="mt-2 block text-[9px] text-[#ba2f45]">{correctionError}</span>}
+                      {correctionAssessment ? (
+                        <span data-testid={`correction-proposal-${item.id}`} className="mt-3 block rounded border border-[#b9d43a] bg-[#f8fbe8] p-3">
+                          <span className="flex flex-wrap items-center gap-2"><ClassificationBadge value={correctionAssessment.classification} compact /><span className="text-[9px] text-[#52616b]">{correctionAssessment.reasoning}</span></span>
+                          <span className="mt-3 flex gap-2">
+                            <button data-testid={`button-accept-correction-${item.id}`} type="button" onClick={acceptCorrection} className="rounded bg-[#08644f] px-3 py-2 font-mono text-[8px] font-bold uppercase text-white">Accept source and proposal</button>
+                            <button type="button" onClick={() => setCorrectionAssessment(null)} className="rounded border border-[#cbd8d4] bg-white px-3 py-2 font-mono text-[8px] font-bold uppercase text-[#52616b]">Revise</button>
+                          </span>
+                        </span>
+                      ) : (
+                        <button data-testid={`button-propose-correction-${item.id}`} type="button" disabled={correctionBusy} onClick={() => void proposeCorrection()} className="mt-3 inline-flex items-center gap-1 rounded bg-[#122232] px-3 py-2 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#d4e86b] disabled:opacity-60">
+                          {correctionBusy && <LoaderCircle aria-hidden="true" className="h-3 w-3 animate-spin" />}{correctionBusy ? "Checking…" : "Request AI proposal"}
+                        </button>
+                      )}
+                    </span>
+                  )}
+                </span>
+              )}
            </span>
          </div>
       </div>

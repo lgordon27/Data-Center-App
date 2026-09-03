@@ -8,6 +8,13 @@ const RESEARCH_PROJECT_REQUEST_LIMIT = 10;
 const RESEARCH_PROJECT_REQUEST_WINDOW_MS = 60_000;
 const RESEARCH_PROJECT_RATE_LIMIT_MESSAGE =
   "Custom research request limit reached. Please wait before trying again or use the curated case.";
+const MAX_RETRIEVED_SOURCES = 24;
+const RESEARCH_SEARCH_DOMAINS = [
+  { id: "project-identity", label: "Project identity and operator records", query: "exact project name operator owner address site announcement filing" },
+  { id: "power-grid", label: "Power, grid, and utility records", query: "utility tariff interconnection queue power generation renewable procurement backup power regulator filing" },
+  { id: "water-environment", label: "Water, land, environmental, and permitting records", query: "site permit land decision environmental review water rights water allocation emissions carbon compliance government" },
+  { id: "community-commercial", label: "Community, resilience, and commercial records", query: "local ordinance noise community hearing customer lease construction schedule outage cooling resilience reputable reporting" },
+];
 
 const RESEARCH_EVIDENCE_IDS = [
   "electricity_cost",
@@ -48,6 +55,9 @@ const RESEARCH_EVIDENCE_RECORD_SCHEMA = {
     description: { type: "string", minLength: 1 },
     sourceRole: { type: "string", minLength: 1 },
     sourceUrl: { anyOf: [{ type: "string" }, { type: "null" }] },
+    sourceUrls: { type: "array", items: { type: "string" }, maxItems: 4 },
+    conflictSummary: { anyOf: [{ type: "string" }, { type: "null" }] },
+    coverageStatus: { type: "string", enum: ["supported", "searched-no-support", "partial", "conflicting"] },
     numericValue: { anyOf: [{ type: "number" }, { type: "null" }] },
     qualitativeValue: {
       anyOf: [
@@ -65,6 +75,9 @@ const RESEARCH_EVIDENCE_RECORD_SCHEMA = {
     "description",
     "sourceRole",
     "sourceUrl",
+    "sourceUrls",
+    "conflictSummary",
+    "coverageStatus",
     "numericValue",
     "qualitativeValue",
   ],
@@ -103,7 +116,7 @@ SafeLoc models exactly 16 evidence variables: electricity_cost, water_consumptio
 
 The projectSummary.description must explicitly report relevant findings, when available, about electrical-equipment procurement and lead times, jurisdictional bans or moratoriums, noise ordinances and operational impacts, local electricity-rate concerns, and semiconductor and memory supply-chain constraints. It must also identify speculative or phantom grid-load requests when that context is relevant. These are contextual research areas, not additional modeled evidence inputs: do not add them to the evidence array, assign them evidence classifications, or imply that market-wide statistics prove facility-level facts.
 
-Respond with one JSON object matching the supplied schema. projectSummary must contain name, location, description, and capacityMW. Every evidence record must contain label, value, unit, classification, citation, description, sourceRole, sourceUrl, numericValue, and qualitativeValue. Use null for sourceUrl, numericValue, or qualitativeValue when unavailable. When a cited source in the retrieved packet directly supports the finding, return that source's exact URL; never invent or return a URL that is not in the packet. The server will attach the validated source title, publisher, publication date, access date, and access constraint from the retrieved packet. A source URL is a research aid only and never facility-level proof by itself. qualitativeValue may only be low, moderate, high, single-source, or diversified. Use concise plain language. Do not include markdown or commentary.`;
+Respond with one JSON object matching the supplied schema. projectSummary must contain name, location, description, and capacityMW. Every evidence record must contain label, value, unit, classification, citation, description, sourceRole, sourceUrl, sourceUrls, conflictSummary, coverageStatus, numericValue, and qualitativeValue. sourceUrl is the strongest direct source, and sourceUrls contains up to four direct supporting, corroborating, or conflicting packet URLs. Use null for sourceUrl, conflictSummary, numericValue, or qualitativeValue and [] for sourceUrls when unavailable. Identify conflicting sources explicitly rather than silently choosing one. When a cited source in the retrieved packet directly supports the finding, return that source's exact URL; never invent or return a URL that is not in the packet. The server will attach validated source metadata. A source URL is a research aid only and never facility-level proof by itself. Do not infer numeric zero or categorical none from silence: zero/none is valid only when an exact-project source explicitly establishes it under the variable definition. For grid_interconnection, numericValue is months of delay; for renewable_percentage it is the facility's delivered or contractually procured renewable share. qualitativeValue may only be low, moderate, high, single-source, or diversified. Use concise plain language. Do not include markdown or commentary.`;
 
 function sendJson(res, status, body) {
   res.statusCode = status;
@@ -163,7 +176,7 @@ function normalizeCapacityMW(value) {
     : DEFAULT_RESEARCH_CAPACITY_MW;
 }
 
-function parseResearchResponse(body, retrievedSources = [], accessedAt = new Date().toISOString().slice(0, 10)) {
+function parseResearchResponse(body, retrievedSources = [], accessedAt = new Date().toISOString().slice(0, 10), coverage = null) {
   if (!isRecord(body) || !isRecord(body.projectSummary) || (!Array.isArray(body.evidence) && !isRecord(body.evidence))) {
     throw new Error("Research response must include projectSummary and evidence.");
   }
@@ -209,8 +222,30 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
       citation.match(/https?:\/\/[^\s)]+/)?.[0]?.replace(/[.,;]+$/, ""),
     );
     const returnedSourceUrl = safePublicSourceUrl(item.sourceUrl);
-    const sourceUrl = [returnedSourceUrl, citedUrl].find((url) => url && sourceByUrl.has(url)) ?? null;
-    const supportedByRetrievedSource = Boolean(sourceUrl);
+    const returnedSourceUrls = Array.isArray(item.sourceUrls)
+      ? item.sourceUrls.map(safePublicSourceUrl).filter(Boolean)
+      : [];
+    const validatedUrls = [...new Set([returnedSourceUrl, citedUrl, ...returnedSourceUrls])]
+      .filter((url) => url && sourceByUrl.has(url))
+      .sort((a, b) => sourcePriority(sourceByUrl.get(a)?.sourceClass) - sourcePriority(sourceByUrl.get(b)?.sourceClass))
+      .slice(0, 4);
+    const sourceUrl = validatedUrls[0] ?? null;
+    const supportingSources = validatedUrls.map((url) => {
+      const metadata = sourceByUrl.get(url);
+      return {
+        url,
+        title: typeof metadata?.title === "string" && metadata.title.trim() ? metadata.title.trim().slice(0, 500) : "not provided",
+        publisher: new URL(url).hostname.replace(/^www\./, ""),
+        publishedAt: normalizePublicDate(metadata?.date),
+        accessedAt: normalizePublicDate(accessedAt),
+        accessStatus: ["open", "paywall", "registration"].includes(metadata?.accessStatus) ? metadata.accessStatus : "not provided",
+        excerpt: stringOrFallback(metadata?.excerpt, "No excerpt returned.", 1_000),
+        sourceClass: metadata?.sourceClass ?? classifySource(url, metadata?.title),
+        searchDomain: metadata?.searchDomain ?? "project-identity",
+        relationship: url === sourceUrl ? "primary" : item.coverageStatus === "conflicting" ? "conflicting" : "corroborating",
+      };
+    });
+    const supportedByRetrievedSource = supportingSources.length > 0;
     const record = {
       id,
       label: stringOrFallback(item.label, id.replaceAll("_", " "), 160),
@@ -222,20 +257,23 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
       citation: supportedByRetrievedSource ? citation : `No supporting retrieved source for this claim. ${citation}`,
       description: stringOrFallback(item.description, "The searched public record did not establish a facility-level value.", 2_000),
       sourceRole: stringOrFallback(item.sourceRole, "AI-researched public-source review", 200),
+      coverageStatus: supportedByRetrievedSource && ["supported", "partial", "conflicting"].includes(item.coverageStatus)
+        ? item.coverageStatus
+        : supportedByRetrievedSource ? "supported" : "searched-no-support",
+      searchCoverage: Array.isArray(coverage?.searchedDomains) ? coverage.searchedDomains : [],
+      failedSearchDomains: Array.isArray(coverage?.failedDomains) ? coverage.failedDomains : [],
     };
     if (sourceUrl) {
-      const metadata = sourceByUrl.get(sourceUrl);
-      const publishedAt = normalizePublicDate(metadata?.date);
+      const metadata = supportingSources[0];
       record.sourceUrl = sourceUrl;
-      record.sourceTitle = typeof metadata?.title === "string" && metadata.title.trim()
-        ? metadata.title.trim().slice(0, 500)
-        : "not provided";
-      record.sourcePublisher = new URL(sourceUrl).hostname.replace(/^www\./, "");
-      record.sourcePublishedAt = publishedAt;
-      record.sourceAccessedAt = normalizePublicDate(accessedAt);
-      record.sourceAccessStatus = metadata?.accessStatus === "open" || metadata?.accessStatus === "paywall" || metadata?.accessStatus === "registration"
-        ? metadata.accessStatus
-        : "not provided";
+      record.sourceTitle = metadata.title;
+      record.sourcePublisher = metadata.publisher;
+      record.sourcePublishedAt = metadata.publishedAt;
+      record.sourceAccessedAt = metadata.accessedAt;
+      record.sourceAccessStatus = metadata.accessStatus;
+      record.sources = supportingSources;
+      const conflictSummary = stringOrFallback(item.conflictSummary, "", 1_000);
+      if (record.coverageStatus === "conflicting" && conflictSummary) record.conflictSummary = conflictSummary;
     }
     if (!VALID_CLASSIFICATIONS.includes(record.classification)) {
       throw new Error(`Research evidence record ${id} has an invalid classification.`);
@@ -252,10 +290,25 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
       }
       record.qualitativeValue = item.qualitativeValue;
     }
+    if (!supportsExplicitZero(id, item, supportingSources)) {
+      record.value = "Not established";
+      record.classification = "Missing Evidence";
+      record.citation = `The supplied sources did not explicitly establish a zero value. ${record.citation}`;
+      record.description = "Zero cannot be inferred from a source being silent; an exact-project source must explicitly establish it.";
+      delete record.numericValue;
+    }
     return record;
   });
 
-  return { projectSummary: summaryFields, evidence };
+  return {
+    projectSummary: summaryFields,
+    researchCoverage: {
+      searchedDomains: Array.isArray(coverage?.searchedDomains) ? coverage.searchedDomains : [],
+      failedDomains: Array.isArray(coverage?.failedDomains) ? coverage.failedDomains : [],
+      retrievedSourceCount: retrievedSources.length,
+    },
+    evidence,
+  };
 }
 
 function normalizePublicDate(value) {
@@ -265,15 +318,58 @@ function normalizePublicDate(value) {
   return match[0];
 }
 
+function classifySource(url, title = "") {
+  const hostname = new URL(url).hostname.toLowerCase();
+  const text = `${hostname} ${title}`.toLowerCase();
+  if (hostname.endsWith(".gov") || /\b(dnr|ferc|ercot|commission|department|county|city of|borough)\b/.test(text)) {
+    return "primary-government";
+  }
+  if (/\b(utility|utilities|electric|energy authority|water authority|power)\b/.test(text)) {
+    return "primary-utility";
+  }
+  if (/\b(10-k|10-q|8-k|filing|investor|company announcement|press release)\b/.test(text)) {
+    return "primary-company";
+  }
+  return "secondary-reporting";
+}
+
+function sourcePriority(sourceClass) {
+  return {
+    "primary-government": 0,
+    "primary-utility": 1,
+    "primary-company": 2,
+    "secondary-reporting": 3,
+  }[sourceClass] ?? 4;
+}
+
+function supportsExplicitZero(id, item, sources) {
+  if (item.numericValue !== 0 && item.value !== 0 && !/^(0|zero|none)$/i.test(String(item.value).trim())) return true;
+  const text = [item.citation, item.description, ...sources.map((source) => source.excerpt)].join(" ").toLowerCase();
+  if (id === "renewable_percentage") {
+    return /\b(0\s*%|zero percent|no renewable (energy|electricity) (is|was) (delivered|procured|contracted))\b/.test(text);
+  }
+  if (id === "grid_interconnection") {
+    return /\b(0|zero)\s*(month|months|day|days)\b|\balready interconnected\b|\bno interconnection delay\b/.test(text);
+  }
+  return /\b(0|zero|none)\b/.test(text);
+}
+
 function buildResearchProjectPrompt({ name, location }, retrievedSources = []) {
-  const sourcePacket = retrievedSources.map(({ url, title, date, excerpt }) => ({ url, title, date, excerpt }));
+  const sourcePacket = retrievedSources.map(({ url, title, date, excerpt, sourceClass, searchDomain }) => ({
+    url,
+    title,
+    date,
+    excerpt,
+    sourceClass,
+    searchDomain,
+  }));
   return `Analyze this data-center project using only the retrieved sources below: ${name}. Location: ${location}. Preserve exact source URLs in citations, distinguish facility-level findings from regional context, and return the exact JSON contract from the system instruction.
 
 Retrieved source packet:
 ${JSON.stringify(sourcePacket)}`;
 }
 
-function normalizeRetrievedSources(body) {
+function normalizeRetrievedSources(body, searchDomain = "project-identity") {
   const candidates = [];
   for (const output of Array.isArray(body?.output) ? body.output : []) {
     if (output?.type === "web_search_call" && Array.isArray(output.action?.sources)) {
@@ -287,13 +383,19 @@ function normalizeRetrievedSources(body) {
   }
   const seen = new Set();
   return candidates
-    .map((source) => ({
-      url: safePublicSourceUrl(source.url) ?? "",
-      title: typeof source.title === "string" ? source.title.trim() : "Retrieved public source",
-      date: typeof source.published_date === "string" ? source.published_date : typeof source.date === "string" ? source.date : null,
-      excerpt: typeof source.snippet === "string" ? source.snippet.trim() : typeof source.excerpt === "string" ? source.excerpt.trim() : "",
-      accessStatus: ["open", "paywall", "registration"].includes(source.access_status) ? source.access_status : "not provided",
-    }))
+    .map((source) => {
+      const url = safePublicSourceUrl(source.url) ?? "";
+      const title = typeof source.title === "string" ? source.title.trim() : "Retrieved public source";
+      return {
+        url,
+        title,
+        date: typeof source.published_date === "string" ? source.published_date : typeof source.date === "string" ? source.date : null,
+        excerpt: typeof source.snippet === "string" ? source.snippet.trim() : typeof source.excerpt === "string" ? source.excerpt.trim() : "",
+        accessStatus: ["open", "paywall", "registration"].includes(source.access_status) ? source.access_status : "not provided",
+        sourceClass: url ? classifySource(url, title) : "secondary-reporting",
+        searchDomain,
+      };
+    })
     .filter((source) => {
       if (!/^https?:\/\//i.test(source.url) || seen.has(source.url)) return false;
       seen.add(source.url);
@@ -302,7 +404,7 @@ function normalizeRetrievedSources(body) {
     .slice(0, 8);
 }
 
-async function retrievePublicSources(project, apiKey, fetchImpl, signal) {
+async function retrievePublicSourcesForDomain(project, domain, apiKey, fetchImpl, signal) {
   const response = await fetchImpl(OPENAI_RESPONSES_URL, {
     method: "POST",
     headers: {
@@ -313,7 +415,7 @@ async function retrievePublicSources(project, apiKey, fetchImpl, signal) {
     body: JSON.stringify({
       model: RESEARCH_PROJECT_MODEL,
       tools: [{ type: "web_search_preview" }],
-      input: `Find current public sources about the data-center project ${project.name} in ${project.location}. Prioritize project-specific permits, utility filings, company disclosures, local ordinances, and reputable reporting. Return source URLs, dates, titles, and short excerpts for the next research step.`,
+      input: `Find current public sources for the exact data-center project "${project.name}" in "${project.location}". Search focus: ${domain.query}. Verify project/operator/location identity and do not mix similarly named facilities. Prefer direct government, regulator, utility, land, permit, environmental, and filed company records over summaries. Return source URLs, dates, titles, and claim-specific excerpts.`,
       max_output_tokens: 1_800,
       include: ["web_search_call.action.sources"],
     }),
@@ -326,9 +428,42 @@ async function retrievePublicSources(project, apiKey, fetchImpl, signal) {
   } catch {
     throw new Error("Source retrieval returned invalid data.");
   }
-  const sources = normalizeRetrievedSources(body);
+  const sources = normalizeRetrievedSources(body, domain.id);
   if (sources.length === 0) throw new Error("Source retrieval returned no usable sources.");
   return sources;
+}
+
+async function retrievePublicSources(project, apiKey, fetchImpl, signal) {
+  const results = await Promise.allSettled(
+    RESEARCH_SEARCH_DOMAINS.map((domain) => retrievePublicSourcesForDomain(project, domain, apiKey, fetchImpl, signal)),
+  );
+  const searchedDomains = [];
+  const failedDomains = [];
+  const candidates = [];
+  results.forEach((result, index) => {
+    const domain = RESEARCH_SEARCH_DOMAINS[index];
+    if (result.status === "fulfilled") {
+      searchedDomains.push(domain.id);
+      candidates.push(...result.value);
+    } else {
+      failedDomains.push(domain.id);
+    }
+  });
+  const seen = new Set();
+  const sources = candidates
+    .sort((a, b) => sourcePriority(a.sourceClass) - sourcePriority(b.sourceClass))
+    .filter((source) => {
+      if (seen.has(source.url)) return false;
+      seen.add(source.url);
+      return true;
+    })
+    .slice(0, MAX_RETRIEVED_SOURCES);
+  if (sources.length === 0) {
+    const aborted = results.find((result) => result.status === "rejected" && result.reason instanceof Error && result.reason.name === "AbortError");
+    if (aborted?.status === "rejected") throw aborted.reason;
+    throw new Error("Source retrieval returned no usable sources.");
+  }
+  return { sources, searchedDomains, failedDomains };
 }
 
 async function readRequestBody(req) {
@@ -422,7 +557,8 @@ export async function handleResearchProjectRequest(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), RESEARCH_PROJECT_TIMEOUT_MS);
   try {
-    const retrievedSources = await retrievePublicSources(project, apiKey, fetchImpl, controller.signal);
+    const sourcePacket = await retrievePublicSources(project, apiKey, fetchImpl, controller.signal);
+    const retrievedSources = sourcePacket.sources;
     const response = await fetchImpl(OPENAI_CHAT_COMPLETIONS_URL, {
       method: "POST",
       headers: {
@@ -468,7 +604,7 @@ export async function handleResearchProjectRequest(
     }
     let parsed;
     try {
-      parsed = parseResearchResponse(JSON.parse(content), retrievedSources);
+      parsed = parseResearchResponse(JSON.parse(content), retrievedSources, new Date().toISOString().slice(0, 10), sourcePacket);
     } catch (error) {
       console.warn(
         "[research-project] Rejected structured research response:",
@@ -494,6 +630,7 @@ export {
   OPENAI_CHAT_COMPLETIONS_URL,
   OPENAI_RESPONSES_URL,
   RESEARCH_EVIDENCE_IDS,
+  RESEARCH_SEARCH_DOMAINS,
   RESEARCH_PROJECT_MAX_TOKENS,
   RESEARCH_PROJECT_MODEL,
   RESEARCH_PROJECT_RESPONSE_SCHEMA,
@@ -505,6 +642,8 @@ export {
   parseResearchResponse,
   normalizeRetrievedSources,
   normalizePublicDate,
+  classifySource,
+  supportsExplicitZero,
   safePublicSourceUrl,
   retrievePublicSources,
   createResearchProjectRateLimiter,

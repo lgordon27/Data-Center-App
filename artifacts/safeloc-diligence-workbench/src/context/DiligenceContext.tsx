@@ -32,6 +32,8 @@ import {
 } from "@/services/sessionLog";
 import {
   CUSTOM_EVIDENCE_IDS,
+  type ResearchCoverageStatus,
+  type ResearchEvidenceSource,
   type CustomResearchResponse,
 } from "@/services/researchProjectService";
 import type { ClaimId, PublicAccessStatus } from "@/data/claimSources";
@@ -66,6 +68,18 @@ export type EvidenceItem = {
   claimIds: ClaimId[];
   numericValue?: number;
   qualitativeValue?: QualitativeEvidenceValue;
+  sources?: ResearchEvidenceSource[];
+  coverageStatus?: ResearchCoverageStatus;
+  searchCoverage?: string[];
+  failedSearchDomains?: string[];
+  conflictSummary?: string;
+};
+
+export type EvidenceCorrection = {
+  value: string;
+  claim: string;
+  sourceUrl: string;
+  classification: Classification;
 };
 
 export type EvidenceReviewKind = "manual" | "ai-accepted" | "ai-overridden";
@@ -93,6 +107,7 @@ type DiligenceState = {
     source?: "manual" | "ai",
     reviewKind?: EvidenceReviewKind,
   ) => boolean;
+  applyEvidenceCorrection: (id: string, correction: EvidenceCorrection) => boolean;
   clearLastChange: () => void;
   metrics: FinancialMetrics;
   resetToDefault: (originatingCompany?: string | null) => void;
@@ -333,6 +348,67 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     setState(nextState);
   }, []);
 
+  const applyEvidenceCorrection = useCallback((id: string, correction: EvidenceCorrection) => {
+    if (project.kind !== "custom") return false;
+    const currentState = stateRef.current;
+    const current = currentState.evidence[id];
+    if (!current || !isClassification(correction.classification)) return false;
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(correction.sourceUrl);
+      if (!["http:", "https:"].includes(parsedUrl.protocol) || parsedUrl.username || parsedUrl.password) return false;
+    } catch {
+      return false;
+    }
+    const accessedAt = new Date().toISOString().slice(0, 10);
+    const submittedSource: ResearchEvidenceSource = {
+      url: parsedUrl.href,
+      title: "Reviewer-submitted public source",
+      publisher: parsedUrl.hostname.replace(/^www\./, ""),
+      publishedAt: null,
+      accessedAt,
+      accessStatus: "not provided",
+      excerpt: correction.claim.trim(),
+      sourceClass: "reviewer-submitted",
+      searchDomain: "reviewer-correction",
+      relationship: "primary",
+    };
+    const nextEvidence = {
+      ...currentState.evidence,
+      [id]: {
+        ...current,
+        value: correction.value.trim(),
+        classification: correction.classification,
+        citation: `${correction.claim.trim()} ${parsedUrl.href}`,
+        description: correction.claim.trim(),
+        sourceUrl: parsedUrl.href,
+        sourceTitle: submittedSource.title,
+        sourcePublisher: submittedSource.publisher,
+        sourcePublishedAt: null,
+        sourceAccessedAt: accessedAt,
+        sourceAccessStatus: "not provided" as const,
+        sourceRole: "Reviewer-submitted source · AI-proposed, human-accepted",
+        sources: [submittedSource, ...(current.sources ?? []).map((source) => ({ ...source, relationship: "corroborating" as const }))].slice(0, 4),
+        coverageStatus: "partial" as const,
+        review: { kind: "ai-accepted" as const, reviewedAt: new Date().toISOString() },
+      },
+    };
+    const previousIrr = calculateCashFlowModel(currentState.evidence as EvidenceRecord, project.capacityMW).projectIRR;
+    const nextIrr = calculateCashFlowModel(nextEvidence as EvidenceRecord, project.capacityMW).projectIRR;
+    const nextState = {
+      evidence: nextEvidence,
+      hasChangedClassification: true,
+      lastChange: {
+        from: previousIrr ?? 0,
+        to: nextIrr ?? 0,
+        delta: (nextIrr ?? 0) - (previousIrr ?? 0),
+      },
+    };
+    stateRef.current = nextState;
+    setState(nextState);
+    return true;
+  }, [project]);
+
   const resetToDefault = useCallback((company: string | null = null) => {
     const nextState = { evidence: cloneEvidence(INITIAL_EVIDENCE), hasChangedClassification: false, lastChange: null };
     stateRef.current = nextState;
@@ -446,7 +522,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, clearLastChange, metrics, resetToDefault, loadCustomProject, project, originatingCompany, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading }}>
+    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, applyEvidenceCorrection, clearLastChange, metrics, resetToDefault, loadCustomProject, project, originatingCompany, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading }}>
       {children}
     </DiligenceContext.Provider>
   );

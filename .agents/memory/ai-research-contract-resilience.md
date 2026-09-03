@@ -14,3 +14,9 @@ Second-stage evidence reassessment must carry the active project's identity and 
 **Why:** A generic assessment endpoint can otherwise produce a structurally valid classification grounded in the wrong facility, which is more dangerous than an explicit failure.
 
 **How to apply:** Keep the provenance taxonomy shared, but build project-aware prompts. Apply curated temporal records only to their named curated case; custom projects are assessed solely from their supplied value and citation, with unsupported facility claims classified as Missing Evidence.
+
+Custom research should use bounded evidence-domain retrieval, rank project-specific primary records ahead of secondary reporting, and preserve corroboration, conflicts, and failed search domains. Silence never establishes numeric zero or categorical none.
+
+**Why:** One broad search can omit material regulatory records, collapse conflicting claims, and let a synthesis model turn non-mention into a modeled fact.
+
+**How to apply:** Search identity, power/grid, environmental/land/water, and community/commercial domains separately; verify exact project identity; retain multiple claim-specific sources; and stage reviewer corrections until a human accepts them.

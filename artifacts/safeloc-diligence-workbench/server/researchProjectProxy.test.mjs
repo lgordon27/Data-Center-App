@@ -56,6 +56,9 @@ function validResearchResponse() {
       citation: "Public source searched for Project Atlas (2026): https://example.com/atlas/source",
       description: "The public record does not establish a facility-level value.",
       sourceRole: "AI-researched public-source review",
+      sourceUrls: index === 1 ? ["https://example.com/atlas/source"] : [],
+      conflictSummary: null,
+      coverageStatus: index === 1 ? "supported" : "searched-no-support",
       ...(index === 1 ? { sourceUrl: "https://example.com/atlas/source" } : {}),
       ...(index === 0 ? { numericValue: 42 } : {}),
       ...(id === "site_hazard_exposure" ? { qualitativeValue: "high" } : {}),
@@ -123,11 +126,12 @@ test("sends bounded research settings and the expanded out-of-model instruction"
   const response = responseRecorder();
   let requestUrl;
   let requestInit;
-  let calls = 0;
+  let retrievalCalls = 0;
   await handleResearchProjectRequest(request({ name: "Project Atlas", location: "Texas" }), response, {
     apiKey: "server-secret-for-test",
     fetchImpl: async (url, init) => {
-      if (calls++ === 0) {
+      if (url === OPENAI_RESPONSES_URL) {
+        retrievalCalls += 1;
         assert.equal(url, OPENAI_RESPONSES_URL);
         return retrievalResponse();
       }
@@ -139,6 +143,7 @@ test("sends bounded research settings and the expanded out-of-model instruction"
     },
   });
   assert.equal(response.statusCode, 200);
+  assert.equal(retrievalCalls, 4);
   assert.equal(requestUrl, OPENAI_CHAT_COMPLETIONS_URL);
   const body = JSON.parse(requestInit.body);
   assert.equal(body.model, RESEARCH_PROJECT_MODEL);
@@ -146,7 +151,11 @@ test("sends bounded research settings and the expanded out-of-model instruction"
   assert.equal(body.response_format.type, "json_schema");
   assert.equal(body.response_format.json_schema.strict, true);
   assert.deepEqual(body.response_format.json_schema.schema, RESEARCH_PROJECT_RESPONSE_SCHEMA);
-  assert.equal(body.messages[1].content, buildResearchProjectPrompt({ name: "Project Atlas", location: "Texas" }, [retrievedSource]));
+  assert.equal(body.messages[1].content, buildResearchProjectPrompt({ name: "Project Atlas", location: "Texas" }, [{
+    ...retrievedSource,
+    sourceClass: "primary-company",
+    searchDomain: "project-identity",
+  }]));
   for (const phrase of [
     "electrical-equipment procurement",
     "jurisdictional bans or moratoriums",
@@ -254,6 +263,80 @@ test("downgrades model-only verified claims when no retrieved source supports th
   assert.match(parsed.evidence[0].citation, /No supporting retrieved source/);
   assert.equal(parsed.evidence[0].numericValue, undefined);
   assert.equal(parsed.evidence[12].qualitativeValue, undefined);
+});
+
+test("ranks a project-specific regulatory decision ahead of trade reporting and preserves corroboration", () => {
+  const body = validResearchResponse();
+  const target = body.evidence.find((item) => item.id === "carbon_compliance");
+  target.sourceUrl = "https://datacenter.example.com/project-atlas";
+  target.sourceUrls = [
+    "https://datacenter.example.com/project-atlas",
+    "https://dnr.alaska.gov/mlw/decision/project-atlas",
+  ];
+  target.coverageStatus = "supported";
+  target.citation = "The Alaska DNR decision establishes the project-specific land condition.";
+  const result = parseResearchResponse(body, [
+    {
+      url: "https://datacenter.example.com/project-atlas",
+      title: "Project Atlas compliance coverage",
+      excerpt: "Trade reporting summarizes environmental questions.",
+      sourceClass: "secondary-reporting",
+      searchDomain: "water-environment",
+    },
+    {
+      url: "https://dnr.alaska.gov/mlw/decision/project-atlas",
+      title: "Alaska DNR final decision for Project Atlas",
+      excerpt: "Final agency decision for the exact Project Atlas site.",
+      sourceClass: "primary-government",
+      searchDomain: "water-environment",
+    },
+  ]);
+  const record = result.evidence.find((item) => item.id === "carbon_compliance");
+  assert.equal(record.sourceUrl, "https://dnr.alaska.gov/mlw/decision/project-atlas");
+  assert.equal(record.sources.length, 2);
+  assert.equal(record.sources[0].sourceClass, "primary-government");
+  assert.equal(record.sources[1].relationship, "corroborating");
+});
+
+test("preserves conflicting sources and exposes incomplete search coverage", () => {
+  const body = validResearchResponse();
+  const target = body.evidence.find((item) => item.id === "water_rights");
+  target.sourceUrl = "https://county.gov/project-atlas/permit";
+  target.sourceUrls = ["https://county.gov/project-atlas/permit", "https://utility.example.com/project-atlas"];
+  target.coverageStatus = "conflicting";
+  target.conflictSummary = "The county permit and utility filing publish different water volumes.";
+  const coverage = { searchedDomains: ["project-identity", "water-environment"], failedDomains: ["power-grid"] };
+  const result = parseResearchResponse(body, [
+    { url: target.sourceUrls[0], title: "County permit", excerpt: "Permit volume", sourceClass: "primary-government", searchDomain: "water-environment" },
+    { url: target.sourceUrls[1], title: "Utility filing", excerpt: "Different volume", sourceClass: "primary-utility", searchDomain: "water-environment" },
+  ], "2026-09-03", coverage);
+  const record = result.evidence.find((item) => item.id === "water_rights");
+  assert.equal(record.coverageStatus, "conflicting");
+  assert.match(record.conflictSummary, /different water volumes/i);
+  assert.deepEqual(record.failedSearchDomains, ["power-grid"]);
+  assert.equal(record.sources[1].relationship, "conflicting");
+});
+
+test("does not convert source silence into a modeled zero", () => {
+  const body = validResearchResponse();
+  const target = body.evidence.find((item) => item.id === "renewable_percentage");
+  target.value = "0";
+  target.numericValue = 0;
+  target.classification = "Verified Evidence";
+  target.sourceUrl = "https://utility.example.com/project-atlas";
+  target.sourceUrls = [target.sourceUrl];
+  target.citation = "The filing discusses energy supply but does not disclose renewable procurement.";
+  const result = parseResearchResponse(body, [{
+    url: target.sourceUrl,
+    title: "Project Atlas energy filing",
+    excerpt: "The project expects grid-delivered power.",
+    sourceClass: "primary-utility",
+    searchDomain: "power-grid",
+  }]);
+  const record = result.evidence.find((item) => item.id === "renewable_percentage");
+  assert.equal(record.classification, "Missing Evidence");
+  assert.equal(record.value, "Not established");
+  assert.equal("numericValue" in record, false);
 });
 
 test("rejects an incomplete provider response without leaking provider details", async () => {

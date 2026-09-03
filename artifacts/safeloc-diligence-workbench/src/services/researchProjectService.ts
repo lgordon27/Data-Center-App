@@ -28,6 +28,25 @@ export type CustomEvidenceRecord = Pick<
 > & {
   numericValue?: number;
   qualitativeValue?: EvidenceItem["qualitativeValue"];
+  sources?: ResearchEvidenceSource[];
+  coverageStatus?: ResearchCoverageStatus;
+  searchCoverage?: string[];
+  failedSearchDomains?: string[];
+  conflictSummary?: string;
+};
+
+export type ResearchCoverageStatus = "supported" | "searched-no-support" | "partial" | "conflicting";
+export type ResearchEvidenceSource = {
+  url: string;
+  title: string;
+  publisher: string;
+  publishedAt: string | null;
+  accessedAt: string | null;
+  accessStatus: EvidenceItem["sourceAccessStatus"];
+  excerpt: string;
+  sourceClass: "primary-government" | "primary-utility" | "primary-company" | "secondary-reporting" | "reviewer-submitted";
+  searchDomain: string;
+  relationship: "primary" | "corroborating" | "conflicting";
 };
 
 export type CustomResearchResponse = {
@@ -36,6 +55,11 @@ export type CustomResearchResponse = {
     location: string;
     description: string;
     capacityMW: number;
+  };
+  researchCoverage?: {
+    searchedDomains: string[];
+    failedDomains: string[];
+    retrievedSourceCount: number;
   };
   evidence: CustomEvidenceRecord[];
 };
@@ -72,6 +96,32 @@ function optionalDate(value: unknown): string | null | undefined {
   return /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(Date.parse(`${date}T00:00:00.000Z`))
     ? date
     : undefined;
+}
+
+function parseSource(value: unknown): ResearchEvidenceSource | null {
+  if (!isRecord(value)) return null;
+  const url = safePublicSourceUrl(value.url);
+  if (!url || !isNonEmptyString(value.title) || !isNonEmptyString(value.publisher) || !isNonEmptyString(value.excerpt)) return null;
+  const sourceClass = ["primary-government", "primary-utility", "primary-company", "secondary-reporting", "reviewer-submitted"].includes(String(value.sourceClass))
+    ? value.sourceClass as ResearchEvidenceSource["sourceClass"]
+    : "secondary-reporting";
+  const relationship = ["primary", "corroborating", "conflicting"].includes(String(value.relationship))
+    ? value.relationship as ResearchEvidenceSource["relationship"]
+    : "corroborating";
+  return {
+    url,
+    title: value.title.trim(),
+    publisher: value.publisher.trim(),
+    publishedAt: optionalDate(value.publishedAt) ?? null,
+    accessedAt: optionalDate(value.accessedAt) ?? null,
+    accessStatus: ["open", "paywall", "registration", "not provided"].includes(String(value.accessStatus))
+      ? value.accessStatus as EvidenceItem["sourceAccessStatus"]
+      : "not provided",
+    excerpt: value.excerpt.trim(),
+    sourceClass,
+    searchDomain: isNonEmptyString(value.searchDomain) ? value.searchDomain.trim() : "project-identity",
+    relationship,
+  };
 }
 
 const VALID_CLASSIFICATIONS: Classification[] = [
@@ -123,6 +173,12 @@ function parseResponse(value: unknown): CustomResearchResponse {
       throw new Error("Project research returned an invalid numeric evidence value.");
     }
     const sourceUrl = safePublicSourceUrl(candidate.sourceUrl);
+    const sources = Array.isArray(candidate.sources)
+      ? candidate.sources.map(parseSource).filter((source): source is ResearchEvidenceSource => Boolean(source)).slice(0, 4)
+      : [];
+    const coverageStatus = ["supported", "searched-no-support", "partial", "conflicting"].includes(String(candidate.coverageStatus))
+      ? candidate.coverageStatus as ResearchCoverageStatus
+      : sourceUrl ? "supported" : "searched-no-support";
     const accessStatus = ["open", "paywall", "registration", "not provided"].includes(String(candidate.sourceAccessStatus))
       ? candidate.sourceAccessStatus as EvidenceItem["sourceAccessStatus"]
       : undefined;
@@ -135,6 +191,11 @@ function parseResponse(value: unknown): CustomResearchResponse {
       citation: candidate.citation as string,
       description: candidate.description as string,
       sourceRole: candidate.sourceRole as string,
+      coverageStatus,
+      searchCoverage: Array.isArray(candidate.searchCoverage) ? candidate.searchCoverage.filter(isNonEmptyString).map((entry) => entry.trim()) : [],
+      failedSearchDomains: Array.isArray(candidate.failedSearchDomains) ? candidate.failedSearchDomains.filter(isNonEmptyString).map((entry) => entry.trim()) : [],
+      ...(isNonEmptyString(candidate.conflictSummary) ? { conflictSummary: candidate.conflictSummary.trim() } : {}),
+      ...(sources.length ? { sources } : {}),
       ...(sourceUrl ? {
         sourceUrl,
         sourceTitle: optionalString(candidate.sourceTitle),
@@ -155,6 +216,15 @@ function parseResponse(value: unknown): CustomResearchResponse {
       description: summary.description as string,
       capacityMW: summary.capacityMW as number,
     },
+    ...(isRecord(value.researchCoverage) ? {
+      researchCoverage: {
+        searchedDomains: Array.isArray(value.researchCoverage.searchedDomains) ? value.researchCoverage.searchedDomains.filter(isNonEmptyString) : [],
+        failedDomains: Array.isArray(value.researchCoverage.failedDomains) ? value.researchCoverage.failedDomains.filter(isNonEmptyString) : [],
+        retrievedSourceCount: typeof value.researchCoverage.retrievedSourceCount === "number" && Number.isFinite(value.researchCoverage.retrievedSourceCount)
+          ? value.researchCoverage.retrievedSourceCount
+          : 0,
+      },
+    } : {}),
     evidence,
   };
 }

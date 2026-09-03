@@ -218,10 +218,38 @@ function parseResearchProjectBody(body) {
     };
     if (Object.keys(normalized).length) knownData = normalized;
   }
+  let focusIds;
+  if (body.focusIds !== undefined) {
+    if (!Array.isArray(body.focusIds) || body.focusIds.length > RESEARCH_EVIDENCE_IDS.length) {
+      throw new Error('Research field "focusIds" must be an array of modeled evidence identifiers.');
+    }
+    focusIds = [...new Set(body.focusIds.map((id) => nonEmptyString(id, "focusIds", 80)))];
+    if (focusIds.some((id) => !RESEARCH_EVIDENCE_IDS.includes(id))) {
+      throw new Error('Research field "focusIds" contains an unknown evidence identifier.');
+    }
+  }
+  let currentEvidence;
+  if (body.currentEvidence !== undefined) {
+    if (!Array.isArray(body.currentEvidence) || body.currentEvidence.length > RESEARCH_EVIDENCE_IDS.length) {
+      throw new Error('Research field "currentEvidence" must be an evidence record array.');
+    }
+    currentEvidence = body.currentEvidence
+      .filter(isRecord)
+      .map((item) => ({
+        id: typeof item.id === "string" ? item.id.trim() : "",
+        label: typeof item.label === "string" ? item.label.trim().slice(0, 160) : "",
+        value: typeof item.value === "string" || typeof item.value === "number" ? String(item.value).slice(0, 500) : "",
+        classification: typeof item.classification === "string" ? item.classification.trim().slice(0, 60) : "",
+        citation: typeof item.citation === "string" ? item.citation.trim().slice(0, 1_000) : "",
+      }))
+      .filter((item) => RESEARCH_EVIDENCE_IDS.includes(item.id) && item.label && item.value);
+  }
   return {
     name: nonEmptyString(name, "name", 160),
     location: nonEmptyString(body.location, "location", 160),
     ...(knownData ? { knownData } : {}),
+    ...(focusIds ? { focusIds } : {}),
+    ...(currentEvidence ? { currentEvidence } : {}),
   };
 }
 
@@ -439,7 +467,7 @@ function supportsExplicitZero(id, item, sources) {
   return /\b(0|zero|none)\b/.test(text);
 }
 
-function buildResearchProjectPrompt({ name, location, knownData }, retrievedSources = []) {
+function buildResearchProjectPrompt({ name, location, knownData, focusIds, currentEvidence }, retrievedSources = []) {
   const sourcePacket = retrievedSources.map(({ url, title, date, excerpt, sourceClass, searchDomain }) => ({
     url,
     title,
@@ -451,7 +479,7 @@ function buildResearchProjectPrompt({ name, location, knownData }, retrievedSour
   const knownDataPrompt = knownData
     ? `\n\nThe following facts are already confirmed from the Compute Atlas public database: ${JSON.stringify(knownData)}. Use them as directory discovery context for project identity and summary fields, not as SafeLoc evidence or verified project economics. Focus your research on the 16 evidence variables, not on rediscovering basic project facts.`
     : "";
-  return `Analyze this data-center project using the retrieved sources below as the strongest validation boundary: ${name}. Location: ${location}. Preserve exact source URLs in citations, distinguish facility-level findings from regional context, and return the exact JSON contract from the system instruction. If the packet does not support a variable but you have well-established training knowledge about the exact project, you may return it only as Management Assertion or lower, with no source URL and an explicit statement that no retrieved source independently confirmed it and that it must be verified before reliance. Do not replace genuine public information with Missing Evidence merely because the packet lacks a matching URL.${knownDataPrompt}
+  return `Analyze this data-center project using the retrieved sources below as the strongest validation boundary: ${name}. Location: ${location}. Preserve exact source URLs in citations, distinguish facility-level findings from regional context, and return the exact JSON contract from the system instruction. If the packet does not support a variable but you have well-established training knowledge about the exact project, you may return it only as Management Assertion or lower, with no source URL and an explicit statement that no retrieved source independently confirmed it and that it must be verified before reliance. Do not replace genuine public information with Missing Evidence merely because the packet lacks a matching URL.${focusIds?.length ? ` This is a focused source refresh for these unresolved variables only: ${focusIds.join(", ")}. Use the existing records below as context, improve a focused record when a retrieved source supports it, and preserve the existing value/classification for unrelated records unless the new packet directly contradicts it.` : ""}${currentEvidence?.length ? `\n\nExisting evidence context:\n${JSON.stringify(currentEvidence)}` : ""}${knownDataPrompt}
 
 Retrieved source packet:
 ${JSON.stringify(sourcePacket)}`;

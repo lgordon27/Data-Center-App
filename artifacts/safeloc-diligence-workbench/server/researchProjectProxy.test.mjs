@@ -186,7 +186,7 @@ test("sends bounded research settings and the expanded out-of-model instruction"
     },
   });
   assert.equal(response.statusCode, 200);
-  assert.equal(retrievalCalls, 4);
+  assert.equal(retrievalCalls, 6);
   assert.equal(requestUrl, OPENAI_CHAT_COMPLETIONS_URL);
   const body = JSON.parse(requestInit.body);
   assert.equal(body.model, RESEARCH_PROJECT_MODEL);
@@ -356,27 +356,49 @@ test("only exposes direct links that are safe and present in the retrieved sourc
   assert.equal(safePublicSourceUrl("https://example.com/source"), "https://example.com/source");
 });
 
-test("does not turn a missing or unsupported citation into facility-level evidence", () => {
+test("does not turn an AI Missing Evidence result into facility-level evidence", () => {
   const body = validResearchResponse();
   body.evidence[0].citation = "Regional market report without a matching packet URL.";
   body.evidence[0].sourceUrl = "https://example.com/not-in-packet";
   const parsed = parseResearchResponse(body, [retrievedSource]);
   assert.equal(parsed.evidence[0].classification, "Missing Evidence");
   assert.equal(parsed.evidence[0].sourceUrl, undefined);
-  assert.match(parsed.evidence[0].citation, /No supporting retrieved source/);
+  assert.match(parsed.evidence[0].citation, /No validated source match/);
 });
 
-test("downgrades model-only verified claims when no retrieved source supports them", () => {
+test("preserves conservative AI classifications and downgrades unmatched Verified Evidence", () => {
   const body = validResearchResponse();
   body.evidence[0].classification = "Verified Evidence";
   body.evidence[0].citation = "Invented filing with no URL";
   body.evidence[0].numericValue = 1;
   body.evidence[12].qualitativeValue = "low";
   const parsed = parseResearchResponse(body, []);
-  assert.equal(parsed.evidence[0].classification, "Missing Evidence");
-  assert.match(parsed.evidence[0].citation, /No supporting retrieved source/);
+  assert.equal(parsed.evidence[0].classification, "Management Assertion");
+  assert.match(parsed.evidence[0].citation, /Original classification: Verified Evidence/);
   assert.equal(parsed.evidence[0].numericValue, undefined);
   assert.equal(parsed.evidence[12].qualitativeValue, undefined);
+  assert.equal(parsed.evidence[1].classification, "Management Assertion");
+  assert.equal(parsed.evidence[3].classification, "Management Assertion");
+});
+
+test("maps explicit unknown values to Missing Evidence", () => {
+  const body = validResearchResponse();
+  const target = body.evidence[1];
+  target.classification = "Management Assertion";
+  target.value = "Not publicly available";
+  target.sourceUrl = retrievedSource.url;
+  target.sourceUrls = [retrievedSource.url];
+  const parsed = parseResearchResponse(body, [retrievedSource]);
+  const record = parsed.evidence[1];
+  assert.equal(record.classification, "Missing Evidence");
+  assert.equal(record.value, "Not established");
+  assert.match(record.citation, /explicitly unavailable/i);
+});
+
+test("rejects invalid classification strings instead of silently defaulting them", () => {
+  const body = validResearchResponse();
+  body.evidence[0].classification = "verified-evidence";
+  assert.throws(() => parseResearchResponse(body, [retrievedSource]), /invalid classification/i);
 });
 
 test("ranks a project-specific regulatory decision ahead of trade reporting and preserves corroboration", () => {

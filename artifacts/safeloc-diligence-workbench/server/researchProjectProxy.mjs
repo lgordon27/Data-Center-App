@@ -15,6 +15,8 @@ const RESEARCH_SEARCH_DOMAINS = [
   { id: "power-grid", label: "Power, grid, and utility records", query: "utility tariff interconnection queue power generation renewable procurement backup power regulator filing" },
   { id: "water-environment", label: "Water, land, environmental, and permitting records", query: "site permit land decision environmental review water rights water allocation emissions carbon compliance government" },
   { id: "community-commercial", label: "Community, resilience, and commercial records", query: "local ordinance noise community hearing customer lease construction schedule outage cooling resilience reputable reporting" },
+  { id: "sec-filings", label: "SEC filings and investor disclosures", query: "SEC filing 10-K 10-Q 8-K investor disclosure project financing power water customer agreement" },
+  { id: "press-releases", label: "Project and company press releases", query: "company press release project announcement power water construction customer agreement site" },
 ];
 
 const RESEARCH_EVIDENCE_IDS = [
@@ -128,7 +130,7 @@ function sendJson(res, status, body) {
 }
 
 const RETRIEVED_SOURCE_BOUNDARY_PROMPT = `
-Use only the retrieved source packet supplied in the user message. Never invent a source, URL, date, excerpt, or facility-level fact. For every non-Missing Evidence record, citation must contain the exact URL of a source in that packet. If a fact has no supporting packet source, classify it as Missing Evidence. Do not classify contextual market or industry reporting as facility-level Verified Evidence.`;
+Use the retrieved source packet supplied in the user message as the strongest validation boundary. Never invent a source, URL, date, excerpt, or facility-level fact. An exact URL match in the packet supports the returned classification. If an AI-cited URL is not in the packet, do not present it as independently verified: preserve Management Assertion, Model Inference, User Assumption, or Missing Evidence when appropriate, and downgrade an unmatched Verified Evidence claim to Management Assertion with an explicit citation note. Do not classify contextual market or industry reporting as facility-level Verified Evidence.`;
 
 function isRecord(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -148,6 +150,13 @@ function nonEmptyString(value, field, maxLength = 4_000) {
 function stringOrFallback(value, fallback, maxLength = 4_000) {
   if (typeof value !== "string" || !value.trim()) return fallback;
   return value.trim().slice(0, maxLength);
+}
+
+function isExplicitUnknownValue(value) {
+  if (typeof value !== "string") return false;
+  return /^(unknown|not disclosed|not publicly available|not available|unavailable|undisclosed|no data|no public data|not established|n\/a|na)$/i.test(
+    value.trim().replace(/[.!]+$/, ""),
+  );
 }
 
 function safePublicSourceUrl(value) {
@@ -276,6 +285,19 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
       };
     });
     const supportedByRetrievedSource = supportingSources.length > 0;
+    const rawClassification = nonEmptyString(item.classification, `evidence[${index}].classification`, 60);
+    if (!VALID_CLASSIFICATIONS.includes(rawClassification)) {
+      throw new Error(`Research evidence record ${id} has an invalid classification.`);
+    }
+    const explicitUnknownValue = isExplicitUnknownValue(item.value);
+    const classification = supportedByRetrievedSource
+      ? rawClassification
+      : rawClassification === "Verified Evidence"
+        ? "Management Assertion"
+        : rawClassification;
+    const sourceMismatchNote = !supportedByRetrievedSource && rawClassification !== "Missing Evidence"
+      ? ` AI classification adjusted because the cited source was not in retrieved search results. Original classification: ${rawClassification}.`
+      : "";
     const record = {
       id,
       label: stringOrFallback(item.label, id.replaceAll("_", " "), 160),
@@ -283,8 +305,8 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
         ? item.value
         : stringOrFallback(item.value, "Not established", 1_000),
       unit: stringOrFallback(item.unit, "Not disclosed", 100),
-      classification: supportedByRetrievedSource ? nonEmptyString(item.classification, `evidence[${index}].classification`, 60) : "Missing Evidence",
-      citation: supportedByRetrievedSource ? citation : `No supporting retrieved source for this claim. ${citation}`,
+      classification,
+      citation: supportedByRetrievedSource ? citation : `No validated source match for this claim.${sourceMismatchNote} ${citation}`,
       description: stringOrFallback(item.description, "The searched public record did not establish a facility-level value.", 2_000),
       sourceRole: stringOrFallback(item.sourceRole, "AI-researched public-source review", 200),
       coverageStatus: supportedByRetrievedSource && ["supported", "partial", "conflicting"].includes(item.coverageStatus)
@@ -305,9 +327,6 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
       const conflictSummary = stringOrFallback(item.conflictSummary, "", 1_000);
       if (record.coverageStatus === "conflicting" && conflictSummary) record.conflictSummary = conflictSummary;
     }
-    if (!VALID_CLASSIFICATIONS.includes(record.classification)) {
-      throw new Error(`Research evidence record ${id} has an invalid classification.`);
-    }
     if (supportedByRetrievedSource && item.numericValue !== undefined && item.numericValue !== null) {
       if (typeof item.numericValue !== "number" || !Number.isFinite(item.numericValue)) {
         throw new Error(`Research evidence record ${id} has an invalid numericValue.`);
@@ -320,7 +339,13 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
       }
       record.qualitativeValue = item.qualitativeValue;
     }
-    if (!supportsExplicitZero(id, item, supportingSources)) {
+    if (explicitUnknownValue) {
+      record.value = "Not established";
+      record.classification = "Missing Evidence";
+      record.citation = `The AI returned an explicitly unavailable value. ${record.citation}`;
+      record.description = "The returned value indicates that the public record did not disclose this item.";
+      delete record.numericValue;
+    } else if (!supportsExplicitZero(id, item, supportingSources)) {
       record.value = "Not established";
       record.classification = "Missing Evidence";
       record.citation = `The supplied sources did not explicitly establish a zero value. ${record.citation}`;

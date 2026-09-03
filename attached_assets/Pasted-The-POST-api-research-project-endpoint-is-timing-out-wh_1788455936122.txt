@@ -1,0 +1,17 @@
+The POST /api/research-project endpoint is timing out when called from the directory "Research with AI" button. The error shown is "Project research timed out. Try again or use the curated case."
+
+Fix these issues:
+
+1. Increase the server-side timeout for the OpenAI API call from 30 seconds to 60 seconds. GPT-4o generating 16 structured evidence items with classifications and reasoning requires more time.
+
+2. Increase the frontend fetch timeout to match (60 seconds). Update the loading message to say "This can take up to 60 seconds" instead of 45.
+
+3. If the timeout is being caused by response size, split the research into two sequential API calls instead of one:
+   - First call: research the project summary (name, operators, location, capacity, status, description, investment thesis). Smaller response, faster.
+   - Second call: with the project summary as context, research and classify the 16 evidence items. This call has the project context from the first call, which should help the model produce better results.
+
+4. Add a retry mechanism: if the first attempt times out, automatically retry once before showing the error. Show "Research taking longer than expected, retrying..." during the retry.
+
+5. When calling from the directory (where we already have Compute Atlas data like facility name, operator, location, capacity, and status), pass that known data to the research endpoint so the AI doesn't have to discover basic facts. Add an optional field to the request body: knownData: { capacity, operator, status, sourceUrl }. The system prompt should say: "The following facts are already confirmed from the Compute Atlas public database: [known data]. Focus your research on the 16 evidence variables, not on rediscovering basic project facts."
+
+6. If the research still fails after retry, offer a fallback: "Research unavailable. Analyze with default assumptions?" which loads the project with all 16 items as Missing Evidence but uses the Compute Atlas capacity and operator data for the Case Brief, rather than showing an error and doing nothing.

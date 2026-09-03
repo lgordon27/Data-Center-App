@@ -25,7 +25,21 @@ const response = {
 };
 
 test("accepts the exact 16-item custom research contract", () => {
-  assert.equal(parseResponse(response).evidence.length, 16);
+  const parsed = parseResponse(response);
+  assert.equal(parsed.evidence.length, 16);
+  assert.equal(parsed.projectSummary.capacityMW, 600);
+  assert.equal(parsed.projectSummary.capacityProvenance, "ai-reported");
+});
+
+test("uses the standardized capacity fallback for malformed or implausible capacity", () => {
+  for (const capacityMW of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, 10_001, "2,000 MW"]) {
+    const parsed = parseResponse({
+      ...response,
+      projectSummary: { ...response.projectSummary, capacityMW },
+    });
+    assert.equal(parsed.projectSummary.capacityMW, 1_200);
+    assert.equal(parsed.projectSummary.capacityProvenance, "standardized-default");
+  }
 });
 
 test("rejects custom responses with a missing modeled item", () => {

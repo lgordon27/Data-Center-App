@@ -4,6 +4,7 @@ const RESEARCH_PROJECT_MODEL = "gpt-4o";
 const RESEARCH_PROJECT_MAX_TOKENS = 8_192;
 const RESEARCH_PROJECT_TIMEOUT_MS = 45_000;
 const DEFAULT_RESEARCH_CAPACITY_MW = 1_200;
+const MAX_RESEARCH_CAPACITY_MW = 10_000;
 const RESEARCH_PROJECT_REQUEST_LIMIT = 10;
 const RESEARCH_PROJECT_REQUEST_WINDOW_MS = 60_000;
 const RESEARCH_PROJECT_RATE_LIMIT_MESSAGE =
@@ -95,8 +96,9 @@ const RESEARCH_PROJECT_RESPONSE_SCHEMA = {
         location: { type: "string", minLength: 1 },
         description: { type: "string", minLength: 1 },
         capacityMW: { anyOf: [{ type: "number" }, { type: "null" }] },
+        capacityProvenance: { type: "string", enum: ["ai-reported", "standardized-default"] },
       },
-      required: ["name", "location", "description", "capacityMW"],
+      required: ["name", "location", "description", "capacityMW", "capacityProvenance"],
     },
     evidence: {
       type: "object",
@@ -110,7 +112,7 @@ const RESEARCH_PROJECT_RESPONSE_SCHEMA = {
   required: ["projectSummary", "evidence"],
 };
 
-const RESEARCH_PROJECT_SYSTEM_PROMPT = `You are a careful infrastructure diligence researcher. Research the named data-center project and location using current, attributable public sources. Separate facility-level evidence from market, regional, or industry context. Independent public records or reporting are Verified Evidence; dated company announcements, filings, or disclosures with limited independent confirmation are Management Assertion; analyst-derived estimates from related facts are Model Inference; synthetic analyst-selected values are User Assumption; and a fact not established in the searched public record is Missing Evidence.
+const RESEARCH_PROJECT_SYSTEM_PROMPT = `You are a careful infrastructure diligence researcher. Research the named data-center project and location using current, attributable public sources. Separate facility-level evidence from market, regional, or industry context. If you find public reporting confirming a data point, classify it as Management Assertion when it comes from company sources, or Verified Evidence when it comes from independent regulatory filings, government data, or independent reporting. Only classify as Missing Evidence if you genuinely cannot find any public information about that variable. Do not default to Missing Evidence as a conservative choice. Independent public records or reporting are Verified Evidence; dated company announcements, filings, or disclosures with limited independent confirmation are Management Assertion; analyst-derived estimates from related facts are Model Inference; synthetic analyst-selected values are User Assumption; and a fact not established in the searched public record is Missing Evidence.
 
 SafeLoc models exactly 16 evidence variables: electricity_cost, water_consumption, grid_interconnection, water_escalation, community_risk, renewable_percentage, cooling_capex, electricity_escalation, carbon_compliance, permitting_timeline, customer_concentration, water_rights, site_hazard_exposure, backup_power_capacity, water_source_resilience, and downtime_cost. The evidence object is keyed by those exact identifiers. Complete every key exactly once.
 
@@ -170,10 +172,14 @@ function parseResearchProjectBody(body) {
   };
 }
 
+function normalizeReportedCapacityMW(value) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 && value <= MAX_RESEARCH_CAPACITY_MW
+    ? value
+    : null;
+}
+
 function normalizeCapacityMW(value) {
-  return typeof value === "number" && Number.isFinite(value) && value > 0
-    ? Math.min(value, 100_000)
-    : DEFAULT_RESEARCH_CAPACITY_MW;
+  return normalizeReportedCapacityMW(value) ?? DEFAULT_RESEARCH_CAPACITY_MW;
 }
 
 function parseResearchResponse(body, retrievedSources = [], accessedAt = new Date().toISOString().slice(0, 10), coverage = null) {
@@ -182,11 +188,13 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
   }
 
   const summary = body.projectSummary;
+  const reportedCapacityMW = normalizeReportedCapacityMW(summary.capacityMW);
   const summaryFields = {
     name: nonEmptyString(summary.name, "projectSummary.name", 160),
     location: nonEmptyString(summary.location, "projectSummary.location", 160),
     description: nonEmptyString(summary.description, "projectSummary.description", 8_000),
-    capacityMW: DEFAULT_RESEARCH_CAPACITY_MW,
+    capacityMW: reportedCapacityMW ?? DEFAULT_RESEARCH_CAPACITY_MW,
+    capacityProvenance: reportedCapacityMW === null ? "standardized-default" : "ai-reported",
   };
 
   const evidenceCandidates = Array.isArray(body.evidence)
@@ -349,7 +357,7 @@ function supportsExplicitZero(id, item, sources) {
     return /\b(0\s*%|zero percent|no renewable (energy|electricity) (is|was) (delivered|procured|contracted))\b/.test(text);
   }
   if (id === "grid_interconnection") {
-    return /\b(0|zero)\s*(month|months|day|days)\b|\balready interconnected\b|\bno interconnection delay\b/.test(text);
+    return /\b(0|zero)\s*(month|months|day|days)\b|\balready interconnected\b|\bno interconnection delay\b|\bbehind[- ]the[- ]meter\b|\bno (new )?grid interconnection (is|was) required\b|\bnot dependent on (a )?new (ercot )?interconnection\b/.test(text);
   }
   return /\b(0|zero|none)\b/.test(text);
 }
@@ -602,6 +610,10 @@ export async function handleResearchProjectRequest(
       sendJson(res, 502, { error: "Project research returned an invalid structured response." });
       return;
     }
+    // The synthesis payload contains no request credentials. Keep it in the
+    // server logs so classification loss can be located before normalization,
+    // while leaving the user-facing error contract intentionally generic.
+    console.info("[research-project] Raw synthesis response before parsing:", content);
     let parsed;
     try {
       parsed = parseResearchResponse(JSON.parse(content), retrievedSources, new Date().toISOString().slice(0, 10), sourcePacket);
@@ -627,6 +639,7 @@ export async function handleResearchProjectRequest(
 
 export {
   DEFAULT_RESEARCH_CAPACITY_MW,
+  MAX_RESEARCH_CAPACITY_MW,
   OPENAI_CHAT_COMPLETIONS_URL,
   OPENAI_RESPONSES_URL,
   RESEARCH_EVIDENCE_IDS,
@@ -638,6 +651,7 @@ export {
   RESEARCH_PROJECT_TIMEOUT_MS,
   buildResearchProjectPrompt,
   normalizeCapacityMW,
+  normalizeReportedCapacityMW,
   parseResearchProjectBody,
   parseResearchResponse,
   normalizeRetrievedSources,

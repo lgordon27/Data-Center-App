@@ -149,6 +149,7 @@ export type CashFlowModel = {
 };
 
 export const DEFAULT_CAPACITY_MW = 1_200;
+export const MAX_CAPACITY_MW = 10_000;
 const LEASE_RATE_PER_KW_MONTH = 185;
 const UTILIZATION_RAMP = [0.6, 0.8, 0.92, 0.92, 0.92];
 const HOURS_PER_YEAR = 8_760;
@@ -425,8 +426,8 @@ export function formatImpactDelta(deltaIRR: number | null) {
   return `${deltaIRR >= 0 ? "+" : ""}${deltaIRR.toFixed(decimals)} pts`;
 }
 function normalizeCapacityMW(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) && value > 0
-    ? Math.min(value, 100_000)
+  return typeof value === "number" && Number.isFinite(value) && value > 0 && value <= MAX_CAPACITY_MW
+    ? value
     : DEFAULT_CAPACITY_MW;
 }
 

@@ -5,7 +5,9 @@ import { INITIAL_EVIDENCE } from "@/context/DiligenceContext";
 import {
   calculateCashFlowModel,
   CLIMATE_QUALITY_MULTIPLIERS,
+  DEFAULT_CAPACITY_MW,
   formatImpactDelta,
+  MAX_CAPACITY_MW,
   MATERIAL_EVIDENCE_IDS,
   type Classification,
   type EvidenceRecord,
@@ -485,10 +487,15 @@ test("the material evidence contract governs every recommendation transition", (
 
 test("custom project capacity scales standardized economics without changing the model contract", () => {
   const baseline = calculateCashFlowModel(INITIAL_EVIDENCE);
-  const halfScale = calculateCashFlowModel(INITIAL_EVIDENCE, 600);
+  const doubleScale = calculateCashFlowModel(INITIAL_EVIDENCE, 2_000);
 
-  assert.equal(halfScale.assumptions.capacityMW, 600);
-  assert.equal(halfScale.assumptions.electricityRate, baseline.assumptions.electricityRate);
-  assert.ok(halfScale.assumptions.annualRevenueAtFullUtilization < baseline.assumptions.annualRevenueAtFullUtilization);
-  assert.equal(halfScale.lineItems.electricity_cost.id, "electricity_cost");
+  assert.equal(doubleScale.assumptions.capacityMW, 2_000);
+  assert.equal(doubleScale.assumptions.electricityRate, baseline.assumptions.electricityRate);
+  assert.ok(doubleScale.assumptions.annualRevenueAtFullUtilization > baseline.assumptions.annualRevenueAtFullUtilization);
+  assert.ok(doubleScale.assumptions.coolingCapex > baseline.assumptions.coolingCapex);
+  assert.ok(doubleScale.schedule[2].revenue > baseline.schedule[2].revenue);
+  assert.ok(doubleScale.schedule[2].electricityMwh > baseline.schedule[2].electricityMwh);
+  assert.equal(doubleScale.lineItems.electricity_cost.id, "electricity_cost");
+  assert.equal(calculateCashFlowModel(INITIAL_EVIDENCE, 0).assumptions.capacityMW, DEFAULT_CAPACITY_MW);
+  assert.equal(calculateCashFlowModel(INITIAL_EVIDENCE, MAX_CAPACITY_MW + 1).assumptions.capacityMW, DEFAULT_CAPACITY_MW);
 });

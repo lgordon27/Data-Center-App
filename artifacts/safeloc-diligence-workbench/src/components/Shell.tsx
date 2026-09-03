@@ -405,7 +405,7 @@ export function CustomResearchBanner() {
   return (
     <aside data-testid="custom-research-banner" role="note" className="mb-5 flex items-start gap-3 rounded-lg border-2 border-[#f1cb8b] bg-[#fff8e9] px-4 py-3 text-[#6f460e]">
       <TriangleAlert aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
-      <p className="text-[11px] leading-5"><strong className="font-semibold">AI-researched · high-level custom analysis: {project.name}.</strong> Public findings and regional context are shown for interpretation; they are not facility-level proof unless the cited source supports that project. Financial outputs remain synthetic standardized economics.</p>
+      <p className="text-[11px] leading-5"><strong className="font-semibold">AI-researched · high-level custom analysis: {project.name}.</strong> Public findings and regional context are shown for interpretation; they are not facility-level proof unless the cited source supports that project. Financial outputs remain synthetic assumptions scaled to the displayed capacity.</p>
     </aside>
   );
 }

@@ -20,3 +20,9 @@ Custom research should use bounded evidence-domain retrieval, rank project-speci
 **Why:** One broad search can omit material regulatory records, collapse conflicting claims, and let a synthesis model turn non-mention into a modeled fact.
 
 **How to apply:** Search identity, power/grid, environmental/land/water, and community/commercial domains separately; verify exact project identity; retain multiple claim-specific sources; and stage reviewer corrections until a human accepts them.
+
+AI-reported project capacity must be normalized separately from its fallback and carry explicit provenance into underwriting and presentation. Behind-the-meter or other explicit zero findings must be recognized as supported when the source says so.
+
+**Why:** A valid researched scale can materially change capacity-sensitive returns, while malformed scale or an unrecognized explicit zero can silently produce a misleading model or evidence gap.
+
+**How to apply:** Accept only finite, positive, plausible capacity values; otherwise use the documented standardized default and label it. Preserve supported classifications when validated packet URLs are present, including explicit zero semantics.

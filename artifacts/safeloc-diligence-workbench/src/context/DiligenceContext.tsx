@@ -35,6 +35,7 @@ import {
   type ResearchCoverageStatus,
   type ResearchEvidenceSource,
   type CustomResearchResponse,
+  type CapacityProvenance,
 } from "@/services/researchProjectService";
 import type { ClaimId, PublicAccessStatus } from "@/data/claimSources";
 import {
@@ -95,7 +96,8 @@ export type ScenarioMetrics = {
   payback: number | null;
   confidence: number;
 };
-export type ProjectContext = CustomResearchResponse["projectSummary"] & {
+export type ProjectContext = Omit<CustomResearchResponse["projectSummary"], "capacityProvenance"> & {
+  capacityProvenance?: CapacityProvenance;
   kind: "curated" | "custom";
 };
 type DiligenceState = {
@@ -449,10 +451,8 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       name: research.projectSummary.name,
       location: research.projectSummary.location,
       description: research.projectSummary.description,
-      // Custom capacity is not independently sourced by this contract. Keep
-      // the financial model on the documented standardized capacity even when
-      // the research provider returns a finite project estimate.
-      capacityMW: DEFAULT_CAPACITY_MW,
+      capacityMW: research.projectSummary.capacityMW,
+      capacityProvenance: research.projectSummary.capacityProvenance,
     });
     setOriginatingCompany(company);
     clearStorage(CURRENT_SESSION_STORAGE_KEY);

@@ -85,9 +85,10 @@ test.describe("custom project research", () => {
     await expect(page).toHaveURL(/#brief$/);
     await expect(page.getByTestId("custom-project-status")).toContainText("AI-researched");
     await expect(page.getByTestId("custom-project-description")).toContainText("equipment procurement");
-    await expect(page.getByTestId("custom-project-capacity")).toHaveText("1,200 MW");
-    await expect(page.getByTestId("custom-project-summary")).toContainText("Reported capacity is not verified or used");
+    await expect(page.getByTestId("custom-project-capacity")).toHaveText("600 MW");
+    await expect(page.getByTestId("custom-project-capacity-note")).toContainText("AI-reported capacity used");
     await expect(page.getByTestId("custom-project-summary")).not.toContainText("Research scale");
+    await expect(page.locator('[data-testid="custom-project-description"]')).toHaveCount(1);
     await expect(page.getByTestId("custom-research-banner")).toContainText("Financial outputs remain synthetic");
 
     const scope = page.getByTestId("disclosure-scope-limitations");
@@ -219,6 +220,26 @@ test.describe("custom project research", () => {
     await expect(page.getByTestId("select-classification-electricity_cost")).toHaveValue("Verified Evidence");
     await expect(page.getByTestId("ai-decision-history")).toContainText("Accepted by human");
     await expect(page.getByTestId("ai-decision-history")).toContainText("electricity cost");
+  });
+
+  test("labels the standardized capacity fallback when research returns no usable capacity", async ({ page }) => {
+    await page.unroute("**/api/research-project");
+    await page.route("**/api/research-project", async (route) => {
+      const request = route.request().postDataJSON() as { name: string; location: string };
+      const response = customResponse();
+      response.projectSummary.name = request.name;
+      response.projectSummary.location = request.location;
+      response.projectSummary.capacityMW = 0;
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(response) });
+    });
+
+    await page.goto("/");
+    await page.getByTestId("input-custom-project-name").fill("Project Fallback");
+    await page.getByTestId("input-custom-project-location").fill("Texas");
+    await page.getByTestId("button-run-ai-analysis").click();
+    await expect(page).toHaveURL(/#brief$/);
+    await expect(page.getByTestId("custom-project-capacity")).toHaveText("1,200 MW");
+    await expect(page.getByTestId("custom-project-capacity-note")).toContainText("standardized 1,200 MW default used");
   });
 
   test("keeps the scope disclosure closed by default on the curated case", async ({ page }) => {

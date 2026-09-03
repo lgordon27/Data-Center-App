@@ -2,6 +2,8 @@ import type { Classification, EvidenceItem } from "@/context/DiligenceContext";
 
 export const RESEARCH_PROJECT_ENDPOINT = "/api/research-project";
 export const RESEARCH_PROJECT_TIMEOUT_MS = 45_000;
+export const DEFAULT_RESEARCH_CAPACITY_MW = 1_200;
+export const MAX_RESEARCH_CAPACITY_MW = 10_000;
 
 export const CUSTOM_EVIDENCE_IDS = [
   "electricity_cost",
@@ -55,6 +57,7 @@ export type CustomResearchResponse = {
     location: string;
     description: string;
     capacityMW: number;
+    capacityProvenance: CapacityProvenance;
   };
   researchCoverage?: {
     searchedDomains: string[];
@@ -63,6 +66,8 @@ export type CustomResearchResponse = {
   };
   evidence: CustomEvidenceRecord[];
 };
+
+export type CapacityProvenance = "ai-reported" | "standardized-default";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -96,6 +101,15 @@ function optionalDate(value: unknown): string | null | undefined {
   return /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(Date.parse(`${date}T00:00:00.000Z`))
     ? date
     : undefined;
+}
+
+function normalizeReportedCapacityMW(value: unknown): number | null {
+  return typeof value === "number" &&
+    Number.isFinite(value) &&
+    value > 0 &&
+    value <= MAX_RESEARCH_CAPACITY_MW
+    ? value
+    : null;
 }
 
 function parseSource(value: unknown): ResearchEvidenceSource | null {
@@ -137,12 +151,11 @@ function parseResponse(value: unknown): CustomResearchResponse {
     throw new Error("Project research returned an incomplete response.");
   }
   const summary = value.projectSummary;
+  const reportedCapacityMW = normalizeReportedCapacityMW(summary.capacityMW);
   if (
     !isNonEmptyString(summary.name) ||
     !isNonEmptyString(summary.location) ||
-    !isNonEmptyString(summary.description) ||
-    typeof summary.capacityMW !== "number" ||
-    !Number.isFinite(summary.capacityMW)
+    !isNonEmptyString(summary.description)
   ) {
     throw new Error("Project research returned an invalid project summary.");
   }
@@ -214,7 +227,12 @@ function parseResponse(value: unknown): CustomResearchResponse {
       name: summary.name as string,
       location: summary.location as string,
       description: summary.description as string,
-      capacityMW: summary.capacityMW as number,
+      capacityMW: summary.capacityProvenance === "standardized-default"
+        ? DEFAULT_RESEARCH_CAPACITY_MW
+        : reportedCapacityMW ?? DEFAULT_RESEARCH_CAPACITY_MW,
+      capacityProvenance: summary.capacityProvenance !== "standardized-default" && reportedCapacityMW !== null
+        ? "ai-reported"
+        : "standardized-default",
     },
     ...(isRecord(value.researchCoverage) ? {
       researchCoverage: {

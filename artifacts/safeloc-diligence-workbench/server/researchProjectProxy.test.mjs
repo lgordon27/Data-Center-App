@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   DEFAULT_RESEARCH_CAPACITY_MW,
+  MAX_RESEARCH_CAPACITY_MW,
   OPENAI_CHAT_COMPLETIONS_URL,
   OPENAI_RESPONSES_URL,
   RESEARCH_EVIDENCE_IDS,
@@ -15,6 +16,8 @@ import {
   parseResearchResponse,
   createResearchProjectRateLimiter,
   safePublicSourceUrl,
+  normalizeCapacityMW,
+  normalizeReportedCapacityMW,
 } from "./researchProjectProxy.mjs";
 
 function responseRecorder() {
@@ -177,11 +180,82 @@ test("returns exactly 16 normalized evidence items and safely falls back for inv
   assert.equal(response.evidence.length, 16);
   assert.deepEqual(response.evidence.map((item) => item.id), RESEARCH_EVIDENCE_IDS);
   assert.equal(response.projectSummary.capacityMW, DEFAULT_RESEARCH_CAPACITY_MW);
-  const unsupportedCapacity = parseResearchResponse({
+  assert.equal(response.projectSummary.capacityProvenance, "standardized-default");
+  const reportedCapacity = parseResearchResponse({
     ...validResearchResponse(),
     projectSummary: { ...validResearchResponse().projectSummary, capacityMW: 600 },
   }, [retrievedSource]);
-  assert.equal(unsupportedCapacity.projectSummary.capacityMW, DEFAULT_RESEARCH_CAPACITY_MW);
+  assert.equal(reportedCapacity.projectSummary.capacityMW, 600);
+  assert.equal(reportedCapacity.projectSummary.capacityProvenance, "ai-reported");
+  for (const invalidCapacity of [0, -1, Number.POSITIVE_INFINITY, MAX_RESEARCH_CAPACITY_MW + 1, "2000 MW"]) {
+    assert.equal(normalizeReportedCapacityMW(invalidCapacity), null);
+    assert.equal(normalizeCapacityMW(invalidCapacity), DEFAULT_RESEARCH_CAPACITY_MW);
+  }
+});
+
+test("Project Kilby preserves supported power, grid, and water classifications from validated sources", () => {
+  const body = validResearchResponse();
+  body.projectSummary = {
+    name: "Project Kilby",
+    location: "Reeves County, Texas",
+    description: "Public records describe behind-the-meter generation, a company power agreement, and a brackish groundwater supply.",
+    capacityMW: 2_000,
+  };
+  const sources = [
+    {
+      url: "https://www.sec.gov/Archives/edgar/data/kilby/8-k",
+      title: "Chevron 8-K project disclosure",
+      excerpt: "The filing describes Project Kilby power plans.",
+      sourceClass: "primary-government",
+      searchDomain: "project-identity",
+    },
+    {
+      url: "https://www.ercot.com/gridinfo/project-kilby",
+      title: "ERCOT Project Kilby grid record",
+      excerpt: "The facility is described as behind-the-meter and not dependent on a new ERCOT interconnection.",
+      sourceClass: "primary-government",
+      searchDomain: "power-grid",
+    },
+    {
+      url: "https://www.texaspacific.com/project-kilby-water",
+      title: "Texas Pacific Land water disclosure",
+      excerpt: "The project plans to use brackish groundwater.",
+      sourceClass: "primary-company",
+      searchDomain: "water-environment",
+    },
+  ];
+  const power = body.evidence.find((item) => item.id === "electricity_cost");
+  power.classification = "Management Assertion";
+  power.value = 48;
+  power.numericValue = 48;
+  power.sourceUrl = sources[0].url;
+  power.sourceUrls = [sources[0].url];
+  power.citation = `Chevron describes the power arrangement: ${sources[0].url}`;
+  const grid = body.evidence.find((item) => item.id === "grid_interconnection");
+  grid.classification = "Verified Evidence";
+  grid.value = "Behind-the-meter generation";
+  grid.numericValue = 0;
+  grid.sourceUrl = sources[1].url;
+  grid.sourceUrls = [sources[1].url];
+  grid.citation = `ERCOT records the grid arrangement: ${sources[1].url}`;
+  const water = body.evidence.find((item) => item.id === "water_source_resilience");
+  water.classification = "Management Assertion";
+  water.value = "Brackish groundwater";
+  water.qualitativeValue = "single-source";
+  water.sourceUrl = sources[2].url;
+  water.sourceUrls = [sources[2].url];
+  water.citation = `The water source is disclosed here: ${sources[2].url}`;
+
+  const parsed = parseResearchResponse(body, sources);
+  assert.equal(parsed.projectSummary.capacityMW, 2_000);
+  assert.equal(parsed.projectSummary.capacityProvenance, "ai-reported");
+  assert.equal(parsed.evidence.find((item) => item.id === "electricity_cost").classification, "Management Assertion");
+  assert.equal(parsed.evidence.find((item) => item.id === "grid_interconnection").classification, "Verified Evidence");
+  assert.equal(parsed.evidence.find((item) => item.id === "water_source_resilience").classification, "Management Assertion");
+  assert.equal(parsed.evidence.find((item) => item.id === "electricity_cost").sourceUrl, sources[0].url);
+  assert.equal(parsed.evidence.find((item) => item.id === "grid_interconnection").sourceUrl, sources[1].url);
+  assert.equal(parsed.evidence.find((item) => item.id === "water_source_resilience").sourceUrl, sources[2].url);
+  assert.equal(parsed.evidence.find((item) => item.id === "water_consumption").classification, "Missing Evidence");
 });
 
 test("normalizes the strict keyed evidence contract and ignores nullable optional values", () => {

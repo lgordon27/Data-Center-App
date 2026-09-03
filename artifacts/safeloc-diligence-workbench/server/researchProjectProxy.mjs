@@ -370,8 +370,12 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
           : classification === "Missing Evidence" || explicitUnknownValue
             ? "searched-no-support"
             : "partial",
-      searchCoverage: Array.isArray(coverage?.searchedDomains) ? coverage.searchedDomains : [],
-      failedSearchDomains: Array.isArray(coverage?.failedDomains) ? coverage.failedDomains : [],
+      searchCoverage: Array.isArray(coverage?.searchedByEvidence?.[id])
+        ? coverage.searchedByEvidence[id]
+        : Array.isArray(coverage?.searchedDomains) ? coverage.searchedDomains : [],
+      failedSearchDomains: Array.isArray(coverage?.failedByEvidence?.[id])
+        ? coverage.failedByEvidence[id]
+        : Array.isArray(coverage?.failedDomains) ? coverage.failedDomains : [],
     };
     if (sourceUrl) {
       const metadata = supportingSources[0];
@@ -493,7 +497,12 @@ function normalizeRetrievedSources(body, searchDomain = "project-identity") {
     }
     for (const content of Array.isArray(output?.content) ? output.content : []) {
       for (const annotation of Array.isArray(content?.annotations) ? content.annotations : []) {
-        if (annotation?.type === "url_citation") candidates.push(annotation);
+        if (annotation?.type === "url_citation") {
+          candidates.push({
+            ...annotation,
+            excerpt: typeof content.text === "string" ? content.text : annotation.excerpt,
+          });
+        }
       }
     }
   }
@@ -608,10 +617,18 @@ async function retrieveTargetedSources(project, evidenceIds, apiKey, fetchImpl, 
     domains.map((domain) => retrievePublicSourcesForDomain(project, domain, apiKey, fetchImpl, signal)),
   );
   const sources = results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
+  const searchedByEvidence = {};
+  const failedByEvidence = {};
+  evidenceIds.forEach((id, index) => {
+    searchedByEvidence[id] = results[index].status === "fulfilled" ? [domains[index].id] : [];
+    failedByEvidence[id] = results[index].status === "rejected" ? [domains[index].id] : [];
+  });
   return {
     sources,
     searchedDomains: domains.filter((_, index) => results[index].status === "fulfilled").map((domain) => domain.id),
     failedDomains: domains.filter((_, index) => results[index].status === "rejected").map((domain) => domain.id),
+    searchedByEvidence,
+    failedByEvidence,
   };
 }
 
@@ -758,7 +775,10 @@ export async function handleResearchProjectRequest(
   const timeout = setTimeout(() => controller.abort(), RESEARCH_PROJECT_TIMEOUT_MS);
   const startedAt = Date.now();
   try {
-    let sourcePacket = await retrievePublicSources(project, apiKey, fetchImpl, controller.signal);
+    let sourcePacket = project.focusIds?.length
+      ? await retrieveTargetedSources(project, project.focusIds, apiKey, fetchImpl, controller.signal)
+      : await retrievePublicSources(project, apiKey, fetchImpl, controller.signal);
+    if (sourcePacket.sources.length === 0) throw new Error("Source retrieval returned no usable sources.");
     let retrievedSources = sourcePacket.sources;
     let synthesis = await synthesizeResearch(project, retrievedSources, apiKey, fetchImpl, controller.signal);
     let parsed;
@@ -767,7 +787,7 @@ export async function handleResearchProjectRequest(
       const unsupportedIds = parsed.evidence
         .filter((item) => item.classification === "Missing Evidence")
         .map((item) => item.id);
-      if (unsupportedIds.length > 0 && Date.now() - startedAt < TARGETED_FOLLOW_UP_START_BUDGET_MS) {
+      if (!project.focusIds?.length && unsupportedIds.length > 0 && Date.now() - startedAt < TARGETED_FOLLOW_UP_START_BUDGET_MS) {
         try {
           const targeted = await retrieveTargetedSources(project, unsupportedIds, apiKey, fetchImpl, controller.signal);
           if (targeted.sources.length > 0) {

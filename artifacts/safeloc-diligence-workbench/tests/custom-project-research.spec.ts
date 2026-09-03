@@ -56,10 +56,26 @@ test.describe("custom project research", () => {
   test.beforeEach(async ({ page }) => {
     await page.route("**/api/research-project", async (route) => {
       await new Promise((resolve) => setTimeout(resolve, 150));
-      const request = route.request().postDataJSON() as { name: string; location: string };
+      const request = route.request().postDataJSON() as { name: string; location: string; focusIds?: string[] };
       const response = customResponse();
       response.projectSummary.name = request.name;
       response.projectSummary.location = request.location;
+      if (request.focusIds?.length) {
+        const grid = response.evidence.find((item) => item.id === "grid_interconnection")!;
+        grid.value = "Behind-the-meter generation";
+        grid.classification = "Verified Evidence";
+        grid.citation = "A project-specific filing describes the behind-the-meter arrangement.";
+        grid.description = "The retrieved filing reports that the project will use behind-the-meter generation.";
+        Object.assign(grid, {
+          sourceUrl: "https://example.com/atlas/grid-filing",
+          sourceTitle: "Project Atlas grid filing",
+          sourcePublisher: "example.com",
+          sourcePublishedAt: "2026-07-01",
+          sourceAccessedAt: "2026-09-03",
+          sourceAccessStatus: "open",
+          coverageStatus: "supported",
+        });
+      }
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(response) });
     });
     await page.route("**/api/analyze-evidence", async (route) => {
@@ -81,7 +97,6 @@ test.describe("custom project research", () => {
     await page.getByTestId("input-custom-project-name").fill("Project Atlas");
     await page.getByTestId("input-custom-project-location").fill("Maricopa County, Arizona");
     await page.getByTestId("button-run-ai-analysis").click();
-    await expect(page.getByTestId("home-custom-analysis-loading")).toBeVisible();
     await expect(page).toHaveURL(/#brief$/);
     await expect(page.getByTestId("custom-project-status")).toContainText("AI-researched");
     await expect(page.getByTestId("custom-project-description")).toContainText("equipment procurement");
@@ -148,7 +163,7 @@ test.describe("custom project research", () => {
     await expect(page).toHaveURL(/#brief$/);
   });
 
-  test("runs all 16 project-aware assessments after researching a directory facility", async ({ page }) => {
+  test("researches unresolved inputs and stages a source-backed proposal for human acceptance", async ({ page }) => {
     const assessmentRequests: Array<{
       projectName: string;
       projectLocation: string;
@@ -222,23 +237,21 @@ test.describe("custom project research", () => {
     });
 
     await page.goto("/#evidence");
-    await expect(page.getByTestId("button-analyze-all-ai")).toBeEnabled();
+    await expect(page.getByTestId("button-analyze-all-ai")).toHaveText("Research Missing Sources");
     await page.getByTestId("button-analyze-all-ai").click();
-    await expect.poll(() => assessmentRequests.length).toBe(16);
+    await expect.poll(() => researchRequests.length).toBe(2);
     await expect(page.getByTestId("button-analyze-all-ai")).toBeEnabled();
-
-    expect(assessmentRequests.map((request) => request.name)).toEqual(evidenceIds.map((id) => id.replaceAll("_", " ")));
-    for (const request of assessmentRequests) {
-      expect(request.projectName).toBe("QTS Irving 1");
-      expect(request.projectLocation).toBe("Irving · Dallas County · TX");
-      expect(request.projectKind).toBe("custom");
-    }
-
-    await expect(page.getByTestId("ai-assessment-electricity_cost")).toContainText("QTS Irving 1");
-    await page.getByTestId("button-accept-ai-electricity_cost").click();
-    await expect(page.getByTestId("select-classification-electricity_cost")).toHaveValue("Verified Evidence");
+    expect(assessmentRequests).toHaveLength(0);
+    expect(researchRequests[1].focusIds).toContain("grid_interconnection");
+    expect(researchRequests[1].focusIds).toContain("water_consumption");
+    await expect(page.getByTestId("source-research-summary")).toContainText("new source-backed proposal");
+    await expect(page.getByTestId("source-research-proposal-grid_interconnection")).toContainText("Behind-the-meter generation");
+    await expect(page.getByTestId("select-classification-grid_interconnection")).toHaveValue("Missing Evidence");
+    await page.getByTestId("button-accept-source-proposal-grid_interconnection").click();
+    await expect(page.getByTestId("select-classification-grid_interconnection")).toHaveValue("Verified Evidence");
+    await expect(page.getByTestId("link-custom-source-grid_interconnection")).toHaveAttribute("href", "https://example.com/atlas/grid-filing");
     await expect(page.getByTestId("ai-decision-history")).toContainText("Accepted by human");
-    await expect(page.getByTestId("ai-decision-history")).toContainText("electricity cost");
+    await expect(page.getByTestId("ai-decision-history")).toContainText("grid interconnection");
   });
 
   test("labels the standardized capacity fallback when research returns no usable capacity", async ({ page }) => {

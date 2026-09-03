@@ -116,6 +116,37 @@ test("validates and preserves optional Compute Atlas known data", () => {
   assert.throws(() => parseResearchProjectBody({ name: "Atlas", location: "Texas", knownData: "bad" }), /knownData/);
 });
 
+test("validates focused unresolved evidence requests and current evidence context", () => {
+  assert.deepEqual(parseResearchProjectBody({
+    name: "Atlas",
+    location: "Texas",
+    focusIds: ["grid_interconnection", "water_rights", "grid_interconnection"],
+    currentEvidence: [{
+      id: "grid_interconnection",
+      label: "Grid Interconnection Timeline",
+      value: "Not established",
+      classification: "Missing Evidence",
+      citation: "No validated source.",
+    }],
+  }), {
+    name: "Atlas",
+    location: "Texas",
+    focusIds: ["grid_interconnection", "water_rights"],
+    currentEvidence: [{
+      id: "grid_interconnection",
+      label: "Grid Interconnection Timeline",
+      value: "Not established",
+      classification: "Missing Evidence",
+      citation: "No validated source.",
+    }],
+  });
+  assert.throws(() => parseResearchProjectBody({
+    name: "Atlas",
+    location: "Texas",
+    focusIds: ["not_a_modeled_input"],
+  }), /unknown evidence identifier/i);
+});
+
 test("grounds the prompt in known data without treating it as SafeLoc evidence", () => {
   const prompt = buildResearchProjectPrompt({
     name: "Atlas",
@@ -150,6 +181,25 @@ test("enforces per-search and combined source caps while prioritizing targeted r
   );
   assert.equal(merged.length, 40);
   assert.deepEqual(merged.slice(0, 5).map(({ searchDomain }) => searchDomain), Array(5).fill("targeted"));
+});
+
+test("preserves annotated retrieval text as the claim-specific source excerpt", () => {
+  const sources = normalizeRetrievedSources({
+    output: [{
+      type: "message",
+      content: [{
+        type: "output_text",
+        text: "Project Kilby will provide dedicated power directly to a Microsoft-operated data center under a 20-year agreement.",
+        annotations: [{
+          type: "url_citation",
+          url: "https://example.com/kilby-power",
+          title: "Project Kilby power agreement",
+        }],
+      }],
+    }],
+  }, "targeted-customer_concentration");
+  assert.equal(sources[0].excerpt, "Project Kilby will provide dedicated power directly to a Microsoft-operated data center under a 20-year agreement.");
+  assert.equal(sources[0].searchDomain, "targeted-customer_concentration");
 });
 
 test("rejects malformed custom research requests before calling OpenAI", async () => {

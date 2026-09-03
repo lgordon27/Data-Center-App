@@ -56,6 +56,11 @@ import type {
 } from "@/components/Shell";
 import { ClaimCitation } from "@/components/ClaimCitation";
 import { formatClaimDate } from "@/data/claimSources";
+import {
+  researchProject,
+  type CustomEvidenceRecord,
+  type ResearchProgress,
+} from "@/services/researchProjectService";
 
 type AssessmentNotice = "accepted" | "overridden";
 
@@ -160,6 +165,9 @@ function EvidenceRow({
   notice,
   analysisBusy,
   analysisDisabled,
+  sourceProposal,
+  onAcceptSourceProposal,
+  onRejectSourceProposal,
 }: {
   item: EvidenceItem;
   onChange: (id: string, value: Classification) => void;
@@ -170,6 +178,9 @@ function EvidenceRow({
   notice?: AssessmentNotice;
   analysisBusy: boolean;
   analysisDisabled: boolean;
+  sourceProposal?: CustomEvidenceRecord;
+  onAcceptSourceProposal: (proposal: CustomEvidenceRecord) => void;
+  onRejectSourceProposal: (id: string) => void;
 }) {
   const meta = classMeta[item.classification];
   const { sourceStates, project, applyEvidenceCorrection } = useDiligence();
@@ -184,8 +195,8 @@ function EvidenceRow({
   const [correctionBusy, setCorrectionBusy] = useState(false);
   const [correctionError, setCorrectionError] = useState("");
   useEffect(() => {
-    if (assessment || notice) setOpen(true);
-  }, [assessment, notice]);
+    if (assessment || notice || sourceProposal) setOpen(true);
+  }, [assessment, notice, sourceProposal]);
   const proposeCorrection = async () => {
     setCorrectionError("");
     let parsedUrl: URL;
@@ -244,7 +255,7 @@ function EvidenceRow({
            <FileText aria-hidden="true" className="mt-0.5 h-3 w-3 shrink-0" />
            <span>
              {item.citation}
-             <span className="mt-1 block text-[9px] uppercase tracking-[0.08em] text-[#7d898f]">Role: {item.sourceRole}{source ? ` · ${source.fullName}` : " · Embedded case record"}{providerSource ? ` · Provider-ready: ${providerSource.shortName}` : ""}</span>
+              <span className="mt-1 block text-[9px] uppercase tracking-[0.08em] text-[#7d898f]">Role: {item.sourceRole}{source ? ` · ${source.fullName}` : project.kind === "custom" ? " · Custom project research" : " · Embedded case record"}{providerSource ? ` · Provider-ready: ${providerSource.shortName}` : ""}</span>
               {project.kind === "curated" && item.claimIds.map((claimId) => (
                 <ClaimCitation key={claimId} claimId={claimId} />
               ))}
@@ -282,6 +293,20 @@ function EvidenceRow({
                     {item.failedSearchDomains?.length ? <span data-testid={`coverage-failures-${item.id}`} className="font-mono text-[8px] uppercase tracking-[0.08em] text-[#a65a00]">{item.failedSearchDomains.length} search domain{item.failedSearchDomains.length === 1 ? "" : "s"} unavailable</span> : null}
                   </span>
                   {item.conflictSummary && <span data-testid={`source-conflict-${item.id}`} className="mt-2 block rounded border border-[#efbac3] bg-[#fff4f6] p-2 text-[9px] text-[#8f2437]"><strong>Conflict:</strong> {item.conflictSummary}</span>}
+                   {sourceProposal?.sourceUrl && (
+                     <span data-testid={`source-research-proposal-${item.id}`} className="mt-3 block rounded-lg border border-[#8dc8e8] bg-[#eef8fc] p-3">
+                       <span className="font-mono text-[8px] font-bold uppercase tracking-[0.1em] text-[#255bb7]">New source found · review required</span>
+                       <span className="mt-2 block text-[10px] font-semibold text-[#243844]">{sourceProposal.value} · {sourceProposal.unit}</span>
+                       <span className="mt-1 block text-[9px] leading-4 text-[#52616b]">{sourceProposal.description}</span>
+                       <a href={sourceProposal.sourceUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 text-[9px] font-semibold text-[#255bb7] underline underline-offset-2">
+                         Open {sourceProposal.sourceTitle ?? "retrieved source"}<ExternalLink aria-hidden="true" className="h-3 w-3" />
+                       </a>
+                       <span className="mt-3 flex flex-wrap gap-2">
+                         <button data-testid={`button-accept-source-proposal-${item.id}`} type="button" onClick={() => onAcceptSourceProposal(sourceProposal)} className="rounded bg-[#08644f] px-3 py-2 font-mono text-[8px] font-bold uppercase text-white">Accept source and finding</button>
+                         <button data-testid={`button-reject-source-proposal-${item.id}`} type="button" onClick={() => onRejectSourceProposal(item.id)} className="rounded border border-[#9aaec0] bg-white px-3 py-2 font-mono text-[8px] font-bold uppercase text-[#52616b]">Reject</button>
+                       </span>
+                     </span>
+                   )}
                   {(item.sources?.length ?? 0) > 1 && (
                     <span data-testid={`custom-sources-${item.id}`} className="mt-2 block">
                       <span className="font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#60707d]">{item.sources?.length} claim-specific sources</span>
@@ -463,7 +488,7 @@ function EiaElectricityEvidence({
 }
 
 export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
-  const { evidence, updateClassification, metrics, ercotQueue, eiaData, eiaLoading, sourceStates, project } = useDiligence();
+  const { evidence, updateClassification, applyEvidenceCorrection, metrics, ercotQueue, eiaData, eiaLoading, sourceStates, project } = useDiligence();
   const customProject = project.kind === "custom";
   const items = useMemo(() => Object.values(evidence), [evidence]);
   const counts = useMemo(() => classifications.map((classification) => ({ classification, count: items.filter((item) => item.classification === classification).length })), [items]);
@@ -474,8 +499,12 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
   const [notices, setNotices] = useState<Record<string, AssessmentNotice | undefined>>({});
   const [activeAnalysisId, setActiveAnalysisId] = useState<string | null>(null);
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
+  const [sourceResearchProgress, setSourceResearchProgress] = useState<ResearchProgress | null>(null);
+  const [sourceResearchError, setSourceResearchError] = useState<string | null>(null);
+  const [sourceProposals, setSourceProposals] = useState<Record<string, CustomEvidenceRecord>>({});
   const [decisionHistory, setDecisionHistory] = useState<DecisionHistoryEntry[]>(getDecisionHistory);
-  const isAnalysisBusy = activeAnalysisId !== null || batchProgress !== null;
+  const isSourceResearchBusy = sourceResearchProgress !== null;
+  const isAnalysisBusy = activeAnalysisId !== null || batchProgress !== null || isSourceResearchBusy;
 
   useEffect(() => {
     const syncDecisionHistory = () => setDecisionHistory(getDecisionHistory());
@@ -532,6 +561,67 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
     setBatchProgress(null);
   };
 
+  const researchMissingSources = async () => {
+    if (!customProject || isAnalysisBusy) return;
+    const focusIds = items
+      .filter((item) => item.classification === "Missing Evidence" || !item.sourceUrl)
+      .map((item) => item.id);
+    if (!focusIds.length) {
+      setSourceResearchError("Every evidence item already has a validated source.");
+      return;
+    }
+    setSourceResearchError(null);
+    setSourceProposals({});
+    setSourceResearchProgress("researching");
+    try {
+      const result = await researchProject(project.name, project.location, {
+        focusIds,
+        currentEvidence: items.map((item) => ({
+          id: item.id,
+          label: item.label,
+          value: item.value,
+          classification: item.classification,
+          citation: item.citation,
+        })),
+        onProgress: setSourceResearchProgress,
+      });
+      const proposals = Object.fromEntries(
+        result.evidence
+          .filter((item) => focusIds.includes(item.id) && Boolean(item.sourceUrl))
+          .map((item) => [item.id, item]),
+      );
+      setSourceProposals(proposals);
+      if (!Object.keys(proposals).length) {
+        setSourceResearchError("The focused searches completed, but no new project-specific source passed validation.");
+      }
+    } catch (error) {
+      setSourceResearchError(error instanceof Error ? error.message : "Source research is unavailable. Try again.");
+    } finally {
+      setSourceResearchProgress(null);
+    }
+  };
+
+  const acceptSourceProposal = (proposal: CustomEvidenceRecord) => {
+    if (!proposal.sourceUrl) return;
+    const accepted = applyEvidenceCorrection(proposal.id, {
+      value: String(proposal.value),
+      claim: `${proposal.description} ${proposal.citation}`.trim(),
+      sourceUrl: proposal.sourceUrl,
+      classification: proposal.classification,
+    });
+    if (!accepted) {
+      setSourceResearchError(`The proposed source for ${proposal.label} could not be applied.`);
+      return;
+    }
+    logSessionAction("Focused source research, human-accepted", proposal.id);
+    recordAIDecision(proposal.id, proposal.classification, proposal.description, "accepted", proposal.classification);
+    setSourceProposals((current) => {
+      const next = { ...current };
+      delete next[proposal.id];
+      return next;
+    });
+  };
+
   const acceptAssessment = (item: EvidenceItem, assessment: AIEvidenceSuccess) => {
     updateClassification(item.id, assessment.classification, "ai", "ai-accepted");
     logSessionAction("AI-proposed, human-accepted", item.id);
@@ -575,19 +665,31 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
                 type="button"
                 disabled={isAnalysisBusy}
                 aria-busy={isAnalysisBusy}
-                onClick={() => void analyzeAll()}
+                onClick={() => void (customProject ? researchMissingSources() : analyzeAll())}
                 className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-[#9aaec0] bg-[#122232] px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#d4e86b] hover:border-[#d4e86b] disabled:cursor-wait disabled:opacity-60"
               >
                 <Sparkles aria-hidden="true" className="h-3.5 w-3.5" />
-                {batchProgress ? `Analyzing ${batchProgress.current} of ${batchProgress.total}…` : "Analyze All with AI"}
+                {customProject
+                  ? sourceResearchProgress === "retrying" ? "Retrying source research…" : sourceResearchProgress ? "Researching missing sources…" : "Research Missing Sources"
+                  : batchProgress ? `Analyzing ${batchProgress.current} of ${batchProgress.total}…` : "Analyze All with AI"}
               </button>
-              {customProject && !batchProgress
-                ? <span data-testid="custom-ai-reassessment-note" role="note" className="text-right font-mono text-[8px] uppercase tracking-[0.08em] text-[#7d898f]">Reassesses supplied citations · human acceptance required</span>
+              {customProject && !sourceResearchProgress
+                ? <span data-testid="custom-ai-reassessment-note" role="note" className="text-right font-mono text-[8px] uppercase tracking-[0.08em] text-[#7d898f]">Searches unresolved inputs · human acceptance required</span>
                 : batchProgress && <span data-testid="status-ai-batch" role="status" aria-live="polite" className="text-right font-mono text-[8px] uppercase tracking-[0.08em] text-[#60707d]">One item at a time · suggestions only</span>}
             </div>
           </div>
         }
       />
+      {customProject && sourceResearchError && (
+        <aside data-testid="source-research-status" role="status" className="mb-5 rounded-lg border border-[#f1cb8b] bg-[#fff8e9] px-4 py-3 text-[10px] text-[#6f460e]">
+          {sourceResearchError}
+        </aside>
+      )}
+      {customProject && Object.keys(sourceProposals).length > 0 && (
+        <aside data-testid="source-research-summary" role="status" className="mb-5 rounded-lg border border-[#8dc8e8] bg-[#eef8fc] px-4 py-3 text-[10px] text-[#255bb7]">
+          Found {Object.keys(sourceProposals).length} new source-backed proposal{Object.keys(sourceProposals).length === 1 ? "" : "s"}. Open each highlighted input to review and accept it.
+        </aside>
+      )}
       <aside data-testid="ai-evidence-time-contract" role="note" className="mb-5 rounded-lg border border-[#cbd8d4] bg-[#f4f8f5] px-4 py-3 md:px-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -652,6 +754,13 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
                   notice={notices[item.id]}
                   analysisBusy={activeAnalysisId === item.id}
                   analysisDisabled={isAnalysisBusy}
+                  sourceProposal={sourceProposals[item.id]}
+                  onAcceptSourceProposal={acceptSourceProposal}
+                  onRejectSourceProposal={(id) => setSourceProposals((current) => {
+                    const next = { ...current };
+                    delete next[id];
+                    return next;
+                  })}
                 />
               ))}
               {category.id === "power-grid" && (

@@ -80,6 +80,8 @@ export type ResearchProgress = "researching" | "retrying";
 export type ResearchProjectOptions = {
   knownData?: KnownProjectData;
   onProgress?: (progress: ResearchProgress) => void;
+  focusIds?: string[];
+  currentEvidence?: Array<Pick<CustomEvidenceRecord, "id" | "label" | "value" | "classification" | "citation">>;
 };
 
 export function summarizeSourceCoverage(evidence: CustomEvidenceRecord[]) {
@@ -357,6 +359,8 @@ async function requestResearchProject(
   name: string,
   location: string,
   knownData: KnownProjectData | undefined,
+  focusIds: string[] | undefined,
+  currentEvidence: ResearchProjectOptions["currentEvidence"],
   fetchImpl: typeof fetch,
 ) {
   const controller = new AbortController();
@@ -365,7 +369,13 @@ async function requestResearchProject(
     const response = await fetchImpl(RESEARCH_PROJECT_ENDPOINT, {
       method: "POST",
       headers: { accept: "application/json", "content-type": "application/json" },
-      body: JSON.stringify({ name, location, ...(knownData ? { knownData } : {}) }),
+      body: JSON.stringify({
+        name,
+        location,
+        ...(knownData ? { knownData } : {}),
+        ...(focusIds?.length ? { focusIds } : {}),
+        ...(currentEvidence?.length ? { currentEvidence } : {}),
+      }),
       signal: controller.signal,
     });
     const rawText = await response.text();
@@ -399,10 +409,11 @@ export async function researchProject(
   const fetchImpl = typeof optionsOrFetch === "function" ? optionsOrFetch : fetch;
   const options = typeof optionsOrFetch === "function" ? legacyOptions : optionsOrFetch;
   const knownData = normalizeKnownData(options.knownData);
+  const focusIds = options.focusIds?.filter((id) => CUSTOM_EVIDENCE_IDS.includes(id as (typeof CUSTOM_EVIDENCE_IDS)[number]));
   options.onProgress?.("researching");
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      return await requestResearchProject(name, location, knownData, fetchImpl);
+      return await requestResearchProject(name, location, knownData, focusIds, options.currentEvidence, fetchImpl);
     } catch (error) {
       if (error instanceof ResearchTimeoutError && attempt === 0) {
         options.onProgress?.("retrying");

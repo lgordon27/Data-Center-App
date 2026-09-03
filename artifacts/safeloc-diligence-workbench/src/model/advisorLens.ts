@@ -24,6 +24,11 @@ export type AdvisorEvidenceSummary = {
   totalInputCount: number;
 };
 
+export type MaterialEvidenceGap = {
+  id: string;
+  classification: Classification;
+};
+
 export type PrioritizedAdvisorQuestion = AdvisorQuestion & {
   index: number;
   classification?: Classification;
@@ -100,6 +105,18 @@ export function getAdvisorEvidenceSummary(
     verifiedCount: countVerifiedEvidence(evidence),
     totalInputCount: Object.keys(evidence).length,
   };
+}
+
+export function getMaterialEvidenceGaps(
+  evidence: Record<string, ClassifiedEvidence>,
+): MaterialEvidenceGap[] {
+  return MATERIAL_EVIDENCE_IDS.reduce<MaterialEvidenceGap[]>((gaps, id) => {
+    const item = evidence[id];
+    if (item && !MATERIAL_SUFFICIENT_CLASSIFICATIONS.includes(item.classification)) {
+      gaps.push({ id, classification: item.classification });
+    }
+    return gaps;
+  }, []);
 }
 
 export function getEvidenceCompletenessTier(

@@ -10,6 +10,7 @@ import {
 import {
   getAdvisorEvidenceSummary,
   getEvidenceCompletenessTier,
+  getMaterialEvidenceGaps,
   getAdvisorQuestionPresentation,
   getGovernanceIRRGap,
   prioritizeAdvisorQuestions,
@@ -131,6 +132,31 @@ test("material sufficiency follows active classifications rather than optional m
   assert.equal(summary.materialVerifiedCount, 1);
   assert.equal(summary.materialGapCount, 3);
   assert.equal(getEvidenceCompletenessTier(summary), "HIGH");
+});
+
+test("material gap list uses active classifications and excludes optional model classifications", () => {
+  const evidence = withMaterialClassification(1);
+  evidence[MATERIAL_EVIDENCE_IDS[0]].modelClassification = "Missing Evidence";
+  evidence[MATERIAL_EVIDENCE_IDS[1]].modelClassification = "Verified Evidence";
+
+  assert.deepEqual(
+    getMaterialEvidenceGaps(evidence),
+    MATERIAL_EVIDENCE_IDS.slice(1).map((id) => ({
+      id,
+      classification: evidence[id].classification,
+    })),
+  );
+});
+
+test("material gap list updates when an active material classification changes", () => {
+  const evidence = withMaterialClassification(1);
+  const initialGapIds = getMaterialEvidenceGaps(evidence).map((gap) => gap.id);
+  evidence[MATERIAL_EVIDENCE_IDS[1]].classification = "Management Assertion";
+
+  assert.deepEqual(
+    getMaterialEvidenceGaps(evidence).map((gap) => gap.id),
+    initialGapIds.filter((id) => id !== MATERIAL_EVIDENCE_IDS[1]),
+  );
 });
 
 test("four non-material verified inputs cannot outrank an under-half material posture", () => {

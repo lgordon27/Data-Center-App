@@ -30,6 +30,7 @@ import {
   getAdvisorQuestionPresentation,
   getGovernanceIRRGap,
   getEvidenceCompletenessTier,
+  getMaterialEvidenceGaps,
   prioritizeAdvisorQuestions
 } from "@/model/advisorLens";
 
@@ -37,7 +38,13 @@ import type {
   Screen
 } from "@/components/Shell";
 import { ClaimCitation } from "@/components/ClaimCitation";
-export function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
+export function AdvisorLens({
+  onNavigate,
+  onResolveEvidence,
+}: {
+  onNavigate: (screen: Screen) => void;
+  onResolveEvidence?: (evidenceId: string) => void;
+}) {
   const { evidence, metrics, project, originatingCompany } = useDiligence();
   const projectName = project.name;
   const customProject = project.kind === "custom";
@@ -45,6 +52,7 @@ export function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => vo
   const evidenceSummary = getAdvisorEvidenceSummary(evidence);
   const evidenceCount = evidenceSummary.totalInputCount;
   const riskTier = getEvidenceCompletenessTier(evidenceSummary);
+  const materialGaps = useMemo(() => getMaterialEvidenceGaps(evidence), [evidence]);
   const currentIRR = metrics.projectIRR ?? null;
   const baseIRR = metrics.baseIRR ?? null;
   const governanceGap = getGovernanceIRRGap(baseIRR, currentIRR);
@@ -124,6 +132,55 @@ export function AdvisorLens({ onNavigate }: { onNavigate: (screen: Screen) => vo
           <EvidenceCompletenessIndicator tier={riskTier} testId="badge-advisor-summary-risk" />
           <span className="text-[10px] text-[#6b7882]">Material sufficiency includes Verified Evidence and Management Assertion; Model Inference, User Assumption, and Missing Evidence remain material gaps.</span>
         </div>
+         <div
+           data-testid="advisor-material-gaps"
+           className="mt-5 border-t border-[#e1e8e5] pt-4"
+           aria-labelledby="advisor-material-gaps-heading"
+         >
+           <div className="flex flex-wrap items-baseline justify-between gap-2">
+             <div>
+               <div className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#ba2f45]">Material inputs driving {riskTier}</div>
+               <h3 id="advisor-material-gaps-heading" className="mt-1 text-[14px] font-semibold text-[#122232]">What still needs evidence</h3>
+             </div>
+             <span data-testid="advisor-material-gaps-count" className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#6b7882]">
+               {materialGaps.length} {materialGaps.length === 1 ? "gap" : "gaps"}
+             </span>
+           </div>
+           {materialGaps.length > 0 ? (
+             <ul className="mt-3 grid gap-2 sm:grid-cols-2" aria-label="Insufficient material evidence">
+               {materialGaps.map((gap) => {
+                 const item = evidence[gap.id];
+                 return (
+                   <li
+                     key={gap.id}
+                     data-testid={`advisor-material-gap-${gap.id}`}
+                     className="flex min-w-0 items-start justify-between gap-3 rounded-lg border border-[#efabb8] bg-[#fff8f8] p-3"
+                   >
+                     <div className="min-w-0">
+                       <div className="text-[11px] font-semibold leading-4 text-[#243844]">{item.label}</div>
+                       <div className="mt-2">
+                         <ClassificationBadge value={gap.classification} compact />
+                       </div>
+                     </div>
+                     <button
+                       data-testid={`button-open-material-gap-${gap.id}`}
+                       type="button"
+                       onClick={() => onResolveEvidence ? onResolveEvidence(gap.id) : onNavigate("evidence")}
+                       className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[#d8a0aa] bg-white px-2.5 py-2 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#8f2437] hover:border-[#ba2f45] hover:text-[#ba2f45]"
+                     >
+                       Open record
+                       <ArrowRight aria-hidden="true" className="h-3 w-3" />
+                     </button>
+                   </li>
+                 );
+               })}
+             </ul>
+           ) : (
+             <p data-testid="advisor-material-gaps-empty" className="mt-3 rounded-lg border border-[#9bd8c5] bg-[#f1fbf6] p-3 text-[10px] leading-4 text-[#08644f]">
+               All material inputs currently meet the active sufficiency threshold. Optional model classifications remain separate from this posture.
+             </p>
+           )}
+         </div>
       </section>
       <section data-testid="section-client-exposure" className="rounded-xl bg-[#122232] p-5 text-white md:p-7" aria-labelledby="client-exposure-heading">
         <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">

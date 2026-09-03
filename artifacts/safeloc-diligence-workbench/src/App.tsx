@@ -244,7 +244,7 @@ function AppShell() {
                   {route === "evidence" && <EvidenceRoom onNavigate={go} />}
                   {route === "materiality" && <FinancialMateriality onNavigate={go} />}
                   {route === "decision" && <DecisionReview onNavigate={go} onResolve={resolveEvidence} />}
-                  {route === "advisor" && <AdvisorLens onNavigate={go} />}
+                  {route === "advisor" && <AdvisorLens onNavigate={go} onResolveEvidence={resolveEvidence} />}
                 </div>
               </main>
             </div>

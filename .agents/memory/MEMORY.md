@@ -7,3 +7,4 @@
 - [Local Playwright browser setup](local-playwright-browser.md) — package-scoped Playwright may need its Chromium cache provisioned before repository specs can launch.
 - [Project posture vs. fund materiality](project-posture-vs-fund-materiality.md) — project evidence completeness must not be presented as fund-level risk or materiality.
 - [AI research contract resilience](ai-research-contract-resilience.md) — keep 16 evidence IDs strict, but safely normalize empty narrative fields to Missing Evidence instead of failing the project.
+- [Bounded multi-pass research](bounded-multi-pass-research.md) — cap each retrieval call and never discard a valid first synthesis when an optional follow-up exceeds the request budget.

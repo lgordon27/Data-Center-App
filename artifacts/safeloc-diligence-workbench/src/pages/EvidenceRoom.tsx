@@ -686,8 +686,16 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
         </aside>
       )}
       {customProject && Object.keys(sourceProposals).length > 0 && (
-        <aside data-testid="source-research-summary" role="status" className="mb-5 rounded-lg border border-[#8dc8e8] bg-[#eef8fc] px-4 py-3 text-[10px] text-[#255bb7]">
-          Found {Object.keys(sourceProposals).length} new source-backed proposal{Object.keys(sourceProposals).length === 1 ? "" : "s"}. Open each highlighted input to review and accept it.
+        <aside data-testid="source-research-summary" role="status" className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#8dc8e8] bg-[#eef8fc] px-4 py-3 text-[10px] text-[#255bb7]">
+          <span>Found {Object.keys(sourceProposals).length} new source-backed proposal{Object.keys(sourceProposals).length === 1 ? "" : "s"}. Open each highlighted input to review it.</span>
+          <button
+            data-testid="button-accept-all-source-proposals"
+            type="button"
+            onClick={() => Object.values(sourceProposals).forEach(acceptSourceProposal)}
+            className="rounded bg-[#08644f] px-3 py-2 font-mono text-[8px] font-bold uppercase text-white"
+          >
+            Accept all supported findings
+          </button>
         </aside>
       )}
       <aside data-testid="ai-evidence-time-contract" role="note" className="mb-5 rounded-lg border border-[#cbd8d4] bg-[#f4f8f5] px-4 py-3 md:px-5">

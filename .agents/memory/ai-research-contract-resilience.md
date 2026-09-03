@@ -32,3 +32,9 @@ Directory facts may ground project identity and capacity, but must not become mo
 **Why:** Directory metadata is useful for avoiding identity drift, but treating it as evidence would cross the discovery boundary. A partially researched fallback could silently change returns after provider failure.
 
 **How to apply:** Send validated capacity, operator, status, and public directory URL as known context. Label directory capacity separately from AI-reported capacity. Preserve no AI claims after final failure; let human-accepted evidence update the case later.
+
+Web-search URL annotations must retain the surrounding generated search text as their claim excerpt before synthesis.
+
+**Why:** Some provider search responses put substantive claim summaries in annotated output text while the source objects contain only URL and title. Dropping that text leaves synthesis with empty excerpts and causes real sources to be reported as unsupported.
+
+**How to apply:** When normalizing search output, attach each URL annotation to its containing text, preserve the exact URL for validation, and test that annotated text reaches the source packet.

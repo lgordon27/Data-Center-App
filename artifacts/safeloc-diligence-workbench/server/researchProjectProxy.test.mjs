@@ -9,6 +9,7 @@ import {
   RESEARCH_EVIDENCE_IDS,
   RESEARCH_PROJECT_MAX_TOKENS,
   RESEARCH_PROJECT_MODEL,
+  RESEARCH_PROJECT_TIMEOUT_MS,
   RESEARCH_PROJECT_RESPONSE_SCHEMA,
   RESEARCH_PROJECT_SYSTEM_PROMPT,
   buildResearchProjectPrompt,
@@ -18,6 +19,7 @@ import {
   safePublicSourceUrl,
   normalizeCapacityMW,
   normalizeReportedCapacityMW,
+  parseResearchProjectBody,
 } from "./researchProjectProxy.mjs";
 
 function responseRecorder() {
@@ -82,6 +84,44 @@ function retrievalResponse() {
     output: [{ type: "web_search_call", action: { sources: [retrievedSource] } }],
   }), { status: 200 });
 }
+
+test("uses a 60-second server research budget", () => {
+  assert.equal(RESEARCH_PROJECT_TIMEOUT_MS, 60_000);
+});
+
+test("validates and preserves optional Compute Atlas known data", () => {
+  assert.deepEqual(parseResearchProjectBody({
+    name: "Atlas",
+    location: "Texas",
+    knownData: {
+      capacity: 840,
+      operator: " Atlas Compute ",
+      status: "Planned",
+      sourceUrl: "https://example.com/directory/atlas",
+      ignored: "not allowed through",
+    },
+  }), {
+    name: "Atlas",
+    location: "Texas",
+    knownData: {
+      capacity: 840,
+      operator: "Atlas Compute",
+      status: "Planned",
+      sourceUrl: "https://example.com/directory/atlas",
+    },
+  });
+  assert.throws(() => parseResearchProjectBody({ name: "Atlas", location: "Texas", knownData: "bad" }), /knownData/);
+});
+
+test("grounds the prompt in known data without treating it as SafeLoc evidence", () => {
+  const prompt = buildResearchProjectPrompt({
+    name: "Atlas",
+    location: "Texas",
+    knownData: { capacity: 840, operator: "Atlas Compute", status: "Planned" },
+  }, [retrievedSource]);
+  assert.match(prompt, /Compute Atlas public database/);
+  assert.match(prompt, /not as SafeLoc evidence or verified project economics/);
+});
 
 test("rejects malformed custom research requests before calling OpenAI", async () => {
   const missingResponse = responseRecorder();

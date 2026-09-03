@@ -54,21 +54,32 @@ function ScopeLimitationsDisclosure() {
 
 function CustomCaseBrief({ project, onNavigate }: { project: ReturnType<typeof useDiligence>["project"]; onNavigate: (screen: Screen) => void }) {
   const { evidence } = useDiligence();
+  const isDefaultAssumptions = project.researchMode === "default-assumptions";
+  const capacityLabel = project.capacityProvenance === "directory-reported"
+    ? "Directory-reported model capacity"
+    : project.capacityProvenance === "ai-reported"
+      ? "AI-reported model capacity"
+      : "Standardized model capacity";
+  const capacityNote = project.capacityProvenance === "directory-reported"
+    ? "Compute Atlas directory capacity used to scale the synthetic model; it is not SafeLoc evidence."
+    : project.capacityProvenance === "ai-reported"
+      ? "AI-reported capacity used to scale the synthetic model."
+      : "No usable project capacity returned; standardized 1,200 MW default used.";
   return (
     <div>
       <PageIntro
         eyebrow="01 / frame the opportunity"
         title={project.name}
-        description="Review the researched project summary, capacity basis, and evidence scope before relying on the return."
-        right={<div data-testid="custom-project-status" className="flex items-center gap-2 self-start rounded-full border border-[#f1cb8b] bg-[#fff8e9] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#6f460e] md:self-auto"><span className="h-2 w-2 rounded-full bg-[#a65a00]" /> AI-researched · high-level</div>}
+        description={isDefaultAssumptions ? "Review the default project setup, capacity basis, and unresolved evidence scope before using the model." : "Review the researched project summary, capacity basis, and evidence scope before relying on the return."}
+        right={<div data-testid="custom-project-status" className="flex items-center gap-2 self-start rounded-full border border-[#f1cb8b] bg-[#fff8e9] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#6f460e] md:self-auto"><span className="h-2 w-2 rounded-full bg-[#a65a00]" /> {isDefaultAssumptions ? "Default assumptions · research unavailable" : "AI-researched · high-level"}</div>}
       />
       <section data-testid="custom-project-summary" className="rounded-xl border border-[#cbd8d4] bg-white p-5 md:p-7">
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[#e5eae8] pb-5">
           <div><SectionKicker>Custom project summary</SectionKicker><h2 className="text-[29px] font-semibold tracking-[-0.04em] text-[#122232]">{project.name}</h2><p className="mt-2 flex items-center gap-2 text-[12px] text-[#52616b]"><MapPin className="h-3.5 w-3.5 text-[#ba2f45]" />{project.location}</p></div>
-          <div className="rounded-lg bg-[#122232] px-4 py-3 text-right text-white"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#a4b4bd]">{project.capacityProvenance === "ai-reported" ? "AI-reported model capacity" : "Standardized model capacity"}</div><div data-testid="custom-project-capacity" className="mt-1 font-mono text-xl font-bold text-[#d4e86b]">{project.capacityMW.toLocaleString()} MW</div><div data-testid="custom-project-capacity-note" className="mt-1 max-w-[180px] text-[9px] leading-4 text-[#c4d0d6]">{project.capacityProvenance === "ai-reported" ? "AI-reported capacity used to scale the synthetic model." : "No usable AI capacity returned; standardized 1,200 MW default used."}</div></div>
+          <div className="rounded-lg bg-[#122232] px-4 py-3 text-right text-white"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#a4b4bd]">{capacityLabel}</div><div data-testid="custom-project-capacity" className="mt-1 font-mono text-xl font-bold text-[#d4e86b]">{project.capacityMW.toLocaleString()} MW</div><div data-testid="custom-project-capacity-note" className="mt-1 max-w-[180px] text-[9px] leading-4 text-[#c4d0d6]">{capacityNote}</div></div>
         </div>
         <p data-testid="custom-project-description" className="mt-5 max-w-4xl text-[13px] leading-6 text-[#344550]">{project.description}</p>
-        <div className="mt-5 rounded-lg border border-[#f1cb8b] bg-[#fff8e9] p-4 text-[10px] leading-5 text-[#6f460e]">This high-level AI research is context for diligence. Findings are not facility-level proof unless the cited project source supports them; the modeled set remains exactly {Object.keys(evidence).length} variables.</div>
+        <div className="mt-5 rounded-lg border border-[#f1cb8b] bg-[#fff8e9] p-4 text-[10px] leading-5 text-[#6f460e]">{isDefaultAssumptions ? "AI research did not complete. All 16 evidence variables are Missing Evidence, so no project-specific finding changes the synthetic return until a reviewer supplies and accepts evidence." : `This high-level AI research is context for diligence. Findings are not facility-level proof unless the cited project source supports them; the modeled set remains exactly ${Object.keys(evidence).length} variables.`}</div>
       </section>
       <div className="mt-5"><ScopeLimitationsDisclosure /></div>
       <div className="mt-5 rounded-xl bg-[#d4e86b] p-5 text-[#1c2a16]">

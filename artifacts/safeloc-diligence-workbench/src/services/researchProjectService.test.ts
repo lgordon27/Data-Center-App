@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { CUSTOM_EVIDENCE_IDS, parseResponse } from "./researchProjectService";
+import {
+  createDefaultAssumptionResearch,
+  CUSTOM_EVIDENCE_IDS,
+  parseResponse,
+  researchProject,
+  RESEARCH_PROJECT_TIMEOUT_MS,
+} from "./researchProjectService";
 
 const response = {
   projectSummary: { name: "Atlas", location: "Texas", description: "High-level research.", capacityMW: 600 },
@@ -61,4 +67,66 @@ test("keeps only safe direct source links from custom responses", () => {
     })),
   };
   assert.equal(parseResponse(unsafe).evidence.every((item) => item.sourceUrl === undefined), true);
+});
+
+test("uses a 60-second request budget", () => {
+  assert.equal(RESEARCH_PROJECT_TIMEOUT_MS, 60_000);
+});
+
+test("retries one timeout response and reports retry progress", async () => {
+  let calls = 0;
+  const progress: string[] = [];
+  const fetchImpl = async (_input: string | URL | Request, init?: RequestInit) => {
+    calls += 1;
+    assert.deepEqual(JSON.parse(String(init?.body)), {
+      name: "Atlas",
+      location: "Texas",
+      knownData: {
+        capacity: 800,
+        operator: "Atlas Compute",
+        status: "Operating",
+        sourceUrl: "https://example.com/directory/atlas",
+      },
+    });
+    return calls === 1
+      ? new Response(JSON.stringify({ error: "Project research timed out." }), { status: 504 })
+      : new Response(JSON.stringify(response), { status: 200 });
+  };
+  const result = await researchProject("Atlas", "Texas", fetchImpl as typeof fetch, {
+    knownData: {
+      capacity: 800,
+      operator: "Atlas Compute",
+      status: "Operating",
+      sourceUrl: "https://example.com/directory/atlas",
+    },
+    onProgress: (state) => progress.push(state),
+  });
+  assert.equal(result.evidence.length, 16);
+  assert.equal(calls, 2);
+  assert.deepEqual(progress, ["researching", "retrying"]);
+});
+
+test("does not retry non-timeout failures", async () => {
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    return new Response(JSON.stringify({ error: "Provider rejected the request." }), { status: 502 });
+  };
+  await assert.rejects(() => researchProject("Atlas", "Texas", fetchImpl as typeof fetch), /Provider rejected/);
+  assert.equal(calls, 1);
+});
+
+test("creates an explicitly labeled 16-item Missing Evidence fallback", () => {
+  const fallback = createDefaultAssumptionResearch("Atlas", "Taylor County, Texas", {
+    capacity: 880,
+    operator: "Atlas Compute",
+    status: "Planned",
+    sourceUrl: "https://example.com/directory/atlas",
+  });
+  assert.equal(fallback.researchMode, "default-assumptions");
+  assert.equal(fallback.projectSummary.capacityMW, 880);
+  assert.equal(fallback.projectSummary.capacityProvenance, "directory-reported");
+  assert.equal(fallback.evidence.length, 16);
+  assert.equal(fallback.evidence.every((item) => item.classification === "Missing Evidence"), true);
+  assert.equal(fallback.evidence.every((item) => item.sourceUrl === undefined), true);
 });

@@ -26,3 +26,9 @@ AI-reported project capacity must be normalized separately from its fallback and
 **Why:** A valid researched scale can materially change capacity-sensitive returns, while malformed scale or an unrecognized explicit zero can silently produce a misleading model or evidence gap.
 
 **How to apply:** Accept only finite, positive, plausible capacity values; otherwise use the documented standardized default and label it. Preserve supported classifications when validated packet URLs are present, including explicit zero semantics.
+
+Directory facts may ground project identity and capacity, but must not become modeled evidence. If AI research exhausts one timeout-only retry, the only safe fallback is an explicitly labeled default-assumptions case with every modeled item set to Missing Evidence.
+
+**Why:** Directory metadata is useful for avoiding identity drift, but treating it as evidence would cross the discovery boundary. A partially researched fallback could silently change returns after provider failure.
+
+**How to apply:** Send validated capacity, operator, status, and public directory URL as known context. Label directory capacity separately from AI-reported capacity. Preserve no AI claims after final failure; let human-accepted evidence update the case later.

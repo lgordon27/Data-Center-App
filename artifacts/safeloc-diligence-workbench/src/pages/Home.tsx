@@ -16,7 +16,13 @@ import {
   Zap,
 } from "lucide-react";
 import { useDiligence } from "@/context/DiligenceContext";
-import { researchProject, type CustomResearchResponse } from "@/services/researchProjectService";
+import {
+  createDefaultAssumptionResearch,
+  researchProject,
+  type CustomResearchResponse,
+  type KnownProjectData,
+  type ResearchProgress,
+} from "@/services/researchProjectService";
 import {
   directoryFreshness,
   fetchDirectory,
@@ -79,6 +85,8 @@ export function CustomProjectForm({ onSuccess, compact = false }: CustomProjectF
   const [location, setLocation] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<ResearchProgress>("researching");
+  const [fallbackAvailable, setFallbackAvailable] = useState(false);
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -88,11 +96,14 @@ export function CustomProjectForm({ onSuccess, compact = false }: CustomProjectF
     }
     setBusy(true);
     setError(null);
+    setFallbackAvailable(false);
+    setProgress("researching");
     try {
-      const result = await researchProject(name.trim(), location.trim());
+      const result = await researchProject(name.trim(), location.trim(), { onProgress: setProgress });
       onSuccess(result);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Project research is unavailable. Try again.");
+      setFallbackAvailable(true);
     } finally {
       setBusy(false);
     }
@@ -171,6 +182,16 @@ export function CustomProjectForm({ onSuccess, compact = false }: CustomProjectF
             : "rounded-md border border-[#efabb8] bg-[#fde8eb] px-3 py-2.5 text-[11px] leading-5 text-[#7f2635]"}
         >
           {error}
+          {fallbackAvailable && (
+            <button
+              data-testid={compact ? "home-custom-analysis-fallback" : "custom-project-fallback"}
+              type="button"
+              onClick={() => onSuccess(createDefaultAssumptionResearch(name, location))}
+              className="mt-2 block min-h-10 rounded-md border border-current px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.08em]"
+            >
+              Research unavailable. Analyze with default assumptions?
+            </button>
+          )}
         </div>
       )}
       {busy && (
@@ -182,7 +203,9 @@ export function CustomProjectForm({ onSuccess, compact = false }: CustomProjectF
             ? "rounded-md border border-[#8dc8e8]/30 bg-[#0d2b3d] px-3 py-2.5 text-[10px] leading-4 text-[#b9e1f2]"
             : "rounded-md bg-[#eef5ff] px-3 py-2.5 text-[10px] text-[#255bb7]"}
         >
-          Searching public sources and building the 16-item evidence set. This can take up to 45 seconds.
+          {progress === "retrying"
+            ? "Research taking longer than expected, retrying..."
+            : "Searching public sources and building the 16-item evidence set. This can take up to 60 seconds."}
         </div>
       )}
     </form>
@@ -476,12 +499,14 @@ function DirectoryCard({
   facility,
   onCurated,
   onResearch,
+  onFallback,
   researchState,
 }: {
   facility: DirectoryFacility;
   onCurated: () => void;
   onResearch: () => void;
-  researchState: { busy: boolean; error: string | null };
+  onFallback: () => void;
+  researchState: { busy: boolean; error: string | null; progress: ResearchProgress };
 }) {
   const confidenceTone = {
     confirmed: "border-[#83d6b8]/50 bg-[#e0f4ed] text-[#0b624f]",
@@ -539,7 +564,19 @@ function DirectoryCard({
         {facility.connectedCompanies.map((company) => <span key={company} className="text-[9px] text-[#b9e1f2]">Mapped: {company}</span>)}
         {facility.connectedFunds.length > 0 && <span className="text-[9px] text-[#718894]">Market context: {facility.connectedFunds.join(", ")}</span>}
       </div>
-      {researchState.error && <div data-testid={`compute-atlas-error-${facility.id}`} role="alert" className="mt-2 rounded border border-[#efabb8]/60 bg-[#552c3a] px-2.5 py-2 text-[10px] leading-4 text-[#ffc8ce]">{researchState.error}</div>}
+      {researchState.busy && (
+        <div data-testid={`compute-atlas-research-status-${facility.id}`} role="status" aria-live="polite" className="mt-2 rounded border border-[#8dc8e8]/35 bg-[#0d2b3d] px-2.5 py-2 text-[10px] leading-4 text-[#b9e1f2]">
+          {researchState.progress === "retrying" ? "Research taking longer than expected, retrying..." : "Researching public sources. This can take up to 60 seconds."}
+        </div>
+      )}
+      {researchState.error && (
+        <div data-testid={`compute-atlas-error-${facility.id}`} role="alert" className="mt-2 rounded border border-[#efabb8]/60 bg-[#552c3a] px-2.5 py-2 text-[10px] leading-4 text-[#ffc8ce]">
+          {researchState.error}
+          <button data-testid={`compute-atlas-fallback-${facility.id}`} type="button" onClick={onFallback} className="mt-2 block min-h-9 rounded border border-[#ffc8ce]/60 px-2.5 font-mono text-[8px] font-bold uppercase tracking-[0.08em] hover:bg-white/10">
+            Research unavailable. Analyze with default assumptions?
+          </button>
+        </div>
+      )}
     </article>
   );
 }
@@ -555,7 +592,7 @@ export function ComputeAtlasDirectory({ onCurated, onResearchSuccess }: { onCura
   const [companyFilter, setCompanyFilter] = useState<string | null>(null);
   const [facilities, setFacilities] = useState<DirectoryFacility[]>([]);
   const [totalMatching, setTotalMatching] = useState(0);
-  const [researching, setResearching] = useState<Record<string, { busy: boolean; error: string | null }>>({});
+  const [researching, setResearching] = useState<Record<string, { busy: boolean; error: string | null; progress: ResearchProgress }>>({});
 
   useEffect(() => {
     let active = true;
@@ -622,12 +659,31 @@ export function ComputeAtlasDirectory({ onCurated, onResearchSuccess }: { onCura
   };
 
   const handleResearch = async (facility: DirectoryFacility) => {
-    setResearching((current) => ({ ...current, [facility.id]: { busy: true, error: null } }));
+    const knownData: KnownProjectData = {
+      capacity: facility.capacityMW,
+      operator: facility.operator,
+      status: statusLabel(facility.status),
+      sourceUrl: facility.sourceUrl,
+    };
+    setResearching((current) => ({ ...current, [facility.id]: { busy: true, error: null, progress: "researching" } }));
     try {
-      const result = await researchProject(facility.name, locationLabel(facility));
+      const result = await researchProject(facility.name, locationLabel(facility), {
+        knownData,
+        onProgress: (progress) => setResearching((current) => ({
+          ...current,
+          [facility.id]: { busy: true, error: null, progress },
+        })),
+      });
       onResearchSuccess(result);
     } catch (requestError) {
-      setResearching((current) => ({ ...current, [facility.id]: { busy: false, error: requestError instanceof Error ? requestError.message : "AI research is unavailable. Try again." } }));
+      setResearching((current) => ({
+        ...current,
+        [facility.id]: {
+          busy: false,
+          error: requestError instanceof Error ? requestError.message : "AI research is unavailable. Try again.",
+          progress: current[facility.id]?.progress ?? "researching",
+        },
+      }));
     }
   };
 
@@ -680,7 +736,23 @@ export function ComputeAtlasDirectory({ onCurated, onResearchSuccess }: { onCura
               {totalMatching === 0 ? (
                 <div data-testid="compute-atlas-empty" className="rounded-lg border border-white/15 bg-[#102b3b] px-4 py-8 text-center text-[12px] text-[#b9c5c9]">No facilities match these filters. Try another state, company, or search term.</div>
               ) : visibleFacilities.map((facility) => (
-                <DirectoryCard key={facility.id} facility={facility} onCurated={onCurated} onResearch={() => void handleResearch(facility)} researchState={researching[facility.id] ?? { busy: false, error: null }} />
+                <DirectoryCard
+                  key={facility.id}
+                  facility={facility}
+                  onCurated={onCurated}
+                  onResearch={() => void handleResearch(facility)}
+                  onFallback={() => onResearchSuccess(createDefaultAssumptionResearch(
+                    facility.name,
+                    locationLabel(facility),
+                    {
+                      capacity: facility.capacityMW,
+                      operator: facility.operator,
+                      status: statusLabel(facility.status),
+                      sourceUrl: facility.sourceUrl,
+                    },
+                  ))}
+                  researchState={researching[facility.id] ?? { busy: false, error: null, progress: "researching" }}
+                />
               ))}
             </div>
             {visibleFacilities.length < totalMatching && (
@@ -866,7 +938,14 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
                if (!project.facility) return;
                setCompanyResearchingId(project.id);
                setCompanyResearchError(null);
-               void researchProject(project.name, project.location)
+                void researchProject(project.name, project.location, {
+                  knownData: {
+                    capacity: project.capacityMW,
+                    operator: project.operator,
+                    status: project.status,
+                    sourceUrl: project.facility.sourceUrl,
+                  },
+                })
                  .then((research) => handleResearchSuccess(research, company))
                  .catch(() => setCompanyResearchError("AI research is unavailable. Try again."))
                  .finally(() => setCompanyResearchingId(null));

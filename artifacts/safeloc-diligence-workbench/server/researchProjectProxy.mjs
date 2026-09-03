@@ -2,7 +2,7 @@ const OPENAI_CHAT_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions"
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const RESEARCH_PROJECT_MODEL = "gpt-4o";
 const RESEARCH_PROJECT_MAX_TOKENS = 8_192;
-const RESEARCH_PROJECT_TIMEOUT_MS = 45_000;
+const RESEARCH_PROJECT_TIMEOUT_MS = 60_000;
 const DEFAULT_RESEARCH_CAPACITY_MW = 1_200;
 const MAX_RESEARCH_CAPACITY_MW = 10_000;
 const RESEARCH_PROJECT_REQUEST_LIMIT = 10;
@@ -96,7 +96,7 @@ const RESEARCH_PROJECT_RESPONSE_SCHEMA = {
         location: { type: "string", minLength: 1 },
         description: { type: "string", minLength: 1 },
         capacityMW: { anyOf: [{ type: "number" }, { type: "null" }] },
-        capacityProvenance: { type: "string", enum: ["ai-reported", "standardized-default"] },
+        capacityProvenance: { type: "string", enum: ["ai-reported", "directory-reported", "standardized-default"] },
       },
       required: ["name", "location", "description", "capacityMW", "capacityProvenance"],
     },
@@ -166,9 +166,29 @@ function safePublicSourceUrl(value) {
 function parseResearchProjectBody(body) {
   if (!isRecord(body)) throw new Error("Research project body must be a JSON object.");
   const name = body.name ?? body.projectName;
+  let knownData;
+  if (body.knownData !== undefined) {
+    if (!isRecord(body.knownData)) throw new Error('Research field "knownData" must be an object.');
+    const capacity = normalizeReportedCapacityMW(body.knownData.capacity);
+    const operator = typeof body.knownData.operator === "string" && body.knownData.operator.trim()
+      ? body.knownData.operator.trim().slice(0, 160)
+      : null;
+    const status = typeof body.knownData.status === "string" && body.knownData.status.trim()
+      ? body.knownData.status.trim().slice(0, 80)
+      : null;
+    const sourceUrl = safePublicSourceUrl(body.knownData.sourceUrl);
+    const normalized = {
+      ...(capacity === null ? {} : { capacity }),
+      ...(operator ? { operator } : {}),
+      ...(status ? { status } : {}),
+      ...(sourceUrl ? { sourceUrl } : {}),
+    };
+    if (Object.keys(normalized).length) knownData = normalized;
+  }
   return {
     name: nonEmptyString(name, "name", 160),
     location: nonEmptyString(body.location, "location", 160),
+    ...(knownData ? { knownData } : {}),
   };
 }
 
@@ -182,7 +202,7 @@ function normalizeCapacityMW(value) {
   return normalizeReportedCapacityMW(value) ?? DEFAULT_RESEARCH_CAPACITY_MW;
 }
 
-function parseResearchResponse(body, retrievedSources = [], accessedAt = new Date().toISOString().slice(0, 10), coverage = null) {
+function parseResearchResponse(body, retrievedSources = [], accessedAt = new Date().toISOString().slice(0, 10), coverage = null, knownData = null) {
   if (!isRecord(body) || !isRecord(body.projectSummary) || (!Array.isArray(body.evidence) && !isRecord(body.evidence))) {
     throw new Error("Research response must include projectSummary and evidence.");
   }
@@ -193,8 +213,10 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
     name: nonEmptyString(summary.name, "projectSummary.name", 160),
     location: nonEmptyString(summary.location, "projectSummary.location", 160),
     description: nonEmptyString(summary.description, "projectSummary.description", 8_000),
-    capacityMW: reportedCapacityMW ?? DEFAULT_RESEARCH_CAPACITY_MW,
-    capacityProvenance: reportedCapacityMW === null ? "standardized-default" : "ai-reported",
+    capacityMW: normalizeReportedCapacityMW(knownData?.capacity) ?? reportedCapacityMW ?? DEFAULT_RESEARCH_CAPACITY_MW,
+    capacityProvenance: normalizeReportedCapacityMW(knownData?.capacity) !== null
+      ? "directory-reported"
+      : reportedCapacityMW === null ? "standardized-default" : "ai-reported",
   };
 
   const evidenceCandidates = Array.isArray(body.evidence)
@@ -362,7 +384,7 @@ function supportsExplicitZero(id, item, sources) {
   return /\b(0|zero|none)\b/.test(text);
 }
 
-function buildResearchProjectPrompt({ name, location }, retrievedSources = []) {
+function buildResearchProjectPrompt({ name, location, knownData }, retrievedSources = []) {
   const sourcePacket = retrievedSources.map(({ url, title, date, excerpt, sourceClass, searchDomain }) => ({
     url,
     title,
@@ -371,7 +393,10 @@ function buildResearchProjectPrompt({ name, location }, retrievedSources = []) {
     sourceClass,
     searchDomain,
   }));
-  return `Analyze this data-center project using only the retrieved sources below: ${name}. Location: ${location}. Preserve exact source URLs in citations, distinguish facility-level findings from regional context, and return the exact JSON contract from the system instruction.
+  const knownDataPrompt = knownData
+    ? `\n\nThe following facts are already confirmed from the Compute Atlas public database: ${JSON.stringify(knownData)}. Use them as directory discovery context for project identity and summary fields, not as SafeLoc evidence or verified project economics. Focus your research on the 16 evidence variables, not on rediscovering basic project facts.`
+    : "";
+  return `Analyze this data-center project using only the retrieved sources below: ${name}. Location: ${location}. Preserve exact source URLs in citations, distinguish facility-level findings from regional context, and return the exact JSON contract from the system instruction.${knownDataPrompt}
 
 Retrieved source packet:
 ${JSON.stringify(sourcePacket)}`;
@@ -423,7 +448,7 @@ async function retrievePublicSourcesForDomain(project, domain, apiKey, fetchImpl
     body: JSON.stringify({
       model: RESEARCH_PROJECT_MODEL,
       tools: [{ type: "web_search_preview" }],
-      input: `Find current public sources for the exact data-center project "${project.name}" in "${project.location}". Search focus: ${domain.query}. Verify project/operator/location identity and do not mix similarly named facilities. Prefer direct government, regulator, utility, land, permit, environmental, and filed company records over summaries. Return source URLs, dates, titles, and claim-specific excerpts.`,
+      input: `Find current public sources for the exact data-center project "${project.name}" in "${project.location}"${project.knownData?.operator ? ` operated by "${project.knownData.operator}"` : ""}. Search focus: ${domain.query}. Verify project/operator/location identity and do not mix similarly named facilities. Prefer direct government, regulator, utility, land, permit, environmental, and filed company records over summaries. Return source URLs, dates, titles, and claim-specific excerpts.`,
       max_output_tokens: 1_800,
       include: ["web_search_call.action.sources"],
     }),
@@ -616,7 +641,7 @@ export async function handleResearchProjectRequest(
     console.info("[research-project] Raw synthesis response before parsing:", content);
     let parsed;
     try {
-      parsed = parseResearchResponse(JSON.parse(content), retrievedSources, new Date().toISOString().slice(0, 10), sourcePacket);
+      parsed = parseResearchResponse(JSON.parse(content), retrievedSources, new Date().toISOString().slice(0, 10), sourcePacket, project.knownData);
     } catch (error) {
       console.warn(
         "[research-project] Rejected structured research response:",
@@ -646,9 +671,9 @@ export {
   RESEARCH_SEARCH_DOMAINS,
   RESEARCH_PROJECT_MAX_TOKENS,
   RESEARCH_PROJECT_MODEL,
+  RESEARCH_PROJECT_TIMEOUT_MS,
   RESEARCH_PROJECT_RESPONSE_SCHEMA,
   RESEARCH_PROJECT_SYSTEM_PROMPT,
-  RESEARCH_PROJECT_TIMEOUT_MS,
   buildResearchProjectPrompt,
   normalizeCapacityMW,
   normalizeReportedCapacityMW,

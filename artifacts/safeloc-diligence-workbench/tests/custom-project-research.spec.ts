@@ -155,9 +155,17 @@ test.describe("custom project research", () => {
       projectKind: string;
       name: string;
     }> = [];
+    const researchRequests: Array<{
+      name: string;
+      location: string;
+      knownData?: { capacity?: number; operator?: string; status?: string; sourceUrl?: string };
+    }> = [];
     page.on("request", (request) => {
       if (new URL(request.url()).pathname.endsWith("/api/analyze-evidence")) {
         assessmentRequests.push(request.postDataJSON());
+      }
+      if (new URL(request.url()).pathname.endsWith("/api/research-project")) {
+        researchRequests.push(request.postDataJSON());
       }
     });
     await page.route("**/api/directory?**", (route) => route.fulfill({
@@ -201,6 +209,17 @@ test.describe("custom project research", () => {
     await expect(page).toHaveURL(/#brief$/);
     await expect(page.getByTestId("custom-project-status")).toContainText("AI-researched");
     await expect(page.getByTestId("custom-project-summary")).toContainText("QTS Irving 1");
+    expect(researchRequests).toHaveLength(1);
+    expect(researchRequests[0]).toEqual({
+      name: "QTS Irving 1",
+      location: "Irving · Dallas County · TX",
+      knownData: {
+        capacity: 165,
+        operator: "QTS Data Centers",
+        status: "Operating",
+        sourceUrl: "https://compute-atlas.com/facilities/qts-irving-1",
+      },
+    });
 
     await page.goto("/#evidence");
     await expect(page.getByTestId("button-analyze-all-ai")).toBeEnabled();
@@ -240,6 +259,37 @@ test.describe("custom project research", () => {
     await expect(page).toHaveURL(/#brief$/);
     await expect(page.getByTestId("custom-project-capacity")).toHaveText("1,200 MW");
     await expect(page.getByTestId("custom-project-capacity-note")).toContainText("standardized 1,200 MW default used");
+  });
+
+  test("offers a clearly labeled default-assumptions case after the timeout retry fails", async ({ page }) => {
+    let calls = 0;
+    await page.unroute("**/api/research-project");
+    await page.route("**/api/research-project", async (route) => {
+      calls += 1;
+      if (calls === 2) await new Promise((resolve) => setTimeout(resolve, 250));
+      await route.fulfill({
+        status: 504,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Project research timed out." }),
+      });
+    });
+
+    await page.goto("/");
+    await page.getByTestId("input-custom-project-name").fill("Project Timeout");
+    await page.getByTestId("input-custom-project-location").fill("Cook County, Illinois");
+    await page.getByTestId("button-run-ai-analysis").click();
+    await expect(page.getByTestId("home-custom-analysis-loading")).toContainText("retrying");
+    await expect(page.getByTestId("home-custom-analysis-fallback")).toBeVisible();
+    expect(calls).toBe(2);
+    await page.getByTestId("home-custom-analysis-fallback").click();
+
+    await expect(page).toHaveURL(/#brief$/);
+    await expect(page.getByTestId("custom-project-status")).toContainText("Default assumptions");
+    await expect(page.getByTestId("custom-research-banner")).toContainText("All modeled evidence remains Missing Evidence");
+    await page.goto("/#evidence");
+    await expect(page.getByTestId("text-evidence-count")).toContainText("16 / 16");
+    await expect(page.locator('[data-testid^="select-classification-"]')).toHaveCount(16);
+    await expect(page.locator('[data-testid^="select-classification-"]').first()).toHaveValue("Missing Evidence");
   });
 
   test("keeps the scope disclosure closed by default on the curated case", async ({ page }) => {

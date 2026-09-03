@@ -98,6 +98,7 @@ export type ScenarioMetrics = {
 };
 export type ProjectContext = Omit<CustomResearchResponse["projectSummary"], "capacityProvenance"> & {
   capacityProvenance?: CapacityProvenance;
+  researchMode?: CustomResearchResponse["researchMode"];
   kind: "curated" | "custom";
 };
 type DiligenceState = {
@@ -453,6 +454,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       description: research.projectSummary.description,
       capacityMW: research.projectSummary.capacityMW,
       capacityProvenance: research.projectSummary.capacityProvenance,
+      researchMode: research.researchMode ?? "ai-researched",
     });
     setOriginatingCompany(company);
     clearStorage(CURRENT_SESSION_STORAGE_KEY);

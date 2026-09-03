@@ -1,7 +1,7 @@
 import type { Classification, EvidenceItem } from "@/context/DiligenceContext";
 
 export const RESEARCH_PROJECT_ENDPOINT = "/api/research-project";
-export const RESEARCH_PROJECT_TIMEOUT_MS = 45_000;
+export const RESEARCH_PROJECT_TIMEOUT_MS = 60_000;
 export const DEFAULT_RESEARCH_CAPACITY_MW = 1_200;
 export const MAX_RESEARCH_CAPACITY_MW = 10_000;
 
@@ -59,6 +59,7 @@ export type CustomResearchResponse = {
     capacityMW: number;
     capacityProvenance: CapacityProvenance;
   };
+  researchMode?: ResearchMode;
   researchCoverage?: {
     searchedDomains: string[];
     failedDomains: string[];
@@ -67,7 +68,38 @@ export type CustomResearchResponse = {
   evidence: CustomEvidenceRecord[];
 };
 
-export type CapacityProvenance = "ai-reported" | "standardized-default";
+export type CapacityProvenance = "ai-reported" | "directory-reported" | "standardized-default";
+export type ResearchMode = "ai-researched" | "default-assumptions";
+export type KnownProjectData = {
+  capacity?: number | null;
+  operator?: string | null;
+  status?: string | null;
+  sourceUrl?: string | null;
+};
+export type ResearchProgress = "researching" | "retrying";
+export type ResearchProjectOptions = {
+  knownData?: KnownProjectData;
+  onProgress?: (progress: ResearchProgress) => void;
+};
+
+const DEFAULT_EVIDENCE_DEFINITIONS: Record<(typeof CUSTOM_EVIDENCE_IDS)[number], { label: string; unit: string }> = {
+  electricity_cost: { label: "Electricity Cost / MWh", unit: "$/MWh" },
+  water_consumption: { label: "Annual Cooling Water", unit: "Facility total" },
+  grid_interconnection: { label: "Grid Interconnection Timeline", unit: "Project timeline" },
+  water_escalation: { label: "5-Yr Water Cost Escalation", unit: "%" },
+  community_risk: { label: "Community Infrastructure Strain", unit: "Local impact" },
+  renewable_percentage: { label: "Renewable Procurement", unit: "Power mix" },
+  cooling_capex: { label: "Cooling Infrastructure CAPEX", unit: "$M" },
+  electricity_escalation: { label: "5-Yr Electricity Price Increase", unit: "%" },
+  carbon_compliance: { label: "Carbon Compliance Cost", unit: "$M/yr" },
+  permitting_timeline: { label: "Core Build Timeline", unit: "Project timeline" },
+  customer_concentration: { label: "Customer Terms & Concentration", unit: "Customer mix" },
+  water_rights: { label: "Local Water Rights & Allocation", unit: "Facility rights" },
+  site_hazard_exposure: { label: "Site Hazard Exposure Profile", unit: "Facility exposure" },
+  backup_power_capacity: { label: "Backup Power Capacity", unit: "Resilience" },
+  water_source_resilience: { label: "Water Source Resilience", unit: "Supply" },
+  downtime_cost: { label: "Estimated Downtime Cost", unit: "Operating loss" },
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -110,6 +142,21 @@ function normalizeReportedCapacityMW(value: unknown): number | null {
     value <= MAX_RESEARCH_CAPACITY_MW
     ? value
     : null;
+}
+
+function normalizeKnownData(value: KnownProjectData | undefined): KnownProjectData | undefined {
+  if (!value) return undefined;
+  const capacity = normalizeReportedCapacityMW(value.capacity);
+  const operator = isNonEmptyString(value.operator) ? value.operator.trim().slice(0, 160) : undefined;
+  const status = isNonEmptyString(value.status) ? value.status.trim().slice(0, 80) : undefined;
+  const sourceUrl = safePublicSourceUrl(value.sourceUrl);
+  const normalized = {
+    ...(capacity === null ? {} : { capacity }),
+    ...(operator ? { operator } : {}),
+    ...(status ? { status } : {}),
+    ...(sourceUrl ? { sourceUrl } : {}),
+  };
+  return Object.keys(normalized).length ? normalized : undefined;
 }
 
 function parseSource(value: unknown): ResearchEvidenceSource | null {
@@ -231,9 +278,10 @@ function parseResponse(value: unknown): CustomResearchResponse {
         ? DEFAULT_RESEARCH_CAPACITY_MW
         : reportedCapacityMW ?? DEFAULT_RESEARCH_CAPACITY_MW,
       capacityProvenance: summary.capacityProvenance !== "standardized-default" && reportedCapacityMW !== null
-        ? "ai-reported"
+        ? summary.capacityProvenance === "directory-reported" ? "directory-reported" : "ai-reported"
         : "standardized-default",
     },
+    researchMode: value.researchMode === "default-assumptions" ? "default-assumptions" : "ai-researched",
     ...(isRecord(value.researchCoverage) ? {
       researchCoverage: {
         searchedDomains: Array.isArray(value.researchCoverage.searchedDomains) ? value.researchCoverage.searchedDomains.filter(isNonEmptyString) : [],
@@ -247,18 +295,64 @@ function parseResponse(value: unknown): CustomResearchResponse {
   };
 }
 
-export async function researchProject(
+export function createDefaultAssumptionResearch(
   name: string,
   location: string,
-  fetchImpl: typeof fetch = fetch,
-): Promise<CustomResearchResponse> {
+  knownData?: KnownProjectData,
+): CustomResearchResponse {
+  const normalizedKnownData = normalizeKnownData(knownData);
+  const capacityMW = normalizeReportedCapacityMW(normalizedKnownData?.capacity) ?? DEFAULT_RESEARCH_CAPACITY_MW;
+  const context = [
+    normalizedKnownData?.operator ? `Operator: ${normalizedKnownData.operator}.` : null,
+    normalizedKnownData?.status ? `Directory status: ${normalizedKnownData.status}.` : null,
+    normalizedKnownData?.sourceUrl ? `Compute Atlas discovery record: ${normalizedKnownData.sourceUrl}` : null,
+  ].filter(Boolean).join(" ");
+  return {
+    projectSummary: {
+      name: name.trim(),
+      location: location.trim(),
+      description: `AI research was unavailable. This case uses default assumptions and no project-specific evidence. ${context}`.trim(),
+      capacityMW,
+      capacityProvenance: normalizedKnownData?.capacity ? "directory-reported" : "standardized-default",
+    },
+    researchMode: "default-assumptions",
+    researchCoverage: { searchedDomains: [], failedDomains: [], retrievedSourceCount: 0 },
+    evidence: CUSTOM_EVIDENCE_IDS.map((id) => ({
+      id,
+      label: DEFAULT_EVIDENCE_DEFINITIONS[id].label,
+      value: "Not established",
+      unit: DEFAULT_EVIDENCE_DEFINITIONS[id].unit,
+      classification: "Missing Evidence",
+      citation: "AI research unavailable; no project-specific public evidence was established.",
+      description: "This item is intentionally unresolved in the default-assumptions fallback.",
+      sourceRole: "Default-assumptions fallback · no public evidence applied",
+      coverageStatus: "searched-no-support",
+      searchCoverage: [],
+      failedSearchDomains: [],
+    })),
+  };
+}
+
+class ResearchTimeoutError extends Error {
+  constructor(message = "Project research timed out. Try again or use the curated case.") {
+    super(message);
+    this.name = "ResearchTimeoutError";
+  }
+}
+
+async function requestResearchProject(
+  name: string,
+  location: string,
+  knownData: KnownProjectData | undefined,
+  fetchImpl: typeof fetch,
+) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), RESEARCH_PROJECT_TIMEOUT_MS);
   try {
     const response = await fetchImpl(RESEARCH_PROJECT_ENDPOINT, {
       method: "POST",
       headers: { accept: "application/json", "content-type": "application/json" },
-      body: JSON.stringify({ name, location }),
+      body: JSON.stringify({ name, location, ...(knownData ? { knownData } : {}) }),
       signal: controller.signal,
     });
     const rawText = await response.text();
@@ -269,18 +363,42 @@ export async function researchProject(
       body = null;
     }
     if (!response.ok) {
+      if (response.status === 504) throw new ResearchTimeoutError();
       const message = isRecord(body) && isNonEmptyString(body.error) ? body.error : "Project research is unavailable. Try again or use the curated case.";
       throw new Error(message);
     }
     return parseResponse(body);
   } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error("Project research timed out. Try again or use the curated case.");
-    }
+    if (error instanceof ResearchTimeoutError) throw error;
+    if (error instanceof Error && error.name === "AbortError") throw new ResearchTimeoutError();
     throw error instanceof Error ? error : new Error("Project research is unavailable. Try again or use the curated case.");
   } finally {
     clearTimeout(timeout);
   }
+}
+
+export async function researchProject(
+  name: string,
+  location: string,
+  optionsOrFetch: ResearchProjectOptions | typeof fetch = {},
+  legacyOptions: ResearchProjectOptions = {},
+): Promise<CustomResearchResponse> {
+  const fetchImpl = typeof optionsOrFetch === "function" ? optionsOrFetch : fetch;
+  const options = typeof optionsOrFetch === "function" ? legacyOptions : optionsOrFetch;
+  const knownData = normalizeKnownData(options.knownData);
+  options.onProgress?.("researching");
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await requestResearchProject(name, location, knownData, fetchImpl);
+    } catch (error) {
+      if (error instanceof ResearchTimeoutError && attempt === 0) {
+        options.onProgress?.("retrying");
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new ResearchTimeoutError();
 }
 
 export { parseResponse };

@@ -274,7 +274,7 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
         </div>
         <div className="hidden flex-1 items-center justify-center lg:flex">
           <div className="text-center">
-             <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-[#b9d43a]">{project.kind === "custom" ? "AI-researched · high-level project" : "Evidence-Governed Investment Intelligence"}</div>
+             <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-[#b9d43a]">{project.kind === "custom" ? project.researchMode === "default-assumptions" ? "Default assumptions · research unavailable" : "AI-researched · high-level project" : "Evidence-Governed Investment Intelligence"}</div>
              <div className="mt-1 text-[10px] text-[#96a4ad]">{project.name} / {project.location} · IC pre-read</div>
           </div>
         </div>
@@ -352,7 +352,7 @@ export function ShellAside({ screen, metrics, onNavigate, onReset }: { screen: S
       <SectionKicker>Active mandate</SectionKicker>
       <div className="mb-7">
          <div className="font-mono text-[11px] font-bold text-[#122232]">{project.kind === "custom" ? "CUSTOM / SESSION-ONLY" : "STARGATE / ABI-26-001"}</div>
-          <div className="mt-1 text-xs leading-5 text-[#52616b]">{project.kind === "custom" ? "AI-researched project" : "AI infrastructure diligence case"}</div>
+          <div className="mt-1 text-xs leading-5 text-[#52616b]">{project.kind === "custom" ? project.researchMode === "default-assumptions" ? "Default-assumptions project" : "AI-researched project" : "AI infrastructure diligence case"}</div>
       </div>
       <div className="mb-8 rounded-lg border border-[#cbd8d4] bg-[#f9faf8] p-3.5">
         <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#60707d]">
@@ -402,10 +402,11 @@ export function ShellAside({ screen, metrics, onNavigate, onReset }: { screen: S
 export function CustomResearchBanner() {
   const { project } = useDiligence();
   if (project.kind !== "custom") return null;
+  const isDefaultAssumptions = project.researchMode === "default-assumptions";
   return (
     <aside data-testid="custom-research-banner" role="note" className="mb-5 flex items-start gap-3 rounded-lg border-2 border-[#f1cb8b] bg-[#fff8e9] px-4 py-3 text-[#6f460e]">
       <TriangleAlert aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
-      <p className="text-[11px] leading-5"><strong className="font-semibold">AI-researched · high-level custom analysis: {project.name}.</strong> Public findings and regional context are shown for interpretation; they are not facility-level proof unless the cited source supports that project. Financial outputs remain synthetic assumptions scaled to the displayed capacity.</p>
+      <p className="text-[11px] leading-5"><strong className="font-semibold">{isDefaultAssumptions ? "Default assumptions · AI research unavailable" : "AI-researched · high-level custom analysis"}: {project.name}.</strong> {isDefaultAssumptions ? "All modeled evidence remains Missing Evidence. Directory facts provide identity context only and do not count as SafeLoc evidence." : "Public findings and regional context are shown for interpretation; they are not facility-level proof unless the cited source supports that project."} Financial outputs remain synthetic assumptions scaled to the displayed capacity.</p>
     </aside>
   );
 }

@@ -13,11 +13,26 @@ export declare function parseResearchResponse(body: unknown, retrievedSources?: 
   evidence: Array<Record<string, unknown>>;
 };
 export declare function normalizeRetrievedSources(body: unknown): Array<{ url: string; title: string; date: string | null; excerpt: string }>;
+export declare function normalizeSearchTerms(value: unknown): string[];
+export declare function extractSearchTerms(body: unknown): string[];
+export declare function isExactProjectSource(source: Record<string, unknown>, summary: Record<string, unknown>, itemRelevance?: unknown): boolean;
+export declare function calculateSourceSupportConfidence(options: {
+  classification: string;
+  sources?: Array<Record<string, unknown>>;
+  coverageStatus?: string;
+  conflictSummary?: string;
+}): number;
 export declare function extractResponseOutputText(body: unknown): string | null;
 export declare function researchProjectWithWebSearch(project: { name: string; location: string }, apiKey: string, fetchImpl: typeof fetch, signal: AbortSignal): Promise<{
   research: Record<string, unknown>;
   sources: Array<Record<string, unknown>>;
-  coverage: { searchedDomains: string[]; failedDomains: string[]; retrievedSourceCount: number };
+  coverage: {
+    searchedDomains: string[];
+    failedDomains: string[];
+    retrievedSourceCount: number;
+    searchTerms: string[];
+    searchTermsSource: "tool-observed" | "ai-reported" | "unavailable";
+  };
 }>;
 export declare function createResearchProjectRateLimiter(options?: { limit?: number; windowMs?: number; now?: () => number }): {
   allow(req: unknown): { allowed: boolean; retryAfterSeconds: number };

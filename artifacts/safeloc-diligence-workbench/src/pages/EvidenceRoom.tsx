@@ -186,7 +186,7 @@ function EvidenceRow({
   const { sourceStates, project, applyEvidenceCorrection } = useDiligence();
   const source = item.sourceId ? sourceStates[item.sourceId] : null;
   const providerSource = item.providerSourceId ? sourceStates[item.providerSourceId] : null;
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(project.kind === "custom");
   const [correctionOpen, setCorrectionOpen] = useState(false);
   const [correctionUrl, setCorrectionUrl] = useState("");
   const [correctionClaim, setCorrectionClaim] = useState("");
@@ -247,7 +247,12 @@ function EvidenceRow({
          <span className="flex min-w-0 items-center gap-2"><span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: meta.color }} /><span className="min-w-0"><span className="block truncate text-[12px] font-semibold text-[#243844]">{item.label}</span>{project.kind === "custom" && <span data-testid={`badge-ai-researched-${item.id}`} className="mt-1 inline-flex rounded-full bg-[#e9e0f7] px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#7049b7]">AI-researched</span>}</span></span>
          <span className="min-w-0"><span className="flex flex-wrap items-center gap-2"><span className="font-mono text-[12px] font-bold text-[#122232]">{item.value}</span> <span className="text-[10px] text-[#52616b]">{item.unit}</span>{source ? <SourceStatusBadge source={source} compact testId={`evidence-source-status-${item.id}`} /> : <span data-testid={`evidence-origin-${item.id}`} className="rounded-full bg-[#e7ecef] px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.09em] text-[#52616b]">Embedded</span>}</span></span>
            <span className="flex flex-wrap items-center justify-between gap-2"><span className="flex min-w-0 flex-1 flex-wrap items-start gap-2"><ImpactRoleBadge role={item.impactRole} compact testId={`badge-impact-role-${item.id}`} /><span className="flex min-w-[150px] flex-1 flex-col items-stretch"><span className="relative min-w-0 flex-1 md:max-w-[220px]"><select data-testid={`select-classification-${item.id}`} aria-label={`Provenance classification for ${item.label}`} value={item.classification} onChange={(event) => onChange(item.id, event.target.value as Classification)} onClick={(event) => event.stopPropagation()} className="w-full appearance-none rounded-md border bg-white py-2 pl-3 pr-8 text-[10px] font-semibold text-[#243844] outline-none focus:ring-2 focus:ring-[#b9d43a]/50" style={{ borderColor: meta.border }}>{classifications.map((classification) => <option key={classification} value={classification}>{classification}</option>)}</select><ChevronDown aria-hidden="true" className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-[#52616b]" /></span>{item.review && <p data-testid={`review-marker-${item.id}`} aria-label={`${reviewLabel(item.review.kind)} · ${formatReviewTime(item.review.reviewedAt)}`} className="mt-1 text-[9px] leading-4 text-[#7d898f]">{reviewLabel(item.review.kind)} · <time dateTime={item.review.reviewedAt}>{formatReviewTime(item.review.reviewedAt)}</time></p>}</span><button data-testid={`button-analyze-ai-${item.id}`} type="button" aria-label={`Analyze ${item.label} with AI`} aria-busy={analysisBusy} disabled={analysisDisabled} onClick={(event) => { event.preventDefault(); event.stopPropagation(); setOpen(true); onAnalyze(item); }} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[#cbd8d4] bg-white px-2 py-2 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#52616b] hover:border-[#7d898f] hover:text-[#243844] disabled:cursor-wait disabled:opacity-60"><Sparkles aria-hidden="true" className="h-3 w-3 text-[#607500]" />{analysisBusy ? "Analyzing…" : "Analyze with AI"}</button></span><ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-[#52616b] transition-transform group-open:rotate-180 md:hidden" /></span>
-      </summary>
+       </summary>
+       {project.kind === "custom" && (
+         <div data-testid={`support-confidence-${item.id}`} aria-label={`Source-support confidence for ${item.label}: ${typeof item.sourceSupportConfidence === "number" ? `${item.sourceSupportConfidence}%` : "not measured"}`} className="border-t border-[#d9e0e4] bg-[#f7faf8] px-4 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.08em] text-[#52616b] md:px-5">
+           Source-support confidence: {typeof item.sourceSupportConfidence === "number" ? `${item.sourceSupportConfidence}%` : "not measured"}
+         </div>
+       )}
        {analysisBusy && <div data-testid={`status-ai-analysis-${item.id}`} role="status" aria-live="polite" className="border-t border-[#d9e0e4] bg-[#f7faf8] px-4 py-2 text-[10px] text-[#60707d] md:px-5"><LoaderCircle aria-hidden="true" className="mr-1.5 inline h-3 w-3 animate-spin" />Analyzing source quality…</div>}
       <div className="grid gap-3 bg-[#fbfcfa] px-4 pb-4 pt-1 md:grid-cols-[1.55fr_0.8fr_1.55fr] md:px-5">
         <p className="text-[10px] leading-4 text-[#52616b] md:col-span-2">{item.description}</p>
@@ -292,7 +297,17 @@ function EvidenceRow({
                     </span>
                     {item.failedSearchDomains?.length ? <span data-testid={`coverage-failures-${item.id}`} className="font-mono text-[8px] uppercase tracking-[0.08em] text-[#a65a00]">{item.failedSearchDomains.length} search domain{item.failedSearchDomains.length === 1 ? "" : "s"} unavailable</span> : null}
                   </span>
-                  {item.conflictSummary && <span data-testid={`source-conflict-${item.id}`} className="mt-2 block rounded border border-[#efbac3] bg-[#fff4f6] p-2 text-[9px] text-[#8f2437]"><strong>Conflict:</strong> {item.conflictSummary}</span>}
+                   {item.conflictSummary && <span data-testid={`source-conflict-${item.id}`} className="mt-2 block rounded border border-[#efbac3] bg-[#fff4f6] p-2 text-[9px] text-[#8f2437]"><strong>Conflict:</strong> {item.conflictSummary}</span>}
+                   <span data-testid={`classification-reason-${item.id}`} className="mt-2 block text-[9px] leading-4 text-[#52616b]"><strong>Classification basis:</strong> {item.classificationReason ?? "No classification reason provided."}</span>
+                   <span data-testid={`source-relevance-${item.id}`} className="mt-1 block text-[9px] leading-4 text-[#52616b]"><strong>Source relevance:</strong> {item.sourceRelevanceNote ?? "No source relevance note provided."}</span>
+                   <details data-testid={`search-transparency-${item.id}`} className="mt-2 rounded border border-[#d9e0e4] bg-white">
+                     <summary className="cursor-pointer list-none px-2 py-1.5 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#60707d] [&::-webkit-details-marker]:hidden">Search transparency · {item.searchTermsSource === "tool-observed" ? "tool-observed queries" : item.searchTermsSource === "ai-reported" ? "AI-reported search terms" : "search telemetry unavailable"}</summary>
+                     <span className="block border-t border-[#e5eae8] px-2 py-2 text-[9px] leading-4 text-[#52616b]">
+                       {item.searchTerms?.length
+                         ? <><strong>{item.searchTermsSource === "tool-observed" ? "Tool-observed queries" : "AI-reported search terms"}:</strong> {item.searchTerms.join(" · ")}</>
+                         : "Search terms unavailable; none are shown because search telemetry was not returned."}
+                     </span>
+                   </details>
                    {sourceProposal?.sourceUrl && (
                      <span data-testid={`source-research-proposal-${item.id}`} className="mt-3 block rounded-lg border border-[#8dc8e8] bg-[#eef8fc] p-3">
                        <span className="font-mono text-[8px] font-bold uppercase tracking-[0.1em] text-[#255bb7]">New source found · review required</span>
@@ -307,12 +322,12 @@ function EvidenceRow({
                        </span>
                      </span>
                    )}
-                  {(item.sources?.length ?? 0) > 1 && (
+                   {(item.sources?.length ?? 0) > 0 && (
                     <span data-testid={`custom-sources-${item.id}`} className="mt-2 block">
                       <span className="font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#60707d]">{item.sources?.length} claim-specific sources</span>
                       {item.sources?.map((evidenceSource) => (
-                        <a key={evidenceSource.url} href={evidenceSource.url} target="_blank" rel="noopener noreferrer" className="mt-1 flex items-start justify-between gap-2 rounded border border-[#d9e0e4] bg-white p-2 text-[9px] text-[#255bb7] hover:border-[#8dc8e8]">
-                          <span><strong>{evidenceSource.title}</strong><span className="mt-0.5 block text-[#60707d]">{evidenceSource.sourceClass.replaceAll("-", " ")} · {evidenceSource.relationship}</span></span>
+                         <a key={evidenceSource.url} data-testid={`custom-source-${item.id}-${encodeURIComponent(evidenceSource.url)}`} href={evidenceSource.url} target="_blank" rel="noopener noreferrer" className="mt-1 flex items-start justify-between gap-2 rounded border border-[#d9e0e4] bg-white p-2 text-[9px] text-[#255bb7] hover:border-[#8dc8e8]">
+                           <span><strong>{evidenceSource.title}</strong><span className="mt-0.5 block text-[#60707d]">{evidenceSource.publisher} · {evidenceSource.publishedAt ? formatClaimDate(evidenceSource.publishedAt) : "not provided"} · {evidenceSource.sourceClass.replaceAll("-", " ")} · {evidenceSource.relationship}</span><span className="mt-1 block leading-4 text-[#52616b]">{evidenceSource.relevanceNote ?? item.sourceRelevanceNote ?? "Claim-specific source mapping returned by research."}</span></span>
                           <ExternalLink aria-hidden="true" className="h-3 w-3 shrink-0" />
                         </a>
                       ))}

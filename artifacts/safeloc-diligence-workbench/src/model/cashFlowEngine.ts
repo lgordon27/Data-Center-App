@@ -29,6 +29,7 @@ export type EvidenceRecord = Record<
      modelClassification?: Classification;
     numericValue?: number;
     qualitativeValue?: QualitativeEvidenceValue;
+    sourceSupportConfidence?: number;
   }
 >;
 
@@ -288,6 +289,16 @@ export const MATERIAL_EVIDENCE_IDS = [
 ] as const;
 
 export type MaterialEvidenceId = (typeof MATERIAL_EVIDENCE_IDS)[number];
+export const EFFECTIVE_SUPPORT_CONFIDENCE_THRESHOLD = 70;
+export const UNRESOLVED_SUPPORT_CONFIDENCE_THRESHOLD = 50;
+
+export function getEffectiveSupportState(item: EvidenceRecord[string]) {
+  if (item.classification === "Missing Evidence") return "unresolved" as const;
+  if (typeof item.sourceSupportConfidence !== "number") return "unmeasured" as const;
+  if (item.sourceSupportConfidence < UNRESOLVED_SUPPORT_CONFIDENCE_THRESHOLD) return "unresolved" as const;
+  if (item.sourceSupportConfidence < EFFECTIVE_SUPPORT_CONFIDENCE_THRESHOLD) return "conditional" as const;
+  return "supported" as const;
+}
 function finiteNumericValue(value: unknown, fallback: number) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
@@ -694,12 +705,14 @@ function runModel(evidence: EvidenceRecord, capacityMW: number): CashFlowModel {
       ? ((schedule[3]?.netEquityCashFlow ?? 0) / equityInvested) * 100
       : 0;
   const missingMaterialCount = Object.values(evidence).filter(
-    (item) => item.classification === "Missing Evidence" && isMaterialEvidenceId(item.id),
+    (item) => isMaterialEvidenceId(item.id) && getEffectiveSupportState(item) === "unresolved",
   ).length;
   const materialUnverifiedCount = Object.values(evidence).filter(
     (item) =>
       isMaterialEvidenceId(item.id) &&
-      (item.classification === "Model Inference" || item.classification === "User Assumption"),
+      (item.classification === "Model Inference" ||
+        item.classification === "User Assumption" ||
+        getEffectiveSupportState(item) === "conditional"),
   ).length;
   const recommendationStatus: RecommendationStatus =
     missingMaterialCount > 0

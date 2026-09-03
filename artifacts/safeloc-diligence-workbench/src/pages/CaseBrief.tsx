@@ -30,7 +30,7 @@ import {
   getTopFemaHazards,
 } from "@/data/femaNRI";
 import { ClaimCitation } from "@/components/ClaimCitation";
-import { summarizeSourceCoverage } from "@/services/researchProjectService";
+import { summarizeResearchAudit, summarizeSourceCoverage } from "@/services/researchProjectService";
 
 function ScopeLimitationsDisclosure() {
   return (
@@ -57,6 +57,7 @@ function CustomCaseBrief({ project, onNavigate }: { project: ReturnType<typeof u
   const { evidence } = useDiligence();
   const evidenceItems = Object.values(evidence);
   const sourceCoverage = summarizeSourceCoverage(evidenceItems);
+  const researchAudit = summarizeResearchAudit(evidenceItems);
   const isDefaultAssumptions = project.researchMode === "default-assumptions";
   const capacityLabel = project.capacityProvenance === "directory-reported"
     ? "Directory-reported model capacity"
@@ -85,10 +86,14 @@ function CustomCaseBrief({ project, onNavigate }: { project: ReturnType<typeof u
         {!isDefaultAssumptions && (
           <div data-testid="source-coverage-summary" className="mt-5 rounded-lg border border-[#d9e0e4] bg-[#f5f7f6] p-4">
             <div className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#52616b]">Source Coverage</div>
-            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+             <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <div><strong data-testid="source-coverage-supported" className="font-mono text-lg text-[#08644f]">{sourceCoverage.supported} of 16</strong><p className="mt-1 text-[10px] leading-4 text-[#52616b]">supported by retrieved sources</p></div>
               <div><strong data-testid="source-coverage-ai-knowledge" className="font-mono text-lg text-[#a65a00]">{sourceCoverage.aiKnowledge} of 16</strong><p className="mt-1 text-[10px] leading-4 text-[#52616b]">classified from AI knowledge — verify independently</p></div>
               <div><strong data-testid="source-coverage-missing" className="font-mono text-lg text-[#ba2f45]">{sourceCoverage.missing} of 16</strong><p className="mt-1 text-[10px] leading-4 text-[#52616b]">with no information found</p></div>
+               <div><strong data-testid="audit-unique-source-count" className="font-mono text-lg text-[#255bb7]">{researchAudit.uniqueValidatedSourceCount}</strong><p className="mt-1 text-[10px] leading-4 text-[#52616b]">unique validated sources</p></div>
+               <div><strong data-testid="audit-average-confidence" className="font-mono text-lg text-[#607500]">{researchAudit.averageSourceSupportConfidence}%</strong><p className="mt-1 text-[10px] leading-4 text-[#52616b]">average source-support confidence</p></div>
+               <div><strong data-testid="audit-strong-support-count" className="font-mono text-lg text-[#08644f]">{researchAudit.strongSupportItemCount}</strong><p className="mt-1 text-[10px] leading-4 text-[#52616b]">items with strong support (90%+)</p></div>
+               <div><strong data-testid="audit-no-source-count" className="font-mono text-lg text-[#ba2f45]">{researchAudit.noSourceItemCount}</strong><p className="mt-1 text-[10px] leading-4 text-[#52616b]">items with no validated source</p></div>
             </div>
           </div>
         )}

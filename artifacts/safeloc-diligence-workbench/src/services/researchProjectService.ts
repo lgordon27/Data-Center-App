@@ -30,6 +30,12 @@ export type CustomEvidenceRecord = Pick<
 > & {
   numericValue?: number;
   qualitativeValue?: EvidenceItem["qualitativeValue"];
+  sourceSupportConfidence?: number;
+  classificationReason?: string;
+  sourceRelevanceNote?: string;
+  sourceRelevance?: "exact-project" | "related-context" | "unresolved";
+  searchTerms?: string[];
+  searchTermsSource?: "tool-observed" | "ai-reported" | "unavailable";
   sources?: ResearchEvidenceSource[];
   coverageStatus?: ResearchCoverageStatus;
   searchCoverage?: string[];
@@ -49,6 +55,8 @@ export type ResearchEvidenceSource = {
   sourceClass: "primary-government" | "primary-utility" | "primary-company" | "secondary-reporting" | "reviewer-submitted";
   searchDomain: string;
   relationship: "primary" | "corroborating" | "conflicting";
+  exactProject?: boolean;
+  relevanceNote?: string;
 };
 
 export type CustomResearchResponse = {
@@ -64,6 +72,8 @@ export type CustomResearchResponse = {
     searchedDomains: string[];
     failedDomains: string[];
     retrievedSourceCount: number;
+    searchTerms: string[];
+    searchTermsSource: "tool-observed" | "ai-reported" | "unavailable";
   };
   evidence: CustomEvidenceRecord[];
 };
@@ -95,6 +105,22 @@ export function summarizeSourceCoverage(evidence: CustomEvidenceRecord[]) {
     }
     return summary;
   }, { supported: 0, aiKnowledge: 0, missing: 0 });
+}
+
+export function summarizeResearchAudit(evidence: CustomEvidenceRecord[]) {
+  const uniqueSources = new Set(
+    evidence.flatMap((item) => [
+      ...(item.sources ?? []).map((source) => source.url),
+      ...(item.sourceUrl ? [item.sourceUrl] : []),
+    ]),
+  );
+  const confidenceTotal = evidence.reduce((total, item) => total + (item.sourceSupportConfidence ?? 0), 0);
+  return {
+    uniqueValidatedSourceCount: uniqueSources.size,
+    averageSourceSupportConfidence: evidence.length ? Math.round(confidenceTotal / evidence.length) : 0,
+    strongSupportItemCount: evidence.filter((item) => (item.sourceSupportConfidence ?? 0) >= 90).length,
+    noSourceItemCount: evidence.filter((item) => !item.sourceUrl && !(item.sources?.length)).length,
+  };
 }
 
 const DEFAULT_EVIDENCE_DEFINITIONS: Record<(typeof CUSTOM_EVIDENCE_IDS)[number], { label: string; unit: string }> = {
@@ -197,7 +223,27 @@ function parseSource(value: unknown): ResearchEvidenceSource | null {
     sourceClass,
     searchDomain: isNonEmptyString(value.searchDomain) ? value.searchDomain.trim() : "project-identity",
     relationship,
+    ...(typeof value.exactProject === "boolean" ? { exactProject: value.exactProject } : {}),
+    ...(isNonEmptyString(value.relevanceNote) ? { relevanceNote: value.relevanceNote.trim() } : {}),
   };
+}
+
+function optionalConfidence(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100
+    ? Math.round(value)
+    : undefined;
+}
+
+function parseSearchTerms(value: unknown): string[] {
+  return Array.isArray(value)
+    ? [...new Set(value.filter(isNonEmptyString).map((term) => term.trim().replace(/\s+/g, " ").slice(0, 240)))].slice(0, 8)
+    : [];
+}
+
+function parseSearchTermsSource(value: unknown, terms: string[]): NonNullable<CustomEvidenceRecord["searchTermsSource"]> {
+  if (value === "tool-observed" && terms.length) return "tool-observed";
+  if (value === "ai-reported" && terms.length) return "ai-reported";
+  return "unavailable";
 }
 
 const VALID_CLASSIFICATIONS: Classification[] = [
@@ -254,6 +300,10 @@ function parseResponse(value: unknown): CustomResearchResponse {
     const coverageStatus = ["supported", "searched-no-support", "partial", "conflicting"].includes(String(candidate.coverageStatus))
       ? candidate.coverageStatus as ResearchCoverageStatus
       : sourceUrl ? "supported" : "searched-no-support";
+    const sourceRelevance: NonNullable<CustomEvidenceRecord["sourceRelevance"]> =
+      candidate.sourceRelevance === "exact-project" || candidate.sourceRelevance === "related-context" || candidate.sourceRelevance === "unresolved"
+        ? candidate.sourceRelevance
+        : sourceUrl ? "related-context" : "unresolved";
     const accessStatus = ["open", "paywall", "registration", "not provided"].includes(String(candidate.sourceAccessStatus))
       ? candidate.sourceAccessStatus as EvidenceItem["sourceAccessStatus"]
       : undefined;
@@ -269,6 +319,16 @@ function parseResponse(value: unknown): CustomResearchResponse {
       coverageStatus,
       searchCoverage: Array.isArray(candidate.searchCoverage) ? candidate.searchCoverage.filter(isNonEmptyString).map((entry) => entry.trim()) : [],
       failedSearchDomains: Array.isArray(candidate.failedSearchDomains) ? candidate.failedSearchDomains.filter(isNonEmptyString).map((entry) => entry.trim()) : [],
+      sourceSupportConfidence: optionalConfidence(candidate.sourceSupportConfidence),
+      classificationReason: isNonEmptyString(candidate.classificationReason)
+        ? candidate.classificationReason.trim()
+        : "The research response did not provide a concise classification reason.",
+      sourceRelevanceNote: isNonEmptyString(candidate.sourceRelevanceNote)
+        ? candidate.sourceRelevanceNote.trim()
+        : sourceUrl ? "The returned source is mapped to this claim; review it before relying on the finding." : "No validated source was mapped to this claim.",
+      sourceRelevance,
+      searchTerms: parseSearchTerms(candidate.searchTerms),
+      searchTermsSource: parseSearchTermsSource(candidate.searchTermsSource, parseSearchTerms(candidate.searchTerms)),
       ...(isNonEmptyString(candidate.conflictSummary) ? { conflictSummary: candidate.conflictSummary.trim() } : {}),
       ...(sources.length ? { sources } : {}),
       ...(sourceUrl ? {
@@ -304,6 +364,8 @@ function parseResponse(value: unknown): CustomResearchResponse {
         retrievedSourceCount: typeof value.researchCoverage.retrievedSourceCount === "number" && Number.isFinite(value.researchCoverage.retrievedSourceCount)
           ? value.researchCoverage.retrievedSourceCount
           : 0,
+        searchTerms: parseSearchTerms(value.researchCoverage.searchTerms),
+        searchTermsSource: parseSearchTermsSource(value.researchCoverage.searchTermsSource, parseSearchTerms(value.researchCoverage.searchTerms)),
       },
     } : {}),
     evidence,
@@ -331,7 +393,13 @@ export function createDefaultAssumptionResearch(
       capacityProvenance: normalizedKnownData?.capacity ? "directory-reported" : "standardized-default",
     },
     researchMode: "default-assumptions",
-    researchCoverage: { searchedDomains: [], failedDomains: [], retrievedSourceCount: 0 },
+    researchCoverage: {
+      searchedDomains: [],
+      failedDomains: [],
+      retrievedSourceCount: 0,
+      searchTerms: [],
+      searchTermsSource: "unavailable",
+    },
     evidence: CUSTOM_EVIDENCE_IDS.map((id) => ({
       id,
       label: DEFAULT_EVIDENCE_DEFINITIONS[id].label,
@@ -344,6 +412,11 @@ export function createDefaultAssumptionResearch(
       coverageStatus: "searched-no-support",
       searchCoverage: [],
       failedSearchDomains: [],
+      sourceSupportConfidence: 0,
+      classificationReason: "Default assumptions contain no project-specific evidence.",
+      sourceRelevanceNote: "No validated source was mapped to this claim.",
+      searchTerms: [],
+      searchTermsSource: "unavailable",
     })),
   };
 }

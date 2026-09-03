@@ -52,6 +52,11 @@ const RESEARCH_EVIDENCE_RECORD_SCHEMA = {
     conflictSummary: { anyOf: [{ type: "string" }, { type: "null" }] },
     coverageStatus: { type: "string", enum: ["supported", "searched-no-support", "partial", "conflicting"] },
     numericValue: { anyOf: [{ type: "number" }, { type: "null" }] },
+    sourceSupportConfidence: { type: "number", minimum: 0, maximum: 100 },
+    classificationReason: { type: "string", minLength: 1 },
+    sourceRelevanceNote: { type: "string", minLength: 1 },
+    sourceRelevance: { type: "string", enum: ["exact-project", "related-context", "unresolved"] },
+    searchTerms: { type: "array", items: { type: "string", minLength: 1 }, maxItems: 8 },
     qualitativeValue: {
       anyOf: [
         { type: "string", enum: ["low", "moderate", "high", "single-source", "diversified"] },
@@ -72,6 +77,11 @@ const RESEARCH_EVIDENCE_RECORD_SCHEMA = {
     "conflictSummary",
     "coverageStatus",
     "numericValue",
+    "sourceSupportConfidence",
+    "classificationReason",
+    "sourceRelevanceNote",
+    "sourceRelevance",
+    "searchTerms",
     "qualitativeValue",
   ],
 };
@@ -110,7 +120,7 @@ SafeLoc models exactly 16 evidence variables: electricity_cost, water_consumptio
 
 The projectSummary.description must explicitly report relevant findings, when available, about electrical-equipment procurement and lead times, jurisdictional bans or moratoriums, noise ordinances and operational impacts, local electricity-rate concerns, and semiconductor and memory supply-chain constraints. It must also identify speculative or phantom grid-load requests when that context is relevant. These are contextual research areas, not additional modeled evidence inputs: do not add them to the evidence array, assign them evidence classifications, or imply that market-wide statistics prove facility-level facts.
 
-Respond with one JSON object matching the supplied schema. projectSummary must contain name, location, description, and capacityMW. Every evidence record must contain label, value, unit, classification, citation, description, sourceRole, sourceUrl, sourceUrls, conflictSummary, coverageStatus, numericValue, and qualitativeValue. sourceUrl is the strongest direct source, and sourceUrls contains up to four direct supporting, corroborating, or conflicting packet URLs. Use null for sourceUrl, conflictSummary, numericValue, or qualitativeValue and [] for sourceUrls when unavailable. Identify conflicting sources explicitly rather than silently choosing one. When a cited source in the retrieved packet directly supports the finding, return that source's exact URL; never invent or return a URL that is not in the packet. The server will attach validated source metadata. A source URL is a research aid only and never facility-level proof by itself. Do not infer numeric zero or categorical none from silence: zero/none is valid only when an exact-project source explicitly establishes it under the variable definition. For grid_interconnection, numericValue is months of delay; for renewable_percentage it is the facility's delivered or contractually procured renewable share. qualitativeValue may only be low, moderate, high, single-source, or diversified. Use concise plain language. Do not include markdown or commentary.`;
+Respond with one JSON object matching the supplied schema. projectSummary must contain name, location, description, and capacityMW. Every evidence record must contain label, value, unit, classification, citation, sourceRole, sourceUrl, sourceUrls, conflictSummary, coverageStatus, numericValue, sourceSupportConfidence, classificationReason, sourceRelevance, sourceRelevanceNote, searchTerms, and qualitativeValue. sourceSupportConfidence is an estimate for context only; the server ignores it and computes deterministic support confidence from validated sources. sourceUrl is the strongest direct source, and sourceUrls contains up to four direct supporting, corroborating, or conflicting packet URLs. Use null for sourceUrl, conflictSummary, numericValue, or qualitativeValue and [] for sourceUrls or searchTerms when unavailable. Identify conflicting sources explicitly rather than silently choosing one. When a cited source in the retrieved packet directly supports the finding, return that source's exact URL; never invent or return a URL that is not in the packet. The server will attach validated source metadata. A source URL is a research aid only and never facility-level proof by itself. Use sourceRelevance exact-project only when the source names or otherwise identifies this facility; use related-context for regional or industry context, and unresolved when no source is mapped. sourceRelevanceNote must explain why each matched source is relevant to this claim. classificationReason must concisely explain the provenance classification. Include searchTerms only when actually used or remembered; the server labels them as tool-observed when telemetry exists or AI-reported otherwise. Do not infer numeric zero or categorical none from silence: zero/none is valid only when an exact-project source explicitly establishes it under the variable definition. For grid_interconnection, numericValue is months of delay; for renewable_percentage it is the facility's delivered or contractually procured renewable share. qualitativeValue may only be low, moderate, high, single-source, or diversified. Use concise plain language. Do not include markdown or commentary.`;
 
 function sendJson(res, status, body) {
   res.statusCode = status;
@@ -120,7 +130,7 @@ function sendJson(res, status, body) {
 }
 
 const WEB_SEARCH_SOURCE_BOUNDARY_PROMPT = `
-Use the built-in web-search tool during this response. Never invent a source, URL, date, excerpt, or facility-level fact. Put the exact public URLs returned by web search into sourceUrl and sourceUrls. Verified Evidence requires an exact-project government, regulator, utility, filed-company, or independent-reporting source returned by this web search; a company announcement is normally Management Assertion. If no searched source independently confirms a claim, do not classify it as Verified Evidence. You may use well-established model knowledge only at a Management Assertion ceiling and must say it requires independent verification. If projectSummary states an exact-project fact such as a named customer or offtaker, behind-the-meter power, disclosed capacity, or a stated water source, map the same fact into the relevant evidence variable at the appropriate classification rather than calling that variable Missing Evidence. Do not classify contextual market or industry reporting as facility-level Verified Evidence.`;
+Use the built-in web-search tool during this response. Never invent a source, URL, date, excerpt, or facility-level fact. Put the exact public URLs returned by web search into sourceUrl and sourceUrls. Verified Evidence requires an exact-project government, regulator, utility, filed-company, or independent-reporting source returned by this web search; a company announcement is normally Management Assertion. If no searched source independently confirms a claim, do not classify it as Verified Evidence. You may use well-established model knowledge only at a Management Assertion ceiling and must say it requires independent verification. If projectSummary states an exact-project fact such as a named customer or offtaker, behind-the-meter power, disclosed capacity, or a stated water source, map the same fact into the relevant evidence variable at the appropriate classification rather than calling that variable Missing Evidence. Do not classify contextual market or industry reporting as facility-level Verified Evidence. Do not use sourceSupportConfidence to promote a finding: the server recomputes it from validated sources, independence, and conflicts.`;
 
 function isRecord(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -229,6 +239,92 @@ function normalizeCapacityMW(value) {
   return normalizeReportedCapacityMW(value) ?? DEFAULT_RESEARCH_CAPACITY_MW;
 }
 
+function normalizeSearchTerms(value) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value
+    .filter((term) => typeof term === "string" && term.trim())
+    .map((term) => term.trim().replace(/\s+/g, " ").slice(0, 240)))]
+    .slice(0, 8);
+}
+
+function extractSearchTerms(body) {
+  const terms = [];
+  for (const output of Array.isArray(body?.output) ? body.output : []) {
+    if (output?.type !== "web_search_call") continue;
+    const action = output.action;
+    for (const candidate of [
+      action?.query,
+      action?.search_query,
+      ...(Array.isArray(action?.queries) ? action.queries : []),
+    ]) {
+      if (typeof candidate === "string") terms.push(candidate);
+      else if (isRecord(candidate) && typeof candidate.query === "string") terms.push(candidate.query);
+    }
+  }
+  return normalizeSearchTerms(terms);
+}
+
+function sourceIdentityTokens(value) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .split(/\s+/)
+    .filter((token) => token.length > 2 && !["the", "and", "for", "project", "data", "center"].includes(token));
+}
+
+function isExactProjectSource(source, summary, itemRelevance) {
+  if (source?.exactProject === true) return true;
+  if (source?.exactProject === false) return false;
+  const sourceTokens = new Set(sourceIdentityTokens(`${source?.title ?? ""} ${source?.excerpt ?? ""} ${source?.url ?? ""}`));
+  const nameTokens = sourceIdentityTokens(summary?.name);
+  const locationTokens = sourceIdentityTokens(summary?.location);
+  const nameMatches = nameTokens.length > 0 && nameTokens.every((token) => sourceTokens.has(token));
+  const locationMatches = locationTokens.length > 0 && locationTokens.filter((token) => sourceTokens.has(token)).length >= 2;
+  return nameMatches || locationMatches;
+}
+
+function calculateSourceSupportConfidence({
+  classification,
+  sources = [],
+  coverageStatus,
+  conflictSummary,
+}) {
+  if (classification === "Missing Evidence" || !Array.isArray(sources) || sources.length === 0) return 0;
+  const nonConflicting = sources.filter((source) => source.relationship !== "conflicting");
+  const exactSources = nonConflicting.filter((source) => source.exactProject);
+  const strongSources = exactSources.filter((source) =>
+    ["primary-government", "primary-utility", "primary-company"].includes(source.sourceClass),
+  );
+  const independentPublishers = new Set(strongSources.map((source) => {
+    try {
+      return new URL(source.url).hostname.toLowerCase().replace(/^www\./, "");
+    } catch {
+      return source.publisher;
+    }
+  }));
+  let confidence = strongSources.length
+    ? independentPublishers.size >= 2 ? 94 : 82
+    : exactSources.length ? 62 : 38;
+  if (coverageStatus === "conflicting" || conflictSummary) confidence = Math.min(confidence, 59);
+  return Math.max(0, Math.min(100, Math.round(confidence)));
+}
+
+function defaultClassificationReason(classification, supportedByRetrievedSource, sourceSupportConfidence) {
+  if (classification === "Missing Evidence") {
+    return "No validated claim-specific public source established this facility-level item.";
+  }
+  if (!supportedByRetrievedSource) {
+    return `${classification} retained conservatively because no retrieved source matched the claim; independent verification is required.`;
+  }
+  if (sourceSupportConfidence >= 90) {
+    return `${classification} is supported by multiple independent exact-project public sources.`;
+  }
+  if (sourceSupportConfidence >= 70) {
+    return `${classification} is supported by one strong exact-project public source; corroboration would strengthen it.`;
+  }
+  return `${classification} has a validated link, but the retrieved packet provides limited exact-project support.`;
+}
+
 function parseResearchResponse(body, retrievedSources = [], accessedAt = new Date().toISOString().slice(0, 10), coverage = null, knownData = null) {
   if (!isRecord(body) || !isRecord(body.projectSummary) || (!Array.isArray(body.evidence) && !isRecord(body.evidence))) {
     throw new Error("Research response must include projectSummary and evidence.");
@@ -262,6 +358,7 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
       .map((source) => [safePublicSourceUrl(source.url), source])
       .filter(([url]) => Boolean(url)),
   );
+  const observedSearchTerms = normalizeSearchTerms(coverage?.searchTerms);
   const seenIds = new Set();
   const evidence = evidenceCandidates.map((item, index) => {
     if (!isRecord(item)) throw new Error(`Research evidence record ${index + 1} is invalid.`);
@@ -289,6 +386,7 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
     const sourceUrl = validatedUrls[0] ?? null;
     const supportingSources = validatedUrls.map((url) => {
       const metadata = sourceByUrl.get(url);
+      const exactProject = isExactProjectSource(metadata, summary, item.sourceRelevance);
       return {
         url,
         title: typeof metadata?.title === "string" && metadata.title.trim() ? metadata.title.trim().slice(0, 500) : "not provided",
@@ -299,6 +397,14 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
         excerpt: stringOrFallback(metadata?.excerpt, "No excerpt returned.", 1_000),
         sourceClass: metadata?.sourceClass ?? classifySource(url, metadata?.title),
         searchDomain: metadata?.searchDomain ?? "project-identity",
+        exactProject,
+        relevanceNote: stringOrFallback(
+          metadata?.relevanceNote ?? item.sourceRelevanceNote,
+          exactProject
+            ? "This retrieved source is mapped to the claim and contains exact-project context."
+            : "This retrieved source is mapped to the claim but may provide related context rather than facility-level proof.",
+          500,
+        ),
         relationship: url === sourceUrl ? "primary" : item.coverageStatus === "conflicting" ? "conflicting" : "corroborating",
       };
     });
@@ -342,6 +448,17 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
       failedSearchDomains: Array.isArray(coverage?.failedByEvidence?.[id])
         ? coverage.failedByEvidence[id]
         : Array.isArray(coverage?.failedDomains) ? coverage.failedDomains : [],
+      searchTerms: observedSearchTerms.length ? observedSearchTerms : normalizeSearchTerms(item.searchTerms),
+      searchTermsSource: observedSearchTerms.length
+        ? "tool-observed"
+        : normalizeSearchTerms(item.searchTerms).length ? "ai-reported" : "unavailable",
+      sourceRelevanceNote: stringOrFallback(
+        item.sourceRelevanceNote,
+        supportedByRetrievedSource
+          ? "The retrieved source is directly mapped to this claim; review the source text before relying on it."
+          : "No validated source was mapped to this claim.",
+        500,
+      ),
     };
     if (sourceUrl) {
       const metadata = supportingSources[0];
@@ -380,6 +497,20 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
       record.description = "Zero cannot be inferred from a source being silent; an exact-project source must explicitly establish it.";
       delete record.numericValue;
     }
+    record.sourceSupportConfidence = calculateSourceSupportConfidence({
+      classification: record.classification,
+      sources: record.sources ?? [],
+      coverageStatus: record.coverageStatus,
+      conflictSummary: record.conflictSummary,
+    });
+    record.sourceRelevance = supportingSources.length
+      ? supportingSources.some((source) => source.exactProject) ? "exact-project" : "related-context"
+      : "unresolved";
+    record.classificationReason = stringOrFallback(
+      item.classificationReason,
+      defaultClassificationReason(record.classification, supportedByRetrievedSource, record.sourceSupportConfidence),
+      500,
+    );
     return record;
   });
 
@@ -389,6 +520,8 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
       searchedDomains: Array.isArray(coverage?.searchedDomains) ? coverage.searchedDomains : [],
       failedDomains: Array.isArray(coverage?.failedDomains) ? coverage.failedDomains : [],
       retrievedSourceCount: retrievedSources.length,
+      searchTerms: observedSearchTerms,
+      searchTermsSource: observedSearchTerms.length ? "tool-observed" : "unavailable",
     },
     evidence,
   };
@@ -474,6 +607,8 @@ function normalizeRetrievedSources(body, searchDomain = "project-identity") {
         accessStatus: ["open", "paywall", "registration"].includes(source.access_status) ? source.access_status : "not provided",
         sourceClass: url ? classifySource(url, title) : "secondary-reporting",
         searchDomain,
+        exactProject: source.exactProject === true,
+        relevanceNote: typeof source.relevanceNote === "string" ? source.relevanceNote.trim().slice(0, 500) : null,
       };
     })
     .filter((source) => {
@@ -583,6 +718,7 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal) 
     throw parseError;
   }
   const sources = normalizeRetrievedSources(body, "web-search");
+  const searchTerms = extractSearchTerms(body);
   return {
     research,
     sources,
@@ -590,6 +726,8 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal) 
       searchedDomains: ["web-search"],
       failedDomains: [],
       retrievedSourceCount: sources.length,
+      searchTerms,
+      searchTermsSource: searchTerms.length ? "tool-observed" : "unavailable",
     },
   };
 }
@@ -746,6 +884,10 @@ export {
   parseResearchProjectBody,
   parseResearchResponse,
   normalizeRetrievedSources,
+  normalizeSearchTerms,
+  extractSearchTerms,
+  calculateSourceSupportConfidence,
+  isExactProjectSource,
   normalizePublicDate,
   classifySource,
   supportsExplicitZero,

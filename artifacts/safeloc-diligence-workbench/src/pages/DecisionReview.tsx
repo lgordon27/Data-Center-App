@@ -25,6 +25,7 @@ import {
 } from "@/context/DiligenceContext";
 import {
   isMaterialEvidenceId,
+  getEffectiveSupportState,
   type RecommendationStatus,
 } from "@/model/cashFlowEngine";
 
@@ -81,7 +82,7 @@ export function DecisionReview({ onNavigate, onResolve }: { onNavigate: (screen:
     : holdingsConnectionCopy;
   const items = Object.values(evidence);
   const materialItems = items.filter((item) => isMaterialEvidenceId(item.id));
-  const materialGapItems = materialItems.filter((item) => item.classification === "Missing Evidence");
+  const materialGapItems = materialItems.filter((item) => getEffectiveSupportState(item) === "unresolved");
   const materialDependencyLabels = materialItems.map((item) => item.label);
   const [saveOpen, setSaveOpen] = useState(false);
   const [scenarioName, setScenarioName] = useState("");
@@ -187,6 +188,20 @@ export function DecisionReview({ onNavigate, onResolve }: { onNavigate: (screen:
             {materialGapItems.map((item) => <div key={item.id} data-testid={`material-gap-row-${item.id}`} className="flex items-center justify-between gap-4 py-3"><div><div className="text-[11px] font-semibold text-[#344550]">{item.label}</div><div className="mt-1 text-[10px] text-[#52616b]">{item.citation}</div></div><button type="button" data-testid={`button-resolve-${item.id}`} onClick={() => onResolve(item.id)} className="shrink-0 rounded bg-[#fde8eb] px-2.5 py-2 text-[9px] font-bold uppercase tracking-[0.11em] text-[#ba2f45] hover:bg-[#ba2f45] hover:text-white">Resolve <ArrowRight aria-hidden="true" className="ml-1 inline h-3 w-3" /></button></div>)}
             {materialGapItems.length === 0 && <div data-testid="material-gap-empty" className="rounded-md bg-[#e0f4ed] p-3 text-[11px] text-[#0b7a63]">No material evidence gaps. The recommendation is not blocked by missing evidence.</div>}
           </div>
+           <div data-testid="material-audit-register" className="mt-5 border-t border-[#e5eae8] pt-4">
+             <div className="font-mono text-[9px] font-bold uppercase tracking-[0.13em] text-[#52616b]">Material support register</div>
+             <div className="mt-2 divide-y divide-[#e5eae8]">
+               {materialItems.map((item) => (
+                 <div key={item.id} data-testid={`material-support-row-${item.id}`} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
+                   <span className="text-[10px] font-semibold text-[#344550]">{item.label}</span>
+                   <span data-testid={`material-support-confidence-${item.id}`} aria-label={`Source-support confidence for ${item.label}: ${typeof item.sourceSupportConfidence === "number" ? `${item.sourceSupportConfidence}%` : "not measured"}`} className="font-mono text-[9px] font-bold text-[#52616b]">
+                     {typeof item.sourceSupportConfidence === "number" ? `${item.sourceSupportConfidence}% support` : "Support not measured"} · {getEffectiveSupportState(item)}
+                   </span>
+                 </div>
+               ))}
+             </div>
+             <p className="mt-2 text-[9px] leading-4 text-[#7d898f]">Effective support is a decision gate only: scores below 50% remain unresolved and scores from 50–69% remain conditional. It never rewrites the financial assumption or provenance class.</p>
+           </div>
         </section>
         <section className="rounded-xl border border-[#d9e0e4] bg-[#f1f5f3] p-5 md:p-6">
           <SectionKicker>Decision posture</SectionKicker>

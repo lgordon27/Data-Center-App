@@ -69,6 +69,12 @@ export type EvidenceItem = {
   claimIds: ClaimId[];
   numericValue?: number;
   qualitativeValue?: QualitativeEvidenceValue;
+  sourceSupportConfidence?: number;
+  classificationReason?: string;
+  sourceRelevanceNote?: string;
+  sourceRelevance?: "exact-project" | "related-context" | "unresolved";
+  searchTerms?: string[];
+  searchTermsSource?: "tool-observed" | "ai-reported" | "unavailable";
   sources?: ResearchEvidenceSource[];
   coverageStatus?: ResearchCoverageStatus;
   searchCoverage?: string[];
@@ -393,6 +399,11 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         sourceRole: "Reviewer-submitted source · AI-proposed, human-accepted",
         sources: [submittedSource, ...(current.sources ?? []).map((source) => ({ ...source, relationship: "corroborating" as const }))].slice(0, 4),
         coverageStatus: "partial" as const,
+        sourceSupportConfidence: current.sourceSupportConfidence ?? 0,
+        classificationReason: "Reviewer attached a public source and accepted this AI proposal; independent corroboration remains required.",
+        sourceRelevanceNote: correction.claim.trim(),
+        searchTerms: [],
+        searchTermsSource: "unavailable" as const,
         review: { kind: "ai-accepted" as const, reviewedAt: new Date().toISOString() },
       },
     };

@@ -20,6 +20,8 @@ import {
   normalizeReportedCapacityMW,
   parseResearchProjectBody,
   normalizeRetrievedSources,
+  extractSearchTerms,
+  calculateSourceSupportConfidence,
 } from "./researchProjectProxy.mjs";
 
 function responseRecorder() {
@@ -197,6 +199,66 @@ test("preserves annotated retrieval text as the claim-specific source excerpt", 
   }, "targeted-customer_concentration");
   assert.equal(sources[0].excerpt, "Project Kilby will provide dedicated power directly to a Microsoft-operated data center under a 20-year agreement.");
   assert.equal(sources[0].searchDomain, "targeted-customer_concentration");
+});
+
+test("extracts only tool-observed search queries and labels absent telemetry as unavailable", () => {
+  assert.deepEqual(extractSearchTerms({
+    output: [
+      { type: "web_search_call", action: { query: "Project Atlas Taylor County permit" } },
+      { type: "web_search_call", action: { queries: ["Project Atlas utility filing", { query: "Project Atlas water rights" }] } },
+    ],
+  }), ["Project Atlas Taylor County permit", "Project Atlas utility filing", "Project Atlas water rights"]);
+  assert.deepEqual(extractSearchTerms({ output: [{ type: "message" }] }), []);
+});
+
+test("computes bounded support confidence from exact-project source class and independence", () => {
+  const source = (url, sourceClass, exactProject = true) => ({
+    url,
+    sourceClass,
+    exactProject,
+    relationship: "primary",
+    publisher: new URL(url).hostname,
+  });
+  assert.equal(calculateSourceSupportConfidence({ classification: "Missing Evidence", sources: [source("https://agency.gov/a", "primary-government")] }), 0);
+  assert.equal(calculateSourceSupportConfidence({ classification: "Verified Evidence", sources: [] }), 0);
+  assert.equal(calculateSourceSupportConfidence({ classification: "Verified Evidence", sources: [source("https://agency.gov/a", "primary-government")] }), 82);
+  assert.equal(calculateSourceSupportConfidence({
+    classification: "Verified Evidence",
+    sources: [source("https://agency.gov/a", "primary-government"), source("https://utility.example/a", "primary-utility")],
+  }), 94);
+  assert.equal(calculateSourceSupportConfidence({
+    classification: "Verified Evidence",
+    sources: [source("https://news.example/a", "secondary-reporting", false)],
+  }), 38);
+  assert.equal(calculateSourceSupportConfidence({
+    classification: "Verified Evidence",
+    sources: [source("https://agency.gov/a", "primary-government"), source("https://utility.example/a", "primary-utility")],
+    coverageStatus: "conflicting",
+    conflictSummary: "Sources disagree.",
+  }), 59);
+});
+
+test("maps only validated claim URLs and attaches auditable source metadata", () => {
+  const research = validResearchResponse();
+  research.evidence[0] = {
+    ...research.evidence[0],
+    classification: "Verified Evidence",
+    sourceUrl: "https://example.com/atlas/source",
+    sourceUrls: ["https://example.com/atlas/source", "https://evil.example/invented"],
+    sourceRelevance: "exact-project",
+    sourceRelevanceNote: "The filing names Project Atlas and its facility location.",
+    classificationReason: "A public filing directly names the project.",
+  };
+  const parsed = parseResearchResponse(research, [{
+    ...retrievedSource,
+    sourceClass: "primary-government",
+  }], "2026-09-03", { searchTerms: ["Project Atlas filing"] });
+  assert.deepEqual(parsed.evidence[0].sources.map((source) => source.url), [retrievedSource.url]);
+  assert.equal(parsed.evidence[0].sourceSupportConfidence, 82);
+  assert.equal(parsed.evidence[0].sourceRelevance, "exact-project");
+  assert.match(parsed.evidence[0].classificationReason, /public filing/);
+  assert.equal(parsed.evidence[0].searchTermsSource, "tool-observed");
+  assert.deepEqual(parsed.evidence[0].searchTerms, ["Project Atlas filing"]);
 });
 
 test("rejects malformed custom research requests before calling OpenAI", async () => {

@@ -6,6 +6,7 @@ import {
   parseResponse,
   researchProject,
   RESEARCH_PROJECT_TIMEOUT_MS,
+  summarizeResearchAudit,
   summarizeSourceCoverage,
 } from "./researchProjectService";
 
@@ -84,6 +85,38 @@ test("keeps only safe direct source links from custom responses", () => {
     })),
   };
   assert.equal(parseResponse(unsafe).evidence.every((item) => item.sourceUrl === undefined), true);
+});
+
+test("aggregates unique sources and support quality without counting missing items as supported", () => {
+  const parsed = parseResponse({
+    ...response,
+    evidence: response.evidence.map((item, index) => ({
+      ...item,
+      sourceSupportConfidence: index === 0 ? 82 : index === 1 ? 94 : 0,
+      ...(index < 2 ? {
+        sources: [{
+          url: index === 0 ? "https://example.com/atlas/source" : "https://example.com/atlas/second",
+          title: "Source",
+          publisher: "example.com",
+          publishedAt: null,
+          accessedAt: null,
+          accessStatus: "not provided",
+          excerpt: "Excerpt",
+          sourceClass: "secondary-reporting",
+          searchDomain: "project-identity",
+          relationship: "primary",
+          relevanceNote: "Mapped to the claim.",
+        }],
+      } : {}),
+    })),
+  });
+  const audit = summarizeResearchAudit(parsed.evidence);
+  assert.deepEqual(audit, {
+    uniqueValidatedSourceCount: 2,
+    averageSourceSupportConfidence: 11,
+    strongSupportItemCount: 1,
+    noSourceItemCount: 14,
+  });
 });
 
 test("uses a 90-second request budget", () => {

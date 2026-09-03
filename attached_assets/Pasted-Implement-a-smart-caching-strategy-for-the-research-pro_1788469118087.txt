@@ -1,0 +1,88 @@
+Implement a smart caching strategy for the research-project endpoint that keeps data fresh at the lowest possible API cost.
+
+THE PRINCIPLE: Cache the full research. Only pay for updates. Show the user exactly how fresh the data is.
+
+CACHING TIERS:
+
+Tier 1 - Fresh (0-4 hours since last research):
+Serve the cached response immediately. No API call.
+Show: "Researched [X] hours ago"
+
+Tier 2 - Recent (4-24 hours since last research):
+Serve the cached response immediately so the user sees results instantly.
+THEN run a lightweight background update check (details below).
+Show: "Researched [X] hours ago · Checking for updates..."
+If the update check finds new information, update the cache and notify the user: "1 evidence item updated since your session started."
+
+Tier 3 - Stale (24-72 hours since last research):
+Serve the cached response immediately with a warning: "Last researched [X] days ago. Running update check..."
+Run the update check automatically.
+Show which items changed, if any.
+
+Tier 4 - Expired (72+ hours since last research):
+Run a full fresh research. This is the only tier that costs as much as a first-time research.
+
+No cache exists:
+Run a full fresh research. Cache the result.
+
+THE LIGHTWEIGHT UPDATE CHECK:
+
+This is the key cost saver. Instead of re-researching all 16 variables from scratch, send a smaller, cheaper API call:
+
+{
+  model: "gpt-4o-mini",  // cheaper model for update checks
+  max_tokens: 1500,
+  tools: [{ type: "web_search_preview" }],
+  messages: [
+    {
+      role: "system",
+      content: "You are checking for updates to a previously researched data center project. Search for any NEW public information published since [cache date]. Only report changes. If nothing has changed, respond with {changes: []}. Respond with valid JSON only."
+    },
+    {
+      role: "user", 
+      content: "Project: [name] in [location]. Last researched: [cache date]. Check for any new developments since that date regarding: grid interconnection status changes, new regulatory actions, community opposition events, construction milestones, corporate announcements, water or power agreements, or any other material changes. Return JSON: {changes: [{evidenceId: string, previousValue: string, newValue: string, newClassification: string, source: string, reasoning: string}]} Only include items where something actually changed. If nothing changed, return {changes: []}."
+    }
+  ]
+}
+
+This call:
+- Uses gpt-4o-mini (much cheaper than gpt-4o)
+- Has a smaller prompt (no need to define all 16 variables)
+- Returns a smaller response (only changed items, not all 16)
+- Runs in the background while the user already has data to look at
+
+When changes are found:
+1. Update only the changed evidence items in the cache
+2. Update the cache timestamp
+3. If the user is still on the page, show a subtle notification: "Evidence updated: Grid Interconnection status changed based on new [source] reporting"
+4. The financial model recalculates with the updated items
+
+COST COMPARISON:
+
+Full research: 1 GPT-4o call with web search (~$0.10-0.15 per call)
+Update check: 1 GPT-4o-mini call with web search (~$0.01-0.02 per call)
+Cached serve: $0.00
+
+For a project researched by 100 different users over a week:
+Current architecture: 700 API calls (7 per user × 100 users) = ~$70-100
+New architecture: 1 full research + ~7 update checks + 92 cached serves = ~$0.25
+
+USER-FACING CONTROLS:
+
+On every AI-researched project, show a freshness indicator:
+- Green: "Researched today at [time]"
+- Yellow: "Researched [X] days ago · Last update check: [time]"
+- Red: "Researched [X] days ago · Expired"
+
+Add a "Force Fresh Research" button (small, not prominent) that runs a full new research regardless of cache state. This is for users who specifically want the latest data and are willing to wait 60 seconds.
+
+Add a "Check for Updates" button that runs the lightweight update check on demand.
+
+IMPLEMENTATION:
+
+1. Cache files are stored at server/cache/research/[project-key].json
+2. Each cache file includes: timestamp, lastUpdateCheck, projectSummary, evidenceItems
+3. The cache key is derived from the project name and location (lowercased, spaces replaced with hyphens)
+4. The server handles all caching logic. The frontend just calls POST /api/research-project as before. The response includes a freshness field: {source: "fresh" | "cached" | "updated", age: number, lastCheck: string}
+
+PRE-SEED the cache with the 5 projects from our source research (Kilby, Meta El Paso, Google Ellis County, CloudHQ, Dove Creek) using hand-crafted evidence data so they are available immediately without any API call. These serve as both demonstration data and a baseline that update checks can build on.

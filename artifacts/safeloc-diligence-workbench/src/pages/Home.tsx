@@ -40,6 +40,7 @@ import {
   type CompanyProject,
 } from "@/data/companyExposure";
 import { ClaimCitation } from "@/components/ClaimCitation";
+import { trackEvent } from "@/services/analytics";
 
 type HomeRoute = "advisor" | "directory" | "how-it-works" | "value-chain";
 
@@ -463,7 +464,23 @@ function CompanyExposure({
         </div>
         <div data-testid="company-project-list" className="mt-4 space-y-3">
           {projects.length === 0 && <div data-testid="company-project-empty" className="rounded-lg border border-dashed border-[#cbd8d4] bg-white p-6 text-[12px] text-[#52616b]">No operator-mapped facilities are available for this company in the current directory snapshot. That is an evidence boundary, not a claim of no exposure.</div>}
-          {projects.map((project) => <CompanyProjectCard key={project.id} project={project} researching={researchingProjectId === project.id} onSelect={() => project.kind === "curated" ? onCurated(company) : onResearch(project, company)} />)}
+          {projects.map((project) => (
+            <CompanyProjectCard
+              key={project.id}
+              project={project}
+              researching={researchingProjectId === project.id}
+              onSelect={() => {
+                trackEvent("project_action_selected", {
+                  company: company.toLowerCase(),
+                  project_id: project.id,
+                  project_kind: project.kind,
+                  action: project.kind === "curated" ? "open_curated" : "research_with_ai",
+                });
+                if (project.kind === "curated") onCurated(company);
+                else onResearch(project, company);
+              }}
+            />
+          ))}
         </div>
       </div>
     </section>
@@ -793,6 +810,16 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
   const [companyResearchError, setCompanyResearchError] = useState<string | null>(null);
   const companyExposureRef = useRef<HTMLElement>(null);
 
+  const selectCompany = (company: CompanyKey) => {
+    setCompanyResearchError(null);
+    setSelectedCompany(company);
+    trackEvent("company_lens_selected", {
+      company: company.toLowerCase(),
+      entry_point: "home_holdings",
+    });
+    focusCompanyExposure();
+  };
+
   const focusCompanyExposure = () => {
     window.setTimeout(() => {
       companyExposureRef.current?.scrollIntoView({
@@ -803,8 +830,20 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
     }, 0);
   };
 
-  const handleResearchSuccess = (research: CustomResearchResponse, company: CompanyKey | null = null) => {
+  const handleResearchSuccess = (
+    research: CustomResearchResponse,
+    company: CompanyKey | null = null,
+    projectId = "custom_project",
+    projectKind = "custom",
+  ) => {
     loadCustomProject(research, company);
+    trackEvent("research_handoff_completed", {
+      company: company?.toLowerCase() ?? "none",
+      project_id: projectId,
+      project_kind: projectKind,
+      research_mode: research.researchMode === "default-assumptions" ? "default_assumptions" : "ai_researched",
+      destination: "case_brief",
+    });
     window.location.hash = "brief";
   };
   const goSecondary = (route: HomeRoute) => {
@@ -842,11 +881,7 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
                   <button
                     data-testid="button-start-nvidia"
                     type="button"
-                    onClick={() => {
-                      setCompanyResearchError(null);
-                      setSelectedCompany("NVIDIA");
-                      focusCompanyExposure();
-                    }}
+                    onClick={() => selectCompany("NVIDIA")}
                     className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-[#d4e86b] px-4 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#122232] transition-transform hover:-translate-y-0.5 hover:bg-[#e3f18d] focus:outline-none focus:ring-2 focus:ring-[#d4e86b] focus:ring-offset-2 focus:ring-offset-[#0a1b2a]"
                   >
                     Start with NVIDIA <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" />
@@ -928,7 +963,7 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
                <span className="font-mono text-[9px] uppercase tracking-[0.13em] text-[#718894]">Six public-company lenses</span>
              </div>
              <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3">
-               {COMPANY_PROFILES.map((company) => <CompanyCard key={company.key} company={company} onSelect={() => setSelectedCompany(company.key)} />)}
+               {COMPANY_PROFILES.map((company) => <CompanyCard key={company.key} company={company} onSelect={() => selectCompany(company.key)} />)}
              </div>
            </div>
          </section>
@@ -955,7 +990,7 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
                     sourceUrl: project.facility.sourceUrl,
                   },
                 })
-                 .then((research) => handleResearchSuccess(research, company))
+                 .then((research) => handleResearchSuccess(research, company, project.id, project.kind))
                  .catch(() => setCompanyResearchError("AI research is unavailable. Try again."))
                  .finally(() => setCompanyResearchingId(null));
              }}

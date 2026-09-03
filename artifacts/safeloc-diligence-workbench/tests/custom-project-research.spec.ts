@@ -337,6 +337,47 @@ test.describe("custom project research", () => {
     await expect(page.locator('[data-testid^="select-classification-"]').first()).toHaveValue("Missing Evidence");
   });
 
+  test("records a research handoff with safe project dimensions", async ({ page }) => {
+    await page.addInitScript(() => {
+      window.umami = {
+        track(name, data) {
+          const analyticsWindow = window as typeof window & {
+            __safelocAnalytics?: Array<{ name: string; data?: Record<string, string | number | boolean> }>;
+          };
+          analyticsWindow.__safelocAnalytics = [
+            ...(analyticsWindow.__safelocAnalytics ?? []),
+            { name, data },
+          ];
+        },
+      };
+    });
+
+    await page.goto("/");
+    await page.getByTestId("input-custom-project-name").fill("Project Atlas");
+    await page.getByTestId("input-custom-project-location").fill("Maricopa County, Arizona");
+    await page.getByTestId("button-run-ai-analysis").click();
+    await expect(page).toHaveURL(/#brief$/);
+
+    const events = await page.evaluate(() => {
+      const analyticsWindow = window as typeof window & {
+        __safelocAnalytics?: Array<{ name: string; data?: Record<string, string | number | boolean> }>;
+      };
+      return analyticsWindow.__safelocAnalytics ?? [];
+    });
+    expect(events).toEqual([
+      {
+        name: "research_handoff_completed",
+        data: {
+          company: "none",
+          project_id: "custom_project",
+          project_kind: "custom",
+          research_mode: "ai_researched",
+          destination: "case_brief",
+        },
+      },
+    ]);
+  });
+
   test("keeps the scope disclosure closed by default on the curated case", async ({ page }) => {
     await page.goto("/#brief");
     const scope = page.getByTestId("disclosure-scope-limitations");

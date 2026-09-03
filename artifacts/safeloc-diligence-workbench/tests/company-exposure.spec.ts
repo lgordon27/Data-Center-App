@@ -72,6 +72,48 @@ test.describe("stock-first company exposure flow", () => {
     );
   });
 
+  test("records safe holding and project action events", async ({ page }) => {
+    await page.addInitScript(() => {
+      window.umami = {
+        track(name, data) {
+          const analyticsWindow = window as typeof window & {
+            __safelocAnalytics?: Array<{ name: string; data?: Record<string, string | number | boolean> }>;
+          };
+          analyticsWindow.__safelocAnalytics = [
+            ...(analyticsWindow.__safelocAnalytics ?? []),
+            { name, data },
+          ];
+        },
+      };
+    });
+
+    await page.goto("/#home");
+    await page.getByTestId("company-card-microsoft").click();
+    await page.getByTestId("company-project-open-project-kilby").click();
+
+    const events = await page.evaluate(() => {
+      const analyticsWindow = window as typeof window & {
+        __safelocAnalytics?: Array<{ name: string; data?: Record<string, string | number | boolean> }>;
+      };
+      return analyticsWindow.__safelocAnalytics ?? [];
+    });
+    expect(events).toEqual([
+      {
+        name: "company_lens_selected",
+        data: { company: "microsoft", entry_point: "home_holdings" },
+      },
+      {
+        name: "project_action_selected",
+        data: {
+          company: "microsoft",
+          project_id: "project-kilby",
+          project_kind: "curated",
+          action: "open_curated",
+        },
+      },
+    ]);
+  });
+
   test("shows the requested connection badge on each company detail selection", async ({ page }) => {
     await page.goto("/#home");
     const expected = [

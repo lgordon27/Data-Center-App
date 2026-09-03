@@ -1,0 +1,29 @@
+CRITICAL: The entire app is frequently freezing and becoming unresponsive. The browser's main thread locks up and cannot even take a screenshot or respond to user input. This is happening on:
+
+1. The home page - sometimes freezes on initial load
+2. Clicking "ANALYZE ANOTHER PROJECT" on the home page
+3. Clicking "ANALYZE A DIFFERENT PROJECT" in the header
+4. Navigating to #directory directly
+5. Clicking "BROWSE ALL FACILITIES" link
+
+Network logs show the page loads HTML, JS, CSS, and the ERCOT/EIA API calls successfully. But there is NO /api/directory call in the logs, which means the freeze happens during React component rendering BEFORE the Compute Atlas API call is even made.
+
+The freeze is likely caused by one of:
+A) The directory component importing or initializing expensive data on mount even when the directory route is not active
+B) A React context provider at the app root that processes or pre-loads directory data for all routes
+C) An infinite render loop in the directory or home page component
+D) The directory component being eagerly imported instead of lazy-loaded, causing the full component tree to initialize on every route
+
+REQUIRED FIXES:
+
+1. Lazy-load the directory page. Use React.lazy() and Suspense so the directory component code is not loaded or executed until the user actually navigates to #directory. It should not affect the home page, workbench, or any other route.
+
+2. Verify that no directory-related state, context, or data fetching runs on app mount. The home page should load with ZERO awareness of Compute Atlas. The directory is a separate, optional page.
+
+3. If the home page or any component outside the directory route references directory data, remove that dependency. The home page stock picker should use the bundled company mappings data only, not directory data.
+
+4. Add error boundaries around the directory page so if it fails to load or render, it shows a fallback message instead of crashing the entire app.
+
+5. After fixing, verify: the home page loads in under 2 seconds with no freeze. Clicking every navigation button responds instantly. The directory page loads only when explicitly navigated to via "Browse All Facilities." The workbench screens (Case Brief through Advisor Lens) are never affected by directory issues.
+
+This is the highest priority fix. The app is currently unusable for many visitors because the browser freezes.

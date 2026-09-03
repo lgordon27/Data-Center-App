@@ -152,4 +152,36 @@ test.describe("stock-first company exposure flow", () => {
     await page.goto("/#advisor");
     await expect(page.getByTestId("advisor-originating-company")).toContainText("No company selected");
   });
+
+  test("lets a directory facility continue into analysis after research times out", async ({ page }) => {
+    await page.unroute("**/api/directory**");
+    await page.route("**/api/directory**", (route) => route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...directoryResponse,
+        totalFacilities: 1,
+        offset: 0,
+        limit: 24,
+        hasMore: false,
+      }),
+    }));
+    await page.route("**/api/research-project", (route) => route.fulfill({
+      status: 504,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "Project research timed out." }),
+    }));
+
+    await page.goto("/#directory");
+    await page.getByTestId("compute-atlas-open-project-rainier-microsoft-wi").click();
+    await expect(page.getByTestId("compute-atlas-error-project-rainier-microsoft-wi")).toBeVisible();
+    await expect(page.getByTestId("compute-atlas-fallback-project-rainier-microsoft-wi")).toHaveText("Continue with default assumptions");
+    await page.getByTestId("compute-atlas-fallback-project-rainier-microsoft-wi").click();
+
+    await expect(page).toHaveURL(/#brief$/);
+    await expect(page.getByTestId("custom-project-status")).toContainText("Default assumptions");
+    await expect(page.getByTestId("custom-project-summary")).toContainText("Project Rainier");
+    await expect(page.getByTestId("custom-project-capacity")).toHaveText("315 MW");
+    await expect(page.getByTestId("custom-research-banner")).toContainText("All modeled evidence remains Missing Evidence");
+  });
 });

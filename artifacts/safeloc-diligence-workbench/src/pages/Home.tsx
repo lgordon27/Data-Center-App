@@ -500,12 +500,14 @@ function DirectoryCard({
   onCurated,
   onResearch,
   onFallback,
+  onRetry,
   researchState,
 }: {
   facility: DirectoryFacility;
   onCurated: () => void;
   onResearch: () => void;
   onFallback: () => void;
+  onRetry: () => void;
   researchState: { busy: boolean; error: string | null; progress: ResearchProgress };
 }) {
   const confidenceTone = {
@@ -571,10 +573,16 @@ function DirectoryCard({
       )}
       {researchState.error && (
         <div data-testid={`compute-atlas-error-${facility.id}`} role="alert" className="mt-2 rounded border border-[#efabb8]/60 bg-[#552c3a] px-2.5 py-2 text-[10px] leading-4 text-[#ffc8ce]">
-          {researchState.error}
-          <button data-testid={`compute-atlas-fallback-${facility.id}`} type="button" onClick={onFallback} className="mt-2 block min-h-9 rounded border border-[#ffc8ce]/60 px-2.5 font-mono text-[8px] font-bold uppercase tracking-[0.08em] hover:bg-white/10">
-            Research unavailable. Analyze with default assumptions?
-          </button>
+          <p>{researchState.error}</p>
+          <p className="mt-1 text-[#ffe4e7]">You can still open the analysis now. Directory facts remain discovery context, while unresolved financial inputs stay explicitly labeled.</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button data-testid={`compute-atlas-fallback-${facility.id}`} type="button" onClick={onFallback} className="min-h-9 rounded bg-[#ffc8ce] px-2.5 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#552c3a] hover:bg-white">
+              Continue with default assumptions
+            </button>
+            <button data-testid={`compute-atlas-retry-${facility.id}`} type="button" onClick={onRetry} className="min-h-9 rounded border border-[#ffc8ce]/60 px-2.5 font-mono text-[8px] font-bold uppercase tracking-[0.08em] hover:bg-white/10">
+              Try research again
+            </button>
+          </div>
         </div>
       )}
     </article>
@@ -741,6 +749,7 @@ export function ComputeAtlasDirectory({ onCurated, onResearchSuccess }: { onCura
                   facility={facility}
                   onCurated={onCurated}
                   onResearch={() => void handleResearch(facility)}
+                   onRetry={() => void handleResearch(facility)}
                   onFallback={() => onResearchSuccess(createDefaultAssumptionResearch(
                     facility.name,
                     locationLabel(facility),

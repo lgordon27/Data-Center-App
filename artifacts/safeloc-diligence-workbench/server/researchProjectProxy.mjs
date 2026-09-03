@@ -1,3 +1,5 @@
+import { defaultResearchProjectCache } from "./researchProjectCache.mjs";
+
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const RESEARCH_PROJECT_MODEL = "gpt-4o";
 const RESEARCH_PROJECT_MAX_TOKENS = 4_000;
@@ -129,6 +131,21 @@ function sendJson(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
+function cacheMetadata(key, entry, state, refreshStatus = "idle", extras = {}) {
+  return {
+    key,
+    state,
+    storedAt: entry?.storedAt ?? null,
+    refreshStatus,
+    providerAvailable: extras.providerAvailable ?? true,
+    ...(extras.errorType ? { errorType: extras.errorType } : {}),
+  };
+}
+
+function withCacheMetadata(entry, metadata) {
+  return { ...entry.result, researchCache: metadata };
+}
+
 const WEB_SEARCH_SOURCE_BOUNDARY_PROMPT = `
 Use the built-in web-search tool during this response. Never invent a source, URL, date, excerpt, or facility-level fact. Put the exact public URLs returned by web search into sourceUrl and sourceUrls. Verified Evidence requires an exact-project government, regulator, utility, filed-company, or independent-reporting source returned by this web search; a company announcement is normally Management Assertion. If no searched source independently confirms a claim, do not classify it as Verified Evidence. You may use well-established model knowledge only at a Management Assertion ceiling and must say it requires independent verification. If projectSummary states an exact-project fact such as a named customer or offtaker, behind-the-meter power, disclosed capacity, or a stated water source, map the same fact into the relevant evidence variable at the appropriate classification rather than calling that variable Missing Evidence. Do not classify contextual market or industry reporting as facility-level Verified Evidence. Do not use sourceSupportConfidence to promote a finding: the server recomputes it from validated sources, independence, and conflicts.`;
 
@@ -226,6 +243,7 @@ function parseResearchProjectBody(body) {
     ...(knownData ? { knownData } : {}),
     ...(focusIds ? { focusIds } : {}),
     ...(currentEvidence ? { currentEvidence } : {}),
+    ...(body.forceRefresh === true ? { forceRefresh: true } : {}),
   };
 }
 
@@ -786,6 +804,62 @@ function createResearchProjectRateLimiter({
 
 const defaultRateLimiter = createResearchProjectRateLimiter();
 
+function classifyResearchFailure(error) {
+  if (error?.name === "AbortError") return { status: 504, type: "timeout", message: "Project research upstream request timed out after 90 seconds." };
+  if (error?.name === "ResearchParseError") return { status: 502, type: "malformed-response", message: error.message };
+  if (error?.name === "UpstreamRequestError") {
+    if (error.upstreamStatus === 429) return { status: 429, type: "quota-exhausted", message: error.publicMessage };
+    if (error.upstreamStatus === 401) return { status: 502, type: "authentication", message: error.publicMessage };
+    return { status: 502, type: "upstream", message: error.publicMessage ?? "Project research provider request failed." };
+  }
+  if (error?.name === "RateLimitError") return { status: 429, type: "request-limit", message: RESEARCH_PROJECT_RATE_LIMIT_MESSAGE };
+  if (error?.name === "ConfigurationError") return { status: 503, type: "not-configured", message: "Project research not configured." };
+  if (error?.name === "StructuredResearchError") return { status: 502, type: "malformed-response", message: "Project research returned an invalid 16-item response." };
+  return { status: 502, type: "upstream", message: "Project research upstream request failed." };
+}
+
+async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, req }) {
+  if (!apiKey) {
+    const error = new Error("Project research not configured.");
+    error.name = "ConfigurationError";
+    error.researchErrorType = "not-configured";
+    throw error;
+  }
+  const rateLimit = rateLimiter.allow(req);
+  if (!rateLimit.allowed) {
+    const error = new Error(RESEARCH_PROJECT_RATE_LIMIT_MESSAGE);
+    error.name = "RateLimitError";
+    error.retryAfterSeconds = rateLimit.retryAfterSeconds;
+    error.researchErrorType = "request-limit";
+    throw error;
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), RESEARCH_PROJECT_TIMEOUT_MS);
+  try {
+    const result = await researchProjectWithWebSearch(project, apiKey, fetchImpl, controller.signal);
+    try {
+      return parseResearchResponse(
+        result.research,
+        result.sources,
+        new Date().toISOString().slice(0, 10),
+        result.coverage,
+        project.knownData,
+      );
+    } catch (error) {
+      console.warn("[research-project] Rejected structured research response:", error instanceof Error ? error.message : "unknown validation error");
+      const structuredError = new Error("Invalid structured research response.");
+      structuredError.name = "StructuredResearchError";
+      structuredError.researchErrorType = "malformed-response";
+      throw structuredError;
+    }
+  } catch (error) {
+    if (error && !error.researchErrorType) error.researchErrorType = classifyResearchFailure(error).type;
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export async function handleResearchProjectRequest(
   req,
   res,
@@ -793,8 +867,27 @@ export async function handleResearchProjectRequest(
     apiKey = process.env.OPENAI_API_KEY,
     fetchImpl = fetch,
     rateLimiter = defaultRateLimiter,
+    cache = defaultResearchProjectCache,
   } = {},
 ) {
+  if (req.method === "GET") {
+    const requestUrl = new URL(req.url ?? "/api/research-project", "http://localhost");
+    const key = req.query?.cacheKey ?? requestUrl.searchParams.get("cacheKey");
+    if (typeof key !== "string" || !/^[a-f0-9]{64}$/.test(key)) {
+      sendJson(res, 400, { error: "A valid research cache key is required." });
+      return;
+    }
+    const entry = await cache.read(key);
+    const status = cache.status(key);
+    sendJson(res, 200, {
+      researchCache: cacheMetadata(key, entry, entry ? cache.age(entry) : "expired", status.refreshStatus, {
+        providerAvailable: status.refreshStatus !== "failed",
+        errorType: status.errorType,
+      }),
+      ...(status.refreshStatus === "completed" && status.result ? { result: status.result } : {}),
+    });
+    return;
+  }
   if (req.method !== "POST") {
     sendJson(res, 405, { error: "Method not allowed" });
     return;
@@ -808,61 +901,42 @@ export async function handleResearchProjectRequest(
     return;
   }
 
-  if (!apiKey) {
-    sendJson(res, 503, { error: "Project research not configured. Set OPENAI_API_KEY in environment." });
+  const key = cache.keyFor(project);
+  const retained = await cache.read(key);
+  const retainedState = retained ? cache.age(retained) : "expired";
+  if (!project.forceRefresh && retained && (retainedState === "fresh" || retainedState === "recent")) {
+    sendJson(res, 200, withCacheMetadata(retained, cacheMetadata(key, retained, retainedState)));
     return;
   }
 
-  const rateLimit = rateLimiter.allow(req);
-  if (!rateLimit.allowed) {
-    res.setHeader("retry-after", String(rateLimit.retryAfterSeconds));
-    sendJson(res, 429, { error: RESEARCH_PROJECT_RATE_LIMIT_MESSAGE });
+  const refresh = () => cache.refresh(key, () => runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, req }));
+  if (!project.forceRefresh && retained && retainedState === "stale") {
+    const background = refresh();
+    void background.promise.catch((error) => {
+      console.error("[research-project] Background refresh failed:", classifyResearchFailure(error).type);
+    });
+    sendJson(res, 200, withCacheMetadata(retained, cacheMetadata(key, retained, "stale", "running")));
     return;
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), RESEARCH_PROJECT_TIMEOUT_MS);
   try {
-    const result = await researchProjectWithWebSearch(project, apiKey, fetchImpl, controller.signal);
-    let parsed;
-    try {
-      parsed = parseResearchResponse(
-        result.research,
-        result.sources,
-        new Date().toISOString().slice(0, 10),
-        result.coverage,
-        project.knownData,
-      );
-    } catch (error) {
-      console.warn(
-        "[research-project] Rejected structured research response:",
-        error instanceof Error ? error.message : "unknown validation error",
-      );
-      sendJson(res, 502, { error: "Project research returned an invalid 16-item response." });
+    const { promise } = refresh();
+    const entry = await promise;
+    sendJson(res, 200, withCacheMetadata(entry, cacheMetadata(key, entry, "updated")));
+  } catch (error) {
+    const failure = classifyResearchFailure(error);
+    console.error("[research-project] Request failed:", failure.type);
+    if (retained) {
+      sendJson(res, 200, withCacheMetadata(retained, cacheMetadata(key, retained, "stale", "failed", {
+        providerAvailable: false,
+        errorType: failure.type,
+      })));
       return;
     }
-    sendJson(res, 200, parsed);
-  } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      console.error("[research-project] Request failed: upstream timeout after 90 seconds.");
-      sendJson(res, 504, { error: "Project research upstream request timed out after 90 seconds." });
-    } else if (error instanceof Error && error.name === "ResearchParseError") {
-      console.error("[research-project] Request failed:", error.message);
-      sendJson(res, 502, { error: error.message });
-    } else if (error instanceof Error && error.name === "UpstreamRequestError") {
-      console.error("[research-project] Request failed:", redactUpstreamDetail(error.message));
-      sendJson(res, error.upstreamStatus === 429 ? 429 : 502, {
-        error: error.publicMessage ?? "Project research provider request failed.",
-      });
-    } else {
-      console.error(
-        "[research-project] Request failed:",
-        error instanceof Error ? `${error.name}: ${redactUpstreamDetail(error.message)}` : "unknown upstream failure",
-      );
-      sendJson(res, 502, { error: "Project research upstream request failed." });
+    if (failure.type === "request-limit" && error?.retryAfterSeconds) {
+      res.setHeader("retry-after", String(error.retryAfterSeconds));
     }
-  } finally {
-    clearTimeout(timeout);
+    sendJson(res, failure.status, { error: failure.message, errorType: failure.type });
   }
 }
 
@@ -893,4 +967,6 @@ export {
   supportsExplicitZero,
   safePublicSourceUrl,
   createResearchProjectRateLimiter,
+  classifyResearchFailure,
+  runValidatedResearch,
 };

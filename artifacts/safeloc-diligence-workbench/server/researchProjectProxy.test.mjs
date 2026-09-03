@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { mkdtemp } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 
 import {
   DEFAULT_RESEARCH_CAPACITY_MW,
@@ -23,6 +26,11 @@ import {
   extractSearchTerms,
   calculateSourceSupportConfidence,
 } from "./researchProjectProxy.mjs";
+import {
+  classifyResearchCacheAge,
+  createResearchProjectCache,
+  researchProjectCacheKey,
+} from "./researchProjectCache.mjs";
 
 function responseRecorder() {
   const headers = {};
@@ -103,6 +111,110 @@ function singleCallResponse(research = validResearchResponse(), sources = [retri
 
 test("uses a 90-second server research budget", () => {
   assert.equal(RESEARCH_PROJECT_TIMEOUT_MS, 90_000);
+});
+
+test("uses collision-resistant normalized project cache keys and deterministic age tiers", () => {
+  assert.equal(
+    researchProjectCacheKey({ name: " Project Atlas ", location: "TEXAS" }),
+    researchProjectCacheKey({ name: "project   atlas", location: "texas" }),
+  );
+  assert.notEqual(
+    researchProjectCacheKey({ name: "Project Atlas", location: "Texas" }),
+    researchProjectCacheKey({ name: "Project Atlas", location: "Virginia" }),
+  );
+  const now = Date.parse("2026-09-03T12:00:00.000Z");
+  assert.equal(classifyResearchCacheAge("2026-09-03T10:00:00.000Z", now), "fresh");
+  assert.equal(classifyResearchCacheAge("2026-09-03T00:00:00.000Z", now), "recent");
+  assert.equal(classifyResearchCacheAge("2026-09-01T00:00:00.000Z", now), "stale");
+  assert.equal(classifyResearchCacheAge("2026-08-01T00:00:00.000Z", now), "expired");
+});
+
+test("atomically retains validated results and deduplicates concurrent refreshes", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "safeloc-research-cache-test-"));
+  const cache = createResearchProjectCache({ directory });
+  const key = cache.keyFor({ name: "Atlas", location: "Texas" });
+  let runs = 0;
+  const runner = async () => {
+    runs += 1;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    return { projectSummary: { name: "Atlas" }, evidence: [] };
+  };
+  const first = cache.refresh(key, runner);
+  const second = cache.refresh(key, runner);
+  assert.equal(first.started, true);
+  assert.equal(second.started, false);
+  const [left, right] = await Promise.all([first.promise, second.promise]);
+  assert.equal(runs, 1);
+  assert.deepEqual(left, right);
+  cache.clearMemory();
+  assert.deepEqual(await cache.read(key), left);
+});
+
+test("serves fresh cached research without another provider call", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "safeloc-research-handler-cache-"));
+  const cache = createResearchProjectCache({ directory });
+  let providerCalls = 0;
+  const options = {
+    apiKey: "server-secret-for-test",
+    cache,
+    fetchImpl: async () => {
+      providerCalls += 1;
+      return singleCallResponse();
+    },
+  };
+  const first = responseRecorder();
+  await handleResearchProjectRequest(request({ name: "Cached Atlas", location: "Texas" }), first, options);
+  assert.equal(first.statusCode, 200);
+  assert.equal(first.json().researchCache.state, "updated");
+  const second = responseRecorder();
+  await handleResearchProjectRequest(request({ name: "Cached Atlas", location: "Texas" }), second, options);
+  assert.equal(second.statusCode, 200);
+  assert.equal(second.json().researchCache.state, "fresh");
+  assert.equal(providerCalls, 1);
+});
+
+test("keeps stale research available when a forced refresh exhausts provider quota", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "safeloc-research-stale-cache-"));
+  let now = Date.parse("2026-09-01T00:00:00.000Z");
+  const cache = createResearchProjectCache({ directory, now: () => now });
+  const project = { name: "Quota Atlas", location: "Texas" };
+  await cache.write(cache.keyFor(project), parseResearchResponse(validResearchResponse(), [retrievedSource]));
+  now += 2 * 24 * 60 * 60 * 1000;
+  const response = responseRecorder();
+  await handleResearchProjectRequest(request({ ...project, forceRefresh: true }), response, {
+    apiKey: "server-secret-for-test",
+    cache,
+    fetchImpl: async () => new Response("private quota detail", { status: 429 }),
+  });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.json().researchCache.state, "stale");
+  assert.equal(response.json().researchCache.providerAvailable, false);
+  assert.equal(response.json().researchCache.errorType, "quota-exhausted");
+  assert.equal(response.json().evidence.length, 16);
+  assert.doesNotMatch(response.body, /private quota detail/i);
+});
+
+test("exposes observable completion status for a background stale refresh", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "safeloc-research-status-cache-"));
+  let now = Date.parse("2026-09-01T00:00:00.000Z");
+  const cache = createResearchProjectCache({ directory, now: () => now });
+  const project = { name: "Status Atlas", location: "Texas" };
+  const key = cache.keyFor(project);
+  await cache.write(key, parseResearchResponse(validResearchResponse(), [retrievedSource]));
+  now += 2 * 24 * 60 * 60 * 1000;
+  const stale = responseRecorder();
+  await handleResearchProjectRequest(request(project), stale, {
+    apiKey: "server-secret-for-test",
+    cache,
+    fetchImpl: async () => singleCallResponse(),
+  });
+  assert.equal(stale.json().researchCache.refreshStatus, "running");
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  const status = responseRecorder();
+  await handleResearchProjectRequest({ method: "GET", url: `/api/research-project?cacheKey=${key}` }, status, { cache });
+  assert.equal(status.statusCode, 200);
+  assert.equal(status.json().researchCache.refreshStatus, "completed");
+  assert.equal(status.json().result.evidence.length, 16);
 });
 
 test("validates and preserves optional Compute Atlas known data", () => {
@@ -289,15 +401,15 @@ test("limits paid custom research requests by client IP", async () => {
     rateLimiter,
     fetchImpl: async () => singleCallResponse(),
   };
-  await handleResearchProjectRequest(request({ name: "Atlas", location: "Texas" }), responseRecorder(), options);
+  await handleResearchProjectRequest(request({ name: "Atlas One", location: "Texas" }), responseRecorder(), options);
   const limited = responseRecorder();
-  await handleResearchProjectRequest(request({ name: "Atlas", location: "Texas" }), limited, options);
+  await handleResearchProjectRequest(request({ name: "Atlas Two", location: "Texas" }), limited, options);
   assert.equal(limited.statusCode, 429);
   assert.equal(limited.headers["retry-after"], "60");
   assert.match(limited.body, /request limit/i);
   now += 60_001;
   const allowedAgain = responseRecorder();
-  await handleResearchProjectRequest(request({ name: "Atlas", location: "Texas" }), allowedAgain, options);
+  await handleResearchProjectRequest(request({ name: "Atlas Three", location: "Texas" }), allowedAgain, options);
   assert.equal(allowedAgain.statusCode, 200);
 });
 
@@ -622,7 +734,7 @@ test("rejects an incomplete provider response without leaking provider details",
   const response = responseRecorder();
   const incomplete = validResearchResponse();
   incomplete.evidence = incomplete.evidence.slice(0, 15);
-  await handleResearchProjectRequest(request({ name: "Project Atlas", location: "Texas" }), response, {
+    await handleResearchProjectRequest(request({ name: "Project Atlas", location: "Texas", forceRefresh: true }), response, {
     apiKey: "server-secret-for-test",
     fetchImpl: async (_, init) => {
       assert.match(init.body, /web_search_preview/);
@@ -630,7 +742,7 @@ test("rejects an incomplete provider response without leaking provider details",
     },
   });
   assert.equal(response.statusCode, 502);
-  assert.deepEqual(response.json(), { error: "Project research returned an invalid 16-item response." });
+  assert.deepEqual(response.json(), { error: "Project research returned an invalid 16-item response.", errorType: "malformed-response" });
   assert.doesNotMatch(response.body, /server-secret-for-test|provider/i);
 });
 

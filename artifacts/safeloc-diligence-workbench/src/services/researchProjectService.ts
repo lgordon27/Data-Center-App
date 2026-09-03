@@ -68,6 +68,7 @@ export type CustomResearchResponse = {
     capacityProvenance: CapacityProvenance;
   };
   researchMode?: ResearchMode;
+  researchCache?: ResearchCacheMetadata;
   researchCoverage?: {
     searchedDomains: string[];
     failedDomains: string[];
@@ -76,6 +77,20 @@ export type CustomResearchResponse = {
     searchTermsSource: "tool-observed" | "ai-reported" | "unavailable";
   };
   evidence: CustomEvidenceRecord[];
+};
+
+export type ResearchCacheMetadata = {
+  key: string;
+  state: "fresh" | "recent" | "stale" | "expired" | "updated";
+  storedAt: string | null;
+  refreshStatus: "idle" | "running" | "completed" | "failed";
+  providerAvailable: boolean;
+  errorType?: "quota-exhausted" | "authentication" | "timeout" | "malformed-response" | "request-limit" | "not-configured" | "upstream";
+};
+
+export type ResearchStatusResponse = {
+  researchCache: ResearchCacheMetadata;
+  result?: CustomResearchResponse;
 };
 
 export type CapacityProvenance = "ai-reported" | "directory-reported" | "standardized-default";
@@ -92,6 +107,7 @@ export type ResearchProjectOptions = {
   onProgress?: (progress: ResearchProgress) => void;
   focusIds?: string[];
   currentEvidence?: Array<Pick<CustomEvidenceRecord, "id" | "label" | "value" | "classification" | "citation">>;
+  forceRefresh?: boolean;
 };
 
 export function summarizeSourceCoverage(evidence: CustomEvidenceRecord[]) {
@@ -246,6 +262,22 @@ function parseSearchTermsSource(value: unknown, terms: string[]): NonNullable<Cu
   return "unavailable";
 }
 
+function parseResearchCache(value: unknown): ResearchCacheMetadata | undefined {
+  if (!isRecord(value) || !isNonEmptyString(value.key) || !/^[a-f0-9]{64}$/.test(value.key)) return undefined;
+  const states = ["fresh", "recent", "stale", "expired", "updated"] as const;
+  const refreshStatuses = ["idle", "running", "completed", "failed"] as const;
+  if (!states.includes(value.state as typeof states[number]) || !refreshStatuses.includes(value.refreshStatus as typeof refreshStatuses[number])) return undefined;
+  const errorTypes = ["quota-exhausted", "authentication", "timeout", "malformed-response", "request-limit", "not-configured", "upstream"] as const;
+  return {
+    key: value.key,
+    state: value.state as ResearchCacheMetadata["state"],
+    storedAt: isNonEmptyString(value.storedAt) && Number.isFinite(Date.parse(value.storedAt)) ? value.storedAt : null,
+    refreshStatus: value.refreshStatus as ResearchCacheMetadata["refreshStatus"],
+    providerAvailable: value.providerAvailable !== false,
+    ...(errorTypes.includes(value.errorType as typeof errorTypes[number]) ? { errorType: value.errorType as ResearchCacheMetadata["errorType"] } : {}),
+  };
+}
+
 const VALID_CLASSIFICATIONS: Classification[] = [
   "Verified Evidence",
   "Management Assertion",
@@ -357,6 +389,7 @@ function parseResponse(value: unknown): CustomResearchResponse {
         : "standardized-default",
     },
     researchMode: value.researchMode === "default-assumptions" ? "default-assumptions" : "ai-researched",
+    ...(parseResearchCache(value.researchCache) ? { researchCache: parseResearchCache(value.researchCache) } : {}),
     ...(isRecord(value.researchCoverage) ? {
       researchCoverage: {
         searchedDomains: Array.isArray(value.researchCoverage.searchedDomains) ? value.researchCoverage.searchedDomains.filter(isNonEmptyString) : [],
@@ -434,6 +467,7 @@ async function requestResearchProject(
   knownData: KnownProjectData | undefined,
   focusIds: string[] | undefined,
   currentEvidence: ResearchProjectOptions["currentEvidence"],
+  forceRefresh: boolean,
   fetchImpl: typeof fetch,
 ) {
   const controller = new AbortController();
@@ -448,6 +482,7 @@ async function requestResearchProject(
         ...(knownData ? { knownData } : {}),
         ...(focusIds?.length ? { focusIds } : {}),
         ...(currentEvidence?.length ? { currentEvidence } : {}),
+        ...(forceRefresh ? { forceRefresh: true } : {}),
       }),
       signal: controller.signal,
     });
@@ -486,7 +521,7 @@ export async function researchProject(
   options.onProgress?.("researching");
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      return await requestResearchProject(name, location, knownData, focusIds, options.currentEvidence, fetchImpl);
+      return await requestResearchProject(name, location, knownData, focusIds, options.currentEvidence, options.forceRefresh === true, fetchImpl);
     } catch (error) {
       if (error instanceof ResearchTimeoutError && attempt === 0) {
         options.onProgress?.("retrying");
@@ -498,4 +533,21 @@ export async function researchProject(
   throw new ResearchTimeoutError();
 }
 
-export { parseResponse };
+export async function checkResearchStatus(cacheKey: string, fetchImpl: typeof fetch = fetch): Promise<ResearchStatusResponse> {
+  if (!/^[a-f0-9]{64}$/.test(cacheKey)) throw new Error("A valid research cache key is required.");
+  const response = await fetchImpl(`${RESEARCH_PROJECT_ENDPOINT}?cacheKey=${encodeURIComponent(cacheKey)}`, {
+    headers: { accept: "application/json" },
+  });
+  const body = await response.json().catch(() => null);
+  if (!response.ok || !isRecord(body)) {
+    throw new Error(isRecord(body) && isNonEmptyString(body.error) ? body.error : "Research update status is unavailable.");
+  }
+  const researchCache = parseResearchCache(body.researchCache);
+  if (!researchCache) throw new Error("Research update status returned an invalid response.");
+  return {
+    researchCache,
+    ...(isRecord(body.result) ? { result: parseResponse({ ...body.result, researchCache: body.researchCache }) } : {}),
+  };
+}
+
+export { parseResponse, parseResearchCache };

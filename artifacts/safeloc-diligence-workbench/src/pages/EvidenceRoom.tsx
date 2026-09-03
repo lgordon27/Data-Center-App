@@ -57,6 +57,7 @@ import type {
 import { ClaimCitation } from "@/components/ClaimCitation";
 import { formatClaimDate } from "@/data/claimSources";
 import {
+  checkResearchStatus,
   researchProject,
   type CustomEvidenceRecord,
   type ResearchProgress,
@@ -517,6 +518,7 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
   const [sourceResearchProgress, setSourceResearchProgress] = useState<ResearchProgress | null>(null);
   const [sourceResearchError, setSourceResearchError] = useState<string | null>(null);
   const [sourceProposals, setSourceProposals] = useState<Record<string, CustomEvidenceRecord>>({});
+  const [sourceCacheNotice, setSourceCacheNotice] = useState<string | null>(null);
   const [decisionHistory, setDecisionHistory] = useState<DecisionHistoryEntry[]>(getDecisionHistory);
   const isSourceResearchBusy = sourceResearchProgress !== null;
   const isAnalysisBusy = activeAnalysisId !== null || batchProgress !== null || isSourceResearchBusy;
@@ -526,6 +528,36 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
     window.addEventListener(DECISION_HISTORY_EVENT, syncDecisionHistory);
     return () => window.removeEventListener(DECISION_HISTORY_EVENT, syncDecisionHistory);
   }, []);
+
+  useEffect(() => {
+    if (!customProject || project.researchCache?.refreshStatus !== "running" || !project.researchCache.key) return undefined;
+    let active = true;
+    let attempts = 0;
+    const poll = async () => {
+      attempts += 1;
+      try {
+        const status = await checkResearchStatus(project.researchCache!.key);
+        if (!active) return;
+        if (status.researchCache.refreshStatus === "completed" && status.result) {
+          const proposals = Object.fromEntries(
+            status.result.evidence.filter((item) => Boolean(item.sourceUrl)).map((item) => [item.id, item]),
+          );
+          setSourceProposals(proposals);
+          setSourceCacheNotice(`Background update completed with ${Object.keys(proposals).length} source-backed finding${Object.keys(proposals).length === 1 ? "" : "s"} ready for review.`);
+          return;
+        }
+        if (status.researchCache.refreshStatus === "failed") {
+          setSourceCacheNotice(`Cached research remains available; the provider update failed (${status.researchCache.errorType ?? "upstream"}).`);
+          return;
+        }
+        if (attempts < 45) window.setTimeout(() => void poll(), 2_000);
+      } catch {
+        if (active) setSourceCacheNotice("Cached research remains available; update status could not be checked.");
+      }
+    };
+    void poll();
+    return () => { active = false; };
+  }, [customProject, project.researchCache]);
 
   const dismissClassificationTip = () => {
     setShowClassificationTip(false);
@@ -576,7 +608,7 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
     setBatchProgress(null);
   };
 
-  const researchMissingSources = async () => {
+  const researchMissingSources = async (forceRefresh = false) => {
     if (!customProject || isAnalysisBusy) return;
     const focusIds = items
       .filter((item) => item.classification === "Missing Evidence" || !item.sourceUrl)
@@ -586,6 +618,7 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
       return;
     }
     setSourceResearchError(null);
+    setSourceCacheNotice(null);
     setSourceProposals({});
     setSourceResearchProgress("researching");
     try {
@@ -598,6 +631,7 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
           classification: item.classification,
           citation: item.citation,
         })),
+        forceRefresh,
         onProgress: setSourceResearchProgress,
       });
       const proposals = Object.fromEntries(
@@ -606,6 +640,10 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
           .map((item) => [item.id, item]),
       );
       setSourceProposals(proposals);
+      if (result.researchCache) {
+        const label = result.researchCache.state === "updated" ? "Research updated now" : `${result.researchCache.state} cached research`;
+        setSourceCacheNotice(`${label}${result.researchCache.providerAvailable === false ? `; provider unavailable (${result.researchCache.errorType ?? "upstream"})` : ""}.`);
+      }
       if (!Object.keys(proposals).length) {
         setSourceResearchError("The focused searches completed, but no new project-specific source passed validation.");
       }
@@ -680,7 +718,7 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
                 type="button"
                 disabled={isAnalysisBusy}
                 aria-busy={isAnalysisBusy}
-                onClick={() => void (customProject ? researchMissingSources() : analyzeAll())}
+                onClick={() => void (customProject ? researchMissingSources(false) : analyzeAll())}
                 className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-[#9aaec0] bg-[#122232] px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#d4e86b] hover:border-[#d4e86b] disabled:cursor-wait disabled:opacity-60"
               >
                 <Sparkles aria-hidden="true" className="h-3.5 w-3.5" />
@@ -688,6 +726,17 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
                   ? sourceResearchProgress === "retrying" ? "Retrying source research…" : sourceResearchProgress ? "Researching missing sources…" : "Research Missing Sources"
                   : batchProgress ? `Analyzing ${batchProgress.current} of ${batchProgress.total}…` : "Analyze All with AI"}
               </button>
+              {customProject && (
+                <button
+                  data-testid="button-force-refresh-research"
+                  type="button"
+                  disabled={isAnalysisBusy}
+                  onClick={() => void researchMissingSources(true)}
+                  className="inline-flex min-h-9 items-center justify-center gap-1 rounded-md border border-[#cbd8d4] bg-white px-3 py-2 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#52616b] hover:border-[#255bb7] hover:text-[#255bb7] disabled:cursor-wait disabled:opacity-60"
+                >
+                  <RefreshCw aria-hidden="true" className="h-3 w-3" /> Force provider refresh
+                </button>
+              )}
               {customProject && !sourceResearchProgress
                 ? <span data-testid="custom-ai-reassessment-note" role="note" className="text-right font-mono text-[8px] uppercase tracking-[0.08em] text-[#7d898f]">Searches unresolved inputs · human acceptance required</span>
                 : batchProgress && <span data-testid="status-ai-batch" role="status" aria-live="polite" className="text-right font-mono text-[8px] uppercase tracking-[0.08em] text-[#60707d]">One item at a time · suggestions only</span>}
@@ -698,6 +747,11 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
       {customProject && sourceResearchError && (
         <aside data-testid="source-research-status" role="status" className="mb-5 rounded-lg border border-[#f1cb8b] bg-[#fff8e9] px-4 py-3 text-[10px] text-[#6f460e]">
           {sourceResearchError}
+        </aside>
+      )}
+      {customProject && sourceCacheNotice && (
+        <aside data-testid="source-research-cache-status" role="status" className="mb-5 rounded-lg border border-[#9bd8c5] bg-[#eff8f4] px-4 py-3 text-[10px] text-[#08644f]">
+          {sourceCacheNotice}
         </aside>
       )}
       {customProject && Object.keys(sourceProposals).length > 0 && (

@@ -69,6 +69,10 @@ function CustomCaseBrief({ project, onNavigate }: { project: ReturnType<typeof u
     : project.capacityProvenance === "ai-reported"
       ? "AI-reported capacity used to scale the synthetic model."
       : "No usable project capacity returned; standardized 1,200 MW default used.";
+  const cacheLabel = project.researchCache
+    ? project.researchCache.state === "updated" ? "Updated just now"
+      : `${project.researchCache.state[0].toUpperCase()}${project.researchCache.state.slice(1)} cached research`
+    : null;
   return (
     <div>
       <PageIntro
@@ -83,6 +87,14 @@ function CustomCaseBrief({ project, onNavigate }: { project: ReturnType<typeof u
           <div className="rounded-lg bg-[#122232] px-4 py-3 text-right text-white"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#a4b4bd]">{capacityLabel}</div><div data-testid="custom-project-capacity" className="mt-1 font-mono text-xl font-bold text-[#d4e86b]">{project.capacityMW.toLocaleString()} MW</div><div data-testid="custom-project-capacity-note" className="mt-1 max-w-[180px] text-[9px] leading-4 text-[#c4d0d6]">{capacityNote}</div></div>
         </div>
         <p data-testid="custom-project-description" className="mt-5 max-w-4xl text-[13px] leading-6 text-[#344550]">{project.description}</p>
+        {cacheLabel && (
+          <div data-testid="custom-research-cache-status" className={`mt-4 rounded-lg border px-4 py-3 text-[10px] leading-5 ${project.researchCache?.providerAvailable === false ? "border-[#f1cb8b] bg-[#fff8e9] text-[#6f460e]" : "border-[#9bd8c5] bg-[#eff8f4] text-[#08644f]"}`}>
+            <strong>{cacheLabel}</strong>
+            {project.researchCache?.storedAt && <> · saved <time dateTime={project.researchCache.storedAt}>{new Date(project.researchCache.storedAt).toLocaleString()}</time></>}
+            {project.researchCache?.refreshStatus === "running" && <> · checking for an update in the background</>}
+            {project.researchCache?.providerAvailable === false && <> · provider unavailable ({project.researchCache.errorType ?? "upstream"}); retained research remains visible</>}
+          </div>
+        )}
         {!isDefaultAssumptions && (
           <div data-testid="source-coverage-summary" className="mt-5 rounded-lg border border-[#d9e0e4] bg-[#f5f7f6] p-4">
             <div className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#52616b]">Source Coverage</div>

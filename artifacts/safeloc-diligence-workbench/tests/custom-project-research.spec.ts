@@ -28,6 +28,13 @@ function customResponse() {
       description: "High-level research found equipment procurement and lead-time concerns, local electricity-rate questions, noise and operational considerations, jurisdictional moratorium review, and semiconductor and memory supply-chain constraints. Regional grid-load requests are context, not facility proof.",
       capacityMW: 600,
     },
+    researchCache: {
+      key: "c".repeat(64),
+      state: "fresh",
+      storedAt: "2026-09-03T12:00:00.000Z",
+      refreshStatus: "idle",
+      providerAvailable: true,
+    },
     evidence: evidenceIds.map((id, index) => ({
       id,
       label: id.replaceAll("_", " "),
@@ -56,10 +63,11 @@ test.describe("custom project research", () => {
   test.beforeEach(async ({ page }) => {
     await page.route("**/api/research-project", async (route) => {
       await new Promise((resolve) => setTimeout(resolve, 150));
-      const request = route.request().postDataJSON() as { name: string; location: string; focusIds?: string[] };
+      const request = route.request().postDataJSON() as { name: string; location: string; focusIds?: string[]; forceRefresh?: boolean };
       const response = customResponse();
       response.projectSummary.name = request.name;
       response.projectSummary.location = request.location;
+      if (request.forceRefresh) response.researchCache.state = "updated";
       if (request.focusIds?.length) {
         const grid = response.evidence.find((item) => item.id === "grid_interconnection")!;
         grid.value = "Behind-the-meter generation";
@@ -102,6 +110,7 @@ test.describe("custom project research", () => {
     await expect(page.getByTestId("custom-project-description")).toContainText("equipment procurement");
     await expect(page.getByTestId("custom-project-capacity")).toHaveText("600 MW");
     await expect(page.getByTestId("custom-project-capacity-note")).toContainText("AI-reported capacity used");
+    await expect(page.getByTestId("custom-research-cache-status")).toContainText("Fresh cached research");
     await expect(page.getByTestId("custom-project-summary")).not.toContainText("Research scale");
     await expect(page.locator('[data-testid="custom-project-description"]')).toHaveCount(1);
     await expect(page.getByTestId("custom-research-banner")).toContainText("Financial outputs remain synthetic");
@@ -161,6 +170,26 @@ test.describe("custom project research", () => {
     await page.reload();
     await expect(page.getByTestId("custom-research-banner")).toHaveCount(0);
     await expect(page).toHaveURL(/#brief$/);
+  });
+
+  test("lets a reviewer force a provider refresh and exposes the resulting cache state", async ({ page }) => {
+    await page.goto("/#home");
+    await page.getByTestId("input-custom-project-name").fill("Project Atlas");
+    await page.getByTestId("input-custom-project-location").fill("Maricopa County, Arizona");
+    await page.getByTestId("button-run-ai-analysis").click();
+    await expect(page).toHaveURL(/#brief$/);
+    await page.goto("/#evidence");
+
+    const requestPromise = page.waitForRequest((request) =>
+      request.url().includes("/api/research-project") &&
+      request.method() === "POST" &&
+      request.postDataJSON()?.forceRefresh === true,
+    );
+    await page.getByTestId("button-force-refresh-research").click();
+    const refreshRequest = await requestPromise;
+    expect(refreshRequest.postDataJSON().forceRefresh).toBe(true);
+    await expect(page.getByTestId("source-research-cache-status")).toContainText("Research updated now");
+    await expect(page.getByTestId("source-research-summary")).toContainText("new source-backed proposal");
   });
 
   test("researches unresolved inputs and stages a source-backed proposal for human acceptance", async ({ page }) => {

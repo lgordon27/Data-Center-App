@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   createDefaultAssumptionResearch,
+  checkResearchStatus,
   CUSTOM_EVIDENCE_IDS,
   parseResponse,
   researchProject,
@@ -164,6 +165,54 @@ test("does not retry non-timeout failures", async () => {
   };
   await assert.rejects(() => researchProject("Atlas", "Texas", fetchImpl as typeof fetch), /Provider rejected/);
   assert.equal(calls, 1);
+});
+
+test("preserves cache freshness metadata and sends explicit force refresh", async () => {
+  let requestBody: Record<string, unknown> | null = null;
+  const cacheKey = "a".repeat(64);
+  const fetchImpl = async (_input: string | URL | Request, init?: RequestInit) => {
+    requestBody = JSON.parse(String(init?.body));
+    return new Response(JSON.stringify({
+      ...response,
+      researchCache: {
+        key: cacheKey,
+        state: "stale",
+        storedAt: "2026-09-01T12:00:00.000Z",
+        refreshStatus: "failed",
+        providerAvailable: false,
+        errorType: "quota-exhausted",
+      },
+    }), { status: 200 });
+  };
+  const result = await researchProject("Atlas", "Texas", fetchImpl as typeof fetch, { forceRefresh: true });
+  assert.deepEqual(requestBody, { name: "Atlas", location: "Texas", forceRefresh: true });
+  assert.deepEqual(result.researchCache, {
+    key: cacheKey,
+    state: "stale",
+    storedAt: "2026-09-01T12:00:00.000Z",
+    refreshStatus: "failed",
+    providerAvailable: false,
+    errorType: "quota-exhausted",
+  });
+});
+
+test("checks background refresh status and parses a completed result", async () => {
+  const cacheKey = "b".repeat(64);
+  const result = await checkResearchStatus(cacheKey, async (input) => {
+    assert.match(String(input), new RegExp(cacheKey));
+    return new Response(JSON.stringify({
+      researchCache: {
+        key: cacheKey,
+        state: "fresh",
+        storedAt: "2026-09-03T12:00:00.000Z",
+        refreshStatus: "completed",
+        providerAvailable: true,
+      },
+      result: response,
+    }), { status: 200 });
+  });
+  assert.equal(result.researchCache.refreshStatus, "completed");
+  assert.equal(result.result?.evidence.length, 16);
 });
 
 test("creates an explicitly labeled 16-item Missing Evidence fallback", () => {

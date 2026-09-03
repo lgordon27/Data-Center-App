@@ -1,0 +1,14 @@
+Three issues with the custom project AI research flow need fixing:
+
+ISSUE 1 (CRITICAL): The AI research endpoint (POST /api/research-project) is classifying all 16 evidence items as Missing Evidence regardless of what public information exists. Test case: "Project Kilby" in "Reeves County, Texas" should return multiple items as Management Assertion or Verified Evidence because this project has extensive public documentation: Chevron SEC 8-K filing, signed 20-year Microsoft PPA, confirmed GE Vernova turbine orders, brackish groundwater from Texas Pacific Land, and behind-the-meter power generation confirmed by multiple news outlets.
+
+Debug the research endpoint:
+1. Check whether the OpenAI API call is actually returning varied classifications or if the response parsing is stripping them and defaulting everything to Missing Evidence
+2. Check whether the system prompt instructs the model to classify based on what it finds, not to default conservatively
+3. Log the raw OpenAI response before parsing to verify what the model actually returned
+4. Update the system prompt to be explicit: "If you find public reporting confirming a data point, classify it as Management Assertion (if from company sources) or Verified Evidence (if from independent regulatory filings or government data). Only classify as Missing Evidence if you genuinely cannot find any public information about that variable. Do not default to Missing Evidence as a conservative choice."
+5. After fixing, test with "Project Kilby, Reeves County, Texas" and verify that at least power source, grid dependency, and water source come back as Management Assertion or higher
+
+ISSUE 2: When the AI research returns a capacity value (e.g., 2.0 GW for Project Kilby), the model should use that capacity to scale the financial assumptions instead of always falling back to the 1,200 MW conservative default. Only use the default if the AI returns no capacity or an obviously invalid number. Show the AI-reported capacity prominently and note when the default is used instead.
+
+ISSUE 3: The Case Brief for custom projects shows the AI-generated project description twice: once in the main content area at the top and again in the "CUSTOM PROJECT SUMMARY" card below. Remove the duplicate. Show the description once in the project summary card only.

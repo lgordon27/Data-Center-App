@@ -55,7 +55,7 @@ import type {
   Screen
 } from "@/components/Shell";
 import { ClaimCitation } from "@/components/ClaimCitation";
-import { formatClaimDate } from "@/data/claimSources";
+import { formatClaimDate, getClaimSources, type ClaimSourceRecord } from "@/data/claimSources";
 import {
   checkResearchStatus,
   researchProject,
@@ -64,6 +64,83 @@ import {
 } from "@/services/researchProjectService";
 
 type AssessmentNotice = "accepted" | "overridden";
+
+function AssessmentSourceContext({ item }: { item: EvidenceItem }) {
+  const claimSources = item.claimIds
+    .flatMap((claimId) => getClaimSources(claimId))
+    .filter((source, index, sources) => sources.findIndex((candidate) => candidate.id === source.id) === index);
+  const directSources = item.sources ?? [];
+  const hasSources = Boolean(item.sourceUrl || directSources.length || claimSources.length);
+
+  return (
+    <div data-testid={`ai-analysis-sources-${item.id}`} className="mt-3 border-t border-[#d8e4de] pt-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-[#60707d]">Sources supplied to this analysis</span>
+        <span className="font-mono text-[8px] uppercase tracking-[0.08em] text-[#7d898f]">Classifier only · no new web search</span>
+      </div>
+      <p className="mt-1 text-[9px] leading-4 text-[#52616b]">
+        The model assessed the evidence and citation already attached to this input. Review the linked public record before accepting its suggestion.
+      </p>
+      {item.sourceUrl && (
+        <a
+          data-testid={`ai-analysis-source-direct-${item.id}`}
+          href={item.sourceUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-2 inline-flex items-start gap-1 text-[9px] font-semibold text-[#255bb7] underline underline-offset-2"
+        >
+          {item.sourceTitle ?? item.sourcePublisher ?? "Open cited public source"}
+          <ExternalLink aria-hidden="true" className="mt-0.5 h-3 w-3 shrink-0" />
+        </a>
+      )}
+      {directSources.length > 0 && (
+        <ul className="mt-2 space-y-1.5">
+          {directSources.map((source) => (
+            <li key={source.url}>
+              <a
+                data-testid={`ai-analysis-source-${item.id}-${encodeURIComponent(source.url)}`}
+                href={source.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-start gap-1 text-[9px] font-semibold text-[#255bb7] underline underline-offset-2"
+              >
+                {source.title} <span className="font-normal text-[#60707d]">· {source.publisher}</span>
+                <ExternalLink aria-hidden="true" className="mt-0.5 h-3 w-3 shrink-0" />
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+      {claimSources.length > 0 && (
+        <ul className="mt-2 space-y-1.5">
+          {claimSources.map((source) => <AssessmentClaimSource key={source.id} source={source} itemId={item.id} />)}
+        </ul>
+      )}
+      {!hasSources && (
+        <p data-testid={`ai-analysis-no-sources-${item.id}`} className="mt-2 rounded border border-[#f1cb8b] bg-[#fff8e9] px-2 py-1.5 text-[9px] leading-4 text-[#8a5200]">
+          No public-source link is attached to this input; the classifier cannot establish one.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function AssessmentClaimSource({ source, itemId }: { source: ClaimSourceRecord; itemId: string }) {
+  return (
+    <li>
+      <a
+        data-testid={`ai-analysis-source-${itemId}-${source.id}`}
+        href={source.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-start gap-1 text-[9px] font-semibold text-[#255bb7] underline underline-offset-2"
+      >
+        {source.publisher}: {source.title}
+        <ExternalLink aria-hidden="true" className="mt-0.5 h-3 w-3 shrink-0" />
+      </a>
+    </li>
+  );
+}
 
 function EvidenceAssessment({
   item,
@@ -133,6 +210,7 @@ function EvidenceAssessment({
            <p data-testid={`ai-trust-context-${item.id}`} className="text-[10px] leading-4 text-[#52616b]">Only 3% of Americans have high confidence in AI for financial guidance. This suggestion is a starting point, not a conclusion. Your classification is the one the model uses.</p>
            <p data-testid={`ai-trust-source-${item.id}`} className="mt-1 font-mono text-[9px] tracking-[0.08em] text-[#60707d]">Gallup/Edward Jones, August 2026</p>
          </div>
+          <AssessmentSourceContext item={item} />
       </div>
     );
   }

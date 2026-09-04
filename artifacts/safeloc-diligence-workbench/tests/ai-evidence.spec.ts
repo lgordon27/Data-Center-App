@@ -7,7 +7,12 @@ const responseFor = (classification: string, reasoning: string) => ({
 
 test.describe("AI evidence classification", () => {
   test.beforeEach(async ({ page }) => {
-    await page.addInitScript(() => localStorage.clear());
+    await page.addInitScript(() => {
+      if (!sessionStorage.getItem("safeloc:ai-evidence-test-initialized")) {
+        localStorage.clear();
+        sessionStorage.setItem("safeloc:ai-evidence-test-initialized", "true");
+      }
+    });
   });
 
   test("shows a fresh suggestion and routes acceptance through live model state", async ({ page }) => {
@@ -36,6 +41,9 @@ test.describe("AI evidence classification", () => {
     await expect(row).toContainText("Suggestion, not a determination");
      await expect(row.getByTestId("ai-trust-context-community_risk")).toHaveText("Only 3% of Americans have high confidence in AI for financial guidance. This suggestion is a starting point, not a conclusion. Your classification is the one the model uses.");
      await expect(row.getByTestId("ai-trust-source-community_risk")).toHaveText("Gallup/Edward Jones, August 2026");
+     await expect(row.getByTestId("ai-analysis-sources-community_risk")).toContainText("Sources supplied to this analysis");
+     await expect(row.getByTestId("ai-analysis-sources-community_risk")).toContainText("Classifier only · no new web search");
+     await expect(row.getByTestId("ai-analysis-source-community_risk-fema-nri-v120")).toHaveAttribute("href", "https://www.fema.gov/about/openfema/data-sets/national-risk-index-data");
     await expect(row.getByTestId("select-classification-community_risk")).toHaveValue("Verified Evidence");
     expect(requests).toBe(1);
 
@@ -100,7 +108,7 @@ test.describe("AI evidence classification", () => {
     expect(maxInFlight).toBe(1);
     expect(await page.getByTestId("select-classification-water_rights").inputValue()).toBe("Missing Evidence");
     await expect(page.getByTestId("review-marker-water_rights")).toContainText("AI-suggested, overridden by analyst");
-    expect(await page.getByTestId("select-classification-electricity_cost").inputValue()).toBe("Verified Evidence");
+    expect(await page.getByTestId("select-classification-electricity_cost").inputValue()).toBe("User Assumption");
     await expect(page.locator("[data-testid^='ai-assessment-']")).toHaveCount(16);
      await expect(page.locator("[data-testid^='ai-trust-context-']")).toHaveCount(16);
      await expect(page.locator("[data-testid^='ai-trust-source-']")).toHaveCount(16);

@@ -306,6 +306,7 @@ test.describe("hash routing and browser history", () => {
       body: JSON.stringify({ diagnostics: { error: "Calibration test uses the bundled baseline" } }),
     }));
     await page.goto("/#materiality");
+    await page.getByRole("button", { name: "Stress Waterfall" }).click();
 
     const waterfall = page.getByTestId("panel-irr-waterfall");
     const baseCaseLabel = "Underwriting Baseline (All Inputs Verified)";
@@ -314,7 +315,7 @@ test.describe("hash routing and browser history", () => {
     const methodology = "Evidence classifications do not predict whether an unknown outcome will be favorable or unfavorable. For this demonstration, weaker evidence triggers predefined conservative underwriting treatments to show the potential cost of unresolved uncertainty.";
     const note = "A management assertion that proves accurate would improve the return. The conservative stress case shows the cost of not knowing, not the cost of a negative outcome.";
 
-    await expect(waterfall.getByRole("heading", { name: "Evidence-Quality Stress Test" })).toBeVisible();
+    await expect(waterfall.getByRole("heading", { name: "Sequential stress attribution" })).toBeVisible();
     await expect(waterfall.getByTestId("waterfall-description")).toHaveText(description);
     await expect(waterfall.getByTestId("waterfall-methodology")).toHaveText(methodology);
     await expect(waterfall).toHaveAttribute("aria-describedby", "irr-waterfall-description irr-waterfall-methodology");
@@ -461,6 +462,7 @@ test.describe("hash routing and browser history", () => {
     }
 
     await page.goto("/#materiality");
+    await page.getByRole("button", { name: "Stress Waterfall" }).click();
     await expect(page.getByTestId("panel-irr-waterfall")).toContainText("Underwriting Baseline");
     await expect(page.getByTestId("panel-irr-waterfall")).toContainText("Conservative Case (Stress-Adjusted)");
 

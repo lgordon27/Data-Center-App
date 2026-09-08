@@ -133,6 +133,7 @@ test.describe("institutional workbench refinement", () => {
     await expect(drawer).toBeHidden();
 
     // The waterfall trace is explicitly labeled as sequential attribution.
+    await page.getByRole("button", { name: "Stress Waterfall" }).click();
     await page.getByTestId("button-trace-grid_interconnection").click();
     await expect(drawer).toContainText("Sequential attribution");
     await expect(drawer.getByTestId("trace-seq-effect-grid_interconnection")).toBeVisible();

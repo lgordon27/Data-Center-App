@@ -26,6 +26,7 @@ import {
 import {
   isMaterialEvidenceId,
   getEffectiveSupportState,
+  formatImpactDelta,
   type RecommendationStatus,
 } from "@/model/cashFlowEngine";
 
@@ -139,6 +140,7 @@ export function DecisionReview({ onNavigate, onResolve, requestedAction, onReque
   }, [requestedAction, project.kind, scenarioItems.length, onRequestedActionHandled]);
   const grouped = classifications.map((classification) => ({ classification, items: items.filter((item) => item.classification === classification) })).filter((group) => group.items.length);
   const disputed = items.filter((item) => item.classification === "Management Assertion" || item.classification === "Missing Evidence");
+  const consequenceItems = items.filter((item) => (item.modelClassification ?? item.classification) !== "Verified Evidence");
   return (
     <div>
       <PageIntro
@@ -198,6 +200,23 @@ export function DecisionReview({ onNavigate, onResolve, requestedAction, onReque
             {materialGapItems.map((item) => <div key={item.id} data-testid={`material-gap-row-${item.id}`} className="flex items-center justify-between gap-4 py-3"><div><div className="text-[11px] font-semibold text-[#344550]">{item.label}</div><div className="mt-1 text-[10px] text-[#52616b]">{item.citation}</div></div><button type="button" data-testid={`button-resolve-${item.id}`} onClick={() => onResolve(item.id)} className="shrink-0 rounded bg-[#fde8eb] px-2.5 py-2 text-[9px] font-bold uppercase tracking-[0.11em] text-[#ba2f45] hover:bg-[#ba2f45] hover:text-white">Resolve <ArrowRight aria-hidden="true" className="ml-1 inline h-3 w-3" /></button></div>)}
             {materialGapItems.length === 0 && <div data-testid="material-gap-empty" className="rounded-md bg-[#e0f4ed] p-3 text-[11px] text-[#0b7a63]">No material evidence gaps. The recommendation is not blocked by missing evidence.</div>}
           </div>
+          <section data-testid="decision-consequence-register" className="mt-5 border-t border-[#e5eae8] pt-4" aria-labelledby="decision-consequence-title">
+            <div className="font-mono text-[9px] font-bold uppercase tracking-[0.13em] text-[#52616b]">Decision consequence register</div>
+            <h3 id="decision-consequence-title" className="mt-1 text-[14px] font-semibold text-[#122232]">What each unresolved classification means</h3>
+            <div className="mt-3 divide-y divide-[#e5eae8]">
+              {consequenceItems.map((item) => {
+                const attribution = metrics.attribution[item.id];
+                const isDriver = item.impactRole === "Financial Driver";
+                const modeledClassification = attribution?.modeledClassification ?? item.modelClassification ?? item.classification;
+                return <div key={item.id} data-testid={`decision-consequence-${item.id}`} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div><div className="text-[11px] font-semibold text-[#344550]">{item.label}</div><div className="mt-1 text-[10px] leading-4 text-[#52616b]">Source classification: {item.classification}{modeledClassification !== item.classification ? ` · modeled treatment: ${modeledClassification}` : ""}</div><div className="mt-1 text-[10px] leading-4 text-[#52616b]">{isDriver ? `Calculated project consequence on ${attribution?.affectedCashFlowLine ?? "cash flow"}: ${attribution ? formatCurrency(attribution.dollarImpact) : "Unavailable"} total marginal effect; ${attribution ? formatImpactDelta(attribution.singleInputSensitivityIRR) : "N/M"} single-input IRR sensitivity.` : `${item.impactRole} review consequence: resolve or condition the decision; no direct modeled adjustment.`}</div></div>
+                  <span className={`shrink-0 rounded-full px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.08em] ${isDriver ? "bg-[#fde8eb] text-[#ba2f45]" : "bg-[#fff0d6] text-[#8a6400]"}`}>{isDriver ? "Calculated consequence" : "Review consequence"}</span>
+                </div>;
+              })}
+              {consequenceItems.length === 0 && <p className="py-3 text-[10px] text-[#0b7a63]">No unresolved classifications currently require a consequence statement.</p>}
+            </div>
+            <p className="mt-2 text-[9px] leading-4 text-[#7d898f]">Financial Driver amounts are project-model sensitivities only. Decision Gates and Context Indicators never promise an IRR improvement.</p>
+          </section>
            <div data-testid="community-material-gaps" className="mt-5 border-t border-[#e5eae8] pt-4">
              <div className="flex flex-wrap items-baseline justify-between gap-2">
                <div className="font-mono text-[9px] font-bold uppercase tracking-[0.13em] text-[#52616b]">Community terms requiring resolution</div>

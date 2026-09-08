@@ -424,6 +424,86 @@ test("decision gates and context indicators never alter financial outputs", () =
   }
 });
 
+test("attribution contract reconciles marginal schedule effects and separates roles", () => {
+  const model = calculateCashFlowModel(INITIAL_EVIDENCE);
+  const electricity = model.attribution.electricity_cost;
+  assert.equal(electricity.impactRole, "Financial Driver");
+  assert.equal(electricity.currentClassification, "User Assumption");
+  assert.equal(electricity.baselineClassification, "Verified Evidence");
+  assert.equal(electricity.affectedCashFlowLine, "Electricity OPEX");
+  assert.equal(electricity.marginalAnnualDeltas.length, model.schedule.length);
+  assert.equal(
+    electricity.dollarImpact,
+    electricity.marginalAnnualDeltas.reduce((total, delta) => total + delta, 0),
+  );
+  const finalYearIndex = model.schedule.length - 1;
+  const repairedElectricity = calculateCashFlowModel({
+    ...INITIAL_EVIDENCE,
+    electricity_cost: {
+      ...INITIAL_EVIDENCE.electricity_cost,
+      classification: "Verified Evidence",
+      modelClassification: undefined,
+    },
+  });
+  assert.equal(
+    electricity.annualEffect,
+    model.schedule[finalYearIndex].electricityOpex - repairedElectricity.schedule[finalYearIndex].electricityOpex,
+  );
+  assert.equal(electricity.annualEffectBasis, "Recurring operating line; excludes terminal value and debt repayment.");
+  assert.notEqual(electricity.annualEffect, electricity.marginalAnnualDeltas[finalYearIndex]);
+  assert.equal(electricity.singleInputSensitivityIRR, model.lineItems.electricity_cost.deltaIRR);
+  assert.equal(model.attribution.cooling_capex.annualEffect, 0);
+  assert.equal(model.attribution.cooling_capex.annualEffectBasis, "Close treatment only; no recurring annual effect.");
+  assert.equal(model.attribution.water_rights.impactRole, "Decision Gate");
+  assert.equal(model.attribution.water_rights.affectedCashFlowLine, "Review gate");
+  assert.equal(model.attribution.water_rights.dollarImpact, 0);
+  assert.equal(model.attribution.water_rights.singleInputSensitivityIRR, 0);
+  assert.equal(model.attribution.water_rights.hasDirectModeledEffect, false);
+  assert.equal(model.attribution.community_risk.affectedCashFlowLine, "Context only");
+  assert.equal(model.attribution.site_hazard_exposure.currentClassification, "Verified Evidence");
+  assert.equal(model.attribution.site_hazard_exposure.modeledClassification, "Model Inference");
+  assert.ok(model.attribution.site_hazard_exposure.singleInputSensitivityIRR! < 0);
+});
+
+test("marginal attribution stays distinct from sequential waterfall attribution", () => {
+  const model = calculateCashFlowModel(INITIAL_EVIDENCE);
+  const marginal = model.attribution.grid_interconnection.singleInputSensitivityIRR;
+  const sequential = model.waterfall.find((step) => step.id === "grid_interconnection")?.deltaIRR;
+  assert.notEqual(marginal, null);
+  assert.notEqual(sequential, undefined);
+  assert.equal(model.waterfall.at(-1)?.after, model.projectIRR);
+  assert.ok(
+    model.waterfall.some((step) => Math.abs(step.deltaIRR - (model.attribution[step.id]?.singleInputSensitivityIRR ?? 0)) > 0.000001),
+    "at least one interacting driver should demonstrate why sequential waterfall deltas are not additive marginal sensitivities",
+  );
+});
+
+test("marginal treatment uses the one-input repaired comparator when drivers interact", () => {
+  const interactingEvidence = {
+    ...INITIAL_EVIDENCE,
+    downtime_cost: {
+      ...INITIAL_EVIDENCE.downtime_cost,
+      classification: "Missing Evidence" as const,
+      modelClassification: "Missing Evidence" as const,
+    },
+  };
+  const model = calculateCashFlowModel(interactingEvidence);
+  const repairedHazard = calculateCashFlowModel({
+    ...interactingEvidence,
+    site_hazard_exposure: {
+      ...interactingEvidence.site_hazard_exposure,
+      classification: "Verified Evidence",
+      modelClassification: undefined,
+    },
+  });
+  const expectedTreatment = `Applied annual hazard probability: ${(repairedHazard.assumptions.adjustedHazardProbability * 100).toFixed(1)}%; climate disruption cost: $${(repairedHazard.assumptions.adjustedDowntimeCostPerDay / 1_000_000).toFixed(2)}M/day.`;
+  assert.equal(model.attribution.site_hazard_exposure.baselineTreatment, expectedTreatment);
+  assert.notEqual(
+    model.attribution.site_hazard_exposure.baselineTreatment,
+    calculateCashFlowModel(allVerified()).attribution.site_hazard_exposure.baselineTreatment,
+  );
+});
+
 test("climate uncertainty propagates through returns and material recommendation rules", () => {
   const verified = calculateCashFlowModel(allVerified());
   const current = calculateCashFlowModel(INITIAL_EVIDENCE);

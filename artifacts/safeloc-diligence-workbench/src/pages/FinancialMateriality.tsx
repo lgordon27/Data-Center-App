@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   ClassificationBadge,
   ImpactRoleBadge,
@@ -51,6 +52,13 @@ function reviewActionLabel(kind: "manual" | "ai" | undefined, reviewKind?: strin
 
 type TraceContext = "waterfall" | "row" | "context-item";
 
+function formatRecurringEffect(value: number, line: string) {
+  if (value === 0) return "No recurring effect";
+  const direction = value > 0 ? "higher" : "lower";
+  const lineType = line.includes("OPEX") ? "cost" : line === "Revenue timing" ? "revenue" : "operating contribution";
+  return `${formatCurrency(Math.abs(value))} ${direction} ${lineType}`;
+}
+
 function EvidenceTraceButton({ inputId, testId, context, tone = "light" }: { inputId: string; testId: string; context: TraceContext; tone?: "light" | "dark" }) {
   const { evidence, metrics } = useDiligence();
   const { openDrawer } = useWorkbenchDrawer();
@@ -58,6 +66,7 @@ function EvidenceTraceButton({ inputId, testId, context, tone = "light" }: { inp
   if (!item) return null;
   const step = metrics.waterfall.find((candidate) => candidate.id === inputId);
   const lineItem = metrics.lineItems[inputId];
+  const attribution = metrics.attribution[inputId];
   const reviewedAt = item.review ? new Date(item.review.reviewedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : null;
   // The trace must explain the exact number on the control that opened it:
   // waterfall steps are sequential attribution; driver rows are single-input sensitivity.
@@ -82,6 +91,7 @@ function EvidenceTraceButton({ inputId, testId, context, tone = "light" }: { inp
               <div className="grid gap-2 sm:grid-cols-2">
                 <DrawerField label="Original value (underwriting baseline)" value={`${item.value} ${item.unit} · treated as verified`} />
                 <DrawerField label="Approved current value" value={<span className="inline-flex flex-wrap items-center gap-1.5">{item.value} {item.unit} <ClassificationBadge value={item.classification} compact /></span>} />
+                {attribution && attribution.modeledClassification !== attribution.currentClassification && <DrawerField label="Modeled classification" value={attribution.modeledClassification} />}
               </div>
             </DrawerSection>
             <DrawerSection label="Source">
@@ -91,6 +101,11 @@ function EvidenceTraceButton({ inputId, testId, context, tone = "light" }: { inp
             <DrawerSection label="Calculation">
               {basisCopy && <p className="font-semibold text-[#243844]">{basisCopy}</p>}
               {lineItem && <p><strong>Driver:</strong> {lineItem.driver}</p>}
+               {attribution && <p><strong>Affected cash-flow line:</strong> {attribution.affectedCashFlowLine}</p>}
+               {attribution && <div className="grid gap-2 sm:grid-cols-2">
+                 <DrawerField label="Baseline treatment" value={attribution.baselineTreatment} />
+                 <DrawerField label="Current treatment" value={attribution.currentTreatment} />
+               </div>}
               {treatmentSource ? (
                 <>
                   <p><strong>Applied treatment:</strong> {treatmentSource.impactTreatment}</p>
@@ -115,7 +130,11 @@ function EvidenceTraceButton({ inputId, testId, context, tone = "light" }: { inp
                   <DrawerField label="Sequential effect" value={formatImpactDelta(step.deltaIRR)} testId={`trace-seq-effect-${inputId}`} />
                 </div>
               ) : context === "row" && lineItem ? (
-                <DrawerField label="Single-input effect on project IRR" value={formatImpactDelta(lineItem.deltaIRR)} testId={`trace-effect-${inputId}`} />
+                 <div className="grid gap-2 sm:grid-cols-2">
+                   <DrawerField label="Single-input effect on project IRR" value={formatImpactDelta(lineItem.deltaIRR)} testId={`trace-effect-${inputId}`} />
+                   <DrawerField label="Marginal dollar impact" value={attribution ? formatCurrency(attribution.dollarImpact) : "Unavailable"} />
+                   <DrawerField label="Recurring annual line effect (excludes exit)" value={attribution ? formatRecurringEffect(attribution.annualEffect, attribution.affectedCashFlowLine) : "Unavailable"} />
+                 </div>
               ) : (
                 <p>No direct return effect. See the Decision section for how this gate or context item shapes posture.</p>
               )}
@@ -146,6 +165,11 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
   const chartMax = Math.max(...chartValues, 0);
   const irrDelta = currentIRR === null || baseIRR === null ? null : currentIRR - baseIRR;
   const waterfallSteps = metrics.waterfall;
+  const [financialView, setFinancialView] = useState<"impact-chain" | "waterfall" | "full-model">("impact-chain");
+  const rankedAttributions = Object.values(metrics.attribution)
+    .filter((item) => item.impactRole === "Financial Driver")
+    .sort((a, b) => Math.abs(b.singleInputSensitivityIRR ?? 0) - Math.abs(a.singleInputSensitivityIRR ?? 0));
+  const formatDollarEffect = (value: number) => value === 0 ? "No direct effect" : formatCurrency(value);
   return (
     <div>
       <PageIntro
@@ -162,10 +186,10 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
       )}
       <nav aria-label="Financial materiality sections" className="sticky top-0 z-10 mb-4 flex gap-1 overflow-x-auto rounded-lg border border-[#d9e0e4] bg-[#f9faf8]/95 p-1.5 backdrop-blur-md">
         {[
-          ["materiality-summary", "Summary"],
-          ["materiality-drivers", "Drivers"],
-          ["materiality-full-model", "Full Model"],
-        ].map(([id, label]) => <a key={id} href={`#${id}`} className="min-h-10 shrink-0 rounded-md px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#52616b] hover:bg-white hover:text-[#122232]">{label}</a>)}
+          ["impact-chain", "Impact Chain"],
+          ["waterfall", "Stress Waterfall"],
+          ["full-model", "Full Assumptions"],
+        ].map(([view, label]) => <button key={view} type="button" aria-pressed={financialView === view} onClick={() => setFinancialView(view as typeof financialView)} className={`min-h-10 shrink-0 rounded-md px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] ${financialView === view ? "bg-[#122232] text-[#d4e86b]" : "text-[#52616b] hover:bg-white hover:text-[#122232]"}`}>{label}</button>)}
       </nav>
       {lowConfidence && <div className="mb-5"><LowConfidenceWarning testId="warning-low-confidence-materiality" /></div>}
       {metrics.mechanicalDisclaimer && (
@@ -176,6 +200,50 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
             <div className="mt-1 text-[11px] leading-5 text-[#96525d]">Every input is currently missing. Returns, payback, and terminal value are scenario mechanics—not investment-grade underwriting or a recommendation.</div>
           </div>
         </div>
+      )}
+      {financialView === "impact-chain" && (
+        <>
+          <section data-testid="panel-impact-chain" aria-labelledby="impact-chain-title" className="rounded-xl border-2 border-[#122232] bg-[#122232] p-5 text-white md:p-6">
+            <div className="flex flex-col justify-between gap-3 border-b border-white/15 pb-4 md:flex-row md:items-end">
+              <div><SectionKicker tone="lime" className="!text-[#d4e86b]">Impact Chain</SectionKicker><h2 id="impact-chain-title" className="text-[22px] font-semibold tracking-[-0.035em]">Underwriting Baseline → Conservative Stress</h2></div>
+              <span data-testid="impact-chain-evidence-gap" className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#f5ddd5]">{irrDelta === null ? "Evidence-quality gap unavailable" : `${Math.abs(irrDelta).toFixed(1)} pts evidence-quality gap`}</span>
+            </div>
+            <div className="mt-4 grid gap-2 sm:grid-cols-3">
+              <div className="rounded-lg border border-[#b9d43a]/40 bg-[#b9d43a]/10 p-3"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#b9d43a]">Baseline IRR</div><div data-testid="impact-chain-baseline-irr" className="mt-1 font-mono text-2xl font-bold text-[#d4e86b]">{formatIRR(baseIRR)}</div></div>
+              <div className="rounded-lg border border-[#f5ddd5]/40 bg-[#f5ddd5]/10 p-3"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#f5ddd5]">Stress IRR</div><div data-testid="impact-chain-stress-irr" className="mt-1 font-mono text-2xl font-bold text-[#f5ddd5]">{formatIRR(currentIRR)}</div></div>
+              <div className="rounded-lg border border-white/10 bg-white/5 p-3"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#9dafb8]">Method</div><div className="mt-1 text-[11px] font-semibold text-[#e3eaed]">Marginal sensitivity, ranked by absolute IRR effect</div></div>
+            </div>
+            <div className="mt-5 overflow-x-auto rounded-lg border border-white/10">
+              <table className="w-full min-w-[980px] border-collapse text-left">
+                <caption className="sr-only">Financial impact chain ranked by marginal sensitivity</caption>
+                <thead className="bg-white/10 text-[9px] font-bold uppercase tracking-[0.12em] text-[#c4d0d6]"><tr><th className="px-3 py-3">Financial driver</th><th className="px-3 py-3">Classification</th><th className="px-3 py-3">Cash-flow line</th><th className="px-3 py-3">Baseline treatment</th><th className="px-3 py-3">Current treatment</th><th className="px-3 py-3">Dollar effect</th><th className="px-3 py-3">Recurring annual</th><th className="px-3 py-3">Single-input IRR</th><th className="px-3 py-3">Trace</th></tr></thead>
+                <tbody className="divide-y divide-white/10 text-[10px] text-[#e3eaed]">
+                  {rankedAttributions.map((attribution) => {
+                    const item = evidence[attribution.id];
+                    const effect = attribution.singleInputSensitivityIRR ?? 0;
+                    return <tr key={attribution.id} data-testid={`impact-chain-row-${attribution.id}`}>
+                      <th className="px-3 py-3 align-top font-semibold text-white">{item.label}<div className="mt-1 font-normal text-[9px] text-[#9dafb8]">{metrics.lineItems[attribution.id]?.driver}</div></th>
+                      <td className="px-3 py-3 align-top"><span data-testid={`impact-chain-classification-${attribution.id}`} className="sr-only">{item.classification}</span><ClassificationBadge value={item.classification} compact />{attribution.modeledClassification !== attribution.currentClassification && <div className="mt-1 text-[9px] text-[#f5ddd5]">Modeled as: {attribution.modeledClassification}</div>}</td>
+                      <td className="px-3 py-3 align-top">{attribution.affectedCashFlowLine}</td>
+                      <td className="max-w-[150px] px-3 py-3 align-top text-[9px] leading-4 text-[#c4d0d6]">{attribution.baselineTreatment}</td>
+                      <td className="max-w-[150px] px-3 py-3 align-top text-[9px] leading-4 text-[#c4d0d6]">{attribution.currentTreatment}</td>
+                      <td className={`px-3 py-3 align-top font-mono font-bold ${attribution.dollarImpact < 0 ? "text-[#f5ddd5]" : "text-[#b9d43a]"}`}>{formatDollarEffect(attribution.dollarImpact)}</td>
+                      <td className="px-3 py-3 align-top font-mono">{formatRecurringEffect(attribution.annualEffect, attribution.affectedCashFlowLine)}</td>
+                      <td data-testid={`impact-chain-sensitivity-${attribution.id}`} className={`px-3 py-3 align-top font-mono font-bold ${effect < 0 ? "text-[#f5ddd5]" : "text-[#b9d43a]"}`}>{formatImpactDelta(effect)}</td>
+                      <td className="px-3 py-3 align-top"><EvidenceTraceButton inputId={attribution.id} testId={`button-trace-impact-chain-${attribution.id}`} context="row" tone="dark" /></td>
+                    </tr>;
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-3 text-[10px] leading-4 text-[#9dafb8]">Dollar effects compare the live input with a one-input verified repair across the real equity cash-flow schedule. They are marginal sensitivities and do not add to the sequential Stress Waterfall.</p>
+          </section>
+          <section data-testid="panel-cash-flow-comparison" className="mt-5 rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-6">
+            <div className="flex flex-col justify-between gap-2 border-b border-[#e5eae8] pb-4 md:flex-row md:items-end"><div><SectionKicker>Cash-flow comparison</SectionKicker><h2 className="text-[19px] font-semibold tracking-[-0.025em] text-[#122232]">Baseline and stress cash flows</h2></div><span className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#52616b]">Equity cash flow · $M</span></div>
+            <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[760px] border-collapse text-left"><caption className="sr-only">Underwriting baseline and conservative stress equity cash flows</caption><thead className="bg-[#f1f5f3] text-[9px] font-bold uppercase tracking-[0.12em] text-[#52616b]"><tr><th className="px-3 py-3">Period</th><th className="px-3 py-3">Baseline equity CF</th><th className="px-3 py-3">Stress equity CF</th><th className="px-3 py-3">Marginal delta</th><th className="px-3 py-3">Treatment</th></tr></thead><tbody className="divide-y divide-[#e5eae8] font-mono text-[10px] text-[#344550]">{metrics.schedule.map((year, index) => { const baselineYear = metrics.baseModel?.schedule[index]; const delta = year.netEquityCashFlow - (baselineYear?.netEquityCashFlow ?? year.netEquityCashFlow); return <tr key={year.year} data-testid={`cash-flow-comparison-y${year.year}`} className={year.year === 0 ? "bg-[#fff8e9]" : year.year === 5 ? "bg-[#f8fbe8]" : undefined}><th className="px-3 py-3 font-bold text-[#122232]">{year.year === 0 ? "Close / Year 0" : `Year ${year.year}`}</th><td className="px-3 py-3">{formatCurrency(baselineYear?.netEquityCashFlow ?? 0)}</td><td className="px-3 py-3">{formatCurrency(year.netEquityCashFlow)}</td><td className={`px-3 py-3 font-bold ${delta < 0 ? "text-[#ba2f45]" : "text-[#0b7a63]"}`}>{formatCurrency(delta)}</td><td className="px-3 py-3 font-sans text-[9px]">{year.year === 0 ? "Initial equity funding; no annual CAPEX is fabricated." : year.year === 5 ? "Operations plus exit proceeds and debt repayment." : "Operating NOI less debt service."}</td></tr>; })}</tbody></table></div>
+            <p className="mt-3 text-[10px] leading-4 text-[#7d898f]">Close / Year 0 is the modeled initial equity investment. Annual CAPEX is not invented; CAPEX enters the close treatment and any modeled contingency only.</p>
+          </section>
+        </>
       )}
       <div id="materiality-summary" className="scroll-mt-24 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <MetricCard testId="metric-project-irr" label="Project IRR" value={formatIRR(currentIRR)} detail={`${irrDelta === null ? "N/M" : `${irrDelta >= 0 ? "+" : ""}${irrDelta.toFixed(1)} pts`} vs Underwriting Baseline`} accent="lime" />
@@ -191,10 +259,10 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
             <p data-testid="portfolio-connection-message" className="min-w-0 flex-1 text-[11px] leading-5 text-[#344550]">NVIDIA GPU contracts and hyperscaler CAPEX connect values-aligned funds to the infrastructure buildout. Evidence gaps at the project level can become exposure gaps in portfolio returns. This is market context, not facility-level {customProject ? `${projectName} evidence` : "Stargate evidence"} or a new modeled input.</p>
          </div>
        </aside>
-        <section id="materiality-drivers" data-testid="panel-irr-waterfall" aria-labelledby="irr-waterfall-title" aria-describedby="irr-waterfall-description irr-waterfall-methodology" className="mt-5 scroll-mt-24 rounded-xl border-2 border-[#122232] bg-[#122232] p-5 text-white md:p-6">
+        {financialView === "waterfall" && <section id="materiality-drivers" data-testid="panel-irr-waterfall" aria-labelledby="irr-waterfall-title" aria-describedby="irr-waterfall-description irr-waterfall-methodology" className="mt-5 scroll-mt-24 rounded-xl border-2 border-[#122232] bg-[#122232] p-5 text-white md:p-6">
         <div className="flex flex-col justify-between gap-3 border-b border-white/15 pb-4 md:flex-row md:items-end">
-           <div><SectionKicker tone="lime" className="!text-[#d4e86b]">Evidence-Quality Stress Test</SectionKicker><h2 id="irr-waterfall-title" className="text-[22px] font-semibold tracking-[-0.035em]">Evidence-Quality Stress Test</h2></div>
-          <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#9dafb8]">Sequential · Underwriting Baseline to Conservative stress</span>
+          <div><SectionKicker tone="lime" className="!text-[#d4e86b]">Stress Waterfall</SectionKicker><h2 id="irr-waterfall-title" className="text-[22px] font-semibold tracking-[-0.035em]">Sequential stress attribution</h2></div>
+          <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#9dafb8]">Sequential · interacting effects are not additive</span>
         </div>
           <p id="irr-waterfall-description" data-testid="waterfall-description" className="mt-3 max-w-3xl text-[11px] leading-5 text-[#c4d0d6]">Lower evidence quality applies progressively conservative underwriting assumptions. This is a stress test, not a prediction. Unverified inputs are assigned worst-case values, not because negative outcomes are certain, but because conservative underwriting requires assuming the downside until evidence proves otherwise.</p>
           <p id="irr-waterfall-methodology" data-testid="waterfall-methodology" role="note" className="mt-3 max-w-3xl rounded-lg border border-[#8dc8e8]/35 bg-[#0d2b3d] px-3 py-2 text-[11px] leading-5 text-[#d7e8ee]">Evidence classifications do not predict whether an unknown outcome will be favorable or unfavorable. For this demonstration, weaker evidence triggers predefined conservative underwriting treatments to show the potential cost of unresolved uncertainty.</p>
@@ -220,7 +288,7 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
         </div>
           <aside data-testid="waterfall-underwriting-note" role="note" className="mt-5 rounded-lg border border-[#b9d43a]/40 bg-[#b9d43a]/10 px-3 py-2 text-[11px] leading-5 text-[#e8f0d1]">A management assertion that proves accurate would improve the return. The conservative stress case shows the cost of not knowing, not the cost of a negative outcome.</aside>
           <div className="sr-only" aria-live="polite">Underwriting Baseline (All Inputs Verified) {formatIRR(baseIRR)}. Conservative Case (Stress-Adjusted) {formatIRR(currentIRR)}. Change {irrDelta === null ? "unavailable" : `${irrDelta.toFixed(1)} percentage points`}.</div>
-      </section>
+      </section>}
        <section data-testid="panel-decision-context-treatment" aria-labelledby="decision-context-treatment-title" className="mt-5 rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-6">
          <SectionKicker>Decision & context treatment</SectionKicker>
          <h2 id="decision-context-treatment-title" className="text-[19px] font-semibold tracking-[-0.025em] text-[#122232]">Decision gates and context indicators</h2>
@@ -287,7 +355,7 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
           </div>
         </section>
       </div>
-       <details id="materiality-full-model" data-testid="disclosure-full-model-detail" className="mt-5 scroll-mt-24 rounded-xl border border-[#d9e0e4] bg-[#eef2f1]">
+       <details id="materiality-full-model" data-testid="disclosure-full-model-detail" open={financialView === "full-model"} className="mt-5 scroll-mt-24 rounded-xl border border-[#d9e0e4] bg-[#eef2f1]">
         <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 text-[11px] font-bold uppercase tracking-[0.12em] text-[#122232] [&::-webkit-details-marker]:hidden"><span>Full Model Detail · assumptions and cash flow</span><ChevronDown aria-hidden="true" className="h-4 w-4 transition-transform [details[open]_&]:rotate-180" /></summary>
         <section className="border-t border-[#d9e0e4] p-5 md:p-6">
         <div className="flex items-end justify-between border-b border-[#d6e0dc] pb-4">

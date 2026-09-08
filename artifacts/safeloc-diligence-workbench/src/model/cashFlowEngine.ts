@@ -72,6 +72,23 @@ export type ModelLineItem = {
   impactTreatment: string;
 };
 
+export type FinancialAttribution = {
+  id: string;
+  impactRole: ImpactRole;
+  currentClassification: Classification;
+  modeledClassification: Classification;
+  baselineClassification: "Verified Evidence";
+  affectedCashFlowLine: string;
+  baselineTreatment: string;
+  currentTreatment: string;
+  marginalAnnualDeltas: number[];
+  dollarImpact: number;
+  annualEffect: number;
+  annualEffectBasis: string;
+  singleInputSensitivityIRR: number | null;
+  hasDirectModeledEffect: boolean;
+};
+
 export type ModelAssumptions = {
   capacityMW: number;
   leaseRatePerKwMonth: number;
@@ -143,6 +160,7 @@ export type CashFlowModel = {
   schedule: CashFlowYear[];
   assumptions: ModelAssumptions;
   lineItems: Record<string, ModelLineItem>;
+  attribution: Record<string, FinancialAttribution>;
   waterfall: WaterfallStep[];
   mechanicalDisclaimer: boolean;
   baseIRR?: number | null;
@@ -824,6 +842,7 @@ function runModel(evidence: EvidenceRecord, capacityMW: number): CashFlowModel {
     schedule,
     assumptions,
     lineItems,
+    attribution: {},
     waterfall: [],
     mechanicalDisclaimer: confidenceScore === 0,
   };
@@ -859,6 +878,56 @@ export function calculateCashFlowModel(evidence: EvidenceRecord, requestedCapaci
           impactExplanation: getImpactExplanation(impactRole),
           impactTreatment: getImpactTreatment(id, impactRole, current.assumptions),
         },
+      ];
+    }),
+  );
+
+  const attribution: Record<string, FinancialAttribution> = Object.fromEntries(
+    Object.entries(current.lineItems).map(([id, lineItem]) => {
+      const impactRole = getEvidenceImpactRole(id);
+      const modeledClassification = evidence[id].modelClassification ?? evidence[id].classification;
+      const repairedModel = runModel({
+        ...evidence,
+        [id]: {
+          ...evidence[id],
+          classification: "Verified Evidence" as Classification,
+          modelClassification: undefined,
+        },
+      }, capacityMW);
+      const directEffect = impactRole === "Financial Driver";
+      const marginalAnnualDeltas = directEffect
+        ? current.schedule.map((year, index) => year.netEquityCashFlow - (repairedModel.schedule[index]?.netEquityCashFlow ?? 0))
+        : current.schedule.map(() => 0);
+      const dollarImpact = marginalAnnualDeltas.reduce((total, delta) => total + delta, 0);
+      const affectedCashFlowLine = getAffectedCashFlowLine(id, impactRole);
+      const finalYearIndex = current.schedule.length - 1;
+      const annualEffect = directEffect
+        ? getRecurringCashFlowValue(current.schedule[finalYearIndex], affectedCashFlowLine) -
+          getRecurringCashFlowValue(repairedModel.schedule[finalYearIndex], affectedCashFlowLine)
+        : 0;
+      const sensitivity = lineItems[id]?.deltaIRR ?? 0;
+      return [
+        id,
+        {
+          id,
+          impactRole,
+          currentClassification: evidence[id].classification,
+          modeledClassification,
+          baselineClassification: "Verified Evidence",
+          affectedCashFlowLine,
+          baselineTreatment: getImpactTreatment(id, impactRole, repairedModel.assumptions),
+          currentTreatment: getImpactTreatment(id, impactRole, current.assumptions),
+          marginalAnnualDeltas,
+          dollarImpact,
+          annualEffect,
+          annualEffectBasis: directEffect && affectedCashFlowLine !== "Close CAPEX"
+            ? "Recurring operating line; excludes terminal value and debt repayment."
+            : directEffect
+              ? "Close treatment only; no recurring annual effect."
+              : "No direct modeled effect.",
+          singleInputSensitivityIRR: directEffect ? sensitivity : 0,
+          hasDirectModeledEffect: directEffect && marginalAnnualDeltas.some((delta) => delta !== 0),
+        } satisfies FinancialAttribution,
       ];
     }),
   );
@@ -901,6 +970,7 @@ export function calculateCashFlowModel(evidence: EvidenceRecord, requestedCapaci
     baseIRR: verifiedBaseline.projectIRR,
     baseModel: verifiedBaseline,
     lineItems,
+    attribution,
     waterfall,
   };
 }
@@ -923,6 +993,49 @@ function getImpactExplanation(role: ImpactRole) {
       return "Contextual assessment";
     default:
       return "Financial stress case";
+  }
+}
+
+function getRecurringCashFlowValue(year: CashFlowYear, line: string) {
+  switch (line) {
+    case "Electricity OPEX":
+      return year.electricityOpex;
+    case "Water OPEX":
+      return year.waterOpex;
+    case "Revenue timing":
+      return year.revenue;
+    case "Carbon compliance OPEX":
+      return year.carbonComplianceOpex;
+    case "Climate disruption OPEX":
+      return year.climateDisruptionOpex;
+    default:
+      return 0;
+  }
+}
+
+function getAffectedCashFlowLine(id: string, role: ImpactRole) {
+  if (role === "Decision Gate") return "Review gate";
+  if (role === "Context Indicator") return "Context only";
+
+  switch (id) {
+    case "electricity_cost":
+    case "electricity_escalation":
+      return "Electricity OPEX";
+    case "water_consumption":
+    case "water_escalation":
+      return "Water OPEX";
+    case "grid_interconnection":
+    case "permitting_timeline":
+      return "Revenue timing";
+    case "cooling_capex":
+      return "Close CAPEX";
+    case "carbon_compliance":
+      return "Carbon compliance OPEX";
+    case "site_hazard_exposure":
+    case "downtime_cost":
+      return "Climate disruption OPEX";
+    default:
+      return "Operating cash flow";
   }
 }
 

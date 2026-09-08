@@ -8,7 +8,8 @@ import {
   SectionKicker,
   PageIntro,
   BottomNav,
-  StatusBadge
+  StatusBadge,
+  formatIRR
 } from "@/components/Shell";
 import { DrawerSection, useWorkbenchDrawer } from "@/components/ContextDrawer";
 
@@ -198,6 +199,31 @@ export function AdvisorLens({
              </p>
            )}
          </div>
+      </section>
+      <section data-testid="advisor-transmission-bridge" className="mb-5 rounded-xl border border-[#cbd8d4] bg-white p-5 md:p-6" aria-labelledby="advisor-transmission-title">
+        <div className="flex flex-col justify-between gap-3 border-b border-[#e5eae8] pb-4 md:flex-row md:items-end">
+          <div><SectionKicker>Bounded transmission bridge</SectionKicker><h2 id="advisor-transmission-title" className="text-[20px] font-semibold tracking-[-0.03em] text-[#122232]">From project model to portfolio conversation</h2></div>
+          <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#52616b]">No unsupported conversion</span>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <article data-testid="advisor-bridge-project-model" className="rounded-lg border border-[#c9db70] bg-[#fbfdf1] p-4">
+            <div className="font-mono text-[9px] font-bold uppercase tracking-[0.13em] text-[#607500]">Project model output</div>
+            <div className="mt-2 font-mono text-[20px] font-bold text-[#122232]">{formatIRR(currentIRR)} stress</div>
+            <p className="mt-1 text-[10px] leading-4 text-[#52616b]">Underwriting baseline {formatIRR(baseIRR)}; modeled evidence-quality gap {governanceGap === null ? "unavailable" : `${governanceGap.toFixed(1)} pts`}. This is a project-level sensitivity, not portfolio performance.</p>
+          </article>
+          <article data-testid="advisor-bridge-public-context" className="rounded-lg border border-[#aac6f4] bg-[#f7faff] p-4">
+            <div className="font-mono text-[9px] font-bold uppercase tracking-[0.13em] text-[#255bb7]">Public-source context</div>
+            <div className="mt-2 text-[12px] font-bold text-[#122232]">GPU demand and hyperscaler CAPEX</div>
+            <p className="mt-1 text-[10px] leading-4 text-[#52616b]">Public sources frame why infrastructure diligence may matter to market exposure; they do not establish a contract, issuer revenue effect, or facility ownership.</p>
+            {!customProject && <div className="mt-2 flex flex-wrap gap-2"><ClaimCitation claimId="fund-usxf" /><ClaimCitation claimId="stargate-cancellation" /></div>}
+          </article>
+          <article data-testid="advisor-bridge-analyst-scenario" className="rounded-lg border border-[#cbb7ec] bg-[#f8f4fd] p-4">
+            <div className="font-mono text-[9px] font-bold uppercase tracking-[0.13em] text-[#7049b7]">Analyst scenario</div>
+            <div className="mt-2 text-[12px] font-bold text-[#122232]">Use the gap as a stewardship question</div>
+            <p className="mt-1 text-[10px] leading-4 text-[#52616b]">Ask whether evidence owners can close the project gaps. Do not convert this project IRR gap into NVIDIA revenue, fund return, or a trading recommendation.</p>
+          </article>
+        </div>
+        <p className="mt-3 text-[9px] leading-4 text-[#7d898f]">Transmission stops at traceable context: the project model is live and synthetic, public facts are cited separately, and the analyst scenario remains a qualitative handoff.</p>
       </section>
       <section data-testid="section-client-exposure" className="rounded-xl bg-[#122232] p-5 text-white md:p-7" aria-labelledby="client-exposure-heading">
         <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">

@@ -27,6 +27,34 @@ test.describe("community agreement intelligence", () => {
     await expect(page.getByTestId("community-live-status")).toContainText("left unresolved");
   });
 
+  test("shows exact external benchmark statuses and honest provenance links", async ({ page }) => {
+    await page.goto("/#analysis");
+    const group = page.getByTestId("community-agreements-group");
+    await group.locator("summary").click();
+    const expected: Record<string, string> = {
+      "community-fund": "SHORT",
+      clawbacks: "SHORT",
+      "decommissioning-security": "SHORT",
+      "grid-cost-allocation": "SHORT",
+      "water-commitments": "SHORT",
+      "noise-protections": "UNKNOWN",
+      "binding-jobs": "MET",
+      "local-contracting-road-repair": "UNKNOWN",
+      "transparency-auditability": "SHORT",
+      "tax-incentives": "UNKNOWN",
+    };
+    for (const [term, status] of Object.entries(expected)) {
+      await expect(page.getByTestId(`community-benchmark-${term}`)).toHaveText(status);
+    }
+    await page.getByTestId("community-term-row-community-fund").getByRole("button").first().click();
+    await expect(page.getByTestId("community-exact-language-community-fund")).toContainText("No exact quotation captured");
+    await expect(page.getByTestId("community-source-summary-community-fund")).toContainText("Source summary (not a quotation)");
+    await expect(page.getByRole("link", { name: "Open cited source record" })).toHaveAttribute("href", "https://futurepickleballcourt.com/#us-tx-abilene-2025");
+    await expect(page.getByText("Original primary document URL not verified")).toBeVisible();
+    await expect(page.locator("a", { hasText: "Open original document" })).toHaveCount(0);
+    await expect(page.locator("body")).not.toContainText("/agreements/");
+  });
+
   test("shows community gaps through Decision Resolve and questions in Advisor Lens", async ({ page }) => {
     await page.goto("/#decision");
     await expect(page.getByTestId("community-material-gaps")).toBeVisible();

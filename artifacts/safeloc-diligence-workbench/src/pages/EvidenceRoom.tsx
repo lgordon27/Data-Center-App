@@ -137,18 +137,18 @@ function CommunityAgreementsReview() {
     openDrawer({
       key: "community-library",
       kicker: "Benchmark library",
-      title: `${COMMUNITY_AGREEMENTS.length} national benchmark records`,
+      title: `${COMMUNITY_AGREEMENTS.length} community source records`,
       render: () => (
         <div className="space-y-3">
-          <p className="rounded border border-[#cbb7ec] bg-[#f8f4fd] px-3 py-2 text-[10px] leading-4 text-[#5e5870]">Every record below is a National Benchmark. It is not a term of this project, and it cannot upgrade project evidence.</p>
+          <p className="rounded border border-[#cbb7ec] bg-[#f8f4fd] px-3 py-2 text-[10px] leading-4 text-[#5e5870]">Only records with a verified source status are external benchmarks. Unverified comparison candidates remain visible for audit context, but cannot upgrade project evidence.</p>
           {COMMUNITY_AGREEMENTS.map((record) => (
             <article key={record.id} data-testid={`community-library-record-${record.id}`} className="rounded-lg border border-[#d9e0e4] bg-white p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-[11px] font-bold text-[#122232]">{record.title}</span>
-                <span className="font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#7049b7]">National benchmark</span>
+                <span className="font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#7049b7]">{record.sourceRecordUrl ? "National benchmark" : "Unverified comparison candidate"}</span>
               </div>
-              <p className="mt-1 text-[9px] leading-4 text-[#52616b]">{record.excerpt}</p>
-              <p className="mt-1 font-mono text-[8px] uppercase tracking-[0.08em] text-[#7d898f]">Retrieved {record.retrievedAt} · reviewed {record.reviewedAt}</p>
+               <p className="mt-1 text-[9px] leading-4 text-[#52616b]">{record.sourceSummary}</p>
+               <p className="mt-1 font-mono text-[8px] uppercase tracking-[0.08em] text-[#7d898f]">Retrieved {record.retrievedAt} · verified {record.lastVerifiedAt}</p>
             </article>
           ))}
         </div>
@@ -167,13 +167,12 @@ function CommunityAgreementsReview() {
       render: () => (
         <div className="space-y-4">
           <DrawerSection label="Source excerpt">
-            <p>{sourceTerm?.exactLanguage ?? "No project-specific agreement source was located."}</p>
-            <p><strong>Plain English:</strong> {sourceTerm?.plainEnglish ?? "The term remains unresolved for this project."}</p>
-            <p className="text-[#6f460e]"><strong>Softening / enforceability:</strong> {sourceTerm?.enforceabilityNote ?? "No enforceability conclusion can be drawn without attributable project evidence."}</p>
+            <p><strong>Verbatim quotation:</strong> {sourceTerm?.sourceExactQuote ?? "No exact quotation captured."}</p>
+            <p><strong>Source summary:</strong> {sourceTerm?.sourceSummary ?? "No source summary was captured."}</p>
           </DrawerSection>
           <DrawerSection label="Citation and page reference">
-            <p className="font-mono text-[10px] leading-4 text-[#60707d]">{sourceTerm?.sourceCitation ?? "No project-specific citation"} · {sourceTerm?.pageOrSection ?? "Section unavailable"}</p>
-            <p className="text-[10px] font-semibold text-[#8a5200]">National benchmark — not a term of this project. Benchmark: {sourceTerm?.externalBenchmark ?? "Unknown"}.</p>
+            <p className="font-mono text-[10px] leading-4 text-[#60707d]">{agreement?.sourceTitle ?? "Source title unavailable"} · {sourceTerm?.sourceSectionOrPage ?? "Location unavailable"}</p>
+            <p className="text-[10px] font-semibold text-[#8a5200]">External benchmark — not a term of this project. Status: {sourceTerm?.benchmarkStatus ?? "UNKNOWN"}.</p>
           </DrawerSection>
           <DrawerSection label="Human conclusion">
             <div className="grid gap-2 sm:grid-cols-2">
@@ -192,7 +191,7 @@ function CommunityAgreementsReview() {
             <p><strong>{definition.treatment}.</strong> No automatic IRR penalty or model mutation is applied. Only a human-approved, quantified, source-supported driver could be considered for an existing model assumption.</p>
           </DrawerSection>
           <DrawerSection label="Audit history">
-            <p className="text-[#7c8b93]">Review state is recorded in the community review ledger for snapshot {COMMUNITY_SNAPSHOT_VERSION}; benchmark records are retrieved {COMMUNITY_SNAPSHOT.retrievedAt} and reviewed {COMMUNITY_SNAPSHOT.reviewedAt}.</p>
+            <p className="text-[#7c8b93]">Human review state is recorded separately from imported source facts for snapshot {COMMUNITY_SNAPSHOT_VERSION}; benchmark records are retrieved {COMMUNITY_SNAPSHOT.retrievedAt} and verified {COMMUNITY_SNAPSHOT.reviewedAt}.</p>
           </DrawerSection>
         </div>
       ),
@@ -242,7 +241,21 @@ function CommunityAgreementsReview() {
                 <p data-testid="community-agreement-title" className="mt-3 text-[12px] font-semibold text-[#243844]">{agreement.title}</p>
                 <p className="mt-1 text-[10px] leading-4 text-[#52616b]">Matching fields: {relationship.matchingFields.join(" · ")}</p>
                 <p data-testid="community-relationship-evidence" className="mt-2 text-[10px] leading-4 text-[#52616b]">{relationship.supportingEvidence.join(" ")}</p>
-                <a href={agreement.originalDocumentUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 text-[9px] font-semibold text-[#255bb7] underline">Open original document <ExternalLink aria-hidden="true" className="h-3 w-3" /></a>
+                <p data-testid="community-relationship-reasoning" className="mt-2 text-[10px] leading-4 text-[#52616b]"><strong>Relationship reasoning:</strong> {relationship.relationshipReasoning}</p>
+                {agreement.sourceRecordUrl && <a href={agreement.sourceRecordUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 text-[9px] font-semibold text-[#255bb7] underline">Open cited source record <ExternalLink aria-hidden="true" className="h-3 w-3" /></a>}
+                {agreement.primaryDocumentUrl && <a href={agreement.primaryDocumentUrl} target="_blank" rel="noopener noreferrer" className="mt-2 ml-3 inline-flex items-center gap-1 text-[9px] font-semibold text-[#255bb7] underline">Open original document <ExternalLink aria-hidden="true" className="h-3 w-3" /></a>}
+                {!agreement.primaryDocumentUrl && <p data-testid="community-primary-document-unavailable" className="mt-2 text-[9px] text-[#7d898f]">Original primary document URL not verified in the reviewed snapshot.</p>}
+                <div data-testid="community-canonical-relationships" className="mt-3 border-t border-[#d9e0e4] pt-3">
+                  <div className="font-mono text-[8px] font-bold uppercase tracking-[0.1em] text-[#52616b]">Canonical project relationships</div>
+                  <ul className="mt-2 space-y-2">
+                    {relationship.canonicalRelationships.map((mapping) => (
+                      <li key={mapping.id} className="rounded border border-[#d9e0e4] bg-white px-2 py-2 text-[9px] leading-4 text-[#52616b]">
+                        <strong className="text-[#243844]">{mapping.toLabel}</strong> · <span className="font-mono uppercase text-[#255bb7]">{mapping.relationshipType.replaceAll("-", " ")}</span> · {mapping.relationshipConfidence}% · {mapping.verificationStatus === "source-supported" ? "source-supported" : "UNVERIFIED"}
+                        <span className="mt-1 block">{mapping.relationshipReasoning}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </>
             ) : (
               <p data-testid="community-not-found" className="mt-3 rounded border border-[#f1cb8b] bg-[#fff8e9] px-3 py-2 text-[10px] leading-4 text-[#6f460e]">{relationship.notFoundText}</p>
@@ -283,7 +296,7 @@ function CommunityAgreementsReview() {
                         <span className="mt-1 block text-[9px] font-normal leading-4 text-[#60707d]">{definition.description}</span>
                       </th>
                       <td className="px-3 py-3 align-top"><span data-testid={`community-treatment-${definition.id}`} className="rounded-full bg-[#eef2f1] px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.06em] text-[#52616b]">{definition.treatment}</span></td>
-                      <td className="px-3 py-3 align-top"><span data-testid={`community-benchmark-${definition.id}`} className="font-mono text-[10px] font-bold text-[#7049b7]">{sourceTerm?.externalBenchmark ?? "Unknown"}</span></td>
+                       <td className="px-3 py-3 align-top"><span data-testid={`community-benchmark-${definition.id}`} className="font-mono text-[10px] font-bold text-[#7049b7]">{sourceTerm?.benchmarkStatus ?? "UNKNOWN"}</span></td>
                       <td className="px-3 py-3 align-top"><span data-testid={`community-conclusion-${definition.id}`} className={`rounded-full px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.06em] ${decision.conclusion === "Unknown" ? "bg-[#fde8eb] text-[#ba2f45]" : "bg-[#e0f4ed] text-[#08644f]"}`}>{decision.conclusion}</span></td>
                       <td className="px-3 py-3 align-top"><button type="button" onClick={() => setExpandedTerm(isExpanded ? null : definition.id)} className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-[0.08em] text-[#255bb7]">{isExpanded ? "Collapse" : "Review"} <ChevronDown aria-hidden="true" className={`h-3 w-3 transition-transform ${isExpanded ? "rotate-180" : ""}`} /></button></td>
                     </tr>
@@ -291,15 +304,15 @@ function CommunityAgreementsReview() {
                       <tr id={`community-detail-${definition.id}`} data-testid={`community-term-detail-${definition.id}`} className="bg-[#fbfcfa]">
                         <td colSpan={5} className="px-3 pb-4 pt-1">
                           <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
-                            <div className="rounded-lg border border-[#d9e0e4] bg-white p-3">
-                              <div className="font-mono text-[8px] font-bold uppercase tracking-[0.1em] text-[#60707d]">Source record · exact language</div>
-                              <p data-testid={`community-exact-language-${definition.id}`} className="mt-2 text-[10px] leading-4 text-[#344550]">{sourceTerm?.exactLanguage ?? "No project-specific agreement source was located."}</p>
-                              <p className="mt-2 text-[10px] leading-4 text-[#52616b]"><strong>Plain English:</strong> {sourceTerm?.plainEnglish ?? "The term remains unresolved for this project."}</p>
-                              <p className="mt-2 text-[10px] leading-4 text-[#6f460e]"><strong>Softening / enforceability:</strong> {sourceTerm?.enforceabilityNote ?? "No enforceability conclusion can be drawn without attributable project evidence."}</p>
-                              <div className="mt-3 border-t border-[#e5eae8] pt-2 font-mono text-[9px] leading-4 text-[#60707d]">{sourceTerm?.sourceCitation ?? "No project-specific citation"} · {sourceTerm?.pageOrSection ?? "Section unavailable"}</div>
-                              {agreement && <p className="mt-2 text-[9px] leading-4 text-[#7d898f]"><strong>Snapshot excerpt:</strong> {agreement.excerpt} <span className="ml-1">Retrieved {agreement.retrievedAt} · reviewed {agreement.reviewedAt}.</span></p>}
+                              <div className="rounded-lg border border-[#d9e0e4] bg-white p-3">
+                               <div className="font-mono text-[8px] font-bold uppercase tracking-[0.1em] text-[#60707d]">Source facts · external benchmark</div>
+                               <p data-testid={`community-exact-language-${definition.id}`} className="mt-2 text-[10px] leading-4 text-[#344550]"><strong>Verbatim quotation:</strong> {sourceTerm?.sourceExactQuote ?? "No exact quotation captured."}</p>
+                               <p data-testid={`community-source-summary-${definition.id}`} className="mt-2 text-[10px] leading-4 text-[#52616b]"><strong>Source summary (not a quotation):</strong> {sourceTerm?.sourceSummary ?? "No source summary was captured."}</p>
+                               <div className="mt-3 border-t border-[#e5eae8] pt-2 font-mono text-[9px] leading-4 text-[#60707d]"><strong>Source:</strong> {agreement?.sourceTitle ?? "Unavailable"} · {agreement?.sourceLocation ?? "Location unavailable"} · {sourceTerm?.sourceSectionOrPage ?? "Section unavailable"}</div>
+                               {agreement && <p className="mt-2 text-[9px] leading-4 text-[#7d898f]"><strong>Snapshot limitations:</strong> {agreement.limitations.join(" ")} <span className="ml-1">Retrieved {agreement.retrievedAt} · verified {agreement.lastVerifiedAt}.</span></p>}
                               {agreement && <p className="mt-2 text-[9px] leading-4 text-[#7d898f]"><strong>Limitations / licensing:</strong> {agreement.limitations.join(" ")} {agreement.licensing}</p>}
-                              {agreement && <a href={agreement.sourceUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 text-[9px] font-semibold text-[#255bb7] underline">Open cited source <ExternalLink aria-hidden="true" className="h-3 w-3" /></a>}
+                              {agreement?.sourceRecordUrl && <a href={agreement.sourceRecordUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 text-[9px] font-semibold text-[#255bb7] underline">Open cited source <ExternalLink aria-hidden="true" className="h-3 w-3" /></a>}
+                              {agreement?.primaryDocumentUrl && <a href={agreement.primaryDocumentUrl} target="_blank" rel="noopener noreferrer" className="mt-2 ml-3 inline-flex items-center gap-1 text-[9px] font-semibold text-[#255bb7] underline">Open original document <ExternalLink aria-hidden="true" className="h-3 w-3" /></a>}
                             </div>
                             <div className="rounded-lg border border-[#cbd8d4] bg-white p-3">
                               <div className="font-mono text-[8px] font-bold uppercase tracking-[0.1em] text-[#52616b]">Human review</div>
@@ -318,7 +331,7 @@ function CommunityAgreementsReview() {
                           </div>
                           <details data-testid={`community-comparisons-${definition.id}`} className="mt-3 rounded border border-[#d9e0e4] bg-white">
                             <summary className="cursor-pointer list-none px-3 py-2 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#60707d] [&::-webkit-details-marker]:hidden">Up to three national comparisons · complete library disclosure</summary>
-                            <div className="border-t border-[#e5eae8] px-3 py-3"><p className="text-[9px] leading-4 text-[#52616b]">These are comparable-only records. They do not upgrade {project.name} evidence.</p><ul className="mt-2 grid gap-2 sm:grid-cols-3">{comparisons.map((comparison) => <li key={comparison.id} className="rounded bg-[#f1f5f3] p-2 text-[9px] leading-4 text-[#52616b]"><strong className="text-[#243844]">{comparison.title}</strong><br /><span className="font-mono text-[8px] font-bold uppercase tracking-[0.06em] text-[#255bb7]">{comparison.relationship}</span> · {comparison.terms[definition.id].externalBenchmark} · {comparison.terms[definition.id].pageOrSection}<span className="mt-1 block font-mono text-[8px] font-bold uppercase tracking-[0.06em] text-[#8a5200]">National benchmark · not a term of this project</span></li>)}</ul><p className="mt-2 font-mono text-[8px] uppercase tracking-[0.08em] text-[#7d898f]">Full library: {COMMUNITY_AGREEMENTS.length} normalized records in snapshot {COMMUNITY_SNAPSHOT_VERSION} — browse it from the control below without loading every record here.</p></div>
+                            <div className="border-t border-[#e5eae8] px-3 py-3"><p className="text-[9px] leading-4 text-[#52616b]">{comparisons.length ? "Verified external benchmarks are comparable-only records. They do not upgrade " + project.name + " evidence." : "No comparable record has a verified external status for this term. Unverified candidates are excluded from benchmark comparison."}</p><ul className="mt-2 grid gap-2 sm:grid-cols-3">{comparisons.map((comparison) => <li key={comparison.id} className="rounded bg-[#f1f5f3] p-2 text-[9px] leading-4 text-[#52616b]"><strong className="text-[#243844]">{comparison.title}</strong><br /><span className="font-mono text-[8px] font-bold uppercase tracking-[0.06em] text-[#255bb7]">{comparison.relationship}</span> · {comparison.terms[definition.id].benchmarkStatus} · {comparison.terms[definition.id].sourceSectionOrPage ?? "Location unavailable"}<span className="mt-1 block font-mono text-[8px] font-bold uppercase tracking-[0.06em] text-[#8a5200]">Verified national benchmark · not a term of this project</span></li>)}</ul><p className="mt-2 font-mono text-[8px] uppercase tracking-[0.08em] text-[#7d898f]">Full library: {COMMUNITY_AGREEMENTS.length} normalized records in snapshot {COMMUNITY_SNAPSHOT_VERSION} — browse it from the control below without loading every record here.</p></div>
                           </details>
                         </td>
                       </tr>

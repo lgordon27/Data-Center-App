@@ -1,10 +1,12 @@
 import {
   COMMUNITY_AGREEMENTS,
+  COMMUNITY_ENTITY_RELATIONSHIPS,
   COMMUNITY_NOT_FOUND_TEXT,
   COMMUNITY_TERM_DEFINITIONS,
   type CommunityAgreementRecord,
   type CommunityConclusion,
   type CommunityHumanStatus,
+  type CommunityEntityRelationship,
   type CommunityRelationship,
   type CommunityTermId,
   type CommunityTreatment,
@@ -22,6 +24,11 @@ export type CommunityRelationshipResult = {
   confidence: number;
   matchingFields: string[];
   supportingEvidence: string[];
+  relationshipReasoning: string;
+  sourceRecordId: string | null;
+  sourceRecordUrl: string | null;
+  primaryDocumentUrl: string | null;
+  canonicalRelationships: readonly CommunityEntityRelationship[];
   humanReviewStatus: "needs-review" | "reviewed";
   notFoundText?: string;
 };
@@ -37,7 +44,7 @@ export type CommunityTermDecision = {
 };
 
 export type CommunityReviewState = {
-  version: 1;
+  version: 2;
   relationship: CommunityRelationshipResult;
   terms: Record<CommunityTermId, CommunityTermDecision>;
   lastAction?: {
@@ -70,11 +77,11 @@ export function matchCommunityProject(project: CommunityProjectInput): Community
   const location = normalizeCommunityJurisdiction(project.location);
   const name = normalizeCommunityName(project.name);
   const abilene = COMMUNITY_AGREEMENTS[0];
-  const isAbilene = location.includes("texas") && name.includes("stargate abilene");
-  const isDirectAbileneRecord = location.includes("texas") &&
-    name.includes("abilene") &&
-    name.includes("oracle") &&
-    name.includes("openai");
+  const sourceLocation = normalizeCommunityJurisdiction(abilene.jurisdiction);
+  const sourceIdentity = normalizeCommunityName(abilene.title);
+  const isAbileneArea = location.includes("texas") && (location.includes("abilene") || location.includes("taylor"));
+  const isAbilene = isAbileneArea && name === "stargate abilene";
+  const isDirectAbileneRecord = location === sourceLocation && name === sourceIdentity;
   if (isAbilene) {
     return {
       relationship: "Related",
@@ -82,10 +89,14 @@ export function matchCommunityProject(project: CommunityProjectInput): Community
       confidence: 94,
       matchingFields: ["Texas jurisdiction", "Abilene municipality", "Oracle / OpenAI project operators"],
       supportingEvidence: [
-        "Stargate Abilene is the curated project under review.",
-        "The benchmark record is a City of Abilene / Oracle / OpenAI agreement record.",
-        "Relationship is related context pending attributable project-specific agreement evidence.",
+        "The cited Abilene record names Stargate Site 1, Lancium Clean Campus, Oracle, OpenAI, and Crusoe in the Abilene context.",
+        "The curated project is Stargate Abilene; the source supports co-mention in a shared context but does not establish same-campus scope or that every phase shares one agreement.",
       ],
+      relationshipReasoning: "Related co-mentioned source context; attributable facility-level agreement scope remains unverified.",
+      sourceRecordId: abilene.id,
+      sourceRecordUrl: abilene.sourceRecordUrl,
+      primaryDocumentUrl: abilene.primaryDocumentUrl,
+      canonicalRelationships: COMMUNITY_ENTITY_RELATIONSHIPS,
       humanReviewStatus: "needs-review",
     };
   }
@@ -96,6 +107,11 @@ export function matchCommunityProject(project: CommunityProjectInput): Community
       confidence: 99,
       matchingFields: ["Texas jurisdiction", "Abilene municipality", "Oracle / OpenAI project operators", "Exact agreement identity"],
       supportingEvidence: ["The supplied project identity matches the benchmark record identity; a reviewer must still confirm the attributable project document."],
+      relationshipReasoning: "Direct source-record identity match; the benchmark remains external context and is not promoted into project evidence.",
+      sourceRecordId: abilene.id,
+      sourceRecordUrl: abilene.sourceRecordUrl,
+      primaryDocumentUrl: abilene.primaryDocumentUrl,
+      canonicalRelationships: COMMUNITY_ENTITY_RELATIONSHIPS,
       humanReviewStatus: "needs-review",
     };
   }
@@ -106,6 +122,11 @@ export function matchCommunityProject(project: CommunityProjectInput): Community
       confidence: 72,
       matchingFields: ["Texas jurisdiction"],
       supportingEvidence: ["No record matched the supplied project identity and Texas jurisdiction in the reviewed snapshot."],
+      relationshipReasoning: "No attributable benchmark relationship was found in the reviewed snapshot.",
+      sourceRecordId: null,
+      sourceRecordUrl: null,
+      primaryDocumentUrl: null,
+      canonicalRelationships: [],
       humanReviewStatus: "needs-review",
       notFoundText: COMMUNITY_NOT_FOUND_TEXT,
     };
@@ -116,6 +137,11 @@ export function matchCommunityProject(project: CommunityProjectInput): Community
     confidence: 40,
     matchingFields: [],
     supportingEvidence: ["The Texas-first matcher does not claim coverage outside Texas."],
+    relationshipReasoning: "No attributable benchmark relationship was found in the reviewed snapshot.",
+    sourceRecordId: null,
+    sourceRecordUrl: null,
+    primaryDocumentUrl: null,
+    canonicalRelationships: [],
     humanReviewStatus: "needs-review",
     notFoundText: COMMUNITY_NOT_FOUND_TEXT,
   };
@@ -137,10 +163,10 @@ export function initialCommunityTermDecisions(agreement?: CommunityAgreementReco
 export function selectCommunityComparisons(termId: CommunityTermId, limit = 3) {
   return COMMUNITY_AGREEMENTS
     .slice(1)
-    .filter((agreement) => agreement.terms[termId].externalBenchmark !== "Unknown")
+     .filter((agreement) => agreement.terms[termId].benchmarkStatus !== "UNKNOWN")
     .sort((a, b) => {
-      const aScore = a.terms[termId].externalBenchmark === "MET" ? 2 : 1;
-      const bScore = b.terms[termId].externalBenchmark === "MET" ? 2 : 1;
+       const aScore = a.terms[termId].benchmarkStatus === "MET" ? 2 : 1;
+       const bScore = b.terms[termId].benchmarkStatus === "MET" ? 2 : 1;
       return bScore - aScore || a.id.localeCompare(b.id);
     })
     .slice(0, limit)
@@ -154,5 +180,5 @@ export function countUnresolvedCommunityTerms(decisions: Record<CommunityTermId,
 export function createCommunityReview(project: CommunityProjectInput) {
   const relationship = matchCommunityProject(project);
   const agreement = relationship.agreementId ? COMMUNITY_AGREEMENTS.find((record) => record.id === relationship.agreementId) : undefined;
-  return { version: 1 as const, relationship, terms: initialCommunityTermDecisions(agreement) };
+  return { version: 2 as const, relationship, terms: initialCommunityTermDecisions(agreement) };
 }

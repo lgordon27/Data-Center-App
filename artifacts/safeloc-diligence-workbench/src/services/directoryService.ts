@@ -31,6 +31,9 @@ export type DirectoryFacility = {
   connectedCompanies: string[];
   connectedFunds: string[];
   lastUpdated: string | null;
+  canonicalProjectId?: string;
+  directoryDisposition?: "canonical" | "unverified-related";
+  relationshipReason?: string;
 };
 
 export type DirectoryResponse = {
@@ -113,6 +116,9 @@ function parseFacility(value: unknown): DirectoryFacility {
     connectedCompanies: Array.isArray(value.connectedCompanies) ? value.connectedCompanies.filter((item): item is string => typeof item === "string") : [],
     connectedFunds: Array.isArray(value.connectedFunds) ? value.connectedFunds.filter((item): item is string => typeof item === "string") : [],
     lastUpdated: typeof value.lastUpdated === "string" ? value.lastUpdated : null,
+    ...(typeof value.canonicalProjectId === "string" && value.canonicalProjectId.trim() ? { canonicalProjectId: value.canonicalProjectId.trim() } : {}),
+    ...(["canonical", "unverified-related"].includes(String(value.directoryDisposition)) ? { directoryDisposition: value.directoryDisposition as DirectoryFacility["directoryDisposition"] } : {}),
+    ...(typeof value.relationshipReason === "string" && value.relationshipReason.trim() ? { relationshipReason: value.relationshipReason.trim() } : {}),
   };
 }
 

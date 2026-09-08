@@ -855,7 +855,7 @@ function clearStorage(key: string) {
 
 function writeCommunityReview(review: CommunityReviewState, project: CommunityProjectInput) {
   writeStorage(COMMUNITY_REVIEW_STORAGE_KEY, {
-    version: 1,
+    version: 2,
     projectName: project.name,
     projectLocation: project.location,
     review,
@@ -876,7 +876,7 @@ function loadCommunityReview(project: CommunityProjectInput): CommunityReviewSta
       review?: unknown;
     };
     if (
-      stored.version !== 1 ||
+      ![1, 2].includes(stored.version as number) ||
       stored.projectName !== project.name ||
       stored.projectLocation !== project.location ||
       !stored.review ||
@@ -884,7 +884,7 @@ function loadCommunityReview(project: CommunityProjectInput): CommunityReviewSta
       Array.isArray(stored.review)
     ) return fallback;
     const review = stored.review as Partial<CommunityReviewState>;
-    if (review.version !== 1 || !review.relationship || !review.terms || typeof review.terms !== "object") return fallback;
+    if (![1, 2].includes(review.version as number) || !review.relationship || !review.terms || typeof review.terms !== "object") return fallback;
     const terms = { ...fallback.terms };
     for (const definition of COMMUNITY_TERM_DEFINITIONS) {
       const candidate = (review.terms as Record<string, unknown>)[definition.id];
@@ -904,7 +904,7 @@ function loadCommunityReview(project: CommunityProjectInput): CommunityReviewSta
       }
     }
     return {
-      version: 1,
+      version: 2,
       relationship: fallback.relationship,
       terms,
       lastAction: review.lastAction,

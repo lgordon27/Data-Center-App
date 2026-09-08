@@ -44,6 +44,11 @@ const EMBEDDED_SNAPSHOT = [
 ].map(([id, name, operator, city, county, state, capacityMW, status, confidence, aiClassification, sourceUrl]) => ({
   id, name, operator, city, county, state, capacityMW, availableCapacityMW: capacityMW,
   status, confidence, aiClassification, sourceUrl,
+  ...(id === "stargate-abilene-tx" ? {
+    canonicalProjectId: "stargate-abilene",
+    directoryDisposition: "canonical",
+    relationshipReason: "Canonical Compute Atlas entry for the curated Stargate Abilene workbench. Other Abilene or Lancium records must remain separate unless a source-supported relationship is shown.",
+  } : {}),
 }));
 
 let retainedDirectoryResponse = null;
@@ -158,6 +163,33 @@ function sourceUrlForFacility(raw, id) {
   return candidates.map(safePublicSourceUrl).find(Boolean) ?? null;
 }
 
+function resolveDirectoryIdentity({ id, name, operator, city, county, state }) {
+  const normalized = `${id} ${name} ${operator}`.toLowerCase();
+  const isAbileneArea = [city, county, state].some((value) => String(value ?? "").toLowerCase().includes("abilene") || String(value ?? "").toLowerCase().includes("taylor"));
+  const isCanonicalAbilene = id === "stargate-abilene-tx" && isAbileneArea;
+  if (isCanonicalAbilene) {
+    return {
+      canonicalProjectId: "stargate-abilene",
+      directoryDisposition: "canonical",
+      relationshipReason: "Canonical Compute Atlas entry for the curated Stargate Abilene workbench. Other Abilene or Lancium records must remain separate unless a source-supported relationship is shown.",
+    };
+  }
+  const isLanciumCampus = normalized.includes("lancium") && normalized.includes("clean campus");
+  if (isLanciumCampus && isAbileneArea) {
+    return {
+      directoryDisposition: "unverified-related",
+      relationshipReason: "Lancium Clean Campus is co-mentioned in the reviewed Abilene source context, but that does not establish a shared campus or canonical facility identity. Keep this as a separate unverified directory entry.",
+    };
+  }
+  if (isAbileneArea && normalized.includes("stargate") && normalized.includes("abilene")) {
+    return {
+      directoryDisposition: "unverified-related",
+      relationshipReason: "Abilene/Stargate naming overlap is not enough to establish the same facility, phase, or agreement; research separately until attributable documentation is available.",
+    };
+  }
+  return {};
+}
+
 function normalizeFacility(raw, index = 0) {
   if (!isRecord(raw)) return null;
   const id = typeof raw.id === "string" && raw.id.trim()
@@ -169,6 +201,7 @@ function normalizeFacility(raw, index = 0) {
   const location = normalizeLocation(raw.location ?? raw.address);
   const capacityMW = selectAvailableCapacityMW(raw.capacityMw ?? raw.capacityMW ?? raw.capacity);
   const exposure = mapOperatorExposure(operator);
+  const identity = resolveDirectoryIdentity({ id, name, operator, city: location.city, county: location.county, state: location.state });
   return {
     id,
     name,
@@ -189,6 +222,7 @@ function normalizeFacility(raw, index = 0) {
     connectedCompanies: exposure.companies,
     connectedFunds: exposure.funds,
     lastUpdated: validTimestamp(raw.lastUpdated ?? raw.last_updated ?? raw.updatedAt ?? raw.updated_at),
+    ...identity,
   };
 }
 
@@ -370,15 +404,18 @@ function pageDirectoryResponse(response, requestUrl) {
     const matchesCompany = !company || facility.connectedCompanies.includes(company);
     return matchesState && matchesSearch && matchesCompany;
   });
-  const facilities = matches.slice(offset, offset + limit);
+  const texasFirst = !state && !query && !company
+    ? [...matches.filter((facility) => facility.state === "TX"), ...matches.filter((facility) => facility.state !== "TX")]
+    : matches;
+  const facilities = texasFirst.slice(offset, offset + limit);
   return {
     ...response,
     facilities,
-    totalFacilities: matches.length,
+    totalFacilities: texasFirst.length,
     offset,
     limit,
-    hasMore: offset + facilities.length < matches.length,
-    diagnostics: { ...response.diagnostics, pagination: { offset, limit, totalFacilities: matches.length } },
+    hasMore: offset + facilities.length < texasFirst.length,
+    diagnostics: { ...response.diagnostics, pagination: { offset, limit, totalFacilities: texasFirst.length, texasFirst: !state && !query && !company } },
   };
 }
 

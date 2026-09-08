@@ -12,3 +12,4 @@
 - [Research confidence and query audit](research-confidence-query-audit.md) — self-ratings are not probabilities; search plans are not observed searches; directory hints must not restrict discovery.
 - [Source vs modeled classification](source-vs-modeled-classification.md) — an evidence item can be source-verified while its underwriting treatment remains a separate model inference.
 - [Recurring attribution semantics](recurring-attribution-semantics.md) — annual driver effects must exclude terminal value and debt repayment; keep total equity impact separate.
+- [Community benchmark provenance](community-benchmark-provenance.md) — external benchmark rows need immutable source fields, explicit review state, and no invented quote or primary-document fallback.

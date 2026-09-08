@@ -76,6 +76,56 @@ test("normalizes statuses, nested capacity, location, AI classification, and saf
   assert.deepEqual(mapOperatorExposure("Google / Amazon"), { companies: ["Google", "Amazon"], funds: ["QQQ", "XLK", "XLY"] });
 });
 
+test("keeps Lancium directory identity explicitly unverified without merging it", () => {
+  const canonical = normalizeFacility({
+    ...facility(),
+    id: "stargate-abilene-tx",
+    name: "Stargate Abilene",
+    operator: "Crusoe / OpenAI / Oracle",
+    location: { city: "Abilene", county: "Taylor", state: "TX" },
+  });
+  const related = normalizeFacility({
+    ...facility(),
+    id: "lancium-clean-campus-1",
+    name: "Lancium Clean Campus",
+    operator: "Lancium",
+    location: { city: "Abilene", county: "Taylor", state: "TX" },
+  });
+  assert.equal(canonical.canonicalProjectId, "stargate-abilene");
+  assert.equal(canonical.directoryDisposition, "canonical");
+  assert.equal(related.canonicalProjectId, undefined);
+  assert.equal(related.directoryDisposition, "unverified-related");
+  assert.notEqual(canonical.id, related.id);
+  assert.match(related.relationshipReason, /co-mentioned|unverified/i);
+  assert.doesNotMatch(related.relationshipReason, /same[- ]campus/i);
+
+  const elsewhere = normalizeFacility({
+    ...facility(),
+    id: "lancium-clean-campus-elsewhere",
+    name: "Lancium Clean Campus",
+    location: { city: "Phoenix", county: "Maricopa", state: "AZ" },
+  });
+  assert.equal(elsewhere.directoryDisposition, undefined);
+
+  const phase = normalizeFacility({
+    ...facility(),
+    id: "stargate-abilene-tx-phase-2",
+    name: "Stargate Abilene",
+    location: { city: "Abilene", county: "Taylor", state: "TX" },
+  });
+  assert.equal(phase.canonicalProjectId, undefined);
+  assert.equal(phase.directoryDisposition, "unverified-related");
+
+  const sameNameElsewhere = normalizeFacility({
+    ...facility(),
+    id: "stargate-abilene-phoenix",
+    name: "Stargate Abilene",
+    location: { city: "Phoenix", county: "Maricopa", state: "AZ" },
+  });
+  assert.equal(sameNameElsewhere.canonicalProjectId, undefined);
+  assert.equal(sameNameElsewhere.directoryDisposition, undefined);
+});
+
 test("uses only validated provider timestamps for freshness", () => {
   assert.equal(providerUpdatedAt({}), null);
   assert.equal(providerUpdatedAt({ lastUpdated: "not-a-date", updated_at: "2026-08-31T12:00:00.000Z" }), "2026-08-31T12:00:00.000Z");
@@ -160,4 +210,21 @@ test("paginates directory responses at the server boundary", async () => {
   assert.equal(page.offset, 24);
   assert.equal(page.limit, 24);
   assert.equal(page.hasMore, false);
+});
+
+test("puts Texas entry points first only for the unfiltered directory", async () => {
+  clearDirectoryCache();
+  const records = [
+    facility({ id: "az-facility", name: "Arizona Facility", location: { city: "Mesa", county: "Maricopa", state: "AZ" } }),
+    facility({ id: "tx-facility", name: "Texas Facility", location: { city: "Abilene", county: "Taylor", state: "TX" } }),
+  ];
+  const response = { statusCode: 0, body: "", setHeader() {}, end(body) { this.body = body; } };
+  await handleDirectoryRequest(
+    { method: "GET", url: "/api/directory?limit=24&offset=0" },
+    response,
+    { fetchImpl: upstreamFetch({ records }), now: () => 5_000_000 },
+  );
+  const page = JSON.parse(response.body);
+  assert.deepEqual(page.facilities.map((item) => item.id), ["tx-facility", "az-facility"]);
+  assert.equal(page.diagnostics.pagination.texasFirst, true);
 });

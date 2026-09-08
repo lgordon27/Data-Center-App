@@ -37,16 +37,14 @@ export async function analyzeCommunityTerms(
   const terms = agreement
     ? COMMUNITY_TERM_DEFINITIONS.map((definition) => {
         const sourceTerm = agreement.terms[definition.id];
-        const proposedConclusion: CommunityConclusion = sourceTerm.present === true
-          ? sourceTerm.bindingStatus === "Binding" ? "Present" : "Partial"
-          : sourceTerm.present === false ? "Absent" : "Unknown";
+        const proposedConclusion: CommunityConclusion = "Unknown";
         return {
           id: definition.id,
           proposedConclusion,
-          proposedClassification: (sourceTerm.present === null ? "Missing Evidence" : "Model Inference") as CommunityTermDecision["classification"],
+          proposedClassification: "Missing Evidence" as CommunityTermDecision["classification"],
           proposedTreatment: definition.treatment,
-          reasoning: `Snapshot text ${sourceTerm.present === null ? "does not establish" : "suggests"} a ${definition.label.toLowerCase()} provision; human review is required.`,
-          sourceSupport: `${sourceTerm.sourceCitation} · ${sourceTerm.pageOrSection}`,
+          reasoning: `The external benchmark status is ${sourceTerm.benchmarkStatus}, but benchmark context does not establish a Stargate Abilene project fact; human review is required.`,
+          sourceSupport: `${agreement.sourceTitle} · ${sourceTerm.benchmarkTerm} · benchmark ${sourceTerm.benchmarkStatus}`,
         };
       })
     : COMMUNITY_TERM_DEFINITIONS.map((definition) => ({

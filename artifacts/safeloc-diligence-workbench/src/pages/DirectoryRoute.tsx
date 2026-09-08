@@ -46,7 +46,7 @@ function sourceLabel(response: DirectoryResponse | DirectoryStatsResponse | null
 }
 
 function isStargate(facility: DirectoryFacility) {
-  return facility.name.toLowerCase().includes("stargate") && facility.city.toLowerCase().includes("abilene");
+  return facility.directoryDisposition === "canonical" && facility.canonicalProjectId === "stargate-abilene";
 }
 
 type ResearchState = { busy: boolean; error: string | null; progress: ResearchProgress };
@@ -65,7 +65,7 @@ function DirectoryRecord({
       <div className="grid gap-3 lg:grid-cols-[minmax(220px,1.35fr)_minmax(190px,1fr)_120px_120px_minmax(145px,auto)] lg:items-center">
         <div className="flex min-w-0 items-start gap-2">
           <Building2 aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#d4e86b]" />
-          <div className="min-w-0"><h3 className="truncate text-[14px] font-semibold text-white">{facility.name}</h3><p className="mt-1 truncate text-[10px] text-[#9dafb8]">{facility.operator}</p></div>
+           <div className="min-w-0"><h3 className="truncate text-[14px] font-semibold text-white">{facility.name}</h3><p className="mt-1 truncate text-[10px] text-[#9dafb8]">{facility.operator}</p>{facility.directoryDisposition === "unverified-related" && <span data-testid={`compute-atlas-relationship-${facility.id}`} className="mt-1 inline-block font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#f1cb8b]">Relationship unverified</span>}</div>
         </div>
         <div className="flex min-w-0 items-start gap-2 text-[11px] text-[#c4d0d6]"><MapPin aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#f5ddd5]" /><span className="truncate">{locationLabel(facility)}</span></div>
         <div><div className="font-mono text-[8px] uppercase text-[#718894]">Capacity</div><div className="mt-1 font-mono text-[12px] font-bold text-[#d4e86b]">{facility.capacityMW === null ? "Undisclosed" : `${facility.capacityMW.toLocaleString()} MW`}</div></div>
@@ -77,6 +77,7 @@ function DirectoryRecord({
           </button>
         </div>
       </div>
+       {facility.relationshipReason && <p data-testid={`compute-atlas-relationship-reason-${facility.id}`} className="mt-3 rounded border border-white/10 bg-black/10 px-3 py-2 text-[9px] leading-4 text-[#b9c5c9]">{facility.relationshipReason}</p>}
       {state.busy && <div data-testid={`compute-atlas-research-status-${facility.id}`} role="status" className="mt-3 rounded border border-[#8dc8e8]/35 px-3 py-2 text-[10px] text-[#b9e1f2]">{state.progress === "retrying" ? "Research taking longer than expected, retrying..." : "Researching public sources. This can take up to 90 seconds."}</div>}
       {state.error && (
         <div data-testid={`compute-atlas-error-${facility.id}`} role="alert" className="mt-3 rounded border border-[#efabb8]/60 bg-[#552c3a] px-3 py-2 text-[10px] text-[#ffc8ce]">

@@ -1,0 +1,570 @@
+# Task #134: Add Texas-First Community Agreement Intelligence
+
+## Dependency
+
+Begin this task only after Task #133, Unify Analysis Workbench, is complete and all tests pass.
+
+The application now uses one continuous `#analysis` workbench containing:
+
+* Project Overview
+* Evidence
+* Financial Impact
+* Decision
+* Advisor Lens
+
+Implement this capability within that unified surface. Do not recreate separate workbench routes, add another primary section, or restore Continue/Previous navigation.
+
+Before editing, inspect the completed Task #133 implementation. Reuse its section components, anchor behavior, summary architecture, state management, responsive patterns, focus management, and test conventions.
+
+## Objective
+
+Add a Texas-first Community Agreement Review capability to SafeLoc Diligence Workbench.
+
+The application should:
+
+1. Prioritize Texas data-center projects.
+2. Use the 15 agreements published by Future Pickleball Court as a national benchmark corpus.
+3. Connect agreements to projects only when evidence supports the relationship.
+4. Provide national comparisons when no direct Texas agreement is available.
+5. Treat missing public documentation as a diligence gap, not proof that no agreement exists.
+6. Separate financial drivers, decision gates, stewardship indicators, and contextual information.
+7. Require human acceptance before an AI assessment changes the project analysis.
+
+This is an evidence-intelligence enhancement, not a new standalone community database.
+
+## Source Data
+
+Use the structured resources available from:
+
+* https://futurepickleballcourt.com/
+* https://futurepickleballcourt.com/all.json
+* https://futurepickleballcourt.com/all.md
+
+The source currently covers 15 agreements nationally, including the City of Abilene agreement involving Oracle and OpenAI.
+
+Verify any licensing information before displaying it. Preserve attribution, original document links, page references, source type, and retrieval date.
+
+Do not imply that SafeLoc has a partnership with or endorsement from Future Pickleball Court.
+
+Do not silently adopt the source’s `MET` and `SHORT` judgments as SafeLoc conclusions. Store them as external benchmark assessments that can be reviewed separately.
+
+## Scope
+
+### In scope
+
+* Local normalized snapshot of the 15-agreement corpus
+* Texas-first project matching
+* Direct, related, comparable, and not-found classifications
+* Ten-term community agreement review
+* National term benchmarking
+* AI-proposed clause analysis
+* Human acceptance or override
+* Integration with existing evidence and decision logic
+* Explicitly supported financial adjustments
+* Progressive-disclosure UI
+* Source attribution and citations
+
+### Out of scope
+
+* Nationwide municipal website scraping
+* Automated public-information requests
+* User accounts or multi-user permissions
+* Legal-document drafting
+* Legal conclusions
+* Portfolio-level fund-risk ratings
+* A separate Community Agreements page
+* A live backend dependency on Future Pickleball Court
+* Automatic IRR penalties for weak community provisions
+* Rebuilding the existing cash-flow model
+* Redesigning the unified workbench
+
+## Data Ingestion
+
+Create a normalized local dataset based on the 15 published agreements.
+
+A local snapshot is preferred for this release so the conference demonstration does not depend on the availability, latency, or format of an external website.
+
+Record:
+
+* Agreement ID
+* Deal or project name
+* Operator
+* Developer, if available
+* Hyperscaler or tenant, if available
+* City
+* County, if available
+* State
+* Agreement date, if available
+* Source provider
+* Source type
+* Source URL
+* Original document URL
+* Page or section reference
+* Original excerpt
+* External benchmark assessment
+* Date retrieved
+* Date reviewed
+* Data limitations
+
+Structure the ingestion code so the snapshot can be refreshed later without changing application components.
+
+## Community Terms
+
+Support these ten terms:
+
+1. Community fund
+2. Clawbacks
+3. Decommissioning security
+4. Grid-cost allocation
+5. Water commitments
+6. Noise protections
+7. Binding job commitments
+8. Local contracting and road repair
+9. Transparency and auditability
+10. Tax incentives
+
+Each term should support:
+
+```ts
+type CommunityTermStatus =
+  | "met"
+  | "short"
+  | "unknown"
+  | "not_applicable";
+
+type CommunityAssessmentSource =
+  | "external_benchmark"
+  | "ai_proposal"
+  | "safeloc_review"
+  | "user_review";
+
+type FinancialTreatment =
+  | "financial_driver"
+  | "decision_gate"
+  | "stewardship_indicator"
+  | "context";
+
+interface CommunityAgreementTerm {
+  termId: string;
+  name: string;
+  status: CommunityTermStatus;
+  statusSource: CommunityAssessmentSource;
+  exactLanguage?: string;
+  summary?: string;
+  sourceUrl?: string;
+  pageReference?: string;
+  softeningLanguage?: string[];
+  enforceability?: string;
+  financialTreatment: FinancialTreatment;
+  financialModelVariable?: string;
+  reviewed: boolean;
+  reviewedAt?: string;
+}
+```
+
+Adapt naming to the existing codebase where necessary. Do not duplicate existing evidence types or create a second source of truth.
+
+## Project-to-Agreement Relationships
+
+Use four explicit relationship classifications:
+
+### Direct
+
+The agreement or primary document explicitly applies to the analyzed project.
+
+### Related
+
+The document involves the same campus, operator, developer, utility, or jurisdiction, but direct applicability is not conclusively established.
+
+Display: `Related record, review required`
+
+### Comparable
+
+The agreement belongs to another project and is used only as a benchmark.
+
+Display: `National benchmark, not a term of this project`
+
+### Not found
+
+No applicable agreement was located in the available corpus.
+
+Display: `No direct public agreement located in the available sources`
+
+Never display:
+
+* “No agreement exists”
+* “The project has no community protections”
+* “The company failed to negotiate an agreement”
+
+unless supported by verified primary evidence.
+
+## Matching Logic
+
+Potential matching fields include:
+
+* Project name
+* Campus name
+* Operator
+* Developer
+* Hyperscaler or tenant
+* City
+* County
+* State
+* Agreement date
+
+Normalize capitalization, punctuation, abbreviations, and common company-name variations.
+
+Fuzzy matching may generate a candidate, but it must not establish a direct relationship by itself.
+
+A direct match requires source evidence connecting the document to the project. Ambiguous matches must remain related and visibly require review.
+
+Store:
+
+* Relationship type
+* Match confidence
+* Matching fields
+* Supporting evidence
+* Human review status
+
+## Texas-First Behavior
+
+Texas must remain the visible product priority.
+
+For the existing Stargate Abilene case:
+
+1. Locate the City of Abilene record involving Oracle and OpenAI.
+2. Review its primary source.
+3. Determine whether the document explicitly applies to the project represented in SafeLoc.
+4. Label it direct only if the source establishes that connection.
+5. Otherwise label it related and require human review.
+6. Show the agreement’s ten terms with citations and evidence status.
+
+For other Texas projects:
+
+* Attempt matching against the available agreement corpus.
+* If no direct match exists, display the not-found language.
+* Show the source scope and last-reviewed date.
+* Provide the strongest relevant national comparisons.
+* Preserve the result as missing evidence where appropriate.
+
+Do not feature all national agreements as projects. They are a supporting benchmark library.
+
+## National Benchmarking
+
+Use all 15 agreements in the comparison engine.
+
+For each community term, identify:
+
+1. The strongest available signed provision
+2. The most relevant operational or geographic comparison
+3. One optional additional comparison
+
+Show no more than three comparisons by default.
+
+Each comparison must display:
+
+* Jurisdiction
+* Operator
+* Term
+* Plain-English summary
+* Exact language, when available
+* Page reference
+* Original source
+* External assessment
+* Clear comparable-only label
+
+Place the complete benchmark library behind `View all benchmark agreements`.
+
+Use an accordion, drawer, or dialog so the unified analysis page does not become excessively long.
+
+## Unified Workbench Integration
+
+### Project Overview
+
+Add one compact `Community Readiness` signal to the existing risk strip.
+
+Possible states:
+
+* Agreement located
+* Related record found
+* No direct agreement located
+* Community evidence unreviewed
+
+Show:
+
+* Relationship classification
+* One-line conclusion
+* One action: `Review Community Terms`
+
+Selecting the action must scroll to and focus the Community Agreements group in the Evidence section.
+
+Do not display the full ten-term review in Project Overview.
+
+### Evidence
+
+Add a collapsed `Community Agreements` evidence group.
+
+Its default summary should show:
+
+* Relationship classification
+* Number of agreements located
+* Reviewed terms
+* Material gaps
+* Unknown terms
+* `Review Community Terms`
+
+When expanded, show a scannable ten-row table:
+
+* Term
+* Project finding
+* Evidence status
+* Decision relevance
+
+Selecting a row reveals:
+
+* Exact language
+* Plain-English explanation
+* Source document
+* Page reference
+* Softening language
+* Enforceability assessment
+* External benchmark assessment
+* SafeLoc or user classification
+* Relevant national comparisons
+* `Analyze with AI`
+
+Only one term should be expanded at a time.
+
+### Financial Impact
+
+Do not create a separate community-finance model or automatically change returns.
+
+An approved community finding may affect the financial analysis only when:
+
+* It maps to a specific model assumption.
+* The adjustment can be quantified.
+* The calculation is shown.
+* Supporting evidence is cited.
+* The user explicitly approves it.
+
+Display:
+
+* Affected model variable
+* Original assumption
+* Proposed assumption
+* Financial consequence
+* Supporting evidence
+* Approval status
+
+### Decision
+
+Integrate community-related gaps into the existing material-gaps system.
+
+Do not create a second recommendation engine.
+
+Example:
+
+> No direct public agreement was located in the available corpus. Water commitments, grid-cost allocation, and decommissioning security remain unresolved and require additional diligence.
+
+Community gaps should use the same Resolve behavior established by Task #133. Selecting Resolve should scroll and focus the relevant community term in Evidence.
+
+### Advisor Lens
+
+Add a collapsed `Community Questions` subsection containing:
+
+1. What protections has the project contractually provided to the host community?
+2. Who bears the cost if the project is delayed, abandoned, or uses more resources than expected?
+3. How does this agreement compare with protections other communities have secured?
+
+Explain briefly that community readiness may affect:
+
+* Permitting and project timing
+* Financing conditions
+* Regulatory exposure
+* Reputation
+* Stewardship and engagement priorities
+
+Do not turn a single project assessment into a fund-level risk rating.
+
+## AI Interaction
+
+For each term, `Analyze with AI` may propose:
+
+* Whether the provision is present
+* Exact supporting language
+* Whether it is binding or aspirational
+* Softening language
+* Enforcement limitations
+* Evidence classification
+* Financial treatment
+* Relevant benchmark comparison
+* Missing evidence
+
+The AI proposal must not update evidence, recommendation, gaps, or financial results until the user selects:
+
+* Accept AI Assessment
+* Override
+* Leave Unresolved
+
+Clearly distinguish:
+
+* Source text
+* External benchmark judgment
+* AI proposal
+* Human-approved conclusion
+
+Preserve the existing AI acceptance, override, persistence, and reset behavior.
+
+## Financial Treatment
+
+Every community term must be assigned one of four treatments.
+
+### Financial driver
+
+May change a financial assumption when explicitly quantified.
+
+Potential examples:
+
+* Tax incentives
+* Grid-cost allocation
+* Water infrastructure
+* Road-repair obligations
+* Quantifiable clawbacks
+* Decommissioning security
+* Evidence-supported permitting delay
+
+### Decision gate
+
+May block or condition readiness without automatically changing IRR.
+
+### Stewardship indicator
+
+Relevant to responsible-investment engagement but does not automatically change project returns.
+
+### Context
+
+Informational evidence that does not affect returns or recommendation by itself.
+
+Community funds, resident representation, transparency, and similar factors must not receive invented IRR penalties.
+
+## Summary Rail and Mobile Summary
+
+Do not add a permanent Community block to the desktop summary rail.
+
+Approved community findings may update existing:
+
+* Confidence
+* Material-gap count
+* Classification counts
+* Recommendation
+* Stress IRR, only if explicitly quantified and approved
+
+These must use Task #133’s existing source of truth.
+
+Do not add another mobile section-navigation item. Community Agreement Review belongs under Evidence.
+
+Ensure dialogs, tables, and expanded terms create no horizontal page overflow.
+
+## Attribution
+
+Include this or equivalent language in the expanded agreement review:
+
+> Agreement benchmark data adapted from FuturePickleballCourt.com. SafeLoc classifications and financial treatments are independently reviewed and may differ from the source’s assessments.
+
+Link to:
+
+* Future Pickleball Court
+* The applicable original agreement
+* The dataset or methodology
+* Verified licensing information, when appropriate
+
+## Accessibility
+
+Maintain:
+
+* Keyboard-accessible accordions and dialogs
+* Visible focus states
+* Proper heading hierarchy
+* Table labels
+* Screen-reader status announcements
+* Reduced-motion behavior
+* Focus movement after Review or Resolve actions
+* Mobile and tablet usability
+
+## Acceptance Criteria
+
+The task is complete when:
+
+1. The 15-agreement corpus is normalized locally with provenance.
+2. Texas remains the visible priority.
+3. Stargate Abilene displays direct or related status based on source evidence.
+4. Texas projects without matches display “No direct public agreement located.”
+5. Direct, related, comparable, and not-found classifications are visually distinct.
+6. The ten terms are available through progressive disclosure.
+7. Every substantive finding links to a source and page when available.
+8. External benchmark judgments remain distinct from SafeLoc conclusions.
+9. AI proposals require human acceptance or override.
+10. Only approved and explicitly quantified financial drivers affect returns.
+11. Decision gates do not automatically reduce IRR.
+12. Community gaps use the existing Decision-section resolution behavior.
+13. Review and Resolve actions scroll and focus the correct Evidence target.
+14. No legacy workbench routes or navigation controls are restored.
+15. The desktop rail and mobile summary continue using the established source of truth.
+16. The unified page has no horizontal overflow.
+17. Existing research, persistence, reset, scenarios, and evidence-governance behavior remains functional.
+18. No new console errors are introduced.
+
+## Required Tests
+
+Add coverage for:
+
+* Agreement normalization
+* Company and jurisdiction name normalization
+* Direct matching
+* Ambiguous related matching
+* Comparable selection
+* Not-found results
+* Stargate Abilene relationship
+* Source attribution
+* Evidence-section focus behavior
+* Decision Resolve behavior
+* AI acceptance and override
+* Human approval requirement
+* Financial-treatment safeguards
+* Persistence and reset
+* Desktop, tablet, and mobile layouts
+* Horizontal overflow
+* Existing Task #133 regression suite
+
+Run:
+
+* Type checking
+* Unit tests
+* Production build
+* Playwright or existing browser suite
+
+## Implementation Process
+
+1. Inspect the completed Task #133 code before editing.
+2. Identify the minimum files requiring changes.
+3. Summarize the proposed implementation.
+4. Implement the local normalized agreement corpus.
+5. Add matching and comparison logic with tests.
+6. Add the progressively disclosed interface.
+7. Connect approved findings to existing evidence and decision systems.
+8. Add guarded financial integration.
+9. Test Stargate Abilene.
+10. Test a Texas project with no direct match.
+11. Run the full regression suite.
+12. Report:
+
+* Files changed
+* Data imported
+* Matching methodology
+* Abilene relationship determination
+* Financial safeguards
+* Tests completed
+* Source limitations
+* Remaining decisions requiring approval
+
+Do not merely provide a plan. Complete and verify the implementation.

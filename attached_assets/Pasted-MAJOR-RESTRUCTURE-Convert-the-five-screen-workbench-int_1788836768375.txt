@@ -1,0 +1,149 @@
+MAJOR RESTRUCTURE: Convert the five-screen workbench into a single-page analysis with a persistent financial summary rail. Update all site navigation, references, and framing to reflect the new structure.
+
+THE CORE CHANGE:
+
+The current app has five separate hash routes (#brief, #evidence, #materiality, #decision, #advisor) that users navigate between using tabs and "Continue" buttons. This creates disconnection: changing evidence on one screen requires navigating to another screen to see the financial effect.
+
+Replace the five-screen workbench with ONE continuous scrollable page at a single route (#analysis). The financial summary is always visible in a persistent left rail. The user scrolls through the analysis while the numbers update in real time beside them.
+
+PERSISTENT LEFT RAIL (fixed position, always visible):
+
+Width: approximately 280px on desktop. Collapses to a sticky top bar on mobile.
+
+Contents:
+- Project name (Stargate Abilene or custom project name)
+- Tier badge (Tier 1 or Tier 2)
+- Location
+- Evidence Confidence: XX%
+- Underwriting Baseline IRR: XX.X%
+- Conservative Stress IRR: XX.X% (this is the number that moves when evidence changes)
+- Evidence Quality Gap: X.X pts
+- Recommendation Status: BLOCKED / CONDITIONAL / READY (with color: red/amber/green)
+- Material Gaps: X items
+- A compact evidence summary: X Verified, X Assertion, X Inference, X Assumption, X Missing
+
+ALL of these values update in real time when any evidence classification changes anywhere on the page. The user changes a dropdown in the evidence section and watches the left rail numbers move without scrolling or navigating.
+
+Below the metrics, show section navigation as anchor links:
+- Project Overview
+- Evidence
+- Financial Impact
+- Decision
+- Advisor Lens
+
+These smooth-scroll to the corresponding section. The currently visible section is highlighted as the user scrolls.
+
+Below the section links:
+- Reset to Default button
+- Save Scenario button
+- Compare Scenarios button
+
+MAIN CONTENT AREA (scrollable, right of the rail):
+
+All content flows as one continuous page. No tabs. No route changes. No "Continue to" buttons between sections.
+
+SECTION 1: PROJECT OVERVIEW (replaces Case Brief)
+- Project identity card: name, operators, location, capacity, status, Tier badge
+- Risk strip: the four signal cards (Water Missing, Grid Cancelled, Cooling Tested, Construction ~6,400)
+- Bifurcation context (collapsed by default): Tier 2 explanation with Kilby comparison
+- ERCOT queue data (collapsed by default): queue depth, Batch Zero specifics
+- FEMA climate profile (collapsed by default): overall rating and top hazards
+- Synthetic transaction assumptions (collapsed by default): one-line summary visible
+
+SECTION 2: EVIDENCE (replaces Evidence Room)
+- Section header: "Evidence" with the provenance summary cards (6 Verified, 3 Assertion, etc.)
+- The guided interaction banner: "Change any classification. Watch the numbers on the left respond."
+- The 16 evidence items grouped by category (Power & Grid, Water & Climate, Community & Permitting, Financial & Counterparty)
+- Each item shows: variable name, value, classification dropdown, Analyze with AI button
+- Accordion-style expansion for source detail
+- THIS IS THE INTERACTIVE CORE. When the user changes any dropdown here, the left rail updates instantly. No navigation needed.
+
+SECTION 3: FINANCIAL IMPACT (replaces Financial Materiality)
+- Section header: "Financial Impact"
+- The headline gap: "Underwriting Baseline: XX.X% → Conservative Stress: XX.X%"
+- The impact chain table showing each Financial Driver evidence item with: classification, what changes in the model, dollar impact, annual effect, IRR effect. Sorted by largest IRR impact first.
+- The five-year cash flow summary with baseline vs stress case rows per year
+- The return metrics cards: IRR, MOIC, NPV, Cash-on-Cash, Payback
+- The waterfall chart (renamed Evidence-Quality Stress Test) available as an expandable visual
+
+SECTION 4: DECISION (replaces Decision Review)
+- Section header: "Decision"
+- Recommendation status banner (BLOCKED/CONDITIONAL/READY) as the dominant element
+- The reason in one sentence
+- Material evidence gaps with financial consequences inline and Resolve links that smooth-scroll back up to the evidence item in Section 2
+- Evidence quality mix (collapsed by default)
+
+SECTION 5: ADVISOR LENS (replaces Advisor Lens)
+- Section header: "Advisor Lens"
+- Exposure chain: Portfolio → Fund → NVIDIA → GPU Orders → CAPEX → Project
+- The governance gap number
+- Three client conversation cards (collapsed to questions only, expandable)
+- Company bifurcation exposure (collapsed by default)
+- Fund indicators (collapsed by default)
+
+NAVIGATION CHANGES:
+
+Remove the five-step progress bar (01 Case Brief, 02 Evidence Room, etc.) from the top of the page. Replace with a clean header:
+- SafeLoc logo
+- Project name
+- Home | The AI Chain | How It Works | Analyze a Different Project | Reset to Default
+
+The old step labels (Frame, Source, Model, Decide, Transmit) are gone. The section anchor links in the left rail replace them.
+
+Remove all "Continue to [next screen]" and "Previous" buttons between sections. The user scrolls. The sections flow naturally.
+
+Update the hash routing:
+- Remove: #brief, #evidence, #materiality, #decision, #advisor
+- Add: #analysis (the single analysis page)
+- Keep: #home, #value-chain, #how-it-works, #directory
+- The Stargate "Run the Stargate Case" button on the home page now links to #analysis
+- The custom project research flow now navigates to #analysis after loading data
+
+HOME PAGE UPDATES:
+
+Change all references from "workbench" to "analysis":
+- "Open the Workbench" → "Run the Analysis" or "Start the Analysis"
+- "The Workbench" entry card → "The Analysis"
+- Any reference to "five screens" or "five-screen workflow" → "analysis"
+
+Update the three CTA buttons:
+- "Start with NVIDIA" → links to the company view, which then links to #analysis for a specific project
+- "Run the Stargate Case" → links to #analysis with Stargate data
+- "Analyze Another Project" → opens the research modal, then navigates to #analysis
+
+VALUE CHAIN PAGE:
+- Update any reference to "workbench screens" or "five screens"
+- "YOU ARE HERE" on the data center infrastructure stage should reference "the analysis" not "the workbench"
+
+HOW IT WORKS PAGE:
+- Replace the five-screen walkthrough with a section walkthrough matching the new structure: Project Overview, Evidence, Financial Impact, Decision, Advisor Lens
+- Remove references to "Screen 1" through "Screen 5"
+- Update the description of the tool from "five-screen workbench" to "single-page analysis with persistent financial tracking"
+- Keep the evidence classification system explanation, source library, and builder story unchanged
+
+HEADER ACROSS ALL PAGES:
+- Remove "EVIDENCE-GOVERNED INVESTMENT INTELLIGENCE" subtitle if still present
+- Remove "POC / v0.9" if still present
+- Remove the "AD" avatar if still present
+- The header should be: SafeLoc logo | [page-specific context] | Home | The AI Chain | How It Works | Analyze a Different Project | Reset to Default
+
+MOBILE LAYOUT:
+
+The persistent left rail becomes a sticky top bar on mobile showing:
+- Stress IRR (the key number)
+- Recommendation status badge
+- Confidence percentage
+- A "tap to expand" that reveals the full metrics
+
+The main content scrolls below this sticky bar. The section anchor links become a horizontally scrollable tab bar in the sticky area.
+
+TECHNICAL NOTES:
+
+- All existing components (evidence items, financial model, decision logic, advisor lens, scenario comparison) should work identically. This is a layout restructure, not a logic change.
+- The DiligenceContext, cashFlowEngine, and advisorModel are unchanged.
+- State management is unchanged. Evidence classifications still stored in context and localStorage.
+- The financial model still recalculates on every classification change. The only difference is that the results are displayed in the left rail instead of on a separate screen.
+- Tests that reference specific routes (#brief, #evidence, etc.) need updating to reference #analysis and section anchors.
+- The Analyze with AI feature, scenario comparison, reset, and session persistence all work the same way.
+
+The result: one page where changing an evidence classification immediately updates the financial summary visible on the left. The entire analysis is one connected story, not five disconnected slides. The user never loses the thread because the numbers are always beside them.

@@ -1,0 +1,113 @@
+Fix the source-integrity and entity-resolution defects in the SafeLoc Diligence Workbench. Treat this as a release-blocking data-quality task. Do not redesign the interface or change financial formulas in this task.
+
+CURRENT DEFECTS
+
+In the curated Stargate Abilene analysis:
+
+1. “Open original document” currently points to:
+   https://futurepickleballcourt.com/agreements/fpc-abilene-01
+
+   This URL returns a 404.
+
+2. “Open cited source” points to the Future Pickleball Court homepage rather than the relevant record or underlying primary document.
+
+3. The application displays paraphrased/generated language under “SOURCE RECORD · EXACT LANGUAGE.” Generated or summarized language must never be presented as an exact quotation.
+
+4. SafeLoc’s benchmark classifications do not match the source record at:
+   https://futurepickleballcourt.com/#us-tx-abilene-2025
+
+   The source record currently shows:
+
+   * Community fund: SHORT
+   * Clawbacks: SHORT
+   * Decommissioning: SHORT
+   * Grid costs: SHORT
+   * Water: SHORT
+   * Noise: UNKNOWN
+   * Jobs: MET
+   * Local contracting: UNKNOWN
+   * Transparency: SHORT
+   * Tax incentives: UNKNOWN
+
+   SafeLoc currently reverses or changes several of these values.
+
+5. The source record explicitly names Lancium Clean Campus, Stargate Site 1, Oracle, OpenAI and Crusoe. The relationship should not be labeled merely “Related” unless there is a documented project-scope reason. Confirm whether the record refers to the same project, a particular phase, or a related campus before assigning the relationship.
+
+REQUIRED DATA STRUCTURE
+
+Separate external-source facts from SafeLoc analyst judgments. Each community term should support fields equivalent to:
+
+* project_entity_id
+* source_record_id
+* benchmark_term
+* benchmark_status
+* source_exact_quote
+* source_summary
+* primary_document_url
+* source_record_url
+* source_title
+* source_section_or_page
+* relationship_type
+* relationship_confidence
+* relationship_reasoning
+* analyst_conclusion
+* analyst_evidence_classification
+* analyst_notes
+* last_verified_at
+
+Rules:
+
+* `source_exact_quote` may contain only verbatim language copied from the cited document.
+* If no verbatim quotation is stored, display “No exact quotation captured.”
+* `source_summary` must be visibly labeled as a summary.
+* `benchmark_status` must reproduce the external record faithfully.
+* `analyst_conclusion` must remain a separate human-controlled field.
+* Never overwrite the external benchmark when a user saves a conclusion.
+* Every primary-document link must resolve to the relevant document.
+* Every source-record link must resolve to the specific record or anchor.
+* Do not fabricate document page numbers, clauses, quotations or URLs.
+
+PROJECT IDENTITY
+
+Create or use a canonical entity relationship for:
+
+* Stargate Abilene
+* Stargate Site 1
+* Lancium Clean Campus
+* Crusoe-operated capacity
+* Oracle/OpenAI participation
+* Any separate expansion, cancelled phase or adjacent capacity
+
+Determine whether directory entries represent the same facility, separate phases or related projects. Do not silently merge them. Show the relationship clearly, such as:
+
+* SAME PROJECT
+* PROJECT PHASE
+* SAME CAMPUS
+* CONTRACTUAL RELATIONSHIP
+* SUPPLIER RELATIONSHIP
+* THEMATIC RELATIONSHIP
+* UNVERIFIED
+
+The relationship explanation must be source-supported.
+
+DIRECTORY
+
+Resolve or clearly distinguish the current Stargate Abilene and Lancium Clean Campus records so users do not encounter two apparently separate curated deep dives for the same underlying asset without explanation.
+
+Preserve Texas-first positioning. When no filter is selected, show a Texas-focused or featured-Texas entry point before the nationwide alphabetical directory. Do not remove nationwide coverage.
+
+TESTS
+
+Add tests that verify:
+
+* The Abilene benchmark statuses exactly match the source record listed above.
+* External benchmark data and analyst conclusions remain separate.
+* Saving an analyst conclusion does not modify the imported benchmark.
+* No generated summary is rendered as “exact language.”
+* The specific record link and all stored primary-document links are validly formed.
+* Broken `/agreements/fpc-abilene-01` links no longer exist.
+* Relationship classifications include an explanation and supporting source.
+* Duplicate or related facility records are explicitly resolved.
+* Existing evidence reclassification, persistence, financial calculations and reset behavior remain unchanged.
+
+Run typecheck, unit tests, production build and Playwright tests. Report every changed file and any remaining source uncertainty. Do not claim a relationship or quotation is verified when the source does not support it.

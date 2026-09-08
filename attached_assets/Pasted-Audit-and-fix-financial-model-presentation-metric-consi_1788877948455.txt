@@ -1,0 +1,67 @@
+Audit and fix financial-model presentation, metric consistency and conflicting copy throughout the SafeLoc Diligence Workbench. Do not change formulas merely to produce more attractive returns. Determine the correct outputs from the implemented cash-flow model and make every screen use the same source of truth.
+
+CURRENT ISSUES
+
+1. Historical product copy referenced a 15.6% baseline and 10.3% stress case. The current curated case shows approximately 3.3% baseline and -3.7% stress IRR before further reclassification. Determine whether this reflects an intentional assumption change, stale copy or a formula defect.
+
+2. Sequential waterfall impacts differ from the impact values shown in the detailed driver table. Examples observed include:
+
+   * Electricity cost: approximately -1.9 points versus -2.2 points
+   * Site hazard: approximately -1.3 points versus -1.5 points
+   * Electricity escalation: approximately -2.7 points versus -2.9 points
+
+   If one calculation is sequential marginal impact and the other is standalone impact, label that distinction explicitly and explain it in one sentence.
+
+3. Site Hazard appears as Verified Evidence, is modeled as Model Inference and is later described in Advisor Lens as “not verified.” Separate:
+
+   * Source provenance
+   * Modeling treatment
+   * Financial role
+   * Current evidence classification
+
+   Do not use these concepts interchangeably.
+
+4. Scenario comparison briefly displays raw floating-point output such as:
+   -7.1089630220873365%
+
+   Standardize visible precision.
+
+5. Fix singular/plural copy such as “1 material items.”
+
+6. Reconcile stale global statistics:
+
+   * Home says 1,280+ facilities while the live directory shows 1,405.
+   * Some pages show a 474 GW ERCOT queue while the workbench shows approximately 466.5 GW.
+
+   Use centralized values with provider date and freshness metadata. If two values cover different dates or queue definitions, label that distinction.
+
+7. Inputs with effectively zero financial effect should not imply meaningful return consequences. If an input affects context or decision posture but not modeled returns, say so. For impacts below the display threshold, show “<0.01 pt” rather than 0.0 if appropriate.
+
+REQUIRED CHANGES
+
+* Establish one canonical calculation source for baseline IRR, stress IRR, NPV, MOIC, payback, cash-on-cash and evidence-quality gap.
+* Establish one canonical formatting utility for currency, percentages, multiples and percentage-point changes.
+* Make the baseline and stress-case assumption sets inspectable.
+* Add a concise model-methodology disclosure explaining how evidence classifications select conservative assumptions.
+* Preserve the distinction between uncertainty and predicted negative outcomes.
+* Clearly label sequential marginal impacts and standalone sensitivities.
+* Ensure every narrative sentence derives from current state or is neutral static copy.
+* Remove or update every stale hard-coded metric.
+* Do not infer fund-level or issuer-level materiality from one facility-level analysis.
+* Do not modify assumptions just to restore previously advertised IRRs.
+
+TESTS
+
+Add tests that verify:
+
+* All components display the same baseline and stress metrics.
+* Waterfall reconciliation reaches the displayed stress IRR within the defined tolerance.
+* Sequential and standalone impacts are correctly labeled.
+* No raw floating-point values reach the UI.
+* Singular and plural labels render correctly.
+* Provenance wording changes when evidence classifications change.
+* Advisor Lens does not contradict the current evidence record.
+* Provider values and dates remain consistent across Home, AI Chain, How It Works and Analysis.
+* Existing manual reclassification, AI acceptance, scenarios, reset and persistence still work.
+
+Run typecheck, unit tests, production build and Playwright tests. Provide a short reconciliation explaining why the final baseline and stress returns are correct.

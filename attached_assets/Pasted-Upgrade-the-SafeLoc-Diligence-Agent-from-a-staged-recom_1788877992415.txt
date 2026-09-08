@@ -1,0 +1,140 @@
+Upgrade the SafeLoc Diligence Agent from a staged recommendation display into a governed, consequential workflow while preserving human authorization. Also correct the Project Investor, Asset Manager and Financial Advisor lenses.
+
+CORE GOVERNANCE RULE
+
+AI may research, classify and propose. It may not silently alter accepted evidence, financial assumptions, conclusions or recommendations.
+
+Every proposal must contain:
+
+* Proposed action
+* Evidence item or assumption affected
+* Current value
+* Proposed value
+* Evidence classification
+* Supporting source
+* Source excerpt or clearly labeled summary
+* Confidence
+* Financial effect preview, when applicable
+* Decision-posture effect preview
+* Reasoning
+* Accept
+* Override
+* Reject or leave unresolved
+
+BEHAVIOR
+
+Before approval:
+
+* Show a preview only.
+* Do not change evidence, model inputs or decision status.
+
+On Accept:
+
+* Apply the specifically disclosed state change.
+* Recalculate affected metrics.
+* Record who/what proposed it, what the user accepted, timestamp, source and before/after values.
+* Make the action reversible.
+
+On Override:
+
+* Let the user select the final value or classification.
+* Record the AI proposal and human override separately.
+* Recalculate only after the override is confirmed.
+
+On Reject or Leave Unresolved:
+
+* Preserve the current state.
+* Record the unresolved or rejected proposal.
+* Do not imply that diligence is complete.
+
+Do not label a run “10/10 REVIEW READY” merely because ten interface stages executed. Readiness must depend on evidence sufficiency and unresolved material gaps.
+
+RESEARCH QUALITY
+
+The custom Stargate Milam research produced zero validated sources but still generated a polished narrative and model.
+
+Implement a fail-closed research state:
+
+* If no validated sources are retrieved, display “Research Incomplete.”
+* Generated model knowledge may be shown only as unverified leads.
+* Do not present unsupported generated prose as a project finding.
+* Do not classify evidence as verified without a source that directly supports the project-specific claim.
+* Provide retry, edit project identity and continue with explicitly synthetic assumptions as separate choices.
+* Show source count and validated-source count prominently.
+
+AUDIENCE LENSES
+
+Correct the three lenses:
+
+Project Investor:
+
+* Can this asset be built, financed and operated as underwritten?
+* Construction and completion risk
+* Grid, water and permitting gates
+* Capital at risk
+* Debt coverage and downside returns
+* Deal protections and approval conditions
+
+Asset Manager/Public-Markets Investor:
+
+* Is this facility exposure financially material to the issuer or fund?
+* Issuer-to-project relationship
+* CAPEX and earnings exposure
+* Portfolio concentration
+* Engagement questions
+* Disclosure gaps
+* Monitoring signals
+
+Financial Advisor:
+
+* What does this mean for the client’s holdings, goals and values?
+* Explain exposure without overstating materiality
+* Client-ready questions
+* Fund-manager diligence questions
+* Diversification and engagement considerations
+* Clear distinction between analysis and investment advice
+
+When a user enters through NVIDIA or another public-company card, default to the Financial Advisor lens. When entering through a project or directory record, default to Project Investor. Let the user switch at any time.
+
+The lens must change more than introductory copy. It should change:
+
+* Prioritized questions
+* Materiality framing
+* Recommended next actions
+* Displayed metrics
+* Conversation or diligence outputs
+
+Do not infer that one project makes an entire fund HIGH, MODERATE or LOW risk. Clearly separate:
+
+* Project evidence completeness
+* Issuer exposure
+* Fund exposure
+* Client-portfolio exposure
+
+CONTEXT CONSISTENCY
+
+When a custom project is active:
+
+* Do not show a header naming that project beside static Stargate Abilene educational content without explanation.
+* Make AI Chain and How It Works project-neutral, or label Stargate Abilene explicitly as a curated example.
+* Preserve a visible indication of the active analysis without implying every page has dynamically changed to that project.
+
+TESTS
+
+Add coverage for:
+
+* Proposal preview does not mutate state.
+* Accept applies the disclosed change and recalculates metrics.
+* Override records both AI and human decisions.
+* Reject leaves state unchanged.
+* Reversal restores the prior state.
+* Audit entries persist correctly.
+* Zero-source research produces Research Incomplete.
+* Unsupported AI text cannot become Verified Evidence.
+* NVIDIA entry defaults to Financial Advisor.
+* Directory entry defaults to Project Investor.
+* Each lens displays materially different priorities.
+* Fund-level conclusions are not derived solely from project-level evidence.
+* Static educational pages do not misidentify custom projects.
+
+Run typecheck, unit tests, production build and the complete Playwright suite. Report any part of the agent that remains deterministic, simulated or unsupported by live research.

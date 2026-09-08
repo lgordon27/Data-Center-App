@@ -1,0 +1,158 @@
+Apply progressive disclosure and clear next-action hierarchy throughout the SafeLoc Diligence Workbench. Preserve the unified `#analysis` route, all calculations, evidence state, persistence, AI interactions, source qualifiers and accessibility behavior.
+
+The current unified analysis is more than 20 desktop viewports long. The left rail helps navigation but does not solve the cognitive burden. The objective is not to remove analytical depth. Show the conclusion first and make supporting detail available on demand.
+
+GLOBAL PRINCIPLES
+
+* Each page or section must present one visually obvious primary action.
+* Conclusions appear before explanations.
+* Supporting detail is collapsed by default.
+* Every disclosure control must be keyboard accessible and expose its expanded state.
+* Do not communicate classification by color alone.
+* Maintain focus management, live regions and reduced-motion behavior.
+* Prevent sticky headers from covering anchor targets.
+* Do not create horizontal page overflow on desktop, tablet or mobile.
+
+HEADER
+
+* Remove “Evidence-Governed Investment Intelligence.”
+* Keep SafeLoc, Home, The AI Chain, Analyze a Different Project, How It Works, Return to Analysis when relevant and Reset to Default.
+* Make the header more compact.
+* Keep active-page and current-project context understandable.
+
+HOME
+
+Above the fold, prioritize:
+
+1. Main headline
+2. One-sentence explanation
+3. Start with NVIDIA
+4. Run the Stargate Case
+5. Analyze Another Project
+
+Reduce the visual prominence of the directory entry and duplicate calls to action below the hero. Keep the directory reachable without allowing it to compete with the primary guided journeys.
+
+ANALYSIS AGENT
+
+* Replace the permanently expanded ten-stage description with a compact status card.
+* Show current state, last run, proposals requiring review and one primary action.
+* Put stage-by-stage activity in an expandable “View activity” drawer.
+* Do not let the agent consume multiple viewports before Project Overview.
+* Add an Analysis Agent anchor to desktop and mobile navigation if the agent remains a first-class section.
+
+PROJECT OVERVIEW
+
+Default visible content:
+
+* Project identity
+* Operator
+* Location
+* Capacity/status
+* Four most important risk signals
+* One-sentence thesis
+
+Collapse regional context, FEMA detail, ERCOT detail, transaction assumptions and supporting narrative.
+
+EVIDENCE
+
+Render the 16 inputs as a scannable table or compact list. Default row content:
+
+* Variable
+* Current value
+* Evidence classification
+* Materiality indicator
+
+Expanding a row reveals:
+
+* Description
+* Source
+* Citation
+* Modeling role
+* Analyze with AI
+* AI assessment
+* Audit history
+
+Keep the classification summary and guided “change an input” interaction visible. Move long EIA/ERCOT datasets behind disclosures or charts.
+
+FINANCIAL IMPACT
+
+Implement actual accessible tabs:
+
+* Summary
+* Drivers
+* Full Model
+
+Default to Summary. Do not render the contents of all three tabs simultaneously.
+
+Summary:
+
+* Baseline IRR
+* Stress IRR
+* Evidence-quality gap
+* MOIC
+* NPV
+* Payback
+* Short interpretation
+
+Drivers:
+
+* Waterfall
+* Ranked material drivers
+* Sequential-versus-standalone explanation
+
+Full Model:
+
+* Cash-flow schedule
+* Assumptions
+* Methodology
+* Qualifiers
+
+DECISION
+
+Default visible content:
+
+1. Recommendation status
+2. Material evidence gaps
+3. Required next actions
+4. Resolve controls
+
+Collapse evidence-mix detail, support register, scenarios and secondary explanation.
+
+ADVISOR LENS
+
+Default visible content:
+
+1. Exposure chain
+2. Evidence-quality gap
+3. Three client questions
+
+Collapse fund indicators, methodological explanation, statistics, source detail and full conversation frameworks. Each client question should expand independently.
+
+ANCHOR AND ROUTING FIXES
+
+* Add sufficient `scroll-margin-top` to every analysis section and evidence target.
+* From How It Works, “Open Evidence,” “Open Financial Impact,” “Open Decision,” etc. must navigate to `#analysis` and then scroll and focus the requested section after it mounts.
+* Preserve direct-link normalization and browser history behavior.
+* Confirm that Resolve actions land on the correct expanded evidence item.
+* Ensure the sticky mobile summary does not cover section headings.
+
+RESPONSIVE VALIDATION
+
+Test at representative widths:
+
+* 1440 desktop
+* 1024 tablet
+* 768 tablet
+* 390 mobile
+
+Verify:
+
+* No horizontal page overflow
+* Usable sticky navigation
+* Visible focused controls
+* Tables adapt or scroll within their own containers
+* Dialogs fit the viewport
+* Touch targets remain usable
+* Financial charts remain readable
+
+Run typecheck, unit tests, production build and the complete Playwright suite. Add screenshots for Home and each analysis section at desktop and mobile sizes. Do not change model logic or evidence data in this task.

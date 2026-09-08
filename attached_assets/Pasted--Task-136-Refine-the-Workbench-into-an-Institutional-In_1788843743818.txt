@@ -1,0 +1,617 @@
+# Task #136: Refine the Workbench into an Institutional Investment Product
+
+## Dependencies
+
+Begin only after these tasks are complete and passing:
+
+* Task #133: Unify Analysis Workbench
+* Task #134: Add Texas-First Community Agreement Intelligence
+* Task #135: Build the Governed Diligence Agent and Investment Lenses
+
+Before editing, inspect the completed application and document:
+
+* Current component hierarchy
+* Unified `#analysis` layout
+* Desktop summary rail
+* Mobile summary treatment
+* Evidence and community-review tables
+* Financial model presentation
+* Diligence-agent execution states
+* Human approval workflow
+* Project Investor, Asset Manager, and Financial Advisor lenses
+* Existing responsive and accessibility behavior
+
+This is a UI and interaction refinement. Preserve the underlying evidence logic, financial formulas, research contracts, project relationships, authorization rules, persistence, scenarios, and reset behavior.
+
+## Objective
+
+Make SafeLoc feel like an institutional investment-intelligence product rather than a website, prototype, or collection of dashboards.
+
+Use design principles inspired by:
+
+* Hebbia Matrix for structured evidence review
+* AlphaSense for investment research and source inspection
+* Palantir AIP for proposed actions and human authorization
+* Paces for infrastructure project entry and readiness
+* Transect for environmental and community-risk presentation
+* Causal for scenario and financial-driver visualization
+* Daloopa for source-to-model traceability
+* DealCloud for project, company, and portfolio relationships
+
+Do not copy these companies’ branding, proprietary designs, text, icons, or trade dress. Translate the useful interaction patterns into SafeLoc’s existing visual identity.
+
+## Core Experience
+
+The interface should communicate this workflow:
+
+1. Select a project or public company.
+2. Run governed diligence.
+3. Review the most material findings.
+4. Inspect supporting evidence when needed.
+5. Approve or reject consequential AI proposals.
+6. See the approved financial consequences.
+7. Interpret the results through the appropriate investment lens.
+8. Decide the next action.
+
+At every point, there should be one obvious primary action. Secondary information should use progressive disclosure.
+
+## Desktop Layout
+
+Use a responsive three-region structure where screen width permits:
+
+### Left rail
+
+Preserve the Task #133 summary rail containing:
+
+* Project identity
+* Location and tier
+* Recommendation
+* Confidence
+* Baseline and stress IRR
+* Evidence-quality gap
+* Material gaps
+* Classification counts
+* Section navigation
+* Save
+* Compare
+* Reset
+
+Do not overload the rail with new cards. Community and agent findings should update the existing metrics rather than creating duplicate summaries.
+
+### Main workspace
+
+Use the center region for:
+
+* Project conclusions
+* Evidence review
+* Agent activity
+* Financial impact
+* Decision review
+* Audience lenses
+
+Maintain the unified scrolling workbench and anchored sections.
+
+### Context drawer
+
+Create a reusable right-side drawer for:
+
+* Source documents
+* Exact excerpts
+* Page references
+* Financial calculations
+* AI reasoning
+* Benchmark comparisons
+* Approval details
+* Audit history
+
+The drawer should open without navigating away or losing scroll position.
+
+At narrower desktop and tablet widths, the drawer may overlay the workspace rather than compressing it.
+
+## Mobile Layout
+
+Preserve the sticky expandable summary and horizontal section navigation created in Task #133.
+
+Use:
+
+* Full-width finding cards
+* Compact metrics
+* Bottom sheet or full-width overlay for source details
+* One expanded evidence item at a time
+* One approval decision at a time
+* Touch-friendly controls
+* No horizontal page overflow
+
+Do not add additional mobile navigation items for Community Agreements or Agent Activity. These belong inside existing sections.
+
+## Visual Hierarchy
+
+Each section should follow:
+
+1. Conclusion
+2. Material finding
+3. Required action
+4. Supporting explanation
+5. Full evidence
+
+Users should not need to read methodology before understanding the result.
+
+Apply these rules:
+
+* Large typography only for decisions and primary metrics
+* Smaller muted typography for methodology and qualifiers
+* Consistent badge colors and meanings
+* Minimal borders
+* Restrained card usage
+* Adequate whitespace
+* Numbers aligned for comparison
+* Long evidence text collapsed by default
+* No decorative AI gradients, glowing buttons, animated robots, or chat bubbles
+
+The product should feel serious, calm, analytical, and trustworthy.
+
+## Project Entry and Overview
+
+Use a Paces-inspired project-first approach without turning SafeLoc into a map-only tool.
+
+The visible hierarchy should be:
+
+1. Project or company identity
+2. Location and relationship
+3. Readiness and material risks
+4. Run Diligence Agent
+5. Detailed project information
+
+For Texas projects, make the location and Texas-first coverage clear.
+
+The primary action should be:
+
+**Run Diligence Agent**
+
+Avoid competing primary buttons.
+
+## Diligence Agent Interface
+
+Use a Palantir-inspired proposal-and-review pattern expressed in simpler language.
+
+During execution, show a compact progress panel:
+
+* Project entities identified
+* Research plan created
+* Public sources reviewed
+* Evidence classified
+* Community terms analyzed
+* Financial relevance tested
+* Issuer relationships mapped
+* Citations verified
+* Findings prepared
+
+Use these status states consistently:
+
+* Waiting
+* Running
+* Complete
+* Needs review
+* Could not complete
+
+Do not simulate progress with arbitrary percentages. Show completed stages and actual results.
+
+At completion, display a compact summary:
+
+* Verified findings
+* Material gaps
+* Findings requiring review
+* Conflicting sources
+* Proposed financial adjustments
+* Decision gates
+* National precedents located
+
+The user should then have one obvious action:
+
+**Review Proposed Findings**
+
+Keep a detailed agent activity log collapsed unless the user opens it.
+
+## Human Approval Queue
+
+Create a focused review queue for consequential AI proposals.
+
+Each proposal should show:
+
+* Proposed change
+* Current value
+* Proposed value
+* Evidence classification
+* Supporting source
+* Agent reasoning
+* Financial or decision effect
+* Confidence or unresolved limitation
+
+Controls:
+
+* Accept
+* Override
+* Leave unresolved
+
+Example:
+
+**Grid delivery date**
+
+* Current assumption: June 2028
+* Proposed assumption: December 2028
+* Basis: Updated utility filing
+* Financial effect: Stress IRR changes from 13.8% to 11.9%
+* Status: Human review required
+
+The financial model and recommendation must not change until the user accepts or overrides the proposal.
+
+Accepted, overridden, and unresolved proposals should remain visually distinct.
+
+## Evidence Interface
+
+Use a simplified Hebbia Matrix pattern.
+
+Default columns:
+
+* Finding
+* Current value
+* Evidence classification
+* Decision relevance
+* Source status
+
+Keep rows compact and scannable.
+
+Selecting a row should open its details and source context. Show:
+
+* Description
+* Exact source excerpt
+* Source title
+* Publication or effective date
+* Page reference
+* Direct, related, or comparable relationship
+* AI proposal
+* Human-approved conclusion
+* Financial treatment
+* Audit history
+
+Only one evidence row should be expanded at a time.
+
+Material gaps should appear first or be available through a clear filter.
+
+Suggested filters:
+
+* All
+* Material gaps
+* Needs review
+* Verified
+* Financial drivers
+* Decision gates
+
+Do not expose every possible filter by default on mobile.
+
+## Community Agreement Review
+
+Keep Community Agreements inside the Evidence section.
+
+The collapsed summary should show:
+
+* Direct or related agreement status
+* Reviewed terms
+* Material gaps
+* Unknown terms
+* National precedents available
+
+The ten-term review should use the same evidence-table system rather than introducing a visually unrelated interface.
+
+For each term, show:
+
+* Project finding
+* Evidence status
+* Enforceability
+* Financial treatment
+* Strongest signed benchmark
+
+Open exact language, page references, and comparisons in the context drawer.
+
+Every comparable record must state:
+
+**National benchmark, not a term of this project**
+
+The “Best Terms Actually Signed” benchmark should be accessible without displaying all 15 agreements on the main workbench.
+
+## Financial Impact
+
+Use Causal-inspired visual simplicity combined with Daloopa-style traceability.
+
+Default view should show:
+
+* Baseline IRR
+* Approved stress IRR
+* NPV
+* MOIC
+* Evidence-quality or underwriting gap
+* Primary value-at-risk drivers
+
+Use three internal views:
+
+* Summary
+* Drivers
+* Full Model
+
+### Summary
+
+Show the conclusion and major return metrics.
+
+### Drivers
+
+Show the baseline-to-stress bridge and the largest approved adjustments.
+
+### Full Model
+
+Show the detailed cash-flow model and assumptions for advanced users.
+
+Every financial input affected by evidence should have a source or assumption indicator. Selecting it should open:
+
+* Original value
+* Approved value
+* Source
+* Calculation
+* Evidence classification
+* Approving action
+* Resulting financial effect
+
+Do not display unsupported precision or allow an unapproved AI proposal to change a return metric.
+
+## Investment Lenses
+
+Use one compact selector:
+
+* Project Investor
+* Asset Manager
+* Financial Advisor
+
+Do not display all three outputs simultaneously.
+
+### Project Investor
+
+Prioritize:
+
+* Returns
+* Capital-at-risk timeline
+* Risk allocation
+* Conditions precedent
+* Deal protections
+* Mitigation economics
+* Proceed, Protect, Reprice, or Pause
+
+### Asset Manager
+
+Use an AlphaSense-inspired research presentation:
+
+* Issuer-project relationship
+* Financial transmission mechanism
+* Issuer-level materiality
+* Portfolio relevance
+* Supporting evidence
+* Contradictory evidence
+* Stewardship questions
+
+Use a compact bridge:
+
+`Project finding → Issuer relationship → Potential financial effect → Portfolio relevance`
+
+Do not imply issuer-level materiality when it has not been established.
+
+### Financial Advisor
+
+Use the simplest presentation.
+
+Show:
+
+* What the client owns
+* How the holding is connected
+* Direct, indirect, or thematic exposure
+* What is verified
+* What remains unknown
+* Financial relevance
+* Values and stewardship relevance
+* Questions for the fund manager
+* Client conversation guidance
+
+Do not provide an automatic trading recommendation.
+
+When entered through the NVIDIA or conference demonstration flow, default to Financial Advisor.
+
+## Relationship Visualization
+
+Use a DealCloud-inspired relationship model, but keep the visible chain compact.
+
+Represent:
+
+* Project
+* Operator
+* Developer
+* Tenant
+* Supplier
+* Utility
+* Public company
+* Fund
+* Client holding
+
+The visualization must distinguish:
+
+* Ownership
+* Financing
+* Operations
+* Tenancy
+* Supply
+* Utility service
+* Thematic relationship
+* Unverified relationship
+
+Avoid a sprawling network diagram. Show a short primary chain with optional expansion.
+
+Every relationship should be selectable to reveal its evidence in the context drawer.
+
+## Status System
+
+Use one consistent visual vocabulary throughout the application.
+
+Suggested statuses:
+
+* Verified: green
+* Management assertion: amber
+* Model inference: blue or purple
+* User assumption: neutral blue
+* Missing evidence: red
+* Direct relationship: green
+* Related relationship: amber
+* Comparable relationship: blue
+* Not found: gray
+* Human review required: amber
+* Blocked decision gate: red
+
+Do not use red for every socially undesirable result. Reserve it for missing material evidence, unresolved decision gates, or genuine blocking conditions.
+
+Do not rely on color alone. Include labels and accessible icons.
+
+## Product Language
+
+Prefer plain language:
+
+* Run Diligence Agent
+* Review Proposed Findings
+* View Source
+* Why This Matters
+* Financial Effect
+* Human Review Required
+* Direct Project Evidence
+* Related Record
+* National Benchmark
+* No Direct Public Agreement Located
+* Accept
+* Override
+* Leave Unresolved
+
+Avoid:
+
+* Excessive technical AI terminology
+* Unsupported claims of certainty
+* “AI-powered” repeated throughout the interface
+* “No agreement exists” when the search is incomplete
+* “Your capital is at risk” for indirect public-equity exposure
+* Fund-level risk ratings derived from one project
+* Legal conclusions
+
+## Accessibility
+
+Preserve or improve:
+
+* Logical heading hierarchy
+* Keyboard navigation
+* Visible focus
+* Screen-reader labels
+* Live-region updates for agent progress and metric changes
+* Reduced-motion support
+* Minimum touch-target sizes
+* Contrast compliance
+* Drawer and dialog focus trapping
+* Return/Navigate-back behavior
+* Escape-to-close behavior
+* Focus
+
+When scrolling to a section or evidence target, move keyboard focus appropriately.
+
+## Performance
+
+Avoid loading every source document or benchmark record on initial render.
+
+Use:
+
+* Lazy rendering for expanded details
+* Memoized derived metrics
+* Existing state as the source of truth
+* Stable component keys
+* Efficient table rendering
+* Deferred drawer content where appropriate
+
+The interface must remain responsive while the diligence agent is running.
+
+## Out of Scope
+
+Do not:
+
+* Change financial formulas without documenting a verified defect
+* Change evidence classification definitions
+* Change external provider contracts
+* Add new external datasets
+* Rebuild project research
+* Create a generic chatbot
+* Add user accounts
+* Add team permissions
+* Add exports
+* Copy another company’s interface
+* Rebrand SafeLoc
+* Replace the unified workbench
+* Turn the application into a map-first site-selection tool
+
+## Acceptance Criteria
+
+The task is complete when:
+
+1. The application feels like one coherent institutional workbench.
+2. There is one obvious primary action at each stage.
+3. The Diligence Agent shows real stage-based progress.
+4. Agent results lead into a focused human-review queue.
+5. Evidence rows are scannable and source details open without navigation loss.
+6. Community terms use the same evidence interaction model.
+7. Financial results show clear baseline, stress, and driver relationships.
+8. Every adjusted financial input can be traced to evidence and approval.
+9. Project Investor, Asset Manager, and Financial Advisor outputs remain distinct.
+10. Issuer-project relationships are visually clear and evidence-backed.
+11. Desktop uses the summary rail, focused workspace, and contextual detail drawer effectively.
+12. Mobile provides equivalent functionality without horizontal overflow.
+13. No unnecessary chatbot or decorative AI treatment is introduced.
+14. Existing research, financial, evidence, scenario, persistence, reset, and authorization behavior remains functional.
+15. Accessibility and responsive-layout tests pass.
+
+## Validation
+
+Run:
+
+* Type checking
+* Unit tests
+* Production build
+* Full Playwright suite
+* Accessibility checks
+* Desktop, tablet, and mobile responsive checks
+* Horizontal-overflow checks
+* Keyboard-navigation checks
+
+Manually test:
+
+1. Starting from NVIDIA
+2. Opening Stargate Abilene
+3. Running the complete Diligence Agent
+4. Reviewing an AI proposal
+5. Accepting a proposed classification
+6. Overriding a proposed financial assumption
+7. Leaving a decision gate unresolved
+8. Opening a source citation
+9. Reviewing a community benchmark
+10. Switching among all three investment lenses
+11. Resetting the case
+12. Restoring the session
+
+After implementation, report:
+
+* UI components changed
+* Interaction patterns introduced
+* Mobile behavior
+* Accessibility work
+* Tests completed
+* Preserved functionality
+* Known limitations
+* Screens or workflows requiring further refinement
+
+Do not merely return a design plan. Implement the scoped refinements and verify the complete experience.

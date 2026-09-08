@@ -7,8 +7,10 @@ import {
   Disclosure,
   SectionKicker,
   PageIntro,
-  BottomNav
+  BottomNav,
+  StatusBadge
 } from "@/components/Shell";
+import { DrawerSection, useWorkbenchDrawer } from "@/components/ContextDrawer";
 
 import {
   ArrowRight,
@@ -47,6 +49,7 @@ export function AdvisorLens({
   onResolveEvidence?: (evidenceId: string) => void;
 }) {
   const { evidence, metrics, project, originatingCompany, communityReview, communityUnresolvedCount } = useDiligence();
+  const { openDrawer } = useWorkbenchDrawer();
   const projectName = project.name;
   const customProject = project.kind === "custom";
   const originatingLabel = originatingCompany ?? "No company selected";
@@ -75,6 +78,19 @@ export function AdvisorLens({
     { label: "Hyperscaler CAPEX", detail: "$650B in planned spending", tone: "violet" },
     { label: projectName, detail: customProject ? "Selected project under diligence" : "Physical infrastructure under diligence", tone: "navy" },
   ] as const;
+  const exposureLinks = [
+    { type: "Ownership", basis: "The client’s allocation holds units of the values-aligned fund; fund holdings are public record.", boundary: "Fund holdings describe shares, not control over any portfolio company’s operations." },
+    { type: "Ownership", basis: "The fund reports NVIDIA as its largest holding (20%+ of the iShares fund), per the cited fund documentation.", boundary: "Share ownership is not evidence about any specific facility." },
+    { type: "Supply", basis: "Reported GPU orders signal forward demand for accelerated computing; they are supply-side market context.", boundary: "Order volumes are not contracts with, or evidence about, this project." },
+    { type: "Thematic", basis: "$650B in planned hyperscaler CAPEX is public market context for the infrastructure buildout.", boundary: "Aggregate spending plans do not locate, fund, or approve any single project." },
+    { type: "Unverified", basis: `No public record establishes a direct agreement tying hyperscaler CAPEX to ${projectName}. The link is thematic until project-specific documentation is located.`, boundary: "No Direct Public Agreement Located — treat this link as an open diligence question." },
+  ] as const;
+  const linkTone: Record<(typeof exposureLinks)[number]["type"], "info" | "inference" | "neutral"> = {
+    Ownership: "info",
+    Supply: "info",
+    Thematic: "inference",
+    Unverified: "neutral",
+  };
   const exposureTone: Record<(typeof exposureChain)[number]["tone"], { background: string; border: string; color: string }> = {
     neutral: { background: "#f1f5f3", border: "#cbd8d4", color: "#344550" },
     blue: { background: "#e5efff", border: "#aac6f4", color: "#255bb7" },
@@ -195,9 +211,11 @@ export function AdvisorLens({
          <div data-testid="advisor-originating-company" className="mt-5 inline-flex items-center gap-2 rounded-md border border-[#d4e86b]/35 bg-[#d4e86b]/10 px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#d4e86b]">Originating company: {originatingLabel}</div>
         {!customProject && <div className="flex flex-wrap gap-2"><ClaimCitation claimId="fund-usxf" dark /><ClaimCitation claimId="stargate-initiative" dark /></div>}
         {!customProject && <div className="flex flex-wrap gap-2"><ClaimCitation claimId="fund-usxf" dark /><ClaimCitation claimId="stargate-initiative" dark /></div>}
-        <div className="mt-7 flex flex-col items-stretch gap-2 md:flex-row md:items-center md:gap-1.5" aria-label="Client exposure chain">
+        <p className="mt-5 font-mono text-[9px] uppercase tracking-[0.12em] text-[#9dafb8]">Typed relationship chain — select any link to open its evidence in the drawer</p>
+        <div className="mt-3 flex flex-col items-stretch gap-2 md:flex-row md:items-center md:gap-1.5" aria-label="Client exposure chain">
           {exposureChain.map((node, index) => {
             const tone = exposureTone[node.tone];
+            const link = index < exposureChain.length - 1 ? exposureLinks[index] : null;
             return (
               <div key={node.label} className="flex min-w-0 flex-1 items-center gap-2 md:block">
                 <div data-testid={`exposure-node-${index + 1}`} className="min-h-[78px] flex-1 rounded-lg border p-3" style={{ backgroundColor: tone.background, borderColor: tone.border, color: tone.color }}>
@@ -205,7 +223,36 @@ export function AdvisorLens({
                   <div className="mt-1 text-[12px] font-bold leading-4">{node.label}</div>
                   <div className="mt-1 text-[9px] leading-3.5 opacity-80">{node.detail}</div>
                 </div>
-                {index < exposureChain.length - 1 && <ArrowRight aria-hidden="true" className="mx-auto h-4 w-4 shrink-0 rotate-90 text-[#7f919b] md:my-8 md:rotate-0" />}
+                {link && (
+                  <button
+                    data-testid={`exposure-link-${index + 1}`}
+                    type="button"
+                    aria-label={`View evidence for ${link.type} link from ${node.label} to ${exposureChain[index + 1].label}`}
+                    onClick={(event) => openDrawer({
+                      key: `exposure-link:${index + 1}`,
+                      kicker: "Relationship link",
+                      title: `${node.label} → ${exposureChain[index + 1].label}`,
+                      render: () => (
+                        <div className="space-y-4">
+                          <DrawerSection label="Link type">
+                            <StatusBadge tone={linkTone[link.type]} label={link.type} testId={`exposure-link-type-${index + 1}`} />
+                          </DrawerSection>
+                          <DrawerSection label="Evidence basis">
+                            <p>{link.basis}</p>
+                          </DrawerSection>
+                          <DrawerSection label="Boundary">
+                            <p>{link.boundary}</p>
+                            <p className="font-mono text-[9px] uppercase tracking-[0.08em] text-[#7d898f]">Typed relationship links are diligence context, not proof of ownership, control, or contract.</p>
+                          </DrawerSection>
+                        </div>
+                      ),
+                    }, { trigger: event.currentTarget })}
+                    className="mx-auto inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-md border border-white/20 bg-white/5 px-2 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#c4d0d6] hover:border-[#d4e86b] hover:text-[#d4e86b] md:my-8"
+                  >
+                    <ArrowRight aria-hidden="true" className="h-3.5 w-3.5 rotate-90 md:rotate-0" />
+                    {link.type}
+                  </button>
+                )}
               </div>
             );
           })}

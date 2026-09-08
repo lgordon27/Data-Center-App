@@ -5,6 +5,7 @@
 - [Typed server modules](server-mjs-type-declarations.md) — TypeScript imports of server-side .mjs modules need matching declaration sidecars to pass the package typecheck.
 - [Compute Atlas directory boundary](compute-atlas-directory.md) — directory metadata helps discovery but must stay separate from SafeLoc evidence and synthetic economics.
 - [Local Playwright browser setup](local-playwright-browser.md) — package-scoped Playwright may need its Chromium cache provisioned before repository specs can launch.
+- [E2E baseline comparison](e2e-suite-baseline.md) — the workbench Playwright suite is red at rest; compare failures against a clean tree before attributing them to your change.
 - [Project posture vs. fund materiality](project-posture-vs-fund-materiality.md) — project evidence completeness must not be presented as fund-level risk or materiality.
 - [AI research contract resilience](ai-research-contract-resilience.md) — keep 16 evidence IDs strict, but safely normalize empty narrative fields to Missing Evidence instead of failing the project.
 - [Bounded multi-pass research](bounded-multi-pass-research.md) — cap each retrieval call and never discard a valid first synthesis when an optional follow-up exceeds the request budget.

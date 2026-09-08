@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { BarChart3, BookOpen, ClipboardCheck, FileCheck2, Network, RefreshCw, Save, Scale } from "lucide-react";
+import { ArrowRight, BarChart3, BookOpen, ClipboardCheck, FileCheck2, Network, RefreshCw, Save, Scale } from "lucide-react";
 import { CaseBrief } from "@/pages/CaseBrief";
 import { EvidenceRoom } from "@/pages/EvidenceRoom";
 import { FinancialMateriality } from "@/pages/FinancialMateriality";
@@ -12,6 +12,7 @@ import {
   formatIRR,
   SectionKicker,
 } from "@/components/Shell";
+import { WorkbenchDrawerProvider } from "@/components/ContextDrawer";
 import { useDiligence } from "@/context/DiligenceContext";
 import type { Screen } from "@/components/Shell";
 
@@ -69,6 +70,54 @@ function ClassificationCounts({ evidence }: { evidence: ReturnType<typeof useDil
   );
 }
 
+type GuidedAction = { label: string; detail: string; targetSection: string; disabled: boolean };
+
+function useGuidedAction(): GuidedAction {
+  const { agentRun } = useDiligence();
+  return useMemo(() => {
+    if (!agentRun) {
+      return { label: "Run Diligence Agent", detail: "Stage the governed review for this project", targetSection: "analysis-agent", disabled: false };
+    }
+    if (agentRun.status === "running") {
+      return { label: "Diligence agent running", detail: "Stage progress is shown in the agent panel", targetSection: "analysis-agent", disabled: true };
+    }
+    if (agentRun.status === "review-ready" && agentRun.proposedFindings.length > 0) {
+      const pending = agentRun.proposedFindings.filter((finding) => finding.decision === "pending").length;
+      if (pending > 0) {
+        return { label: "Review Proposed Findings", detail: `${pending} proposed ${pending === 1 ? "finding needs" : "findings need"} a human decision`, targetSection: "analysis-agent", disabled: false };
+      }
+      return { label: "Decide next action", detail: "Proposals resolved — review the decision section", targetSection: "analysis-decision", disabled: false };
+    }
+    if (agentRun.status === "failed" || agentRun.status === "partial-failure") {
+      return { label: "Review Proposed Findings", detail: "Some stages could not complete — review what was proposed", targetSection: "analysis-agent", disabled: false };
+    }
+    return { label: "Run Diligence Agent", detail: "Stage the governed review for this project", targetSection: "analysis-agent", disabled: false };
+  }, [agentRun]);
+}
+
+function GuidedNextStep({ compact = false }: { compact?: boolean }) {
+  const action = useGuidedAction();
+  const handleClick = () => {
+    scrollToElement(action.targetSection, true);
+  };
+  return (
+    <button
+      data-testid="guided-next-step"
+      type="button"
+      onClick={handleClick}
+      disabled={action.disabled}
+      className={`group flex w-full items-center justify-between gap-2 rounded-md bg-[#0e3e2f] px-3 text-left text-white hover:bg-[#12503c] disabled:cursor-wait disabled:opacity-80 ${compact ? "min-h-10 py-2" : "min-h-11 py-2.5"}`}
+    >
+      <span className="min-w-0">
+        <span className="block font-mono text-[8px] font-bold uppercase tracking-[0.14em] text-[#d4e86b]">Next step</span>
+        <span className="block truncate text-[11px] font-bold">{action.label}</span>
+        {!compact && <span className="block truncate text-[9px] text-white/70">{action.detail}</span>}
+      </span>
+      <ArrowRight aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-[#d4e86b] transition-transform group-hover:translate-x-0.5" />
+    </button>
+  );
+}
+
 function AnalysisSummaryRail({ activeSection, onSection, onReset, onDecisionAction }: { activeSection: string; onSection: (screen: Screen) => void; onReset: () => void; onDecisionAction: (action: "save" | "compare") => void }) {
   const { project, metrics, evidence } = useDiligence();
   const evidenceGap = metrics.baseIRR !== null && metrics.projectIRR !== null ? metrics.baseIRR - metrics.projectIRR : null;
@@ -88,6 +137,9 @@ function AnalysisSummaryRail({ activeSection, onSection, onReset, onDecisionActi
       <div className="mt-5 border-t border-[#d9e0e4] pt-4">
         <div className="mb-2 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#52616b]">Evidence mix</div>
         <ClassificationCounts evidence={evidence} />
+      </div>
+      <div className="mt-5 border-t border-[#d9e0e4] pt-4">
+        <GuidedNextStep />
       </div>
       <nav aria-label="Analysis sections" className="mt-5 border-t border-[#d9e0e4] pt-4">
         <div className="mb-2 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#52616b]">Sections</div>
@@ -130,14 +182,27 @@ function MobileAnalysisSummary({ expanded, setExpanded, activeSection, onSection
       <nav aria-label="Analysis section links" className="flex gap-1 overflow-x-auto pb-1 pt-1">
         {analysisSections.map((section) => <button key={section.id} data-testid={`mobile-analysis-link-${section.screen}`} type="button" aria-current={activeSection === section.id ? "location" : undefined} onClick={() => onSection(section.screen)} className={`min-h-9 shrink-0 rounded-md px-2.5 text-[9px] font-bold uppercase tracking-[0.08em] ${activeSection === section.id ? "bg-[#122232] text-[#d4e86b]" : "text-[#52616b] hover:bg-white"}`}>{section.short}</button>)}
       </nav>
+      <div className="pb-2 pt-1">
+        <GuidedNextStep compact />
+      </div>
     </div>
   );
 }
 
 export function AnalysisWorkbench({ onResolveEvidence, onReset }: { onResolveEvidence: (id: string) => void; onReset: () => void }) {
+  return (
+    <WorkbenchDrawerProvider>
+      <AnalysisWorkbenchBody onResolveEvidence={onResolveEvidence} onReset={onReset} />
+    </WorkbenchDrawerProvider>
+  );
+}
+
+function AnalysisWorkbenchBody({ onResolveEvidence, onReset }: { onResolveEvidence: (id: string) => void; onReset: () => void }) {
   const [activeSection, setActiveSection] = useState("analysis-overview");
   const [mobileExpanded, setMobileExpanded] = useState(false);
   const [decisionAction, setDecisionAction] = useState<"save" | "compare" | null>(null);
+  // The context drawer is a pure overlay at every width: the workspace never
+  // reflows when it opens, so the reviewer's scroll position is preserved.
   const goToSection = (screen: Screen) => {
     const id = sectionForScreen[screen];
     scrollToElement(id);

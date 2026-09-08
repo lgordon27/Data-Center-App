@@ -175,6 +175,9 @@ function AppShell() {
   };
 
   const resolveEvidence = (id: string) => {
+    // Tell mounted evidence views to reveal every record before the focus
+    // timer runs, so an active filter can never hide the resolve target.
+    window.dispatchEvent(new CustomEvent("safeloc:evidence-focus-request", { detail: id }));
     setEvidenceFocusId(id);
     go("analysis");
   };

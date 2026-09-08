@@ -10,12 +10,18 @@ import {
   BarChart3,
   BookOpen,
   Check,
+  CheckCircle2,
   ChevronDown,
+  CircleAlert,
+  CircleDashed,
   CircleDot,
   ClipboardCheck,
+  Clock3,
   FileCheck2,
   Gauge,
   Info,
+  Link2,
+  Loader2,
   MapPin,
   Menu,
   Network,
@@ -23,7 +29,8 @@ import {
   TrendingDown,
   TrendingUp,
   TriangleAlert,
-  X
+  X,
+  XCircle
 } from "lucide-react";
 import {
   Classification,
@@ -458,4 +465,79 @@ export function ImpactRoleBadge({ role, testId, compact = false }: { role: Impac
       {role}
     </span>
   );
+}
+
+/*
+ * One status vocabulary for the whole workbench. Every status pairs a text
+ * label with an icon so color is never the only signal. Tones reuse the
+ * evidence-classification palette above; red ("missing") is reserved for
+ * missing material evidence, unresolved decision gates, and genuine blockers.
+ */
+export type StatusTone = "verified" | "assertion" | "inference" | "assumption" | "missing" | "neutral" | "info";
+
+export const statusToneMeta: Record<StatusTone, { color: string; bg: string; border: string }> = {
+  verified: { color: classMeta["Verified Evidence"].color, bg: classMeta["Verified Evidence"].bg, border: classMeta["Verified Evidence"].border },
+  assertion: { color: classMeta["Management Assertion"].color, bg: classMeta["Management Assertion"].bg, border: classMeta["Management Assertion"].border },
+  inference: { color: classMeta["Model Inference"].color, bg: classMeta["Model Inference"].bg, border: classMeta["Model Inference"].border },
+  assumption: { color: classMeta["User Assumption"].color, bg: classMeta["User Assumption"].bg, border: classMeta["User Assumption"].border },
+  missing: { color: classMeta["Missing Evidence"].color, bg: classMeta["Missing Evidence"].bg, border: classMeta["Missing Evidence"].border },
+  neutral: { color: "#52616b", bg: "#eef1f2", border: "#d9e0e4" },
+  info: { color: "#255bb7", bg: "#e5efff", border: "#aac6f4" },
+};
+
+export function StatusBadge({ tone, label, icon: Icon, testId, compact = true, spin = false }: { tone: StatusTone; label: string; icon?: typeof Check; testId?: string; compact?: boolean; spin?: boolean }) {
+  const meta = statusToneMeta[tone];
+  return (
+    <span
+      data-testid={testId}
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border font-mono font-bold uppercase tracking-[0.08em] ${compact ? "px-2 py-0.5 text-[8px]" : "px-2.5 py-1 text-[9px]"}`}
+      style={{ color: meta.color, backgroundColor: meta.bg, borderColor: meta.border }}
+    >
+      {Icon ? <Icon aria-hidden="true" className={`h-3 w-3 shrink-0 ${spin ? "animate-spin" : ""}`} /> : <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: meta.color }} />}
+      {label}
+    </span>
+  );
+}
+
+export type RelationshipKind = "Direct" | "Related" | "Comparable" | "Not found";
+
+export const relationshipMeta: Record<RelationshipKind, { tone: StatusTone; icon: typeof Check; label: string }> = {
+  Direct: { tone: "verified", icon: Link2, label: "Direct" },
+  Related: { tone: "info", icon: Link2, label: "Related" },
+  Comparable: { tone: "inference", icon: Link2, label: "Comparable" },
+  "Not found": { tone: "neutral", icon: CircleDashed, label: "Not found" },
+};
+
+export function RelationshipBadge({ value, testId }: { value: RelationshipKind; testId?: string }) {
+  const meta = relationshipMeta[value];
+  return <StatusBadge tone={meta.tone} label={meta.label} icon={meta.icon} testId={testId} />;
+}
+
+export type ReviewDecisionState = "pending" | "accepted" | "overridden" | "unresolved";
+
+export const reviewDecisionMeta: Record<ReviewDecisionState, { tone: StatusTone; icon: typeof Check; label: string }> = {
+  pending: { tone: "neutral", icon: CircleDashed, label: "Pending decision" },
+  accepted: { tone: "verified", icon: Check, label: "Accepted" },
+  overridden: { tone: "assumption", icon: X, label: "Overridden" },
+  unresolved: { tone: "assertion", icon: Clock3, label: "Unresolved" },
+};
+
+export function ReviewDecisionBadge({ value, testId }: { value: ReviewDecisionState; testId?: string }) {
+  const meta = reviewDecisionMeta[value];
+  return <StatusBadge tone={meta.tone} label={meta.label} icon={meta.icon} testId={testId} />;
+}
+
+export type AgentStageState = "pending" | "running" | "completed" | "retryable" | "failed";
+
+export const agentStageMeta: Record<AgentStageState, { tone: StatusTone; icon: typeof Check; label: string; spin?: boolean }> = {
+  pending: { tone: "neutral", icon: CircleDashed, label: "Waiting" },
+  running: { tone: "info", icon: Loader2, label: "Running", spin: true },
+  completed: { tone: "verified", icon: CheckCircle2, label: "Complete" },
+  retryable: { tone: "assumption", icon: CircleAlert, label: "Needs review" },
+  failed: { tone: "missing", icon: XCircle, label: "Could not complete" },
+};
+
+export function AgentStageBadge({ value, testId }: { value: AgentStageState; testId?: string }) {
+  const meta = agentStageMeta[value];
+  return <StatusBadge tone={meta.tone} label={meta.label} icon={meta.icon} testId={testId} spin={meta.spin} />;
 }

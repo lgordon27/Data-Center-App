@@ -2,6 +2,7 @@ import {
   Fragment,
   useMemo,
   useEffect,
+  useRef,
   useState
 } from "react";
 import {
@@ -75,8 +76,21 @@ import {
 } from "@/data/communityAgreements";
 import { selectCommunityComparisons } from "@/model/communityAgreements";
 import { analyzeCommunityTerms, type CommunityAIProposal } from "@/services/communityAgreementService";
+import { DrawerField, DrawerSection, useWorkbenchDrawer } from "@/components/ContextDrawer";
+import { getMaterialEvidenceGaps } from "@/model/advisorLens";
 
 type AssessmentNotice = "accepted" | "overridden";
+
+type EvidenceFilter = "all" | "material-gaps" | "needs-review" | "verified" | "financial-drivers" | "decision-gates";
+
+const evidenceFilters: { id: EvidenceFilter; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "material-gaps", label: "Material gaps" },
+  { id: "needs-review", label: "Needs review" },
+  { id: "verified", label: "Verified" },
+  { id: "financial-drivers", label: "Financial drivers" },
+  { id: "decision-gates", label: "Decision gates" },
+];
 
 function CommunityAgreementsReview() {
   const {
@@ -92,6 +106,7 @@ function CommunityAgreementsReview() {
   const [status, setStatus] = useState("");
   const [humanConclusion, setHumanConclusion] = useState<Record<string, CommunityConclusion>>({});
   const [humanClassification, setHumanClassification] = useState<Record<string, "Verified Evidence" | "Management Assertion" | "Model Inference" | "Missing Evidence" | "Not applicable">>({});
+  const { openDrawer } = useWorkbenchDrawer();
   const relationship = communityReview.relationship;
   const agreement = relationship.agreementId
     ? COMMUNITY_AGREEMENTS.find((candidate) => candidate.id === relationship.agreementId)
@@ -116,6 +131,72 @@ function CommunityAgreementsReview() {
   const leaveUnresolved = (id: CommunityTermId) => {
     reviewCommunityTerm(id, "Unknown", "Missing Evidence", "unresolved");
     setStatus("Term left unresolved; no evidence, gap, or financial state was upgraded.");
+  };
+
+  const openLibrary = (event: React.MouseEvent<HTMLButtonElement>) => {
+    openDrawer({
+      key: "community-library",
+      kicker: "Benchmark library",
+      title: `${COMMUNITY_AGREEMENTS.length} national benchmark records`,
+      render: () => (
+        <div className="space-y-3">
+          <p className="rounded border border-[#cbb7ec] bg-[#f8f4fd] px-3 py-2 text-[10px] leading-4 text-[#5e5870]">Every record below is a National Benchmark. It is not a term of this project, and it cannot upgrade project evidence.</p>
+          {COMMUNITY_AGREEMENTS.map((record) => (
+            <article key={record.id} data-testid={`community-library-record-${record.id}`} className="rounded-lg border border-[#d9e0e4] bg-white p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[11px] font-bold text-[#122232]">{record.title}</span>
+                <span className="font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#7049b7]">National benchmark</span>
+              </div>
+              <p className="mt-1 text-[9px] leading-4 text-[#52616b]">{record.excerpt}</p>
+              <p className="mt-1 font-mono text-[8px] uppercase tracking-[0.08em] text-[#7d898f]">Retrieved {record.retrievedAt} · reviewed {record.reviewedAt}</p>
+            </article>
+          ))}
+        </div>
+      ),
+    }, { trigger: event.currentTarget });
+  };
+
+  const openTermRecord = (definition: (typeof COMMUNITY_TERM_DEFINITIONS)[number], event: React.MouseEvent<HTMLButtonElement>) => {
+    const decision = communityReview.terms[definition.id];
+    const sourceTerm = agreement?.terms[definition.id];
+    const termProposal = proposal?.terms.find((candidate) => candidate.id === definition.id);
+    openDrawer({
+      key: `community-term:${definition.id}`,
+      kicker: "Community term record",
+      title: definition.label,
+      render: () => (
+        <div className="space-y-4">
+          <DrawerSection label="Source excerpt">
+            <p>{sourceTerm?.exactLanguage ?? "No project-specific agreement source was located."}</p>
+            <p><strong>Plain English:</strong> {sourceTerm?.plainEnglish ?? "The term remains unresolved for this project."}</p>
+            <p className="text-[#6f460e]"><strong>Softening / enforceability:</strong> {sourceTerm?.enforceabilityNote ?? "No enforceability conclusion can be drawn without attributable project evidence."}</p>
+          </DrawerSection>
+          <DrawerSection label="Citation and page reference">
+            <p className="font-mono text-[10px] leading-4 text-[#60707d]">{sourceTerm?.sourceCitation ?? "No project-specific citation"} · {sourceTerm?.pageOrSection ?? "Section unavailable"}</p>
+            <p className="text-[10px] font-semibold text-[#8a5200]">National benchmark — not a term of this project. Benchmark: {sourceTerm?.externalBenchmark ?? "Unknown"}.</p>
+          </DrawerSection>
+          <DrawerSection label="Human conclusion">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <DrawerField label="Conclusion" value={decision.conclusion} />
+              <DrawerField label="Evidence class" value={decision.classification} />
+            </div>
+          </DrawerSection>
+          <DrawerSection label="AI proposal">
+            {termProposal ? (
+              <p>{termProposal.proposedConclusion} · {termProposal.reasoning} <span className="block mt-1 text-[#706681]">Source support: {termProposal.sourceSupport}. Suggestion only — nothing applies without a human action.</span></p>
+            ) : (
+              <p>No AI proposal has been generated for this term in the current session.</p>
+            )}
+          </DrawerSection>
+          <DrawerSection label="Financial treatment">
+            <p><strong>{definition.treatment}.</strong> No automatic IRR penalty or model mutation is applied. Only a human-approved, quantified, source-supported driver could be considered for an existing model assumption.</p>
+          </DrawerSection>
+          <DrawerSection label="Audit history">
+            <p className="text-[#7c8b93]">Review state is recorded in the community review ledger for snapshot {COMMUNITY_SNAPSHOT_VERSION}; benchmark records are retrieved {COMMUNITY_SNAPSHOT.retrievedAt} and reviewed {COMMUNITY_SNAPSHOT.reviewedAt}.</p>
+          </DrawerSection>
+        </div>
+      ),
+    }, { trigger: event.currentTarget, returnFocusSelector: `[data-testid='community-term-row-${definition.id}'] button` });
   };
 
   return (
@@ -183,7 +264,7 @@ function CommunityAgreementsReview() {
           <table className="w-full min-w-[780px] border-collapse text-left">
             <caption className="sr-only">Community Agreements term review, ten terms.</caption>
             <thead className="bg-[#f1f5f3] text-[9px] font-bold uppercase tracking-[0.12em] text-[#52616b]">
-              <tr><th scope="col" className="px-3 py-3">Term</th><th scope="col" className="px-3 py-3">Treatment</th><th scope="col" className="px-3 py-3">External benchmark</th><th scope="col" className="px-3 py-3">Human conclusion</th><th scope="col" className="px-3 py-3">Review</th></tr>
+              <tr><th scope="col" className="px-3 py-3">Term</th><th scope="col" className="px-3 py-3">Treatment</th><th scope="col" className="px-3 py-3">National benchmark</th><th scope="col" className="px-3 py-3">Human conclusion</th><th scope="col" className="px-3 py-3">Review</th></tr>
             </thead>
             <tbody className="divide-y divide-[#e5eae8]">
               {COMMUNITY_TERM_DEFINITIONS.map((definition) => {
@@ -232,11 +313,12 @@ function CommunityAgreementsReview() {
                               </div>
                               {termProposal && <div data-testid={`community-ai-proposal-${definition.id}`} className="mt-3 rounded border border-[#cbb7ec] bg-[#f8f4fd] p-3"><div className="font-mono text-[8px] font-bold uppercase tracking-[0.1em] text-[#7049b7]">AI proposal · suggestion, not a determination</div><p className="mt-1 text-[10px] leading-4 text-[#5e5870]">{termProposal.proposedConclusion} · {termProposal.reasoning}</p><p className="mt-1 text-[9px] text-[#706681]">Source support: {termProposal.sourceSupport}</p><div className="mt-2 flex flex-wrap gap-2"><button type="button" data-testid={`button-accept-community-ai-${definition.id}`} onClick={() => acceptProposal(definition.id)} className="rounded bg-[#7049b7] px-2.5 py-2 font-mono text-[8px] font-bold uppercase text-white">Accept AI Assessment</button><button type="button" data-testid={`button-override-community-ai-${definition.id}`} onClick={() => setHuman(definition.id, selectedConclusion, selectedClassification)} className="rounded border border-[#cbb7ec] bg-white px-2.5 py-2 font-mono text-[8px] font-bold uppercase text-[#7049b7]">Override</button></div></div>}
                               <div className="mt-3 border-t border-[#e5eae8] pt-2 text-[9px] leading-4 text-[#7d898f]">Financial treatment: <strong>{definition.treatment}</strong>. No automatic IRR penalty or model mutation is applied. Only a human-approved, quantified, source-supported driver could be considered for an existing model assumption.</div>
+                              <button data-testid={`button-community-drawer-${definition.id}`} type="button" onClick={(event) => openTermRecord(definition, event)} className="mt-3 inline-flex min-h-9 items-center gap-1 rounded-md border border-[#cbd8d4] bg-white px-2.5 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#255bb7] hover:border-[#255bb7]"><FileText aria-hidden="true" className="h-3 w-3" /> Open term record in drawer</button>
                             </div>
                           </div>
                           <details data-testid={`community-comparisons-${definition.id}`} className="mt-3 rounded border border-[#d9e0e4] bg-white">
                             <summary className="cursor-pointer list-none px-3 py-2 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#60707d] [&::-webkit-details-marker]:hidden">Up to three national comparisons · complete library disclosure</summary>
-                            <div className="border-t border-[#e5eae8] px-3 py-3"><p className="text-[9px] leading-4 text-[#52616b]">These are comparable-only records. They do not upgrade {project.name} evidence.</p><ul className="mt-2 grid gap-2 sm:grid-cols-3">{comparisons.map((comparison) => <li key={comparison.id} className="rounded bg-[#f1f5f3] p-2 text-[9px] leading-4 text-[#52616b]"><strong className="text-[#243844]">{comparison.title}</strong><br /><span className="font-mono text-[8px] font-bold uppercase tracking-[0.06em] text-[#255bb7]">{comparison.relationship}</span> · {comparison.terms[definition.id].externalBenchmark} · {comparison.terms[definition.id].pageOrSection}</li>)}</ul><p className="mt-2 font-mono text-[8px] uppercase tracking-[0.08em] text-[#7d898f]">Full library: {COMMUNITY_AGREEMENTS.length} normalized records in snapshot {COMMUNITY_SNAPSHOT_VERSION}.</p></div>
+                            <div className="border-t border-[#e5eae8] px-3 py-3"><p className="text-[9px] leading-4 text-[#52616b]">These are comparable-only records. They do not upgrade {project.name} evidence.</p><ul className="mt-2 grid gap-2 sm:grid-cols-3">{comparisons.map((comparison) => <li key={comparison.id} className="rounded bg-[#f1f5f3] p-2 text-[9px] leading-4 text-[#52616b]"><strong className="text-[#243844]">{comparison.title}</strong><br /><span className="font-mono text-[8px] font-bold uppercase tracking-[0.06em] text-[#255bb7]">{comparison.relationship}</span> · {comparison.terms[definition.id].externalBenchmark} · {comparison.terms[definition.id].pageOrSection}<span className="mt-1 block font-mono text-[8px] font-bold uppercase tracking-[0.06em] text-[#8a5200]">National benchmark · not a term of this project</span></li>)}</ul><p className="mt-2 font-mono text-[8px] uppercase tracking-[0.08em] text-[#7d898f]">Full library: {COMMUNITY_AGREEMENTS.length} normalized records in snapshot {COMMUNITY_SNAPSHOT_VERSION} — browse it from the control below without loading every record here.</p></div>
                           </details>
                         </td>
                       </tr>
@@ -250,6 +332,9 @@ function CommunityAgreementsReview() {
         <div className="mt-4 grid gap-2 border-t border-[#e5eae8] pt-3 text-[9px] leading-4 text-[#60707d] md:grid-cols-2">
           <p><strong>Attribution:</strong> {COMMUNITY_PROVIDER_ATTRIBUTION}</p>
           <p><strong>Provenance:</strong> retrieved {COMMUNITY_SNAPSHOT.retrievedAt} · reviewed {COMMUNITY_SNAPSHOT.reviewedAt} · {COMMUNITY_SNAPSHOT.records.length} records · local snapshot, not a live feed.</p>
+        </div>
+        <div className="mt-3">
+          <button data-testid="button-community-library" type="button" onClick={openLibrary} className="inline-flex min-h-10 items-center gap-2 rounded-md border border-[#cbb7ec] bg-[#f8f4fd] px-3 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#7049b7] hover:border-[#7049b7]"><FileText aria-hidden="true" className="h-3.5 w-3.5" /> Browse full benchmark library · {COMMUNITY_AGREEMENTS.length} national records</button>
         </div>
       </div>
     </details>
@@ -464,9 +549,54 @@ function EvidenceRow({
   const [correctionAssessment, setCorrectionAssessment] = useState<AIEvidenceSuccess | null>(null);
   const [correctionBusy, setCorrectionBusy] = useState(false);
   const [correctionError, setCorrectionError] = useState("");
+  const { openDrawer } = useWorkbenchDrawer();
   useEffect(() => {
     if (assessment || notice || sourceProposal) setOpen(true);
   }, [assessment, notice, sourceProposal]);
+  const openSourceTrace = (event: React.MouseEvent<HTMLButtonElement>) => {
+    openDrawer({
+      key: `evidence-source:${item.id}`,
+      kicker: "View Source",
+      title: item.label,
+      render: () => (
+        <div className="space-y-4">
+          <DrawerSection label="Current record">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <DrawerField label="Current value" value={`${item.value} ${item.unit}`} />
+              <DrawerField label="Evidence classification" value={<ClassificationBadge value={item.classification} compact />} />
+            </div>
+            <p>{item.description}</p>
+          </DrawerSection>
+          <DrawerSection label="Source excerpt and citation">
+            <p>{item.citation}</p>
+            {project.kind === "curated" && item.claimIds.length > 0 && (
+              <div className="space-y-1">{item.claimIds.map((claimId) => <ClaimCitation key={claimId} claimId={claimId} />)}</div>
+            )}
+            {item.sourceUrl && (
+              <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-semibold text-[#255bb7] underline underline-offset-2">
+                Open cited public source <ExternalLink aria-hidden="true" className="h-3 w-3" />
+              </a>
+            )}
+            <p className="font-mono text-[9px] uppercase tracking-[0.08em] text-[#7d898f]">Role: {item.sourceRole}{source ? ` · ${source.fullName}` : ""}</p>
+          </DrawerSection>
+          <DrawerSection label="Financial treatment">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <DrawerField label="Decision relevance" value={<ImpactRoleBadge role={item.impactRole} compact />} />
+              <DrawerField label="Feeds" value={item.impactRole === "Financial Driver" ? "Stress-case return model" : item.impactRole === "Decision Gate" ? "Decision posture" : "Contextual assessment"} />
+            </div>
+            <p>Only human-approved classifications feed the model. AI proposals and agent findings never change this input by themselves.</p>
+          </DrawerSection>
+          <DrawerSection label="Audit history">
+            {item.review ? (
+              <p>{reviewLabel(item.review.kind)} · <time dateTime={item.review.reviewedAt}>{formatReviewTime(item.review.reviewedAt)}</time></p>
+            ) : (
+              <p>No human review action has been recorded for this input in the current session.</p>
+            )}
+          </DrawerSection>
+        </div>
+      ),
+    }, { trigger: event.currentTarget, returnFocusSelector: `[data-testid='row-evidence-${item.id}'] summary` });
+  };
   const validatedSourceCount = item.sourceRole.startsWith("Reviewer-submitted") ? 0 : new Set([
     ...(item.sourceUrl && !item.sources?.some((candidate) => candidate.url === item.sourceUrl && candidate.sourceClass === "reviewer-submitted") ? [item.sourceUrl] : []),
     ...(item.sources ?? []).filter((candidate) => candidate.sourceClass !== "reviewer-submitted").map((candidate) => candidate.url),
@@ -572,7 +702,7 @@ function EvidenceRow({
       ) : (
         <summary className="grid cursor-pointer list-none gap-3 px-4 py-3 transition-colors hover:bg-[#fbfcfa] md:grid-cols-[1.55fr_0.8fr_1.55fr] md:items-center md:px-5 [&::-webkit-details-marker]:hidden">
           <span className="flex min-w-0 items-center gap-2"><span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: meta.color }} /><span className="min-w-0"><span className="block truncate text-[12px] font-semibold text-[#243844]">{item.label}</span></span></span>
-          <span className="min-w-0"><span className="flex flex-wrap items-center gap-2"><span className="font-mono text-[12px] font-bold text-[#122232]">{item.value}</span> <span className="text-[10px] text-[#52616b]">{item.unit}</span>{source ? <SourceStatusBadge source={source} compact testId={`evidence-source-status-${item.id}`} /> : <span data-testid={`evidence-origin-${item.id}`} className="rounded-full bg-[#e7ecef] px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.09em] text-[#52616b]">Embedded</span>}</span></span>
+          <span className="min-w-0"><span className="flex flex-wrap items-center gap-2"><span className="font-mono text-[12px] font-bold text-[#122232]">{item.value}</span> <span className="text-[10px] text-[#52616b]">{item.unit}</span><ClassificationBadge value={item.classification} compact />{source ? <SourceStatusBadge source={source} compact testId={`evidence-source-status-${item.id}`} /> : <span data-testid={`evidence-origin-${item.id}`} className="rounded-full bg-[#e7ecef] px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.09em] text-[#52616b]">Embedded</span>}</span></span>
           <span className="flex flex-wrap items-center justify-between gap-2"><span className="flex min-w-0 flex-1 flex-wrap items-start gap-2"><ImpactRoleBadge role={item.impactRole} compact testId={`badge-impact-role-${item.id}`} /><span className="flex min-w-[150px] flex-1 flex-col items-stretch"><span className="relative min-w-0 flex-1 md:max-w-[220px]"><select data-testid={`select-classification-${item.id}`} aria-label={`Provenance classification for ${item.label}`} value={item.classification} onChange={(event) => onChange(item.id, event.target.value as Classification)} onClick={(event) => event.stopPropagation()} className="w-full appearance-none rounded-md border bg-white py-2 pl-3 pr-8 text-[10px] font-semibold text-[#243844] outline-none focus:ring-2 focus:ring-[#b9d43a]/50" style={{ borderColor: meta.border }}>{classifications.map((classification) => <option key={classification} value={classification}>{classification}</option>)}</select><ChevronDown aria-hidden="true" className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-[#52616b]" /></span>{item.review && <p data-testid={`review-marker-${item.id}`} aria-label={`${reviewLabel(item.review.kind)} · ${formatReviewTime(item.review.reviewedAt)}`} className="mt-1 text-[9px] leading-4 text-[#7d898f]">{reviewLabel(item.review.kind)} · <time dateTime={item.review.reviewedAt}>{formatReviewTime(item.review.reviewedAt)}</time></p>}</span><button data-testid={`button-analyze-ai-${item.id}`} type="button" aria-label={`Analyze ${item.label} with AI`} aria-busy={analysisBusy} disabled={analysisDisabled} onClick={(event) => { event.preventDefault(); event.stopPropagation(); setOpen(true); onAnalyze(item); }} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[#cbd8d4] bg-white px-2 py-2 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#52616b] hover:border-[#7d898f] hover:text-[#243844] disabled:cursor-wait disabled:opacity-60"><Sparkles aria-hidden="true" className="h-3 w-3 text-[#607500]" />{analysisBusy ? "Analyzing…" : "Analyze with AI"}</button></span><ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-[#52616b] transition-transform group-open:rotate-180 md:hidden" /></span>
         </summary>
       )}
@@ -585,6 +715,7 @@ function EvidenceRow({
            <span>
              {item.citation}
               <span className="mt-1 block text-[9px] uppercase tracking-[0.08em] text-[#7d898f]">Role: {item.sourceRole}{source ? ` · ${source.fullName}` : project.kind === "custom" ? " · Custom project research" : " · Embedded case record"}{providerSource ? ` · Provider-ready: ${providerSource.shortName}` : ""}</span>
+              <button data-testid={`button-view-source-${item.id}`} type="button" onClick={openSourceTrace} className="mt-2 inline-flex min-h-9 items-center gap-1.5 rounded-md border border-[#cbd8d4] bg-white px-2.5 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#255bb7] hover:border-[#255bb7]"><FileText aria-hidden="true" className="h-3 w-3" /> View Source</button>
               {project.kind === "curated" && item.claimIds.map((claimId) => (
                 <ClaimCitation key={claimId} claimId={claimId} />
               ))}
@@ -867,6 +998,55 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
   const [decisionHistory, setDecisionHistory] = useState<DecisionHistoryEntry[]>(getDecisionHistory);
   const isSourceResearchBusy = sourceResearchProgress !== null;
   const isAnalysisBusy = activeAnalysisId !== null || batchProgress !== null || isSourceResearchBusy;
+  const [activeFilter, setActiveFilter] = useState<EvidenceFilter>("all");
+  const materialGapIds = useMemo(() => new Set(getMaterialEvidenceGaps(evidence).map((gap) => gap.id)), [evidence]);
+  const matchesEvidenceFilter = (item: EvidenceItem) => {
+    switch (activeFilter) {
+      case "material-gaps": return materialGapIds.has(item.id);
+      case "needs-review": return item.classification !== "Verified Evidence";
+      case "verified": return item.classification === "Verified Evidence";
+      case "financial-drivers": return item.impactRole === "Financial Driver";
+      case "decision-gates": return item.impactRole === "Decision Gate";
+      default: return true;
+    }
+  };
+  const filteredItems = useMemo(
+    () => (activeFilter === "all" ? [] : items.filter(matchesEvidenceFilter).sort((a, b) => Number(materialGapIds.has(b.id)) - Number(materialGapIds.has(a.id)))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeFilter, items, materialGapIds],
+  );
+  useEffect(() => {
+    // A resolve/focus navigation must reach its record even when the active
+    // filter excludes it: reset to the full list before App's focus timer fires.
+    const revealAll = () => setActiveFilter("all");
+    window.addEventListener("safeloc:evidence-focus-request", revealAll);
+    return () => window.removeEventListener("safeloc:evidence-focus-request", revealAll);
+  }, []);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    // One evidence row expands at a time for interactive users: when a summary
+    // is clicked (mouse or keyboard, which also fires click) and the row is
+    // about to open, close the other rows. Programmatic opens — the focus
+    // flow setting details.open, batch AI analysis auto-opening assessed rows,
+    // or tests opening many rows at once — deliberately do not collapse.
+    const node = rootRef.current;
+    if (!node) return undefined;
+    const handler = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      const summary = target.closest("summary");
+      if (!summary) return;
+      const details = summary.parentElement;
+      if (!(details instanceof HTMLDetailsElement)) return;
+      if (!details.dataset.testid?.startsWith("row-evidence-")) return;
+      if (details.open) return; // about to close, not open
+      node.querySelectorAll("details[data-testid^='row-evidence-'][open]").forEach((other) => {
+        if (other !== details) (other as HTMLDetailsElement).open = false;
+      });
+    };
+    node.addEventListener("click", handler, true);
+    return () => node.removeEventListener("click", handler, true);
+  }, []);
 
   useEffect(() => {
     const syncDecisionHistory = () => setDecisionHistory(getDecisionHistory());
@@ -1048,8 +1228,32 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
     }, 4000);
   };
 
+  const rejectSourceProposal = (id: string) => setSourceProposals((current) => {
+    const next = { ...current };
+    delete next[id];
+    return next;
+  });
+
+  const renderEvidenceRow = (item: EvidenceItem) => (
+    <EvidenceRow
+      key={item.id}
+      item={item}
+      onChange={updateClassification}
+      onAnalyze={analyzeOne}
+      onAccept={acceptAssessment}
+      onOverride={overrideAssessment}
+      assessment={assessments[item.id]}
+      notice={notices[item.id]}
+      analysisBusy={activeAnalysisId === item.id}
+      analysisDisabled={isAnalysisBusy}
+      sourceProposal={sourceProposals[item.id]}
+      onAcceptSourceProposal={acceptSourceProposal}
+      onRejectSourceProposal={rejectSourceProposal}
+    />
+  );
+
   return (
-    <div>
+    <div ref={rootRef}>
       <PageIntro
         eyebrow="02 / source the conviction"
         title="Evidence is not a footnote. It is an active model input."
@@ -1156,6 +1360,20 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
         })}
       </div>
       <DecisionHistory items={decisionHistory} evidence={evidence} />
+      <div className="mb-4" role="group" aria-label="Evidence filters">
+        <div className="flex gap-1.5 overflow-x-auto pb-1">
+          {evidenceFilters.map((filter) => {
+            const active = activeFilter === filter.id;
+            return (
+              <button key={filter.id} data-testid={`filter-evidence-${filter.id}`} type="button" aria-pressed={active} onClick={() => setActiveFilter(filter.id)} className={`min-h-9 shrink-0 rounded-full border px-3 font-mono text-[9px] font-bold uppercase tracking-[0.08em] ${active ? "border-[#122232] bg-[#122232] text-[#d4e86b]" : "border-[#cbd8d4] bg-white text-[#52616b] hover:border-[#8da0aa]"}`}>
+                {filter.label}
+              </button>
+            );
+          })}
+        </div>
+        {activeFilter !== "all" && <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.08em] text-[#7d898f]">{filteredItems.length} matching inputs · material gaps listed first</p>}
+      </div>
+      {activeFilter === "all" ? (
       <div className="space-y-3">
         {evidenceCategories.map((category) => {
           const categoryItems = category.itemIds.map((id) => evidence[id]).filter(Boolean);
@@ -1167,28 +1385,8 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
                  <div><h2 className="text-[13px] font-semibold text-[#122232]">{category.label}</h2><p className="mt-0.5 text-[10px] text-[#7d898f]">{categoryItems.length} inputs · provenance summary</p></div>
                 <div className="flex items-center gap-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em]"><span className="rounded-full bg-[#e0f4ed] px-2 py-1 text-[#0b7a63]">{verified} verified</span><span className={`rounded-full px-2 py-1 ${missing ? "bg-[#fde8eb] text-[#ba2f45]" : "bg-white text-[#7d898f]"}`}>{missing} missing</span></div>
               </header>
-              <div className="hidden grid-cols-[1.55fr_0.8fr_1.55fr] gap-3 border-b border-[#e5eae8] px-5 py-2 text-[9px] font-bold uppercase tracking-[0.16em] text-[#7d898f] md:grid"><span>Variable</span><span>Value</span><span>Impact role & provenance</span></div>
-              {categoryItems.map((item) => (
-                <EvidenceRow
-                  key={item.id}
-                  item={item}
-                  onChange={updateClassification}
-                  onAnalyze={analyzeOne}
-                  onAccept={acceptAssessment}
-                  onOverride={overrideAssessment}
-                  assessment={assessments[item.id]}
-                  notice={notices[item.id]}
-                  analysisBusy={activeAnalysisId === item.id}
-                  analysisDisabled={isAnalysisBusy}
-                  sourceProposal={sourceProposals[item.id]}
-                  onAcceptSourceProposal={acceptSourceProposal}
-                  onRejectSourceProposal={(id) => setSourceProposals((current) => {
-                    const next = { ...current };
-                    delete next[id];
-                    return next;
-                  })}
-                />
-              ))}
+              <div className="hidden grid-cols-[1.55fr_0.8fr_1.55fr] gap-3 border-b border-[#e5eae8] px-5 py-2 text-[9px] font-bold uppercase tracking-[0.16em] text-[#7d898f] md:grid"><span>Finding</span><span>Current value</span><span>Classification · relevance · source</span></div>
+              {categoryItems.map(renderEvidenceRow)}
               {category.id === "power-grid" && (
                 <>
                   {!customProject && <EiaElectricityEvidence
@@ -1243,6 +1441,20 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
           );
         })}
       </div>
+      ) : (
+        <section data-testid="evidence-filtered-list" className="overflow-hidden rounded-xl border border-[#d9e0e4] bg-white" aria-label="Filtered evidence inputs">
+          <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[#d9e0e4] bg-[#f1f5f3] px-4 py-3 md:px-5">
+            <div>
+              <h2 className="text-[13px] font-semibold text-[#122232]">{evidenceFilters.find((filter) => filter.id === activeFilter)?.label}</h2>
+              <p className="mt-0.5 text-[10px] text-[#7d898f]">{filteredItems.length} inputs · material gaps first · one row expands at a time</p>
+            </div>
+          </header>
+          <div className="hidden grid-cols-[1.55fr_0.8fr_1.55fr] gap-3 border-b border-[#e5eae8] px-5 py-2 text-[9px] font-bold uppercase tracking-[0.16em] text-[#7d898f] md:grid"><span>Finding</span><span>Current value</span><span>Classification · relevance · source</span></div>
+          {filteredItems.length === 0 ? (
+            <p className="px-4 py-4 text-[10px] leading-4 text-[#60707d] md:px-5">No inputs match this filter.</p>
+          ) : filteredItems.map(renderEvidenceRow)}
+        </section>
+      )}
       <CommunityAgreementsReview />
       <div className="mt-5 flex flex-col gap-3 rounded-lg border border-[#f1cb8b] bg-[#fff8e9] p-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-3"><TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-[#a65a00]" /><div><div className="text-[11px] font-bold text-[#6f460e]">Classification changes are live</div><div className="mt-1 text-[10px] leading-4 text-[#7f6337]">Materiality, confidence, and the recommendation status update as soon as a dropdown changes.</div></div></div>

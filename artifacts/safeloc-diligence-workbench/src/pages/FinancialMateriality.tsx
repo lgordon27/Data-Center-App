@@ -11,11 +11,13 @@ import {
 import {
   ArrowRight,
   ChevronDown,
+  FileSearch,
   Sparkles,
   TrendingDown,
   TrendingUp,
   TriangleAlert
 } from "lucide-react";
+import { DrawerField, DrawerSection, useWorkbenchDrawer } from "@/components/ContextDrawer";
 import {
   useDiligence
 } from "@/context/DiligenceContext";
@@ -39,6 +41,95 @@ import type {
   Screen
 } from "@/components/Shell";
 import { formatElectricityCostAttribution } from "@/data/sources";
+
+function reviewActionLabel(kind: "manual" | "ai" | undefined, reviewKind?: string) {
+  if (reviewKind === "ai-accepted") return "AI-suggested, accepted by analyst";
+  if (reviewKind === "ai-overridden") return "AI-suggested, overridden by analyst";
+  if (kind) return "Reviewed by analyst";
+  return "No human review recorded — baseline treatment applies";
+}
+
+type TraceContext = "waterfall" | "row" | "context-item";
+
+function EvidenceTraceButton({ inputId, testId, context, tone = "light" }: { inputId: string; testId: string; context: TraceContext; tone?: "light" | "dark" }) {
+  const { evidence, metrics } = useDiligence();
+  const { openDrawer } = useWorkbenchDrawer();
+  const item = evidence[inputId];
+  if (!item) return null;
+  const step = metrics.waterfall.find((candidate) => candidate.id === inputId);
+  const lineItem = metrics.lineItems[inputId];
+  const reviewedAt = item.review ? new Date(item.review.reviewedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : null;
+  // The trace must explain the exact number on the control that opened it:
+  // waterfall steps are sequential attribution; driver rows are single-input sensitivity.
+  const basisCopy = context === "waterfall"
+    ? "Sequential attribution: inputs are applied in order, so an earlier stressed input can absorb an effect shared with this one. This trace matches the waterfall step you opened it from."
+    : context === "row"
+      ? "Single-input sensitivity: the effect of repairing this input alone against the current evidence posture. This matches the effect on the row you opened it from; the waterfall's sequential attribution can differ when inputs interact."
+      : null;
+  const treatmentSource = context === "waterfall" ? step : lineItem;
+  return (
+    <button
+      data-testid={testId}
+      type="button"
+      aria-label={`Open financial effect trace for ${item.label}`}
+      onClick={(event) => openDrawer({
+        key: `financial-trace:${inputId}:${context}`,
+        kicker: "Financial Effect trace",
+        title: `${item.label} — input trace`,
+        render: () => (
+          <div className="space-y-4">
+            <DrawerSection label="Original and approved values">
+              <div className="grid gap-2 sm:grid-cols-2">
+                <DrawerField label="Original value (underwriting baseline)" value={`${item.value} ${item.unit} · treated as verified`} />
+                <DrawerField label="Approved current value" value={<span className="inline-flex flex-wrap items-center gap-1.5">{item.value} {item.unit} <ClassificationBadge value={item.classification} compact /></span>} />
+              </div>
+            </DrawerSection>
+            <DrawerSection label="Source">
+              <p>{item.citation}</p>
+              <p className="font-mono text-[9px] uppercase tracking-[0.08em] text-[#7d898f]">Role: {item.sourceRole}</p>
+            </DrawerSection>
+            <DrawerSection label="Calculation">
+              {basisCopy && <p className="font-semibold text-[#243844]">{basisCopy}</p>}
+              {lineItem && <p><strong>Driver:</strong> {lineItem.driver}</p>}
+              {treatmentSource ? (
+                <>
+                  <p><strong>Applied treatment:</strong> {treatmentSource.impactTreatment}</p>
+                  <p>{treatmentSource.impactExplanation}</p>
+                </>
+              ) : (
+                <p>This input is a {item.impactRole === "Decision Gate" ? "decision gate" : "context indicator"}: it shapes decision posture, not the return calculation.</p>
+              )}
+            </DrawerSection>
+            <DrawerSection label="Approving action">
+              <div className="grid gap-2 sm:grid-cols-2">
+                <DrawerField label="Human decision" value={reviewActionLabel(item.review ? "manual" : undefined, item.review?.kind)} />
+                <DrawerField label="Recorded" value={reviewedAt ?? "—"} />
+              </div>
+              <p className="text-[#7a5313]">Unapproved AI or agent proposals never touch this input or any displayed return metric.</p>
+            </DrawerSection>
+            <DrawerSection label="Resulting effect">
+              {context === "waterfall" && step ? (
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <DrawerField label="Baseline IRR before input" value={formatIRR(step.before)} />
+                  <DrawerField label="IRR after input" value={formatIRR(step.after)} />
+                  <DrawerField label="Sequential effect" value={formatImpactDelta(step.deltaIRR)} testId={`trace-seq-effect-${inputId}`} />
+                </div>
+              ) : context === "row" && lineItem ? (
+                <DrawerField label="Single-input effect on project IRR" value={formatImpactDelta(lineItem.deltaIRR)} testId={`trace-effect-${inputId}`} />
+              ) : (
+                <p>No direct return effect. See the Decision section for how this gate or context item shapes posture.</p>
+              )}
+            </DrawerSection>
+          </div>
+        ),
+      }, { trigger: event.currentTarget })}
+      className={`inline-flex min-h-9 items-center gap-1.5 rounded-md border px-2.5 font-mono text-[8px] font-bold uppercase tracking-[0.08em] ${tone === "dark" ? "border-white/20 bg-white/5 text-[#d4e86b] hover:border-[#d4e86b]" : "border-[#cbd8d4] bg-white text-[#255bb7] hover:border-[#255bb7]"}`}
+    >
+      <FileSearch aria-hidden="true" className="h-3 w-3" /> View trace
+    </button>
+  );
+}
+
 export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
   const { evidence, hasChangedClassification, metrics, sourceStates, project } = useDiligence();
   const projectName = project.name;
@@ -93,6 +184,7 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
         <MetricCard testId="metric-payback" label="Payback" value={formatPayback(metrics.payback)} detail="Cumulative equity breakeven" accent="coral" />
          <MetricCard testId="metric-npv" label="NPV @ 10%" value={formatCurrency(metrics.npv, 0)} detail="Equity value created" accent="navy" />
       </div>
+      <p className="mt-2 text-[9px] leading-4 text-[#7d898f]">Only human-approved classifications feed these returns. AI assessments and agent findings never change a displayed metric until a person acts, and every evidence-adjusted input carries a <strong>View trace</strong> control.</p>
        <aside data-testid="portfolio-connection-strip" role="note" aria-labelledby="portfolio-connection-title" className="mt-4 rounded-lg border border-[#cbd8d4] bg-[#f1f5f3] px-4 py-3">
          <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:gap-4">
            <h2 id="portfolio-connection-title" className="shrink-0 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#52616b]">Portfolio Connection</h2>
@@ -121,6 +213,7 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
                 <div className="mt-1 text-[9px] text-[#9dafb8]">Current classification: {item.classification}</div>
                {item.modelClassification && <div className="mt-1 text-[9px] text-[#9dafb8]">Modeled as: {item.modelClassification}</div>}
                 <div data-testid={`waterfall-treatment-${step.id}`} aria-label={`Applied stress treatment for ${item.label}: ${step.impactTreatment}`} className="mt-2 border-t border-white/10 pt-2 text-[9px] leading-4 text-[#e3eaed]"><span className="font-semibold text-[#b9d43a]">Applied treatment:</span> {step.impactTreatment}</div>
+                <div className="mt-2"><EvidenceTraceButton inputId={step.id} testId={`button-trace-${step.id}`} context="waterfall" tone="dark" /></div>
              </div>;
           })}
             <div className="rounded-lg border-2 border-[#f5ddd5]/60 bg-[#f5ddd5]/10 p-3"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#f5ddd5]">Conservative Case (Stress-Adjusted)</div><div data-testid="waterfall-current-irr" className="mt-1 font-mono text-2xl font-bold text-[#f5ddd5]">{formatIRR(currentIRR)}</div></div>
@@ -139,6 +232,7 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
                <div className="flex flex-wrap items-start justify-between gap-2"><h3 className="text-[12px] font-semibold text-[#243844]">{item.label}</h3><ImpactRoleBadge role={item.impactRole} compact testId={`decision-context-role-${item.id}`} /></div>
                <p className="mt-2 text-[10px] leading-4 text-[#52616b]">{definition.description}</p>
                <div className="mt-3 flex flex-wrap items-center gap-2 text-[9px] text-[#60707d]"><span className="font-bold uppercase tracking-[0.1em]">Current provenance</span><ClassificationBadge value={item.classification} compact /></div>
+               <div className="mt-3"><EvidenceTraceButton inputId={item.id} testId={`button-trace-context-${item.id}`} context="context-item" /></div>
              </article>;
            })}
          </div>
@@ -151,7 +245,7 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
               const item = evidence[impact.id];
               const effectTone = impact.deltaIRR < 0 ? "text-[#ba2f45]" : impact.deltaIRR > 0 ? "text-[#0b7a63]" : "text-[#63717a]";
               return <div key={impact.id} data-testid={`row-materiality-${impact.id}`} className="grid grid-cols-[1fr_auto] gap-4 py-4 sm:grid-cols-[1.2fr_0.9fr_0.75fr_0.5fr] sm:items-center">
-                <div><div className="text-[12px] font-semibold text-[#243844]">{item.label}</div><div className="mt-1 text-[10px] text-[#52616b]">{impact.driver}</div></div>
+                <div><div className="text-[12px] font-semibold text-[#243844]">{item.label}</div><div className="mt-1 text-[10px] text-[#52616b]">{impact.driver}</div><div className="mt-2"><EvidenceTraceButton inputId={impact.id} testId={`button-trace-materiality-${impact.id}`} context="row" /></div></div>
                 <div className="sm:col-auto"><ClassificationBadge value={item.classification} compact /></div>
                 <div className="text-right font-mono text-[11px] font-bold text-[#4d5c65] sm:text-left">{formatLineItemValue(impact.value, impact.unit)}</div>
                  <div className={`text-right font-mono text-[11px] font-bold sm:text-left ${effectTone}`}>

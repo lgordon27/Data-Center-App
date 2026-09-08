@@ -115,6 +115,12 @@ export type EvidenceItem = {
   searchCoverage?: string[];
   failedSearchDomains?: string[];
   conflictSummary?: string;
+  rawValue?: string | number;
+  rawUnit?: string;
+  researchState?: CustomEvidenceRecord["researchState"];
+  eligibleForModel?: boolean;
+  acceptedForModel?: boolean;
+  quarantineReasons?: string[];
 };
 
 export type EvidenceCorrection = {
@@ -144,10 +150,14 @@ export type ProjectContext = Omit<CustomResearchResponse["projectSummary"], "cap
   researchMode?: CustomResearchResponse["researchMode"];
   researchCache?: CustomResearchResponse["researchCache"];
   researchCoverage?: CustomResearchResponse["researchCoverage"];
+  eligibleEvidenceCount?: number;
+  retrievedLeadCount?: number;
+  quarantineReasons?: string[];
   kind: "curated" | "custom";
 };
 type DiligenceState = {
   evidence: Record<string, EvidenceItem>;
+  researchEvidence?: Record<string, EvidenceItem>;
   hasChangedClassification: boolean;
   updateClassification: (
     id: string,
@@ -296,6 +306,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   const initialSession = useMemo(() => loadCurrentSession(), []);
   const [state, setState] = useState({
     evidence: initialSession.evidence,
+    modelEvidence: initialSession.evidence,
     hasChangedClassification: initialSession.hasChangedClassification,
     lastChange: null as FinancialMetrics['lastChange'],
   });
@@ -330,8 +341,12 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     eia: eiaData.sourceMetadata,
   }), [eiaData.sourceMetadata, ercotQueue.sourceMetadata]);
   const effectiveEvidence = useMemo(
-    () => project.kind === "custom" ? state.evidence : applyEiaEvidence(state.evidence, eiaData),
-    [state.evidence, eiaData, project.kind],
+    () => project.kind === "custom" ? state.modelEvidence : applyEiaEvidence(state.evidence, eiaData),
+    [state.evidence, state.modelEvidence, eiaData, project.kind],
+  );
+  const effectiveModelEvidence = useMemo(
+    () => project.kind === "custom" ? state.modelEvidence : applyEiaEvidence(state.modelEvidence, eiaData),
+    [state.modelEvidence, eiaData, project.kind],
   );
 
   useEffect(() => {
@@ -376,7 +391,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
 
     const previousIrr = classificationChanged
       ? calculateCashFlowModel(
-        (project.kind === "custom" ? currentState.evidence : applyEiaEvidence(currentState.evidence, eiaData)) as EvidenceRecord,
+        (project.kind === "custom" ? currentState.modelEvidence : applyEiaEvidence(currentState.modelEvidence, eiaData)) as EvidenceRecord,
         project.capacityMW,
       ).projectIRR
       : null;
@@ -390,12 +405,13 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     };
     const nextIrr = classificationChanged
       ? calculateCashFlowModel(
-        (project.kind === "custom" ? nextEvidence : applyEiaEvidence(nextEvidence, eiaData)) as EvidenceRecord,
+        (project.kind === "custom" ? currentState.modelEvidence : applyEiaEvidence(nextEvidence, eiaData)) as EvidenceRecord,
         project.capacityMW,
       ).projectIRR
       : null;
     const nextState = {
       evidence: nextEvidence,
+      modelEvidence: project.kind === "custom" ? currentState.modelEvidence : nextEvidence,
       hasChangedClassification: classificationChanged ? true : currentState.hasChangedClassification,
       lastChange: classificationChanged
         ? {
@@ -473,7 +489,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         sourceRelevanceNote: correction.claim.trim(),
         searchTerms: [],
         searchTermsSource: "unavailable" as const,
-        ...(proposal ? {
+         ...(proposal && proposal.eligibleForModel ? {
           ...proposal,
           numericValue: proposal.numericValue,
           qualitativeValue: proposal.qualitativeValue,
@@ -487,14 +503,28 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
           sourceAccessedAt: proposal.sourceAccessedAt,
           sourceAccessStatus: proposal.sourceAccessStatus,
           sourceRole: `AI-researched · human-accepted · ${proposal.sourceRole}`,
+           acceptedForModel: true,
+           researchState: "accepted" as const,
+           eligibleForModel: true,
         } : {}),
+         ...(!proposal || !proposal.eligibleForModel ? {
+           acceptedForModel: false,
+           researchState: "quarantined" as const,
+           eligibleForModel: false,
+           quarantineReasons: ["Reviewer-submitted corrections require validated research evidence before model activation."],
+         } : {}),
         review: { kind: "ai-accepted" as const, reviewedAt: new Date().toISOString() },
       },
     };
-    const previousIrr = calculateCashFlowModel(currentState.evidence as EvidenceRecord, project.capacityMW).projectIRR;
-    const nextIrr = calculateCashFlowModel(nextEvidence as EvidenceRecord, project.capacityMW).projectIRR;
+    const nextModelEvidence = {
+      ...currentState.modelEvidence,
+      ...(proposal?.eligibleForModel ? { [id]: nextEvidence[id] } : {}),
+    };
+    const previousIrr = calculateCashFlowModel(currentState.modelEvidence as EvidenceRecord, project.capacityMW).projectIRR;
+    const nextIrr = calculateCashFlowModel(nextModelEvidence as EvidenceRecord, project.capacityMW).projectIRR;
     const nextState = {
       evidence: nextEvidence,
+      modelEvidence: nextModelEvidence,
       hasChangedClassification: true,
       lastChange: {
         from: previousIrr ?? 0,
@@ -538,13 +568,15 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     writeStorage(DILIGENCE_AGENT_STORAGE_KEY, next);
   }, []);
 
-  const agentInput = useCallback((): AgentProjectInput => ({
+  const agentInput = useCallback((): AgentProjectInput => {
+    const agentEvidence = project.kind === "custom" ? stateRef.current.modelEvidence : stateRef.current.evidence;
+    return ({
     projectName: project.name,
     location: project.location,
     capacityMW: project.capacityMW,
-    evidenceIds: Object.keys(stateRef.current.evidence),
+    evidenceIds: Object.keys(agentEvidence),
     communityUnresolvedCount: countUnresolvedCommunityTerms(communityReview.terms),
-    evidence: Object.values(stateRef.current.evidence).map((item) => ({
+    evidence: Object.values(agentEvidence).map((item) => ({
       id: item.id,
       label: item.label,
       value: item.value,
@@ -561,9 +593,9 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       sourceSupportConfidence: item.sourceSupportConfidence,
       sourceRelevance: item.sourceRelevance,
     })),
-    retrievedSourceCount: project.researchCoverage?.retrievedSourceCount ?? Object.values(stateRef.current.evidence).reduce((count, item) => count + (item.sources?.length ?? 0), 0),
+    retrievedSourceCount: project.researchCoverage?.retrievedSourceCount ?? Object.values(agentEvidence).reduce((count, item) => count + (item.sources?.length ?? 0), 0),
     validatedSourceCount: project.kind === "custom"
-      ? countValidatedAgentSources({ evidence: Object.values(stateRef.current.evidence).map((item) => ({
+      ? countValidatedAgentSources({ evidence: Object.values(agentEvidence).map((item) => ({
         id: item.id,
         label: item.label,
         value: item.value,
@@ -578,9 +610,10 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
           classification: source.accessStatus === "not provided" ? "source-summary" as const : "validated-source" as const,
         })),
       })) })
-      : Object.values(stateRef.current.evidence).filter((item) => item.classification === "Verified Evidence").length,
-    materialGapCount: Object.values(stateRef.current.evidence).filter((item) => ["Missing Evidence", "Model Inference", "User Assumption"].includes(item.classification)).length,
-  }), [communityReview.terms, project]);
+      : Object.values(agentEvidence).filter((item) => item.classification === "Verified Evidence").length,
+    materialGapCount: Object.values(agentEvidence).filter((item) => ["Missing Evidence", "Model Inference", "User Assumption"].includes(item.classification)).length,
+  });
+  }, [communityReview.terms, project]);
 
   const runDiligenceAgent = useCallback(async () => {
     if (agentActiveRef.current) return;
@@ -708,7 +741,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       logSessionAction("Agent reversal blocked by intervening value or source change", applied.proposalId);
       return false;
     }
-    const previousIrr = calculateCashFlowModel((project.kind === "custom" ? currentState.evidence : applyEiaEvidence(currentState.evidence, eiaData)) as EvidenceRecord, project.capacityMW).projectIRR;
+    const previousIrr = calculateCashFlowModel((project.kind === "custom" ? currentState.modelEvidence : applyEiaEvidence(currentState.evidence, eiaData)) as EvidenceRecord, project.capacityMW).projectIRR;
     const nextEvidence = {
       ...currentState.evidence,
       [applied.affectedEvidenceId]: {
@@ -717,9 +750,10 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         review: { kind: "manual" as const, reviewedAt: new Date().toISOString() },
       },
     };
-    const nextIrr = calculateCashFlowModel((project.kind === "custom" ? nextEvidence : applyEiaEvidence(nextEvidence, eiaData)) as EvidenceRecord, project.capacityMW).projectIRR;
+    const nextIrr = calculateCashFlowModel((project.kind === "custom" ? currentState.modelEvidence : applyEiaEvidence(nextEvidence, eiaData)) as EvidenceRecord, project.capacityMW).projectIRR;
     const nextState = {
       evidence: nextEvidence,
+      modelEvidence: project.kind === "custom" ? currentState.modelEvidence : nextEvidence,
       hasChangedClassification: true,
       lastChange: { from: previousIrr ?? 0, to: nextIrr ?? 0, delta: (nextIrr ?? 0) - (previousIrr ?? 0) },
     };
@@ -732,7 +766,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   }, [agentInput, eiaData, project, setPersistedAgentRun]);
 
   const resetToDefault = useCallback((company: string | null = null) => {
-    const nextState = { evidence: cloneEvidence(INITIAL_EVIDENCE), hasChangedClassification: false, lastChange: null };
+    const nextState = { evidence: cloneEvidence(INITIAL_EVIDENCE), modelEvidence: cloneEvidence(INITIAL_EVIDENCE), hasChangedClassification: false, lastChange: null };
     stateRef.current = nextState;
     setState(nextState);
     setProject({
@@ -775,7 +809,19 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         }];
       }),
     ) as Record<string, EvidenceItem>;
-    const nextState = { evidence: customEvidence, hasChangedClassification: false, lastChange: null as FinancialMetrics["lastChange"] };
+    const containedModelEvidence = Object.fromEntries(
+      Object.entries(customEvidence).map(([id, item]) => [
+        id,
+        {
+          ...item,
+          classification: "Missing Evidence" as const,
+          acceptedForModel: false,
+          eligibleForModel: false,
+          researchState: "retrieved-lead" as const,
+        },
+      ]),
+    ) as Record<string, EvidenceItem>;
+    const nextState = { evidence: customEvidence, modelEvidence: containedModelEvidence, hasChangedClassification: false, lastChange: null as FinancialMetrics["lastChange"] };
     stateRef.current = nextState;
     setState(nextState);
     setProject({
@@ -785,9 +831,12 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       description: research.projectSummary.description,
       capacityMW: research.projectSummary.capacityMW,
       capacityProvenance: research.projectSummary.capacityProvenance,
-      researchMode: research.researchMode ?? "ai-researched",
+       researchMode: research.researchMode ?? "research-incomplete",
       researchCache: research.researchCache,
       researchCoverage: research.researchCoverage,
+       eligibleEvidenceCount: research.eligibleEvidence?.length ?? 0,
+       retrievedLeadCount: research.retrievedLeads?.length ?? research.evidence.filter((item) => item.researchState !== "proposed" && item.researchState !== "accepted").length,
+       quarantineReasons: research.quarantineReasons ?? [],
     });
     const customCommunityProject: CommunityProjectInput = {
       kind: "custom",
@@ -864,14 +913,14 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   };
 
   const metrics = useMemo(
-    () => ({ ...calculateCashFlowModel(effectiveEvidence as EvidenceRecord, project.capacityMW), lastChange: state.lastChange }),
-    [effectiveEvidence, project.capacityMW, state.lastChange],
+    () => ({ ...calculateCashFlowModel(effectiveModelEvidence as EvidenceRecord, project.capacityMW), lastChange: state.lastChange }),
+    [effectiveModelEvidence, project.capacityMW, state.lastChange],
   );
 
   const communityUnresolvedCount = countUnresolvedCommunityTerms(communityReview.terms);
 
   return (
-    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, applyEvidenceCorrection, clearLastChange, metrics, resetToDefault, loadCustomProject, project, originatingCompany, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading, communityReview, communityUnresolvedCount, reviewCommunityTerm, agentRun, runDiligenceAgent, retryDiligenceStage, reviewAgentFinding, reverseAgentChange }}>
+    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, researchEvidence: project.kind === "custom" ? state.evidence : effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, applyEvidenceCorrection, clearLastChange, metrics, resetToDefault, loadCustomProject, project, originatingCompany, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading, communityReview, communityUnresolvedCount, reviewCommunityTerm, agentRun, runDiligenceAgent, retryDiligenceStage, reviewAgentFinding, reverseAgentChange }}>
       {children}
     </DiligenceContext.Provider>
   );

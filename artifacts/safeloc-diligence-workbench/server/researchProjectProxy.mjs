@@ -345,8 +345,7 @@ function isExactProjectSource(source, summary, itemRelevance) {
   const nameTokens = sourceIdentityTokens(summary?.name);
   const locationTokens = sourceIdentityTokens(summary?.location);
   const nameMatches = nameTokens.length > 0 && nameTokens.every((token) => sourceTokens.has(token));
-  const locationMatches = locationTokens.length > 0 && locationTokens.filter((token) => sourceTokens.has(token)).length >= 2;
-  return nameMatches || locationMatches;
+  return nameMatches;
 }
 
 function calculateSourceSupportConfidence({
@@ -389,6 +388,73 @@ function defaultClassificationReason(classification, supportedByRetrievedSource,
     return `${classification} is supported by one strong exact-project public source; corroboration would strengthen it.`;
   }
   return `${classification} has a validated link, but the retrieved packet provides limited exact-project support.`;
+}
+
+const MODEL_UNIT_RULES = {
+  electricity_cost: /^\s*(?:\$|usd)\s*\/\s*mwh\s*$/i,
+  water_consumption: /^\s*(?:m\s*gal\s*\/\s*(?:yr|year)|mgal\s*\/\s*(?:yr|year))\s*$/i,
+  grid_interconnection: /^\s*months?\s*$/i,
+  permitting_timeline: /^\s*months?\s*$/i,
+  water_escalation: /^\s*%(?:\s*(?:annual|year))?\s*$/i,
+  electricity_escalation: /^\s*%(?:\s*(?:annual|year))?\s*$/i,
+  renewable_percentage: /^\s*%\s*$/i,
+  cooling_capex: /^\s*\$?\s*m(?:illion)?\s*$/i,
+  carbon_compliance: /^\s*\$?\s*m(?:illion)?\s*\/\s*(?:yr|year)\s*$/i,
+  backup_power_capacity: /^\s*(?:hours?|h)\s*$/i,
+  downtime_cost: /^\s*(?:\$|usd)\s*(?:\/\s*(?:day|d)|per\s+day)\s*$/i,
+};
+
+function containResearchRecord(item) {
+  const reasons = [];
+  const sources = Array.isArray(item.sources) ? item.sources : [];
+  const hasSource = Boolean(item.sourceUrl) || sources.length > 0;
+  const exactProject = sources.some((source) => source.exactProject === true);
+  const nonReviewer = sources.some((source) => source.sourceClass !== "reviewer-submitted") ||
+    (item.sourceUrl && !String(item.sourceRole ?? "").toLowerCase().includes("reviewer-submitted"));
+  if (!hasSource) reasons.push("No validated project-specific source was returned.");
+  if (!exactProject || !nonReviewer || !["Verified Evidence", "Management Assertion"].includes(item.classification) || (item.sourceSupportConfidence ?? 0) < 60) {
+    reasons.push("Source provenance is not eligible for model activation.");
+  }
+  const rule = MODEL_UNIT_RULES[item.id];
+  if (item.numericValue !== undefined && rule && (!item.unit || !rule.test(item.unit))) {
+    reasons.push(`Incompatible unit for ${item.id}: ${item.unit}. Raw value retained for review.`);
+  }
+  if (item.id === "electricity_cost" && /\b(residential|household|homeowner|domestic)\b/i.test(
+    [item.value, item.description, item.citation, ...sources.flatMap((source) => [source.title, source.excerpt])].join(" "),
+  )) {
+    reasons.push("Residential electricity pricing is not eligible as a facility tariff.");
+  }
+  if (item.coverageStatus === "conflicting" || item.conflictSummary) reasons.push("Conflicting source coverage requires reviewer resolution.");
+  if (item.classification === "Model Inference" || item.classification === "User Assumption") {
+    reasons.push(`${item.classification} is not source-backed and cannot activate custom economics.`);
+  }
+  const eligible = reasons.length === 0;
+  return {
+    ...item,
+    rawValue: item.rawValue ?? item.value,
+    rawUnit: item.rawUnit ?? item.unit,
+    eligibleForModel: eligible,
+    acceptedForModel: false,
+    researchState: eligible ? "proposed" : hasSource ? "quarantined" : "retrieved-lead",
+    quarantineReasons: reasons,
+  };
+}
+
+export function containResearchResult(result) {
+  const evidence = (result.evidence ?? []).map(containResearchRecord);
+  const eligibleEvidence = evidence.filter((item) => item.eligibleForModel === true);
+  return {
+    ...result,
+    evidence,
+    retrievedLeads: evidence.filter((item) => item.researchState === "retrieved-lead" || item.researchState === "quarantined"),
+    eligibleEvidence,
+    proposedInputs: eligibleEvidence,
+    acceptedModelInputs: [],
+    quarantineReasons: [...new Set(evidence.flatMap((item) => item.quarantineReasons ?? []))],
+    researchMode: result.researchMode === "default-assumptions"
+      ? "default-assumptions"
+      : eligibleEvidence.length > 0 ? "ai-researched" : "research-incomplete",
+  };
 }
 
 function parseResearchResponse(body, retrievedSources = [], accessedAt = new Date().toISOString().slice(0, 10), coverage = null, knownData = null) {
@@ -584,7 +650,7 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
     return record;
   });
 
-  return {
+  const parsedResult = {
     projectSummary: summaryFields,
     researchCoverage: {
       searchedDomains: Array.isArray(coverage?.searchedDomains) ? coverage.searchedDomains : [],
@@ -602,6 +668,7 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
     },
     evidence,
   };
+  return containResearchResult(parsedResult);
 }
 
 function normalizePublicDate(value) {
@@ -969,12 +1036,14 @@ export async function handleResearchProjectRequest(
     }
     const entry = await cache.read(key);
     const status = cache.status(key);
+    const containedEntry = entry ? { ...entry, result: containResearchResult(entry.result) } : null;
+    const containedStatusResult = status.result ? containResearchResult(status.result) : undefined;
     sendJson(res, 200, {
-      researchCache: cacheMetadata(key, entry, entry ? cache.age(entry) : "expired", status.refreshStatus, {
+      researchCache: cacheMetadata(key, containedEntry, containedEntry ? cache.age(containedEntry) : "expired", status.refreshStatus, {
         providerAvailable: status.refreshStatus !== "failed",
         errorType: status.errorType,
       }),
-      ...(status.refreshStatus === "completed" && status.result ? { result: status.result } : {}),
+      ...(status.refreshStatus === "completed" && containedStatusResult ? { result: containedStatusResult } : {}),
     });
     return;
   }
@@ -993,19 +1062,20 @@ export async function handleResearchProjectRequest(
 
   const key = cache.keyFor(project);
   const retained = await cache.read(key);
+  const containedRetained = retained ? { ...retained, result: containResearchResult(retained.result) } : null;
   const retainedState = retained ? cache.age(retained) : "expired";
-  if (!project.forceRefresh && retained && (retainedState === "fresh" || retainedState === "recent")) {
-    sendJson(res, 200, withCacheMetadata(retained, cacheMetadata(key, retained, retainedState)));
+  if (!project.forceRefresh && containedRetained && (retainedState === "fresh" || retainedState === "recent")) {
+    sendJson(res, 200, withCacheMetadata(containedRetained, cacheMetadata(key, containedRetained, retainedState)));
     return;
   }
 
   const refresh = () => cache.refresh(key, () => runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, req }));
-  if (!project.forceRefresh && retained && retainedState === "stale") {
+   if (!project.forceRefresh && containedRetained && retainedState === "stale") {
     const background = refresh();
     void background.promise.catch((error) => {
       console.error("[research-project] Background refresh failed:", classifyResearchFailure(error).type);
     });
-    sendJson(res, 200, withCacheMetadata(retained, cacheMetadata(key, retained, "stale", "running")));
+    sendJson(res, 200, withCacheMetadata(containedRetained, cacheMetadata(key, containedRetained, "stale", "running")));
     return;
   }
 
@@ -1016,8 +1086,8 @@ export async function handleResearchProjectRequest(
   } catch (error) {
     const failure = classifyResearchFailure(error);
     console.error("[research-project] Request failed:", failure.type);
-    if (retained) {
-      sendJson(res, 200, withCacheMetadata(retained, cacheMetadata(key, retained, "stale", "failed", {
+    if (containedRetained) {
+      sendJson(res, 200, withCacheMetadata(containedRetained, cacheMetadata(key, containedRetained, "stale", "failed", {
         providerAvailable: false,
         errorType: failure.type,
       })));

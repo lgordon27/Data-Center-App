@@ -74,12 +74,15 @@ function CommunityReadiness({ onFocusCommunity }: { onFocusCommunity?: () => voi
 }
 
 function CustomCaseBrief({ project, onNavigate, onFocusCommunity }: { project: ReturnType<typeof useDiligence>["project"]; onNavigate: (screen: Screen) => void; onFocusCommunity?: () => void }) {
-  const { evidence } = useDiligence();
+  const { evidence, researchEvidence } = useDiligence();
   const evidenceItems = Object.values(evidence);
-  const sourceCoverage = summarizeSourceCoverage(evidenceItems);
-  const researchAudit = summarizeResearchAudit(evidenceItems);
+  const researchItems = project.kind === "custom" ? Object.values(researchEvidence ?? evidence) : evidenceItems;
+  const sourceCoverage = summarizeSourceCoverage(researchItems);
+  const researchAudit = summarizeResearchAudit(researchItems);
   const isDefaultAssumptions = project.researchMode === "default-assumptions";
   const isResearchIncomplete = project.researchMode === "research-incomplete";
+  const eligibleEvidenceCount = project.eligibleEvidenceCount ?? 0;
+  const retrievedLeadCount = project.retrievedLeadCount ?? 0;
   const capacityLabel = project.capacityProvenance === "directory-reported"
     ? "Directory-reported model capacity"
     : project.capacityProvenance === "ai-reported"
@@ -107,7 +110,17 @@ function CustomCaseBrief({ project, onNavigate, onFocusCommunity }: { project: R
           <div><SectionKicker>Custom project summary</SectionKicker><h2 className="text-[29px] font-semibold tracking-[-0.04em] text-[#122232]">{project.name}</h2><p className="mt-2 flex items-center gap-2 text-[12px] text-[#52616b]"><MapPin className="h-3.5 w-3.5 text-[#ba2f45]" />{project.location}</p></div>
           <div className="rounded-lg bg-[#122232] px-4 py-3 text-right text-white"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#a4b4bd]">{capacityLabel}</div><div data-testid="custom-project-capacity" className="mt-1 font-mono text-xl font-bold text-[#d4e86b]">{project.capacityMW.toLocaleString()} MW</div><div data-testid="custom-project-capacity-note" className="mt-1 max-w-[180px] text-[9px] leading-4 text-[#c4d0d6]">{capacityNote}</div></div>
         </div>
-        <p data-testid="custom-project-description" className="mt-5 max-w-4xl text-[13px] leading-6 text-[#344550]">{project.description}</p>
+        {isResearchIncomplete ? (
+          <div data-testid="custom-unverified-leads" className="mt-5 rounded-lg border border-[#f1cb8b] bg-[#fff8e9] p-4">
+            <div className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#8a5200]">Unverified leads</div>
+            <p data-testid="custom-project-description" className="mt-2 max-w-4xl text-[13px] leading-6 text-[#6f460e]">{project.description}</p>
+          </div>
+        ) : (
+          <p data-testid="custom-project-description" className="mt-5 max-w-4xl text-[13px] leading-6 text-[#344550]">{project.description}</p>
+        )}
+        <aside data-testid="custom-research-acceptance-boundary" className="mt-4 rounded-lg border-2 border-[#ba2f45] bg-[#fff3f4] px-4 py-3 text-[10px] leading-5 text-[#7f2635]">
+          <strong>Research is not yet accepted into the model.</strong> Loading, reviewing, refreshing, or caching a finding cannot change returns, decision posture, or material-gap counts. {eligibleEvidenceCount} eligible proposal{eligibleEvidenceCount === 1 ? "" : "s"} await explicit reviewer acceptance; {retrievedLeadCount} lead{retrievedLeadCount === 1 ? "" : "s"} remain quarantined.
+        </aside>
         {cacheLabel && (
           <div data-testid="custom-research-cache-status" className={`mt-4 rounded-lg border px-4 py-3 text-[10px] leading-5 ${project.researchCache?.providerAvailable === false ? "border-[#f1cb8b] bg-[#fff8e9] text-[#6f460e]" : "border-[#9bd8c5] bg-[#eff8f4] text-[#08644f]"}`}>
             <strong>{cacheLabel}</strong>
@@ -120,7 +133,8 @@ function CustomCaseBrief({ project, onNavigate, onFocusCommunity }: { project: R
           <div data-testid="source-coverage-summary" className="mt-5 rounded-lg border border-[#d9e0e4] bg-[#f5f7f6] p-4">
             <div className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#52616b]">Source Coverage</div>
              <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <div><strong data-testid="source-coverage-supported" className="font-mono text-lg text-[#08644f]">{sourceCoverage.supported} of 16</strong><p className="mt-1 text-[10px] leading-4 text-[#52616b]">supported by retrieved sources</p></div>
+              <div><strong data-testid="source-coverage-supported" className="font-mono text-lg text-[#08644f]">{sourceCoverage.supported} of 16</strong><p className="mt-1 text-[10px] leading-4 text-[#52616b]">with any retrieved source</p></div>
+              <div><strong data-testid="source-coverage-eligible" className="font-mono text-lg text-[#255bb7]">{eligibleEvidenceCount} of 16</strong><p className="mt-1 text-[10px] leading-4 text-[#52616b]">eligible proposals · not yet accepted</p></div>
               <div><strong data-testid="source-coverage-ai-knowledge" className="font-mono text-lg text-[#a65a00]">{sourceCoverage.aiKnowledge} of 16</strong><p className="mt-1 text-[10px] leading-4 text-[#52616b]">classified from AI knowledge — verify independently</p></div>
               <div><strong data-testid="source-coverage-missing" className="font-mono text-lg text-[#ba2f45]">{sourceCoverage.missing} of 16</strong><p className="mt-1 text-[10px] leading-4 text-[#52616b]">with no information found</p></div>
                <div><strong data-testid="audit-unique-source-count" className="font-mono text-lg text-[#255bb7]">{researchAudit.uniqueValidatedSourceCount}</strong><p className="mt-1 text-[10px] leading-4 text-[#52616b]">unique validated sources</p></div>
@@ -130,7 +144,7 @@ function CustomCaseBrief({ project, onNavigate, onFocusCommunity }: { project: R
             </div>
           </div>
         )}
-        <div className="mt-5 rounded-lg border border-[#f1cb8b] bg-[#fff8e9] p-4 text-[10px] leading-5 text-[#6f460e]">{isDefaultAssumptions ? "AI research did not complete. All 16 evidence variables are Missing Evidence, so no project-specific finding changes the synthetic return until a reviewer supplies and accepts evidence." : isResearchIncomplete ? "Research Incomplete: zero validated sources were returned. Generated content remains an unverified lead and cannot be promoted to Verified Evidence. Retry research, edit project identity, or continue with explicitly synthetic assumptions." : `This high-level AI research is context for diligence. Findings are not facility-level proof unless the cited project source supports them; the modeled set remains exactly ${Object.keys(evidence).length} variables.`}</div>
+         <div className="mt-5 rounded-lg border border-[#f1cb8b] bg-[#fff8e9] p-4 text-[10px] leading-5 text-[#6f460e]">{isDefaultAssumptions ? "AI research did not complete. All 16 evidence variables are Missing Evidence, so no project-specific finding changes the synthetic return until a reviewer supplies and accepts evidence." : isResearchIncomplete ? "RESEARCH INCOMPLETE: zero eligible project-specific sources passed containment. Generated content is shown only under Unverified leads and cannot be promoted into the model." : `Research proposals are quarantined until explicit human acceptance. Findings are not facility-level proof unless the cited project source supports them; the modeled set remains exactly ${Object.keys(evidence).length} synthetic variables.`}</div>
       </section>
       <div className="mt-5"><ScopeLimitationsDisclosure /></div>
       <CommunityReadiness onFocusCommunity={onFocusCommunity} />

@@ -38,3 +38,9 @@ Web-search URL annotations must retain the surrounding generated search text as 
 **Why:** Some provider search responses put substantive claim summaries in annotated output text while the source objects contain only URL and title. Dropping that text leaves synthesis with empty excerpts and causes real sources to be reported as unsupported.
 
 **How to apply:** When normalizing search output, attach each URL annotation to its containing text, preserve the exact URL for validation, and test that annotated text reaches the source packet.
+
+Custom research must remain staged through retrieval, eligibility, proposal, and explicit human acceptance; cached and fresh responses need the same current policy check before cash flow.
+
+**Why:** A valid-looking provider response or previously accepted cache entry can otherwise bypass provenance, unit, or dimension checks and silently change returns.
+
+**How to apply:** Keep raw values and units available for review, require exact-project source support and compatible units at the model boundary, and invalidate or re-contain cache entries whenever the policy changes.

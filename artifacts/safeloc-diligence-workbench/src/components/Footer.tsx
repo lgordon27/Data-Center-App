@@ -21,13 +21,28 @@ type EiaDiagnosticResponse = {
   };
 };
 
+type ReleaseIdentity = {
+  applicationVersion?: string;
+  releaseId?: string;
+  commitSha?: string | null;
+  buildTimestamp?: string;
+};
+
 export function Footer() {
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [eiaResponse, setEiaResponse] = useState<EiaDiagnosticResponse | null>(null);
   const [eiaLoading, setEiaLoading] = useState(false);
+  const [releaseIdentity, setReleaseIdentity] = useState<ReleaseIdentity | null>(null);
   const { ercotQueue } = useDiligence();
   const route = typeof window === "undefined" ? "" : window.location.hash.replace(/^#/, "");
   const showsFemaNri = route === "analysis";
+
+  useEffect(() => {
+    void fetch("/api/version", { headers: { accept: "application/json" } })
+      .then((response) => response.ok ? response.json() as Promise<ReleaseIdentity> : null)
+      .then((payload) => { if (payload) setReleaseIdentity(payload); })
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     if (!consoleOpen) return undefined;
@@ -67,6 +82,7 @@ export function Footer() {
             <span>Proof of Concept | Transaction assumptions are synthetic | Environmental and infrastructure data from public sources</span>
             <span data-testid="footer-eia-attribution" className="font-mono normal-case tracking-normal text-[#344550]">Electricity data: U.S. Energy Information Administration Open Data</span>
             {showsFemaNri && <span data-testid="footer-fema-attribution" className="font-mono normal-case tracking-normal text-[#344550]">Climate risk data: FEMA National Risk Index v1.20</span>}
+            {releaseIdentity && <span data-testid="footer-release-identity" className="font-mono normal-case tracking-normal text-[#344550]">Release {releaseIdentity.applicationVersion ?? "unknown"} · {releaseIdentity.commitSha ?? releaseIdentity.releaseId ?? "local"} · built {releaseIdentity.buildTimestamp ?? "unknown"}</span>}
           </span>
           <span className="flex items-center gap-2 font-mono">
             2024 / 24-017

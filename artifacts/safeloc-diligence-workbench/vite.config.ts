@@ -10,6 +10,7 @@ import { handleEiaElectricityRequest } from './server/eiaProxy.mjs';
 import { handleAnalyzeEvidenceRequest } from './server/aiEvidenceProxy.mjs';
 import { handleResearchProjectRequest } from './server/researchProjectProxy.mjs';
 import { handleDirectoryRequest, handleDirectoryStatsRequest } from './server/computeAtlasProxy.mjs';
+import { handleVersionRequest } from './server/version.mjs';
 
 const rawPort = process.env.PORT;
 
@@ -117,6 +118,22 @@ function directoryApiPlugin(): Plugin {
   };
 }
 
+function versionApiPlugin(): Plugin {
+  return {
+    name: 'safeloc-version-api',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const pathname = new URL(req.url ?? '/', 'http://127.0.0.1').pathname;
+        if (pathname !== '/api/version' || req.method !== 'GET') {
+          next();
+          return;
+        }
+        handleVersionRequest(req, res);
+      });
+    },
+  };
+}
+
 export default defineConfig({
   base: basePath,
   plugins: [
@@ -125,6 +142,7 @@ export default defineConfig({
     analyzeEvidenceApiPlugin(),
     researchProjectApiPlugin(),
     directoryApiPlugin(),
+    versionApiPlugin(),
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),

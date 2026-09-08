@@ -4,6 +4,7 @@ import test from "node:test";
 import { INITIAL_EVIDENCE } from "@/context/DiligenceContext";
 import {
   calculateCashFlowModel,
+  containEvidenceForModel,
   CLIMATE_QUALITY_MULTIPLIERS,
   DEFAULT_CAPACITY_MW,
   formatImpactDelta,
@@ -78,6 +79,60 @@ test("the canonical evidence contract has 16 items and a 16-item confidence deno
   assert.equal(model.assumptions.downtimeCostPerDay, 2_850_000);
   assert.equal(model.assumptions.capacityMW, 1_200);
   assert.equal(model.assumptions.entryValue, 4_800);
+});
+
+test("custom research boundary quarantines incompatible units and source-free proposals", () => {
+  const baseline = Object.fromEntries(
+    Object.entries(allMissing()).map(([id, item]) => [
+      id,
+      { ...item, acceptedForModel: false, eligibleForModel: false, researchState: "retrieved-lead" },
+    ]),
+  ) as EvidenceRecord;
+  const unsafe = {
+    ...baseline,
+    electricity_cost: {
+      ...baseline.electricity_cost,
+      value: 7.3,
+      numericValue: 7.3,
+      unit: "cents/kWh",
+      acceptedForModel: true,
+      eligibleForModel: true,
+      researchState: "accepted",
+    },
+    grid_interconnection: {
+      ...baseline.grid_interconnection,
+      value: 1_200,
+      numericValue: 1_200,
+      unit: "MW",
+      acceptedForModel: true,
+      eligibleForModel: true,
+      researchState: "accepted",
+    },
+  };
+  const boundary = containEvidenceForModel(unsafe);
+  assert.ok(boundary.quarantined.electricity_cost.some((reason) => /unit/i.test(reason)));
+  assert.ok(boundary.quarantined.grid_interconnection.some((reason) => /unit/i.test(reason)));
+  assert.deepEqual(calculateCashFlowModel(unsafe), calculateCashFlowModel(baseline));
+  for (const classification of ["Management Assertion", "Model Inference", "User Assumption"] as const) {
+    const sourceFree = {
+      ...baseline,
+      electricity_cost: {
+        ...baseline.electricity_cost,
+        value: 900,
+        numericValue: 900,
+        unit: "$/MWh",
+        classification,
+        acceptedForModel: false,
+        eligibleForModel: false,
+        researchState: "quarantined",
+      },
+    };
+    assert.deepEqual(
+      calculateCashFlowModel(sourceFree),
+      calculateCashFlowModel(baseline),
+      `${classification} must not change custom economics before acceptance`,
+    );
+  }
 });
 
 test("synthetic return calibration separates verified, default, and all-missing cases", () => {

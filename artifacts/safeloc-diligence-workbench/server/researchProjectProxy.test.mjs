@@ -32,6 +32,7 @@ import {
   countWebSearchCalls,
   normalizeModelReportedConfidence,
   calculateSourceSupportConfidence,
+  containResearchResult,
 } from "./researchProjectProxy.mjs";
 import {
   classifyResearchCacheAge,
@@ -179,6 +180,37 @@ test("serves fresh cached research without another provider call", async () => {
   assert.equal(second.statusCode, 200);
   assert.equal(second.json().researchCache.state, "fresh");
   assert.equal(providerCalls, 1);
+});
+
+test("recontains a cached result instead of trusting prior acceptance", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "safeloc-research-cache-policy-"));
+  const cache = createResearchProjectCache({ directory });
+  const project = { name: "Cached Atlas", location: "Texas" };
+  const cached = containResearchResult(validResearchResponse());
+  cached.evidence[0] = {
+    ...cached.evidence[0],
+    acceptedForModel: true,
+    researchState: "accepted",
+    eligibleForModel: true,
+  };
+  await cache.write(cache.keyFor(project), cached);
+  const response = responseRecorder();
+  await handleResearchProjectRequest(request(project), response, { cache, apiKey: "unused" });
+  const result = response.json();
+  assert.equal(result.researchCache.state, "fresh");
+  assert.equal(result.evidence[0].acceptedForModel, false);
+  assert.notEqual(result.evidence[0].researchState, "accepted");
+});
+
+test("same-location sources without project identity remain ineligible", () => {
+  const genericSource = {
+    ...retrievedSource,
+    title: "Taylor County utility filing",
+    excerpt: "A generic facility filing for Taylor County, Texas.",
+  };
+  const parsed = parseResearchResponse(validResearchResponse(), [genericSource]);
+  assert.equal(parsed.eligibleEvidence?.length, 0);
+  assert.equal(parsed.researchMode, "research-incomplete");
 });
 
 test("keeps stale research available when a forced refresh exhausts provider quota", async () => {

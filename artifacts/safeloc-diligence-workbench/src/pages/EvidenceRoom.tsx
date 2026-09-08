@@ -709,6 +709,11 @@ function EvidenceRow({
             <span data-testid={`evidence-source-status-${item.id}`} className={`rounded-full px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.06em] ${validatedSourceCount ? "bg-[#e0f4ed] text-[#08644f]" : "bg-[#fff0d5] text-[#8a5200]"}`}>
               <span data-testid={`custom-source-status-${item.id}`}>{validatedSourceCount ? `${validatedSourceCount} validated source${validatedSourceCount === 1 ? "" : "s"}` : "No validated source"}</span>
             </span>
+              {project.kind === "custom" && (
+                <span data-testid={`research-state-${item.id}`} className={`rounded-full px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.06em] ${item.acceptedForModel ? "bg-[#e0f4ed] text-[#08644f]" : item.eligibleForModel ? "bg-[#e5efff] text-[#255bb7]" : "bg-[#fde8eb] text-[#ba2f45]"}`}>
+                  {item.acceptedForModel ? "Accepted model input" : item.eligibleForModel ? "Proposal · acceptance required" : "Unverified lead · quarantined"}
+                </span>
+              )}
           </span>
           <ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-[#52616b] transition-transform group-open:rotate-180" />
         </summary>
@@ -992,9 +997,9 @@ function EiaElectricityEvidence({
 }
 
 export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
-  const { evidence, updateClassification, applyEvidenceCorrection, metrics, ercotQueue, eiaData, eiaLoading, sourceStates, project } = useDiligence();
+  const { evidence, researchEvidence, updateClassification, applyEvidenceCorrection, metrics, ercotQueue, eiaData, eiaLoading, sourceStates, project } = useDiligence();
   const customProject = project.kind === "custom";
-  const items = useMemo(() => Object.values(evidence), [evidence]);
+  const items = useMemo(() => Object.values(project.kind === "custom" ? (researchEvidence ?? evidence) : evidence), [evidence, project.kind, researchEvidence]);
   const counts = useMemo(() => classifications.map((classification) => ({ classification, count: items.filter((item) => item.classification === classification).length })), [items]);
   const match = ercotQueue.matchingProject;
   const canSuggestVerified = ercotQueue.providerStatus === "live" && Boolean(match?.explicitDelayOrCancellation);
@@ -1310,6 +1315,11 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
         }
       />
       {customProject && <ResearchSearchAudit coverage={searchCoverage} />}
+      {customProject && (
+        <aside data-testid="custom-research-containment-status" role="status" className="mb-5 rounded-lg border-2 border-[#ba2f45] bg-[#fff3f4] px-4 py-3 text-[10px] leading-5 text-[#7f2635]">
+          <strong>Custom research is not yet accepted into the model.</strong> Eligible proposals: {project.eligibleEvidenceCount ?? 0} / {items.length}. Unverified leads: {project.retrievedLeadCount ?? 0}. Numeric values with incompatible or unknown units remain visible for review but are quarantined from cash flow until a validated proposal is explicitly accepted.
+        </aside>
+      )}
       {customProject && sourceResearchError && (
         <aside data-testid="source-research-status" role="status" className="mb-5 rounded-lg border border-[#f1cb8b] bg-[#fff8e9] px-4 py-3 text-[10px] text-[#6f460e]">
           {sourceResearchError}

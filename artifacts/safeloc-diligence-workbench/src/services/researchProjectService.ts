@@ -42,7 +42,15 @@ export type CustomEvidenceRecord = Pick<
   searchCoverage?: string[];
   failedSearchDomains?: string[];
   conflictSummary?: string;
+  rawValue?: string | number;
+  rawUnit?: string;
+  researchState?: ResearchEvidenceState;
+  eligibleForModel?: boolean;
+  acceptedForModel?: boolean;
+  quarantineReasons?: string[];
 };
+
+export type ResearchEvidenceState = "retrieved-lead" | "eligible-evidence" | "proposed" | "accepted" | "quarantined";
 
 export type ResearchCoverageStatus = "supported" | "searched-no-support" | "partial" | "conflicting";
 export type ResearchEvidenceSource = {
@@ -81,6 +89,11 @@ export type CustomResearchResponse = {
     toolCallBudgetExceeded?: boolean;
   };
   evidence: CustomEvidenceRecord[];
+  retrievedLeads?: CustomEvidenceRecord[];
+  eligibleEvidence?: CustomEvidenceRecord[];
+  proposedInputs?: CustomEvidenceRecord[];
+  acceptedModelInputs?: CustomEvidenceRecord[];
+  quarantineReasons?: string[];
 };
 
 export type ResearchCacheMetadata = {
@@ -290,6 +303,65 @@ const VALID_CLASSIFICATIONS: Classification[] = [
   "Missing Evidence",
 ];
 
+const MODEL_UNIT_RULES: Record<string, RegExp> = {
+  electricity_cost: /^\s*(?:\$|usd)\s*\/\s*mwh\s*$/i,
+  water_consumption: /^\s*(?:m\s*gal\s*\/\s*(?:yr|year)|mgal\s*\/\s*(?:yr|year))\s*$/i,
+  grid_interconnection: /^\s*months?\s*$/i,
+  permitting_timeline: /^\s*months?\s*$/i,
+  water_escalation: /^\s*%(?:\s*(?:annual|year))?\s*$/i,
+  electricity_escalation: /^\s*%(?:\s*(?:annual|year))?\s*$/i,
+  renewable_percentage: /^\s*%\s*$/i,
+  cooling_capex: /^\s*\$?\s*m(?:illion)?\s*$/i,
+  carbon_compliance: /^\s*\$?\s*m(?:illion)?\s*\/\s*(?:yr|year)\s*$/i,
+  backup_power_capacity: /^\s*(?:hours?|h)\s*$/i,
+  downtime_cost: /^\s*(?:\$|usd)\s*(?:\/\s*(?:day|d)|per\s+day)\s*$/i,
+};
+
+export function isCompatibleResearchUnit(id: string, unit: string): boolean {
+  const rule = MODEL_UNIT_RULES[id];
+  return !rule || rule.test(unit);
+}
+
+function sourceIsEligible(item: CustomEvidenceRecord): boolean {
+  const sources = item.sources ?? [];
+  const exactProject = sources.some((source) => source.exactProject === true);
+  const nonReviewer = sources.some((source) => source.sourceClass !== "reviewer-submitted") ||
+    Boolean(item.sourceUrl && !item.sourceRole.toLowerCase().includes("reviewer-submitted"));
+  const supportedClassification = item.classification === "Verified Evidence" || item.classification === "Management Assertion";
+  return exactProject && nonReviewer && supportedClassification &&
+    (item.sourceSupportConfidence ?? 0) >= 60 &&
+    item.coverageStatus !== "conflicting";
+}
+
+export function containCustomResearchEvidence(item: CustomEvidenceRecord): CustomEvidenceRecord {
+  const reasons: string[] = [];
+  const hasSource = Boolean(item.sourceUrl) || Boolean(item.sources?.length);
+  if (!hasSource) reasons.push("No validated project-specific source was returned.");
+  if (!sourceIsEligible(item)) reasons.push("Source provenance is not eligible for model activation.");
+  if (item.numericValue !== undefined && !isCompatibleResearchUnit(item.id, item.unit)) {
+    reasons.push(`Incompatible unit for ${item.id}: ${item.unit}. Raw value retained for review.`);
+  }
+  if (item.id === "electricity_cost" && /\b(residential|household|homeowner|domestic)\b/i.test(
+    [item.value, item.description, item.citation, ...(item.sources ?? []).flatMap((source) => [source.title, source.excerpt])].join(" "),
+  )) {
+    reasons.push("Residential electricity pricing is not eligible as a facility tariff.");
+  }
+  if (item.conflictSummary || item.coverageStatus === "conflicting") reasons.push("Conflicting source coverage requires reviewer resolution.");
+  if (item.classification === "Model Inference" || item.classification === "User Assumption") {
+    reasons.push(`${item.classification} is not source-backed and cannot activate custom economics.`);
+  }
+  const eligible = reasons.length === 0;
+  return {
+    ...item,
+    rawValue: item.rawValue ?? item.value,
+    rawUnit: item.rawUnit ?? item.unit,
+    eligibleForModel: eligible,
+    acceptedForModel: item.acceptedForModel === true && eligible,
+    researchState: item.acceptedForModel === true && eligible ? "accepted" : eligible ? "proposed" : hasSource ? "quarantined" : "retrieved-lead",
+    quarantineReasons: reasons,
+  };
+}
+
 function parseResponse(value: unknown): CustomResearchResponse {
   if (!isRecord(value) || !isRecord(value.projectSummary) || !Array.isArray(value.evidence)) {
     throw new Error("Project research returned an incomplete response.");
@@ -348,7 +420,7 @@ function parseResponse(value: unknown): CustomResearchResponse {
     const safeClassification = classification === "Verified Evidence" && !hasValidatedSource
       ? "Management Assertion"
       : classification;
-    return {
+    return containCustomResearchEvidence({
       id,
       label: candidate.label as string,
       value: candidate.value as string | number,
@@ -385,8 +457,12 @@ function parseResponse(value: unknown): CustomResearchResponse {
       } : {}),
       ...(candidate.numericValue === undefined ? {} : { numericValue: candidate.numericValue as number }),
       ...(candidate.qualitativeValue === undefined ? {} : { qualitativeValue: candidate.qualitativeValue as EvidenceItem["qualitativeValue"] }),
-    };
+    });
   });
+
+  const containedEvidence = evidence.map(containCustomResearchEvidence);
+  const eligibleEvidence = containedEvidence.filter((item) => item.eligibleForModel);
+  const retrievedLeads = containedEvidence.filter((item) => item.researchState === "retrieved-lead" || item.researchState === "quarantined");
 
   return {
     projectSummary: {
@@ -402,7 +478,7 @@ function parseResponse(value: unknown): CustomResearchResponse {
     },
     researchMode: value.researchMode === "default-assumptions"
       ? "default-assumptions"
-      : evidence.some((item) => item.sources?.length || item.sourceUrl)
+       : eligibleEvidence.length > 0
         ? "ai-researched"
         : "research-incomplete",
     ...(parseResearchCache(value.researchCache) ? { researchCache: parseResearchCache(value.researchCache) } : {}),
@@ -421,7 +497,12 @@ function parseResponse(value: unknown): CustomResearchResponse {
         toolCallBudgetExceeded: value.researchCoverage.toolCallBudgetExceeded === true,
       },
     } : {}),
-    evidence,
+     evidence: containedEvidence,
+     retrievedLeads,
+     eligibleEvidence,
+     proposedInputs: eligibleEvidence,
+     acceptedModelInputs: containedEvidence.filter((item) => item.acceptedForModel),
+     quarantineReasons: [...new Set(containedEvidence.flatMap((item) => item.quarantineReasons ?? []))],
   };
 }
 
@@ -453,6 +534,11 @@ export function createDefaultAssumptionResearch(
       searchTerms: [],
       searchTermsSource: "unavailable",
     },
+    retrievedLeads: [],
+    eligibleEvidence: [],
+    proposedInputs: [],
+    acceptedModelInputs: [],
+    quarantineReasons: ["No project-specific research was available."],
     evidence: CUSTOM_EVIDENCE_IDS.map((id) => ({
       id,
       label: DEFAULT_EVIDENCE_DEFINITIONS[id].label,
@@ -470,6 +556,10 @@ export function createDefaultAssumptionResearch(
       sourceRelevanceNote: "No validated source was mapped to this claim.",
       searchTerms: [],
       searchTermsSource: "unavailable",
+      researchState: "retrieved-lead",
+      eligibleForModel: false,
+      acceptedForModel: false,
+      quarantineReasons: ["No project-specific research was available."],
     })),
   };
 }

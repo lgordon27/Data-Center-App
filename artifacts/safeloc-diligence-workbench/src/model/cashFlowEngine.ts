@@ -30,8 +30,60 @@ export type EvidenceRecord = Record<
     numericValue?: number;
     qualitativeValue?: QualitativeEvidenceValue;
     sourceSupportConfidence?: number;
+     unit?: string;
+     researchState?: string;
+     eligibleForModel?: boolean;
+     acceptedForModel?: boolean;
+     quarantineReasons?: string[];
   }
 >;
+
+export type ModelBoundaryResult = {
+  evidence: EvidenceRecord;
+  quarantined: Record<string, string[]>;
+};
+
+const MODEL_DIMENSION_RULES: Record<string, RegExp> = {
+  electricity_cost: /^\s*(?:\$|usd)\s*\/\s*mwh\s*$/i,
+  water_consumption: /^\s*(?:m\s*gal\s*\/\s*(?:yr|year)|mgal\s*\/\s*(?:yr|year))\s*$/i,
+  grid_interconnection: /^\s*months?\s*$/i,
+  permitting_timeline: /^\s*months?\s*$/i,
+  water_escalation: /^\s*%(?:\s*(?:annual|year))?\s*$/i,
+  electricity_escalation: /^\s*%(?:\s*(?:annual|year))?\s*$/i,
+  renewable_percentage: /^\s*%\s*$/i,
+  cooling_capex: /^\s*\$?\s*m(?:illion)?\s*$/i,
+  carbon_compliance: /^\s*\$?\s*m(?:illion)?\s*\/\s*(?:yr|year)\s*$/i,
+  backup_power_capacity: /^\s*(?:hours?|h)\s*$/i,
+  downtime_cost: /^\s*(?:\$|usd)\s*(?:\/\s*(?:day|d)|per\s+day)\s*$/i,
+};
+
+export function containEvidenceForModel(evidence: EvidenceRecord): ModelBoundaryResult {
+  const next: EvidenceRecord = {};
+  const quarantined: Record<string, string[]> = {};
+  for (const [id, item] of Object.entries(evidence)) {
+    const reasons = [...(item.quarantineReasons ?? [])];
+    const customInput = item.acceptedForModel !== undefined || item.researchState !== undefined;
+    if (customInput && item.acceptedForModel !== true) reasons.push("Custom research has not been explicitly accepted by a reviewer.");
+    if (customInput && item.eligibleForModel !== true) reasons.push("Custom research did not pass source-eligibility validation.");
+    const rule = MODEL_DIMENSION_RULES[id];
+    if (customInput && item.numericValue !== undefined && (!item.unit || (rule && !rule.test(item.unit)))) {
+      reasons.push(`Unsupported or incompatible unit for ${id}.`);
+    }
+    if (reasons.length) {
+      quarantined[id] = [...new Set(reasons)];
+      next[id] = {
+        ...item,
+        classification: "Missing Evidence",
+        modelClassification: "Missing Evidence",
+        numericValue: undefined,
+        qualitativeValue: undefined,
+      };
+    } else {
+      next[id] = item;
+    }
+  }
+  return { evidence: next, quarantined };
+}
 
 export type CashFlowYear = {
   year: number;
@@ -856,15 +908,16 @@ function runModel(evidence: EvidenceRecord, capacityMW: number): CashFlowModel {
 
 export function calculateCashFlowModel(evidence: EvidenceRecord, requestedCapacityMW = DEFAULT_CAPACITY_MW) {
   const capacityMW = normalizeCapacityMW(requestedCapacityMW);
-  const current = runModel(evidence, capacityMW);
-  const verifiedBaseline = runModel(buildVerifiedEvidence(evidence), capacityMW);
+  const safeEvidence = containEvidenceForModel(evidence).evidence;
+  const current = runModel(safeEvidence, capacityMW);
+  const verifiedBaseline = runModel(buildVerifiedEvidence(safeEvidence), capacityMW);
 
   const lineItems = Object.fromEntries(
     Object.entries(current.lineItems).map(([id, lineItem]) => {
       const repairedModel = runModel({
-        ...evidence,
+        ...safeEvidence,
         [id]: {
-          ...evidence[id],
+          ...safeEvidence[id],
           classification: "Verified Evidence" as Classification,
           modelClassification: undefined,
         },
@@ -891,11 +944,11 @@ export function calculateCashFlowModel(evidence: EvidenceRecord, requestedCapaci
   const attribution: Record<string, FinancialAttribution> = Object.fromEntries(
     Object.entries(current.lineItems).map(([id, lineItem]) => {
       const impactRole = getEvidenceImpactRole(id);
-      const modeledClassification = evidence[id].modelClassification ?? evidence[id].classification;
+      const modeledClassification = safeEvidence[id].modelClassification ?? safeEvidence[id].classification;
       const repairedModel = runModel({
-        ...evidence,
+        ...safeEvidence,
         [id]: {
-          ...evidence[id],
+          ...safeEvidence[id],
           classification: "Verified Evidence" as Classification,
           modelClassification: undefined,
         },
@@ -917,7 +970,7 @@ export function calculateCashFlowModel(evidence: EvidenceRecord, requestedCapaci
         {
           id,
           impactRole,
-          currentClassification: evidence[id].classification,
+           currentClassification: safeEvidence[id].classification,
           modeledClassification,
           baselineClassification: "Verified Evidence",
           affectedCashFlowLine,
@@ -938,12 +991,12 @@ export function calculateCashFlowModel(evidence: EvidenceRecord, requestedCapaci
     }),
   );
 
-  let beforeEvidence = buildVerifiedEvidence(evidence);
+  let beforeEvidence = buildVerifiedEvidence(safeEvidence);
   let beforeModel = verifiedBaseline;
   const waterfall = Object.entries(current.lineItems).flatMap(([id, lineItem]) => {
     const afterEvidence = {
       ...beforeEvidence,
-      [id]: evidence[id],
+       [id]: safeEvidence[id],
     };
     const afterModel = runModel(afterEvidence, capacityMW);
     const rawDeltaIRR =

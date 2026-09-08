@@ -5,6 +5,7 @@ import { getAdvisorEvidenceSummary } from "@/model/advisorLens";
 import {
   createDefaultAssumptionResearch,
   checkResearchStatus,
+  containCustomResearchEvidence,
   CUSTOM_EVIDENCE_IDS,
   parseResponse,
   researchProject,
@@ -42,6 +43,68 @@ test("accepts the exact 16-item custom research contract", () => {
   assert.equal(parsed.projectSummary.capacityProvenance, "ai-reported");
 });
 
+test("containment rejects residential tariffs and preserves raw incompatible units", () => {
+  const contained = containCustomResearchEvidence({
+    id: "electricity_cost",
+    label: "Electricity Cost",
+    value: 7.3,
+    unit: "cents/kWh",
+    numericValue: 7.3,
+    classification: "Verified Evidence",
+    citation: "Residential tariff schedule",
+    description: "Residential electricity rate for households.",
+    sourceRole: "AI-researched",
+    sourceRelevance: "exact-project",
+    sourceSupportConfidence: 94,
+    coverageStatus: "supported",
+    sourceUrl: "https://example.com/rate",
+    sources: [{
+      url: "https://example.com/rate",
+      title: "Residential tariff",
+      publisher: "example.com",
+      publishedAt: null,
+      accessedAt: null,
+      accessStatus: "open",
+      excerpt: "Residential household rate: 7.3 cents/kWh.",
+      sourceClass: "primary-utility",
+      searchDomain: "project-identity",
+      relationship: "primary",
+      exactProject: true,
+    }],
+  });
+  assert.equal(contained.eligibleForModel, false);
+  assert.equal(contained.rawValue, 7.3);
+  assert.equal(contained.rawUnit, "cents/kWh");
+  assert.match(contained.quarantineReasons?.join(" ") ?? "", /residential|incompatible/i);
+  const duration = containCustomResearchEvidence({
+    id: "grid_interconnection",
+    label: "Grid Interconnection Timeline",
+    value: 365,
+    unit: "days",
+    numericValue: 365,
+    classification: "Verified Evidence",
+    citation: "Exact project filing",
+    description: "Exact project timeline.",
+    sourceRole: "AI-researched",
+    sources: [{
+      url: "https://example.com/grid",
+      title: "Project filing",
+      publisher: "example.com",
+      publishedAt: null,
+      accessedAt: null,
+      accessStatus: "open",
+      excerpt: "365 days",
+      sourceClass: "primary-regulatory",
+      searchDomain: "project-identity",
+      relationship: "primary",
+      exactProject: true,
+    }],
+    sourceSupportConfidence: 94,
+  });
+  assert.equal(duration.eligibleForModel, false);
+  assert.match(duration.quarantineReasons?.join(" ") ?? "", /incompatible/i);
+});
+
 test("keeps model self-confidence separate from source support and every model output", () => {
   const parseWithConfidence = (score: unknown) => parseResponse({
     ...response,
@@ -66,6 +129,14 @@ test("keeps model self-confidence separate from source support and every model o
   }
   assert.equal(parseWithConfidence(73.6).evidence[0].modelReportedConfidence, 74);
   assert.equal(createDefaultAssumptionResearch("Fallback", "Texas").evidence[0].modelReportedConfidence, undefined);
+});
+
+test("source URLs without exact-project validation leave research incomplete", () => {
+  const parsed = parseResponse(response);
+  assert.equal(parsed.researchMode, "research-incomplete");
+  assert.equal(parsed.eligibleEvidence?.length, 0);
+  assert.equal(parsed.proposedInputs?.length, 0);
+  assert.equal(parsed.retrievedLeads?.length, 16);
 });
 
 test("reports mutually exclusive source coverage counts that total sixteen", () => {

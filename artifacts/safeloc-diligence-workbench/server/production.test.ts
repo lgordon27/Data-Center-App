@@ -82,6 +82,13 @@ test("production entry point serves active API routes without retired endpoints"
     const directoryStats = await waitForJson(`${baseUrl}/api/directory/stats`, child);
     assert.equal(typeof directoryStats.stats, "object");
     assert.ok(["live", "cached", "embedded"].includes(String((directoryStats.sourceMetadata as Record<string, unknown>)?.status)));
+    const version = await waitForJson(`${baseUrl}/api/version`, child);
+    const versionAgain = await waitForJson(`${baseUrl}/api/version`, child);
+    assert.equal(typeof version.applicationVersion, "string");
+    assert.equal(typeof version.releaseId, "string");
+    assert.equal(typeof version.buildTimestamp, "string");
+    assert.ok(version.commitSha || version.releaseId, "release identity must include a commit SHA or release ID");
+    assert.deepEqual(versionAgain, version, "release identity must be immutable for the process lifetime");
     const aiMethod = await fetch(`${baseUrl}/api/analyze-evidence`);
     assert.equal(aiMethod.status, 405);
     for (const retiredPath of ["/api/grid/status", "/api/grid/diagnostics", "/api/grid/query"]) {

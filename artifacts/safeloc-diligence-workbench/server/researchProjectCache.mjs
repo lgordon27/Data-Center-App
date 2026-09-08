@@ -3,7 +3,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-export const RESEARCH_CACHE_VERSION = 1;
+export const RESEARCH_CACHE_VERSION = 2;
 export const RESEARCH_CACHE_FRESH_MS = 6 * 60 * 60 * 1000;
 export const RESEARCH_CACHE_RECENT_MS = 24 * 60 * 60 * 1000;
 export const RESEARCH_CACHE_STALE_MS = 7 * 24 * 60 * 60 * 1000;

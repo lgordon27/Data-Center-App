@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "f6xy9dvlwtYiLO_ADO4B6"
+uri = "file://audit/2026-09-08/safeloc-audit.html"
+type = "text"
+title = "SafeLoc Audit — Findings & Evidence"
+description = "The consolidated report: ranked findings, architecture map, live research captures, candidate rejection ledgers, financial reproductions, all browser-test results, and repair batches with acceptance criteria. Unfinished browser checks are explicitly listed in Appendix A."
+logical_id = "42ebc53f-90ac-4ded-82f3-3042f501bc15"
+content_hash = "sha256:1abea2cd96b7cb5efab3afdf54780c93340e6bba3afa4aa5a2890b5fe68e7468"
+size = 2027429
+mtime_ms = 1788889148380
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:f36c34ed-5536-4eff-ae57-d0f347f2e42e/42ebc53f-90ac-4ded-82f3-3042f501bc15/ffc0a5b4-0a47-4fd9-b7f5-eed431061308"
+storage_version_token = "1788889156171675"
+content_type = "text/html"

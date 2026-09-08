@@ -1,0 +1,931 @@
+{
+  "generatedFromSanitizedBodiesOnly": true,
+  "capturesFound": [
+    "lancium-abilene.json",
+    "meta-temple.json"
+  ],
+  "analyses": [
+    {
+      "capture": "lancium-abilene.json",
+      "input": {
+        "name": "Lancium Clean Campus",
+        "location": "Abilene, Texas",
+        "forceRefresh": true
+      },
+      "endpointStatus": 200,
+      "providerCallCount": 1,
+      "providerCalls": [
+        {
+          "callIndex": 0,
+          "providerUrl": "https://api.openai.com/v1/responses",
+          "method": "POST",
+          "providerStatus": 200,
+          "model": "gpt-4o",
+          "configuredMaxToolCalls": 32,
+          "providerResponseId": "resp_0685954ff8e09ba6006aa044303c6087d29582d18dbf7ee2dc",
+          "providerResponseModel": "gpt-4o-2024-08-06",
+          "webSearchCallCount": 1,
+          "observedQueries": [
+            "Lancium Clean Campus Abilene Texas utility tariff electricity rate power price $/MWh"
+          ],
+          "providerReturnedCandidateCount": 19,
+          "actionSourceCount": 12,
+          "annotationCandidateCount": 7,
+          "normalizationCounts": {
+            "retained": 10,
+            "rejectedInvalidOrUnsafe": 0,
+            "rejectedExactDuplicate": 7,
+            "rejectedCapOverflow": 2
+          },
+          "ledger": [
+            {
+              "candidateIndex": 0,
+              "origin": "action.sources",
+              "outputIndex": 0,
+              "sourceIndex": 0,
+              "url": "https://lancium.com/locations-abilene/?utm_source=openai",
+              "title": null,
+              "excerptPresent": false,
+              "normalizedUrl": "https://lancium.com/locations-abilene/?utm_source=openai",
+              "disposition": "retained-by-normalizer"
+            },
+            {
+              "candidateIndex": 1,
+              "origin": "action.sources",
+              "outputIndex": 0,
+              "sourceIndex": 1,
+              "url": "https://lancium.com/abilene-tx-clean-campus/?utm_source=openai",
+              "title": null,
+              "excerptPresent": false,
+              "normalizedUrl": "https://lancium.com/abilene-tx-clean-campus/?utm_source=openai",
+              "disposition": "retained-by-normalizer"
+            },
+            {
+              "candidateIndex": 2,
+              "origin": "action.sources",
+              "outputIndex": 0,
+              "sourceIndex": 2,
+              "url": "https://lancium.com/2022/11/07/lancium-breaks-ground-on-abilene-clean-campus/?utm_source=openai",
+              "title": null,
+              "excerptPresent": false,
+              "normalizedUrl": "https://lancium.com/2022/11/07/lancium-breaks-ground-on-abilene-clean-campus/?utm_source=openai",
+              "disposition": "retained-by-normalizer"
+            },
+            {
+              "candidateIndex": 3,
+              "origin": "action.sources",
+              "outputIndex": 0,
+              "sourceIndex": 3,
+              "url": "https://www.gridhacker.com/electricity-rates/texas/abilene-electricity-rates?utm_source=openai",
+              "title": null,
+              "excerptPresent": false,
+              "normalizedUrl": "https://www.gridhacker.com/electricity-rates/texas/abilene-electricity-rates?utm_source=openai",
+              "disposition": "retained-by-normalizer"
+            },
+            {
+              "candidateIndex": 4,
+              "origin": "action.sources",
+              "outputIndex": 0,
+              "sourceIndex": 4,
+              "url": "https://www.choosetexaspower.org/electricity-rates/abilene/?utm_source=openai",
+              "title": null,
+              "excerptPresent": false,
+              "normalizedUrl": "https://www.choosetexaspower.org/electricity-rates/abilene/?utm_source=openai",
+              "disposition": "retained-by-normalizer"
+            },
+            {
+              "candidateIndex": 5,
+              "origin": "action.sources",
+              "outputIndex": 0,
+              "sourceIndex": 5,
+              "url": "https://www.thepowerchoice.com/abilene-electricity-rates?utm_source=openai",
+              "title": null,
+              "excerptPresent": false,
+              "normalizedUrl": "https://www.thepowerchoice.com/abilene-electricity-rates?utm_source=openai",
+              "disposition": "retained-by-normalizer"
+            },
+            {
+              "candidateIndex": 6,
+              "origin": "action.sources",
+              "outputIndex": 0,
+              "sourceIndex": 6,
+              "url": "https://www.voltcheckr.com/electricity-rates/abilene?utm_source=openai",
+              "title": null,
+              "excerptPresent": false,
+              "normalizedUrl": "https://www.voltcheckr.com/electricity-rates/abilene?utm_source=openai",
+              "disposition": "retained-by-normalizer"
+            },
+            {
+              "candidateIndex": 7,
+              "origin": "action.sources",
+              "outputIndex": 0,
+              "sourceIndex": 7,
+              "url": "https://www.electricdecisions.com/electricity-rates/abilene?utm_source=openai",
+              "title": null,
+              "excerptPresent": false,
+              "normalizedUrl": "https://www.electricdecisions.com/electricity-rates/abilene?utm_source=openai",
+              "disposition": "retained-by-normalizer"
+            },
+            {
+              "candidateIndex": 8,
+              "origin": "action.sources",
+              "outputIndex": 0,
+              "sourceIndex": 8,
+              "url": "https://electricityrates.com/texas/abilene/?utm_source=openai",
+              "title": null,
+              "excerptPresent": false,
+              "normalizedUrl": "https://electricityrates.com/texas/abilene/?utm_source=openai",
+              "disposition": "retained-by-normalizer"
+            },
+            {
+              "candidateIndex": 9,
+              "origin": "action.sources",
+              "outputIndex": 0,
+              "sourceIndex": 9,
+              "url": "https://www.powerchoicetexas.org/cities/abilene-electricity-rates?utm_source=openai",
+              "title": null,
+              "excerptPresent": false,
+              "normalizedUrl": "https://www.powerchoicetexas.org/cities/abilene-electricity-rates?utm_source=openai",
+              "disposition": "retained-by-normalizer"
+            },
+            {
+              "candidateIndex": 10,
+              "origin": "action.sources",
+              "outputIndex": 0,
+              "sourceIndex": 10,
+              "url": "https://www.joinarbor.com/resources/abilene-electricity-rates?utm_source=openai",
+              "title": null,
+              "excerptPresent": false,
+              "normalizedUrl": "https://www.joinarbor.com/resources/abilene-electricity-rates?utm_source=openai",
+              "disposition": "rejected-global-cap-overflow"
+            },
+            {
+              "candidateIndex": 11,
+              "origin": "action.sources",
+              "outputIndex": 0,
+              "sourceIndex": 11,
+              "url": "https://www.chooseenergy.com/electricity-rates/texas/abilene/?utm_source=openai",
+              "title": null,
+              "excerptPresent": false,
+              "normalizedUrl": "https://www.chooseenergy.com/electricity-rates/texas/abilene/?utm_source=openai",
+              "disposition": "rejected-global-cap-overflow"
+            },
+            {
+              "candidateIndex": 12,
+              "origin": "url_citation",
+              "outputIndex": 1,
+              "contentIndex": 0,
+              "annotationIndex": 0,
+              "url": "https://lancium.com/abilene-tx-clean-campus/?utm_source=openai",
+              "title": "Abilene, TX Clean Campus - Lancium",
+              "excerptPresent": true,
+              "normalizedUrl": "https://lancium.com/abilene-tx-clean-campus/?utm_source=openai",
+              "disposition": "rejected-exact-url-duplicate"
+            },
+            {
+              "candidateIndex": 13,
+              "origin": "url_citation",
+              "outputIndex": 1,
+              "contentIndex": 0,
+              "annotationIndex": 1,
+              "url": "https://www.choosetexaspower.org/electricity-rates/abilene/?utm_source=openai",
+              "title": "Abilene Electricity Rates - Compare Energy Plans & Providers | Choose Texas Power",
+              "excerptPresent": true,
+              "normalizedUrl": "https://www.choosetexaspower.org/electricity-rates/abilene/?utm_source=openai",
+              "disposition": "rejected-exact-url-duplicate"
+            },
+            {
+              "candidateIndex": 14,
+              "origin": "url_citation",
+              "outputIndex": 1,
+              "contentIndex": 0,
+              "annotationIndex": 2,
+              "url": "https://lancium.com/abilene-tx-clean-campus/?utm_source=openai",
+              "title": "Abilene, TX Clean Campus - Lancium",
+              "excerptPresent": true,
+              "normalizedUrl": "https://lancium.com/abilene-tx-clean-campus/?utm_source=openai",
+              "disposition": "rejected-exact-url-duplicate"
+            },
+            {
+              "candidateIndex": 15,
+              "origin": "url_citation",
+              "outputIndex": 1,
+              "contentIndex": 0,
+              "annotationIndex": 3,
+              "url": "https://lancium.com/abilene-tx-clean-campus/?utm_source=openai",
+              "title": "Abilene, TX Clean Campus - Lancium",
+              "excerptPresent": true,
+              "normalizedUrl": "https://lancium.com/abilene-tx-clean-campus/?utm_source=openai",
+              "disposition": "rejected-exact-url-duplicate"
+            },
+            {
+              "candidateIndex": 16,
+              "origin": "url_citation",
+              "outputIndex": 1,
+              "contentIndex": 0,
+              "annotationIndex": 4,
+              "url": "https://lancium.com/abilene-tx-clean-campus/?utm_source=openai",
+              "title": "Abilene, TX Clean Campus - Lancium",
+              "excerptPresent": true,
+              "normalizedUrl": "https://lancium.com/abilene-tx-clean-campus/?utm_source=openai",
+              "disposition": "rejected-exact-url-duplicate"
+            },
+            {
+              "candidateIndex": 17,
+              "origin": "url_citation",
+              "outputIndex": 1,
+              "contentIndex": 0,
+              "annotationIndex": 5,
+              "url": "https://lancium.com/abilene-tx-clean-campus/?utm_source=openai",
+              "title": "Abilene, TX Clean Campus - Lancium",
+              "excerptPresent": true,
+              "normalizedUrl": "https://lancium.com/abilene-tx-clean-campus/?utm_source=openai",
+              "disposition": "rejected-exact-url-duplicate"
+            },
+            {
+              "candidateIndex": 18,
+              "origin": "url_citation",
+              "outputIndex": 1,
+              "contentIndex": 0,
+              "annotationIndex": 6,
+              "url": "https://lancium.com/abilene-tx-clean-campus/?utm_source=openai",
+              "title": "Abilene, TX Clean Campus - Lancium",
+              "excerptPresent": true,
+              "normalizedUrl": "https://lancium.com/abilene-tx-clean-campus/?utm_source=openai",
+              "disposition": "rejected-exact-url-duplicate"
+            }
+          ],
+          "synthesisEvidenceCount": 16
+        }
+      ],
+      "finalCoverage": {
+        "searchedDomains": [
+          "web-search"
+        ],
+        "failedDomains": [],
+        "retrievedSourceCount": 10,
+        "searchTerms": [
+          "Lancium Clean Campus Abilene Texas utility tariff electricity rate power price $/MWh"
+        ],
+        "searchTermsSource": "tool-observed",
+        "toolCallCount": 1,
+        "toolCallLimit": 32,
+        "toolCallBudgetExceeded": false,
+        "observedQueriesByEvidence": {}
+      },
+      "finalEvidenceCount": 16,
+      "finalUniqueAttachedSourceCount": 2,
+      "perVariable": [
+        {
+          "id": "electricity_cost",
+          "classification": "Model Inference",
+          "coverageStatus": "supported",
+          "sourceRelevance": "related-context",
+          "sourceSupportConfidence": 38,
+          "sourceUrl": "https://www.choosetexaspower.org/electricity-rates/abilene/?utm_source=openai",
+          "attachedSourceCount": 1,
+          "searchTerms": [
+            "Lancium Clean Campus Abilene Texas utility tariff electricity rate power price $/MWh",
+            "Lancium Clean Campus Abilene Texas filed energy contract electricity cost"
+          ],
+          "searchTermsSource": "ai-reported"
+        },
+        {
+          "id": "water_consumption",
+          "classification": "Management Assertion",
+          "coverageStatus": "supported",
+          "sourceRelevance": "related-context",
+          "sourceSupportConfidence": 38,
+          "sourceUrl": "https://lancium.com/abilene-tx-clean-campus/?utm_source=openai",
+          "attachedSourceCount": 1,
+          "searchTerms": [
+            "Lancium Clean Campus Abilene Texas water demand consumption gallons usage",
+            "Lancium Clean Campus Abilene Texas water utility demand projection withdrawal volume"
+          ],
+          "searchTermsSource": "ai-reported"
+        },
+        {
+          "id": "grid_interconnection",
+          "classification": "Management Assertion",
+          "coverageStatus": "supported",
+          "sourceRelevance": "related-context",
+          "sourceSupportConfidence": 38,
+          "sourceUrl": "https://lancium.com/abilene-tx-clean-campus/?utm_source=openai",
+          "attachedSourceCount": 1,
+          "searchTerms": [
+            "Lancium Clean Campus Abilene Texas grid interconnection queue transmission study",
+            "Lancium Clean Campus Abilene Texas behind-the-meter power grid connection delay"
+          ],
+          "searchTermsSource": "ai-reported"
+        },
+        {
+          "id": "water_escalation",
+          "classification": "Management Assertion",
+          "coverageStatus": "supported",
+          "sourceRelevance": "related-context",
+          "sourceSupportConfidence": 38,
+          "sourceUrl": "https://lancium.com/abilene-tx-clean-campus/?utm_source=openai",
+          "attachedSourceCount": 1,
+          "searchTerms": [
+            "Lancium Clean Campus Abilene Texas water tariff rate increase escalation",
+            "Lancium Clean Campus Abilene Texas water utility rate case forecast"
+          ],
+          "searchTermsSource": "ai-reported"
+        },
+        {
+          "id": "community_risk",
+          "classification": "Management Assertion",
+          "coverageStatus": "supported",
+          "sourceRelevance": "related-context",
+          "sourceSupportConfidence": 38,
+          "sourceUrl": "https://lancium.com/abilene-tx-clean-campus/?utm_source=openai",
+          "attachedSourceCount": 1,
+          "searchTerms": [
+            "Lancium Clean Campus Abilene Texas public hearing opposition complaints community",
+            "Lancium Clean Campus Abilene Texas noise ordinance moratorium local meeting"
+          ],
+          "searchTermsSource": "ai-reported"
+        },
+        {
+          "id": "renewable_percentage",
+          "classification": "Missing Evidence",
+          "coverageStatus": "searched-no-support",
+          "sourceRelevance": "unresolved",
+          "sourceSupportConfidence": 0,
+          "sourceUrl": null,
+          "attachedSourceCount": 0,
+          "searchTerms": [
+            "Lancium Clean Campus Abilene Texas renewable electricity percentage procurement",
+            "Lancium Clean Campus Abilene Texas PPA renewable share energy mix"
+          ],
+          "searchTermsSource": "ai-reported"
+        },
+        {
+          "id": "cooling_capex",
+          "classification": "Missing Evidence",
+          "coverageStatus": "searched-no-support",
+          "sourceRelevance": "unresolved",
+          "sourceSupportConfidence": 0,
+          "sourceUrl": null,
+          "attachedSourceCount": 0,
+          "searchTerms": [
+            "Lancium Clean Campus Abilene Texas cooling system capital cost capex",
+            "Lancium Clean Campus Abilene Texas cooling equipment procurement construction budget"
+          ],
+          "searchTermsSource": "ai-reported"
+        },
+        {
+          "id": "electricity_escalation",
+          "classification": "Missing Evidence",
+          "coverageStatus": "searched-no-support",
+          "sourceRelevance": "unresolved",
+          "sourceSupportConfidence": 0,
+          "sourceUrl": null,
+          "attachedSourceCount": 0,
+          "searchTerms": [
+            "Lancium Clean Campus Abilene Texas electricity tariff escalation rate case",
+            "Lancium Clean Campus Abilene Texas power price forecast utility increase"
+          ],
+          "searchTermsSource": "ai-reported"
+        },
+        {
+          "id": "carbon_compliance",
+          "classification": "Missing Evidence",
+          "coverageStatus": "searched-no-support",
+          "sourceRelevance": "unresolved",
+          "sourceSupportConfidence": 0,
+          "sourceUrl": null,
+          "attachedSourceCount": 0,
+          "searchTerms": [
+            "Lancium Clean Campus Abilene Texas emissions air permit carbon compliance",
+            "Lancium Clean Campus Abilene Texas generator emissions regulation environmental filing"
+          ],
+          "searchTermsSource": "ai-reported"
+        },
+        {
+          "id": "permitting_timeline",
+          "classification": "Missing Evidence",
+          "coverageStatus": "searched-no-support",
+          "sourceRelevance": "unresolved",
+          "sourceSupportConfidence": 0,
+          "sourceUrl": null,
+          "attachedSourceCount": 0,
+          "searchTerms": [
+            "Lancium Clean Campus Abilene Texas permit application approval construction timeline",
+            "Lancium Clean Campus Abilene Texas planning zoning land-use hearing schedule"
+          ],
+          "searchTermsSource": "ai-reported"
+        },
+        {
+          "id": "customer_concentration",
+          "classification": "Missing Evidence",
+          "coverageStatus": "searched-no-support",
+          "sourceRelevance": "unresolved",
+          "sourceSupportConfidence": 0,
+          "sourceUrl": null,
+          "attachedSourceCount": 0,
+          "searchTerms": [
+            "Lancium Clean Campus Abilene Texas customer concentration revenue load share percentage",
+            "Lancium Clean Campus Abilene Texas tenant offtaker capacity allocation percentage"
+          ],
+          "searchTermsSource": "ai-reported"
+        },
+        {
+          "id": "water_rights",
+          "classification": "Missing Evidence",
+          "coverageStatus": "searched-no-support",
+          "sourceRelevance": "unresolved",
+          "sourceSupportConfidence": 0,
+          "sourceUrl": null,
+          "attachedSourceCount": 0,
+          "searchTerms": [
+            "Lancium Clean Campus Abilene Texas water right permit entitlement allocation",
+            "Lancium Clean Campus Abilene Texas groundwater withdrawal authorization district permit"
+          ],
+          "searchTermsSource": "ai-reported"
+        },
+        {
+          "id": "site_hazard_exposure",
+          "classification": "Missing Evidence",
+          "coverageStatus": "searched-no-support",
+          "sourceRelevance": "unresolved",
+          "sourceSupportConfidence": 0,
+          "sourceUrl": null,
+          "attachedSourceCount": 0,
+          "searchTerms": [
+            "Lancium Clean Campus Abilene Texas flood wildfire seismic hazard exact site",
+            "Lancium Clean Campus Abilene Texas FEMA environmental hazard parcel"
+          ],
+          "searchTermsSource": "ai-reported"
+        },
+        {
+          "id": "backup_power_capacity",
+          "classification": "Missing Evidence",
+          "coverageStatus": "searched-no-support",
+          "sourceRelevance": "unresolved",
+          "sourceSupportConfidence": 0,
+          "sourceUrl": null,
+          "attachedSourceCount": 0,
+          "searchTerms": [
+            "Lancium Clean Campus Abilene Texas backup generator capacity MW permit",
+            "Lancium Clean Campus Abilene Texas emergency generation redundancy capacity"
+          ],
+          "searchTermsSource": "ai-reported"
+        },
+        {
+          "id": "water_source_resilience",
+          "classification": "Management Assertion",
+          "coverageStatus": "supported",
+          "sourceRelevance": "related-context",
+          "sourceSupportConfidence": 38,
+          "sourceUrl": "https://lancium.com/abilene-tx-clean-campus/?utm_source=openai",
+          "attachedSourceCount": 1,
+          "searchTerms": [
+            "Lancium Clean Campus Abilene Texas water source redundancy drought resilience",
+            "Lancium Clean Campus Abilene Texas alternate supply recycled groundwater source"
+          ],
+          "searchTermsSource": "ai-reported"
+        },
+        {
+          "id": "downtime_cost",
+          "classification": "Missing Evidence",
+          "coverageStatus": "searched-no-support",
+          "sourceRelevance": "unresolved",
+          "sourceSupportConfidence": 0,
+          "sourceUrl": null,
+          "attachedSourceCount": 0,
+          "searchTerms": [
+            "Lancium Clean Campus Abilene Texas downtime cost outage loss facility",
+            "Lancium Clean Campus Abilene Texas SLA outage penalty business interruption"
+          ],
+          "searchTermsSource": "ai-reported"
+        }
+      ],
+      "unavailableMetadata": [
+        "Search-engine result count before provider citation selection",
+        "Pages actually opened/fetched by provider",
+        "Redirect chains and resolved final URLs",
+        "MIME types/PDF parsing/JavaScript rendering outcomes",
+        "Provider per-candidate rejection reasons before returned citations",
+        "Claim-entailment validation result"
+      ]
+    },
+    {
+      "capture": "meta-temple.json",
+      "input": {
+        "name": "Meta Temple Data Center",
+        "location": "Temple, Texas",
+        "forceRefresh": true
+      },
+      "endpointStatus": 200,
+      "providerCallCount": 1,
+      "providerCalls": [
+        {
+          "callIndex": 0,
+          "providerUrl": "https://api.openai.com/v1/responses",
+          "method": "POST",
+          "providerStatus": 200,
+          "model": "gpt-4o",
+          "configuredMaxToolCalls": 32,
+          "providerResponseId": "resp_038dd5a47545115f006aa0444a500c87d28c9e5ed6a37bfafb",
+          "providerResponseModel": "gpt-4o-2024-08-06",
+          "webSearchCallCount": 1,
+          "observedQueries": [
+            "Meta Temple Data Center Temple, Texas utility tariff electricity rate power price $/MWh"
+          ],
+          "providerReturnedCandidateCount": 13,
+          "actionSourceCount": 12,
+          "annotationCandidateCount": 1,
+          "normalizationCounts": {
+            "retained": 10,
+            "rejectedInvalidOrUnsafe": 0,
+            "rejectedExactDuplicate": 1,
+            "rejectedCapOverflow": 2
+          },
+          "ledger": [
+            {
+              "candidateIndex": 0,
+              "origin": "action.sources",
+              "outputIndex": 0,
+              "sourceIndex": 0,
+              "url": "https://zipelectricity.com/electricity-rates/texas/temple?utm_source=openai",
+              "title": null,
+              "excerptPresent": false,
+              "normalizedUrl": "https://zipelectricity.com/electricity-rates/texas/temple?utm_source=openai",
+              "disposition": "retained-by-normalizer"
+            },
+            {
+              "candidateIndex": 1,
+              "origin": "action.sources",
+              "outputIndex": 0,
+              "sourceIndex": 1,
+              "url": "https://choosemypower.org/texas/temple/electricity-rates/?utm_source=openai",
+              "title": null,
+              "excerptPresent": false,
+              "normalizedUrl": "https://choosemypower.org/texas/temple/electricity-rates/?utm_source=openai",
+              "disposition": "retained-by-normalizer"
+            },
+            {
+              "candidateIndex": 2,
+              "origin": "action.sources",
+              "outputIndex": 0,
+              "sourceIndex": 2,
+              "url": "https://choosemypower.org/texas/temple/electricity-plans/?utm_source=openai",
+              "title": null,
+              "excerptPresent": false,
+              "normalizedUrl": "https://choosemypower.org/texas/temple/electricity-plans/?utm_source=openai",
+              "disposition": "retained-by-normalizer"
+            },
+            {
+              "candidateIndex": 3,
+              "origin": "action.sources",
+              "outputIndex": 0,
+              "sourceIndex": 3,
+              "url": "https://www.voltcheckr.com/electricity-rates/temple?utm_source=openai",
+              "title": null,
+              "excerptPresent": false,
+              "normalizedUrl": "https://www.voltcheckr.com/electricity-rates/temple?utm_source=openai",
+              "disposition": "retained-by-normalizer"
+            },
+            {
+              "candidateIndex": 4,
+              "origin": "action.sources",
+              "outputIndex": 0,
+              "sourceIndex": 4,
+              "url": "https://epoch.ai/data/ai-data-centers/directory/meta-temple?utm_source=openai",
+              "title": null,
+              "excerptPresent": false,
+              "normalizedUrl": "https://epoch.ai/data/ai-data-centers/directory/meta-temple?utm_source=openai",
+              "disposition": "retained-by-normalizer"
+            },
+            {
+              "candidateIndex": 5,
+              "origin": "action.sources",
+              "outputIndex": 0,
+              "sourceIndex": 5,
+              "url": "https://samaritan-research.org/data/ai-data-centers/directory/meta-temple?utm_source=openai",
+              "title": null,
+              "excerptPresent": false,
+              "normalizedUrl": "https://samaritan-research.org/data/ai-data-centers/directory/meta-temple?utm_source=openai",
+              "disposition": "retained-by-normalizer"
+            },
+            {
+              "candidateIndex": 6,
+              "origin": "action.sources",
+              "outputIndex": 0,
+              "sourceIndex": 6,
+              "url": "https://www.utilityrates.com/texas/temple?utm_source=openai",
+              "title": null,
+              "excerptPresent": false,
+              "normalizedUrl": "https://www.utilityrates.com/texas/temple?utm_source=openai",
+              "disposition": "retained-by-normalizer"
+            },
+            {
+              "candidateIndex": 7,
+              "origin": "action.sources",
+              "outputIndex": 0,
+              "sourceIndex": 7,
+              "url": "https://electricrates.org/texas/temple/?utm_source=openai",
+              "title": null,
+              "excerptPresent": false,
+              "normalizedUrl": "https://electricrates.org/texas/temple/?utm_source=openai",
+              "disposition": "retained-by-normalizer"
+            },
+            {
+              "candidateIndex": 8,
+              "origin": "action.sources",
+              "outputIndex": 0,
+              "sourceIndex": 8,
+              "url": "https://findenergy.com/tx/temple-electricity/?utm_source=openai",
+              "title": null,
+              "excerptPresent": false,
+              "normalizedUrl": "https://findenergy.com/tx/temple-electricity/?utm_source=openai",
+              "disposition": "retained-by-normalizer"
+            },
+            {
+              "candidateIndex": 9,
+              "origin": "action.sources",
+              "outputIndex": 0,
+              "sourceIndex": 9,
+              "url": "https://homeenergyclub.com/texas-electricity-rates/temple?utm_source=openai",
+              "title": null,
+              "excerptPresent": false,
+              "normalizedUrl": "https://homeenergyclub.com/texas-electricity-rates/temple?utm_source=openai",
+              "disposition": "retained-by-normalizer"
+            },
+            {
+              "candidateIndex": 10,
+              "origin": "action.sources",
+              "outputIndex": 0,
+              "sourceIndex": 10,
+              "url": "https://www.choosetexaspower.org/electricity-rates/temple/?utm_source=openai",
+              "title": null,
+              "excerptPresent": false,
+              "normalizedUrl": "https://www.choosetexaspower.org/electricity-rates/temple/?utm_source=openai",
+              "disposition": "rejected-global-cap-overflow"
+            },
+            {
+              "candidateIndex": 11,
+              "origin": "action.sources",
+              "outputIndex": 0,
+              "sourceIndex": 11,
+              "url": "https://www.texaselectricityrates.com/cities/temple-electricity-rates?utm_source=openai",
+              "title": null,
+              "excerptPresent": false,
+              "normalizedUrl": "https://www.texaselectricityrates.com/cities/temple-electricity-rates?utm_source=openai",
+              "disposition": "rejected-global-cap-overflow"
+            },
+            {
+              "candidateIndex": 12,
+              "origin": "url_citation",
+              "outputIndex": 1,
+              "contentIndex": 0,
+              "annotationIndex": 0,
+              "url": "https://epoch.ai/data/ai-data-centers/directory/meta-temple?utm_source=openai",
+              "title": "Meta Temple | AI Data Centers | Epoch AI",
+              "excerptPresent": true,
+              "normalizedUrl": "https://epoch.ai/data/ai-data-centers/directory/meta-temple?utm_source=openai",
+              "disposition": "rejected-exact-url-duplicate"
+            }
+          ],
+          "synthesisEvidenceCount": 16
+        }
+      ],
+      "finalCoverage": {
+        "searchedDomains": [
+          "web-search"
+        ],
+        "failedDomains": [],
+        "retrievedSourceCount": 10,
+        "searchTerms": [
+          "Meta Temple Data Center Temple, Texas utility tariff electricity rate power price $/MWh"
+        ],
+        "searchTermsSource": "tool-observed",
+        "toolCallCount": 1,
+        "toolCallLimit": 32,
+        "toolCallBudgetExceeded": false,
+        "observedQueriesByEvidence": {}
+      },
+      "finalEvidenceCount": 16,
+      "finalUniqueAttachedSourceCount": 0,
+      "perVariable": [
+        {
+          "id": "electricity_cost",
+          "classification": "Model Inference",
+          "coverageStatus": "partial",
+          "sourceRelevance": "unresolved",
+          "sourceSupportConfidence": 0,
+          "sourceUrl": null,
+          "attachedSourceCount": 0,
+          "searchTerms": [
+            "Meta Temple Data Center Temple, Texas utility tariff electricity rate power price $/MWh"
+          ],
+          "searchTermsSource": "ai-reported"
+        },
+        {
+          "id": "water_consumption",
+          "classification": "Missing Evidence",
+          "coverageStatus": "searched-no-support",
+          "sourceRelevance": "unresolved",
+          "sourceSupportConfidence": 0,
+          "sourceUrl": null,
+          "attachedSourceCount": 0,
+          "searchTerms": [
+            "Meta Temple Data Center Temple, Texas water demand consumption gallons usage"
+          ],
+          "searchTermsSource": "ai-reported"
+        },
+        {
+          "id": "grid_interconnection",
+          "classification": "Missing Evidence",
+          "coverageStatus": "searched-no-support",
+          "sourceRelevance": "unresolved",
+          "sourceSupportConfidence": 0,
+          "sourceUrl": null,
+          "attachedSourceCount": 0,
+          "searchTerms": [
+            "Meta Temple Data Center Temple, Texas grid interconnection queue transmission study"
+          ],
+          "searchTermsSource": "ai-reported"
+        },
+        {
+          "id": "water_escalation",
+          "classification": "Missing Evidence",
+          "coverageStatus": "searched-no-support",
+          "sourceRelevance": "unresolved",
+          "sourceSupportConfidence": 0,
+          "sourceUrl": null,
+          "attachedSourceCount": 0,
+          "searchTerms": [
+            "Meta Temple Data Center Temple, Texas water tariff rate increase escalation"
+          ],
+          "searchTermsSource": "ai-reported"
+        },
+        {
+          "id": "community_risk",
+          "classification": "Missing Evidence",
+          "coverageStatus": "searched-no-support",
+          "sourceRelevance": "unresolved",
+          "sourceSupportConfidence": 0,
+          "sourceUrl": null,
+          "attachedSourceCount": 0,
+          "searchTerms": [
+            "Meta Temple Data Center Temple, Texas public hearing opposition complaints community"
+          ],
+          "searchTermsSource": "ai-reported"
+        },
+        {
+          "id": "renewable_percentage",
+          "classification": "Missing Evidence",
+          "coverageStatus": "searched-no-support",
+          "sourceRelevance": "unresolved",
+          "sourceSupportConfidence": 0,
+          "sourceUrl": null,
+          "attachedSourceCount": 0,
+          "searchTerms": [
+            "Meta Temple Data Center Temple, Texas renewable electricity percentage procurement"
+          ],
+          "searchTermsSource": "ai-reported"
+        },
+        {
+          "id": "cooling_capex",
+          "classification": "Missing Evidence",
+          "coverageStatus": "searched-no-support",
+          "sourceRelevance": "unresolved",
+          "sourceSupportConfidence": 0,
+          "sourceUrl": null,
+          "attachedSourceCount": 0,
+          "searchTerms": [
+            "Meta Temple Data Center Temple, Texas cooling system capital cost capex"
+          ],
+          "searchTermsSource": "ai-reported"
+        },
+        {
+          "id": "electricity_escalation",
+          "classification": "Missing Evidence",
+          "coverageStatus": "searched-no-support",
+          "sourceRelevance": "unresolved",
+          "sourceSupportConfidence": 0,
+          "sourceUrl": null,
+          "attachedSourceCount": 0,
+          "searchTerms": [
+            "Meta Temple Data Center Temple, Texas electricity tariff escalation rate case"
+          ],
+          "searchTermsSource": "ai-reported"
+        },
+        {
+          "id": "carbon_compliance",
+          "classification": "Missing Evidence",
+          "coverageStatus": "searched-no-support",
+          "sourceRelevance": "unresolved",
+          "sourceSupportConfidence": 0,
+          "sourceUrl": null,
+          "attachedSourceCount": 0,
+          "searchTerms": [
+            "Meta Temple Data Center Temple, Texas emissions air permit carbon compliance"
+          ],
+          "searchTermsSource": "ai-reported"
+        },
+        {
+          "id": "permitting_timeline",
+          "classification": "Missing Evidence",
+          "coverageStatus": "searched-no-support",
+          "sourceRelevance": "unresolved",
+          "sourceSupportConfidence": 0,
+          "sourceUrl": null,
+          "attachedSourceCount": 0,
+          "searchTerms": [
+            "Meta Temple Data Center Temple, Texas permit application approval construction timeline"
+          ],
+          "searchTermsSource": "ai-reported"
+        },
+        {
+          "id": "customer_concentration",
+          "classification": "Management Assertion",
+          "coverageStatus": "partial",
+          "sourceRelevance": "unresolved",
+          "sourceSupportConfidence": 0,
+          "sourceUrl": null,
+          "attachedSourceCount": 0,
+          "searchTerms": [
+            "Meta Temple Data Center Temple, Texas customer concentration revenue load share percentage"
+          ],
+          "searchTermsSource": "ai-reported"
+        },
+        {
+          "id": "water_rights",
+          "classification": "Missing Evidence",
+          "coverageStatus": "searched-no-support",
+          "sourceRelevance": "unresolved",
+          "sourceSupportConfidence": 0,
+          "sourceUrl": null,
+          "attachedSourceCount": 0,
+          "searchTerms": [
+            "Meta Temple Data Center Temple, Texas water right permit entitlement allocation"
+          ],
+          "searchTermsSource": "ai-reported"
+        },
+        {
+          "id": "site_hazard_exposure",
+          "classification": "Missing Evidence",
+          "coverageStatus": "searched-no-support",
+          "sourceRelevance": "unresolved",
+          "sourceSupportConfidence": 0,
+          "sourceUrl": null,
+          "attachedSourceCount": 0,
+          "searchTerms": [
+            "Meta Temple Data Center Temple, Texas flood wildfire seismic hazard exact site"
+          ],
+          "searchTermsSource": "ai-reported"
+        },
+        {
+          "id": "backup_power_capacity",
+          "classification": "Missing Evidence",
+          "coverageStatus": "searched-no-support",
+          "sourceRelevance": "unresolved",
+          "sourceSupportConfidence": 0,
+          "sourceUrl": null,
+          "attachedSourceCount": 0,
+          "searchTerms": [
+            "Meta Temple Data Center Temple, Texas backup generator capacity MW permit"
+          ],
+          "searchTermsSource": "ai-reported"
+        },
+        {
+          "id": "water_source_resilience",
+          "classification": "Missing Evidence",
+          "coverageStatus": "searched-no-support",
+          "sourceRelevance": "unresolved",
+          "sourceSupportConfidence": 0,
+          "sourceUrl": null,
+          "attachedSourceCount": 0,
+          "searchTerms": [
+            "Meta Temple Data Center Temple, Texas water source redundancy drought resilience"
+          ],
+          "searchTermsSource": "ai-reported"
+        },
+        {
+          "id": "downtime_cost",
+          "classification": "Missing Evidence",
+          "coverageStatus": "searched-no-support",
+          "sourceRelevance": "unresolved",
+          "sourceSupportConfidence": 0,
+          "sourceUrl": null,
+          "attachedSourceCount": 0,
+          "searchTerms": [
+            "Meta Temple Data Center Temple, Texas downtime cost outage loss facility"
+          ],
+          "searchTermsSource": "ai-reported"
+        }
+      ],
+      "unavailableMetadata": [
+        "Search-engine result count before provider citation selection",
+        "Pages actually opened/fetched by provider",
+        "Redirect chains and resolved final URLs",
+        "MIME types/PDF parsing/JavaScript rendering outcomes",
+        "Provider per-candidate rejection reasons before returned citations",
+        "Claim-entailment validation result"
+      ]
+    }
+  ]
+}

@@ -171,7 +171,7 @@ Exactly sixteen IDs, valid class enums, finite numbers, and explicit-zero preser
 
 ## 5. UX and content-density analysis
 
-Detailed final measurements, route results, disclosure states, and interactive outcomes are included in the browser appendix.
+The browser appendix distinguishes recorded observations from incomplete checks. The final follow-up was interrupted, so a complete six-section, three-viewport measurement matrix and the remaining interactive checks are not available.
 
 Initial clean Home measurements:
 
@@ -507,3 +507,46 @@ Release acceptance is not “the build passes.” It requires:
 This audit did not verify every factual statement on every external source page, independently validate the entire community-agreement corpus, inspect inaccessible provider-internal retrieval logs, or intentionally trigger paid-provider quota failures. Exact quote verification for those documents remains open; a link is not proof.
 
 The two instrumented provider calls and two UI submissions are separate samples, not an exhaustive estimate of average retrieval performance. Temporary financial variations are diagnostic fixtures, not investment opinions or revised underwriting recommendations. No repairs were implemented.
+
+## Appendix A. Browser observations and unfinished checks
+
+The core code, provider-response, financial-reproduction, and test-suite audit is complete. The final interactive follow-up was stopped before completion. This report is not a full browser sign-off.
+
+### Recorded observations
+
+- Local and production Home were inspected at 1440×900, 768×1024, and 390×844; their measured heights are in section 5.
+- Local NVIDIA selection displayed the NVIDIA exposure result and its relationship/materiality boundary. An initial scroll observation was inconclusive; final visibility after smooth scrolling or within nested scrolling containers was not established.
+- Curated Stargate opened at `#analysis`, initially showing 48% evidence confidence, 3.3% baseline IRR, −3.7% stress IRR, and BLOCKED under that browser's provider state.
+- The curated agent reached Review ready with ten displayed stages, four findings, zero retrieved sources, and three labeled validated sources. Its review-only proposal drawer stated that no project evidence records were attached and no metrics would change.
+- Rejecting one review-only proposal changed the disposition counter from 0/4 to 1/4 without changing metrics. Review-only cards did not expose Accept or Override; that is intentional eligibility behavior, not proof of a broken consequential approval path.
+- A separate live UI Lancium submission completed with 1,200 MW, 33% evidence confidence, 9/16 source-supported records, three unique attached URLs labeled validated, no strong-support items, N/M baseline and stress IRR, and BLOCKED. Its application POST response was not retained by the browser listener.
+- A separate live UI Meta submission returned application HTTP 200 and completed with 152 MW, 3% evidence confidence, 1/16 source-supported records, one unique attached URL labeled validated, 15 missing records, 12.0% baseline IRR, −14.3% stress IRR, and BLOCKED. The response reported ten retained results and one tool call.
+- Those browser generations are distinct from the two fully captured server-handler runs. Differences in sources and evidence counts must not be treated as discrepancies within one response.
+- Financial Impact section navigation worked, and Summary / Drivers / Full Model labels were present. Conditional tab rendering is confirmed in source; the final individual browser switching check was not completed.
+- Some local browser sessions logged development HMR WebSocket connection failures. They did not prevent rendering. The inspected production Home did not show equivalent browser errors.
+
+### Not completed — do not infer a pass or failure
+
+| Check | Status |
+|---|---|
+| Consequential custom proposal Accept / Override / Reverse | Not completed; review-only behavior does not test this path |
+| Leave Unresolved interaction | Control observed; final action check not completed |
+| Source drawer link target/content verification | Partial UI observation only |
+| Save / Compare / Reset / Reload end-to-end persistence | Existing suite executed, but dedicated audit journey not completed |
+| Every route and every Home CTA | Source inventory completed; browser click inventory incomplete |
+| Financial tabs and keyboard switching | Implemented in source; final browser check incomplete |
+| Cross-page deep-link target visibility and sticky overlap | Code inspected; final settled browser measurement incomplete |
+| Exact height and disclosure-default state for every Analysis section at all three widths, local and production | Incomplete; preliminary approximate heights are not used as acceptance measurements |
+| Mobile menu, dialog focus restoration, and full keyboard-only journey | Partial observations; full browser suite includes a failed mobile dialog/focus check |
+| Every cited external quotation and community document | Not independently verified in this pass |
+
+### Preliminary browser claims corrected during review
+
+- Missing Accept/Override on review-only cards was initially flagged too strongly; it is not reported as a P0 defect here.
+- A zero window scroll offset does not alone prove NVIDIA focus failed; scrolling ancestors and animation settling need verification.
+- Expanded section wrappers do not prove every supporting disclosure is open; no such blanket claim is made.
+- The homepage diff is 276 additions and 2 deletions, not 2,762 additions.
+- Unused `LegacyHome` does not contribute to the local rendered height.
+- Low source coverage and BLOCKED outputs are not evidence of an unrestricted recommendation bypass.
+
+The downloadable HTML edition also includes the complete candidate-disposition ledger, per-variable coverage, provider request/response captures, financial reproductions, and test results in expandable evidence sections.

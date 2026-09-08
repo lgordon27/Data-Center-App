@@ -1,0 +1,2919 @@
+{
+  "stats": {
+    "startTime": "2026-09-08T17:21:04.992Z",
+    "duration": 458408.93700000003,
+    "expected": 108,
+    "skipped": 18,
+    "unexpected": 62,
+    "flaky": 0
+  },
+  "counts": {
+    "advisor-material-gaps.spec.ts": {
+      "passed": 0,
+      "failed": 2,
+      "skipped": 0
+    },
+    "ai-evidence.spec.ts": {
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    "claim-provenance.spec.ts": {
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    "community-agreements.spec.ts": {
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    "company-exposure.spec.ts": {
+      "passed": 19,
+      "failed": 3,
+      "skipped": 0
+    },
+    "custom-project-research.spec.ts": {
+      "passed": 12,
+      "failed": 6,
+      "skipped": 0
+    },
+    "data-freshness.spec.ts": {
+      "passed": 0,
+      "failed": 8,
+      "skipped": 0
+    },
+    "diligence-agent.spec.ts": {
+      "passed": 2,
+      "failed": 1,
+      "skipped": 3
+    },
+    "eia-electricity.spec.ts": {
+      "passed": 2,
+      "failed": 4,
+      "skipped": 0
+    },
+    "ercotqueue.spec.ts": {
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    "fema-nri.spec.ts": {
+      "passed": 0,
+      "failed": 4,
+      "skipped": 0
+    },
+    "financial-impact-chain.spec.ts": {
+      "passed": 6,
+      "failed": 2,
+      "skipped": 0
+    },
+    "home-redesign.spec.ts": {
+      "passed": 5,
+      "failed": 1,
+      "skipped": 0
+    },
+    "routing-history.spec.ts": {
+      "passed": 17,
+      "failed": 23,
+      "skipped": 0
+    },
+    "scenarios.spec.ts": {
+      "passed": 1,
+      "failed": 3,
+      "skipped": 4
+    },
+    "storage-and-reset.spec.ts": {
+      "passed": 3,
+      "failed": 3,
+      "skipped": 6
+    },
+    "workbench-refinement.spec.ts": {
+      "passed": 15,
+      "failed": 2,
+      "skipped": 5
+    }
+  },
+  "rows": [
+    {
+      "file": "advisor-material-gaps.spec.ts",
+      "line": 4,
+      "title": "shows active material gaps, updates after reclassification, and opens the matching record",
+      "project": "desktop-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 13147,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/#evidence$/\u001b[39m\nReceived string:  \u001b[31m\"https://LOCAL-PREVIEW/#analysis\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 5000ms\u001b[22m\n\u001b[2m    11 × locator resolved to <html lang=\"en\">…</html>\u001b[22m\n\u001b[2m       - unexpected value \"https://LOCAL-PREVIEW/#analysis\"\u001b[22m\n"
+        }
+      ]
+    },
+    {
+      "file": "advisor-material-gaps.spec.ts",
+      "line": 4,
+      "title": "shows active material gaps, updates after reclassification, and opens the matching record",
+      "project": "mobile-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 11524,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/#evidence$/\u001b[39m\nReceived string:  \u001b[31m\"https://LOCAL-PREVIEW/#analysis\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 5000ms\u001b[22m\n\u001b[2m    12 × locator resolved to <html lang=\"en\">…</html>\u001b[22m\n\u001b[2m       - unexpected value \"https://LOCAL-PREVIEW/#analysis\"\u001b[22m\n"
+        }
+      ]
+    },
+    {
+      "file": "ai-evidence.spec.ts",
+      "line": 18,
+      "title": "shows a fresh suggestion and routes acceptance through live model state",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 9832,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "ai-evidence.spec.ts",
+      "line": 67,
+      "title": "keeps overrides unchanged and processes all 16 items sequentially",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 11336,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "ai-evidence.spec.ts",
+      "line": 119,
+      "title": "clears suggestions after refresh and displays manual-review errors",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 12163,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "ai-evidence.spec.ts",
+      "line": 134,
+      "title": "persists acceptance when AI confirms the existing classification",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 12334,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "ai-evidence.spec.ts",
+      "line": 18,
+      "title": "shows a fresh suggestion and routes acceptance through live model state",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 7332,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "ai-evidence.spec.ts",
+      "line": 67,
+      "title": "keeps overrides unchanged and processes all 16 items sequentially",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 8201,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "ai-evidence.spec.ts",
+      "line": 119,
+      "title": "clears suggestions after refresh and displays manual-review errors",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 6678,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "ai-evidence.spec.ts",
+      "line": 134,
+      "title": "persists acceptance when AI confirms the existing classification",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 9356,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "claim-provenance.spec.ts",
+      "line": 4,
+      "title": "shows exact source metadata and safe new-tab links on major routes",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 14810,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "claim-provenance.spec.ts",
+      "line": 26,
+      "title": "keeps synthetic economics and unresolved water intentionally uncited",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 6164,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "claim-provenance.spec.ts",
+      "line": 40,
+      "title": "displays the review date for a representative 2026 claim",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 6820,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "claim-provenance.spec.ts",
+      "line": 4,
+      "title": "shows exact source metadata and safe new-tab links on major routes",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 15398,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "claim-provenance.spec.ts",
+      "line": 26,
+      "title": "keeps synthetic economics and unresolved water intentionally uncited",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 5988,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "claim-provenance.spec.ts",
+      "line": 40,
+      "title": "displays the review date for a representative 2026 claim",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 4769,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "community-agreements.spec.ts",
+      "line": 4,
+      "title": "focuses the evidence group from Overview and expands one term at a time",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 7771,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "community-agreements.spec.ts",
+      "line": 18,
+      "title": "requires a human action before an AI community proposal is applied",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 6236,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "community-agreements.spec.ts",
+      "line": 30,
+      "title": "shows exact external benchmark statuses and honest provenance links",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 6471,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "community-agreements.spec.ts",
+      "line": 58,
+      "title": "shows community gaps through Decision Resolve and questions in Advisor Lens",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 10205,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "community-agreements.spec.ts",
+      "line": 4,
+      "title": "focuses the evidence group from Overview and expands one term at a time",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 7100,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "community-agreements.spec.ts",
+      "line": 18,
+      "title": "requires a human action before an AI community proposal is applied",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 6240,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "community-agreements.spec.ts",
+      "line": 30,
+      "title": "shows exact external benchmark statuses and honest provenance links",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 6574,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "community-agreements.spec.ts",
+      "line": 58,
+      "title": "shows community gaps through Decision Resolve and questions in Advisor Lens",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 11155,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "company-exposure.spec.ts",
+      "line": 37,
+      "title": "does not fetch Compute Atlas while Home and holdings context render",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 4618,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "company-exposure.spec.ts",
+      "line": 60,
+      "title": "opens alternate-project actions within the interaction budget without directory work",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 5284,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "company-exposure.spec.ts",
+      "line": 90,
+      "title": "contains directory render failures inside the route and keeps Home usable",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 4213,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "company-exposure.spec.ts",
+      "line": 102,
+      "title": "keeps workbench navigation responsive while the directory API stalls",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 5602,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "company-exposure.spec.ts",
+      "line": 121,
+      "title": "can leave a representative large directory response without a main-thread lock",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 4775,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "company-exposure.spec.ts",
+      "line": 152,
+      "title": "shows all six companies, drill-down summaries, and curated handoff context",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 7309,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "company-exposure.spec.ts",
+      "line": 175,
+      "title": "records safe holding and project action events",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 5735,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "company-exposure.spec.ts",
+      "line": 217,
+      "title": "shows the requested connection badge on each company detail selection",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 7840,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "company-exposure.spec.ts",
+      "line": 237,
+      "title": "places Home analysis actions before context and opens the custom project dialog",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 4264,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "company-exposure.spec.ts",
+      "line": 283,
+      "title": "keeps the directory on its secondary route and clears company context on reset",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 6533,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "company-exposure.spec.ts",
+      "line": 298,
+      "title": "lets a directory facility continue into analysis after research times out",
+      "project": "desktop-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 9509,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/#brief$/\u001b[39m\nReceived string:  \u001b[31m\"https://LOCAL-PREVIEW/#analysis\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 5000ms\u001b[22m\n\u001b[2m    12 × locator resolved to <html lang=\"en\">…</html>\u001b[22m\n\u001b[2m       - unexpected value \"https://LOCAL-PREVIEW/#analysis\"\u001b[22m\n"
+        }
+      ]
+    },
+    {
+      "file": "company-exposure.spec.ts",
+      "line": 37,
+      "title": "does not fetch Compute Atlas while Home and holdings context render",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 4153,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "company-exposure.spec.ts",
+      "line": 60,
+      "title": "opens alternate-project actions within the interaction budget without directory work",
+      "project": "mobile-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "timedOut",
+          "duration": 30167,
+          "error": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+        }
+      ]
+    },
+    {
+      "file": "company-exposure.spec.ts",
+      "line": 90,
+      "title": "contains directory render failures inside the route and keeps Home usable",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 4095,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "company-exposure.spec.ts",
+      "line": 102,
+      "title": "keeps workbench navigation responsive while the directory API stalls",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 4329,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "company-exposure.spec.ts",
+      "line": 121,
+      "title": "can leave a representative large directory response without a main-thread lock",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 3583,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "company-exposure.spec.ts",
+      "line": 152,
+      "title": "shows all six companies, drill-down summaries, and curated handoff context",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 4489,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "company-exposure.spec.ts",
+      "line": 175,
+      "title": "records safe holding and project action events",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 4352,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "company-exposure.spec.ts",
+      "line": 217,
+      "title": "shows the requested connection badge on each company detail selection",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 9964,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "company-exposure.spec.ts",
+      "line": 237,
+      "title": "places Home analysis actions before context and opens the custom project dialog",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 3583,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "company-exposure.spec.ts",
+      "line": 283,
+      "title": "keeps the directory on its secondary route and clears company context on reset",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 5224,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "company-exposure.spec.ts",
+      "line": 298,
+      "title": "lets a directory facility continue into analysis after research times out",
+      "project": "mobile-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 9236,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/#brief$/\u001b[39m\nReceived string:  \u001b[31m\"https://LOCAL-PREVIEW/#analysis\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 5000ms\u001b[22m\n\u001b[2m    13 × locator resolved to <html lang=\"en\">…</html>\u001b[22m\n\u001b[2m       - unexpected value \"https://LOCAL-PREVIEW/#analysis\"\u001b[22m\n"
+        }
+      ]
+    },
+    {
+      "file": "custom-project-research.spec.ts",
+      "line": 117,
+      "title": "launches research from Home, preserves 16 items, and resets to Stargate",
+      "project": "desktop-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 23248,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/#brief$/\u001b[39m\nReceived string:  \u001b[31m\"https://LOCAL-PREVIEW/#analysis\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 5000ms\u001b[22m\n\u001b[2m    7 × locator resolved to <html lang=\"en\">…</html>\u001b[22m\n\u001b[2m      - unexpected value \"https://LOCAL-PREVIEW/#analysis\"\u001b[22m\n"
+        }
+      ]
+    },
+    {
+      "file": "custom-project-research.spec.ts",
+      "line": 235,
+      "title": "keeps reviewer source corrections behind the disclosure",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 8610,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "custom-project-research.spec.ts",
+      "line": 261,
+      "title": "lets a reviewer force a provider refresh and exposes the resulting cache state",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 6907,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "custom-project-research.spec.ts",
+      "line": 282,
+      "title": "researches unresolved inputs and stages a source-backed proposal for human acceptance",
+      "project": "desktop-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 9664,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/#brief$/\u001b[39m\nReceived string:  \u001b[31m\"https://LOCAL-PREVIEW/#analysis\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 5000ms\u001b[22m\n\u001b[2m    3 × locator resolved to <html lang=\"en\">…</html>\u001b[22m\n\u001b[2m      - unexpected value \"https://LOCAL-PREVIEW/#directory\"\u001b[22m\n\u001b[2m    9 × locator resolved to <html lang=\"en\">…</html>\u001b[22m\n\u001b[2m      - unexpected value \"https://LOCAL-PREVIEW/#analysis\"\u001b[22m\n"
+        }
+      ]
+    },
+    {
+      "file": "custom-project-research.spec.ts",
+      "line": 377,
+      "title": "labels the standardized capacity fallback when research returns no usable capacity",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 4957,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "custom-project-research.spec.ts",
+      "line": 398,
+      "title": "shows preserved and downgraded AI findings with partial source coverage",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 6333,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "custom-project-research.spec.ts",
+      "line": 433,
+      "title": "offers a clearly labeled default-assumptions case after the timeout retry fails",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 5254,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "custom-project-research.spec.ts",
+      "line": 465,
+      "title": "records a research handoff with safe project dimensions",
+      "project": "desktop-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 5654,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // deep equality\u001b[22m\n\n\u001b[32m- Expected  - 12\u001b[39m\n\u001b[31m+ Received  +  1\u001b[39m\n\n\u001b[32m- Array [\u001b[39m\n\u001b[32m-   Object {\u001b[39m\n\u001b[32m-     \"data\": Object {\u001b[39m\n\u001b[32m-       \"company\": \"none\",\u001b[39m\n\u001b[32m-       \"destination\": \"case_brief\",\u001b[39m\n\u001b[32m-       \"project_id\": \"custom_project\",\u001b[39m\n\u001b[32m-       \"project_kind\": \"custom\",\u001b[39m\n\u001b[32m-       \"research_mode\": \"ai_researched\",\u001b[39m\n\u001b[32m-     },\u001b[39m\n\u001b[32m-     \"name\": \"research_handoff_completed\",\u001b[39m\n\u001b[32m-   },\u001b[39m\n\u001b[32m- ]\u001b[39m\n\u001b[31m+ Array []\u001b[39m"
+        }
+      ]
+    },
+    {
+      "file": "custom-project-research.spec.ts",
+      "line": 507,
+      "title": "keeps the scope disclosure closed by default on the curated case",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 6509,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "custom-project-research.spec.ts",
+      "line": 117,
+      "title": "launches research from Home, preserves 16 items, and resets to Stargate",
+      "project": "mobile-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 24024,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/#brief$/\u001b[39m\nReceived string:  \u001b[31m\"https://LOCAL-PREVIEW/#analysis\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 5000ms\u001b[22m\n\u001b[2m    12 × locator resolved to <html lang=\"en\">…</html>\u001b[22m\n\u001b[2m       - unexpected value \"https://LOCAL-PREVIEW/#analysis\"\u001b[22m\n"
+        }
+      ]
+    },
+    {
+      "file": "custom-project-research.spec.ts",
+      "line": 235,
+      "title": "keeps reviewer source corrections behind the disclosure",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 6051,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "custom-project-research.spec.ts",
+      "line": 261,
+      "title": "lets a reviewer force a provider refresh and exposes the resulting cache state",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 6324,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "custom-project-research.spec.ts",
+      "line": 282,
+      "title": "researches unresolved inputs and stages a source-backed proposal for human acceptance",
+      "project": "mobile-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 6544,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/#brief$/\u001b[39m\nReceived string:  \u001b[31m\"https://LOCAL-PREVIEW/#analysis\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 5000ms\u001b[22m\n\u001b[2m    2 × locator resolved to <html lang=\"en\">…</html>\u001b[22m\n\u001b[2m      - unexpected value \"https://LOCAL-PREVIEW/#directory\"\u001b[22m\n\u001b[2m    7 × locator resolved to <html lang=\"en\">…</html>\u001b[22m\n\u001b[2m      - unexpected value \"https://LOCAL-PREVIEW/#analysis\"\u001b[22m\n"
+        }
+      ]
+    },
+    {
+      "file": "custom-project-research.spec.ts",
+      "line": 377,
+      "title": "labels the standardized capacity fallback when research returns no usable capacity",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 4496,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "custom-project-research.spec.ts",
+      "line": 398,
+      "title": "shows preserved and downgraded AI findings with partial source coverage",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 6543,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "custom-project-research.spec.ts",
+      "line": 433,
+      "title": "offers a clearly labeled default-assumptions case after the timeout retry fails",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 5016,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "custom-project-research.spec.ts",
+      "line": 465,
+      "title": "records a research handoff with safe project dimensions",
+      "project": "mobile-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 4573,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // deep equality\u001b[22m\n\n\u001b[32m- Expected  - 12\u001b[39m\n\u001b[31m+ Received  +  1\u001b[39m\n\n\u001b[32m- Array [\u001b[39m\n\u001b[32m-   Object {\u001b[39m\n\u001b[32m-     \"data\": Object {\u001b[39m\n\u001b[32m-       \"company\": \"none\",\u001b[39m\n\u001b[32m-       \"destination\": \"case_brief\",\u001b[39m\n\u001b[32m-       \"project_id\": \"custom_project\",\u001b[39m\n\u001b[32m-       \"project_kind\": \"custom\",\u001b[39m\n\u001b[32m-       \"research_mode\": \"ai_researched\",\u001b[39m\n\u001b[32m-     },\u001b[39m\n\u001b[32m-     \"name\": \"research_handoff_completed\",\u001b[39m\n\u001b[32m-   },\u001b[39m\n\u001b[32m- ]\u001b[39m\n\u001b[31m+ Array []\u001b[39m"
+        }
+      ]
+    },
+    {
+      "file": "custom-project-research.spec.ts",
+      "line": 507,
+      "title": "keeps the scope disclosure closed by default on the curated case",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 4365,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "data-freshness.spec.ts",
+      "line": 6,
+      "title": "shows the expandable three-source bar only on workbench routes",
+      "project": "desktop-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 14123,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  getByTestId('data-source-status-eia')\nExpected: \u001b[32m\"Embedded\"\u001b[39m\nReceived: \u001b[31m\"Live · Jun 1, 2026\"\u001b[39m\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveText\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('data-source-status-eia')\u001b[22m\n\u001b[2m    14 × locator resolved to <span data-component-name=\"span\" data-testid=\"data-source-status-eia\" data-replit-metadata=\"artifacts/safeloc-diligence-workbench/src/components/DataSources.tsx:43:4\" aria-label=\"U.S. Energy Information Administration Open Data, Live, Jun 1, 2026, version Bundled case baseline, provider response\" class=\"inline-flex items-center gap-1.5 rounded-full border border-transparent font-mono font-bold uppercase tracking-[0.09em] px-2 py-1 text-[8px]\">…</span>\u001b[22m\n\u001b[2m       - unexpected value \"Live · Jun 1, 2026\"\u001b[22m\n"
+        }
+      ]
+    },
+    {
+      "file": "data-freshness.spec.ts",
+      "line": 30,
+      "title": "shows truthful ERCOT aggregates, named-record guard, and developer diagnostics",
+      "project": "desktop-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 7365,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator:  getByTestId('ercot-queue-statistics')\nExpected: visible\nReceived: hidden\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('ercot-queue-statistics')\u001b[22m\n\u001b[2m    7 × locator resolved to <section data-component-name=\"section\" aria-labelledby=\"ercot-queue-title\" data-testid=\"ercot-queue-statistics\" class=\"mt-5 rounded-xl border border-[#cbd8d4] bg-white p-5 md:p-6\" data-replit-metadata=\"artifacts/safeloc-diligence-workbench/src/pages/CaseBrief.tsx:243:6\">…</section>\u001b[22m\n\u001b[2m      - unexpected value \"hidden\"\u001b[22m\n"
+        }
+      ]
+    },
+    {
+      "file": "data-freshness.spec.ts",
+      "line": 52,
+      "title": "keeps evidence freshness separate from classification and model mechanics",
+      "project": "desktop-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 7693,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('evidence-origin-electricity_cost')\nExpected: \u001b[32m\"Embedded\"\u001b[39m\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toHaveText\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('evidence-origin-electricity_cost')\u001b[22m\n"
+        }
+      ]
+    },
+    {
+      "file": "data-freshness.spec.ts",
+      "line": 68,
+      "title": "documents the three source integrations and the fallback rule in How It Works",
+      "project": "desktop-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 6328,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('tour-data-sources').getByRole('heading', { name: 'Data Sources' })\nExpected: visible\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('tour-data-sources').getByRole('heading', { name: 'Data Sources' })\u001b[22m\n"
+        }
+      ]
+    },
+    {
+      "file": "data-freshness.spec.ts",
+      "line": 6,
+      "title": "shows the expandable three-source bar only on workbench routes",
+      "project": "mobile-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 11823,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  getByTestId('data-source-status-eia')\nExpected: \u001b[32m\"Embedded\"\u001b[39m\nReceived: \u001b[31m\"Live · Jun 1, 2026\"\u001b[39m\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveText\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('data-source-status-eia')\u001b[22m\n\u001b[2m    14 × locator resolved to <span data-component-name=\"span\" data-testid=\"data-source-status-eia\" data-replit-metadata=\"artifacts/safeloc-diligence-workbench/src/components/DataSources.tsx:43:4\" aria-label=\"U.S. Energy Information Administration Open Data, Live, Jun 1, 2026, version Bundled case baseline, provider response\" class=\"inline-flex items-center gap-1.5 rounded-full border border-transparent font-mono font-bold uppercase tracking-[0.09em] px-2 py-1 text-[8px]\">…</span>\u001b[22m\n\u001b[2m       - unexpected value \"Live · Jun 1, 2026\"\u001b[22m\n"
+        }
+      ]
+    },
+    {
+      "file": "data-freshness.spec.ts",
+      "line": 30,
+      "title": "shows truthful ERCOT aggregates, named-record guard, and developer diagnostics",
+      "project": "mobile-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 9505,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator:  getByTestId('ercot-queue-statistics')\nExpected: visible\nReceived: hidden\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('ercot-queue-statistics')\u001b[22m\n\u001b[2m    12 × locator resolved to <section data-component-name=\"section\" aria-labelledby=\"ercot-queue-title\" data-testid=\"ercot-queue-statistics\" class=\"mt-5 rounded-xl border border-[#cbd8d4] bg-white p-5 md:p-6\" data-replit-metadata=\"artifacts/safeloc-diligence-workbench/src/pages/CaseBrief.tsx:243:6\">…</section>\u001b[22m\n\u001b[2m       - unexpected value \"hidden\"\u001b[22m\n"
+        }
+      ]
+    },
+    {
+      "file": "data-freshness.spec.ts",
+      "line": 52,
+      "title": "keeps evidence freshness separate from classification and model mechanics",
+      "project": "mobile-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 7091,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('evidence-origin-electricity_cost')\nExpected: \u001b[32m\"Embedded\"\u001b[39m\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toHaveText\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('evidence-origin-electricity_cost')\u001b[22m\n"
+        }
+      ]
+    },
+    {
+      "file": "data-freshness.spec.ts",
+      "line": 68,
+      "title": "documents the three source integrations and the fallback rule in How It Works",
+      "project": "mobile-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 6085,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('tour-data-sources').getByRole('heading', { name: 'Data Sources' })\nExpected: visible\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('tour-data-sources').getByRole('heading', { name: 'Data Sources' })\u001b[22m\n"
+        }
+      ]
+    },
+    {
+      "file": "diligence-agent.spec.ts",
+      "line": 12,
+      "title": "runs visible stages and persists human review without changing evidence",
+      "project": "desktop-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "timedOut",
+          "duration": 30645,
+          "error": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+        }
+      ]
+    },
+    {
+      "file": "diligence-agent.spec.ts",
+      "line": 38,
+      "title": "keeps the action and stages usable on a narrow screen",
+      "project": "desktop-chromium",
+      "status": "skipped",
+      "expected": "skipped",
+      "results": [
+        {
+          "status": "skipped",
+          "duration": 6891,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "diligence-agent.spec.ts",
+      "line": 50,
+      "title": "reset clears the agent run with the active analysis",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 12300,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "diligence-agent.spec.ts",
+      "line": 12,
+      "title": "runs visible stages and persists human review without changing evidence",
+      "project": "mobile-chromium",
+      "status": "skipped",
+      "expected": "skipped",
+      "results": [
+        {
+          "status": "skipped",
+          "duration": 5373,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "diligence-agent.spec.ts",
+      "line": 38,
+      "title": "keeps the action and stages usable on a narrow screen",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 10153,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "diligence-agent.spec.ts",
+      "line": 50,
+      "title": "reset clears the agent run with the active analysis",
+      "project": "mobile-chromium",
+      "status": "skipped",
+      "expected": "skipped",
+      "results": [
+        {
+          "status": "skipped",
+          "duration": 5143,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "eia-electricity.spec.ts",
+      "line": 40,
+      "title": "uses live EIA evidence without overwriting the analyst classification",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 6920,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "eia-electricity.spec.ts",
+      "line": 67,
+      "title": "labels a server-cached EIA observation and does not offer live verification",
+      "project": "desktop-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 10924,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoContainText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('model-electricity-attribution')\nExpected substring: \u001b[32m\"$54.1/MWh\"\u001b[39m\nReceived string:    \u001b[31m\"Electricity cost: $56.8/MWh (U.S. Energy Information Administration Open Data, cached · Aug 1, 2026)\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toContainText\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('model-electricity-attribution')\u001b[22m\n\u001b[2m    13 × locator resolved to <p data-component-name=\"p\" data-testid=\"model-electricity-attribution\" data-replit-metadata=\"artifacts/safeloc-diligence-workbench/src/pages/FinancialMateriality.tsx:462:9\" class=\"mt-4 rounded-lg border border-[#cbd8d4] bg-[#f1f5f3] px-3 py-2 font-mono text-[11px] font-bold text-[#344550]\">Electricity cost: $56.8/MWh (U.S. Energy Informat…</p>\u001b[22m\n\u001b[2m       - unexpected value \"Electricity cost: $56.8/MWh (U.S. Energy Information Administration Open Data, cached · Aug "
+        }
+      ]
+    },
+    {
+      "file": "eia-electricity.spec.ts",
+      "line": 84,
+      "title": "keeps the hardcoded model usable when EIA and cache are unavailable",
+      "project": "desktop-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 10739,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  getByTestId('model-electricity-attribution')\nExpected: \u001b[32m\"Electricity cost: $4\u001b[7m2\u001b[27m/MWh (embedded estimate)\"\u001b[39m\nReceived: \u001b[31m\"Electricity cost: $4\u001b[7m4.1\u001b[27m/MWh (embedded estimate)\"\u001b[39m\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveText\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('model-electricity-attribution')\u001b[22m\n\u001b[2m    13 × locator resolved to <p data-component-name=\"p\" data-testid=\"model-electricity-attribution\" data-replit-metadata=\"artifacts/safeloc-diligence-workbench/src/pages/FinancialMateriality.tsx:462:9\" class=\"mt-4 rounded-lg border border-[#cbd8d4] bg-[#f1f5f3] px-3 py-2 font-mono text-[11px] font-bold text-[#344550]\">Electricity cost: $44.1/MWh (embedded estimate)</p>\u001b[22m\n\u001b[2m       - unexpected value \"Electricity cost: $44.1/MWh (embedded estimate)\"\u001b[22m\n"
+        }
+      ]
+    },
+    {
+      "file": "eia-electricity.spec.ts",
+      "line": 40,
+      "title": "uses live EIA evidence without overwriting the analyst classification",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 5619,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "eia-electricity.spec.ts",
+      "line": 67,
+      "title": "labels a server-cached EIA observation and does not offer live verification",
+      "project": "mobile-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 10093,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoContainText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('model-electricity-attribution')\nExpected substring: \u001b[32m\"$54.1/MWh\"\u001b[39m\nReceived string:    \u001b[31m\"Electricity cost: $56.8/MWh (U.S. Energy Information Administration Open Data, cached · Aug 1, 2026)\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toContainText\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('model-electricity-attribution')\u001b[22m\n\u001b[2m    13 × locator resolved to <p data-component-name=\"p\" data-testid=\"model-electricity-attribution\" data-replit-metadata=\"artifacts/safeloc-diligence-workbench/src/pages/FinancialMateriality.tsx:462:9\" class=\"mt-4 rounded-lg border border-[#cbd8d4] bg-[#f1f5f3] px-3 py-2 font-mono text-[11px] font-bold text-[#344550]\">Electricity cost: $56.8/MWh (U.S. Energy Informat…</p>\u001b[22m\n\u001b[2m       - unexpected value \"Electricity cost: $56.8/MWh (U.S. Energy Information Administration Open Data, cached · Aug "
+        }
+      ]
+    },
+    {
+      "file": "eia-electricity.spec.ts",
+      "line": 84,
+      "title": "keeps the hardcoded model usable when EIA and cache are unavailable",
+      "project": "mobile-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 10083,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  getByTestId('model-electricity-attribution')\nExpected: \u001b[32m\"Electricity cost: $4\u001b[7m2\u001b[27m/MWh (embedded estimate)\"\u001b[39m\nReceived: \u001b[31m\"Electricity cost: $4\u001b[7m4.1\u001b[27m/MWh (embedded estimate)\"\u001b[39m\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveText\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('model-electricity-attribution')\u001b[22m\n\u001b[2m    14 × locator resolved to <p data-component-name=\"p\" data-testid=\"model-electricity-attribution\" data-replit-metadata=\"artifacts/safeloc-diligence-workbench/src/pages/FinancialMateriality.tsx:462:9\" class=\"mt-4 rounded-lg border border-[#cbd8d4] bg-[#f1f5f3] px-3 py-2 font-mono text-[11px] font-bold text-[#344550]\">Electricity cost: $44.1/MWh (embedded estimate)</p>\u001b[22m\n\u001b[2m       - unexpected value \"Electricity cost: $44.1/MWh (embedded estimate)\"\u001b[22m\n"
+        }
+      ]
+    },
+    {
+      "file": "ercotqueue.spec.ts",
+      "line": 55,
+      "title": "surfaces named records and keeps verification explicit",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 4096,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "ercotqueue.spec.ts",
+      "line": 68,
+      "title": "shows exactly three source cards and ERCOT/EIA-only diagnostics",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 2427,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "ercotqueue.spec.ts",
+      "line": 55,
+      "title": "surfaces named records and keeps verification explicit",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 3660,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "ercotqueue.spec.ts",
+      "line": 68,
+      "title": "shows exactly three source cards and ERCOT/EIA-only diagnostics",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 2454,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "fema-nri.spec.ts",
+      "line": 3,
+      "title": "renders the Taylor County FEMA profile and route-aware attribution",
+      "project": "desktop-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 7559,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator:  getByTestId('card-fema-climate-risk')\nExpected: visible\nReceived: hidden\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('card-fema-climate-risk')\u001b[22m\n\u001b[2m    7 × locator resolved to <section data-component-name=\"section\" data-testid=\"card-fema-climate-risk\" aria-labelledby=\"fema-climate-risk-title\" class=\"mt-5 rounded-xl border border-[#cbd8d4] bg-white p-5 md:p-6\" data-replit-metadata=\"artifacts/safeloc-diligence-workbench/src/pages/CaseBrief.tsx:289:6\">…</section>\u001b[22m\n\u001b[2m      - unexpected value \"hidden\"\u001b[22m\n"
+        }
+      ]
+    },
+    {
+      "file": "fema-nri.spec.ts",
+      "line": 22,
+      "title": "uses FEMA values and citations in the two Taylor County evidence records",
+      "project": "desktop-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 5527,
+          "error": "Error: locator.click: Error: strict mode violation: getByTestId('row-evidence-site_hazard_exposure').locator('summary') resolved to 2 elements:\n    1) <summary data-component-name=\"summary\" data-replit-metadata=\"artifacts/safeloc-diligence-workbench/src/pages/EvidenceRoom.tsx:716:8\" class=\"grid cursor-pointer list-none gap-3 px-4 py-3 transition-colors hover:bg-[#fbfcfa] md:grid-cols-[1.55fr_0.8fr_1.55fr] md:items-center md:px-5 [&::-webkit-details-marker]:hidden\">…</summary> aka getByText('Site Hazard Exposure ProfileDrought: Relatively Moderate · Heat Wave:')\n    2) <summary data-component-name=\"summary\" aria-label=\"Source details for Taylor County FEMA profile\" data-replit-metadata=\"artifacts/safeloc-diligence-workbench/src/components/ClaimCitation.tsx:28:6\" class=\"inline-flex min-h-7 cursor-pointer list-none items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.08em] [&::-webkit-details-marker]:hidden border-[#aac6f4] bg-[#eef5ff] tex"
+        }
+      ]
+    },
+    {
+      "file": "fema-nri.spec.ts",
+      "line": 3,
+      "title": "renders the Taylor County FEMA profile and route-aware attribution",
+      "project": "mobile-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 6856,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator:  getByTestId('card-fema-climate-risk')\nExpected: visible\nReceived: hidden\nTimeout:  5000ms\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('card-fema-climate-risk')\u001b[22m\n\u001b[2m    8 × locator resolved to <section data-component-name=\"section\" data-testid=\"card-fema-climate-risk\" aria-labelledby=\"fema-climate-risk-title\" class=\"mt-5 rounded-xl border border-[#cbd8d4] bg-white p-5 md:p-6\" data-replit-metadata=\"artifacts/safeloc-diligence-workbench/src/pages/CaseBrief.tsx:289:6\">…</section>\u001b[22m\n\u001b[2m      - unexpected value \"hidden\"\u001b[22m\n"
+        }
+      ]
+    },
+    {
+      "file": "fema-nri.spec.ts",
+      "line": 22,
+      "title": "uses FEMA values and citations in the two Taylor County evidence records",
+      "project": "mobile-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 5070,
+          "error": "Error: locator.click: Error: strict mode violation: getByTestId('row-evidence-site_hazard_exposure').locator('summary') resolved to 2 elements:\n    1) <summary data-component-name=\"summary\" data-replit-metadata=\"artifacts/safeloc-diligence-workbench/src/pages/EvidenceRoom.tsx:716:8\" class=\"grid cursor-pointer list-none gap-3 px-4 py-3 transition-colors hover:bg-[#fbfcfa] md:grid-cols-[1.55fr_0.8fr_1.55fr] md:items-center md:px-5 [&::-webkit-details-marker]:hidden\">…</summary> aka getByText('Site Hazard Exposure ProfileDrought: Relatively Moderate · Heat Wave:')\n    2) <summary data-component-name=\"summary\" aria-label=\"Source details for Taylor County FEMA profile\" data-replit-metadata=\"artifacts/safeloc-diligence-workbench/src/components/ClaimCitation.tsx:28:6\" class=\"inline-flex min-h-7 cursor-pointer list-none items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.08em] [&::-webkit-details-marker]:hidden border-[#aac6f4] bg-[#eef5ff] tex"
+        }
+      ]
+    },
+    {
+      "file": "financial-impact-chain.spec.ts",
+      "line": 4,
+      "title": "opens on the live marginal chain with a baseline/stress cash-flow comparison",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 8398,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "financial-impact-chain.spec.ts",
+      "line": 35,
+      "title": "drawer explains marginal treatment and reclassification updates the chain",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 8824,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "financial-impact-chain.spec.ts",
+      "line": 56,
+      "title": "decision consequences and advisor transmission preserve role boundaries",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 6248,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "financial-impact-chain.spec.ts",
+      "line": 69,
+      "title": "provider queue values and date semantics stay identical across public surfaces",
+      "project": "desktop-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 6281,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('shared-provider-queue-snapshot')\nExpected: visible\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('shared-provider-queue-snapshot')\u001b[22m\n"
+        }
+      ]
+    },
+    {
+      "file": "financial-impact-chain.spec.ts",
+      "line": 4,
+      "title": "opens on the live marginal chain with a baseline/stress cash-flow comparison",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 7768,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "financial-impact-chain.spec.ts",
+      "line": 35,
+      "title": "drawer explains marginal treatment and reclassification updates the chain",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 7520,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "financial-impact-chain.spec.ts",
+      "line": 56,
+      "title": "decision consequences and advisor transmission preserve role boundaries",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 4976,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "financial-impact-chain.spec.ts",
+      "line": 69,
+      "title": "provider queue values and date semantics stay identical across public surfaces",
+      "project": "mobile-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 7864,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('shared-provider-queue-snapshot')\nExpected: visible\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('shared-provider-queue-snapshot')\u001b[22m\n"
+        }
+      ]
+    },
+    {
+      "file": "home-redesign.spec.ts",
+      "line": 4,
+      "title": "keeps public navigation compact and removes the old launch-brief hierarchy",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 4043,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "home-redesign.spec.ts",
+      "line": 21,
+      "title": "reveals holding context and restores focus after the existing project dialog",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 5090,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "home-redesign.spec.ts",
+      "line": 41,
+      "title": "routes the two directory links without creating another analysis form",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 4018,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "home-redesign.spec.ts",
+      "line": 4,
+      "title": "keeps public navigation compact and removes the old launch-brief hierarchy",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 907,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "home-redesign.spec.ts",
+      "line": 21,
+      "title": "reveals holding context and restores focus after the existing project dialog",
+      "project": "mobile-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "timedOut",
+          "duration": 30404,
+          "error": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+        }
+      ]
+    },
+    {
+      "file": "home-redesign.spec.ts",
+      "line": 41,
+      "title": "routes the two directory links without creating another analysis form",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 24047,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 167,
+      "title": "supports all direct links and normalizes invalid hashes",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 12498,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 216,
+      "title": "guides the classification-to-return interaction across screens",
+      "project": "desktop-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 11666,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoContainText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('materiality-classification-prompt')\nExpected substring: \u001b[32m\"Change a classification to see the \u001b[7mreturn\u001b[27m update.\"\u001b[39m\nReceived string:    \u001b[31m\"Change a classification to see the \u001b[7mfinancial stress case, decision posture, or contextual assessment\u001b[27m update.\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toContainText\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('materiality-classification-prompt')\u001b[22m\n\u001b[2m    14 × locator resolved to <aside role=\"note\" data-component-name=\"aside\" data-testid=\"materiality-classification-prompt\" data-replit-metadata=\"artifacts/safeloc-diligence-workbench/src/pages/FinancialMateriality.tsx:204:8\" class=\"mb-5 flex items-start gap-3 rounded-lg border border-[#aac6f4] bg-[#eef5ff] px-4 py-3 text-[11px] leading-5 text-[#344550]\">…</aside>\u001b[22m\n\u001b[2m       - unexpected value \"Change a classification to"
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 241,
+      "title": "frames the financial waterfall as an evidence-quality stress test",
+      "project": "desktop-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "timedOut",
+          "duration": 30389,
+          "error": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 347,
+      "title": "keeps impact roles accessible and model behavior aligned with provenance changes",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 12037,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 385,
+      "title": "keeps canonical stress vocabulary on rendered and assistive surfaces",
+      "project": "desktop-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 5053,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mnot\u001b[2m.\u001b[22mtoMatch\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected pattern: not \u001b[32m/verified baseline|evidence-adjusted|current case|current irr is now|base case \\(all inputs verified\\)|conservative case \\(evidence-adjusted\\)|verified underwriting|prominent base return|return updated|every classification has a financial consequence|entire model recalculates/i\u001b[39m\nReceived string:      \u001b[31m\"\u001b[39m\n\u001b[31m    SAFELOCCurrent projectStargate Abilene / Taylor County, TX · IC pre-readHomeThe AI ChainAnalyze a different project How It WorksReset to DefaultStargate AbileneBLOCKED · 48% confidence-3.7%AgentOverviewEvidenceReturnsDecisionHandoffNext stepRun Diligence AgentActive analysisStargate AbileneTaylor County, TX · 1,200 MWStargate / ABI-26-001Evidence confidence48%Weighted source quality and recencyBaseline → stress IRR3.3% → -3.7%7.0 pts evidence-quality gapRecommendationBLOCKED1 material gapEvidence mixVerified3Management4Inference"
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 423,
+      "title": "shows the complete SRI origin story in the product tour",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 4101,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 435,
+      "title": "keeps portfolio context notes readable at configured browser sizes",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 6262,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 443,
+      "title": "keeps the opening and builder story readable at every browser size",
+      "project": "desktop-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 6198,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveScreenshot\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: locator('#tour-context')\n  Expected an image 1440px by 976px, received 1440px by 1232px. 370755 pixels (ratio 0.21 of all image pixels) are different.\n\n  Snapshot: how-it-works-opening.png\n\nCall log:\n\u001b[2m  - Expect \"toHaveScreenshot(how-it-works-opening.png)\" with timeout 5000ms\u001b[22m\n\u001b[2m    - verifying given screenshot expectation\u001b[22m\n\u001b[2m  - waiting for locator('#tour-context')\u001b[22m\n\u001b[2m    - locator resolved to <section id=\"tour-context\" data-component-name=\"section\" aria-labelledby=\"tour-context-title\" class=\"scroll-mt-6 bg-[#122232] px-4 pb-14 pt-12 text-white md:px-8 md:pb-20 md:pt-20\" data-replit-metadata=\"artifacts/safeloc-diligence-workbench/src/pages/HowItWorks.tsx:94:8\">…</section>\u001b[22m\n\u001b[2m  - taking element screenshot\u001b[22m\n\u001b[2m    - disabled all CSS animations\u001b[22m\n\u001b[2m  - waiting for fonts to load...\u001b[22m\n\u001b[2m  - fonts loaded\u001b[22m\n\u001b[2m  - attempting "
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 463,
+      "title": "keeps reduced-motion tour jumps immediate without changing interaction",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 4417,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 486,
+      "title": "jumps to and keeps the Under the Hood chapter readable",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 6232,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 497,
+      "title": "uses SRI terminology while preserving formal fund names",
+      "project": "desktop-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 6915,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoContainText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('text-advisor-summary')\nExpected substring: \u001b[32m\"values-aligned funds\"\u001b[39m\nReceived string:    \u001b[31m\"Live evidence postureLive evidence postureMODERATE: 2 of 4 material inputs verified. 3 of 16 total inputs verified.MODERATEMaterial sufficiency includes Verified Evidence and Management Assertion; Model Inference, User Assumption, and Missing Evidence remain material gaps.Material inputs driving MODERATEWhat still needs evidence2 gapsLocal Water Rights & AllocationMissingOpen recordWater Source ResilienceInferenceOpen record\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toContainText\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('text-advisor-summary')\u001b[22m\n\u001b[2m    8 × locator resolved to <section data-component-name=\"section\" data-testid=\"text-advisor-summary\" aria-labelledby=\"advisor-live-posture-heading\" class=\"mb-5 rounded-xl border bor"
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 508,
+      "title": "opens and returns from the tour using the desktop header",
+      "project": "desktop-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 11287,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/#brief$/\u001b[39m\nReceived string:  \u001b[31m\"https://LOCAL-PREVIEW/#analysis\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 5000ms\u001b[22m\n\u001b[2m    12 × locator resolved to <html lang=\"en\">…</html>\u001b[22m\n\u001b[2m       - unexpected value \"https://LOCAL-PREVIEW/#analysis\"\u001b[22m\n"
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 520,
+      "title": "opens and returns from the tour using mobile navigation",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 4547,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 536,
+      "title": "shows infrastructure bifurcation framing on each editorial route",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 5970,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 568,
+      "title": "preserves navigation order through back and forward",
+      "project": "desktop-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "timedOut",
+          "duration": 30600,
+          "error": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 591,
+      "title": "opens the AI chain from the header and preserves the five-step workbench",
+      "project": "desktop-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 11273,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/#brief$/\u001b[39m\nReceived string:  \u001b[31m\"https://LOCAL-PREVIEW/#analysis\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 5000ms\u001b[22m\n\u001b[2m    12 × locator resolved to <html lang=\"en\">…</html>\u001b[22m\n\u001b[2m       - unexpected value \"https://LOCAL-PREVIEW/#analysis\"\u001b[22m\n"
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 617,
+      "title": "renders the seven stages in order at the direct value-chain link",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 4251,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 653,
+      "title": "renders the SRI thesis, live evidence posture, and advisor handoff",
+      "project": "desktop-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 11668,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  getByTestId('text-governed-ai-connection')\nExpected: \u001b[32m\"You just experienced governed AI in this tool. An AI proposed evidence classifications. You decided which to accept. That interaction is the future of financial advising: AI accelerates the analysis, the advisor makes the judgment call. The Gallup data confirms what you already felt: 79% of Americans trust advisors. 3% trust AI. The advisor who can work with AI and govern its output has the most defensible position in the industry.\"\u001b[39m\nReceived: \u001b[31m\"You just experienced governed AI in this tool. An AI proposed evidence classifications. You decided which to accept. That interaction is the future of financial advising: AI accelerates the analysis, the advisor makes the judgment call. The Gallup data confirms what you already felt: 79% of Americans trust advisors. 3% trust AI. The advisor who can work with AI a"
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 749,
+      "title": "rounds financial metrics only at the presentation boundary",
+      "project": "desktop-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 10861,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoContainText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('toast-reclassification')\nExpected pattern: \u001b[32m/[-+]\\d+\\.\\d pts IRR/\u001b[39m\nReceived string:  \u001b[31m\"Evidence reclassifiedConservative stress case updated from -3.7% to -3.7%.less than 0.01 pts IRR×\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toContainText\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('toast-reclassification')\u001b[22m\n\u001b[2m    14 × locator resolved to <div role=\"status\" aria-live=\"polite\" data-component-name=\"div\" data-testid=\"toast-reclassification\" data-replit-metadata=\"artifacts/safeloc-diligence-workbench/src/App.tsx:296:8\" class=\"fixed bottom-5 right-4 z-40 w-[min(360px,calc(100vw-2rem))] rounded-lg border border-[#cbd8d4] bg-[#122232] p-4 text-white shadow-xl md:bottom-7 md:right-7\">…</div>\u001b[22m\n\u001b[2m       - unexpected value \"Evidence reclassifiedConservative stress case updated from -3.7% to -3.7%.less than 0.01 pts IRR×"
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 779,
+      "title": "keeps market comparisons adjacent to their provenance boundary",
+      "project": "desktop-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 11784,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mnot\u001b[2m.\u001b[22mtoContain\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // indexOf\u001b[22m\n\nExpected substring: not \u001b[32m\"Project Kilby\"\u001b[39m\nReceived string:        \u001b[31m\"SAFELOC\u001b[39m\n\u001b[31mCURRENT PROJECT\u001b[39m\n\u001b[31mStargate Abilene / Taylor County, TX · IC pre-read\u001b[39m\n\u001b[31mHOME\u001b[39m\n\u001b[31mTHE AI CHAIN\u001b[39m\n\u001b[31mANALYZE A DIFFERENT PROJECT\u001b[39m\n\u001b[31mHOW IT WORKS\u001b[39m\n\u001b[31mRESET TO DEFAULT\u001b[39m\n\u001b[31mACTIVE ANALYSIS\u001b[39m\n\u001b[31mStargate Abilene\u001b[39m\n\u001b[31mTaylor County, TX · 1,200 MW\u001b[39m\n\u001b[31mSTARGATE / ABI-26-001\u001b[39m\n\u001b[31mEVIDENCE CONFIDENCE\u001b[39m\n\u001b[31m48%\u001b[39m\n\u001b[31mWeighted source quality and recency\u001b[39m\n\u001b[31mBASELINE → STRESS IRR\u001b[39m\n\u001b[31m13.3% → 9.1%\u001b[39m\n\u001b[31m4.3 pts evidence-quality gap\u001b[39m\n\u001b[31mRECOMMENDATION\u001b[39m\n\u001b[31mBLOCKED\u001b[39m\n\u001b[31m1 material gap\u001b[39m\n\u001b[31mEVIDENCE MIX\u001b[39m\n\u001b[31mVerified\u001b[39m\n\u001b[31m3\u001b[39m\n\u001b[31mManagement\u001b[39m\n\u001b[31m4\u001b[39m\n\u001b[31mInference\u001b[39m\n\u001b[31m4\u001b[39m\n\u001b[31mAssumption\u001b[39m\n\u001b[31m3\u001b[39m\n\u001b[31mMissing\u001b[39m\n\u001b[31m2\u001b[39m\n\u001b[31mNEXT S"
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 167,
+      "title": "supports all direct links and normalizes invalid hashes",
+      "project": "mobile-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "timedOut",
+          "duration": 32719,
+          "error": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 216,
+      "title": "guides the classification-to-return interaction across screens",
+      "project": "mobile-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 24175,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoContainText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('materiality-classification-prompt')\nExpected substring: \u001b[32m\"Change a classification to see the \u001b[7mreturn\u001b[27m update.\"\u001b[39m\nReceived string:    \u001b[31m\"Change a classification to see the \u001b[7mfinancial stress case, decision posture, or contextual assessment\u001b[27m update.\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toContainText\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('materiality-classification-prompt')\u001b[22m\n\u001b[2m    13 × locator resolved to <aside role=\"note\" data-component-name=\"aside\" data-testid=\"materiality-classification-prompt\" data-replit-metadata=\"artifacts/safeloc-diligence-workbench/src/pages/FinancialMateriality.tsx:204:8\" class=\"mb-5 flex items-start gap-3 rounded-lg border border-[#aac6f4] bg-[#eef5ff] px-4 py-3 text-[11px] leading-5 text-[#344550]\">…</aside>\u001b[22m\n\u001b[2m       - unexpected value \"Change a classification to"
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 241,
+      "title": "frames the financial waterfall as an evidence-quality stress test",
+      "project": "mobile-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "timedOut",
+          "duration": 30617,
+          "error": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 347,
+      "title": "keeps impact roles accessible and model behavior aligned with provenance changes",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 10171,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 385,
+      "title": "keeps canonical stress vocabulary on rendered and assistive surfaces",
+      "project": "mobile-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 5137,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mnot\u001b[2m.\u001b[22mtoMatch\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m\n\nExpected pattern: not \u001b[32m/verified baseline|evidence-adjusted|current case|current irr is now|base case \\(all inputs verified\\)|conservative case \\(evidence-adjusted\\)|verified underwriting|prominent base return|return updated|every classification has a financial consequence|entire model recalculates/i\u001b[39m\nReceived string:      \u001b[31m\"\u001b[39m\n\u001b[31m    SAFELOCCurrent projectStargate Abilene / Taylor County, TX · IC pre-readHomeThe AI ChainAnalyze a different project How It WorksReset to DefaultStargate AbileneBLOCKED · 48% confidence-3.7%AgentOverviewEvidenceReturnsDecisionHandoffNext stepRun Diligence AgentActive analysisStargate AbileneTaylor County, TX · 1,200 MWStargate / ABI-26-001Evidence confidence48%Weighted source quality and recencyBaseline → stress IRR3.3% → -3.7%7.0 pts evidence-quality gapRecommendationBLOCKED1 material gapEvidence mixVerified3Management4Inference"
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 423,
+      "title": "shows the complete SRI origin story in the product tour",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 1160,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 435,
+      "title": "keeps portfolio context notes readable at configured browser sizes",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 5240,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 443,
+      "title": "keeps the opening and builder story readable at every browser size",
+      "project": "mobile-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 4374,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveScreenshot\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: locator('#tour-context')\n  Expected an image 390px by 1122px, received 390px by 1497px. 154543 pixels (ratio 0.27 of all image pixels) are different.\n\n  Snapshot: how-it-works-opening.png\n\nCall log:\n\u001b[2m  - Expect \"toHaveScreenshot(how-it-works-opening.png)\" with timeout 5000ms\u001b[22m\n\u001b[2m    - verifying given screenshot expectation\u001b[22m\n\u001b[2m  - waiting for locator('#tour-context')\u001b[22m\n\u001b[2m    - locator resolved to <section id=\"tour-context\" data-component-name=\"section\" aria-labelledby=\"tour-context-title\" class=\"scroll-mt-6 bg-[#122232] px-4 pb-14 pt-12 text-white md:px-8 md:pb-20 md:pt-20\" data-replit-metadata=\"artifacts/safeloc-diligence-workbench/src/pages/HowItWorks.tsx:94:8\">…</section>\u001b[22m\n\u001b[2m  - taking element screenshot\u001b[22m\n\u001b[2m    - disabled all CSS animations\u001b[22m\n\u001b[2m  - waiting for fonts to load...\u001b[22m\n\u001b[2m  - fonts loaded\u001b[22m\n\u001b[2m  - attempting s"
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 463,
+      "title": "keeps reduced-motion tour jumps immediate without changing interaction",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 3710,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 486,
+      "title": "jumps to and keeps the Under the Hood chapter readable",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 3631,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 497,
+      "title": "uses SRI terminology while preserving formal fund names",
+      "project": "mobile-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 7068,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoContainText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('text-advisor-summary')\nExpected substring: \u001b[32m\"values-aligned funds\"\u001b[39m\nReceived string:    \u001b[31m\"Live evidence postureLive evidence postureMODERATE: 2 of 4 material inputs verified. 3 of 16 total inputs verified.MODERATEMaterial sufficiency includes Verified Evidence and Management Assertion; Model Inference, User Assumption, and Missing Evidence remain material gaps.Material inputs driving MODERATEWhat still needs evidence2 gapsLocal Water Rights & AllocationMissingOpen recordWater Source ResilienceInferenceOpen record\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toContainText\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('text-advisor-summary')\u001b[22m\n\u001b[2m    9 × locator resolved to <section data-component-name=\"section\" data-testid=\"text-advisor-summary\" aria-labelledby=\"advisor-live-posture-heading\" class=\"mb-5 rounded-xl border bor"
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 508,
+      "title": "opens and returns from the tour using the desktop header",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 4099,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 520,
+      "title": "opens and returns from the tour using mobile navigation",
+      "project": "mobile-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 10931,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/#brief$/\u001b[39m\nReceived string:  \u001b[31m\"https://LOCAL-PREVIEW/#analysis\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 5000ms\u001b[22m\n\u001b[2m    12 × locator resolved to <html lang=\"en\">…</html>\u001b[22m\n\u001b[2m       - unexpected value \"https://LOCAL-PREVIEW/#analysis\"\u001b[22m\n"
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 536,
+      "title": "shows infrastructure bifurcation framing on each editorial route",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 5033,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 568,
+      "title": "preserves navigation order through back and forward",
+      "project": "mobile-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "timedOut",
+          "duration": 30486,
+          "error": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 591,
+      "title": "opens the AI chain from the header and preserves the five-step workbench",
+      "project": "mobile-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 11069,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/#brief$/\u001b[39m\nReceived string:  \u001b[31m\"https://LOCAL-PREVIEW/#analysis\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 5000ms\u001b[22m\n\u001b[2m    12 × locator resolved to <html lang=\"en\">…</html>\u001b[22m\n\u001b[2m       - unexpected value \"https://LOCAL-PREVIEW/#analysis\"\u001b[22m\n"
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 617,
+      "title": "renders the seven stages in order at the direct value-chain link",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 3911,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 653,
+      "title": "renders the SRI thesis, live evidence posture, and advisor handoff",
+      "project": "mobile-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 10620,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator:  getByTestId('text-governed-ai-connection')\nExpected: \u001b[32m\"You just experienced governed AI in this tool. An AI proposed evidence classifications. You decided which to accept. That interaction is the future of financial advising: AI accelerates the analysis, the advisor makes the judgment call. The Gallup data confirms what you already felt: 79% of Americans trust advisors. 3% trust AI. The advisor who can work with AI and govern its output has the most defensible position in the industry.\"\u001b[39m\nReceived: \u001b[31m\"You just experienced governed AI in this tool. An AI proposed evidence classifications. You decided which to accept. That interaction is the future of financial advising: AI accelerates the analysis, the advisor makes the judgment call. The Gallup data confirms what you already felt: 79% of Americans trust advisors. 3% trust AI. The advisor who can work with AI a"
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 749,
+      "title": "rounds financial metrics only at the presentation boundary",
+      "project": "mobile-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 10294,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoContainText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('toast-reclassification')\nExpected pattern: \u001b[32m/[-+]\\d+\\.\\d pts IRR/\u001b[39m\nReceived string:  \u001b[31m\"Evidence reclassifiedConservative stress case updated from -3.7% to -3.7%.less than 0.01 pts IRR×\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toContainText\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('toast-reclassification')\u001b[22m\n\u001b[2m    14 × locator resolved to <div role=\"status\" aria-live=\"polite\" data-component-name=\"div\" data-testid=\"toast-reclassification\" data-replit-metadata=\"artifacts/safeloc-diligence-workbench/src/App.tsx:296:8\" class=\"fixed bottom-5 right-4 z-40 w-[min(360px,calc(100vw-2rem))] rounded-lg border border-[#cbd8d4] bg-[#122232] p-4 text-white shadow-xl md:bottom-7 md:right-7\">…</div>\u001b[22m\n\u001b[2m       - unexpected value \"Evidence reclassifiedConservative stress case updated from -3.7% to -3.7%.less than 0.01 pts IRR×"
+        }
+      ]
+    },
+    {
+      "file": "routing-history.spec.ts",
+      "line": 779,
+      "title": "keeps market comparisons adjacent to their provenance boundary",
+      "project": "mobile-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 10707,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mnot\u001b[2m.\u001b[22mtoContain\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // indexOf\u001b[22m\n\nExpected substring: not \u001b[32m\"Project Kilby\"\u001b[39m\nReceived string:        \u001b[31m\"SAFELOC\u001b[39m\n\u001b[31mRESET TO DEFAULT\u001b[39m\n\u001b[31mStargate Abilene\u001b[39m\n\u001b[31mBLOCKED · 48% confidence\u001b[39m\n\u001b[31m9.1%\u001b[39m\n\u001b[31mAGENT\u001b[39m\n\u001b[31mOVERVIEW\u001b[39m\n\u001b[31mEVIDENCE\u001b[39m\n\u001b[31mRETURNS\u001b[39m\n\u001b[31mDECISION\u001b[39m\n\u001b[31mHANDOFF\u001b[39m\n\u001b[31mNEXT STEP\u001b[39m\n\u001b[31mRun Diligence Agent\u001b[39m\n\u001b[31mSHARED ERCOT QUEUE SNAPSHOT · LIVE PROVIDER DATA\u001b[39m\n\u001b[31mTOTAL LARGE-LOAD QUEUE\u001b[39m\n\u001b[31m466.5 GW\u001b[39m\n\u001b[31mDATA-CENTER SHARE\u001b[39m\n\u001b[31m90.2%\u001b[39m\n\u001b[31m\u001b[39m\n\u001b[31mSource: ERCOTQueue.com · aggregate values as of Jun 18, 2026; source refreshed Jul 15, 2026; provider response Sep 8, 2026; dataset freshness Aug 7, 2026. These are aggregate queue measures, not a named project confirmation or a SafeLoc financial input.\u001b[39m\n\u001b[31m\u001b[39m\n\u001b[31mGoverned Diligence Agent\u001b[39m\n\u001b[31mGOVERNED DILIGENCE AGENT\u001b[39m\n\u001b[31mRun"
+        }
+      ]
+    },
+    {
+      "file": "scenarios.spec.ts",
+      "line": 44,
+      "title": "captures immutable snapshots and enforces the five-scenario limit",
+      "project": "desktop-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 6332,
+          "error": "TypeError: Cannot read properties of null (reading 'toFixed')"
+        }
+      ]
+    },
+    {
+      "file": "scenarios.spec.ts",
+      "line": 68,
+      "title": "renders every comparison metric with signed units and unavailable labels",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 10990,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "scenarios.spec.ts",
+      "line": 117,
+      "title": "renames a snapshot without changing its saved data and rejects invalid names",
+      "project": "desktop-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "timedOut",
+          "duration": 30557,
+          "error": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+        }
+      ]
+    },
+    {
+      "file": "scenarios.spec.ts",
+      "line": 141,
+      "title": "confirms removal, persists it, and updates comparison choices",
+      "project": "desktop-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "timedOut",
+          "duration": 30797,
+          "error": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+        }
+      ]
+    },
+    {
+      "file": "scenarios.spec.ts",
+      "line": 44,
+      "title": "captures immutable snapshots and enforces the five-scenario limit",
+      "project": "mobile-chromium",
+      "status": "skipped",
+      "expected": "skipped",
+      "results": [
+        {
+          "status": "skipped",
+          "duration": 1,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "scenarios.spec.ts",
+      "line": 68,
+      "title": "renders every comparison metric with signed units and unavailable labels",
+      "project": "mobile-chromium",
+      "status": "skipped",
+      "expected": "skipped",
+      "results": [
+        {
+          "status": "skipped",
+          "duration": 0,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "scenarios.spec.ts",
+      "line": 117,
+      "title": "renames a snapshot without changing its saved data and rejects invalid names",
+      "project": "mobile-chromium",
+      "status": "skipped",
+      "expected": "skipped",
+      "results": [
+        {
+          "status": "skipped",
+          "duration": 0,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "scenarios.spec.ts",
+      "line": 141,
+      "title": "confirms removal, persists it, and updates comparison choices",
+      "project": "mobile-chromium",
+      "status": "skipped",
+      "expected": "skipped",
+      "results": [
+        {
+          "status": "skipped",
+          "duration": 0,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "storage-and-reset.spec.ts",
+      "line": 15,
+      "title": "persists a classification and shows restore feedback for three seconds",
+      "project": "desktop-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 19309,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('text-session-restored')\nExpected: visible\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('text-session-restored')\u001b[22m\n"
+        }
+      ]
+    },
+    {
+      "file": "storage-and-reset.spec.ts",
+      "line": 44,
+      "title": "guides the first classification interaction and remembers the tip dismissal",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 6273,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "storage-and-reset.spec.ts",
+      "line": 60,
+      "title": "removes the materiality prompt after a classification recalculates the return",
+      "project": "desktop-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 6799,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoContainText\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: getByTestId('materiality-classification-prompt')\nExpected substring: \u001b[32m\"Change a classification to see the \u001b[7mreturn\u001b[27m update.\"\u001b[39m\nReceived string:    \u001b[31m\"Change a classification to see the \u001b[7mfinancial stress case, decision posture, or contextual assessment\u001b[27m update.\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toContainText\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByTestId('materiality-classification-prompt')\u001b[22m\n\u001b[2m    9 × locator resolved to <aside role=\"note\" data-component-name=\"aside\" data-testid=\"materiality-classification-prompt\" data-replit-metadata=\"artifacts/safeloc-diligence-workbench/src/pages/FinancialMateriality.tsx:204:8\" class=\"mb-5 flex items-start gap-3 rounded-lg border border-[#aac6f4] bg-[#eef5ff] px-4 py-3 text-[11px] leading-5 text-[#344550]\">…</aside>\u001b[22m\n\u001b[2m      - unexpected value \"Change a classification to s"
+        }
+      ]
+    },
+    {
+      "file": "storage-and-reset.spec.ts",
+      "line": 75,
+      "title": "falls back to defaults when current-session storage is malformed",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 14840,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "storage-and-reset.spec.ts",
+      "line": 84,
+      "title": "migrates stale audited defaults while preserving intentional overrides",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 7729,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "storage-and-reset.spec.ts",
+      "line": 136,
+      "title": "requires reset confirmation and preserves named scenarios",
+      "project": "desktop-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "failed",
+          "duration": 16550,
+          "error": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mpage\u001b[39m\u001b[2m).\u001b[22mtoHaveURL\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nExpected pattern: \u001b[32m/#brief$/\u001b[39m\nReceived string:  \u001b[31m\"https://LOCAL-PREVIEW/#analysis\"\u001b[39m\nTimeout: 5000ms\n\nCall log:\n\u001b[2m  - Expect \"toHaveURL\" with timeout 5000ms\u001b[22m\n\u001b[2m    12 × locator resolved to <html lang=\"en\">…</html>\u001b[22m\n\u001b[2m       - unexpected value \"https://LOCAL-PREVIEW/#analysis\"\u001b[22m\n"
+        }
+      ]
+    },
+    {
+      "file": "storage-and-reset.spec.ts",
+      "line": 15,
+      "title": "persists a classification and shows restore feedback for three seconds",
+      "project": "mobile-chromium",
+      "status": "skipped",
+      "expected": "skipped",
+      "results": [
+        {
+          "status": "skipped",
+          "duration": 0,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "storage-and-reset.spec.ts",
+      "line": 44,
+      "title": "guides the first classification interaction and remembers the tip dismissal",
+      "project": "mobile-chromium",
+      "status": "skipped",
+      "expected": "skipped",
+      "results": [
+        {
+          "status": "skipped",
+          "duration": 0,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "storage-and-reset.spec.ts",
+      "line": 60,
+      "title": "removes the materiality prompt after a classification recalculates the return",
+      "project": "mobile-chromium",
+      "status": "skipped",
+      "expected": "skipped",
+      "results": [
+        {
+          "status": "skipped",
+          "duration": 0,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "storage-and-reset.spec.ts",
+      "line": 75,
+      "title": "falls back to defaults when current-session storage is malformed",
+      "project": "mobile-chromium",
+      "status": "skipped",
+      "expected": "skipped",
+      "results": [
+        {
+          "status": "skipped",
+          "duration": 1,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "storage-and-reset.spec.ts",
+      "line": 84,
+      "title": "migrates stale audited defaults while preserving intentional overrides",
+      "project": "mobile-chromium",
+      "status": "skipped",
+      "expected": "skipped",
+      "results": [
+        {
+          "status": "skipped",
+          "duration": 0,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "storage-and-reset.spec.ts",
+      "line": 136,
+      "title": "requires reset confirmation and preserves named scenarios",
+      "project": "mobile-chromium",
+      "status": "skipped",
+      "expected": "skipped",
+      "results": [
+        {
+          "status": "skipped",
+          "duration": 0,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "workbench-refinement.spec.ts",
+      "line": 10,
+      "title": "context drawer opens from a source excerpt and Escape returns focus to the trigger",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 10317,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "workbench-refinement.spec.ts",
+      "line": 25,
+      "title": "only one evidence row expands at a time and filters stay honest",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 10143,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "workbench-refinement.spec.ts",
+      "line": 39,
+      "title": "guided action leads to a focused approval queue with distinct decisions",
+      "project": "desktop-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "timedOut",
+          "duration": 30852,
+          "error": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+        }
+      ]
+    },
+    {
+      "file": "workbench-refinement.spec.ts",
+      "line": 66,
+      "title": "lens selector shows one investment lens at a time",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 10945,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "workbench-refinement.spec.ts",
+      "line": 84,
+      "title": "entering from the NVIDIA flow defaults the lens selector to Financial Advisor",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 13572,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "workbench-refinement.spec.ts",
+      "line": 99,
+      "title": "financial trace opens in the drawer from an evidence-adjusted input",
+      "project": "desktop-chromium",
+      "status": "unexpected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "timedOut",
+          "duration": 30697,
+          "error": "\u001b[31mTest timeout of 30000ms exceeded.\u001b[39m"
+        }
+      ]
+    },
+    {
+      "file": "workbench-refinement.spec.ts",
+      "line": 112,
+      "title": "a materiality-row trace reports the row's own sensitivity when inputs interact",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 17091,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "workbench-refinement.spec.ts",
+      "line": 143,
+      "title": "typed relationship chain links open their evidence in the drawer",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 10006,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "workbench-refinement.spec.ts",
+      "line": 158,
+      "title": "opening and closing the desktop drawer preserves the reviewer's scroll position",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 11141,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "workbench-refinement.spec.ts",
+      "line": 179,
+      "title": "keyboard Tab and Shift+Tab stay trapped inside the open drawer",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 15993,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "workbench-refinement.spec.ts",
+      "line": 204,
+      "title": "resolve navigation reveals a record hidden by the active evidence filter",
+      "project": "desktop-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 10520,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "workbench-refinement.spec.ts",
+      "line": 10,
+      "title": "context drawer opens from a source excerpt and Escape returns focus to the trigger",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 9055,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "workbench-refinement.spec.ts",
+      "line": 25,
+      "title": "only one evidence row expands at a time and filters stay honest",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 9709,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "workbench-refinement.spec.ts",
+      "line": 39,
+      "title": "guided action leads to a focused approval queue with distinct decisions",
+      "project": "mobile-chromium",
+      "status": "skipped",
+      "expected": "skipped",
+      "results": [
+        {
+          "status": "skipped",
+          "duration": 4964,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "workbench-refinement.spec.ts",
+      "line": 66,
+      "title": "lens selector shows one investment lens at a time",
+      "project": "mobile-chromium",
+      "status": "skipped",
+      "expected": "skipped",
+      "results": [
+        {
+          "status": "skipped",
+          "duration": 4810,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "workbench-refinement.spec.ts",
+      "line": 84,
+      "title": "entering from the NVIDIA flow defaults the lens selector to Financial Advisor",
+      "project": "mobile-chromium",
+      "status": "skipped",
+      "expected": "skipped",
+      "results": [
+        {
+          "status": "skipped",
+          "duration": 5055,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "workbench-refinement.spec.ts",
+      "line": 99,
+      "title": "financial trace opens in the drawer from an evidence-adjusted input",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 10075,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "workbench-refinement.spec.ts",
+      "line": 112,
+      "title": "a materiality-row trace reports the row's own sensitivity when inputs interact",
+      "project": "mobile-chromium",
+      "status": "skipped",
+      "expected": "skipped",
+      "results": [
+        {
+          "status": "skipped",
+          "duration": 5573,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "workbench-refinement.spec.ts",
+      "line": 143,
+      "title": "typed relationship chain links open their evidence in the drawer",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 11210,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "workbench-refinement.spec.ts",
+      "line": 158,
+      "title": "opening and closing the desktop drawer preserves the reviewer's scroll position",
+      "project": "mobile-chromium",
+      "status": "skipped",
+      "expected": "skipped",
+      "results": [
+        {
+          "status": "skipped",
+          "duration": 5035,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "workbench-refinement.spec.ts",
+      "line": 179,
+      "title": "keyboard Tab and Shift+Tab stay trapped inside the open drawer",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 12085,
+          "error": ""
+        }
+      ]
+    },
+    {
+      "file": "workbench-refinement.spec.ts",
+      "line": 204,
+      "title": "resolve navigation reveals a record hidden by the active evidence filter",
+      "project": "mobile-chromium",
+      "status": "expected",
+      "expected": "passed",
+      "results": [
+        {
+          "status": "passed",
+          "duration": 8277,
+          "error": ""
+        }
+      ]
+    }
+  ]
+}

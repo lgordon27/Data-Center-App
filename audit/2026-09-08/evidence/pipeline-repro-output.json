@@ -1,0 +1,26 @@
+{
+  "normalizedPacketSource": {
+    "url": "https://news.example/unrelated-regional-market",
+    "title": "Regional data-center market overview",
+    "date": null,
+    "excerpt": "A regional market overview that does not name Project Atlas or Taylor County.",
+    "accessStatus": "not provided",
+    "sourceClass": "secondary-reporting",
+    "searchDomain": "web-search",
+    "exactProject": false,
+    "relevanceNote": null
+  },
+  "parsedTarget": {
+    "id": "electricity_cost",
+    "classification": "Verified Evidence",
+    "sourceUrl": "https://news.example/unrelated-regional-market",
+    "sourceRelevance": "related-context",
+    "sourceSupportConfidence": 38,
+    "numericValue": 42
+  },
+  "modelComparison": {
+    "retainedClassificationProjectIRR": -8.160663474848569,
+    "allMissingProjectIRR": -16.684971750038464,
+    "delta": 8.524308275189895
+  }
+}

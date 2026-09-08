@@ -6,6 +6,7 @@ const AI_EVIDENCE_TEMPORAL_CONFIG = Object.freeze({
     "2026 Epoch AI, WinBuzzer, and SiliconReport reporting that the planned Stargate Abilene expansion was cancelled after grid-interconnection delays exceeded 12 months",
     "2026 SiliconReport reporting that winter storms damaged cooling equipment and forced buildings offline",
     "the August 3, 2026 Texas moratorium ordered by Governor Greg Abbott on new data-center grid connections pending ERCOT energy and water-use audits",
+    "ERCOT BATCH ZERO UPDATE (August 2026): ERCOT's Batch Zero large-load interconnection studies, covering 200 GW across 300 applicants, have been delayed from the original September 2026 start to January 2027 at earliest. The study was expected to complete by April 2027; the revised completion date is unclear. ERCOT staff testified this delay may cause some applicants to drop out due to financing constraints. Separately, 17 facilities totaling 6.6 GW that already completed studies are stuck in Governor Abbott's verification audit and cannot energize. Any Texas data center project requiring ERCOT grid interconnection is affected. Only behind-the-meter projects exempt from the ERCOT queue are unaffected. When classifying Grid Interconnection for any Texas project, a grid-dependent project should not receive Verified Evidence for interconnection timeline because no grid-dependent project currently has a confirmed interconnection date.",
   ]),
 });
 

@@ -1074,7 +1074,7 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
               {[
                 ["$725B", "spent"],
                 ["$130B", "paused"],
-                ["474 GW", "queued"],
+                ["200 GW", "In Batch Zero · studies delayed to Jan 2027"],
                 ["1.6%", "operating"],
               ].map(([value, label]) => (
                 <div key={value} data-testid={`home-context-${label}`} className="border-white/10 px-4 first:pl-0 sm:border-l sm:py-1 sm:first:border-l-0 sm:first:pl-0">

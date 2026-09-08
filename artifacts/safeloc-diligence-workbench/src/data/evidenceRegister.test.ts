@@ -101,14 +101,21 @@ test("the impact-role taxonomy is complete, unique, and independent from provena
   }
 });
 
-test("grid evidence preserves the cancelled expansion event and independent 2026 reporting", () => {
+test("grid evidence carries the Batch Zero timeline while preserving verified provenance", () => {
   const grid = INITIAL_EVIDENCE.grid_interconnection;
 
-  assert.equal(grid.value, "Expansion cancelled; delays exceeded 12 months");
+  assert.equal(grid.value, "Expansion cancelled; grid delays exceeded 12 months. ERCOT Batch Zero studies delayed from September 2026 to January 2027 minimum. 17 facilities (6.6 GW) completed studies but stuck in Abbott's verification audit.");
   assert.equal(grid.classification, "Verified Evidence");
+  assert.match(grid.citation, /ERCOT testimony before PUC \(August 20, 2026\)/i);
+  assert.match(grid.citation, /House State Affairs Committee.*August 2026/i);
   assert.match(grid.citation, /Epoch AI.*2026/i);
   assert.match(grid.citation, /WinBuzzer.*2026/i);
   assert.match(grid.citation, /SiliconReport.*2026/i);
+  assert.match(grid.description, /200 GW across 300 applicants/i);
+  assert.match(grid.description, /September 2026 start, April 2027 completion/i);
+  assert.match(grid.description, /January 2027 start at earliest, completion date unclear/i);
+  assert.match(grid.description, /financing constraints/i);
+  assert.match(grid.description, /market context, not proof of a named Stargate connection/i);
   assert.match(grid.description, /independent/i);
 });
 

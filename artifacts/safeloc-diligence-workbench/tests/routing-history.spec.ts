@@ -182,6 +182,11 @@ test.describe("hash routing and browser history", () => {
         await expect(page.getByTestId("brief-tier-2-callout")).toContainText("Stargate is a Tier 2 infrastructure project");
         await expect(page.getByTestId("brief-tier-2-callout")).toContainText("Chevron/Microsoft's Project Kilby bypassed the grid");
         await expect(page.getByTestId("brief-tier-2-qualifier")).toHaveText(/public market context only.*not facility-level Stargate evidence.*not a synthetic transaction input/i);
+        await expect(page.getByTestId("ercot-batch-zero-context")).toContainText("Batch Zero");
+        await expect(page.getByTestId("ercot-batch-zero-context")).toContainText("200 GW across 300 applicants");
+        await expect(page.getByTestId("ercot-batch-zero-context")).toContainText("September 2026 start → April 2027 completion");
+        await expect(page.getByTestId("ercot-batch-zero-context")).toContainText("January 2027 start minimum, completion unclear");
+        await expect(page.getByTestId("ercot-batch-zero-context")).toContainText("17 facilities totaling 6.6 GW");
       }
       if (route === "evidence") {
         await expect(page.getByTestId("text-evidence-sri-framing")).toContainText("Sustainability ratings grade companies on their disclosures.");
@@ -214,7 +219,8 @@ test.describe("hash routing and browser history", () => {
     await expect(page.getByTestId("home-bifurcation-qualifier")).toHaveText(/public market context\/examples.*not facility-level Stargate evidence.*synthetic financial inputs/i);
     await expect(page.getByTestId("home-context-strip")).toContainText("$725B");
     await expect(page.getByTestId("home-context-strip")).toContainText("$130B");
-    await expect(page.getByTestId("home-context-strip")).toContainText("474 GW");
+    await expect(page.getByTestId("home-context-strip")).toContainText("200 GW");
+    await expect(page.getByTestId("home-context-strip")).toContainText("In Batch Zero · studies delayed to Jan 2027");
     await expect(page.getByTestId("home-context-strip")).toContainText("1.6%");
     await expect(page.getByTestId("home-trust-anchor")).toContainText("79% of Americans trust financial advisors. 3% trust AI.");
     await expect(page.getByTestId("home-entry-points").locator("a")).toHaveCount(3);

@@ -220,8 +220,21 @@ export function CaseBrief({ onNavigate }: { onNavigate: (screen: Screen) => void
             <div className="mt-1 text-[10px] leading-4 text-[#52616b]">The public aggregate does not expose a complete named customer/request count.</div>
           </div>
         </div>
+        <div data-testid="ercot-batch-zero-context" className="mt-4 grid gap-2 border-t border-[#e5eae8] pt-4 sm:grid-cols-2">
+          {[
+            ["Batch Zero", "200 GW across 300 applicants"],
+            ["Original timeline", "September 2026 start → April 2027 completion"],
+            ["Revised", "January 2027 start minimum, completion unclear"],
+            ["In audit limbo", "17 facilities totaling 6.6 GW completed studies but awaiting Abbott's verification clearance"],
+          ].map(([label, value]) => (
+            <div key={label} className="flex min-w-0 flex-col gap-1 rounded-md bg-[#f4f7f5] px-3 py-2 sm:flex-row sm:items-baseline sm:gap-3">
+              <div className="shrink-0 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#60707d]">{label}</div>
+              <div className="min-w-0 text-[11px] leading-4 text-[#344550]">{value}</div>
+            </div>
+          ))}
+        </div>
         <p data-testid="ercot-source-attribution" className="mt-4 font-mono text-[9px] leading-4 text-[#52616b]">
-          Source: ERCOTQueue.com, updated {formatSourceTimestamp(ercotQueue.sourceUpdatedAt ?? undefined)}. Aggregate queue activity is market context, not a named Stargate or Oracle confirmation.
+          Source: ERCOTQueue.com, updated {formatSourceTimestamp(ercotQueue.sourceUpdatedAt ?? undefined)}; ERCOT Batch Zero notice and August 2026 ERCOT testimony. Aggregate queue activity and Batch Zero timing are market context, not a named Stargate or Oracle confirmation.
         </p>
         <ClaimCitation claimId="ercot-market-pressure" />
       </section>

@@ -18,3 +18,4 @@
 - [Category query attribution](category-query-attribution.md) — audit executed queries against each category’s own planned query, not shared evidence-variable keywords.
 - [Research audit ledger](research-audit-ledger.md) — enforce run-wide tool budgets before every attempt and count audit stages from the full normalized ledger.
 - [Release interface validation](release-interface-validation.md) — compare content-hash release documents and cache behavior before accepting the public SafeLoc bundle.
+- [Live research acceptance behavior](live-research-acceptance.md) — timeouts before telemetry are diagnostic provider failures, never evidence or executed-query claims.

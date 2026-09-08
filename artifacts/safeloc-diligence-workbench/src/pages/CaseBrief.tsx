@@ -79,6 +79,7 @@ function CustomCaseBrief({ project, onNavigate, onFocusCommunity }: { project: R
   const sourceCoverage = summarizeSourceCoverage(evidenceItems);
   const researchAudit = summarizeResearchAudit(evidenceItems);
   const isDefaultAssumptions = project.researchMode === "default-assumptions";
+  const isResearchIncomplete = project.researchMode === "research-incomplete";
   const capacityLabel = project.capacityProvenance === "directory-reported"
     ? "Directory-reported model capacity"
     : project.capacityProvenance === "ai-reported"
@@ -98,8 +99,8 @@ function CustomCaseBrief({ project, onNavigate, onFocusCommunity }: { project: R
       <PageIntro
         eyebrow="01 / frame the opportunity"
         title={project.name}
-        description={isDefaultAssumptions ? "Review the default project setup, capacity basis, and unresolved evidence scope before using the model." : "Review the researched project summary, capacity basis, and evidence scope before relying on the return."}
-        right={<div data-testid="custom-project-status" className="flex items-center gap-2 self-start rounded-full border border-[#f1cb8b] bg-[#fff8e9] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#6f460e] md:self-auto"><span className="h-2 w-2 rounded-full bg-[#a65a00]" /> {isDefaultAssumptions ? "Default assumptions · research unavailable" : "AI-researched · high-level"}</div>}
+        description={isDefaultAssumptions ? "Review the default project setup, capacity basis, and unresolved evidence scope before using the model." : isResearchIncomplete ? "Research Incomplete: review source coverage before treating any generated lead as evidence." : "Review the researched project summary, capacity basis, and evidence scope before relying on the return."}
+        right={<div data-testid="custom-project-status" className="flex items-center gap-2 self-start rounded-full border border-[#f1cb8b] bg-[#fff8e9] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#6f460e] md:self-auto"><span className="h-2 w-2 rounded-full bg-[#a65a00]" /> {isDefaultAssumptions ? "Default assumptions · research unavailable" : isResearchIncomplete ? "Research Incomplete" : "AI-researched · high-level"}</div>}
       />
       <section data-testid="custom-project-summary" className="rounded-xl border border-[#cbd8d4] bg-white p-5 md:p-7">
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[#e5eae8] pb-5">
@@ -129,7 +130,7 @@ function CustomCaseBrief({ project, onNavigate, onFocusCommunity }: { project: R
             </div>
           </div>
         )}
-        <div className="mt-5 rounded-lg border border-[#f1cb8b] bg-[#fff8e9] p-4 text-[10px] leading-5 text-[#6f460e]">{isDefaultAssumptions ? "AI research did not complete. All 16 evidence variables are Missing Evidence, so no project-specific finding changes the synthetic return until a reviewer supplies and accepts evidence." : `This high-level AI research is context for diligence. Findings are not facility-level proof unless the cited project source supports them; the modeled set remains exactly ${Object.keys(evidence).length} variables.`}</div>
+        <div className="mt-5 rounded-lg border border-[#f1cb8b] bg-[#fff8e9] p-4 text-[10px] leading-5 text-[#6f460e]">{isDefaultAssumptions ? "AI research did not complete. All 16 evidence variables are Missing Evidence, so no project-specific finding changes the synthetic return until a reviewer supplies and accepts evidence." : isResearchIncomplete ? "Research Incomplete: zero validated sources were returned. Generated content remains an unverified lead and cannot be promoted to Verified Evidence. Retry research, edit project identity, or continue with explicitly synthetic assumptions." : `This high-level AI research is context for diligence. Findings are not facility-level proof unless the cited project source supports them; the modeled set remains exactly ${Object.keys(evidence).length} variables.`}</div>
       </section>
       <div className="mt-5"><ScopeLimitationsDisclosure /></div>
       <CommunityReadiness onFocusCommunity={onFocusCommunity} />

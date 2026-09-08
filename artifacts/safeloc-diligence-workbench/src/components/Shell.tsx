@@ -295,7 +295,7 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
         </div>
         <div className="hidden flex-1 items-center justify-center lg:flex">
           <div className="text-center">
-             <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-[#b9d43a]">{project.kind === "custom" ? project.researchMode === "default-assumptions" ? "Default assumptions · research unavailable" : "AI-researched · high-level project" : "Current project"}</div>
+             <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-[#b9d43a]">{project.kind === "custom" ? project.researchMode === "default-assumptions" ? "Default assumptions · research unavailable" : project.researchMode === "research-incomplete" ? "Research incomplete · no validated sources" : "AI-researched · high-level project" : "Current project"}</div>
              <div className="mt-1 text-[10px] text-[#96a4ad]">{project.name} / {project.location} · IC pre-read</div>
           </div>
         </div>
@@ -371,7 +371,7 @@ export function ShellAside({ screen, metrics, onNavigate, onReset }: { screen: S
       <SectionKicker>Active mandate</SectionKicker>
       <div className="mb-7">
          <div className="font-mono text-[11px] font-bold text-[#122232]">{project.kind === "custom" ? "CUSTOM / SESSION-ONLY" : "STARGATE / ABI-26-001"}</div>
-          <div className="mt-1 text-xs leading-5 text-[#52616b]">{project.kind === "custom" ? project.researchMode === "default-assumptions" ? "Default-assumptions project" : "AI-researched project" : "AI infrastructure diligence case"}</div>
+          <div className="mt-1 text-xs leading-5 text-[#52616b]">{project.kind === "custom" ? project.researchMode === "default-assumptions" ? "Default-assumptions project" : project.researchMode === "research-incomplete" ? "Research Incomplete" : "AI-researched project" : "AI infrastructure diligence case"}</div>
       </div>
       <div className="mb-8 rounded-lg border border-[#cbd8d4] bg-[#f9faf8] p-3.5">
         <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#60707d]">
@@ -422,10 +422,11 @@ export function CustomResearchBanner() {
   const { project } = useDiligence();
   if (project.kind !== "custom") return null;
   const isDefaultAssumptions = project.researchMode === "default-assumptions";
+  const isResearchIncomplete = project.researchMode === "research-incomplete";
   return (
     <aside data-testid="custom-research-banner" role="note" className="mb-5 flex items-start gap-3 rounded-lg border-2 border-[#f1cb8b] bg-[#fff8e9] px-4 py-3 text-[#6f460e]">
       <TriangleAlert aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
-      <p className="text-[11px] leading-5"><strong className="font-semibold">{isDefaultAssumptions ? "Default assumptions · AI research unavailable" : "AI-researched · high-level custom analysis"}: {project.name}.</strong> {isDefaultAssumptions ? "All modeled evidence remains Missing Evidence. Directory facts provide identity context only and do not count as SafeLoc evidence." : "Public findings and regional context are shown for interpretation; they are not facility-level proof unless the cited source supports that project."} Financial outputs remain synthetic assumptions scaled to the displayed capacity.</p>
+      <p className="text-[11px] leading-5"><strong className="font-semibold">{isDefaultAssumptions ? "Default assumptions · AI research unavailable" : isResearchIncomplete ? "Research Incomplete · no validated sources" : "AI-researched · high-level custom analysis"}: {project.name}.</strong> {isDefaultAssumptions ? "All modeled evidence remains Missing Evidence. Directory facts provide identity context only and do not count as SafeLoc evidence." : isResearchIncomplete ? "Generated content is retained only as clearly labeled unverified leads. It cannot become Verified Evidence until a source is validated." : "Public findings and regional context are shown for interpretation; they are not facility-level proof unless the cited source supports that project."} Financial outputs remain synthetic assumptions scaled to the displayed capacity.</p>
     </aside>
   );
 }
@@ -537,13 +538,15 @@ export function RelationshipBadge({ value, testId }: { value: RelationshipKind; 
   return <StatusBadge tone={meta.tone} label={meta.label} icon={meta.icon} testId={testId} />;
 }
 
-export type ReviewDecisionState = "pending" | "accepted" | "overridden" | "unresolved";
+export type ReviewDecisionState = "pending" | "accepted" | "overridden" | "rejected" | "unresolved" | "reversed";
 
 export const reviewDecisionMeta: Record<ReviewDecisionState, { tone: StatusTone; icon: typeof Check; label: string }> = {
   pending: { tone: "neutral", icon: CircleDashed, label: "Pending decision" },
   accepted: { tone: "verified", icon: Check, label: "Accepted" },
   overridden: { tone: "assumption", icon: X, label: "Overridden" },
+  rejected: { tone: "missing", icon: XCircle, label: "Rejected" },
   unresolved: { tone: "assertion", icon: Clock3, label: "Unresolved" },
+  reversed: { tone: "info", icon: Clock3, label: "Reversed" },
 };
 
 export function ReviewDecisionBadge({ value, testId }: { value: ReviewDecisionState; testId?: string }) {

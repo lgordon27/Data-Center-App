@@ -16,10 +16,45 @@ export const DILIGENCE_STAGE_DEFINITIONS = [
 export type DiligenceStageId = typeof DILIGENCE_STAGE_DEFINITIONS[number]["id"];
 export type AgentStageStatus = "pending" | "running" | "completed" | "failed" | "retryable";
 export type DiligenceRunStatus = "idle" | "running" | "partial-failure" | "review-ready" | "failed";
-export type ReviewDecision = "pending" | "accepted" | "overridden" | "unresolved";
+export type ReviewDecision = "pending" | "accepted" | "overridden" | "rejected" | "unresolved" | "reversed";
 export type AgentRelationshipKind = "Direct" | "Related" | "Comparable" | "Not found";
 export type AgentLensId = "project-investor" | "asset-manager" | "financial-advisor";
 export type AgentFindingKind = "classification" | "relationship" | "financial-relevance" | "review-gap";
+export type AgentProposalAction = "reclassify-evidence" | "update-assumption" | "review-only";
+export type AgentReadiness = "not-ready" | "conditionally-ready" | "ready-for-human-review";
+
+export type AgentSupportingSource = {
+  sourceId: string;
+  title: string;
+  url?: string;
+  excerpt: string;
+  classification: "validated-source" | "source-summary" | "unverified-lead";
+};
+
+export type AgentAuditEvent = {
+  id: string;
+  proposalId: string;
+  action: AgentProposalAction;
+  outcome: Exclude<ReviewDecision, "pending">;
+  actor: "human-reviewer";
+  recordedAt: string;
+  affectedEvidenceId?: string;
+  beforeValue?: string | number;
+  proposedValue?: string | number;
+  finalValue?: string | number;
+  beforeClassification?: Classification;
+  proposedClassification?: Classification;
+  finalClassification?: Classification;
+  sourceIds: string[];
+  note?: string;
+  projectKey?: string;
+  evidenceSnapshotKey?: string;
+  afterEvidenceSnapshotKey?: string;
+};
+
+export type AppliedAgentChange = AgentAuditEvent & {
+  reversedAt?: string;
+};
 
 export type AgentStage = {
   id: DiligenceStageId;
@@ -47,6 +82,23 @@ export type AgentFinding = {
   consequential: boolean;
   decision: ReviewDecision;
   reviewerNote?: string;
+  action: AgentProposalAction;
+  affectedEvidenceId?: string;
+  currentValue?: string | number;
+  proposedValue?: string | number;
+  currentClassification?: Classification;
+  evidenceClassification?: Classification;
+  supportingSources: AgentSupportingSource[];
+  financialPreview: string;
+  decisionPosture: string;
+  reasoning: string;
+  originalProposal?: {
+    proposedValue?: string | number;
+    proposedClassification?: Classification;
+    reasoning: string;
+    sourceIds: string[];
+  };
+  humanFinalClassification?: Classification;
 };
 
 export type AgentRelationship = {
@@ -105,7 +157,7 @@ export type ValueAtRiskRangeProposal = {
 };
 
 export type DiligenceAgentState = {
-  version: 1;
+  version: 2;
   runId: string | null;
   status: DiligenceRunStatus;
   startedAt?: string;
@@ -122,6 +174,14 @@ export type DiligenceAgentState = {
   conditionsPrecedent: ReviewTopicProposal[];
   dealProtection: ReviewTopicProposal[];
   valueAtRisk: ValueAtRiskRangeProposal[];
+  readiness: AgentReadiness;
+  readinessReason: string;
+  retrievedSourceCount: number;
+  validatedSourceCount: number;
+  auditEvents: AgentAuditEvent[];
+  appliedChanges: AppliedAgentChange[];
+  projectKey: string | null;
+  evidenceSnapshotKey: string | null;
 };
 
 export type AgentProjectInput = {
@@ -130,6 +190,20 @@ export type AgentProjectInput = {
   capacityMW: number;
   evidenceIds: string[];
   communityUnresolvedCount: number;
+  evidence?: Array<{
+    id: string;
+    label: string;
+    value: string | number;
+    classification: Classification;
+    citation: string;
+    sourceUrl?: string;
+    sources?: AgentSupportingSource[];
+    sourceSupportConfidence?: number;
+    sourceRelevance?: "exact-project" | "related-context" | "unresolved";
+  }>;
+  retrievedSourceCount?: number;
+  validatedSourceCount?: number;
+  materialGapCount?: number;
 };
 
 export type AgentStageOutcome = {
@@ -142,7 +216,7 @@ const TERMINAL_STATUSES: AgentStageStatus[] = ["completed", "failed"];
 
 export function createInitialDiligenceAgent(): DiligenceAgentState {
   return {
-    version: 1,
+    version: 2,
     runId: null,
     status: "idle",
     stages: DILIGENCE_STAGE_DEFINITIONS.map((stage) => ({ ...stage, status: "pending" })),
@@ -155,7 +229,37 @@ export function createInitialDiligenceAgent(): DiligenceAgentState {
     conditionsPrecedent: [],
     dealProtection: [],
     valueAtRisk: [],
+    readiness: "not-ready",
+    readinessReason: "Run the agent against the active evidence set before reviewing readiness.",
+    retrievedSourceCount: 0,
+    validatedSourceCount: 0,
+    auditEvents: [],
+    appliedChanges: [],
+    projectKey: null,
+    evidenceSnapshotKey: null,
   };
+}
+
+export function getAgentProjectKey(input: Pick<AgentProjectInput, "projectName" | "location" | "capacityMW">): string {
+  return `${input.projectName.trim().toLowerCase()}|${input.location.trim().toLowerCase()}|${input.capacityMW}`;
+}
+
+export function getAgentEvidenceSnapshotKey(input: Pick<AgentProjectInput, "evidence">): string {
+  return JSON.stringify((input.evidence ?? []).map((item) => [
+    item.id,
+    item.value,
+    item.classification,
+    item.citation,
+    item.sourceUrl ?? "",
+    (item.sources ?? []).map((source) => [source.sourceId, source.url ?? "", source.title, source.excerpt, source.classification]).sort(),
+  ]).sort(([a], [b]) => String(a).localeCompare(String(b))));
+}
+
+export function countValidatedAgentSources(input: Pick<AgentProjectInput, "evidence">): number {
+  return new Set((input.evidence ?? []).flatMap((item) => [
+    item.sourceUrl,
+    ...(item.sources ?? []).filter((source) => source.classification !== "unverified-lead").map((source) => source.url ?? source.sourceId),
+  ].filter(Boolean))).size;
 }
 
 export function startDiligenceAgent(previous: DiligenceAgentState, now = new Date().toISOString()): DiligenceAgentState {
@@ -176,6 +280,11 @@ export function startDiligenceAgent(previous: DiligenceAgentState, now = new Dat
     startedAt: now,
     activeStageId: firstPending,
     stages,
+    proposedFindings: previous.proposedFindings,
+    auditEvents: previous.auditEvents,
+    appliedChanges: previous.appliedChanges,
+    projectKey: previous.projectKey,
+    evidenceSnapshotKey: previous.evidenceSnapshotKey,
     summary: "Agent is running bounded stages. No evidence, economics, or recommendation changes automatically.",
   };
 }
@@ -233,25 +342,138 @@ export function applyAgentFindingDecision(
   findingId: string,
   decision: ReviewDecision,
   reviewerNote?: string,
+  finalClassification?: Classification,
+  now = new Date().toISOString(),
 ): DiligenceAgentState {
-  if (!["accepted", "overridden", "unresolved"].includes(decision)) return state;
+  if (!["accepted", "overridden", "rejected", "unresolved"].includes(decision)) return state;
+  const finding = state.proposedFindings.find((item) => item.id === findingId);
+  if (!finding) return state;
+  if (finding.decision !== "pending") return state;
+  if (decision === "overridden" && (!finalClassification || finding.action !== "reclassify-evidence")) return state;
+  const finalValue = decision === "accepted" ? finding.proposedValue : undefined;
+  const appliedClassification = decision === "accepted" ? finding.proposedClassification : finalClassification;
+  const audit: AgentAuditEvent = {
+    id: `audit-${findingId}-${now.replace(/[^0-9]/g, "")}-${state.auditEvents.length}`,
+    proposalId: finding.id,
+    action: finding.action,
+    outcome: decision as Exclude<ReviewDecision, "pending">,
+    actor: "human-reviewer",
+    recordedAt: now,
+    affectedEvidenceId: finding.affectedEvidenceId,
+    beforeValue: finding.currentValue,
+    proposedValue: finding.proposedValue,
+    finalValue,
+    beforeClassification: finding.currentClassification,
+    proposedClassification: finding.proposedClassification,
+    finalClassification: appliedClassification,
+    sourceIds: finding.supportingSources.map((source) => source.sourceId),
+    note: reviewerNote?.trim() || undefined,
+    projectKey: state.projectKey ?? undefined,
+    evidenceSnapshotKey: state.evidenceSnapshotKey ?? undefined,
+  };
   return {
     ...state,
-    proposedFindings: state.proposedFindings.map((finding) => finding.id === findingId ? { ...finding, decision, reviewerNote: reviewerNote?.trim() || undefined } : finding),
+    proposedFindings: state.proposedFindings.map((item) => item.id === findingId ? {
+      ...item,
+      decision,
+      reviewerNote: reviewerNote?.trim() || undefined,
+      humanFinalClassification: appliedClassification,
+    } : item),
     relationships: state.relationships.map((relationship) => relationship.findingId === findingId ? { ...relationship, decision } : relationship),
     conditionsPrecedent: state.conditionsPrecedent.map((item) => item.findingId === findingId ? { ...item, decision } : item),
     dealProtection: state.dealProtection.map((item) => item.findingId === findingId ? { ...item, decision } : item),
     valueAtRisk: state.valueAtRisk.map((item) => item.findingId === findingId ? { ...item, decision } : item),
+    auditEvents: [...state.auditEvents, audit],
+    appliedChanges: (decision === "accepted" || decision === "overridden") && finding.action !== "review-only" && Boolean(finding.affectedEvidenceId)
+      ? [...state.appliedChanges, audit]
+      : state.appliedChanges,
+  };
+}
+
+export function reverseAgentChange(state: DiligenceAgentState, auditId: string, now = new Date().toISOString()): DiligenceAgentState {
+  const applied = state.appliedChanges.find((change) => change.id === auditId && !change.reversedAt);
+  if (!applied) return state;
+  const reversal: AgentAuditEvent = {
+    ...applied,
+    id: `reversal-${auditId}`,
+    outcome: "reversed",
+    recordedAt: now,
+    finalValue: applied.beforeValue,
+    finalClassification: applied.beforeClassification,
+    note: `Reversed applied change ${auditId}.`,
+  };
+  return {
+    ...state,
+    proposedFindings: state.proposedFindings.map((finding) => finding.id === applied.proposalId ? { ...finding, decision: "reversed" as const } : finding),
+    appliedChanges: state.appliedChanges.map((change) => change.id === auditId ? { ...change, reversedAt: now } : change),
+    auditEvents: [...state.auditEvents, reversal],
   };
 }
 
 export function buildAgentReviewPackage(input: AgentProjectInput): Pick<DiligenceAgentState, "proposedFindings" | "relationships" | "lenses" | "riskAllocation" | "capitalAtRisk" | "conditionsPrecedent" | "dealProtection" | "valueAtRisk"> {
   const ids = (requested: string[]) => requested.filter((id) => input.evidenceIds.includes(id));
+  const evidenceById = new Map((input.evidence ?? []).map((item) => [item.id, item]));
+  const grid = evidenceById.get("grid_interconnection");
+  const gridSources = grid?.sources ?? [];
+  const supportedGrid = gridSources.length > 0 || Boolean(grid?.sourceUrl);
+  const gridFinding: AgentFinding = supportedGrid && grid
+    ? {
+      id: "agent-finding-grid",
+      kind: "classification",
+      title: "Grid evidence classification requires authorization",
+      summary: `${grid.label} is currently classified as ${grid.classification}. The agent proposes a governed classification change only because a source packet is attached; the reviewer must confirm whether the source supports the exact project claim.`,
+      evidenceIds: ["grid_interconnection"],
+      proposedClassification: grid.sourceRelevance === "exact-project" ? "Verified Evidence" : "Management Assertion",
+      sourceIds: gridSources.map((source) => source.sourceId).concat(grid.sourceUrl ? ["grid-interconnection-source"] : []),
+      sourceSupportConfidence: typeof grid.sourceSupportConfidence === "number" ? grid.sourceSupportConfidence / 100 : supportedGrid ? 0.68 : null,
+      modelReportedConfidence: null,
+      consequential: true,
+      decision: "pending",
+      action: "reclassify-evidence",
+      affectedEvidenceId: grid.id,
+      currentValue: grid.value,
+      proposedValue: grid.value,
+      currentClassification: grid.classification,
+      evidenceClassification: grid.classification,
+      supportingSources: gridSources.length ? gridSources : [{
+        sourceId: "grid-interconnection-source",
+        title: "Attached grid-interconnection citation",
+        url: grid.sourceUrl,
+        excerpt: grid.citation,
+        classification: "source-summary",
+      }],
+      financialPreview: "Acceptance recalculates the project stress return and confidence from the disclosed classification; it does not change the underlying value.",
+      decisionPosture: "A supported classification can reduce an evidence gap, but it does not establish issuer, fund, or client-portfolio materiality.",
+      reasoning: "The proposal is limited to the attached evidence record and preserves the source excerpt separately from the human decision.",
+      originalProposal: {
+        proposedValue: grid.value,
+        proposedClassification: grid.sourceRelevance === "exact-project" ? "Verified Evidence" : "Management Assertion",
+        reasoning: "Source-linked classification proposal; exact-project support controls whether Verified Evidence is permissible.",
+        sourceIds: gridSources.map((source) => source.sourceId),
+      },
+    }
+    : {
+      id: "agent-finding-grid",
+      kind: "financial-relevance",
+      title: "Grid and energization remain consequential",
+      summary: "No validated source packet supports an evidence mutation. Keep the current record unchanged and resolve the grid gate through a source-backed review.",
+      evidenceIds: ids(["grid_interconnection", "backup_power_capacity"]),
+      sourceIds: [],
+      sourceSupportConfidence: null,
+      modelReportedConfidence: null,
+      consequential: false,
+      decision: "pending",
+      action: "review-only",
+      financialPreview: "No metric changes: this is a review topic without an authorized state transition.",
+      decisionPosture: "The project remains blocked or conditional according to the existing material evidence record.",
+      reasoning: "The agent fails closed when it cannot attach a validated source.",
+      supportingSources: [],
+    };
   const findings: AgentFinding[] = [
-    { id: "agent-finding-identity", kind: "review-gap", title: "Identity boundary is ready for review", summary: `${input.projectName} is scoped to ${input.location} at ${input.capacityMW.toLocaleString()} MW. This confirms scope only; it does not establish ownership or financing.`, evidenceIds: [], sourceIds: [], sourceSupportConfidence: null, modelReportedConfidence: null, consequential: true, decision: "pending" },
-    { id: "agent-finding-grid", kind: "financial-relevance", title: "Grid and energization remain consequential", summary: "The existing grid record is a decision input. Validate queue status and milestone dates before changing any modeled assumption.", evidenceIds: ids(["grid_interconnection", "backup_power_capacity"]), sourceIds: ["ercot-queue"], sourceSupportConfidence: 0.68, modelReportedConfidence: null, consequential: true, decision: "pending" },
-    { id: "agent-finding-community", kind: "relationship", title: "Community terms need human disposition", summary: input.communityUnresolvedCount > 0 ? `${input.communityUnresolvedCount} community terms remain unresolved. Benchmarks can inform questions but cannot become project evidence.` : "Community terms have a reviewed state; confirm whether any precedent is truly comparable before relying on it.", evidenceIds: ids(["community_risk", "permitting_timeline"]), sourceIds: ["community-snapshot"], sourceSupportConfidence: null, modelReportedConfidence: null, consequential: true, decision: "pending" },
-    { id: "agent-finding-capital", kind: "financial-relevance", title: "Capital-at-risk timing is a review topic", summary: "The agent can organize timing questions, but it cannot infer probabilities, penalties, or an IRR impact from incomplete provisions.", evidenceIds: ids(["cooling_capex", "downtime_cost"]), sourceIds: [], sourceSupportConfidence: null, modelReportedConfidence: null, consequential: true, decision: "pending" },
+    { id: "agent-finding-identity", kind: "review-gap", title: "Identity boundary is ready for review", summary: `${input.projectName} is scoped to ${input.location} at ${input.capacityMW.toLocaleString()} MW. This confirms scope only; it does not establish ownership or financing.`, evidenceIds: [], sourceIds: [], sourceSupportConfidence: null, modelReportedConfidence: null, consequential: false, decision: "pending", action: "review-only", supportingSources: [], financialPreview: "No metric changes.", decisionPosture: "Project identity is separate from issuer, fund, and client-portfolio conclusions.", reasoning: "Identity is a scope boundary, not a modeled evidence claim." },
+    gridFinding,
+    { id: "agent-finding-community", kind: "relationship", title: "Community terms need human disposition", summary: input.communityUnresolvedCount > 0 ? `${input.communityUnresolvedCount} community terms remain unresolved. Benchmarks can inform questions but cannot become project evidence.` : "Community terms have a reviewed state; confirm whether any precedent is truly comparable before relying on it.", evidenceIds: ids(["community_risk", "permitting_timeline"]), sourceIds: ["community-snapshot"], sourceSupportConfidence: null, modelReportedConfidence: null, consequential: false, decision: "pending", action: "review-only", supportingSources: [], financialPreview: "No automatic return adjustment is available for an unquantified community term.", decisionPosture: "Community readiness remains project-level stewardship context, not a fund-level rating.", reasoning: "Benchmarks are kept separate from project evidence.", },
+    { id: "agent-finding-capital", kind: "financial-relevance", title: "Capital-at-risk timing is a review topic", summary: "The agent can organize timing questions, but it cannot infer probabilities, penalties, or an IRR impact from incomplete provisions.", evidenceIds: ids(["cooling_capex", "downtime_cost"]), sourceIds: [], sourceSupportConfidence: null, modelReportedConfidence: null, consequential: false, decision: "pending", action: "review-only", supportingSources: [], financialPreview: "No probability, penalty, or IRR change is proposed.", decisionPosture: "Capital-at-risk timing stays a project underwriting question.", reasoning: "Incomplete provisions cannot create invented economics.", },
   ];
   const relationships: AgentRelationship[] = [
     { id: "relationship-project", label: input.projectName, relationship: "Direct", basis: "Current case identity and supplied project context.", evidenceIds: [], findingId: "agent-finding-identity", decision: "pending" },
@@ -290,7 +512,34 @@ export function buildAgentReviewPackage(input: AgentProjectInput): Pick<Diligenc
 }
 
 export function hydrateReviewPackage(state: DiligenceAgentState, input: AgentProjectInput): DiligenceAgentState {
-  return { ...state, ...buildAgentReviewPackage(input) };
+  const pkg = buildAgentReviewPackage(input);
+  const validatedSourceCount = Math.max(input.validatedSourceCount ?? 0, countValidatedAgentSources(input));
+  const activeApplied = new Set(state.appliedChanges.filter((change) => !change.reversedAt).map((change) => change.proposalId));
+  const findings = pkg.proposedFindings.map((finding) => {
+    const prior = state.proposedFindings.find((item) => item.id === finding.id);
+    return prior && activeApplied.has(finding.id)
+      ? { ...finding, decision: prior.decision, reviewerNote: prior.reviewerNote, humanFinalClassification: prior.humanFinalClassification }
+      : finding;
+  });
+  const readiness: AgentReadiness = validatedSourceCount === 0 && input.projectName !== "Stargate Abilene"
+    ? "not-ready"
+    : (input.materialGapCount ?? 0) > 0 ? "conditionally-ready" : "ready-for-human-review";
+  const readinessReason = readiness === "not-ready"
+    ? "Research incomplete: no validated sources are available, so unsupported generated content cannot become evidence."
+    : readiness === "conditionally-ready"
+      ? `${input.materialGapCount} material gap${input.materialGapCount === 1 ? "" : "s"} remain unresolved; stage completion is not review readiness.`
+      : "Validated evidence is sufficient to present governed proposals to a human reviewer.";
+  return {
+    ...state,
+    ...pkg,
+    proposedFindings: findings,
+    readiness,
+    readinessReason,
+    retrievedSourceCount: input.retrievedSourceCount ?? 0,
+    validatedSourceCount,
+    projectKey: getAgentProjectKey(input),
+    evidenceSnapshotKey: getAgentEvidenceSnapshotKey(input),
+  };
 }
 
 export function isAgentStageTerminal(stage: AgentStage): boolean {

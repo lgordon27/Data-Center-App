@@ -182,14 +182,32 @@ export function CustomProjectForm({ onSuccess, compact = false }: CustomProjectF
         >
           {error}
           {fallbackAvailable && (
-            <button
-              data-testid={compact ? "home-custom-analysis-fallback" : "custom-project-fallback"}
-              type="button"
-              onClick={() => onSuccess(createDefaultAssumptionResearch(name, location))}
-              className="mt-2 block min-h-10 rounded-md border border-current px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.08em]"
-            >
-              Research unavailable. Analyze with default assumptions?
-            </button>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                data-testid={compact ? "home-custom-analysis-retry" : "custom-project-retry"}
+                type="submit"
+                onClick={() => { setError(null); setFallbackAvailable(false); }}
+                className="min-h-10 rounded-md border border-current px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.08em]"
+              >
+                Retry research
+              </button>
+              <button
+                data-testid={compact ? "home-custom-analysis-edit" : "custom-project-edit"}
+                type="button"
+                onClick={() => { setError(null); setFallbackAvailable(false); document.querySelector<HTMLInputElement>('[data-testid="input-custom-project-name"]')?.focus(); }}
+                className="min-h-10 rounded-md border border-current px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.08em]"
+              >
+                Edit project identity
+              </button>
+              <button
+                data-testid={compact ? "home-custom-analysis-fallback" : "custom-project-fallback"}
+                type="button"
+                onClick={() => onSuccess(createDefaultAssumptionResearch(name, location))}
+                className="min-h-10 rounded-md border border-current px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.08em]"
+              >
+                Continue with synthetic assumptions
+              </button>
+            </div>
           )}
         </div>
       )}

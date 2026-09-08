@@ -98,7 +98,7 @@ export type ResearchStatusResponse = {
 };
 
 export type CapacityProvenance = "ai-reported" | "directory-reported" | "standardized-default";
-export type ResearchMode = "ai-researched" | "default-assumptions";
+export type ResearchMode = "ai-researched" | "default-assumptions" | "research-incomplete";
 export type KnownProjectData = {
   capacity?: number | null;
   operator?: string | null;
@@ -343,12 +343,17 @@ function parseResponse(value: unknown): CustomResearchResponse {
     const accessStatus = ["open", "paywall", "registration", "not provided"].includes(String(candidate.sourceAccessStatus))
       ? candidate.sourceAccessStatus as EvidenceItem["sourceAccessStatus"]
       : undefined;
+    const hasValidatedSource = sources.length > 0 || Boolean(sourceUrl);
+    const classification = candidate.classification as Classification;
+    const safeClassification = classification === "Verified Evidence" && !hasValidatedSource
+      ? "Management Assertion"
+      : classification;
     return {
       id,
       label: candidate.label as string,
       value: candidate.value as string | number,
       unit: candidate.unit as string,
-      classification: candidate.classification as Classification,
+      classification: safeClassification,
       citation: candidate.citation as string,
       description: candidate.description as string,
       sourceRole: candidate.sourceRole as string,
@@ -359,7 +364,9 @@ function parseResponse(value: unknown): CustomResearchResponse {
       modelReportedConfidence: optionalConfidence(candidate.modelReportedConfidence),
       classificationReason: isNonEmptyString(candidate.classificationReason)
         ? candidate.classificationReason.trim()
-        : "The research response did not provide a concise classification reason.",
+        : safeClassification === "Management Assertion" && !hasValidatedSource
+          ? "Generated lead has no validated source and cannot be treated as Verified Evidence."
+          : "The research response did not provide a concise classification reason.",
       sourceRelevanceNote: isNonEmptyString(candidate.sourceRelevanceNote)
         ? candidate.sourceRelevanceNote.trim()
         : sourceUrl ? "The returned source is mapped to this claim; review it before relying on the finding." : "No validated source was mapped to this claim.",
@@ -393,7 +400,11 @@ function parseResponse(value: unknown): CustomResearchResponse {
         ? summary.capacityProvenance === "directory-reported" ? "directory-reported" : "ai-reported"
         : "standardized-default",
     },
-    researchMode: value.researchMode === "default-assumptions" ? "default-assumptions" : "ai-researched",
+    researchMode: value.researchMode === "default-assumptions"
+      ? "default-assumptions"
+      : evidence.some((item) => item.sources?.length || item.sourceUrl)
+        ? "ai-researched"
+        : "research-incomplete",
     ...(parseResearchCache(value.researchCache) ? { researchCache: parseResearchCache(value.researchCache) } : {}),
     ...(isRecord(value.researchCoverage) ? {
       researchCoverage: {

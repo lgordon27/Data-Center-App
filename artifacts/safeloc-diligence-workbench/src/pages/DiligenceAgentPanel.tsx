@@ -15,6 +15,7 @@ import { AgentStageBadge, Disclosure, RelationshipBadge, ReviewDecisionBadge, Se
 import { DrawerField, DrawerSection, useWorkbenchDrawer } from "@/components/ContextDrawer";
 import { useDiligence } from "@/context/DiligenceContext";
 import type { AgentFinding, AgentLensId, ReviewDecision } from "@/model/diligenceAgent";
+import type { Classification } from "@/model/cashFlowEngine";
 import type { EvidenceItem } from "@/context/DiligenceContext";
 
 const runStatusLabels = {
@@ -25,25 +26,25 @@ const runStatusLabels = {
   failed: "Failed",
 } as const;
 
-function ReviewButtons({ findingId, decision }: { findingId: string; decision: ReviewDecision }) {
+function ReviewButtons({ finding, onOverride }: { finding: AgentFinding; onOverride: () => void }) {
   const { reviewAgentFinding } = useDiligence();
   const actions: { value: ReviewDecision; label: string; icon: typeof Check }[] = [
-    { value: "accepted", label: "Accept", icon: Check },
-    { value: "overridden", label: "Override", icon: X },
+    ...(finding.consequential && finding.action !== "review-only" ? [{ value: "accepted" as const, label: "Accept", icon: Check }, { value: "overridden" as const, label: "Override", icon: X }] : []),
+    { value: "rejected", label: "Reject", icon: X },
     { value: "unresolved", label: "Leave Unresolved", icon: Clock3 },
   ];
   return (
     <div className="flex flex-wrap gap-2" role="group" aria-label="Human review decision">
       {actions.map((action) => {
         const Icon = action.icon;
-        const selected = decision === action.value;
+        const selected = finding.decision === action.value;
         return (
           <button
             key={action.value}
-            data-testid={`agent-decision-${findingId}-${action.value}`}
+            data-testid={`agent-decision-${finding.id}-${action.value}`}
             type="button"
             aria-pressed={selected}
-            onClick={() => reviewAgentFinding(findingId, action.value)}
+            onClick={() => action.value === "overridden" ? onOverride() : reviewAgentFinding(finding.id, action.value)}
             className={`inline-flex min-h-10 items-center gap-1.5 rounded-md border px-3 font-mono text-[8px] font-bold uppercase tracking-[0.08em] ${selected ? "border-[#122232] bg-[#122232] text-[#d4e86b]" : "border-[#cbd8d4] bg-white text-[#52616b] hover:border-[#8da0aa]"}`}
           >
             <Icon aria-hidden="true" className="h-3.5 w-3.5" />
@@ -88,12 +89,16 @@ function describeFinding(finding: AgentFinding, evidence: Record<string, Evidenc
 }
 
 function FindingCard({ finding }: { finding: AgentFinding }) {
-  const { agentRun, evidence } = useDiligence();
+  const { agentRun, evidence, reviewAgentFinding, reverseAgentChange } = useDiligence();
   const { openDrawer } = useWorkbenchDrawer();
+  const [overrideOpen, setOverrideOpen] = useState(false);
+  const [overrideClassification, setOverrideClassification] = useState<Classification>(finding.currentClassification ?? "Missing Evidence");
+  const [overrideNote, setOverrideNote] = useState("");
   const linkedRelationship = agentRun.relationships.find((rel) => rel.findingId === finding.id && finding.kind === "relationship");
   const presentation = describeFinding(finding, evidence, linkedRelationship?.relationship);
   const evidenceLabels = finding.evidenceIds.map((id) => evidence[id]?.label ?? id);
   const decided = finding.decision !== "pending";
+  const appliedChange = agentRun.appliedChanges.find((change) => change.proposalId === finding.id && !change.reversedAt);
 
   const openDetails = (event: React.MouseEvent<HTMLButtonElement>) => {
     openDrawer({
@@ -108,10 +113,14 @@ function FindingCard({ finding }: { finding: AgentFinding }) {
               <DrawerField label="Proposed value" value={presentation.proposed} />
             </div>
             <p>{finding.summary}</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <DrawerField label="Action" value={finding.action.replaceAll("-", " ")} />
+              <DrawerField label="Evidence classification" value={finding.evidenceClassification ?? finding.currentClassification ?? "Not applicable"} />
+            </div>
           </DrawerSection>
           <DrawerSection label="Decision effect">
-            <p>{presentation.effect}</p>
-            <p className="text-[#7a5313]">Nothing here changes a displayed return metric, an evidence classification, or an issuer-level conclusion.</p>
+            <p>{finding.financialPreview}</p>
+            <p>{finding.decisionPosture}</p>
           </DrawerSection>
           <DrawerSection label="Evidence and sources">
             {evidenceLabels.length > 0 ? (
@@ -123,7 +132,7 @@ function FindingCard({ finding }: { finding: AgentFinding }) {
               <DrawerField label="Source support" value={finding.sourceSupportConfidence === null ? "Not rated" : `${Math.round(finding.sourceSupportConfidence * 100)}% of cited sources support`} />
               <DrawerField label="Model self-rating" value={finding.modelReportedConfidence === null ? "Not provided" : `${Math.round(finding.modelReportedConfidence * 100)}% (self-reported, not a probability)`} />
             </div>
-            {finding.sourceIds.length > 0 && <p className="font-mono text-[9px] text-[#7c8b93]">Source ids: {finding.sourceIds.join(", ")}</p>}
+            {finding.supportingSources.length > 0 && <ul className="space-y-2">{finding.supportingSources.map((source) => <li key={source.sourceId} className="rounded border border-[#e0e4e0] bg-[#fafbfa] p-2"><strong>{source.title}</strong> · {source.classification}<span className="mt-1 block">{source.excerpt}</span></li>)}</ul>}
           </DrawerSection>
           <DrawerSection label="Audit">
             <div className="grid gap-2 sm:grid-cols-2">
@@ -131,7 +140,7 @@ function FindingCard({ finding }: { finding: AgentFinding }) {
               <DrawerField label="Agent run" value={agentRun.runId ?? "No active run"} />
             </div>
             {finding.reviewerNote && <p>Reviewer note: {finding.reviewerNote}</p>}
-            <p className="text-[#7c8b93]">Recorded {agentRun.completedAt ?? agentRun.startedAt ?? "—"} · proposals remain unresolved until a human decides.</p>
+            <p className="text-[#7c8b93]">Recorded {agentRun.completedAt ?? agentRun.startedAt ?? "—"} · the preview is immutable until a human authorizes a change.</p>
           </DrawerSection>
         </div>
       ),
@@ -157,11 +166,18 @@ function FindingCard({ finding }: { finding: AgentFinding }) {
           <dd className="mt-0.5 text-[10px] font-semibold leading-4 text-[#1c2b33]">{presentation.proposed}</dd>
         </div>
       </dl>
-      <p className="mt-3 text-[10px] leading-4 text-[#52616b]">{finding.summary}</p>
-      <p className="mt-2 border-l-2 border-[#d4e86b] pl-2 text-[9px] font-semibold leading-4 text-[#33454e]">Financial effect: {presentation.effect}</p>
+       <p className="mt-3 text-[10px] leading-4 text-[#52616b]">{finding.summary}</p>
+       <div className="mt-3 grid gap-2 sm:grid-cols-2">
+         <div className="rounded-md border border-[#e0e4e0] bg-[#f8faf8] px-2.5 py-1.5"><div className="font-mono text-[8px] font-bold uppercase tracking-[0.12em] text-[#7c8b93]">Action / classification</div><div className="mt-0.5 text-[10px] font-semibold text-[#1c2b33]">{finding.action.replaceAll("-", " ")} · {finding.evidenceClassification ?? finding.currentClassification ?? "Review topic"}</div></div>
+         <div className="rounded-md border border-[#e0e4e0] bg-[#f8faf8] px-2.5 py-1.5"><div className="font-mono text-[8px] font-bold uppercase tracking-[0.12em] text-[#7c8b93]">Source support</div><div className="mt-0.5 text-[10px] font-semibold text-[#1c2b33]">{finding.sourceSupportConfidence === null ? "Not validated" : `${Math.round(finding.sourceSupportConfidence * 100)}%`} · {finding.supportingSources.length} source{finding.supportingSources.length === 1 ? "" : "s"}</div></div>
+       </div>
+       <p className="mt-2 border-l-2 border-[#d4e86b] pl-2 text-[9px] font-semibold leading-4 text-[#33454e]">Financial preview: {finding.financialPreview}</p>
+       <p className="mt-1 border-l-2 border-[#aac6f4] pl-2 text-[9px] leading-4 text-[#52616b]">Decision posture: {finding.decisionPosture}</p>
+       {finding.supportingSources.length > 0 && <p className="mt-2 text-[9px] leading-4 text-[#60707d]"><strong>Supporting source:</strong> {finding.supportingSources[0].title} — {finding.supportingSources[0].excerpt}</p>}
+       <p className="mt-2 text-[9px] leading-4 text-[#52616b]"><strong>Reasoning:</strong> {finding.reasoning}</p>
       {evidenceLabels.length > 0 && <div className="mt-3 flex flex-wrap gap-1.5">{evidenceLabels.map((label) => <span key={label} className="rounded-full border border-[#d9e0e4] bg-[#f7f9f8] px-2 py-1 text-[8px] text-[#52616b]">{label}</span>)}</div>}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-        <ReviewButtons findingId={finding.id} decision={finding.decision} />
+         {!decided && <ReviewButtons finding={finding} onOverride={() => setOverrideOpen(true)} />}
         <button
           data-testid={`button-agent-finding-details-${finding.id}`}
           type="button"
@@ -171,6 +187,25 @@ function FindingCard({ finding }: { finding: AgentFinding }) {
           View details <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" />
         </button>
       </div>
+      {appliedChange && <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-[#a9d7c8] bg-[#f1fbf6] px-3 py-2 text-[9px] text-[#0e3e2f]"><span><strong>Applied and audited.</strong> Before: {appliedChange.beforeClassification}; after: {appliedChange.finalClassification}.</span><button data-testid={`agent-reverse-${finding.id}`} type="button" onClick={() => reverseAgentChange(appliedChange.id)} className="min-h-8 rounded border border-[#0e3e2f] px-2 font-mono text-[8px] font-bold uppercase tracking-[0.08em]">Reverse change</button></div>}
+      {overrideOpen && finding.action === "reclassify-evidence" && (
+        <div data-testid={`agent-override-form-${finding.id}`} className="mt-3 rounded-md border border-[#cbb7ec] bg-[#f8f4fd] p-3">
+          <div className="font-mono text-[8px] font-bold uppercase tracking-[0.11em] text-[#7049b7]">Confirm human override</div>
+          <p className="mt-1 text-[9px] leading-4 text-[#5e5870]">The AI proposal stays recorded separately. Choose the final classification and confirm before any metric recalculation.</p>
+          <label className="mt-2 block text-[9px] font-semibold text-[#52616b]">Final classification
+            <select data-testid={`agent-override-classification-${finding.id}`} value={overrideClassification} onChange={(event) => setOverrideClassification(event.target.value as Classification)} className="mt-1 block min-h-9 w-full rounded border border-[#cbb7ec] bg-white px-2 text-[10px] text-[#243844]">
+              {["Verified Evidence", "Management Assertion", "Model Inference", "User Assumption", "Missing Evidence"].map((option) => <option key={option}>{option}</option>)}
+            </select>
+          </label>
+          <label className="mt-2 block text-[9px] font-semibold text-[#52616b]">Reviewer note
+            <textarea data-testid={`agent-override-note-${finding.id}`} value={overrideNote} onChange={(event) => setOverrideNote(event.target.value)} className="mt-1 block min-h-16 w-full rounded border border-[#cbb7ec] bg-white p-2 text-[10px] text-[#243844]" placeholder="Why does the source support this final value?" />
+          </label>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button data-testid={`agent-confirm-override-${finding.id}`} type="button" onClick={() => { reviewAgentFinding(finding.id, "overridden", overrideClassification, overrideNote); setOverrideOpen(false); }} className="rounded bg-[#7049b7] px-3 py-2 font-mono text-[8px] font-bold uppercase text-white">Confirm override</button>
+            <button type="button" onClick={() => setOverrideOpen(false)} className="rounded border border-[#cbb7ec] bg-white px-3 py-2 font-mono text-[8px] font-bold uppercase text-[#7049b7]">Cancel</button>
+          </div>
+        </div>
+      )}
     </article>
   );
 }
@@ -234,10 +269,19 @@ export function DiligenceAgentPanel() {
               </div>
             </div>
             <p data-testid="agent-run-summary" className="mt-4 text-[10px] leading-4 text-[#9fb0b8]">{agentRun.summary}</p>
+            <div data-testid="agent-readiness" className={`mt-4 rounded-md border px-3 py-2 text-[10px] leading-4 ${agentRun.readiness === "ready-for-human-review" ? "border-[#76c8a9] bg-[#0d3d31] text-[#d8f3e6]" : agentRun.readiness === "conditionally-ready" ? "border-[#f1cb8b] bg-[#4b3518] text-[#ffe5b2]" : "border-[#efabb8] bg-[#4a2029] text-[#ffd9df]"}`}>
+              <strong className="uppercase tracking-[0.1em]">{agentRun.readiness.replaceAll("-", " ")}</strong>
+              <span className="ml-2">{agentRun.readinessReason}</span>
+            </div>
             <div className="mt-4 grid gap-2 border-t border-white/10 pt-4 sm:grid-cols-3">
               <div><div className="font-mono text-[8px] uppercase tracking-[0.12em] text-[#82939c]">Current state</div><div data-testid="agent-current-state" className="mt-1 text-[11px] font-semibold text-white">{runStatusLabels[agentRun.status]}</div></div>
               <div><div className="font-mono text-[8px] uppercase tracking-[0.12em] text-[#82939c]">Last run</div><div data-testid="agent-last-run" className="mt-1 text-[11px] font-semibold text-white">{agentRun.completedAt ?? agentRun.startedAt ?? "Not run"}</div></div>
               <div><div className="font-mono text-[8px] uppercase tracking-[0.12em] text-[#82939c]">Awaiting review</div><div data-testid="agent-pending-count" className="mt-1 text-[11px] font-semibold text-[#d4e86b]">{pendingCount} {pendingCount === 1 ? "proposal" : "proposals"}</div></div>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 font-mono text-[9px] uppercase tracking-[0.08em] text-[#a7bbc2]">
+              <span data-testid="agent-retrieved-source-count">Retrieved sources: {agentRun.retrievedSourceCount}</span>
+              <span data-testid="agent-validated-source-count">Validated sources: {agentRun.validatedSourceCount}</span>
+              <span>Stages: presentation only</span>
             </div>
           </div>
           <div className="border-t border-white/10 bg-white/[0.04] p-5 lg:border-l lg:border-t-0 md:p-7">
@@ -247,7 +291,7 @@ export function DiligenceAgentPanel() {
                 "Approved-source and current-record review only",
                 "Completed stages survive a partial failure",
                 "Confidence never promotes provenance",
-                "Accept, Override, or Leave Unresolved",
+                "Accept, Override, Reject, or Leave Unresolved",
               ].map((item) => <div key={item} className="flex gap-2"><ShieldCheck aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#d4e86b]" /><span>{item}</span></div>)}
             </div>
           </div>
@@ -341,6 +385,21 @@ export function DiligenceAgentPanel() {
               ))}
             </div>
           </section>
+
+          <Disclosure title="Governed audit history" testId="agent-audit-timeline" defaultOpen={agentRun.auditEvents.length > 0}>
+            <p className="mb-3 text-[10px] leading-4 text-[#60707d]">Every accepted, overridden, rejected, unresolved, and reversed outcome remains visible. Audit events do not themselves change evidence.</p>
+            {agentRun.auditEvents.length === 0 ? <p className="text-[10px] text-[#71818a]">No reviewer decisions recorded yet.</p> : (
+              <ol className="space-y-2">
+                {[...agentRun.auditEvents].reverse().map((event) => (
+                  <li key={event.id} data-testid={`agent-audit-event-${event.id}`} className="rounded-md border border-[#d9e0e4] bg-white p-3 text-[9px] leading-4 text-[#52616b]">
+                    <div className="flex flex-wrap items-center gap-2"><ReviewDecisionBadge value={event.outcome} /><strong className="text-[#243844]">{event.action.replaceAll("-", " ")}</strong><time dateTime={event.recordedAt} className="font-mono text-[8px] text-[#82939c]">{event.recordedAt}</time></div>
+                    <div className="mt-1">Evidence: {event.affectedEvidenceId ?? "review topic"} · before: {event.beforeClassification ?? event.beforeValue ?? "unchanged"} · proposed: {event.proposedClassification ?? event.proposedValue ?? "none"} · final: {event.finalClassification ?? event.finalValue ?? "unchanged"}</div>
+                    <div className="mt-1">Sources: {event.sourceIds.length ? event.sourceIds.join(", ") : "none attached"}{event.note ? ` · note: ${event.note}` : ""}</div>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </Disclosure>
 
           <section data-testid="agent-lenses" className="rounded-xl border border-[#d9e0e4] bg-white p-4 md:p-6" aria-labelledby="agent-lenses-heading">
             <SectionKicker>One record · three lenses</SectionKicker>

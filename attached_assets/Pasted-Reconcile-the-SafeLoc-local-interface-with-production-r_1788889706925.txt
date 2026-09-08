@@ -1,0 +1,107 @@
+Reconcile the SafeLoc local interface with production, remove obsolete implementations and enforce measurable content-density and navigation requirements.
+
+Batches 0–4 must already be complete. Do not weaken evidence, financial or governance controls for visual simplicity.
+
+PRODUCTION DRIFT
+
+The audited local revision contains a redesigned homepage, but production serves the older homepage.
+
+Determine:
+
+* Which commit production currently serves
+* Which artifact directory is deployed
+* Which build and deployment commands are active
+* Whether production points to an obsolete bundle
+* Whether caching is serving an earlier build
+
+Do not rebuild the homepage from scratch before inspecting the existing local redesign.
+
+Require local and production to display the same release ID before acceptance.
+
+HOME CLEANUP
+
+* Preserve the redesigned two-column hero and live product preview if they function correctly.
+* Remove the unused `LegacyHome` component after confirming no route imports it.
+* Remove legacy header subtitle, active-project text and reset control from Home.
+* Use no more than two conceptual starting paths:
+
+  * Start from a holding
+  * Start from a project
+* Set explicit allowed CTA counts by semantic intent.
+* Remove semantically duplicate Stargate and custom-project actions.
+* Do not rely only on `data-testid` counts.
+* Make the supplier relationship derive from exposure data.
+* Show source and as-of context for relationship claims.
+* Do not imply issuer or fund materiality.
+* Ensure every hero metric derives from the canonical diligence context.
+
+DIRECTORY ROUTING
+
+“Browse Texas Facilities” and “Browse Nationwide Directory” must not lead to indistinguishable states.
+
+Either:
+
+* Implement distinct directory scopes, or
+* Replace them with one accurately named directory action.
+
+Texas should remain the featured rollout geography.
+
+METHODOLOGY LINKS
+
+Methodology, About the Builder and How It Works should reach their intended section or route. Do not send multiple differently labeled links to the top of the same undifferentiated page.
+
+DENSITY BUDGETS
+
+Home default state:
+
+* Maximum three desktop viewport lengths
+* Maximum four mobile viewport lengths
+
+Selected or expanded detail may exceed the default budget deliberately.
+
+Analysis:
+
+* Each section begins with a compact conclusion, status and primary action.
+* Evidence rows remain compact until expanded.
+* Source passages, methodology, benchmarks and audit history remain closed by default.
+* Full cash-flow detail remains optional.
+* Advisor explanations and conversations remain collapsed until requested.
+* Agent activity remains compact.
+* Preserve existing functional financial tabs; do not reimplement them unnecessarily.
+
+NAVIGATION AND FOCUS
+
+* All route and section links must place the requested heading below sticky UI.
+* Apply correct `scroll-margin-top`.
+* Wait for routed content to mount before scrolling.
+* NVIDIA selection must visibly reveal and focus its result.
+* Resolve actions must open and focus the correct evidence record.
+* Financial tabs must support keyboard navigation.
+* Dialog focus must be trapped and restored.
+* Respect reduced-motion preferences.
+
+RESPONSIVE TESTING
+
+Test:
+
+* 1440×900
+* 1366×768
+* 1024×768
+* 768×1024
+* 390×844
+
+Verify:
+
+* No horizontal page overflow
+* Readable type
+* Usable sticky navigation
+* Correct dialogs
+* Tables contained within their section
+* Readable charts
+* Visible focus
+* Density budgets
+* Hero product preview visibility
+
+Run typecheck, tests and build. Capture local screenshots at all five sizes. Report homepage height, section heights, CTA counts and focus results.
+
+Do not deploy until Batch 6 release validation is complete.

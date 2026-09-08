@@ -1,0 +1,149 @@
+Restore a meaningful SafeLoc release gate, reconcile all existing browser-test failures and deploy the approved build only after local and production acceptance agree.
+
+All previous batches must be complete.
+
+CURRENT BASELINE
+
+The read-only audit found:
+
+* 171 unit/server tests passed
+* Production-entry test passed
+* 108 browser tests passed
+* 62 browser tests failed
+* 18 browser tests were skipped
+
+A successful build is not sufficient for release.
+
+FAILURE TRIAGE
+
+Classify every browser-test failure as:
+
+1. Retired/obsolete product contract
+2. Actual application regression
+3. Provider nondeterminism
+4. Test implementation defect
+5. Environment/deployment problem
+
+Create a written table with:
+
+* Test file
+* Test name
+* Classification
+* Evidence
+* Required action
+* Final disposition
+
+Do not delete or weaken assertions merely to make the suite green.
+
+OBSOLETE CONTRACTS
+
+Update legacy route and copy assertions to the current unified analysis experience while preserving the actual user outcome.
+
+Examples:
+
+* Legacy `#brief` or `#evidence` routes
+* Replaced screen navigation
+* Moved controls
+* Current section anchors
+* Current instruction language
+
+PROVIDER DETERMINISM
+
+* Use stable captured provider fixtures for ordinary browser tests.
+* Do not let EIA/ERCOT live-versus-embedded timing make deterministic tests fail.
+* Keep a separate bounded live-provider smoke test.
+* Test stale, live, cached and unavailable provider states explicitly.
+
+REQUIRED REGRESSIONS
+
+The deterministic suite must cover:
+
+* MW cannot become months
+* cents/kWh conversion
+* Source-type eligibility
+* Zero-source fail-closed behavior
+* Raw/proposed/accepted-state separation
+* Wrong entity and wrong project phase
+* Canonical URL matching
+* Claim-level source support
+* Source rejection ledger
+* Category research coverage
+* Custom research partial state
+* Agent proposal/accept/override/reject/unresolved/reverse
+* Audit persistence
+* Scenario basis
+* Homepage duplication limits
+* Homepage density
+* Functional financial tabs
+* Default collapsed states
+* Cross-page anchors
+* Sticky-header offset
+* Dynamic metric consistency
+* Mobile dialog/focus
+* No horizontal overflow
+* Build identifier parity
+
+LIVE ACCEPTANCE
+
+Run bounded live research for:
+
+* Lancium/Stargate Abilene
+* Meta Temple
+
+For each, report:
+
+* Executed queries
+* Categories covered
+* Candidate sources
+* Accessible sources
+* Claim-supporting sources
+* Rejections and reasons
+* Proposed evidence
+* Accepted evidence
+* Whether financial outputs changed
+* Why any financial output was allowed to change
+
+The live run need not find a fixed number of sources. It must accurately describe its coverage and uncertainty.
+
+PRODUCTION RELEASE
+
+Before deployment:
+
+* Typecheck passes
+* Unit/server suite passes
+* Production build passes
+* Full deterministic Playwright suite has zero unexplained failures
+* Intentional skips have documented reasons
+* Responsive screenshots are approved
+* Release ID is recorded
+
+After deployment:
+
+1. Verify production release ID matches the approved local build.
+2. Repeat critical smoke tests against production.
+3. Verify the homepage is the redesigned version.
+4. Verify custom research remains fail-closed where appropriate.
+5. Verify curated Stargate analysis.
+6. Verify source links.
+7. Verify evidence reclassification.
+8. Verify financial recalculation.
+9. Verify agent proposals.
+10. Verify persistence and reversal.
+11. Verify responsive layouts.
+12. Verify application console errors.
+
+DELIVERABLE
+
+Report:
+
+* Final release ID
+* Production URL
+* Full test totals
+* Remaining skips
+* Remaining known limitations
+* Live-research results
+* Local-versus-production comparison
+* Changed files by batch
+* Confirmation that no unsafe research pathway bypasses acceptance
+
+Do not declare the release complete if local and production behavior differ or if any P0/P1 failure remains unexplained.

@@ -1,0 +1,166 @@
+Make the SafeLoc Diligence Agent, audit history, scenario snapshots and financial labels accurately describe what the system did. Batches 0–3 must already be complete.
+
+AGENT STAGES
+
+The current ten stages advance after short timed waits and build a deterministic package from existing context. They must not imply that ten searches or validations occurred.
+
+For each stage:
+
+* Complete it only after the named operation produces a recorded artifact, or
+* Rename it as an existing-evidence review step.
+
+Distinguish:
+
+* Search executed
+* Source retrieved
+* Source accessible
+* Evidence attached
+* Claim validated
+* Financially eligible
+* Human accepted
+
+Do not equate Verified-classified records with validated URLs.
+
+CURATED SOURCES
+
+Resolve curated `claimIds` into the same source and claim contract used for custom evidence. Do not drop claim-registry mappings when passing curated evidence to the agent.
+
+AGENT PROPOSALS
+
+Every consequential proposal must display:
+
+* Current value/classification
+* Proposed value/classification
+* Raw source value and unit
+* Normalized value and unit
+* Supporting claim and passage
+* Source eligibility
+* Project/entity relevance
+* Expected model effect
+* Expected decision effect
+* Confidence
+* Accept
+* Override
+* Reject
+* Leave unresolved
+
+Before approval, the proposal must not modify accepted state.
+
+After approval:
+
+* Apply only the disclosed change.
+* Recalculate affected metrics.
+* Record before and after values.
+* Make the change reversible.
+
+A proposal that changes nothing must be labeled `No model change` rather than consequential.
+
+AUDIT LINEAGE
+
+Create one persisted event chain covering:
+
+* Research proposal
+* Normalization
+* Acceptance
+* Override
+* Rejection
+* Unresolved disposition
+* Reversal
+* Provider refresh
+* Model recalculation
+
+Each event must preserve:
+
+* Event ID
+* Actor
+* Timestamp
+* Evidence ID
+* Before and after values
+* Before and after units
+* Before and after classifications
+* Source snapshot
+* Claim snapshot
+* Model version
+* Validation-policy version
+* Reasoning
+* Parent event
+
+Reversal must append a reversal event. It must not erase or rewrite the original decision.
+
+STALE PROPOSALS
+
+Proposal snapshot identity must include every field that can affect eligibility or financial output:
+
+* Numeric value
+* Qualitative value
+* Unit
+* Classification
+* Model classification
+* Source support
+* Source relevance
+* Entity scope
+* Claim
+* Provider version
+* Model version
+
+A proposal based on stale evidence must require refresh or reaffirmation.
+
+SCENARIOS
+
+Saved scenarios must capture:
+
+* Accepted evidence values
+* Units
+* Classifications
+* Source snapshot/version
+* Provider timestamps
+* Model version
+* Assumption set
+* Financial outputs
+* Decision posture
+
+When two scenarios use incomparable bases, say so instead of presenting a clean comparison.
+
+MODEL LABELS
+
+1. Rename `All Inputs Verified` to something such as:
+
+   `Synthetic Evidence-Quality Counterfactual`
+
+   unless all underlying values are independently verified.
+
+2. Explain that changing evidence classification does not magically verify synthetic values.
+
+3. Trace the curated 14-month grid assumption separately from public grid context.
+
+4. Describe county-hazard conversion as a modeling policy, not a FEMA project-loss probability.
+
+5. Label marginal dollar effect correctly:
+
+   * Undiscounted equity cash-flow change
+   * Includes exit effects when applicable
+   * Distinct from annual recurring effect
+   * Distinct from NPV
+
+6. Preserve existing recurring-versus-total attribution distinctions.
+
+TESTS
+
+Test:
+
+* Actual versus presentation-only agent stages
+* Curated claim resolution
+* Proposal preview without mutation
+* Accept and metric recalculation
+* Override
+* Reject
+* Leave unresolved
+* No-op proposal
+* Reverse through reload
+* Stale proposal detection
+* Unified persisted event chain
+* Complete scenario snapshot
+* Incomparable scenario warning
+* Correct counterfactual and hazard labels
+
+Run typecheck, tests, build and relevant Playwright tests. Report all changes and any operation that remains simulated.

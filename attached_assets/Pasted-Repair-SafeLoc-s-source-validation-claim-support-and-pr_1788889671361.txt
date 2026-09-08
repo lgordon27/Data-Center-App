@@ -1,0 +1,160 @@
+Repair SafeLoc’s source-validation, claim-support and project-entity pipeline. Batch 1 semantic contracts must already be complete.
+
+PRIMARY OBJECTIVE
+
+A URL appearing in a provider response must not be described as a validated source. SafeLoc must determine what was discovered, accessed, parsed and actually supports a claim.
+
+SOURCE STATES
+
+Represent these as separate states:
+
+* Discovered
+* Retained
+* Accessible
+* Redirected
+* Parsed
+* Mapped to evidence
+* Claim-supporting
+* Project-specific
+* Financially eligible
+* Rejected
+* Unknown
+
+Do not collapse these into one “validated” label.
+
+URL CANONICALIZATION
+
+Implement a safe canonical source identity system:
+
+* Normalize scheme and hostname where appropriate.
+* Remove known tracking parameters such as `utm_source` when they are not identity-significant.
+* Preserve query parameters that identify a document, record, page or search result.
+* Record original URL and resolved URL.
+* Handle fragments consistently.
+* Detect redirects.
+* Do not rely on exact URL-string equality.
+* Do not let tracking-parameter differences detach evidence from a retained source.
+
+SOURCE LEDGER
+
+Retain an auditable ledger containing:
+
+* Raw candidate occurrences
+* Parsed candidates
+* Duplicate occurrences
+* Canonical unique sources
+* Retained sources
+* Sources mapped to claims
+* Rejected sources
+* Cap-discarded sources
+* Rejection reason
+* Access status
+* Content type
+* Resolved URL
+
+Remove the arbitrary behavior that retains only the first ten URLs before claim mapping.
+
+If a cap is necessary:
+
+* Rank claim-cited and primary sources first.
+* Never discard an otherwise eligible source simply because it appeared eleventh.
+* Record every cap discard.
+
+ENTITY AND RELATIONSHIP MODEL
+
+Separately represent:
+
+* Facility
+* Campus
+* Project
+* Project phase
+* Parcel
+* Developer
+* Owner
+* Borrower
+* Operator
+* Tenant/customer
+* Supplier
+* Utility
+* Capital provider
+
+Support aliases and prior names.
+
+Relationship types must include:
+
+* Same project
+* Project phase
+* Same campus
+* Owner
+* Developer
+* Operator
+* Tenant/customer
+* Supplier
+* Contractual relationship
+* Related context
+* Thematic relationship
+* Unverified
+
+Unknown identity metadata must remain unknown. Never convert missing `exactProject` metadata to false automatically.
+
+VERIFIED EVIDENCE ELIGIBILITY
+
+Verified Evidence must require:
+
+1. An accessible or reproducibly captured source
+2. An eligible source type
+3. A specific claim or passage
+4. Correct entity
+5. Correct facility/campus/phase scope
+6. Correct time period
+7. Semantic compatibility with the evidence variable
+8. No unresolved contradiction that prevents verification
+
+A related-context or wrong-phase source may remain useful context but cannot authorize facility-level Verified Evidence.
+
+An unrelated secondary URL that happens to appear in the source packet must fail Verified eligibility.
+
+QUOTES AND SUMMARIES
+
+Store separately:
+
+* Exact quotation
+* Source summary
+* AI-generated interpretation
+* Analyst conclusion
+
+Rules:
+
+* Exact quotation must be verbatim.
+* Preserve page, section or paragraph locator when available.
+* If no exact passage was captured, say so.
+* Generated text must never be labeled exact language.
+* Every supported claim must map immutably to its supporting passage.
+* A single general source cannot support five unrelated variables without distinct passages.
+
+COMMUNITY RECORDS
+
+Apply the same source, entity, phase and exact-quote rules to community-agreement records. External benchmark classifications and SafeLoc human conclusions must remain separate.
+
+TESTS
+
+Create realistic fixtures for:
+
+* Tracking-parameter URL variants
+* Redirects
+* Same-campus but wrong-phase evidence
+* Developer evidence used as operator evidence
+* Supplier relationship mistaken for ownership
+* Secondary article unrelated to the exact facility
+* Missing identity metadata
+* One source supporting multiple distinct passages
+* Generated summary presented without an exact quote
+* Source appearing after the tenth candidate
+* Conflicting sources
+* Community benchmark versus analyst conclusion
+
+The unrelated-secondary-URL reproduction identified by the audit must fail eligibility.
+
+Run typecheck, tests and build. Report changed files, entity rules, source states, rejection codes and remaining limitations.
+
+Do not expand live retrieval yet.

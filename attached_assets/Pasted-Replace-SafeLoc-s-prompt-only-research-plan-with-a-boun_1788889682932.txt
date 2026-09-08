@@ -1,0 +1,127 @@
+Replace SafeLoc’s prompt-only research plan with a bounded, deterministic, category-based retrieval workflow. Batches 0–2 must already be complete.
+
+CURRENT FAILURE
+
+Two audited Texas project runs each executed only one observed web search, even though the request contained category-specific search plans and allowed up to 32 tool calls. A maximum tool-call budget does not guarantee that the model executes the planned searches.
+
+The application must orchestrate the retrieval categories. Do not rely on one model response to decide whether to search all categories.
+
+RESEARCH CATEGORIES
+
+Run bounded retrieval for:
+
+1. Project identity, campus, phase and parties
+2. Grid interconnection and energization
+3. Electricity supply, pricing and backup generation
+4. Water source, rights, contracts and cooling
+5. Permitting, incentives and community agreements
+6. Construction status, schedule and capital
+7. Tenant/customer/counterparty relationships
+8. Climate and operational hazards
+
+For each category:
+
+* Generate a limited primary query.
+* Record the exact executed query.
+* Retrieve and retain candidates.
+* Evaluate coverage.
+* Run no more than one focused follow-up query when material coverage remains missing.
+* Use one shared time and cost budget.
+* Preserve valid results if a later category fails.
+* Never report a planned query as executed.
+
+RESEARCH AUDIT OUTPUT
+
+Record:
+
+* Provider
+* Model
+* Provider response ID
+* Requested queries
+* Executed queries
+* Category
+* Timestamp
+* Raw candidate count
+* Canonical candidate count
+* Accessible count
+* Parsed count
+* Claim-mapped count
+* Eligible count
+* Rejected count
+* Rejection reasons
+* Category completion state
+
+Category states:
+
+* Complete
+* Partial
+* No eligible evidence
+* Provider failure
+* Timed out
+* Not searched
+
+One executed electricity query must never appear as completed research for all 16 evidence variables.
+
+DOCUMENT ACCESS
+
+Implement reproducible document handling for:
+
+* HTML pages
+* Text PDFs
+* Government documents
+* Direct downloadable files
+
+Record:
+
+* Access result
+* Resolved URL
+* Content type
+* Retrieved timestamp
+* Extracted passage
+* Page/section when available
+* Extraction limitations
+
+Scanned PDFs, blocked sources and JavaScript-only pages must fail explicitly or use a documented supported process. Do not pretend they were reviewed.
+
+Use appropriate protections for outbound destinations and redirects. Do not build an unrestricted server-side URL fetcher.
+
+SUMMARY SUPPORT
+
+* Project summaries must be assembled from eligible claims.
+* Link each factual sentence to its supporting claim/source.
+* Unsupported model-generated statements belong under `Unverified leads`.
+* Historical future-tense claims must undergo freshness review.
+* Directory metadata must not silently become project-specific underwriting evidence.
+* Directory capacity must remain directory-reported until separately supported.
+
+CACHE
+
+* Include research-policy, validation-policy and model versions in cache identity.
+* Revalidate older cache entries.
+* Preserve previous valid results during a failed refresh.
+* Clearly label stale results.
+
+TESTING
+
+Use:
+
+1. Deterministic captured provider fixtures
+2. Unit tests for category orchestration
+3. Integration tests for partial retrieval
+4. A separate bounded live-research acceptance test
+
+Test at least:
+
+* Lancium Clean Campus / Stargate Abilene
+* Meta Temple Data Center
+* A zero-source project
+* A partial-provider-failure project
+* A PDF source
+* A tracking-parameter source
+* An alternate project-name source
+
+Acceptance requires an auditable request → candidate → normalization → rejection/mapping → evidence → proposed assumption chain.
+
+Do not use a fixed minimum source quota as a substitute for quality. Report category coverage and material gaps.
+
+Run typecheck, tests and build. Report cost/time behavior, executed queries, source counts by state and unresolved provider limitations.

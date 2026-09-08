@@ -1,0 +1,96 @@
+Implement an immediate containment release for SafeLoc Diligence Workbench. This batch must prevent unsafe custom-research results from affecting the financial model while preserving the existing curated case and current user interface.
+
+Do not redesign the homepage, expand retrieval or refactor unrelated components in this batch.
+
+BACKGROUND
+
+A read-only audit reproduced the following defects:
+
+1. A research response returned grid-interconnection data of 1,200 MW. The financial engine interpreted 1,200 as months and produced a 1,202-month revenue delay after an evidence adjustment.
+2. A response returned 7.3 cents/kWh. The engine interpreted this as $7.30/MWh instead of $73/MWh.
+3. Correct unit conversion would still not make a residential electricity rate an eligible facility tariff.
+4. Unsupported AI classifications can enter active custom evidence and change fallback financial economics.
+5. Zero eligible sources can still produce a polished project analysis and altered financial outputs.
+6. Cached research can bypass later validation behavior.
+7. Production and local builds are not visibly identifiable, making deployment drift difficult to detect.
+
+REQUIRED CONTAINMENT
+
+1. Custom-project research results must initially enter a `PROPOSED_RESEARCH` or equivalent quarantined state.
+
+2. Proposed research must not automatically modify:
+
+   * Accepted evidence classifications
+   * Accepted numeric inputs
+   * Financial assumptions
+   * Baseline or stress returns
+   * Decision posture
+   * Material-gap counts
+
+3. When custom research completes, distinguish:
+
+   * Retrieved leads
+   * Eligible evidence
+   * Proposed classifications
+   * Accepted inputs
+
+4. If zero eligible project-specific sources are found:
+
+   * Display `RESEARCH INCOMPLETE`.
+   * Keep the documented synthetic/default financial case unchanged.
+   * Show generated content only under `Unverified leads`.
+   * Do not present generated prose as a project finding.
+   * Do not allow AI-generated classifications to alter fallback policies.
+
+5. Add a defensive model-input guard immediately before the cash-flow engine:
+
+   * A duration field may not accept MW, GW, dollars, percentages, energy prices or other incompatible dimensions.
+   * An electricity-price field may not accept cents/kWh without explicit conversion.
+   * Invalid or unknown units must be quarantined.
+   * Quarantined values must never silently fall back into the model as sourced values.
+   * Preserve the raw value and unit for review.
+
+6. Add a visible `Research result is not yet accepted into the model` notice for custom projects.
+
+7. Cached research must pass the same containment and eligibility guards before loading. Do not trust a result merely because it exists in cache.
+
+BUILD IDENTIFICATION
+
+Add a nonintrusive build identifier:
+
+* Application version
+* Git commit SHA or release ID
+* Build timestamp
+
+Expose it in a small footer/debug surface and an endpoint such as `/api/version`.
+
+The local and production application must allow release parity to be verified without inspecting the bundle manually.
+
+REGRESSION TESTS
+
+Create failing tests before implementing the fixes:
+
+* `1,200 MW` cannot populate `grid_interconnection` as months.
+* `7.3 cents/kWh` cannot remain `7.3 $/MWh`.
+* A residential rate cannot become an accepted facility tariff.
+* Zero eligible sources cannot change accepted model outputs.
+* Source-free Management Assertion, Model Inference or User Assumption classifications cannot change accepted economics.
+* Cached results cannot bypass containment.
+* Proposed custom research does not alter accepted evidence.
+* Curated Stargate behavior remains unchanged.
+* The version endpoint and visible release identifier agree.
+
+Run:
+
+* Typecheck
+* Unit/server tests
+* Production build
+* Relevant Playwright tests
+
+Do not deploy yet. Report:
+
+1. Files changed
+2. New containment behavior
+3. New failing-then-passing regression tests
+4. Any pathways that can still activate custom research without human acceptance
+5. Local build SHA

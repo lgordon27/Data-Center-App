@@ -1,0 +1,128 @@
+Create enforceable semantic contracts for all 16 SafeLoc evidence variables and separate raw research, proposed evidence and accepted model state.
+
+Batch 0 containment must already be complete. Preserve its protections.
+
+PRIMARY OBJECTIVE
+
+The application currently validates shape more reliably than meaning. A finite number and source URL are insufficient. Every variable must define what it means, which units it accepts, which sources are eligible and whether it may enter the financial model.
+
+CANONICAL VARIABLE DEFINITIONS
+
+Create one centralized definition for each of the 16 evidence variables containing fields equivalent to:
+
+* Evidence ID
+* Display name
+* Business meaning
+* Expected dimension
+* Canonical unit
+* Allowed source units
+* Explicit conversion functions
+* Plausible minimum and maximum
+* Whether zero is valid
+* Eligible source scopes
+* Eligible source types
+* Required project specificity
+* Financial-model destination
+* Context-only versus financially material
+* Fallback policy
+* Human acceptance requirement
+
+Do not duplicate this logic between server parsing, client parsing and the cash-flow engine.
+
+RAW AND NORMALIZED VALUES
+
+For every researched value, preserve:
+
+* Raw value
+* Raw unit
+* Raw text
+* Source-provided context
+* Normalized value
+* Canonical unit
+* Conversion applied
+* Validation status
+* Rejection/quarantine reason
+* Model eligibility
+* Human disposition
+
+Never overwrite the raw result with the normalized result.
+
+SPECIFIC REQUIRED BEHAVIOR
+
+1. `grid_interconnection` must represent an expected schedule duration in months if that is what the model consumes.
+
+2. MW or GW capacity data must never enter a duration field.
+
+3. `7.3 cents/kWh` may mathematically normalize to `$73/MWh`, but the normalized result must remain ineligible unless the source context supports an appropriate data-center electricity assumption.
+
+4. Residential, average-city or general retail rates must not become Verified facility tariffs.
+
+5. Dates must not become durations without an explicit reference date and derivation.
+
+6. Percentages, decimal fractions and basis points must have explicit conversions.
+
+7. Values outside plausible ranges must be quarantined, not clipped silently.
+
+8. Missing units must remain unresolved unless a human explicitly supplies the unit as a User Assumption.
+
+9. Context-only values may inform research but must not enter financial calculations.
+
+ACCEPTED-STATE BOUNDARY
+
+Create or formalize separate state for:
+
+* Raw research
+* Proposed normalized evidence
+* Accepted evidence
+* Accepted model inputs
+
+Apply the same rules to:
+
+* Initial custom research
+* Cached research
+* Focused re-research
+* Background refresh
+* Agent proposals
+* Manual user edits
+
+Only accepted, semantically valid and model-eligible values may affect the cash-flow engine.
+
+A same-value and same-classification proposal must be labeled a no-op acknowledgment, not a consequential model update.
+
+CACHE VERSIONING
+
+* Add a validation-policy version to cached research.
+* Revalidate cached entries when the policy version changes.
+* Quarantine legacy cache entries that cannot be safely migrated.
+* Do not silently activate old cached classifications.
+
+TESTS
+
+Add comprehensive tests for all 16 variable definitions:
+
+* Correct units
+* Allowed conversions
+* Invalid dimensions
+* Missing units
+* Plausible ranges
+* Context-only values
+* Explicit zero
+* Rejection reasons
+* Model eligibility
+* Human acceptance
+* Cache revalidation
+
+Add controlled source-free tests proving that different AI-generated classifications cannot change accepted economics before approval.
+
+Run typecheck, unit/server tests, build and relevant Playwright tests.
+
+Report:
+
+1. Canonical definition of every variable
+2. All supported conversions
+3. Every quarantine rule
+4. Any evidence variable whose intended model meaning was previously ambiguous
+5. Changed files
+6. Test results
+
+Do not expand the number of searches or redesign the interface in this batch.

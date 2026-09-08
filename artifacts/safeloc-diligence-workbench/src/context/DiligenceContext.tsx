@@ -28,6 +28,8 @@ import {
 } from "@/services/eiaService";
 import {
   clearDecisionHistory,
+  clearSessionActions,
+  logSessionAction,
   recordManualClassificationChange,
 } from "@/services/sessionLog";
 import {
@@ -44,6 +46,19 @@ import {
   getEvidenceImpactRole,
   type ImpactRole,
 } from "@/data/evidenceImpactRoles";
+import {
+  COMMUNITY_TERM_DEFINITIONS,
+  type CommunityConclusion,
+  type CommunityHumanStatus,
+  type CommunityTermId,
+} from "@/data/communityAgreements";
+import {
+  countUnresolvedCommunityTerms,
+  createCommunityReview,
+  type CommunityProjectInput,
+  type CommunityReviewState,
+  type CommunityTermDecision,
+} from "@/model/communityAgreements";
 
 export type { Classification } from '@/model/cashFlowEngine';
 
@@ -139,9 +154,19 @@ type DiligenceState = {
   ercotQueue: ErcotQueueResult;
   eiaData: EiaElectricityData;
   eiaLoading: boolean;
+  communityReview: CommunityReviewState;
+  communityUnresolvedCount: number;
+  reviewCommunityTerm: (
+    id: CommunityTermId,
+    conclusion: CommunityConclusion,
+    classification: CommunityTermDecision["classification"],
+    humanStatus?: CommunityHumanStatus,
+    reviewerNote?: string,
+  ) => boolean;
 };
 
 export const CURRENT_SESSION_STORAGE_KEY = 'safeloc:diligence:current-session:v1';
+export const COMMUNITY_REVIEW_STORAGE_KEY = 'safeloc:diligence:community-review:v1';
 export const EVIDENCE_TIP_DISMISSED_STORAGE_KEY = 'safeloc:diligence:evidence-room-tip-dismissed:v1';
 export const CURRENT_PROVENANCE_VERSION = 2;
 const INITIAL_EVIDENCE_SOURCE: Record<string, Omit<EvidenceItem, "impactRole">> = {
@@ -261,6 +286,11 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     description: "A public-source diligence case paired with clearly labeled synthetic acquisition economics.",
     capacityMW: DEFAULT_CAPACITY_MW,
   });
+  const [communityReview, setCommunityReview] = useState<CommunityReviewState>(() => loadCommunityReview({
+    kind: "curated",
+    name: "Stargate Abilene",
+    location: "Taylor County, TX",
+  }));
   const [originatingCompany, setOriginatingCompany] = useState<string | null>(null);
   const [scenarios, setScenarios] = useState<SavedScenario[]>(loadScenarios);
   const [ercotQueue, setErcotQueue] = useState<ErcotQueueResult>(FALLBACK_ERCOT_RESULT);
@@ -448,6 +478,31 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     return true;
   }, [project]);
 
+  const reviewCommunityTerm = useCallback((
+    id: CommunityTermId,
+    conclusion: CommunityConclusion,
+    classification: CommunityTermDecision["classification"],
+    humanStatus: CommunityHumanStatus = "accepted",
+    reviewerNote?: string,
+  ) => {
+    const current = communityReview.terms[id];
+    const definition = COMMUNITY_TERM_DEFINITIONS.find((candidate) => candidate.id === id);
+    if (!current || !definition) return false;
+    const reviewedAt = new Date().toISOString();
+    const next: CommunityReviewState = {
+      ...communityReview,
+      terms: {
+        ...communityReview.terms,
+        [id]: { ...current, conclusion, classification, humanStatus, reviewedAt, reviewerNote },
+      },
+      lastAction: { termId: id, status: humanStatus, recordedAt: reviewedAt },
+    };
+    setCommunityReview(next);
+    writeCommunityReview(next, project);
+    logSessionAction(`Community term ${humanStatus}`, id);
+    return true;
+  }, [communityReview, project]);
+
   const resetToDefault = useCallback((company: string | null = null) => {
     const nextState = { evidence: cloneEvidence(INITIAL_EVIDENCE), hasChangedClassification: false, lastChange: null };
     stateRef.current = nextState;
@@ -460,8 +515,16 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       capacityMW: DEFAULT_CAPACITY_MW,
     });
     setOriginatingCompany(company);
+    const nextCommunityReview = createCommunityReview({
+      kind: "curated",
+      name: "Stargate Abilene",
+      location: "Taylor County, TX",
+    });
+    setCommunityReview(nextCommunityReview);
+    clearStorage(COMMUNITY_REVIEW_STORAGE_KEY);
     clearStorage(CURRENT_SESSION_STORAGE_KEY);
     clearDecisionHistory();
+    clearSessionActions();
   }, []);
 
   const loadCustomProject = useCallback((research: CustomResearchResponse, company: string | null = null) => {
@@ -494,6 +557,14 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       researchCache: research.researchCache,
       researchCoverage: research.researchCoverage,
     });
+    const customCommunityProject: CommunityProjectInput = {
+      kind: "custom",
+      name: research.projectSummary.name,
+      location: research.projectSummary.location,
+    };
+    const nextCommunityReview = loadCommunityReview(customCommunityProject);
+    setCommunityReview(nextCommunityReview);
+    writeCommunityReview(nextCommunityReview, customCommunityProject);
     setOriginatingCompany(company);
     clearStorage(CURRENT_SESSION_STORAGE_KEY);
     clearDecisionHistory();
@@ -561,8 +632,10 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     [effectiveEvidence, project.capacityMW, state.lastChange],
   );
 
+  const communityUnresolvedCount = countUnresolvedCommunityTerms(communityReview.terms);
+
   return (
-    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, applyEvidenceCorrection, clearLastChange, metrics, resetToDefault, loadCustomProject, project, originatingCompany, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading }}>
+    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, applyEvidenceCorrection, clearLastChange, metrics, resetToDefault, loadCustomProject, project, originatingCompany, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading, communityReview, communityUnresolvedCount, reviewCommunityTerm }}>
       {children}
     </DiligenceContext.Provider>
   );
@@ -637,6 +710,67 @@ function clearStorage(key: string) {
     window.localStorage.removeItem(key);
   } catch {
     // Storage is optional.
+  }
+}
+
+function writeCommunityReview(review: CommunityReviewState, project: CommunityProjectInput) {
+  writeStorage(COMMUNITY_REVIEW_STORAGE_KEY, {
+    version: 1,
+    projectName: project.name,
+    projectLocation: project.location,
+    review,
+  });
+}
+
+function loadCommunityReview(project: CommunityProjectInput): CommunityReviewState {
+  const fallback = createCommunityReview(project);
+  const raw = readStorage(COMMUNITY_REVIEW_STORAGE_KEY);
+  if (!raw) return fallback;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return fallback;
+    const stored = parsed as {
+      version?: unknown;
+      projectName?: unknown;
+      projectLocation?: unknown;
+      review?: unknown;
+    };
+    if (
+      stored.version !== 1 ||
+      stored.projectName !== project.name ||
+      stored.projectLocation !== project.location ||
+      !stored.review ||
+      typeof stored.review !== "object" ||
+      Array.isArray(stored.review)
+    ) return fallback;
+    const review = stored.review as Partial<CommunityReviewState>;
+    if (review.version !== 1 || !review.relationship || !review.terms || typeof review.terms !== "object") return fallback;
+    const terms = { ...fallback.terms };
+    for (const definition of COMMUNITY_TERM_DEFINITIONS) {
+      const candidate = (review.terms as Record<string, unknown>)[definition.id];
+      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) continue;
+      const item = candidate as Partial<CommunityTermDecision>;
+      if (
+        item.id === definition.id &&
+        ["Present", "Partial", "Absent", "Unknown", "Not applicable"].includes(item.conclusion ?? "") &&
+        ["Verified Evidence", "Management Assertion", "Model Inference", "Missing Evidence", "Not applicable"].includes(item.classification ?? "") &&
+        ["unreviewed", "accepted", "overridden", "unresolved"].includes(item.humanStatus ?? "")
+      ) {
+        terms[definition.id] = {
+          ...fallback.terms[definition.id],
+          ...item,
+          treatment: definition.treatment,
+        } as CommunityTermDecision;
+      }
+    }
+    return {
+      version: 1,
+      relationship: fallback.relationship,
+      terms,
+      lastAction: review.lastAction,
+    };
+  } catch {
+    return fallback;
   }
 }
 

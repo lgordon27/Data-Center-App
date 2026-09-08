@@ -164,7 +164,7 @@ export function AnalysisWorkbench({ onResolveEvidence, onReset }: { onResolveEvi
         <div className="min-w-0 flex-1 space-y-10 lg:pl-8">
           <section id="analysis-overview" data-testid="analysis-section-overview" tabIndex={-1} className="scroll-mt-28 outline-none" aria-labelledby="analysis-overview-heading">
             <h2 id="analysis-overview-heading" className="sr-only">Project Overview</h2>
-            <CaseBrief {...sectionProps} />
+             <CaseBrief {...sectionProps} onFocusCommunity={() => onResolveEvidence("community-agreements")} />
           </section>
           <section id="analysis-evidence" data-testid="analysis-section-evidence" tabIndex={-1} className="scroll-mt-28 outline-none" aria-labelledby="analysis-evidence-heading">
             <h2 id="analysis-evidence-heading" className="sr-only">Evidence</h2>

@@ -63,6 +63,7 @@ import type {
   Screen
 } from "@/components/Shell";
 import { ClaimCitation } from "@/components/ClaimCitation";
+import { COMMUNITY_TERM_DEFINITIONS } from "@/data/communityAgreements";
 
 const holdingsConnectionCopy: Record<RecommendationStatus, string> = {
   BLOCKED: "NVIDIA GPU contracts and hyperscaler CAPEX may connect values-aligned funds to this buildout, but unresolved project evidence leaves a material exposure gap. This blocked status is a diligence signal—not a facility-level Stargate fact or a holdings recommendation.",
@@ -71,7 +72,7 @@ const holdingsConnectionCopy: Record<RecommendationStatus, string> = {
 };
 
 export function DecisionReview({ onNavigate, onResolve, requestedAction, onRequestedActionHandled }: { onNavigate: (screen: Screen) => void; onResolve: (id: string) => void; requestedAction?: "save" | "compare" | null; onRequestedActionHandled?: () => void }) {
-  const { evidence, metrics, scenarios, saveScenario, renameScenario, removeScenario, project } = useDiligence();
+  const { evidence, metrics, scenarios, saveScenario, renameScenario, removeScenario, project, communityReview, communityUnresolvedCount } = useDiligence();
   const scenarioItems = project.kind === "custom" ? [] : scenarios;
   const holdingsCopy = project.kind === "custom"
     ? {
@@ -197,6 +198,21 @@ export function DecisionReview({ onNavigate, onResolve, requestedAction, onReque
             {materialGapItems.map((item) => <div key={item.id} data-testid={`material-gap-row-${item.id}`} className="flex items-center justify-between gap-4 py-3"><div><div className="text-[11px] font-semibold text-[#344550]">{item.label}</div><div className="mt-1 text-[10px] text-[#52616b]">{item.citation}</div></div><button type="button" data-testid={`button-resolve-${item.id}`} onClick={() => onResolve(item.id)} className="shrink-0 rounded bg-[#fde8eb] px-2.5 py-2 text-[9px] font-bold uppercase tracking-[0.11em] text-[#ba2f45] hover:bg-[#ba2f45] hover:text-white">Resolve <ArrowRight aria-hidden="true" className="ml-1 inline h-3 w-3" /></button></div>)}
             {materialGapItems.length === 0 && <div data-testid="material-gap-empty" className="rounded-md bg-[#e0f4ed] p-3 text-[11px] text-[#0b7a63]">No material evidence gaps. The recommendation is not blocked by missing evidence.</div>}
           </div>
+           <div data-testid="community-material-gaps" className="mt-5 border-t border-[#e5eae8] pt-4">
+             <div className="flex flex-wrap items-baseline justify-between gap-2">
+               <div className="font-mono text-[9px] font-bold uppercase tracking-[0.13em] text-[#52616b]">Community terms requiring resolution</div>
+               <span data-testid="community-material-gap-count" className="font-mono text-[10px] font-bold text-[#ba2f45]">{communityUnresolvedCount}</span>
+             </div>
+             <p className="mt-1 text-[9px] leading-4 text-[#7d898f]">These project-level gaps use the same Resolve path, but they do not create automatic IRR penalties or a fund-level risk rating.</p>
+             <div className="mt-2 divide-y divide-[#e5eae8]">
+               {COMMUNITY_TERM_DEFINITIONS.filter((definition) => communityReview.terms[definition.id]?.humanStatus === "unresolved" || communityReview.terms[definition.id]?.conclusion === "Unknown").map((definition) => (
+                 <div key={definition.id} data-testid={`community-material-gap-row-${definition.id}`} className="flex items-center justify-between gap-4 py-3">
+                   <div><div className="text-[11px] font-semibold text-[#344550]">{definition.label}</div><div className="mt-1 text-[10px] text-[#52616b]">{definition.treatment} · project-specific documentation unresolved</div></div>
+                   <button type="button" data-testid={`button-resolve-community-${definition.id}`} onClick={() => onResolve(`community-${definition.id}`)} className="shrink-0 rounded bg-[#fde8eb] px-2.5 py-2 text-[9px] font-bold uppercase tracking-[0.11em] text-[#ba2f45] hover:bg-[#ba2f45] hover:text-white">Resolve <ArrowRight aria-hidden="true" className="ml-1 inline h-3 w-3" /></button>
+                 </div>
+               ))}
+             </div>
+           </div>
            <div data-testid="material-audit-register" className="mt-5 border-t border-[#e5eae8] pt-4">
              <div className="font-mono text-[9px] font-bold uppercase tracking-[0.13em] text-[#52616b]">Material support register</div>
              <div className="mt-2 divide-y divide-[#e5eae8]">

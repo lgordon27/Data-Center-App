@@ -63,8 +63,197 @@ import {
   type CustomEvidenceRecord,
   type ResearchProgress,
 } from "@/services/researchProjectService";
+import {
+  COMMUNITY_AGREEMENTS,
+  COMMUNITY_PROVIDER_ATTRIBUTION,
+  COMMUNITY_SNAPSHOT,
+  COMMUNITY_SNAPSHOT_VERSION,
+  COMMUNITY_TERM_DEFINITIONS,
+  type CommunityConclusion,
+  type CommunityTermId,
+} from "@/data/communityAgreements";
+import { selectCommunityComparisons } from "@/model/communityAgreements";
+import { analyzeCommunityTerms, type CommunityAIProposal } from "@/services/communityAgreementService";
 
 type AssessmentNotice = "accepted" | "overridden";
+
+function CommunityAgreementsReview() {
+  const {
+    project,
+    communityReview,
+    communityUnresolvedCount,
+    reviewCommunityTerm,
+  } = useDiligence();
+  const [open, setOpen] = useState(false);
+  const [expandedTerm, setExpandedTerm] = useState<CommunityTermId | null>(null);
+  const [proposal, setProposal] = useState<CommunityAIProposal | null>(null);
+  const [analysisBusy, setAnalysisBusy] = useState(false);
+  const [status, setStatus] = useState("");
+  const [humanConclusion, setHumanConclusion] = useState<Record<string, CommunityConclusion>>({});
+  const [humanClassification, setHumanClassification] = useState<Record<string, "Verified Evidence" | "Management Assertion" | "Model Inference" | "Missing Evidence" | "Not applicable">>({});
+  const relationship = communityReview.relationship;
+  const agreement = relationship.agreementId
+    ? COMMUNITY_AGREEMENTS.find((candidate) => candidate.id === relationship.agreementId)
+    : undefined;
+
+  useEffect(() => {
+    if (proposal) setOpen(true);
+  }, [proposal]);
+
+  const setHuman = (id: CommunityTermId, conclusion: CommunityConclusion, classification: "Verified Evidence" | "Management Assertion" | "Model Inference" | "Missing Evidence" | "Not applicable") => {
+    reviewCommunityTerm(id, conclusion, classification, "overridden");
+    setStatus(`${COMMUNITY_TERM_DEFINITIONS.find((term) => term.id === id)?.label ?? "Term"} saved as a human conclusion.`);
+  };
+
+  const acceptProposal = (id: CommunityTermId) => {
+    const candidate = proposal?.terms.find((term) => term.id === id);
+    if (!candidate) return;
+    reviewCommunityTerm(id, candidate.proposedConclusion, candidate.proposedClassification, "accepted");
+    setStatus("AI proposal accepted for this term. Human approval is recorded separately from source text.");
+  };
+
+  const leaveUnresolved = (id: CommunityTermId) => {
+    reviewCommunityTerm(id, "Unknown", "Missing Evidence", "unresolved");
+    setStatus("Term left unresolved; no evidence, gap, or financial state was upgraded.");
+  };
+
+  return (
+    <details
+      id="evidence-item-community-agreements"
+      data-testid="community-agreements-group"
+      open={open}
+      tabIndex={-1}
+      onFocus={(event) => {
+        if (event.target === event.currentTarget) setOpen(true);
+      }}
+      className="group mt-5 scroll-mt-28 rounded-xl border border-[#cbd8d4] bg-white outline-none focus-visible:ring-2 focus-visible:ring-[#b9d43a]"
+    >
+      <summary
+        onClick={(event) => {
+          event.preventDefault();
+          setOpen((current) => !current);
+        }}
+        className="flex min-h-14 cursor-pointer list-none items-start justify-between gap-4 px-4 py-4 [&::-webkit-details-marker]:hidden md:px-5"
+      >
+        <span className="min-w-0">
+          <span className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-[9px] font-bold uppercase tracking-[0.16em] text-[#60707d]">Community Agreements</span>
+            <span data-testid="community-snapshot-version" className="rounded-full bg-[#eef2f1] px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#52616b]">Snapshot {COMMUNITY_SNAPSHOT.version.split(".").at(-1)}</span>
+          </span>
+          <span className="mt-1 block text-[18px] font-semibold tracking-[-0.025em] text-[#122232]">Community terms, kept separate from project evidence</span>
+          <span className="mt-1 block text-[10px] leading-4 text-[#52616b]">
+            {relationship.relationship} relationship · {communityUnresolvedCount} unresolved term{communityUnresolvedCount === 1 ? "" : "s"} · {COMMUNITY_AGREEMENTS.length} benchmark records
+          </span>
+        </span>
+        <ChevronDown aria-hidden="true" className="mt-1 h-4 w-4 shrink-0 text-[#52616b] transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="border-t border-[#e5eae8] px-4 py-4 md:px-5">
+        <div className="grid gap-3 md:grid-cols-[1.1fr_0.9fr]">
+          <div className="rounded-lg border border-[#d9e0e4] bg-[#f7faf8] p-4">
+            <div className="font-mono text-[9px] font-bold uppercase tracking-[0.13em] text-[#52616b]">Project relationship</div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span data-testid="community-relationship" className="rounded-full bg-[#e5efff] px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.08em] text-[#255bb7]">{relationship.relationship}</span>
+              <span data-testid="community-match-confidence" className="font-mono text-[10px] text-[#52616b]">{relationship.confidence}% match confidence · human review {relationship.humanReviewStatus}</span>
+            </div>
+            {agreement ? (
+              <>
+                <p data-testid="community-agreement-title" className="mt-3 text-[12px] font-semibold text-[#243844]">{agreement.title}</p>
+                <p className="mt-1 text-[10px] leading-4 text-[#52616b]">Matching fields: {relationship.matchingFields.join(" · ")}</p>
+                <p data-testid="community-relationship-evidence" className="mt-2 text-[10px] leading-4 text-[#52616b]">{relationship.supportingEvidence.join(" ")}</p>
+                <a href={agreement.originalDocumentUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 text-[9px] font-semibold text-[#255bb7] underline">Open original document <ExternalLink aria-hidden="true" className="h-3 w-3" /></a>
+              </>
+            ) : (
+              <p data-testid="community-not-found" className="mt-3 rounded border border-[#f1cb8b] bg-[#fff8e9] px-3 py-2 text-[10px] leading-4 text-[#6f460e]">{relationship.notFoundText}</p>
+            )}
+            <p className="mt-3 border-t border-[#d9e0e4] pt-3 text-[9px] leading-4 text-[#7d898f]">Relationship mapping is an interpretive aid; it does not upgrade a term’s evidence classification.</p>
+          </div>
+          <div className="rounded-lg border border-[#cbb7ec] bg-[#f8f4fd] p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="font-mono text-[9px] font-bold uppercase tracking-[0.13em] text-[#7049b7]">Governed analysis</div>
+              <span className="font-mono text-[8px] uppercase tracking-[0.08em] text-[#706681]">No new web search</span>
+            </div>
+            <p className="mt-2 text-[10px] leading-4 text-[#5e5870]">Analyze with AI can propose classifications from this supplied snapshot only. It cannot change evidence, gaps, recommendations, or returns until a human chooses an action.</p>
+            <button data-testid="button-analyze-community-ai" type="button" disabled={analysisBusy} onClick={async () => { setAnalysisBusy(true); setStatus(""); const result = await analyzeCommunityTerms(project); setProposal(result); setAnalysisBusy(false); }} className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-md bg-[#7049b7] px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-white disabled:cursor-wait disabled:opacity-60"><Sparkles aria-hidden="true" className="h-3.5 w-3.5" />{analysisBusy ? "Analyzing…" : "Analyze with AI"}</button>
+            {proposal && <span data-testid="community-ai-proposal-status" className="ml-2 text-[9px] font-semibold text-[#7049b7]">Proposal ready · human action required</span>}
+          </div>
+        </div>
+        {status && <div data-testid="community-live-status" role="status" aria-live="polite" className="mt-3 rounded border border-[#9bd8c5] bg-[#eff8f4] px-3 py-2 text-[10px] font-semibold text-[#08644f]">{status}</div>}
+        <div className="mt-4 overflow-x-auto rounded-lg border border-[#d9e0e4]">
+          <table className="w-full min-w-[780px] border-collapse text-left">
+            <caption className="sr-only">Community Agreements term review, ten terms.</caption>
+            <thead className="bg-[#f1f5f3] text-[9px] font-bold uppercase tracking-[0.12em] text-[#52616b]">
+              <tr><th scope="col" className="px-3 py-3">Term</th><th scope="col" className="px-3 py-3">Treatment</th><th scope="col" className="px-3 py-3">External benchmark</th><th scope="col" className="px-3 py-3">Human conclusion</th><th scope="col" className="px-3 py-3">Review</th></tr>
+            </thead>
+            <tbody className="divide-y divide-[#e5eae8]">
+              {COMMUNITY_TERM_DEFINITIONS.map((definition) => {
+                const decision = communityReview.terms[definition.id];
+                const sourceTerm = agreement?.terms[definition.id];
+                const termProposal = proposal?.terms.find((candidate) => candidate.id === definition.id);
+                const selectedConclusion = humanConclusion[definition.id] ?? decision.conclusion;
+                const selectedClassification = humanClassification[definition.id] ?? decision.classification;
+                const comparisons = selectCommunityComparisons(definition.id);
+                const isExpanded = expandedTerm === definition.id;
+                return (
+                  <tbody key={definition.id} className="contents">
+                    <tr id={`evidence-item-community-${definition.id}`} data-testid={`community-term-row-${definition.id}`} className={isExpanded ? "bg-[#fbfcfa]" : undefined}>
+                      <th scope="row" className="px-3 py-3 align-top text-[11px] font-semibold text-[#243844]">
+                        <button type="button" onClick={() => setExpandedTerm(isExpanded ? null : definition.id)} aria-expanded={isExpanded} aria-controls={`community-detail-${definition.id}`} className="text-left underline decoration-transparent underline-offset-2 hover:decoration-[#255bb7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b9d43a]">{definition.label}</button>
+                        <span className="mt-1 block text-[9px] font-normal leading-4 text-[#60707d]">{definition.description}</span>
+                      </th>
+                      <td className="px-3 py-3 align-top"><span data-testid={`community-treatment-${definition.id}`} className="rounded-full bg-[#eef2f1] px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.06em] text-[#52616b]">{definition.treatment}</span></td>
+                      <td className="px-3 py-3 align-top"><span data-testid={`community-benchmark-${definition.id}`} className="font-mono text-[10px] font-bold text-[#7049b7]">{sourceTerm?.externalBenchmark ?? "Unknown"}</span></td>
+                      <td className="px-3 py-3 align-top"><span data-testid={`community-conclusion-${definition.id}`} className={`rounded-full px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.06em] ${decision.conclusion === "Unknown" ? "bg-[#fde8eb] text-[#ba2f45]" : "bg-[#e0f4ed] text-[#08644f]"}`}>{decision.conclusion}</span></td>
+                      <td className="px-3 py-3 align-top"><button type="button" onClick={() => setExpandedTerm(isExpanded ? null : definition.id)} className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-[0.08em] text-[#255bb7]">{isExpanded ? "Collapse" : "Review"} <ChevronDown aria-hidden="true" className={`h-3 w-3 transition-transform ${isExpanded ? "rotate-180" : ""}`} /></button></td>
+                    </tr>
+                    {isExpanded && (
+                      <tr id={`community-detail-${definition.id}`} data-testid={`community-term-detail-${definition.id}`} className="bg-[#fbfcfa]">
+                        <td colSpan={5} className="px-3 pb-4 pt-1">
+                          <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+                            <div className="rounded-lg border border-[#d9e0e4] bg-white p-3">
+                              <div className="font-mono text-[8px] font-bold uppercase tracking-[0.1em] text-[#60707d]">Source record · exact language</div>
+                              <p data-testid={`community-exact-language-${definition.id}`} className="mt-2 text-[10px] leading-4 text-[#344550]">{sourceTerm?.exactLanguage ?? "No project-specific agreement source was located."}</p>
+                              <p className="mt-2 text-[10px] leading-4 text-[#52616b]"><strong>Plain English:</strong> {sourceTerm?.plainEnglish ?? "The term remains unresolved for this project."}</p>
+                              <p className="mt-2 text-[10px] leading-4 text-[#6f460e]"><strong>Softening / enforceability:</strong> {sourceTerm?.enforceabilityNote ?? "No enforceability conclusion can be drawn without attributable project evidence."}</p>
+                              <div className="mt-3 border-t border-[#e5eae8] pt-2 font-mono text-[9px] leading-4 text-[#60707d]">{sourceTerm?.sourceCitation ?? "No project-specific citation"} · {sourceTerm?.pageOrSection ?? "Section unavailable"}</div>
+                              {agreement && <p className="mt-2 text-[9px] leading-4 text-[#7d898f]"><strong>Snapshot excerpt:</strong> {agreement.excerpt} <span className="ml-1">Retrieved {agreement.retrievedAt} · reviewed {agreement.reviewedAt}.</span></p>}
+                              {agreement && <p className="mt-2 text-[9px] leading-4 text-[#7d898f]"><strong>Limitations / licensing:</strong> {agreement.limitations.join(" ")} {agreement.licensing}</p>}
+                              {agreement && <a href={agreement.sourceUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 text-[9px] font-semibold text-[#255bb7] underline">Open cited source <ExternalLink aria-hidden="true" className="h-3 w-3" /></a>}
+                            </div>
+                            <div className="rounded-lg border border-[#cbd8d4] bg-white p-3">
+                              <div className="font-mono text-[8px] font-bold uppercase tracking-[0.1em] text-[#52616b]">Human review</div>
+                              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                                <label className="text-[9px] font-semibold text-[#52616b]">Conclusion<select data-testid={`select-community-conclusion-${definition.id}`} value={selectedConclusion} onChange={(event) => setHumanConclusion((current) => ({ ...current, [definition.id]: event.target.value as CommunityConclusion }))} className="mt-1 block w-full rounded border border-[#cbd8d4] bg-white px-2 py-2 text-[10px] text-[#243844]"><option>Present</option><option>Partial</option><option>Absent</option><option>Unknown</option><option>Not applicable</option></select></label>
+                                <label className="text-[9px] font-semibold text-[#52616b]">Evidence class<select data-testid={`select-community-classification-${definition.id}`} value={selectedClassification} onChange={(event) => setHumanClassification((current) => ({ ...current, [definition.id]: event.target.value as typeof selectedClassification }))} className="mt-1 block w-full rounded border border-[#cbd8d4] bg-white px-2 py-2 text-[10px] text-[#243844]"><option>Verified Evidence</option><option>Management Assertion</option><option>Model Inference</option><option>Missing Evidence</option><option>Not applicable</option></select></label>
+                              </div>
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                <button type="button" data-testid={`button-save-community-${definition.id}`} onClick={() => setHuman(definition.id, selectedConclusion, selectedClassification)} className="rounded bg-[#122232] px-3 py-2 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#d4e86b]">Save human conclusion</button>
+                                <button type="button" data-testid={`button-leave-community-${definition.id}`} onClick={() => leaveUnresolved(definition.id)} className="rounded border border-[#efabb8] bg-[#fff3f4] px-3 py-2 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#ba2f45]">Leave unresolved</button>
+                              </div>
+                              {termProposal && <div data-testid={`community-ai-proposal-${definition.id}`} className="mt-3 rounded border border-[#cbb7ec] bg-[#f8f4fd] p-3"><div className="font-mono text-[8px] font-bold uppercase tracking-[0.1em] text-[#7049b7]">AI proposal · suggestion, not a determination</div><p className="mt-1 text-[10px] leading-4 text-[#5e5870]">{termProposal.proposedConclusion} · {termProposal.reasoning}</p><p className="mt-1 text-[9px] text-[#706681]">Source support: {termProposal.sourceSupport}</p><div className="mt-2 flex flex-wrap gap-2"><button type="button" data-testid={`button-accept-community-ai-${definition.id}`} onClick={() => acceptProposal(definition.id)} className="rounded bg-[#7049b7] px-2.5 py-2 font-mono text-[8px] font-bold uppercase text-white">Accept AI Assessment</button><button type="button" data-testid={`button-override-community-ai-${definition.id}`} onClick={() => setHuman(definition.id, selectedConclusion, selectedClassification)} className="rounded border border-[#cbb7ec] bg-white px-2.5 py-2 font-mono text-[8px] font-bold uppercase text-[#7049b7]">Override</button></div></div>}
+                              <div className="mt-3 border-t border-[#e5eae8] pt-2 text-[9px] leading-4 text-[#7d898f]">Financial treatment: <strong>{definition.treatment}</strong>. No automatic IRR penalty or model mutation is applied. Only a human-approved, quantified, source-supported driver could be considered for an existing model assumption.</div>
+                            </div>
+                          </div>
+                          <details data-testid={`community-comparisons-${definition.id}`} className="mt-3 rounded border border-[#d9e0e4] bg-white">
+                            <summary className="cursor-pointer list-none px-3 py-2 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#60707d] [&::-webkit-details-marker]:hidden">Up to three national comparisons · complete library disclosure</summary>
+                            <div className="border-t border-[#e5eae8] px-3 py-3"><p className="text-[9px] leading-4 text-[#52616b]">These are comparable-only records. They do not upgrade {project.name} evidence.</p><ul className="mt-2 grid gap-2 sm:grid-cols-3">{comparisons.map((comparison) => <li key={comparison.id} className="rounded bg-[#f1f5f3] p-2 text-[9px] leading-4 text-[#52616b]"><strong className="text-[#243844]">{comparison.title}</strong><br /><span className="font-mono text-[8px] font-bold uppercase tracking-[0.06em] text-[#255bb7]">{comparison.relationship}</span> · {comparison.terms[definition.id].externalBenchmark} · {comparison.terms[definition.id].pageOrSection}</li>)}</ul><p className="mt-2 font-mono text-[8px] uppercase tracking-[0.08em] text-[#7d898f]">Full library: {COMMUNITY_AGREEMENTS.length} normalized records in snapshot {COMMUNITY_SNAPSHOT_VERSION}.</p></div>
+                          </details>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div className="mt-4 grid gap-2 border-t border-[#e5eae8] pt-3 text-[9px] leading-4 text-[#60707d] md:grid-cols-2">
+          <p><strong>Attribution:</strong> {COMMUNITY_PROVIDER_ATTRIBUTION}</p>
+          <p><strong>Provenance:</strong> retrieved {COMMUNITY_SNAPSHOT.retrievedAt} · reviewed {COMMUNITY_SNAPSHOT.reviewedAt} · {COMMUNITY_SNAPSHOT.records.length} records · local snapshot, not a live feed.</p>
+        </div>
+      </div>
+    </details>
+  );
+}
 
 function AssessmentSourceContext({ item }: { item: EvidenceItem }) {
   const claimSources = item.claimIds
@@ -1053,6 +1242,7 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
           );
         })}
       </div>
+      <CommunityAgreementsReview />
       <div className="mt-5 flex flex-col gap-3 rounded-lg border border-[#f1cb8b] bg-[#fff8e9] p-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-3"><TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-[#a65a00]" /><div><div className="text-[11px] font-bold text-[#6f460e]">Classification changes are live</div><div className="mt-1 text-[10px] leading-4 text-[#7f6337]">Materiality, confidence, and the recommendation status update as soon as a dropdown changes.</div></div></div>
         <div className="flex shrink-0 items-center gap-2 rounded border border-[#ecd39d] bg-white/50 px-2.5 py-2"><RefreshCw className="h-3.5 w-3.5 text-[#a65a00]" /><span data-testid="text-live-confidence" className="font-mono text-[10px] font-bold text-[#6f460e]">{metrics.confidenceScore}% confidence</span></div>

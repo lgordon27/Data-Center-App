@@ -142,9 +142,15 @@ function AppShell() {
   useEffect(() => {
     if (route !== "analysis" || !evidenceFocusId) return undefined;
     const timer = window.setTimeout(() => {
-      const target = document.getElementById(`evidence-item-${evidenceFocusId}`);
+      const target = document.getElementById(
+        evidenceFocusId.startsWith("community-")
+          ? "evidence-item-community-agreements"
+          : `evidence-item-${evidenceFocusId}`,
+      );
       target?.scrollIntoView({ behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ? "auto" : "smooth", block: "center" });
-      target?.focus({ preventScroll: true });
+      const focusTarget = target?.matches("details") ? target.querySelector("summary") ?? target : target;
+      if (target?.matches("details")) (target as HTMLDetailsElement).open = true;
+      focusTarget?.focus({ preventScroll: true });
       setEvidenceFocusId(null);
     }, 80);
     return () => window.clearTimeout(timer);

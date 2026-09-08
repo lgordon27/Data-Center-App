@@ -4,6 +4,7 @@ import {
 import {
   ClassificationBadge,
   EvidenceCompletenessIndicator,
+  Disclosure,
   SectionKicker,
   PageIntro,
   BottomNav
@@ -45,7 +46,7 @@ export function AdvisorLens({
   onNavigate: (screen: Screen) => void;
   onResolveEvidence?: (evidenceId: string) => void;
 }) {
-  const { evidence, metrics, project, originatingCompany } = useDiligence();
+  const { evidence, metrics, project, originatingCompany, communityReview, communityUnresolvedCount } = useDiligence();
   const projectName = project.name;
   const customProject = project.kind === "custom";
   const originatingLabel = originatingCompany ?? "No company selected";
@@ -389,6 +390,23 @@ export function AdvisorLens({
           <div className="mt-5 border-t border-[#ecd39d] pt-4"><div className="flex gap-3"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#a65a00]" /><p className="text-[11px] font-semibold leading-5 text-[#6f460e]">Silent AI reclassification is not diligence.</p></div><p className="mt-2 pl-7 text-[10px] leading-4 text-[#806d51]">Any automated change to evidence provenance must be reviewable, attributable, and explicitly approved. Model assistance cannot silently convert uncertainty into fact.</p></div>
         </section>
       </div>
+      <Disclosure title={`Community Questions · ${communityUnresolvedCount} unresolved`} testId="disclosure-community-questions">
+        <div data-testid="community-questions" className="grid gap-4 md:grid-cols-[1.1fr_0.9fr]">
+          <div>
+            <p className="text-[11px] leading-5 text-[#52616b]">Use these questions to test the project’s stewardship commitments with the client and project team. They are project-level diligence prompts, not a fund-level risk rating.</p>
+            <ul className="mt-3 space-y-2 text-[10px] leading-4 text-[#344550]">
+              <li>Which community terms are executed, binding, and supported by a remedy?</li>
+              <li>Who funds grid, water, road, and end-of-life obligations if the project changes scope?</li>
+              <li>What reporting, inspection, and resident complaint channels remain available?</li>
+            </ul>
+          </div>
+          <div className="rounded-lg border border-[#d9e0e4] bg-[#f7faf8] p-3">
+            <div className="font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-[#52616b]">Stewardship context</div>
+            <div data-testid="advisor-community-relationship" className="mt-2 font-mono text-[12px] font-bold text-[#255bb7]">{communityReview.relationship.relationship} · {communityReview.relationship.confidence}% confidence</div>
+            <p className="mt-2 text-[10px] leading-4 text-[#52616b]">{communityReview.relationship.relationship === "Not found" ? "Public documentation was not located in the reviewed snapshot; this is an unresolved gap, not a claim that an agreement does not exist." : "The benchmark relationship remains separate from attributable Stargate evidence until a reviewer confirms project-specific documentation."}</p>
+          </div>
+        </div>
+      </Disclosure>
       <section data-testid="section-governance-gap" className="mt-5 rounded-xl border border-[#cbb7ec] bg-[#f8f4fd] p-5 md:p-6">
         <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
           <div className="max-w-2xl">

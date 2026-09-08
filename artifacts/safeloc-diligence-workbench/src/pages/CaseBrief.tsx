@@ -53,7 +53,27 @@ function ScopeLimitationsDisclosure() {
   );
 }
 
-function CustomCaseBrief({ project, onNavigate }: { project: ReturnType<typeof useDiligence>["project"]; onNavigate: (screen: Screen) => void }) {
+function CommunityReadiness({ onFocusCommunity }: { onFocusCommunity?: () => void }) {
+  const { communityReview, communityUnresolvedCount } = useDiligence();
+  const relationship = communityReview.relationship;
+  return (
+    <section data-testid="community-readiness-signal" className="mt-5 rounded-lg border border-[#cbd8d4] bg-[#f1f5f3] px-4 py-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <div className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#52616b]">Community readiness</div>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <span data-testid="community-readiness-relationship" className="rounded-full bg-[#e5efff] px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-[0.08em] text-[#255bb7]">{relationship.relationship}</span>
+            <span data-testid="community-readiness-gaps" className="text-[10px] text-[#344550]">{communityUnresolvedCount} unresolved term{communityUnresolvedCount === 1 ? "" : "s"} · {relationship.confidence}% relationship confidence</span>
+          </div>
+        </div>
+        <button data-testid="button-review-community-terms" type="button" onClick={onFocusCommunity} className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-md bg-[#122232] px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#d4e86b]">Review Community Terms <ArrowRight aria-hidden="true" className="ml-2 h-3.5 w-3.5" /></button>
+      </div>
+      <p className="mt-2 text-[9px] leading-4 text-[#60707d]">Community readiness is project-level stewardship context, not a fund-level risk rating.</p>
+    </section>
+  );
+}
+
+function CustomCaseBrief({ project, onNavigate, onFocusCommunity }: { project: ReturnType<typeof useDiligence>["project"]; onNavigate: (screen: Screen) => void; onFocusCommunity?: () => void }) {
   const { evidence } = useDiligence();
   const evidenceItems = Object.values(evidence);
   const sourceCoverage = summarizeSourceCoverage(evidenceItems);
@@ -112,6 +132,7 @@ function CustomCaseBrief({ project, onNavigate }: { project: ReturnType<typeof u
         <div className="mt-5 rounded-lg border border-[#f1cb8b] bg-[#fff8e9] p-4 text-[10px] leading-5 text-[#6f460e]">{isDefaultAssumptions ? "AI research did not complete. All 16 evidence variables are Missing Evidence, so no project-specific finding changes the synthetic return until a reviewer supplies and accepts evidence." : `This high-level AI research is context for diligence. Findings are not facility-level proof unless the cited project source supports them; the modeled set remains exactly ${Object.keys(evidence).length} variables.`}</div>
       </section>
       <div className="mt-5"><ScopeLimitationsDisclosure /></div>
+      <CommunityReadiness onFocusCommunity={onFocusCommunity} />
       <div className="mt-5 rounded-xl bg-[#d4e86b] p-5 text-[#1c2a16]">
         <div className="flex items-center justify-between"><SectionKicker tone="lime">Next step</SectionKicker><Target className="h-5 w-5 opacity-60" /></div>
         <div className="mt-1 text-[19px] font-semibold leading-tight tracking-[-0.025em]">Review the researched evidence before relying on the return.</div>
@@ -122,9 +143,9 @@ function CustomCaseBrief({ project, onNavigate }: { project: ReturnType<typeof u
   );
 }
 
-export function CaseBrief({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
+export function CaseBrief({ onNavigate, onFocusCommunity }: { onNavigate: (screen: Screen) => void; onFocusCommunity?: () => void }) {
   const { ercotQueue, project } = useDiligence();
-  if (project.kind === "custom") return <CustomCaseBrief project={project} onNavigate={onNavigate} />;
+  if (project.kind === "custom") return <CustomCaseBrief project={project} onNavigate={onNavigate} onFocusCommunity={onFocusCommunity} />;
   const topHazards = getTopFemaHazards(ACTIVE_FEMA_NRI_PROFILE);
   const queueStatus = ercotQueue.status === "live" ? "Live" : ercotQueue.status === "cached" ? "Cached" : "Embedded";
   const queueStatusClasses = ercotQueue.status === "live"
@@ -310,6 +331,7 @@ export function CaseBrief({ onNavigate }: { onNavigate: (screen: Screen) => void
         ))}
       </div>
       </section>
+      <CommunityReadiness onFocusCommunity={onFocusCommunity} />
       <ClaimCitation claimId="stargate-cancellation" />
       <ClaimCitation claimId="stargate-cooling-damage" />
       <div className="mt-5 rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-6">

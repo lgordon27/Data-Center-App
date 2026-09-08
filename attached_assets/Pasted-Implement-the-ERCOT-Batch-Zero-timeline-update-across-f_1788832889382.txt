@@ -1,0 +1,38 @@
+Implement the ERCOT Batch Zero timeline update across four specific locations. The data exists as a source record (ercot-batch-zero-notice) but the facts have not been carried through to the evidence, Case Brief, research prompt, or Home page.
+
+1. CURATED GRID INTERCONNECTION EVIDENCE
+File: artifacts/safeloc-diligence-workbench/src/context/DiligenceContext.tsx:149
+
+Update the Grid Interconnection evidence item:
+- Change value to: "Expansion cancelled; grid delays exceeded 12 months. ERCOT Batch Zero studies delayed from September 2026 to January 2027 minimum. 17 facilities (6.6 GW) completed studies but stuck in Abbott's verification audit."
+- Update description to include: "ERCOT Batch Zero covers 200 GW across 300 applicants. Original study timeline was September 2026 start, April 2027 completion. Revised timeline: January 2027 start at earliest, completion date unclear. ERCOT staff testified the delay may cause some applicants to drop out due to financing constraints."
+- Add source: "ERCOT testimony before PUC (August 20, 2026), ERCOT testimony before House State Affairs Committee (August 2026)"
+- Classification remains Verified Evidence
+
+2. CASE BRIEF ERCOT SECTION
+File: artifacts/safeloc-diligence-workbench/src/pages/CaseBrief.tsx:195-226
+
+Add Batch Zero specifics below the existing queue depth display:
+- "Batch Zero: 200 GW across 300 applicants"
+- "Original timeline: September 2026 start → April 2027 completion"
+- "Revised: January 2027 start minimum, completion unclear"
+- "In audit limbo: 17 facilities totaling 6.6 GW completed studies but awaiting Abbott's verification clearance"
+Display these as compact data rows consistent with the existing ERCOT section styling.
+
+3. AI RESEARCH SYSTEM PROMPT
+Files: 
+- artifacts/safeloc-diligence-workbench/src/data/aiEvidenceTemporal.mjs:5-9
+- artifacts/safeloc-diligence-workbench/server/researchProjectProxy.mjs:121-127
+
+Add to both the curated evidence temporal record AND the custom project research system prompt:
+
+"ERCOT BATCH ZERO UPDATE (August 2026): ERCOT's Batch Zero large-load interconnection studies, covering 200 GW across 300 applicants, have been delayed from the original September 2026 start to January 2027 at earliest. The study was expected to complete by April 2027; the revised completion date is unclear. ERCOT staff testified this delay may cause some applicants to drop out due to financing constraints. Separately, 17 facilities totaling 6.6 GW that already completed studies are stuck in Governor Abbott's verification audit and cannot energize. Any Texas data center project requiring ERCOT grid interconnection is affected. Only behind-the-meter projects exempt from the ERCOT queue are unaffected. When classifying Grid Interconnection for any Texas project, a grid-dependent project should not receive Verified Evidence for interconnection timeline because no grid-dependent project currently has a confirmed interconnection date."
+
+4. HOME PAGE STATS STRIP
+File: artifacts/safeloc-diligence-workbench/src/pages/Home.tsx:1070-1087
+
+Add a fifth stat or replace the "474 GW QUEUED" stat with a two-line version:
+- "200 GW" / "In Batch Zero · studies delayed to Jan 2027"
+Keep the other three stats ($725B, $130B, 1.6%). If a fifth stat makes the strip too wide, replace "474 GW QUEUED" with the Batch Zero number since it is more specific and current.
+
+All four changes reference the same source: ERCOT testimony before PUC (August 20, 2026) and House State Affairs Committee, sourced from the existing ercot-batch-zero-notice record.

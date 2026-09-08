@@ -311,6 +311,10 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   }));
   const [originatingCompany, setOriginatingCompany] = useState<string | null>(null);
   const [scenarios, setScenarios] = useState<SavedScenario[]>(loadScenarios);
+  const [agentRun, setAgentRun] = useState<DiligenceAgentState>(loadAgentRun);
+  const agentRunRef = useRef(agentRun);
+  agentRunRef.current = agentRun;
+  const agentActiveRef = useRef(false);
   const [ercotQueue, setErcotQueue] = useState<ErcotQueueResult>(FALLBACK_ERCOT_RESULT);
   const [eiaData, setEiaData] = useState<EiaElectricityData>(() => createEiaFallback());
   const [eiaLoading, setEiaLoading] = useState(true);
@@ -521,6 +525,74 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     return true;
   }, [communityReview, project]);
 
+  const setPersistedAgentRun = useCallback((next: DiligenceAgentState) => {
+    agentRunRef.current = next;
+    setAgentRun(next);
+    writeStorage(DILIGENCE_AGENT_STORAGE_KEY, next);
+  }, []);
+
+  const agentInput = useCallback((): AgentProjectInput => ({
+    projectName: project.name,
+    location: project.location,
+    capacityMW: project.capacityMW,
+    evidenceIds: Object.keys(stateRef.current.evidence),
+    communityUnresolvedCount: countUnresolvedCommunityTerms(communityReview.terms),
+  }), [communityReview.terms, project]);
+
+  const runDiligenceAgent = useCallback(async () => {
+    if (agentActiveRef.current) return;
+    agentActiveRef.current = true;
+    let next = startDiligenceAgent(agentRunRef.current);
+    setPersistedAgentRun(next);
+    try {
+      for (const definition of next.stages) {
+        if (definition.status === "completed") continue;
+        next = beginDiligenceStage(next, definition.id);
+        setPersistedAgentRun(next);
+        await new Promise((resolve) => window.setTimeout(resolve, 110));
+        next = advanceDiligenceStage(next, definition.id, {
+          summary: `${definition.label} completed with bounded, reviewer-visible output.`,
+        });
+        setPersistedAgentRun(next);
+      }
+      next = hydrateReviewPackage(next, agentInput());
+      setPersistedAgentRun(next);
+      logSessionAction("Diligence agent prepared review package", project.name);
+    } finally {
+      agentActiveRef.current = false;
+    }
+  }, [agentInput, project.name, setPersistedAgentRun]);
+
+  const retryAgentStage = useCallback(async (id: DiligenceStageId) => {
+    if (agentActiveRef.current) return;
+    const retried = retryDiligenceStage(agentRunRef.current, id);
+    if (retried === agentRunRef.current) return;
+    agentActiveRef.current = true;
+    let next = retried;
+    setPersistedAgentRun(next);
+    try {
+      await new Promise((resolve) => window.setTimeout(resolve, 110));
+      next = advanceDiligenceStage(next, id, { summary: "Retry completed with bounded, reviewer-visible output." });
+      setPersistedAgentRun(next);
+      if (next.status === "review-ready") {
+        next = hydrateReviewPackage(next, agentInput());
+        setPersistedAgentRun(next);
+      }
+    } finally {
+      agentActiveRef.current = false;
+    }
+  }, [agentInput, setPersistedAgentRun]);
+
+  const reviewAgentFinding = useCallback((id: string, decision: ReviewDecision, reviewerNote?: string) => {
+    const current = agentRunRef.current;
+    const finding = current.proposedFindings.find((item) => item.id === id);
+    if (!finding) return false;
+    const next = applyAgentFindingDecision(current, id, decision, reviewerNote);
+    setPersistedAgentRun(next);
+    logSessionAction(`Agent proposal ${decision}`, finding.title);
+    return true;
+  }, [setPersistedAgentRun]);
+
   const resetToDefault = useCallback((company: string | null = null) => {
     const nextState = { evidence: cloneEvidence(INITIAL_EVIDENCE), hasChangedClassification: false, lastChange: null };
     stateRef.current = nextState;
@@ -541,6 +613,10 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     setCommunityReview(nextCommunityReview);
     clearStorage(COMMUNITY_REVIEW_STORAGE_KEY);
     clearStorage(CURRENT_SESSION_STORAGE_KEY);
+    const nextAgentRun = createInitialDiligenceAgent();
+    setAgentRun(nextAgentRun);
+    agentRunRef.current = nextAgentRun;
+    clearStorage(DILIGENCE_AGENT_STORAGE_KEY);
     clearDecisionHistory();
     clearSessionActions();
   }, []);
@@ -585,6 +661,10 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     writeCommunityReview(nextCommunityReview, customCommunityProject);
     setOriginatingCompany(company);
     clearStorage(CURRENT_SESSION_STORAGE_KEY);
+    const nextAgentRun = createInitialDiligenceAgent();
+    setAgentRun(nextAgentRun);
+    agentRunRef.current = nextAgentRun;
+    clearStorage(DILIGENCE_AGENT_STORAGE_KEY);
     clearDecisionHistory();
   }, []);
 
@@ -653,7 +733,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   const communityUnresolvedCount = countUnresolvedCommunityTerms(communityReview.terms);
 
   return (
-    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, applyEvidenceCorrection, clearLastChange, metrics, resetToDefault, loadCustomProject, project, originatingCompany, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading, communityReview, communityUnresolvedCount, reviewCommunityTerm }}>
+    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, applyEvidenceCorrection, clearLastChange, metrics, resetToDefault, loadCustomProject, project, originatingCompany, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading, communityReview, communityUnresolvedCount, reviewCommunityTerm, agentRun, runDiligenceAgent, retryDiligenceStage, reviewAgentFinding }}>
       {children}
     </DiligenceContext.Provider>
   );
@@ -719,6 +799,42 @@ function loadScenarios(): SavedScenario[] {
     return valid;
   } catch {
     return [];
+  }
+}
+
+function loadAgentRun(): DiligenceAgentState {
+  const fallback = createInitialDiligenceAgent();
+  const raw = readStorage(DILIGENCE_AGENT_STORAGE_KEY);
+  if (!raw) return fallback;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return fallback;
+    const candidate = parsed as Partial<DiligenceAgentState>;
+    if (candidate.version !== 1 || !Array.isArray(candidate.stages)) return fallback;
+    const stageIds = new Set(fallback.stages.map((stage) => stage.id));
+    if (candidate.stages.length !== fallback.stages.length) return fallback;
+    const stages = candidate.stages.map((stage) => {
+      if (!stage || typeof stage !== "object" || !stageIds.has(stage.id as DiligenceStageId)) throw new Error("invalid stage");
+      const definition = fallback.stages.find((item) => item.id === stage.id);
+      if (!definition || !["pending", "running", "completed", "failed", "retryable"].includes(stage.status ?? "")) throw new Error("invalid stage status");
+      return { ...definition, ...stage };
+    });
+    if (!["idle", "running", "partial-failure", "review-ready", "failed"].includes(candidate.status ?? "")) return fallback;
+    return {
+      ...fallback,
+      ...candidate,
+      stages,
+      proposedFindings: Array.isArray(candidate.proposedFindings) ? candidate.proposedFindings : [],
+      relationships: Array.isArray(candidate.relationships) ? candidate.relationships : [],
+      lenses: Array.isArray(candidate.lenses) ? candidate.lenses : [],
+      riskAllocation: Array.isArray(candidate.riskAllocation) ? candidate.riskAllocation : [],
+      capitalAtRisk: Array.isArray(candidate.capitalAtRisk) ? candidate.capitalAtRisk : [],
+      conditionsPrecedent: Array.isArray(candidate.conditionsPrecedent) ? candidate.conditionsPrecedent : [],
+      dealProtection: Array.isArray(candidate.dealProtection) ? candidate.dealProtection : [],
+      valueAtRisk: Array.isArray(candidate.valueAtRisk) ? candidate.valueAtRisk : [],
+    } as DiligenceAgentState;
+  } catch {
+    return fallback;
   }
 }
 

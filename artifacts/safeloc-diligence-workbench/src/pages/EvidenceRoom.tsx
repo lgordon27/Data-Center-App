@@ -938,7 +938,7 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
           </div>
         </div>
         <p className="mt-2 max-w-4xl text-[10px] leading-4 text-[#52616b]">
-          The AI prompt and this Evidence Room use the same reviewed temporal record. Dated {AI_EVIDENCE_VALID_REPORTING_YEARS_LABEL} reporting remains valid and potentially current as of the cutoff; update the shared temporal configuration when the diligence cutoff changes.
+          The AI prompt and this evidence section use the same reviewed temporal record. Dated {AI_EVIDENCE_VALID_REPORTING_YEARS_LABEL} reporting remains valid and potentially current as of the cutoff; update the shared temporal configuration when the diligence cutoff changes.
         </p>
       </aside>
       {showClassificationTip && (

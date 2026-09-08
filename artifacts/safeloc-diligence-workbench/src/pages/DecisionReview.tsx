@@ -70,7 +70,7 @@ const holdingsConnectionCopy: Record<RecommendationStatus, string> = {
   "READY FOR REVIEW": "NVIDIA GPU contracts and hyperscaler CAPEX connect values-aligned funds to this buildout. The project evidence is ready for review, while portfolio exposure remains market context—not proof of facility-level Stargate exposure or a holdings recommendation.",
 };
 
-export function DecisionReview({ onNavigate, onResolve }: { onNavigate: (screen: Screen) => void; onResolve: (id: string) => void }) {
+export function DecisionReview({ onNavigate, onResolve, requestedAction, onRequestedActionHandled }: { onNavigate: (screen: Screen) => void; onResolve: (id: string) => void; requestedAction?: "save" | "compare" | null; onRequestedActionHandled?: () => void }) {
   const { evidence, metrics, scenarios, saveScenario, renameScenario, removeScenario, project } = useDiligence();
   const scenarioItems = project.kind === "custom" ? [] : scenarios;
   const holdingsCopy = project.kind === "custom"
@@ -127,6 +127,15 @@ export function DecisionReview({ onNavigate, onResolve }: { onNavigate: (screen:
     setFlash(false);
     return undefined;
   }, [metrics.lastChange]);
+  useEffect(() => {
+    if (!requestedAction) return;
+    if (requestedAction === "save" && project.kind !== "custom" && scenarioItems.length < 5) {
+      setSaveFeedback("");
+      setSaveOpen(true);
+    }
+    if (requestedAction === "compare" && project.kind !== "custom") setShowComparison(true);
+    onRequestedActionHandled?.();
+  }, [requestedAction, project.kind, scenarioItems.length, onRequestedActionHandled]);
   const grouped = classifications.map((classification) => ({ classification, items: items.filter((item) => item.classification === classification) })).filter((group) => group.items.length);
   const disputed = items.filter((item) => item.classification === "Management Assertion" || item.classification === "Missing Evidence");
   return (

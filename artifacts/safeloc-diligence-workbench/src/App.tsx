@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Info, Loader2, Network, RotateCcw, Target } from "lucide-react";
+import { Info, Loader2, Network, RotateCcw, Target } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -11,13 +11,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { DiligenceProvider, useDiligence } from "@/context/DiligenceContext";
-import { Navigation } from "@/components/Navigation";
-import { DiligenceLiveRegions, formatIRR, Header, screens, ShellAside } from "@/components/Shell";
-import { CaseBrief } from "@/pages/CaseBrief";
-import { EvidenceRoom } from "@/pages/EvidenceRoom";
-import { FinancialMateriality } from "@/pages/FinancialMateriality";
-import { DecisionReview } from "@/pages/DecisionReview";
-import { AdvisorLens } from "@/pages/AdvisorLens";
+import { DiligenceLiveRegions, formatIRR, Header } from "@/components/Shell";
+import { AnalysisWorkbench } from "@/pages/AnalysisWorkbench";
 import { ValueChain } from "@/pages/ValueChain";
 import { Home } from "@/pages/Home";
 import { HowItWorks } from "@/pages/HowItWorks";
@@ -27,13 +22,26 @@ import { ErrorBoundary, type ErrorFallbackProps } from "@/components/error-bound
 const DirectoryRoute = lazy(() => import("@/pages/DirectoryRoute"));
 
 export type Screen = "brief" | "evidence" | "materiality" | "decision" | "advisor";
-export type AppRoute = Screen | "home" | "directory" | "value-chain" | "how-it-works";
+export type AppRoute = "analysis" | "home" | "directory" | "value-chain" | "how-it-works";
+
+const legacySectionRoutes: Record<string, string> = {
+  brief: "analysis-overview",
+  evidence: "analysis-evidence",
+  materiality: "analysis-financial",
+  decision: "analysis-decision",
+  advisor: "analysis-advisor",
+  "analysis-overview": "analysis-overview",
+  "analysis-evidence": "analysis-evidence",
+  "analysis-financial": "analysis-financial",
+  "analysis-decision": "analysis-decision",
+  "analysis-advisor": "analysis-advisor",
+};
 
 function routeFromHash(hash: string): AppRoute | null {
   const route = hash.replace(/^#/, "");
   if (!route) return "home";
-  return (["home", "directory", "value-chain", "how-it-works", ...screens.map((screen) => screen.id)] as readonly string[])
-    .includes(route) ? route as AppRoute : null;
+  if (route === "analysis" || legacySectionRoutes[route]) return "analysis";
+  return (["home", "directory", "value-chain", "how-it-works"] as readonly string[]).includes(route) ? route as AppRoute : null;
 }
 
 function DirectoryLoading() {
@@ -71,6 +79,7 @@ function AppShell() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [evidenceFocusId, setEvidenceFocusId] = useState<string | null>(null);
+  const [pendingSection, setPendingSection] = useState<string | null>(null);
   const diligence = useDiligence();
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLElement>(null);
@@ -85,11 +94,16 @@ function AppShell() {
   useEffect(() => {
     let isInitialSync = true;
     const syncFromHash = () => {
+      const rawHash = window.location.hash.replace(/^#/, "");
       const next = routeFromHash(window.location.hash);
       if (!next) {
         window.history.replaceState(null, "", "#home");
         setRoute("home");
       } else {
+        if (legacySectionRoutes[rawHash]) {
+          window.history.replaceState(null, "", "#analysis");
+          setPendingSection(legacySectionRoutes[rawHash]);
+        }
         setRoute(next);
       }
       if (!isInitialSync) setMobileOpen(false);
@@ -101,7 +115,6 @@ function AppShell() {
   }, []);
 
   useEffect(() => {
-    const activeScreen = screens.find((item) => item.id === route);
     document.title = route === "home"
       ? "SafeLoc · Home"
       : route === "directory"
@@ -110,14 +123,24 @@ function AppShell() {
           ? "SafeLoc · The AI Chain"
           : route === "how-it-works"
             ? "SafeLoc · How It Works"
-            : activeScreen
-              ? `SafeLoc · ${activeScreen.label}`
+            : route === "analysis"
+              ? "SafeLoc · Analysis"
               : "SafeLoc Diligence Workbench";
+    if (route === "analysis" && pendingSection) {
+      const timer = window.setTimeout(() => {
+        const target = document.getElementById(pendingSection);
+        target?.scrollIntoView({ behavior: "auto", block: "start" });
+        target?.focus({ preventScroll: true });
+        setPendingSection(null);
+      }, 50);
+      return () => window.clearTimeout(timer);
+    }
     window.scrollTo({ top: 0, behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ? "auto" : "smooth" });
-  }, [route]);
+    return undefined;
+  }, [route, pendingSection]);
 
   useEffect(() => {
-    if (route !== "evidence" || !evidenceFocusId) return undefined;
+    if (route !== "analysis" || !evidenceFocusId) return undefined;
     const timer = window.setTimeout(() => {
       const target = document.getElementById(`evidence-item-${evidenceFocusId}`);
       target?.scrollIntoView({ behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ? "auto" : "smooth", block: "center" });
@@ -142,12 +165,12 @@ function AppShell() {
   const confirmReset = () => {
     diligence.resetToDefault();
     setResetOpen(false);
-    go("brief");
+    go("analysis");
   };
 
   const resolveEvidence = (id: string) => {
     setEvidenceFocusId(id);
-    go("evidence");
+    go("analysis");
   };
 
   useEffect(() => {
@@ -214,15 +237,12 @@ function AppShell() {
         onHome={() => go("home")}
         onHowItWorks={() => go("how-it-works")}
         onValueChain={() => go("value-chain")}
-        onWorkbench={() => go("brief")}
+        onWorkbench={() => go("analysis")}
         route={route}
         sessionRestored={diligence.sessionRestored}
         mobileOpen={mobileOpen}
         menuButtonRef={menuButtonRef}
       />
-      {route !== "home" && route !== "directory" && route !== "value-chain" && route !== "how-it-works" && (
-        <Navigation current={route} onNavigate={go} />
-      )}
       {mobileOpen && (
         <>
           <div data-testid="mobile-menu-backdrop" aria-hidden="true" onClick={() => setMobileOpen(false)} className="fixed inset-0 z-20 bg-[#122232]/60 md:hidden" />
@@ -234,11 +254,9 @@ function AppShell() {
               <Target aria-hidden="true" className="h-4 w-4" /> Browse Facilities
             </button>
             <div className="my-1 border-t border-[#d9e0e4]" />
-            {screens.map((item, index) => (
-              <button key={item.id} data-testid={`mobile-navigate-${item.id}`} type="button" aria-current={route === item.id ? "step" : undefined} aria-label={`Step ${index + 1}: ${item.label}`} onClick={() => go(item.id)} className={`flex w-full items-center gap-3 rounded px-3 py-3 text-left text-[11px] font-semibold ${route === item.id ? "bg-[#122232] text-[#d4e86b]" : "text-[#52616b]"}`}>
-                <item.icon aria-hidden="true" className="h-4 w-4" /> {item.label}
-              </button>
-            ))}
+            <button data-testid="mobile-navigate-analysis" type="button" aria-current={route === "analysis" ? "page" : undefined} onClick={() => go("analysis")} className={`flex w-full items-center gap-3 rounded px-3 py-3 text-left text-[11px] font-semibold ${route === "analysis" ? "bg-[#122232] text-[#d4e86b]" : "text-[#52616b]"}`}>
+              <Target aria-hidden="true" className="h-4 w-4" /> Analysis Workbench
+            </button>
             <div className="my-1 border-t border-[#d9e0e4]" />
             <button data-testid="mobile-navigate-value-chain" type="button" aria-current={route === "value-chain" ? "page" : undefined} onClick={() => go("value-chain")} className={`flex w-full items-center gap-3 rounded px-3 py-3 text-left text-[11px] font-semibold ${route === "value-chain" ? "bg-[#122232] text-[#d4e86b]" : "text-[#52616b]"}`}>
               <Network aria-hidden="true" className="h-4 w-4" /> The AI Chain
@@ -246,7 +264,7 @@ function AppShell() {
             <button data-testid="mobile-navigate-how-it-works" type="button" aria-current={route === "how-it-works" ? "page" : undefined} onClick={() => go("how-it-works")} className={`flex min-h-11 w-full items-center gap-3 rounded px-3 py-3 text-left text-[11px] font-semibold ${route === "how-it-works" ? "bg-[#122232] text-[#d4e86b]" : "text-[#52616b]"}`}>
               <Info aria-hidden="true" className="h-4 w-4" /> How It Works
             </button>
-            {route === "value-chain" && <button data-testid="mobile-return-to-workbench" type="button" onClick={() => go("brief")} className="flex w-full items-center gap-3 rounded px-3 py-3 text-left text-[11px] font-semibold text-[#ba2f45]"><ArrowLeft aria-hidden="true" className="h-4 w-4" /> Return to Workbench</button>}
+            {route === "value-chain" && <button data-testid="mobile-return-to-workbench" type="button" onClick={() => go("analysis")} className="flex w-full items-center gap-3 rounded px-3 py-3 text-left text-[11px] font-semibold text-[#ba2f45]">Return to Analysis</button>}
           </nav>
         </>
       )}
@@ -263,27 +281,26 @@ function AppShell() {
         </div>
       )}
       {route === "how-it-works" ? (
-        <HowItWorks onReturn={() => go("brief")} onOpenScreen={go} />
+        <HowItWorks onReturn={() => go("analysis")} onOpenScreen={(screen) => {
+          const section = legacySectionRoutes[screen];
+          setPendingSection(section);
+          go("analysis");
+        }} />
       ) : (
         <>
           {route === "home" ? <Home onNavigate={go} /> : (
             <div className="mx-auto flex max-w-[1480px]">
-              {route !== "value-chain" && route !== "directory" && <ShellAside screen={route} metrics={diligence.metrics} onNavigate={go} onReset={() => setResetOpen(true)} />}
-              <main className="min-w-0 flex-1 px-4 py-7 md:px-8 md:py-10 xl:px-12">
+              <main className="min-w-0 flex-1 overflow-x-clip px-4 py-7 md:px-8 md:py-10 xl:px-12">
                 <div className={`mx-auto ${route === "value-chain" || route === "directory" ? "max-w-[1320px]" : "max-w-[1160px]"}`}>
-                  {route === "value-chain" && <ValueChain onWorkbench={() => go("brief")} />}
+                  {route === "value-chain" && <ValueChain onWorkbench={() => go("analysis")} />}
                    {route === "directory" && (
                      <ErrorBoundary resetKey={route} FallbackComponent={DirectoryFailure}>
                        <Suspense fallback={<DirectoryLoading />}>
-                         <DirectoryRoute onCurated={() => { diligence.resetToDefault(); go("brief"); }} onResearchSuccess={(research) => { diligence.loadCustomProject(research); go("brief"); }} />
+                       <DirectoryRoute onCurated={() => { diligence.resetToDefault(); go("analysis"); }} onResearchSuccess={(research) => { diligence.loadCustomProject(research); go("analysis"); }} />
                        </Suspense>
                      </ErrorBoundary>
                    )}
-                  {route === "brief" && <CaseBrief onNavigate={go} />}
-                  {route === "evidence" && <EvidenceRoom onNavigate={go} />}
-                  {route === "materiality" && <FinancialMateriality onNavigate={go} />}
-                  {route === "decision" && <DecisionReview onNavigate={go} onResolve={resolveEvidence} />}
-                  {route === "advisor" && <AdvisorLens onNavigate={go} onResolveEvidence={resolveEvidence} />}
+                  {route === "analysis" && <AnalysisWorkbench onResolveEvidence={resolveEvidence} onReset={() => setResetOpen(true)} />}
                 </div>
               </main>
             </div>

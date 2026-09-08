@@ -4,7 +4,7 @@ import { Code2, ChevronDown } from "lucide-react";
 import { useDiligence } from "@/context/DiligenceContext";
 import { formatSourceTimestamp } from "@/data/sources";
 
-const workbenchRoutes = new Set(["brief", "evidence", "materiality", "decision", "advisor"]);
+const workbenchRoutes = new Set(["analysis"]);
 
 type EiaDiagnosticResponse = {
   status?: string;
@@ -27,7 +27,7 @@ export function Footer() {
   const [eiaLoading, setEiaLoading] = useState(false);
   const { ercotQueue } = useDiligence();
   const route = typeof window === "undefined" ? "" : window.location.hash.replace(/^#/, "");
-  const showsFemaNri = route === "brief" || route === "evidence";
+  const showsFemaNri = route === "analysis";
 
   useEffect(() => {
     if (!consoleOpen) return undefined;

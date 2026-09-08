@@ -38,13 +38,13 @@ import { CustomProjectDialog } from "@/pages/Home";
 import type { ImpactRole } from "@/data/evidenceImpactRoles";
 
 export type Screen = "brief" | "evidence" | "materiality" | "decision" | "advisor";
-type AppRoute = Screen | "home" | "directory" | "value-chain" | "how-it-works";
+type AppRoute = "analysis" | "home" | "directory" | "value-chain" | "how-it-works";
 
 export const screens: { id: Screen; number: string; label: string; short: string; icon: typeof BookOpen }[] = [
-  { id: "brief", number: "01", label: "Case Brief", short: "Frame", icon: BookOpen },
-  { id: "evidence", number: "02", label: "Evidence Room", short: "Source", icon: FileCheck2 },
-  { id: "materiality", number: "03", label: "Financial Materiality", short: "Model", icon: BarChart3 },
-  { id: "decision", number: "04", label: "Decision Review", short: "Decide", icon: ClipboardCheck },
+  { id: "brief", number: "01", label: "Project Overview", short: "Frame", icon: BookOpen },
+  { id: "evidence", number: "02", label: "Evidence", short: "Source", icon: FileCheck2 },
+  { id: "materiality", number: "03", label: "Financial Impact", short: "Model", icon: BarChart3 },
+  { id: "decision", number: "04", label: "Decision", short: "Decide", icon: ClipboardCheck },
   { id: "advisor", number: "05", label: "Advisor Lens", short: "Transmit", icon: Network },
 ];
 
@@ -269,7 +269,6 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
           </div>
           <div>
             <div className="font-mono text-[13px] font-bold tracking-[0.14em]">SAFELOC</div>
-            <div className="mt-0.5 text-[9px] uppercase tracking-[0.2em] text-[#b9c3c9]">Diligence Workbench</div>
           </div>
         </div>
         <div className="hidden flex-1 items-center justify-center lg:flex">
@@ -321,13 +320,11 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
               onClick={onWorkbench}
               className="hidden items-center rounded border border-[#60717f] px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#f5ddd5] transition-colors hover:border-[#f5ddd5] hover:bg-white/10 sm:inline-flex"
             >
-              Return to Workbench
+              Return to Analysis
             </button>
           )}
           {sessionRestored && <span role="status" data-testid="text-session-restored" className="absolute right-4 top-full z-20 rounded border border-[#b9d43a]/40 bg-[#122232] px-2.5 py-1.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-[#d4e86b] shadow-md md:right-8">{sessionMigrated ? "Session updated to audited defaults" : "Session restored"}</span>}
           <button data-testid="button-reset-default" type="button" onClick={onReset} className="rounded border border-[#60717f] px-2.5 py-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.08em] text-[#d4e86b] transition-colors hover:border-[#d4e86b] hover:bg-white/10">Reset to Default</button>
-          <span className="hidden rounded border border-[#60717f] px-2.5 py-1.5 font-mono text-[9px] uppercase tracking-[0.1em] text-[#c8d0d5] sm:inline-flex">POC / v0.9</span>
-          <div className="hidden h-8 w-8 items-center justify-center rounded-full bg-[#e9e0f7] font-mono text-[10px] font-bold text-[#482873] sm:flex">AD</div>
         </div>
       </div>
     </header>
@@ -337,7 +334,7 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
       onSuccess={(research) => {
         loadCustomProject(research);
         setCustomProjectOpen(false);
-        window.location.hash = "brief";
+        window.location.hash = "analysis";
       }}
     />
     <CustomResearchBanner />
@@ -424,29 +421,8 @@ export function PageIntro({ eyebrow, title, description, right }: { eyebrow: str
   );
 }
 
-export function BottomNav({ screen, onNavigate }: { screen: Screen; onNavigate: (screen: Screen) => void }) {
-  const index = screens.findIndex((item) => item.id === screen);
-  return (
-    <div className="mt-10 flex items-center justify-between border-t border-[#d9e0e4] pt-5">
-      <button
-        data-testid="button-previous-screen"
-        onClick={() => index > 0 && onNavigate(screens[index - 1].id)}
-        disabled={index === 0}
-        className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-[11px] font-bold uppercase tracking-[0.12em] text-[#6b7882] transition-colors hover:bg-white hover:text-[#122232] disabled:cursor-not-allowed disabled:opacity-30"
-      >
-        <ArrowLeft className="h-3.5 w-3.5" /> Previous
-      </button>
-      <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-[#52616b]">SafeLoc / private working paper</div>
-      <button
-        data-testid="button-next-screen"
-        onClick={() => index < screens.length - 1 && onNavigate(screens[index + 1].id)}
-        disabled={index === screens.length - 1}
-        className="inline-flex items-center gap-2 rounded-md bg-[#122232] px-4 py-2.5 text-[11px] font-bold uppercase tracking-[0.12em] text-[#d4e86b] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-30"
-      >
-        {index === screens.length - 1 ? "Review complete" : "Continue"} <ArrowRight className="h-3.5 w-3.5" />
-      </button>
-    </div>
-  );
+export function BottomNav(_props: { screen: Screen; onNavigate: (screen: Screen) => void }) {
+  return null;
 }
 
 export function DiligenceLiveRegions({ metrics }: { metrics: ReturnType<typeof useDiligence>["metrics"] }) {

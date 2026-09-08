@@ -39,7 +39,7 @@ import {
 import { ClaimCitation } from "@/components/ClaimCitation";
 import { trackEvent } from "@/services/analytics";
 
-type HomeRoute = "advisor" | "directory" | "how-it-works" | "value-chain";
+type HomeRoute = "directory" | "how-it-works" | "value-chain";
 
 const homeEntryPoints = [
   {
@@ -60,9 +60,9 @@ const homeEntryPoints = [
   },
   {
     id: "advisor",
-    title: "Advisor Lens",
-    subtitle: "What this means for client conversations Monday morning.",
-    href: "#advisor",
+    title: "Advisor handoff",
+    subtitle: "Jump to the client-conversation section of the analysis.",
+    href: "#analysis-advisor",
     icon: Leaf,
     accent: "violet",
   },
@@ -892,9 +892,9 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
       project_id: projectId,
       project_kind: projectKind,
       research_mode: research.researchMode === "default-assumptions" ? "default_assumptions" : "ai_researched",
-      destination: "case_brief",
+      destination: "analysis",
     });
-    window.location.hash = "brief";
+    window.location.hash = "analysis";
   };
   const goSecondary = (route: HomeRoute) => {
     if (onNavigate) onNavigate(route);
@@ -941,7 +941,7 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
                     type="button"
                     onClick={() => {
                       resetToDefault(null);
-                      window.location.hash = "brief";
+                      window.location.hash = "analysis";
                     }}
                     className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-[#d4e86b]/70 bg-[#173247] px-4 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#d4e86b] transition-colors hover:border-[#d4e86b] hover:bg-[#203f50] focus:outline-none focus:ring-2 focus:ring-[#d4e86b] focus:ring-offset-2 focus:ring-offset-[#0a1b2a]"
                   >
@@ -1026,7 +1026,7 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
              onBack={() => setSelectedCompany(null)}
              onCurated={(company) => {
                resetToDefault(company);
-               window.location.hash = "brief";
+               window.location.hash = "analysis";
              }}
              onResearch={(project, company) => {
                if (!project.facility) return;
@@ -1052,7 +1052,7 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
                <div className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-[#d4e86b]">Curated case</div>
                <h2 className="mt-2 text-[21px] font-semibold tracking-[-0.03em] text-white">Or dive straight into Stargate Abilene.</h2>
                <p className="mt-2 text-[11px] leading-5 text-[#b9c5c9]">OpenAI&apos;s $500B flagship. The curated deep dive.</p>
-               <button data-testid="button-analyze-stargate" type="button" onClick={() => { resetToDefault(null); window.location.hash = "brief"; }} className="mt-5 inline-flex min-h-11 flex-wrap items-center gap-2 rounded-md bg-[#d4e86b] px-3 py-2.5 text-left font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#122232] hover:bg-[#e3f18d]">Analyze Stargate Abilene <span className="normal-case tracking-normal">OpenAI&apos;s $500B flagship. The curated deep dive.</span> <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" /></button>
+               <button data-testid="button-analyze-stargate" type="button" onClick={() => { resetToDefault(null); window.location.hash = "analysis"; }} className="mt-5 inline-flex min-h-11 flex-wrap items-center gap-2 rounded-md bg-[#d4e86b] px-3 py-2.5 text-left font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#122232] hover:bg-[#e3f18d]">Analyze Stargate Abilene <span className="normal-case tracking-normal">OpenAI&apos;s $500B flagship. The curated analysis.</span> <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" /></button>
              </div>
              <div className="rounded-xl border border-white/15 bg-[#102b3b] p-5">
                <div className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-[#d4e86b]">Tertiary paths</div>

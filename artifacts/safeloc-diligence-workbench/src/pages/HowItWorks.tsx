@@ -67,7 +67,7 @@ function ReturnButton({ onReturn, top = false }: { onReturn: () => void; top?: b
       className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-md px-4 py-3 text-[10px] font-bold uppercase tracking-[0.14em] transition-transform hover:-translate-y-0.5 ${top ? "bg-[#d4e86b] text-[#1c2a16] hover:bg-[#e3f18d]" : "border border-[#60717f] text-[#d4e86b] hover:border-[#d4e86b] hover:bg-white/10"}`}
     >
       <ArrowLeft aria-hidden="true" className="h-3.5 w-3.5" />
-      Return to Workbench
+      Return to Analysis
     </button>
   );
 }
@@ -111,7 +111,7 @@ export function HowItWorks({ onReturn, onOpenScreen }: HowItWorksProps) {
                 </div>
                 <div className="mt-8 flex flex-wrap items-center gap-4">
                   <TourJump id="tour-workflow" className="inline-flex min-h-11 items-center gap-2 rounded-md border border-[#60717f] px-4 py-3 text-[10px] font-bold uppercase tracking-[0.14em] text-[#f6f7f2] hover:border-[#d4e86b] hover:text-[#d4e86b]">
-                    Explore the five screens <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" />
+                    Explore the analysis sections <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" />
                   </TourJump>
                   <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#9dafb8]">Q1 2026 / Texas / ERCOT</span>
                 </div>
@@ -170,9 +170,9 @@ export function HowItWorks({ onReturn, onOpenScreen }: HowItWorksProps) {
         <section id="tour-workflow" aria-labelledby="tour-workflow-title" className="scroll-mt-20 px-4 py-14 md:px-8 md:py-20">
           <div className="mx-auto max-w-[1240px]">
             <div className="max-w-3xl">
-              <TourKicker>02 / screen-by-screen walkthrough</TourKicker>
-              <h2 id="tour-workflow-title" className="text-[35px] font-semibold leading-[0.98] tracking-[-0.055em] md:text-[52px]">Five screens. One evidence chain.</h2>
-              <p className="mt-5 text-[15px] leading-7 text-[#63717a]">Move from context to conviction without losing the provenance of an input. Each screen has a job, and each job leaves a visible trail for the next one.</p>
+              <TourKicker>02 / section-by-section walkthrough</TourKicker>
+              <h2 id="tour-workflow-title" className="text-[35px] font-semibold leading-[0.98] tracking-[-0.055em] md:text-[52px]">One analysis surface. One evidence chain.</h2>
+              <p className="mt-5 text-[15px] leading-7 text-[#63717a]">Move from context to conviction without losing the provenance of an input. Each section has a job, and each job leaves a visible trail for the next one.</p>
             </div>
             <div className="mt-10 space-y-4">
               {walkthrough.map((screen) => {

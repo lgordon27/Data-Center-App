@@ -15,6 +15,8 @@ import {
   Droplets
 } from "lucide-react";
 import { ClaimCitation } from "@/components/ClaimCitation";
+import { ProviderQueueSnapshot } from "@/components/ProviderQueueSnapshot";
+import { useDiligence } from "@/context/DiligenceContext";
 
 
 
@@ -25,6 +27,7 @@ import { ClaimCitation } from "@/components/ClaimCitation";
 
 export function ValueChain({ onWorkbench }: { onWorkbench: () => void }) {
   const [activeStage, setActiveStage] = useState("data-center-infrastructure");
+  const { ercotQueue } = useDiligence();
   return (
     <div data-testid="value-chain-page" className="value-chain-page overflow-hidden rounded-2xl bg-[#0d1c2b] text-[#f6f7f2] shadow-xl">
       <section className="relative overflow-hidden border-b border-white/10 px-5 py-8 md:px-8 md:py-11 xl:px-10">
@@ -40,12 +43,15 @@ export function ValueChain({ onWorkbench }: { onWorkbench: () => void }) {
           </div>
           <div className="mt-9 grid max-w-3xl grid-cols-2 gap-3 border-t border-white/15 pt-5 sm:grid-cols-4">
             <div><div className="font-mono text-[22px] font-bold text-[#d4e86b]">7</div><div className="mt-1 text-[9px] uppercase tracking-[0.14em] text-[#9dafb8]">linked layers</div></div>
-            <div><div className="font-mono text-[22px] font-bold text-[#f5ddd5]">$130B</div><div className="mt-1 text-[9px] uppercase tracking-[0.14em] text-[#9dafb8]">paused in Q1 2026</div></div>
+             <div><div className="font-mono text-[22px] font-bold text-[#f5ddd5]">{ercotQueue.stats.totalGw.toFixed(1)} GW</div><div className="mt-1 text-[9px] uppercase tracking-[0.14em] text-[#9dafb8]">ERCOT queue</div></div>
             <div><div className="font-mono text-[22px] font-bold text-[#cbb7ec]">1</div><div className="mt-1 text-[9px] uppercase tracking-[0.14em] text-[#9dafb8]">physical bottleneck</div></div>
             <div><div className="font-mono text-[22px] font-bold text-[#8dc8e8]">∞</div><div className="mt-1 text-[9px] uppercase tracking-[0.14em] text-[#9dafb8]">downstream assumptions</div></div>
           </div>
         </div>
       </section>
+      <div className="px-5 pt-6 md:px-8 xl:px-10">
+        <ProviderQueueSnapshot queue={ercotQueue} dark />
+      </div>
       <section className="px-5 py-7 md:px-8 md:py-9 xl:px-10">
         <div className="mb-6 flex flex-col justify-between gap-3 md:flex-row md:items-end">
           <div>

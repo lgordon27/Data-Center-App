@@ -667,7 +667,7 @@ test.describe("hash routing and browser history", () => {
     await expect(page.getByTestId("value-chain-stage-data-center-infrastructure")).toContainText("Power · water · land · grid · community");
     await expect(page.getByTestId("value-chain-page")).toContainText("$130 billion in projects paused in Q1 2026.");
     await expect(page.getByTestId("value-chain-stage-data-center-infrastructure")).toContainText("This layer is bifurcating.");
-    await expect(page.getByTestId("value-chain-stage-data-center-infrastructure")).toContainText("the 474 GW queue and the Abbott moratorium");
+     await expect(page.getByTestId("value-chain-stage-data-center-infrastructure")).toContainText("the dated aggregate ERCOT queue shown in the provider snapshot and the Abbott moratorium");
     await expect(page.getByTestId("value-chain-stage-data-center-infrastructure")).toContainText("Evidence quality determines which side a project lands on.");
 
     await page.getByTestId("button-value-chain-return-hero").click();

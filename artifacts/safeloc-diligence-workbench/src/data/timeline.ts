@@ -43,9 +43,9 @@ export const milestones = [
   },
   {
     date: "ERCOT / 2026",
-    signal: "474 GW",
+    signal: "QUEUE CONTEXT",
     title: "Interconnection queue",
-    detail: "The request queue is more than five times Texas record peak demand, with 90% of requests attributed to data centers.",
+    detail: "The shared ERCOT provider snapshot carries the aggregate queue value, as-of date, source refresh date, and provider-response freshness. It is market context, not a named project confirmation.",
     tone: "border-[#0b7a63] bg-[#e0f4ed]",
     claimIds: ["ercot-market-pressure"] as ClaimId[],
   },

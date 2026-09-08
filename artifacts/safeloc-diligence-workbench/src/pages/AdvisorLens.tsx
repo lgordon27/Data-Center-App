@@ -9,7 +9,9 @@ import {
   PageIntro,
   BottomNav,
   StatusBadge,
-  formatIRR
+   formatCount,
+   formatIRR,
+   formatPercentagePoints
 } from "@/components/Shell";
 import { DrawerSection, useWorkbenchDrawer } from "@/components/ContextDrawer";
 
@@ -161,7 +163,7 @@ export function AdvisorLens({
                <h3 id="advisor-material-gaps-heading" className="mt-1 text-[14px] font-semibold text-[#122232]">What still needs evidence</h3>
              </div>
              <span data-testid="advisor-material-gaps-count" className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#6b7882]">
-               {materialGaps.length} {materialGaps.length === 1 ? "gap" : "gaps"}
+               {formatCount(materialGaps.length, "gap")}
              </span>
            </div>
            {materialGaps.length > 0 ? (
@@ -209,7 +211,7 @@ export function AdvisorLens({
           <article data-testid="advisor-bridge-project-model" className="rounded-lg border border-[#c9db70] bg-[#fbfdf1] p-4">
             <div className="font-mono text-[9px] font-bold uppercase tracking-[0.13em] text-[#607500]">Project model output</div>
             <div className="mt-2 font-mono text-[20px] font-bold text-[#122232]">{formatIRR(currentIRR)} stress</div>
-            <p className="mt-1 text-[10px] leading-4 text-[#52616b]">Underwriting baseline {formatIRR(baseIRR)}; modeled evidence-quality gap {governanceGap === null ? "unavailable" : `${governanceGap.toFixed(1)} pts`}. This is a project-level sensitivity, not portfolio performance.</p>
+            <p className="mt-1 text-[10px] leading-4 text-[#52616b]">Underwriting baseline {formatIRR(baseIRR)}; modeled evidence-quality gap {formatPercentagePoints(governanceGap === null ? null : Math.abs(governanceGap))}. This is a project-level sensitivity, not portfolio performance.</p>
           </article>
           <article data-testid="advisor-bridge-public-context" className="rounded-lg border border-[#aac6f4] bg-[#f7faff] p-4">
             <div className="font-mono text-[9px] font-bold uppercase tracking-[0.13em] text-[#255bb7]">Public-source context</div>
@@ -490,7 +492,7 @@ export function AdvisorLens({
           <div className="shrink-0 rounded-lg border-2 border-[#cbb7ec] bg-white px-5 py-4 md:max-w-[360px]">
             <div className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#7049b7]">Governance gap</div>
             <div data-testid="text-governance-irr-gap" className="mt-1 font-mono text-[28px] font-bold leading-tight tracking-[-0.05em] text-[#482873]">
-              {governanceGap === null ? "N/M" : `${governanceGap.toFixed(1)} pts`}
+              {formatPercentagePoints(governanceGap === null ? null : Math.abs(governanceGap))}
             </div>
             <div data-testid="advisor-governance-gap-description" className="mt-1 text-[10px] leading-4 text-[#5e5870]">The difference between the underwriting baseline and the conservative stress case.</div>
             {governanceGap === null && <div className="mt-2 text-[10px] leading-4 text-[#706681]">The return gap is unavailable because one or both IRR calculations are non-numeric.</div>}

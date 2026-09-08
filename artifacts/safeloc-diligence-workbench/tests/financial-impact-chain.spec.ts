@@ -11,7 +11,15 @@ test.describe("Financial Impact Chain", () => {
     await expect(page.getByTestId("cash-flow-comparison-y0")).toContainText("Close / Year 0");
     await expect(page.getByTestId("cash-flow-comparison-y5")).toBeVisible();
     await expect(page.getByTestId("metric-project-irr")).toBeVisible();
+    await expect(page.getByTestId("panel-decision-context-treatment")).toContainText("Source provenance:");
+    await expect(page.getByTestId("panel-decision-context-treatment")).toContainText("Current classification:");
+    await expect(page.getByTestId("panel-decision-context-treatment")).toContainText("Financial role:");
 
+    const stressIrr = await page.getByTestId("impact-chain-stress-irr").textContent();
+    await page.goto("/#decision");
+    await expect(page.getByTestId("text-decision-irr")).toHaveText(stressIrr ?? "");
+
+    await page.goto("/#materiality");
     await page.getByRole("button", { name: "Stress Waterfall" }).click();
     await expect(page.getByTestId("panel-impact-chain")).toBeHidden();
     await expect(page.getByTestId("panel-irr-waterfall")).toBeVisible();
@@ -56,5 +64,35 @@ test.describe("Financial Impact Chain", () => {
     await expect(page.getByTestId("advisor-bridge-project-model")).toContainText("stress");
     await expect(page.getByTestId("advisor-bridge-public-context")).toContainText("Public-source context");
     await expect(page.getByTestId("advisor-bridge-analyst-scenario")).toContainText("Do not convert");
+  });
+
+  test("provider queue values and date semantics stay identical across public surfaces", async ({ page }) => {
+    const routes = ["/", "/#value-chain", "/#how-it-works", "/#analysis"];
+    const snapshots: string[] = [];
+    for (const route of routes) {
+      await page.goto(route);
+      const snapshot = page.getByTestId("shared-provider-queue-snapshot");
+      await expect(snapshot).toBeVisible();
+      await expect(snapshot).toContainText("aggregate values as of");
+      await expect(snapshot).toContainText("source refreshed");
+      await expect(snapshot).toContainText("provider response");
+      await expect(snapshot).toContainText("dataset freshness");
+      snapshots.push((await snapshot.textContent()) ?? "");
+    }
+    const snapshotSignatures = snapshots.map((text) => [
+      text.match(/Total large-load queue\s*([0-9.]+ GW)/)?.[1],
+      text.match(/Data-center share\s*([0-9.]+%)/)?.[1],
+      text.match(/aggregate values as of\s*([^;]+)/)?.[1],
+      text.match(/source refreshed\s*([^;]+)/)?.[1],
+      text.match(/dataset freshness\s*([^\.]+\.)/)?.[1],
+    ].join("|"));
+    expect(new Set(snapshotSignatures).size).toBe(1);
+
+    await page.goto("/#value-chain");
+    await page.getByTestId("value-chain-stage-data-center-infrastructure").locator("summary").first().click();
+    await expect(page.getByTestId("value-chain-stage-data-center-infrastructure")).not.toContainText("474 GW");
+    await page.goto("/#how-it-works");
+    await expect(page.getByTestId("timeline-milestone-6")).toContainText("QUEUE CONTEXT");
+    await expect(page.getByTestId("timeline-milestone-6")).not.toContainText("474 GW");
   });
 });

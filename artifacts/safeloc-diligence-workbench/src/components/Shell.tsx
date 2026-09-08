@@ -71,24 +71,39 @@ export const classMeta: Record<Classification, { color: string; bg: string; bord
   "Missing Evidence": { color: "#ba2f45", bg: "#fde8eb", border: "#efabb8", short: "Missing" },
 };
 export function formatCurrency(value: number, decimals = 1) {
+  if (!Number.isFinite(value)) return "Unavailable";
   return `${value < 0 ? "−" : ""}$${Math.abs(value).toFixed(decimals)}M`;
 }
 
 export function formatIRR(value: number | null) {
-  return value === null ? "N/M" : `${value.toFixed(1)}%`;
+  return value === null || !Number.isFinite(value) ? "N/M" : `${value.toFixed(1)}%`;
 }
 
 export function formatPayback(value: number | null) {
-  return value === null ? "Not reached" : `${value.toFixed(1)} years`;
+  if (value === null || !Number.isFinite(value)) return "Not reached";
+  return `${value.toFixed(1)} ${value === 1 ? "year" : "years"}`;
 }
 
 export function formatScenarioMetric(value: number | null, metric: "irr" | "moic" | "npv" | "cashOnCash" | "payback" | "confidence") {
   if (metric === "irr") return formatIRR(value);
   if (metric === "payback") return formatPayback(value);
-  if (value === null) return "Unavailable";
+  if (value === null || !Number.isFinite(value)) return "Unavailable";
   if (metric === "moic") return `${value.toFixed(2)}x`;
   if (metric === "npv") return formatCurrency(value, 0);
   return `${value.toFixed(1)}%`;
+}
+
+export function formatPercentagePoints(value: number | null, options: { signed?: boolean; nearZeroLabel?: string } = {}) {
+  if (value === null || !Number.isFinite(value)) return "Unavailable";
+  const { signed = false, nearZeroLabel = "less than 0.01 pts" } = options;
+  if (Math.abs(value) < 0.005) return nearZeroLabel;
+  const sign = signed && value > 0 ? "+" : "";
+  return `${sign}${value.toFixed(Math.abs(value) < 0.1 ? 2 : 1)} pts`;
+}
+
+export function formatCount(value: number | null, singular: string, plural = `${singular}s`) {
+  if (value === null || !Number.isFinite(value)) return "Unavailable";
+  return `${value.toLocaleString("en-US")} ${value === 1 ? singular : plural}`;
 }
 export function formatLineItemValue(value: number, unit: string) {
   if (unit.startsWith("$")) return formatCurrency(value);
@@ -450,7 +465,16 @@ export function DiligenceLiveRegions({ metrics }: { metrics: ReturnType<typeof u
     </div>
   );
 }
-export function formatScenarioDelta(first: number | null, second: number | null, metric: "irr" | "moic" | "npv" | "cashOnCash" | "payback" | "confidence") { if (first === null || second === null) return "Unavailable"; const delta = second - first; const sign = delta >= 0 ? "+" : ""; if (metric === "irr") return `${sign}${delta.toFixed(1)} pts`; if (metric === "moic") return `${sign}${delta.toFixed(2)}x`; if (metric === "npv") return `${delta >= 0 ? "+" : "−"}$${Math.abs(delta).toFixed(0)}M`; if (metric === "payback") return `${sign}${delta.toFixed(1)} years`; return `${sign}${delta.toFixed(1)}%`; }
+export function formatScenarioDelta(first: number | null, second: number | null, metric: "irr" | "moic" | "npv" | "cashOnCash" | "payback" | "confidence") {
+  if (first === null || second === null || !Number.isFinite(first) || !Number.isFinite(second)) return "Unavailable";
+  const delta = second - first;
+  const sign = delta > 0 ? "+" : "";
+  if (metric === "irr") return formatPercentagePoints(delta, { signed: true });
+  if (metric === "moic") return `${sign}${delta.toFixed(2)}x`;
+  if (metric === "npv") return formatCurrency(delta, 0);
+  if (metric === "payback") return `${sign}${delta.toFixed(1)} ${delta === 1 || delta === -1 ? "year" : "years"}`;
+  return `${sign}${delta.toFixed(1)}%`;
+}
 
 export function ImpactRoleBadge({ role, testId, compact = false }: { role: ImpactRole; testId?: string; compact?: boolean }) {
   const meta = impactRoleMeta[role];

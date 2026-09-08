@@ -1431,7 +1431,7 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
                     </p>
                   )}
                   <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[#e1e8e5] pt-3">
-                    <p className="text-[9px] text-[#60707d]">Last updated {formatSourceTimestamp(ercotQueue.sourceUpdatedAt ?? undefined)} · Feed freshness does not change evidence classification.</p>
+                     <p className="text-[9px] text-[#60707d]">Provider response {formatSourceTimestamp(ercotQueue.fetchedAt ?? undefined)} · dataset freshness {formatSourceTimestamp(ercotQueue.sourceUpdatedAt ?? undefined)} · aggregate as of {formatSourceTimestamp(ercotQueue.stats.asOfDate ?? undefined)} · feed freshness does not change evidence classification.</p>
                     {canSuggestVerified ? (
                       <button
                         data-testid="button-suggest-verified-grid"

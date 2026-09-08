@@ -162,6 +162,8 @@ export type CashFlowModel = {
   lineItems: Record<string, ModelLineItem>;
   attribution: Record<string, FinancialAttribution>;
   waterfall: WaterfallStep[];
+  waterfallClosureDelta: number | null;
+  waterfallReconciles: boolean;
   mechanicalDisclaimer: boolean;
   baseIRR?: number | null;
   baseModel?: CashFlowModel;
@@ -169,6 +171,8 @@ export type CashFlowModel = {
 
 export const DEFAULT_CAPACITY_MW = 1_200;
 export const MAX_CAPACITY_MW = 10_000;
+/** IRR is displayed to one decimal place; this is the maximum closure error in percentage points. */
+export const WATERFALL_RECONCILIATION_TOLERANCE = 0.05;
 const LEASE_RATE_PER_KW_MONTH = 185;
 const UTILIZATION_RAMP = [0.6, 0.8, 0.92, 0.92, 0.92];
 const HOURS_PER_YEAR = 8_760;
@@ -844,6 +848,8 @@ function runModel(evidence: EvidenceRecord, capacityMW: number): CashFlowModel {
     lineItems,
     attribution: {},
     waterfall: [],
+    waterfallClosureDelta: null,
+    waterfallReconciles: true,
     mechanicalDisclaimer: confidenceScore === 0,
   };
 }
@@ -964,6 +970,10 @@ export function calculateCashFlowModel(evidence: EvidenceRecord, requestedCapaci
   waterfall.forEach((step, index) => {
     step.index = index;
   });
+  const waterfallClosureDelta =
+    waterfall.length === 0 || current.projectIRR === null || waterfall.at(-1)?.after === null
+      ? null
+      : (waterfall.at(-1)?.after ?? 0) - current.projectIRR;
 
   return {
     ...current,
@@ -972,6 +982,8 @@ export function calculateCashFlowModel(evidence: EvidenceRecord, requestedCapaci
     lineItems,
     attribution,
     waterfall,
+    waterfallClosureDelta,
+    waterfallReconciles: waterfallClosureDelta === null || Math.abs(waterfallClosureDelta) <= WATERFALL_RECONCILIATION_TOLERANCE,
   };
 }
 

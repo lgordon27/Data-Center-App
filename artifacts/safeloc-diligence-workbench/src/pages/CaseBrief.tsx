@@ -255,7 +255,7 @@ export function CaseBrief({ onNavigate, onFocusCommunity }: { onNavigate: (scree
           ))}
         </div>
         <p data-testid="ercot-source-attribution" className="mt-4 font-mono text-[9px] leading-4 text-[#52616b]">
-          Source: ERCOTQueue.com, updated {formatSourceTimestamp(ercotQueue.sourceUpdatedAt ?? undefined)}; ERCOT Batch Zero notice and August 2026 ERCOT testimony. Aggregate queue activity and Batch Zero timing are market context, not a named Stargate or Oracle confirmation.
+           Source: ERCOTQueue.com, aggregate values as of {formatSourceTimestamp(ercotQueue.stats.asOfDate ?? undefined)}; source refreshed {formatSourceTimestamp(ercotQueue.stats.sourceRefreshDate ?? undefined)}; provider response {formatSourceTimestamp(ercotQueue.fetchedAt ?? undefined)}; dataset freshness {formatSourceTimestamp(ercotQueue.sourceUpdatedAt ?? undefined)}. ERCOT Batch Zero notice and August 2026 ERCOT testimony provide additional context. Aggregate queue activity and Batch Zero timing are market context, not a named Stargate or Oracle confirmation.
         </p>
         <ClaimCitation claimId="ercot-market-pressure" />
       </section>

@@ -36,6 +36,7 @@ import {
   formatScenarioMetric,
   formatPayback,
   formatLineItemValue,
+  formatPercentagePoints,
   chartPoints
 } from "@/components/Shell";
 import type {
@@ -170,6 +171,14 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
     .filter((item) => item.impactRole === "Financial Driver")
     .sort((a, b) => Math.abs(b.singleInputSensitivityIRR ?? 0) - Math.abs(a.singleInputSensitivityIRR ?? 0));
   const formatDollarEffect = (value: number) => value === 0 ? "No direct effect" : formatCurrency(value);
+  const baselineAssumptions = metrics.baseModel?.assumptions;
+  const assumptionComparison = baselineAssumptions ? [
+    ["Electricity rate", `$${baselineAssumptions.electricityRate.toFixed(1)}/MWh`, `$${metrics.assumptions.electricityRate.toFixed(1)}/MWh`],
+    ["Water use", `${baselineAssumptions.annualCoolingWaterMgal.toFixed(1)} M gal / yr`, `${metrics.assumptions.annualCoolingWaterMgal.toFixed(1)} M gal / yr`],
+    ["Permitting delay", `${baselineAssumptions.permittingMonths} months`, `${metrics.assumptions.permittingMonths} months`],
+    ["CAPEX contingency", formatCurrency(baselineAssumptions.capexContingency), formatCurrency(metrics.assumptions.capexContingency)],
+    ["Adjusted hazard probability", `${(baselineAssumptions.adjustedHazardProbability * 100).toFixed(1)}%`, `${(metrics.assumptions.adjustedHazardProbability * 100).toFixed(1)}%`],
+  ] : [];
   return (
     <div>
       <PageIntro
@@ -206,13 +215,16 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
           <section data-testid="panel-impact-chain" aria-labelledby="impact-chain-title" className="rounded-xl border-2 border-[#122232] bg-[#122232] p-5 text-white md:p-6">
             <div className="flex flex-col justify-between gap-3 border-b border-white/15 pb-4 md:flex-row md:items-end">
               <div><SectionKicker tone="lime" className="!text-[#d4e86b]">Impact Chain</SectionKicker><h2 id="impact-chain-title" className="text-[22px] font-semibold tracking-[-0.035em]">Underwriting Baseline → Conservative Stress</h2></div>
-              <span data-testid="impact-chain-evidence-gap" className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#f5ddd5]">{irrDelta === null ? "Evidence-quality gap unavailable" : `${Math.abs(irrDelta).toFixed(1)} pts evidence-quality gap`}</span>
+              <span data-testid="impact-chain-evidence-gap" className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#f5ddd5]">{irrDelta === null ? "Evidence-quality gap unavailable" : `${formatPercentagePoints(Math.abs(irrDelta))} evidence-quality gap`}</span>
             </div>
             <div className="mt-4 grid gap-2 sm:grid-cols-3">
               <div className="rounded-lg border border-[#b9d43a]/40 bg-[#b9d43a]/10 p-3"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#b9d43a]">Baseline IRR</div><div data-testid="impact-chain-baseline-irr" className="mt-1 font-mono text-2xl font-bold text-[#d4e86b]">{formatIRR(baseIRR)}</div></div>
               <div className="rounded-lg border border-[#f5ddd5]/40 bg-[#f5ddd5]/10 p-3"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#f5ddd5]">Stress IRR</div><div data-testid="impact-chain-stress-irr" className="mt-1 font-mono text-2xl font-bold text-[#f5ddd5]">{formatIRR(currentIRR)}</div></div>
               <div className="rounded-lg border border-white/10 bg-white/5 p-3"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#9dafb8]">Method</div><div className="mt-1 text-[11px] font-semibold text-[#e3eaed]">Marginal sensitivity, ranked by absolute IRR effect</div></div>
             </div>
+            <aside data-testid="model-reconciliation-note" role="note" className="mt-4 rounded-lg border border-[#8dc8e8]/35 bg-[#0d2b3d] px-3 py-2 text-[10px] leading-4 text-[#d7e8ee]">
+              <strong className="text-[#d4e86b]">Return reconciliation:</strong> the verified baseline applies the full evidence set as verified; the conservative stress case applies the active classifications and their predefined treatments to the same 5-year equity cash-flow engine. Current output is {formatIRR(baseIRR)} → {formatIRR(currentIRR)} ({formatPercentagePoints(irrDelta === null ? null : Math.abs(irrDelta))} gap). Historical 15.6% / 10.3% copy is not a model target and is not used to change assumptions.
+            </aside>
             <div className="mt-5 overflow-x-auto rounded-lg border border-white/10">
               <table className="w-full min-w-[980px] border-collapse text-left">
                 <caption className="sr-only">Financial impact chain ranked by marginal sensitivity</caption>
@@ -246,7 +258,7 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
         </>
       )}
       <div id="materiality-summary" className="scroll-mt-24 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <MetricCard testId="metric-project-irr" label="Project IRR" value={formatIRR(currentIRR)} detail={`${irrDelta === null ? "N/M" : `${irrDelta >= 0 ? "+" : ""}${irrDelta.toFixed(1)} pts`} vs Underwriting Baseline`} accent="lime" />
+         <MetricCard testId="metric-project-irr" label="Project IRR" value={formatIRR(currentIRR)} detail={`${irrDelta === null ? "N/M" : formatPercentagePoints(irrDelta, { signed: true })} vs Underwriting Baseline`} accent="lime" />
          <MetricCard testId="metric-moic" label="MOIC" value={formatScenarioMetric(metrics.moic, "moic")} detail="5-year hold period" accent="navy" />
          <MetricCard testId="metric-coc" label="Cash-on-cash" value={formatScenarioMetric(metrics.cashOnCash, "cashOnCash")} detail="Stabilized year 3" accent="violet" />
         <MetricCard testId="metric-payback" label="Payback" value={formatPayback(metrics.payback)} detail="Cumulative equity breakeven" accent="coral" />
@@ -286,7 +298,10 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
           })}
             <div className="rounded-lg border-2 border-[#f5ddd5]/60 bg-[#f5ddd5]/10 p-3"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#f5ddd5]">Conservative Case (Stress-Adjusted)</div><div data-testid="waterfall-current-irr" className="mt-1 font-mono text-2xl font-bold text-[#f5ddd5]">{formatIRR(currentIRR)}</div></div>
         </div>
-          <aside data-testid="waterfall-underwriting-note" role="note" className="mt-5 rounded-lg border border-[#b9d43a]/40 bg-[#b9d43a]/10 px-3 py-2 text-[11px] leading-5 text-[#e8f0d1]">A management assertion that proves accurate would improve the return. The conservative stress case shows the cost of not knowing, not the cost of a negative outcome.</aside>
+           <aside data-testid="waterfall-underwriting-note" role="note" className="mt-5 rounded-lg border border-[#b9d43a]/40 bg-[#b9d43a]/10 px-3 py-2 text-[11px] leading-5 text-[#e8f0d1]">A management assertion that proves accurate would improve the return. The conservative stress case shows the cost of not knowing, not the cost of a negative outcome.</aside>
+           <div data-testid="waterfall-reconciliation" className="mt-3 font-mono text-[9px] uppercase tracking-[0.1em] text-[#9dafb8]">
+             Waterfall closure: {metrics.waterfallReconciles ? "reconciled" : "outside tolerance"} · {formatPercentagePoints(metrics.waterfallClosureDelta, { signed: true })} residual · tolerance ±0.05 pts
+           </div>
           <div className="sr-only" aria-live="polite">Underwriting Baseline (All Inputs Verified) {formatIRR(baseIRR)}. Conservative Case (Stress-Adjusted) {formatIRR(currentIRR)}. Change {irrDelta === null ? "unavailable" : `${irrDelta.toFixed(1)} percentage points`}.</div>
       </section>}
        <section data-testid="panel-decision-context-treatment" aria-labelledby="decision-context-treatment-title" className="mt-5 rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-6">
@@ -299,7 +314,12 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
              return <article key={item.id} data-testid={`decision-context-item-${item.id}`} className="rounded-lg border border-[#d9e0e4] bg-[#f7faf8] p-4">
                <div className="flex flex-wrap items-start justify-between gap-2"><h3 className="text-[12px] font-semibold text-[#243844]">{item.label}</h3><ImpactRoleBadge role={item.impactRole} compact testId={`decision-context-role-${item.id}`} /></div>
                <p className="mt-2 text-[10px] leading-4 text-[#52616b]">{definition.description}</p>
-               <div className="mt-3 flex flex-wrap items-center gap-2 text-[9px] text-[#60707d]"><span className="font-bold uppercase tracking-[0.1em]">Current provenance</span><ClassificationBadge value={item.classification} compact /></div>
+                <div className="mt-3 space-y-1 text-[9px] text-[#60707d]">
+                  <div><span className="font-bold uppercase tracking-[0.1em]">Source provenance:</span> {item.sourceRole}</div>
+                  <div className="flex flex-wrap items-center gap-2"><span className="font-bold uppercase tracking-[0.1em]">Current classification:</span><ClassificationBadge value={item.classification} compact /></div>
+                  {item.modelClassification && <div><span className="font-bold uppercase tracking-[0.1em]">Modeled treatment:</span> {item.modelClassification}</div>}
+                  <div className="flex flex-wrap items-center gap-2"><span className="font-bold uppercase tracking-[0.1em]">Financial role:</span><ImpactRoleBadge role={item.impactRole} compact testId={`decision-context-role-inline-${item.id}`} /></div>
+                </div>
                <div className="mt-3"><EvidenceTraceButton inputId={item.id} testId={`button-trace-context-${item.id}`} context="context-item" /></div>
              </article>;
            })}
@@ -332,11 +352,11 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
             <ArrowRight className="mb-2 h-5 w-5 text-[#7c909d]" />
              <div><div className="font-mono text-[9px] uppercase tracking-[0.15em] text-[#9dafb8]">Conservative Stress Case IRR</div><div data-testid="text-current-irr-materiality" className="mt-2 font-mono text-[46px] font-bold leading-none tracking-[-0.07em] text-[#f5ddd5]">{formatIRR(currentIRR)}</div></div>
           </div>
-          <div className="mt-4 rounded-lg border border-[#f5ddd5]/30 bg-[#f5ddd5]/10 px-3 py-2 font-mono text-[12px] font-bold text-[#f5ddd5]">{irrDelta === null ? "Underwriting Baseline delta unavailable" : `${irrDelta >= 0 ? "+" : ""}${irrDelta.toFixed(1)} percentage points from Underwriting Baseline`}</div>
+           <div className="mt-4 rounded-lg border border-[#f5ddd5]/30 bg-[#f5ddd5]/10 px-3 py-2 font-mono text-[12px] font-bold text-[#f5ddd5]">{irrDelta === null ? "Underwriting Baseline delta unavailable" : `${formatPercentagePoints(irrDelta, { signed: true })} from Underwriting Baseline`}</div>
           {metrics.lastChange && metrics.lastChange.from !== metrics.lastChange.to && (
             <div className="mt-3 flex items-center gap-2 font-mono text-[10px] text-[#f5ddd5]">
-              <span className="line-through opacity-60">{metrics.lastChange.from}% prior</span>
-              <span className="rounded bg-[#f5ddd5] px-2 py-1 font-bold text-[#ba2f45]">{metrics.lastChange.delta > 0 ? "+" : ""}{metrics.lastChange.delta.toFixed(1)} pts since reclassification</span>
+               <span className="line-through opacity-60">{formatIRR(metrics.lastChange.from)} prior</span>
+               <span className="rounded bg-[#f5ddd5] px-2 py-1 font-bold text-[#ba2f45]">{formatPercentagePoints(metrics.lastChange.delta, { signed: true })} since reclassification</span>
             </div>
           )}
           <div className="mt-5 h-28 border-b border-l border-white/20 px-3 pb-2 pt-3">
@@ -383,6 +403,21 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
             </div>
           ))}
          </div>
+          <div data-testid="assumption-set-reconciliation" className="mt-5 rounded-lg border border-[#aac6f4] bg-[#eef5ff] p-4 text-[10px] leading-4 text-[#344550]">
+            <div className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#255bb7]">Inspectable assumption sets</div>
+            <p className="mt-2"><strong>Verified baseline:</strong> {formatIRR(metrics.baseModel?.projectIRR ?? null)} IRR with every evidence input treated as verified.</p>
+            <p className="mt-1"><strong>Active conservative stress:</strong> {formatIRR(metrics.projectIRR)} IRR with the current classifications and modeled treatments shown below. Both use the same synthetic transaction inputs and cash-flow schedule; neither is reported Stargate performance.</p>
+            <p className="mt-1">The difference from historical 15.6% / 10.3% copy is explained by the implemented cash flows, timing, operating costs, leverage, terminal value, and evidence treatments—not by retrofitting assumptions to recover a headline.</p>
+            <div className="mt-3 overflow-x-auto rounded border border-[#aac6f4] bg-white">
+              <table className="w-full min-w-[520px] border-collapse text-left">
+                <caption className="sr-only">Selected verified baseline and active conservative stress assumptions</caption>
+                <thead className="bg-[#e5efff] font-mono text-[8px] font-bold uppercase tracking-[0.1em] text-[#255bb7]"><tr><th className="px-2 py-2">Assumption</th><th className="px-2 py-2">Verified baseline</th><th className="px-2 py-2">Active stress</th></tr></thead>
+                <tbody className="divide-y divide-[#d9e5f5] font-mono text-[9px] text-[#344550]">
+                  {assumptionComparison.map(([label, baseline, stress]) => <tr key={label}><th className="px-2 py-2 font-semibold">{label}</th><td className="px-2 py-2">{baseline}</td><td className="px-2 py-2">{stress}</td></tr>)}
+                </tbody>
+              </table>
+            </div>
+          </div>
          {lowConfidence && <div className="mt-5"><LowConfidenceWarning testId="warning-low-confidence-materiality-model" /></div>}
         <div className="mt-5 overflow-x-auto rounded-lg border border-[#d9e0e4] bg-white">
           <table className="w-full min-w-[760px] border-collapse text-left">

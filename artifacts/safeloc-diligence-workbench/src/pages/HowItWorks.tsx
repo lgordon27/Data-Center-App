@@ -23,6 +23,8 @@ import {
   Zap
 } from "lucide-react";
 import { ClaimCitation } from "@/components/ClaimCitation";
+import { ProviderQueueSnapshot } from "@/components/ProviderQueueSnapshot";
+import { useDiligence } from "@/context/DiligenceContext";
 
 
 type HowItWorksProps = {
@@ -82,6 +84,7 @@ function TourKicker({ children, dark = false }: { children: React.ReactNode; dar
 }
 
 export function HowItWorks({ onReturn, onOpenScreen }: HowItWorksProps) {
+  const { ercotQueue } = useDiligence();
   return (
     <div className="min-h-[100dvh] bg-[#f4f6f4] text-[#122232]">
       <a href="#tour-main" className="sr-only z-50 rounded bg-[#d4e86b] px-3 py-2 text-sm text-[#122232] focus:not-sr-only focus:fixed focus:left-4 focus:top-4">
@@ -106,7 +109,8 @@ export function HowItWorks({ onReturn, onOpenScreen }: HowItWorksProps) {
                 </h1>
                 <div data-testid="tour-sri-context" className="mt-7 max-w-3xl text-[15px] leading-7 text-[#d1dbe0] md:text-[17px] md:leading-8">
                   <p>Responsible investors helped capitalize the AI revolution; now its physical infrastructure is testing environmental stewardship, community impact, transparent governance, and evidence-based decision-making. With $130 billion in AI projects blocked or delayed in Q1 2026 and Texas pausing new grid connections for an energy and water audit, this tour asks whether the forward-looking assumptions behind a specific project are actually verified.</p>
-                  <div className="flex flex-wrap gap-2"><ClaimCitation claimId="stargate-cancellation" dark /><ClaimCitation claimId="abbott-data-center-audit" dark /></div>
+                   <div className="flex flex-wrap gap-2"><ClaimCitation claimId="stargate-cancellation" dark /><ClaimCitation claimId="abbott-data-center-audit" dark /></div>
+                   <div className="mt-5 max-w-2xl"><ProviderQueueSnapshot queue={ercotQueue} dark /></div>
                   <p data-testid="tour-bifurcation-context" className="mt-4">The market is bifurcating between projects that solved their constraints independently and projects still waiting on public infrastructure. This tool tests which side a specific project falls on.</p>
                 </div>
                 <div className="mt-8 flex flex-wrap items-center gap-4">

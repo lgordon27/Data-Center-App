@@ -9,6 +9,7 @@ import {
   formatImpactDelta,
   MAX_CAPACITY_MW,
   MATERIAL_EVIDENCE_IDS,
+  WATERFALL_RECONCILIATION_TOLERANCE,
   type Classification,
   type EvidenceRecord,
 } from "./cashFlowEngine";
@@ -338,6 +339,9 @@ test("the verified waterfall resets modeled classifications and reconciles to cu
   assert.equal(model.baseIRR, verified.projectIRR);
   assert.equal(model.baseModel?.assumptions.adjustedHazardProbability, 0.05);
   assert.equal(model.waterfall.at(-1)?.after, model.projectIRR);
+  assert.equal(model.waterfallClosureDelta, 0);
+  assert.equal(model.waterfallReconciles, true);
+  assert.ok(Math.abs(model.waterfallClosureDelta ?? Infinity) <= WATERFALL_RECONCILIATION_TOLERANCE);
   assert.equal(model.waterfall.length, 10);
   assert.ok(model.waterfall.every((step) => step.impactRole === "Financial Driver"));
   assert.equal(hazardStep?.impactRole, "Financial Driver");

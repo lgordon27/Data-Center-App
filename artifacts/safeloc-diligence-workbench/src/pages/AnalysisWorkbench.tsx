@@ -9,9 +9,12 @@ import { DiligenceAgentPanel } from "@/pages/DiligenceAgentPanel";
 import {
   classifications,
   classMeta,
+  formatCount,
   formatIRR,
+  formatPercentagePoints,
   SectionKicker,
 } from "@/components/Shell";
+import { ProviderQueueSnapshot } from "@/components/ProviderQueueSnapshot";
 import { WorkbenchDrawerProvider } from "@/components/ContextDrawer";
 import { useDiligence } from "@/context/DiligenceContext";
 import type { Screen } from "@/components/Shell";
@@ -131,8 +134,8 @@ function AnalysisSummaryRail({ activeSection, onSection, onReset, onDecisionActi
       </div>
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
         <RailMetric label="Evidence confidence" value={`${metrics.confidenceScore}%`} detail="Weighted source quality and recency" tone={metrics.confidenceScore < 25 ? "coral" : "lime"} />
-        <RailMetric label="Baseline → stress IRR" value={`${formatIRR(metrics.baseIRR)} → ${formatIRR(metrics.projectIRR)}`} detail={evidenceGap === null ? "Return delta unavailable" : `${evidenceGap.toFixed(1)} pts evidence-quality gap`} tone="coral" />
-        <RailMetric label="Recommendation" value={metrics.recommendationStatus} detail={`${metrics.missingMaterialCount} material gaps`} tone={metrics.recommendationStatus === "READY FOR REVIEW" ? "lime" : "coral"} />
+        <RailMetric label="Baseline → stress IRR" value={`${formatIRR(metrics.baseIRR)} → ${formatIRR(metrics.projectIRR)}`} detail={evidenceGap === null ? "Return delta unavailable" : `${formatPercentagePoints(evidenceGap)} evidence-quality gap`} tone="coral" />
+         <RailMetric label="Recommendation" value={metrics.recommendationStatus} detail={formatCount(metrics.missingMaterialCount, "material gap")} tone={metrics.recommendationStatus === "READY FOR REVIEW" ? "lime" : "coral"} />
       </div>
       <div className="mt-5 border-t border-[#d9e0e4] pt-4">
         <div className="mb-2 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#52616b]">Evidence mix</div>
@@ -176,7 +179,7 @@ function MobileAnalysisSummary({ expanded, setExpanded, activeSection, onSection
         <div id="mobile-analysis-metrics" className="grid gap-2 border-t border-[#e5eae8] py-3 sm:grid-cols-3">
           <RailMetric label="Baseline IRR" value={formatIRR(metrics.baseIRR)} />
           <RailMetric label="Stress IRR" value={formatIRR(metrics.projectIRR)} tone="coral" />
-          <RailMetric label="Material gaps" value={String(metrics.missingMaterialCount)} detail={`${metrics.confidenceScore}% confidence`} />
+           <RailMetric label="Material gaps" value={String(metrics.missingMaterialCount)} detail={`${metrics.confidenceScore}% confidence`} />
         </div>
       )}
       <nav aria-label="Analysis section links" className="flex gap-1 overflow-x-auto pb-1 pt-1">
@@ -201,6 +204,7 @@ function AnalysisWorkbenchBody({ onResolveEvidence, onReset }: { onResolveEviden
   const [activeSection, setActiveSection] = useState("analysis-overview");
   const [mobileExpanded, setMobileExpanded] = useState(false);
   const [decisionAction, setDecisionAction] = useState<"save" | "compare" | null>(null);
+  const { ercotQueue } = useDiligence();
   // The context drawer is a pure overlay at every width: the workspace never
   // reflows when it opens, so the reviewer's scroll position is preserved.
   const goToSection = (screen: Screen) => {
@@ -228,6 +232,7 @@ function AnalysisWorkbenchBody({ onResolveEvidence, onReset }: { onResolveEviden
       <div className="flex min-w-0 gap-0">
         <AnalysisSummaryRail activeSection={activeSection} onSection={goToSection} onReset={onReset} onDecisionAction={requestDecisionAction} />
         <div className="min-w-0 flex-1 space-y-10 lg:pl-8">
+           <ProviderQueueSnapshot queue={ercotQueue} />
           <section id="analysis-agent" data-testid="analysis-section-agent" tabIndex={-1} className="scroll-mt-28 outline-none" aria-labelledby="analysis-agent-heading">
             <h2 id="analysis-agent-heading" className="sr-only">Governed Diligence Agent</h2>
             <DiligenceAgentPanel />

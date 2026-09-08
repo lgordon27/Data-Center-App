@@ -38,6 +38,7 @@ import {
 } from "@/data/companyExposure";
 import { ClaimCitation } from "@/components/ClaimCitation";
 import { trackEvent } from "@/services/analytics";
+import { ProviderQueueSnapshot } from "@/components/ProviderQueueSnapshot";
 
 type HomeRoute = "directory" | "how-it-works" | "value-chain";
 
@@ -853,7 +854,7 @@ export function ComputeAtlasDirectory({ onCurated, onResearchSuccess }: { onCura
 }
 
 export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void } = {}) {
-  const { loadCustomProject, resetToDefault, originatingCompany } = useDiligence();
+  const { loadCustomProject, resetToDefault, originatingCompany, ercotQueue } = useDiligence();
   const initialCompany = COMPANY_PROFILES.some((profile) => profile.key === originatingCompany) ? originatingCompany as CompanyKey : null;
   const [selectedCompany, setSelectedCompany] = useState<CompanyKey | null>(initialCompany);
   const [companyResearchingId, setCompanyResearchingId] = useState<string | null>(null);
@@ -1061,7 +1062,7 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
                <div className="mt-4"><CustomProjectForm compact onSuccess={(research) => handleResearchSuccess(research)} /></div>
                <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-white/10 pt-4">
                  <button data-testid="button-browse-all-facilities" type="button" onClick={() => goSecondary("directory")} className="inline-flex min-h-10 items-center gap-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#b9e1f2] hover:text-[#d4e86b]">Browse All Facilities <ArrowRight aria-hidden="true" className="h-3 w-3" /></button>
-                 <span className="font-mono text-[9px] text-[#718894]">Or browse all 1,280+ tracked facilities by state.</span>
+                  <span className="font-mono text-[9px] text-[#718894]">Or browse all tracked facilities by state.</span>
                </div>
              </div>
            </div>
@@ -1083,7 +1084,7 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
                 </div>
               ))}
             </div>
-            <p className="mt-4 font-mono text-[8px] uppercase tracking-[0.1em] text-[#718894]">The largest technology infrastructure investment in human history.</p>
+             <div className="mt-4 max-w-xl"><ProviderQueueSnapshot queue={ercotQueue} dark /></div>
           </div>
         </section>
 

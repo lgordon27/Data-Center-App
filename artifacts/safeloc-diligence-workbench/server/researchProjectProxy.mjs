@@ -4,6 +4,18 @@ import {
   evaluateEvidenceSourceEligibility,
   normalizeEvidenceRecord,
 } from "../src/data/evidenceSemanticPolicy.mjs";
+import {
+  SOURCE_VALIDATION_POLICY_VERSION,
+  buildClaimPassageMappings,
+  canonicalizeSourceUrl,
+  createSourceLedger,
+  evaluateResearchEvidenceEligibility,
+  isSourceProjectSpecific,
+} from "../src/data/sourceValidationPolicy.mjs";
+
+function sourceStateTransition(from, to, reason) {
+  return { from, to, reason };
+}
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const RESEARCH_PROJECT_MODEL = "gpt-4o";
@@ -65,6 +77,10 @@ const RESEARCH_EVIDENCE_RECORD_SCHEMA = {
     classificationReason: { type: "string", minLength: 1 },
     sourceRelevanceNote: { type: "string", minLength: 1 },
     sourceRelevance: { type: "string", enum: ["exact-project", "related-context", "unresolved"] },
+    claimPassage: { type: "string", minLength: 1 },
+    facilityScope: { type: "string", enum: ["exact-project", "exact-facility", "project", "facility", "unknown"] },
+    phaseScope: { type: "string", enum: ["exact-phase", "not-applicable", "unknown"] },
+    claimTimePeriod: { anyOf: [{ type: "string", minLength: 1 }, { type: "null" }] },
     searchTerms: { type: "array", items: { type: "string", minLength: 1 }, maxItems: 8 },
     qualitativeValue: {
       anyOf: [
@@ -91,6 +107,10 @@ const RESEARCH_EVIDENCE_RECORD_SCHEMA = {
     "classificationReason",
     "sourceRelevanceNote",
     "sourceRelevance",
+    "claimPassage",
+    "facilityScope",
+    "phaseScope",
+    "claimTimePeriod",
     "searchTerms",
     "qualitativeValue",
   ],
@@ -132,7 +152,7 @@ The projectSummary.description must explicitly report relevant findings, when av
 
 ERCOT BATCH ZERO UPDATE (August 2026): ERCOT's Batch Zero large-load interconnection studies, covering 200 GW across 300 applicants, have been delayed from the original September 2026 start to January 2027 at earliest. The study was expected to complete by April 2027; the revised completion date is unclear. ERCOT staff testified this delay may cause some applicants to drop out due to financing constraints. Separately, 17 facilities totaling 6.6 GW that already completed studies are stuck in Governor Abbott's verification audit and cannot energize. Any Texas data center project requiring ERCOT grid interconnection is affected. Only behind-the-meter projects exempt from the ERCOT queue are unaffected. When classifying Grid Interconnection for any Texas project, a grid-dependent project should not receive Verified Evidence for interconnection timeline because no grid-dependent project currently has a confirmed interconnection date. Treat this as August 2026 market and grid-process context, not proof of a named facility's interconnection status; research exact-project evidence separately.
 
-Respond with one JSON object matching the supplied schema. projectSummary must contain name, location, description, and capacityMW. Every evidence record must contain label, value, unit, classification, citation, sourceRole, sourceUrl, sourceUrls, conflictSummary, coverageStatus, numericValue, modelReportedConfidence, sourceSupportConfidence, classificationReason, sourceRelevance, sourceRelevanceNote, searchTerms, and qualitativeValue. modelReportedConfidence is your optional per-variable confidence from 0 to 100; return null when unavailable. It is not source validation and must never be copied from or substituted for sourceSupportConfidence. sourceSupportConfidence is only a schema placeholder; the server ignores it and computes deterministic support confidence from validated sources. sourceUrl is the strongest direct source, and sourceUrls contains up to four direct supporting, corroborating, or conflicting packet URLs. Use null for sourceUrl, conflictSummary, numericValue, modelReportedConfidence, or qualitativeValue and [] for sourceUrls or searchTerms when unavailable. Identify conflicting sources explicitly rather than silently choosing one. When a cited source in the retrieved packet directly supports the finding, return that source's exact URL; never invent or return a URL that is not in the packet. The server will attach validated source metadata. A source URL is a research aid only and never facility-level proof by itself. Use sourceRelevance exact-project only when the source names or otherwise identifies this facility; use related-context for regional or industry context, and unresolved when no source is mapped. sourceRelevanceNote must explain why each matched source is relevant to this claim. classificationReason must concisely explain the provenance classification. Include only queries actually used for this specific variable in its searchTerms; never copy global or other-variable queries to every item. The server separately records global tool-observed telemetry. Do not infer numeric zero or categorical none from silence: zero/none is valid only when an exact-project source explicitly establishes it under the variable definition. For grid_interconnection, numericValue is months of delay; for renewable_percentage it is the facility's delivered or contractually procured renewable share. A gas-generation or fuel-supply source does not establish the facility's electricity price. A source naming a water source does not establish water consumption or water rights. A PPA or named offtaker does not establish a customer-concentration number unless the source explicitly quantifies the relevant facility-level share. qualitativeValue may only be low, moderate, high, single-source, or diversified. Use concise plain language. Do not include markdown or commentary.`;
+Respond with one JSON object matching the supplied schema. projectSummary must contain name, location, description, and capacityMW. Every evidence record must contain the listed fields plus claimPassage, facilityScope, phaseScope, and claimTimePeriod. claimPassage must be an exact quotation copied from the returned source passage; do not paraphrase it. facilityScope, phaseScope, and claimTimePeriod describe the claim itself, not merely the document or retrieval date. Use unknown or null when the source does not establish them. modelReportedConfidence is your optional per-variable confidence from 0 to 100; it is not source validation. sourceSupportConfidence is a schema placeholder; the server computes it from validated sources. sourceUrl is the strongest direct source, and sourceUrls contains up to four packet URLs. Never invent a URL, quote, scope, phase, or claim period. A source URL is a research aid only and never facility-level proof by itself. Use sourceRelevance exact-project only when the source names or otherwise identifies this facility. The server validates the exact quotation against the captured passage and requires explicit entity, phase, and claim-period scope before granting Verified Evidence or model eligibility. A gas-generation or fuel-supply source does not establish the facility's electricity price. A source naming a water source does not establish water consumption or water rights. A PPA or named offtaker does not establish a customer-concentration number unless the source explicitly quantifies the relevant facility-level share.`;
 
 function sendJson(res, status, body) {
   res.statusCode = status;
@@ -346,13 +366,7 @@ function sourceIdentityTokens(value) {
 }
 
 function isExactProjectSource(source, summary, itemRelevance) {
-  if (source?.exactProject === true) return true;
-  if (source?.exactProject === false) return false;
-  const sourceTokens = new Set(sourceIdentityTokens(`${source?.title ?? ""} ${source?.excerpt ?? ""} ${source?.url ?? ""}`));
-  const nameTokens = sourceIdentityTokens(summary?.name);
-  const locationTokens = sourceIdentityTokens(summary?.location);
-  const nameMatches = nameTokens.length > 0 && nameTokens.every((token) => sourceTokens.has(token));
-  return nameMatches;
+  return isSourceProjectSpecific(source, summary, itemRelevance);
 }
 
 function calculateSourceSupportConfidence({
@@ -410,6 +424,19 @@ function containResearchRecord(item) {
     coverageStatus: item.coverageStatus,
   });
   reasons.push(...sourceEligibility.reasons);
+  const researchEligibility = evaluateResearchEvidenceEligibility({
+    id: item.id,
+    sources,
+    sourceUrl: item.sourceUrl,
+    sourceRelevance: item.sourceRelevance,
+    sourceSupportConfidence: item.sourceSupportConfidence,
+    classification: item.classification,
+    coverageStatus: item.coverageStatus,
+    conflictSummary: item.conflictSummary,
+    claimMappings: item.claimMappings,
+    semanticValidationStatus: item.semanticValidationStatus,
+  });
+  reasons.push(...researchEligibility.reasons);
   const rawValue = item.rawValue ?? item.value;
   const rawUnit = item.rawUnit ?? item.unit;
   const semantic = normalizeEvidenceRecord({
@@ -448,14 +475,36 @@ function containResearchRecord(item) {
     acceptedForModel: false,
     researchState: eligible ? "proposed" : hasSource ? "quarantined" : "retrieved-lead",
     quarantineReasons: [...new Set(reasons)],
+    sourceValidation: {
+      policyVersion: SOURCE_VALIDATION_POLICY_VERSION,
+      state: researchEligibility.state,
+      rejectionCodes: researchEligibility.rejectionCodes,
+      claimMappings: item.claimMappings ?? [],
+    },
   };
 }
 
 export function containResearchResult(result) {
   const evidence = (result.evidence ?? []).map(containResearchRecord);
+  const sourceLedger = (result.sourceLedger ?? []).map((entry) => {
+    const relatedEvidence = evidence.filter((item) =>
+      (item.sources ?? []).some((source) =>
+        (source.canonicalUrl ?? source.resolvedUrl ?? source.url) === entry.canonicalUrl));
+    const eligible = relatedEvidence.some((item) => item.eligibleForModel === true);
+    const rejected = relatedEvidence.length > 0 && !eligible;
+    return {
+      ...entry,
+      financialEligibilityState: eligible ? "eligible" : rejected ? "ineligible" : entry.financialEligibilityState ?? "unknown",
+      sourceState: eligible ? "financially-eligible" : entry.sourceState,
+      transitions: eligible
+        ? [...(entry.transitions ?? []), sourceStateTransition(entry.sourceState, "financially-eligible", "Recomputed from contained evidence eligibility.")]
+        : entry.transitions,
+    };
+  });
   const eligibleEvidence = evidence.filter((item) => item.eligibleForModel === true);
   return {
     ...result,
+    sourceLedger,
     semanticPolicyVersion: EVIDENCE_SEMANTIC_POLICY_VERSION,
     evidence,
     retrievedLeads: evidence.filter((item) => item.researchState === "retrieved-lead" || item.researchState === "quarantined"),
@@ -497,9 +546,13 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
   }
 
   const expectedIds = new Set(RESEARCH_EVIDENCE_IDS);
+  const packetLedger = retrievedSources?.sourceLedger
+    ? retrievedSources.sourceLedger
+    : createSourceLedger(Array.isArray(retrievedSources) ? retrievedSources : []);
+  const sourcePacket = packetLedger.retained;
   const sourceByUrl = new Map(
-    retrievedSources
-      .map((source) => [safePublicSourceUrl(source.url), source])
+    sourcePacket
+      .map((source) => [canonicalizeSourceUrl(source.canonicalUrl ?? source.resolvedUrl ?? source.url), source])
       .filter(([url]) => Boolean(url)),
   );
   const observedSearchTerms = normalizeSearchTerms(coverage?.searchTerms, RESEARCH_PROJECT_MAX_TOOL_CALLS);
@@ -523,18 +576,23 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
     const returnedSourceUrls = Array.isArray(item.sourceUrls)
       ? item.sourceUrls.map(safePublicSourceUrl).filter(Boolean)
       : [];
-    const validatedUrls = [...new Set([returnedSourceUrl, citedUrl, ...returnedSourceUrls])]
-      .filter((url) => url && sourceByUrl.has(url))
+    const validatedUrls = [...new Set([returnedSourceUrl, citedUrl, ...returnedSourceUrls]
+      .map((url) => canonicalizeSourceUrl(url))
+      .filter((url) => url && sourceByUrl.has(url)))]
       .sort((a, b) => sourcePriority(sourceByUrl.get(a)?.sourceClass) - sourcePriority(sourceByUrl.get(b)?.sourceClass))
       .slice(0, 4);
     const sourceUrl = validatedUrls[0] ?? null;
     const supportingSources = validatedUrls.map((url) => {
       const metadata = sourceByUrl.get(url);
       const exactProject = isExactProjectSource(metadata, summary, item.sourceRelevance);
+      const resolvedUrl = canonicalizeSourceUrl(metadata?.resolvedUrl ?? metadata?.url ?? url) ?? url;
       return {
-        url,
+        url: resolvedUrl,
+        originalUrl: metadata?.originalUrl ?? metadata?.url ?? resolvedUrl,
+        resolvedUrl,
+        canonicalUrl: canonicalizeSourceUrl(metadata?.canonicalUrl ?? resolvedUrl) ?? resolvedUrl,
         title: typeof metadata?.title === "string" && metadata.title.trim() ? metadata.title.trim().slice(0, 500) : "not provided",
-        publisher: new URL(url).hostname.replace(/^www\./, ""),
+        publisher: new URL(resolvedUrl).hostname.replace(/^www\./, ""),
         publishedAt: normalizePublicDate(metadata?.date),
         accessedAt: normalizePublicDate(accessedAt),
         accessStatus: ["open", "paywall", "registration"].includes(metadata?.accessStatus) ? metadata.accessStatus : "not provided",
@@ -542,6 +600,16 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
         sourceClass: metadata?.sourceClass ?? classifySource(url, metadata?.title),
         searchDomain: metadata?.searchDomain ?? "project-identity",
         exactProject,
+        sourceState: metadata?.sourceState ?? "retained",
+        redirectChain: metadata?.redirectChain ?? [],
+        contentType: metadata?.contentType ?? null,
+        claimCited: metadata?.claimCited === true,
+         supportedEvidenceIds: Array.isArray(metadata?.supportedEvidenceIds) ? metadata.supportedEvidenceIds : [],
+         claimSupport: metadata?.claimSupport ?? null,
+         claimPassage: item.claimPassage,
+         facilityScope: item.facilityScope ?? metadata?.facilityScope ?? "unknown",
+         phaseScope: item.phaseScope ?? metadata?.phaseScope ?? "unknown",
+         timePeriod: item.claimTimePeriod ?? metadata?.timePeriod ?? null,
         relevanceNote: stringOrFallback(
           metadata?.relevanceNote ?? item.sourceRelevanceNote,
           exactProject
@@ -552,21 +620,42 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
         relationship: url === sourceUrl ? "primary" : item.coverageStatus === "conflicting" ? "conflicting" : "corroborating",
       };
     });
+    const claimMappings = buildClaimPassageMappings({
+      id,
+      sources: supportingSources,
+      project: summary,
+      claim: {
+        text: item.description,
+        description: item.description,
+        value: item.value,
+        numericValue: item.numericValue,
+         claimPassage: item.claimPassage,
+        sourceRelevance: item.sourceRelevance,
+      },
+      coverageStatus: item.coverageStatus,
+      conflictSummary: item.conflictSummary,
+    });
+    const claimSupportedSources = supportingSources.filter((source) =>
+      claimMappings.some((mapping) =>
+        mapping.sourceId === source.canonicalUrl && mapping.supportStatus === "supported"));
     const supportedByRetrievedSource = supportingSources.length > 0;
+    const claimSupported = claimSupportedSources.length > 0;
     const rawClassification = nonEmptyString(item.classification, `evidence[${index}].classification`, 60);
     if (!VALID_CLASSIFICATIONS.includes(rawClassification)) {
       throw new Error(`Research evidence record ${id} has an invalid classification.`);
     }
     const explicitUnknownValue = isExplicitUnknownValue(item.value);
-    const classification = supportedByRetrievedSource
+    const classification = claimSupported
       ? rawClassification
       : rawClassification === "Verified Evidence"
         ? "Management Assertion"
         : rawClassification;
-    const sourceMismatchNote = !supportedByRetrievedSource && rawClassification === "Verified Evidence"
-      ? " AI classification downgraded: cited source not in retrieved search results. Original classification: Verified Evidence."
-      : !supportedByRetrievedSource && rawClassification !== "Missing Evidence"
+    const sourceMismatchNote = !claimSupported && rawClassification === "Verified Evidence"
+      ? " AI classification downgraded: no eligible project-specific claim passage was established. Original classification: Verified Evidence."
+      : !claimSupported && rawClassification !== "Missing Evidence" && !supportingSources.length
         ? ` Based on AI training knowledge. No retrieved source independently confirmed this claim. Verify before relying on this ${rawClassification} classification.`
+        : !claimSupported && rawClassification !== "Missing Evidence"
+          ? ` No eligible project-specific claim passage independently confirmed this claim. Verify before relying on this ${rawClassification} classification.`
         : "";
     const record = {
       id,
@@ -583,7 +672,11 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
         }
         : {}),
       classification,
-      citation: supportedByRetrievedSource ? citation : `No validated source match for this claim.${sourceMismatchNote} ${citation}`,
+      citation: claimSupported
+        ? citation
+        : supportingSources.length
+          ? `No validated claim support for this claim.${sourceMismatchNote} ${citation}`
+          : `No validated source match for this claim.${sourceMismatchNote} ${citation}`,
       description: stringOrFallback(item.description, "The searched public record did not establish a facility-level value.", 2_000),
       sourceRole: stringOrFallback(item.sourceRole, "AI-researched public-source review", 200),
       coverageStatus: supportedByRetrievedSource && ["supported", "partial", "conflicting"].includes(item.coverageStatus)
@@ -612,12 +705,21 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
           : "No validated source was mapped to this claim.",
         500,
       ),
+      claimMappings,
+      sourceValidation: {
+        policyVersion: SOURCE_VALIDATION_POLICY_VERSION,
+        state: claimSupported ? "claim-supported" : supportingSources.length ? "evidence-mapped" : "discovered",
+        rejectionCodes: claimMappings.flatMap((mapping) => mapping.rejectionCodes ?? []),
+      },
     };
     const modelReportedConfidence = normalizeModelReportedConfidence(item.modelReportedConfidence);
     if (modelReportedConfidence !== null) record.modelReportedConfidence = modelReportedConfidence;
-    if (sourceUrl) {
-      const metadata = supportingSources[0];
-      record.sourceUrl = sourceUrl;
+    const projectSpecificSources = supportingSources.filter((source) =>
+      claimMappings.some((mapping) =>
+        mapping.sourceId === source.canonicalUrl && mapping.supportStatus !== "context-only"));
+    if (projectSpecificSources.length) {
+      const metadata = projectSpecificSources[0];
+      record.sourceUrl = metadata.url;
       record.sourceTitle = metadata.title;
       record.sourcePublisher = metadata.publisher;
       record.sourcePublishedAt = metadata.publishedAt;
@@ -627,13 +729,13 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
       const conflictSummary = stringOrFallback(item.conflictSummary, "", 1_000);
       if (record.coverageStatus === "conflicting" && conflictSummary) record.conflictSummary = conflictSummary;
     }
-    if (supportedByRetrievedSource && item.numericValue !== undefined && item.numericValue !== null) {
+    if (claimSupported && item.numericValue !== undefined && item.numericValue !== null) {
       if (typeof item.numericValue !== "number" || !Number.isFinite(item.numericValue)) {
         throw new Error(`Research evidence record ${id} has an invalid numericValue.`);
       }
       record.numericValue = item.numericValue;
     }
-    if (supportedByRetrievedSource && item.qualitativeValue !== undefined && item.qualitativeValue !== null) {
+    if (claimSupported && item.qualitativeValue !== undefined && item.qualitativeValue !== null) {
       if (!["low", "moderate", "high", "single-source", "diversified"].includes(item.qualitativeValue)) {
         throw new Error(`Research evidence record ${id} has an invalid qualitativeValue.`);
       }
@@ -658,8 +760,9 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
       coverageStatus: record.coverageStatus,
       conflictSummary: record.conflictSummary,
     });
-    record.sourceRelevance = supportingSources.length
-      ? supportingSources.some((source) => source.exactProject) ? "exact-project" : "related-context"
+    record.sourceRelevance = claimSupportedSources.length
+      ? "exact-project"
+      : supportingSources.length ? "related-context"
       : "unresolved";
     record.classificationReason = stringOrFallback(
       item.classificationReason,
@@ -669,12 +772,44 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
     return record;
   });
 
+  const auditedSourceLedger = packetLedger.ledger.map((entry) => {
+    const matchingEvidence = evidence.filter((item) =>
+      (item.sources ?? []).some((source) => (source.canonicalUrl ?? source.url) === entry.canonicalUrl));
+    const mappings = matchingEvidence.flatMap((item) => item.claimMappings ?? [])
+      .filter((mapping) => mapping.sourceId === entry.canonicalUrl);
+    const supported = mappings.some((mapping) => mapping.supportStatus === "supported");
+    const projectSpecific = mappings.some((mapping) => mapping.entityScope === "project");
+    if (!matchingEvidence.length) return entry;
+    return {
+      ...entry,
+      sourceState: supported ? "claim-supported" : projectSpecific ? "project-specific" : "evidence-mapped",
+      evidenceMappingState: "mapped",
+      claimSupportState: supported ? "supported" : "rejected",
+      projectSpecificityState: projectSpecific ? "project-specific" : "related",
+      financialEligibilityState: matchingEvidence.some((item) => item.eligibleForModel === true)
+        ? "eligible"
+        : "ineligible",
+      rejectionCodes: supported ? [] : [...new Set(mappings.flatMap((mapping) => mapping.rejectionCodes ?? []))],
+      transitions: [
+        ...entry.transitions,
+        sourceStateTransition(entry.sourceState, supported ? "claim-supported" : projectSpecific ? "project-specific" : "evidence-mapped", "Audited against immutable claim-to-passage mappings."),
+      ],
+    };
+  });
   const parsedResult = {
     projectSummary: summaryFields,
+    sourceLedger: auditedSourceLedger,
+    sourceValidationPolicyVersion: SOURCE_VALIDATION_POLICY_VERSION,
     researchCoverage: {
       searchedDomains: Array.isArray(coverage?.searchedDomains) ? coverage.searchedDomains : [],
       failedDomains: Array.isArray(coverage?.failedDomains) ? coverage.failedDomains : [],
       retrievedSourceCount: retrievedSources.length,
+      sourceLedgerSummary: {
+        rawOccurrenceCount: packetLedger.rawOccurrenceCount,
+        retainedCount: packetLedger.retained.length,
+        rejectedCount: packetLedger.rejectedCount,
+        capDiscardCount: packetLedger.capDiscardCount,
+      },
       searchTerms: observedSearchTerms,
       searchTermsSource: observedSearchTerms.length ? "tool-observed" : "unavailable",
       toolCallCount: Number.isInteger(coverage?.toolCallCount) ? coverage.toolCallCount : 0,
@@ -767,44 +902,55 @@ ${queryPlan}${focusIds?.length ? ` This is a focused refresh for these unresolve
 
 function normalizeRetrievedSources(body, searchDomain = "project-identity") {
   const candidates = [];
+  const citedUrls = new Set();
   for (const output of Array.isArray(body?.output) ? body.output : []) {
     if (output?.type === "web_search_call" && Array.isArray(output.action?.sources)) {
-      candidates.push(...output.action.sources);
+      candidates.push(...output.action.sources.map((source) => ({
+        ...source,
+        claimCited: source.claimCited === true || citedUrls.has(safePublicSourceUrl(source.url)),
+        origin: "action.sources",
+      })));
     }
     for (const content of Array.isArray(output?.content) ? output.content : []) {
       for (const annotation of Array.isArray(content?.annotations) ? content.annotations : []) {
         if (annotation?.type === "url_citation") {
-          candidates.push({
-            ...annotation,
-            excerpt: typeof content.text === "string" ? content.text : annotation.excerpt,
-          });
+          const citedUrl = safePublicSourceUrl(annotation.url);
+          if (citedUrl) citedUrls.add(citedUrl);
         }
       }
     }
   }
-  const seen = new Set();
-  return candidates
-    .map((source) => {
-      const url = safePublicSourceUrl(source.url) ?? "";
-      const title = typeof source.title === "string" ? source.title.trim() : "Retrieved public source";
-      return {
-        url,
-        title,
-        date: typeof source.published_date === "string" ? source.published_date : typeof source.date === "string" ? source.date : null,
-        excerpt: typeof source.snippet === "string" ? source.snippet.trim() : typeof source.excerpt === "string" ? source.excerpt.trim() : "",
-        accessStatus: ["open", "paywall", "registration"].includes(source.access_status) ? source.access_status : "not provided",
-        sourceClass: url ? classifySource(url, title) : "secondary-reporting",
-        searchDomain,
-        exactProject: source.exactProject === true,
-        relevanceNote: typeof source.relevanceNote === "string" ? source.relevanceNote.trim().slice(0, 500) : null,
-      };
-    })
-    .filter((source) => {
-      if (!/^https?:\/\//i.test(source.url) || seen.has(source.url)) return false;
-      seen.add(source.url);
-      return true;
-    })
-    .slice(0, 10);
+  for (const candidate of candidates) {
+    if (citedUrls.has(safePublicSourceUrl(candidate.url))) candidate.claimCited = true;
+  }
+  const ledger = createSourceLedger(candidates.map((source) => {
+    const url = safePublicSourceUrl(source.url) ?? "";
+    const title = typeof source.title === "string" ? source.title.trim() : "Retrieved public source";
+    return {
+      ...source,
+      url,
+      title,
+      date: typeof source.published_date === "string" ? source.published_date : typeof source.date === "string" ? source.date : null,
+      excerpt: typeof source.snippet === "string" ? source.snippet.trim() : typeof source.excerpt === "string" ? source.excerpt.trim() : "",
+      accessStatus: ["open", "paywall", "registration"].includes(source.access_status) ? source.access_status : "not provided",
+      sourceClass: url ? classifySource(url, title) : "secondary-reporting",
+      searchDomain,
+      ...(typeof source.exactProject === "boolean" ? { exactProject: source.exactProject } : {}),
+      relevanceNote: typeof source.relevanceNote === "string" ? source.relevanceNote.trim().slice(0, 500) : null,
+    };
+  }));
+  const result = ledger.retained.map((source) => ({
+    ...source,
+    date: candidates.find((candidate) => safePublicSourceUrl(candidate.url) === source.originalUrl)?.date ?? null,
+    excerpt: source.excerpt,
+    accessStatus: source.accessStatus,
+    sourceClass: source.sourceClass,
+    searchDomain,
+    ...(typeof source.exactProject === "boolean" ? { exactProject: source.exactProject } : {}),
+    relevanceNote: source.relevanceNote ?? null,
+  }));
+  result.sourceLedger = ledger;
+  return result;
 }
 
 function redactUpstreamDetail(value) {

@@ -43,6 +43,47 @@ test("accepts the exact 16-item custom research contract", () => {
   assert.equal(parsed.projectSummary.capacityProvenance, "ai-reported");
 });
 
+test("preserves eligible server evidence through client parsing", () => {
+  const source = {
+    url: "https://example.com/atlas/filing",
+    title: "Atlas filed tariff",
+    publisher: "example.com",
+    publishedAt: "2026-06-01",
+    accessedAt: "2026-08-30",
+    accessStatus: "open" as const,
+    excerpt: "The Atlas facility electricity cost is 48 USD/MWh.",
+    claimPassage: "The Atlas facility electricity cost is 48 USD/MWh.",
+    sourceClass: "primary-company" as const,
+    searchDomain: "electricity",
+    relationship: "primary" as const,
+    exactProject: true,
+    facilityScope: "exact-facility",
+    phaseScope: "not-applicable",
+    timePeriod: "2026",
+  };
+  const valid = structuredClone(response);
+  valid.evidence[0] = {
+    ...valid.evidence[0],
+    value: 48,
+    unit: "USD/MWh",
+    numericValue: 48,
+    classification: "Management Assertion",
+    sourceUrl: source.url,
+    sourceRelevance: "exact-project",
+    coverageStatus: "supported",
+    sourceSupportConfidence: 94,
+    claimPassage: source.claimPassage,
+    facilityScope: "exact-facility",
+    phaseScope: "not-applicable",
+    claimTimePeriod: "2026",
+    sources: [source],
+  };
+  const parsed = parseResponse(valid);
+  const evidence = parsed.evidence[0];
+  assert.equal(evidence.eligibleForModel, true);
+  assert.equal(evidence.sourceValidation?.state, "financially-eligible");
+});
+
 test("containment rejects residential tariffs and preserves raw incompatible units", () => {
   const contained = containCustomResearchEvidence({
     id: "electricity_cost",
@@ -66,10 +107,15 @@ test("containment rejects residential tariffs and preserves raw incompatible uni
       accessedAt: null,
       accessStatus: "open",
       excerpt: "Residential household rate: 7.3 cents/kWh.",
+      claimPassage: "Residential household rate: 7.3 cents/kWh.",
       sourceClass: "primary-utility",
       searchDomain: "project-identity",
       relationship: "primary",
       exactProject: true,
+      claimSupport: [{ evidenceId: "electricity_cost", value: "7.3 cents/kWh" }],
+      facilityScope: "exact-facility",
+      phaseScope: "not-applicable",
+      timePeriod: "2026",
     }],
   });
   assert.equal(contained.eligibleForModel, false);
@@ -94,10 +140,15 @@ test("containment rejects residential tariffs and preserves raw incompatible uni
       accessedAt: null,
       accessStatus: "open",
       excerpt: "365 days",
+      claimPassage: "365 days",
       sourceClass: "primary-government",
       searchDomain: "project-identity",
       relationship: "primary",
       exactProject: true,
+      claimSupport: [{ evidenceId: "grid_interconnection", value: "365 days" }],
+      facilityScope: "exact-project",
+      phaseScope: "exact-phase",
+      timePeriod: "2026",
     }],
     sourceSupportConfidence: 94,
   });
@@ -249,7 +300,7 @@ test("aggregates unique sources and support quality without counting missing ite
   });
   const audit = summarizeResearchAudit(parsed.evidence);
   assert.deepEqual(audit, {
-    uniqueValidatedSourceCount: 2,
+    uniqueValidatedSourceCount: 0,
     averageSourceSupportConfidence: 11,
     strongSupportItemCount: 1,
     noSourceItemCount: 14,

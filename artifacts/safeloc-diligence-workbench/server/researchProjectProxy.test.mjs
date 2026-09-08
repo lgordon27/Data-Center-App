@@ -85,6 +85,10 @@ function validResearchResponse() {
       modelReportedConfidence: index === 0 ? 74 : null,
       ...(index === 1 ? { sourceUrl: "https://example.com/atlas/source" } : {}),
       ...(index === 0 ? { numericValue: 42 } : {}),
+      claimPassage: "A public source excerpt about Project Atlas reports 42 and 365 and behind-the-meter generation.",
+      facilityScope: "exact-project",
+      phaseScope: "exact-phase",
+      claimTimePeriod: "2026",
       ...(id === "site_hazard_exposure" ? { qualitativeValue: "high" } : {}),
       ...(id === "water_source_resilience" ? { qualitativeValue: "single-source" } : {}),
     })),
@@ -95,7 +99,17 @@ const retrievedSource = {
   url: "https://example.com/atlas/source",
   title: "Project Atlas public filing",
   date: "2026-06-01",
-  excerpt: "A public source excerpt about Project Atlas.",
+  excerpt: "A public source excerpt about Project Atlas reports 42 and 365 and behind-the-meter generation.",
+  claimPassage: "A public source excerpt about Project Atlas reports 42 and 365 and behind-the-meter generation.",
+  claimSupport: RESEARCH_EVIDENCE_IDS.map((evidenceId) => ({
+    evidenceId,
+    values: evidenceId === "electricity_cost" ? [42, "Not disclosed"]
+      : evidenceId === "grid_interconnection" ? [365, "Not disclosed"]
+        : ["Not disclosed"],
+  })),
+  facilityScope: "exact-project",
+  phaseScope: "exact-phase",
+  timePeriod: "2026",
 };
 
 function singleCallResponse(research = validResearchResponse(), sources = [retrievedSource]) {
@@ -370,7 +384,188 @@ test("normalizes and caps sources returned by the single web-search response", (
   assert.equal(retrieval.length, 10);
 });
 
-test("preserves annotated retrieval text as the claim-specific source excerpt", () => {
+test("ignores model output text as a source passage", () => {
+  const body = {
+    output: [
+      {
+        type: "web_search_call",
+        action: {
+          sources: [{
+            url: "https://example.com/atlas/filing",
+            title: "Atlas filing",
+            snippet: "Captured provider passage.",
+          }],
+        },
+      },
+      {
+        type: "message",
+        content: [{
+          type: "output_text",
+          text: '{"claimPassage":"Model-only unsupported quotation"}',
+          annotations: [{
+            type: "url_citation",
+            url: "https://example.com/atlas/filing",
+            title: "Atlas filing",
+          }],
+        }],
+      },
+    ],
+  };
+  const sources = normalizeRetrievedSources(body);
+  assert.equal(sources.length, 1);
+  assert.equal(sources[0].excerpt, "Captured provider passage.");
+  assert.equal(sources[0].claimCited, true);
+  assert.equal(sources[0].excerpt.includes("Model-only"), false);
+});
+
+test("canonicalizes tracking variants without collapsing document-defining query parameters", () => {
+  const sources = normalizeRetrievedSources({
+    output: [{
+      type: "web_search_call",
+      action: {
+        sources: [
+          { url: "https://agency.gov/report?id=7&utm_source=brief", title: "Agency report", excerpt: "Project Atlas record." },
+          { url: "https://agency.gov/report?id=7&utm_medium=email", title: "Agency report duplicate", excerpt: "Project Atlas record." },
+          { url: "https://agency.gov/report?id=8&utm_source=brief", title: "Agency report amendment", excerpt: "Project Atlas amendment." },
+        ],
+      },
+    }],
+  });
+  assert.equal(sources.length, 2);
+  assert.equal(sources[0].canonicalUrl, "https://agency.gov/report?id=7");
+  assert.equal(sources[1].canonicalUrl, "https://agency.gov/report?id=8");
+  assert.equal(sources.sourceLedger.rawOccurrenceCount, 3);
+  assert.equal(sources.sourceLedger.rejectedCount, 1);
+  assert.equal(sources.sourceLedger.ledger.find((entry) => entry.rejectionCode === "duplicate-canonical-source").duplicateOf, sources.sourceLedger.retained[0].occurrenceId);
+});
+
+test("retains a late primary candidate before the bounded cap and records cap discards", () => {
+  const sources = normalizeRetrievedSources({
+    output: [{
+      type: "web_search_call",
+      action: {
+        sources: [
+          ...Array.from({ length: 11 }, (_, index) => ({
+            url: `https://news.example/atlas-${index + 1}`,
+            title: `Regional report ${index + 1}`,
+            excerpt: "Regional context only.",
+          })),
+          {
+            url: "https://agency.gov/atlas-final",
+            title: "Agency final decision for Project Atlas",
+            excerpt: "The final decision names Project Atlas.",
+          },
+        ],
+      },
+    }],
+  });
+  assert.equal(sources.length, 10);
+  assert.equal(sources.some((source) => source.url === "https://agency.gov/atlas-final"), true);
+  assert.equal(sources.sourceLedger.capDiscardCount, 2);
+  assert.equal(sources.sourceLedger.ledger.filter((entry) => entry.rejectionCode === "retention-cap").length, 2);
+});
+
+test("unrelated secondary URLs cannot authorize Verified Evidence or model impact", () => {
+  const body = validResearchResponse();
+  const target = body.evidence.find((item) => item.id === "grid_interconnection");
+  target.classification = "Verified Evidence";
+  target.value = "Regional queue position";
+  target.numericValue = 42;
+  target.sourceUrl = "https://news.example/regional-queue";
+  target.sourceUrls = [target.sourceUrl];
+  target.citation = "Regional reporting: https://news.example/regional-queue";
+  const parsed = parseResearchResponse(body, [{
+    url: target.sourceUrl,
+    title: "Regional queue reporting",
+    excerpt: "A regional queue summary without the Project Atlas identity.",
+    sourceClass: "secondary-reporting",
+  }], null);
+  const record = parsed.evidence.find((item) => item.id === "grid_interconnection");
+  assert.equal(record.classification, "Management Assertion");
+  assert.equal(record.eligibleForModel, false);
+  assert.equal(record.sourceUrl, undefined);
+  assert.equal(record.sourceValidation.state, "rejected");
+  assert.ok(record.sourceValidation.rejectionCodes.includes("not-project-specific"));
+  assert.equal(record.numericValue, undefined);
+});
+
+test("project-specific sources with irrelevant passages or unknown scope remain ineligible", () => {
+  const body = validResearchResponse();
+  const timeline = body.evidence.find((item) => item.id === "grid_interconnection");
+  timeline.classification = "Verified Evidence";
+  timeline.value = 42;
+  timeline.numericValue = 42;
+  timeline.unit = "months";
+  timeline.sourceUrl = "https://example.com/atlas/opening";
+  timeline.sourceUrls = [timeline.sourceUrl];
+  timeline.claimPassage = "Project Atlas opened its doors in 2026.";
+  timeline.facilityScope = "exact-project";
+  timeline.phaseScope = "unknown";
+  timeline.claimTimePeriod = null;
+  const parsed = parseResearchResponse(body, [{
+    ...retrievedSource,
+    url: timeline.sourceUrl,
+    date: null,
+    title: "Project Atlas opening notice",
+    excerpt: "Project Atlas opened its doors in 2026.",
+    exactProject: true,
+    claimSupport: [{ evidenceId: "grid_interconnection", value: "42 months" }],
+    facilityScope: "exact-project",
+    phaseScope: "unknown",
+    timePeriod: null,
+  }], null);
+  const result = parsed.evidence.find((item) => item.id === "grid_interconnection");
+  assert.equal(result.eligibleForModel, false);
+  assert.equal(result.classification, "Management Assertion");
+  assert.equal(result.sourceValidation.state, "rejected");
+  assert.ok(result.sourceValidation.rejectionCodes.includes("wrong-phase-or-facility"));
+  assert.ok(result.sourceValidation.rejectionCodes.includes("missing-time-scope"));
+  assert.ok(result.claimMappings.some((mapping) => mapping.supportStatus !== "supported"));
+});
+
+test("contained evidence and its source ledger agree on financial eligibility", () => {
+  const canonicalUrl = "https://example.com/atlas/eligible";
+  const contained = containResearchResult({
+    sourceLedger: [{
+      canonicalUrl,
+      sourceState: "claim-supported",
+      transitions: [],
+    }],
+    evidence: [{
+      id: "electricity_cost",
+      value: 42,
+      numericValue: 42,
+      unit: "USD/MWh",
+      classification: "Management Assertion",
+      citation: "The filing reports 42 USD/MWh.",
+      description: "The facility electricity cost is 42 USD/MWh.",
+      sourceUrl: canonicalUrl,
+      sourceRelevance: "exact-project",
+      sourceSupportConfidence: 94,
+      coverageStatus: "supported",
+      claimMappings: [{ supportStatus: "supported", sourceId: canonicalUrl }],
+      sources: [{
+        url: canonicalUrl,
+        canonicalUrl,
+        resolvedUrl: canonicalUrl,
+        title: "Project Atlas tariff filing",
+        publisher: "example.com",
+        excerpt: "The facility electricity cost is 42 USD/MWh.",
+        sourceClass: "primary-company",
+        exactProject: true,
+        facilityScope: "exact-facility",
+        phaseScope: "not-applicable",
+        timePeriod: "2026",
+        accessStatus: "open",
+        relationship: "primary",
+      }],
+    }],
+  });
+  assert.equal(contained.evidence[0].eligibleForModel, true);
+  assert.equal(contained.sourceLedger[0].financialEligibilityState, "eligible");
+});
+
+test("does not promote model output annotations into source passages", () => {
   const sources = normalizeRetrievedSources({
     output: [{
       type: "message",
@@ -385,8 +580,7 @@ test("preserves annotated retrieval text as the claim-specific source excerpt", 
       }],
     }],
   }, "targeted-customer_concentration");
-  assert.equal(sources[0].excerpt, "Project Kilby will provide dedicated power directly to a Microsoft-operated data center under a 20-year agreement.");
-  assert.equal(sources[0].searchDomain, "targeted-customer_concentration");
+  assert.equal(sources.length, 0);
 });
 
 test("extracts only tool-observed search queries and labels absent telemetry as unavailable", () => {
@@ -694,13 +888,23 @@ test("Project Kilby preserves supported power, grid, and water classifications f
       excerpt: "The filing describes Project Kilby power plans.",
       sourceClass: "primary-government",
       searchDomain: "project-identity",
+      exactProject: true,
+      claimSupport: [{ evidenceId: "electricity_cost", value: "48 USD/MWh" }],
+      facilityScope: "exact-facility",
+      phaseScope: "exact-phase",
+      timePeriod: "2026",
     },
     {
       url: "https://www.ercot.com/gridinfo/project-kilby",
       title: "ERCOT Project Kilby grid record",
-      excerpt: "The facility is described as behind-the-meter and not dependent on a new ERCOT interconnection.",
+      excerpt: "The facility is described as behind-the-meter generation and not dependent on a new ERCOT interconnection.",
       sourceClass: "primary-government",
       searchDomain: "power-grid",
+      exactProject: true,
+      claimSupport: [{ evidenceId: "grid_interconnection", value: "behind-the-meter generation" }],
+      facilityScope: "exact-project",
+      phaseScope: "exact-phase",
+      timePeriod: "2026",
     },
     {
       url: "https://www.texaspacific.com/project-kilby-water",
@@ -708,6 +912,11 @@ test("Project Kilby preserves supported power, grid, and water classifications f
       excerpt: "The project plans to use brackish groundwater.",
       sourceClass: "primary-company",
       searchDomain: "water-environment",
+      exactProject: true,
+      claimSupport: [{ evidenceId: "water_source_resilience", value: "brackish groundwater" }],
+      facilityScope: "exact-facility",
+      phaseScope: "exact-phase",
+      timePeriod: "2026",
     },
   ];
   const power = body.evidence.find((item) => item.id === "electricity_cost");
@@ -717,6 +926,10 @@ test("Project Kilby preserves supported power, grid, and water classifications f
   power.sourceUrl = sources[0].url;
   power.sourceUrls = [sources[0].url];
   power.citation = `Chevron describes the power arrangement: ${sources[0].url}`;
+  power.claimPassage = sources[0].excerpt;
+  power.facilityScope = "exact-facility";
+  power.phaseScope = "exact-phase";
+  power.claimTimePeriod = "2026";
   const grid = body.evidence.find((item) => item.id === "grid_interconnection");
   grid.classification = "Verified Evidence";
   grid.value = "Behind-the-meter generation";
@@ -724,6 +937,10 @@ test("Project Kilby preserves supported power, grid, and water classifications f
   grid.sourceUrl = sources[1].url;
   grid.sourceUrls = [sources[1].url];
   grid.citation = `ERCOT records the grid arrangement: ${sources[1].url}`;
+  grid.claimPassage = sources[1].excerpt;
+  grid.facilityScope = "exact-project";
+  grid.phaseScope = "exact-phase";
+  grid.claimTimePeriod = "2026";
   const water = body.evidence.find((item) => item.id === "water_source_resilience");
   water.classification = "Management Assertion";
   water.value = "Brackish groundwater";
@@ -731,6 +948,10 @@ test("Project Kilby preserves supported power, grid, and water classifications f
   water.sourceUrl = sources[2].url;
   water.sourceUrls = [sources[2].url];
   water.citation = `The water source is disclosed here: ${sources[2].url}`;
+  water.claimPassage = sources[2].excerpt;
+  water.facilityScope = "exact-facility";
+  water.phaseScope = "exact-phase";
+  water.claimTimePeriod = "2026";
 
   const parsed = parseResearchResponse(body, sources);
   assert.equal(parsed.projectSummary.capacityMW, 2_000);

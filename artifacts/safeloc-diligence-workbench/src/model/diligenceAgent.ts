@@ -201,6 +201,11 @@ export type AgentProjectInput = {
     sources?: AgentSupportingSource[];
     sourceSupportConfidence?: number;
     sourceRelevance?: "exact-project" | "related-context" | "unresolved";
+    eligibleForModel?: boolean;
+    sourceValidation?: {
+      state?: string;
+      rejectionCodes?: string[];
+    };
   }>;
   retrievedSourceCount?: number;
   validatedSourceCount?: number;
@@ -258,8 +263,9 @@ export function getAgentEvidenceSnapshotKey(input: Pick<AgentProjectInput, "evid
 
 export function countValidatedAgentSources(input: Pick<AgentProjectInput, "evidence">): number {
   return new Set((input.evidence ?? []).flatMap((item) => [
-    item.sourceUrl,
-    ...(item.sources ?? []).filter((source) => source.classification !== "unverified-lead").map((source) => source.url ?? source.sourceId),
+    ...(item.eligibleForModel === true || item.sourceValidation?.state === "financially-eligible"
+      ? [item.sourceUrl, ...(item.sources ?? []).map((source) => source.url ?? source.sourceId)]
+      : []),
   ].filter(Boolean))).size;
 }
 
@@ -420,7 +426,13 @@ export function buildAgentReviewPackage(input: AgentProjectInput): Pick<Diligenc
   const evidenceById = new Map((input.evidence ?? []).map((item) => [item.id, item]));
   const grid = evidenceById.get("grid_interconnection");
   const gridSources = grid?.sources ?? [];
-  const supportedGrid = gridSources.length > 0 || Boolean(grid?.sourceUrl);
+  const supportedGrid = Boolean(grid) && (
+    grid?.eligibleForModel === true ||
+    grid?.sourceValidation?.state === "financially-eligible" ||
+    ((input.validatedSourceCount ?? 0) > 0 &&
+      gridSources.some((source) => source.classification === "validated-source") &&
+      !(grid?.sourceValidation?.rejectionCodes?.length))
+  );
   const gridFinding: AgentFinding = supportedGrid && grid
     ? {
       id: "agent-finding-grid",

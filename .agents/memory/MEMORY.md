@@ -14,3 +14,4 @@
 - [Recurring attribution semantics](recurring-attribution-semantics.md) — annual driver effects must exclude terminal value and debt repayment; keep total equity impact separate.
 - [Community benchmark provenance](community-benchmark-provenance.md) — external benchmark rows need immutable source fields, explicit review state, and no invented quote or primary-document fallback.
 - [Evidence semantic boundaries](evidence-semantic-boundaries.md) — normalize once, preserve raw research, and persist accepted model/history state separately from reviewer-visible proposals.
+- [Source validation pipeline](source-validation-pipeline.md) — provider links stay candidates until identity, passage, scope, time, and financial gates all pass.

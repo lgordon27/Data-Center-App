@@ -127,6 +127,8 @@ test("initial community terms remain unresolved and do not imply financial chang
   assert.equal(Object.keys(review.terms).length, 10);
   assert.equal(countUnresolvedCommunityTerms(review.terms), 10);
   assert.ok(Object.values(review.terms).every((term) => term.treatment));
+  assert.ok(Object.values(review.terms).every((term) => term.sourceValidation?.eligibilityState === "context-only"));
+  assert.ok(Object.values(review.terms).every((term) => term.sourceValidation?.passageState === "absent"));
 });
 
 test("analyst review state cannot mutate imported benchmark facts", () => {

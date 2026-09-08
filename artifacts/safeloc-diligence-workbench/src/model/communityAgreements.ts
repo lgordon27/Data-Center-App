@@ -10,6 +10,7 @@ import {
   type CommunityRelationship,
   type CommunityTermId,
   type CommunityTreatment,
+  type CommunitySourceValidation,
 } from "@/data/communityAgreements";
 
 export type CommunityProjectInput = {
@@ -31,6 +32,7 @@ export type CommunityRelationshipResult = {
   canonicalRelationships: readonly CommunityEntityRelationship[];
   humanReviewStatus: "needs-review" | "reviewed";
   notFoundText?: string;
+  sourceValidation?: CommunitySourceValidation;
 };
 
 export type CommunityTermDecision = {
@@ -41,6 +43,7 @@ export type CommunityTermDecision = {
   humanStatus: CommunityHumanStatus;
   reviewedAt?: string;
   reviewerNote?: string;
+  sourceValidation?: CommunitySourceValidation;
 };
 
 export type CommunityReviewState = {
@@ -156,6 +159,9 @@ export function initialCommunityTermDecisions(agreement?: CommunityAgreementReco
       classification: "Missing Evidence",
       treatment: definition.treatment,
       humanStatus: "unresolved",
+      ...(agreement?.terms[definition.id]?.sourceValidation
+        ? { sourceValidation: agreement.terms[definition.id].sourceValidation }
+        : {}),
     },
   ])) as Record<CommunityTermId, CommunityTermDecision>;
 }
@@ -180,5 +186,12 @@ export function countUnresolvedCommunityTerms(decisions: Record<CommunityTermId,
 export function createCommunityReview(project: CommunityProjectInput) {
   const relationship = matchCommunityProject(project);
   const agreement = relationship.agreementId ? COMMUNITY_AGREEMENTS.find((record) => record.id === relationship.agreementId) : undefined;
-  return { version: 2 as const, relationship, terms: initialCommunityTermDecisions(agreement) };
+  return {
+    version: 2 as const,
+    relationship: {
+      ...relationship,
+      ...(agreement?.sourceValidation ? { sourceValidation: agreement.sourceValidation } : {}),
+    },
+    terms: initialCommunityTermDecisions(agreement),
+  };
 }

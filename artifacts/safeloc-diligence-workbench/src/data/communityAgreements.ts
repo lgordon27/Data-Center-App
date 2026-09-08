@@ -37,6 +37,17 @@ export type CommunityRelationshipType =
   | "thematic-relationship"
   | "unverified";
 
+export type CommunitySourceValidation = {
+  originalUrl: string | null;
+  resolvedUrl: string | null;
+  canonicalUrl: string | null;
+  sourceState: "discovered" | "unknown" | "context-only";
+  identityState: "exact" | "related" | "unknown";
+  passageState: "captured" | "absent";
+  eligibilityState: "context-only" | "ineligible" | "unknown";
+  rejectionCodes: string[];
+};
+
 export type CommunityTermDefinition = {
   id: CommunityTermId;
   label: string;
@@ -64,6 +75,7 @@ export type CommunityTermRecord = {
   analystEvidenceClassification?: string;
   analystNotes?: string;
   lastVerifiedAt: string;
+  sourceValidation?: CommunitySourceValidation;
 };
 
 export type CommunityAgreementRecord = {
@@ -85,6 +97,7 @@ export type CommunityAgreementRecord = {
   limitations: string[];
   licensing: string;
   terms: Record<CommunityTermId, CommunityTermRecord>;
+  sourceValidation?: CommunitySourceValidation;
 };
 
 export type CommunityEntityRelationship = {
@@ -230,7 +243,30 @@ function term(
   values: Omit<CommunityTermRecord, "id" | "sourceRecordUrl" | "primaryDocumentUrl" | "sourceTitle" | "sourceLocation">,
   source: CommunityTermSource = ABILENE_TERM_SOURCE,
 ): CommunityTermRecord {
-  return { id, ...source, ...values };
+  const sourceUrl = source.sourceRecordUrl ?? source.primaryDocumentUrl;
+  const exactQuote = values.sourceExactQuote;
+  return {
+    id,
+    ...source,
+    ...values,
+    sourceValidation: {
+      originalUrl: sourceUrl,
+      resolvedUrl: sourceUrl,
+      canonicalUrl: sourceUrl,
+      sourceState: sourceUrl ? "context-only" : "unknown",
+      identityState: values.relationshipType === "same-project" ? "exact" : values.relationshipType === "unverified" ? "unknown" : "related",
+      passageState: exactQuote ? "captured" : "absent",
+      eligibilityState: values.relationshipType === "unverified"
+        ? "context-only"
+        : values.relationshipType === "same-project" && exactQuote
+          ? "context-only"
+          : sourceUrl ? "ineligible" : "unknown",
+      rejectionCodes: [
+        ...(values.relationshipType === "same-project" ? [] : ["not-project-specific"]),
+        ...(!exactQuote ? ["missing-passage"] : []),
+      ],
+    },
+  };
 }
 
 function abileneTerm(
@@ -324,6 +360,16 @@ function makeRecord(id: string, title: string, jurisdiction: string, index: numb
     limitations: ["Snapshot is not a live provider feed.", "Comparable provisions do not establish terms for another project.", "Public excerpts may omit exhibits or confidential schedules."],
     licensing: "Attribution retained from the published Future Pickleball Court source; use is limited to cited diligence benchmarking.",
     terms: index === 0 ? abileneTerms : benchmarkTerms(index),
+    sourceValidation: {
+      originalUrl: isAbilene ? ABILENE_SOURCE_RECORD_URL : null,
+      resolvedUrl: isAbilene ? ABILENE_SOURCE_RECORD_URL : null,
+      canonicalUrl: isAbilene ? ABILENE_SOURCE_RECORD_URL : null,
+      sourceState: isAbilene ? "context-only" : "unknown",
+      identityState: "unknown",
+      passageState: "absent",
+      eligibilityState: isAbilene ? "context-only" : "unknown",
+      rejectionCodes: isAbilene ? ["not-project-specific", "missing-passage"] : [],
+    },
   };
 }
 

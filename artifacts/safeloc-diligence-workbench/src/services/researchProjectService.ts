@@ -5,6 +5,11 @@ import {
   evaluateEvidenceSourceEligibility,
   normalizeEvidenceRecord,
 } from "@/data/evidenceSemanticPolicy.mjs";
+import {
+  SOURCE_VALIDATION_POLICY_VERSION,
+  buildClaimPassageMappings,
+  evaluateResearchEvidenceEligibility,
+} from "@/data/sourceValidationPolicy.mjs";
 
 export const RESEARCH_PROJECT_ENDPOINT = "/api/research-project";
 export const RESEARCH_PROJECT_TIMEOUT_MS = 90_000;
@@ -64,6 +69,9 @@ export type CustomEvidenceRecord = Pick<
   eligibleForModel?: boolean;
   acceptedForModel?: boolean;
   quarantineReasons?: string[];
+  claimMappings?: ResearchClaimPassageMapping[];
+  sourceValidation?: ResearchSourceValidation;
+  reviewerSubmittedSource?: ResearchEvidenceSource;
 };
 
 export type ResearchEvidenceState = "retrieved-lead" | "eligible-evidence" | "proposed" | "accepted" | "quarantined";
@@ -77,11 +85,41 @@ export type ResearchEvidenceSource = {
   accessedAt: string | null;
   accessStatus: EvidenceItem["sourceAccessStatus"];
   excerpt: string;
+  claimPassage?: string;
   sourceClass: "primary-government" | "primary-utility" | "primary-company" | "secondary-reporting" | "reviewer-submitted";
   searchDomain: string;
   relationship: "primary" | "corroborating" | "conflicting";
   exactProject?: boolean;
   relevanceNote?: string;
+  originalUrl?: string;
+  resolvedUrl?: string;
+  canonicalUrl?: string;
+  sourceState?: string;
+  redirectChain?: string[];
+  contentType?: string | null;
+  claimCited?: boolean;
+};
+export type ResearchClaimPassageMapping = {
+  id: string;
+  sourceId: string | null;
+  passageId: string | null;
+  variable: string;
+  claimText: string;
+  entityScope: "project" | "related";
+  facilityScope: string;
+  phaseScope: string;
+  timePeriod: string | null;
+  sourceType: string;
+  contradictionStatus: "none" | "blocking";
+  supportStatus: "supported" | "context-only" | "missing-passage" | "unsupported-source-type" | "blocked";
+  exactQuotation: string | null;
+  rejectionCodes: string[];
+};
+export type ResearchSourceValidation = {
+  policyVersion: number;
+  state: string;
+  rejectionCodes: string[];
+  claimMappings: ResearchClaimPassageMapping[];
 };
 
 export type CustomResearchResponse = {
@@ -95,6 +133,8 @@ export type CustomResearchResponse = {
   researchMode?: ResearchMode;
   researchCache?: ResearchCacheMetadata;
   semanticPolicyVersion?: number;
+  sourceValidationPolicyVersion?: number;
+  sourceLedger?: Array<Record<string, unknown>>;
   researchCoverage?: {
     searchedDomains: string[];
     failedDomains: string[];
@@ -104,6 +144,12 @@ export type CustomResearchResponse = {
     toolCallCount?: number;
     toolCallLimit?: number;
     toolCallBudgetExceeded?: boolean;
+    sourceLedgerSummary?: {
+      rawOccurrenceCount: number;
+      retainedCount: number;
+      rejectedCount: number;
+      capDiscardCount: number;
+    };
   };
   evidence: CustomEvidenceRecord[];
   retrievedLeads?: CustomEvidenceRecord[];
@@ -149,7 +195,7 @@ export function summarizeSourceCoverage(evidence: CustomEvidenceRecord[]) {
   return evidence.reduce((summary, item) => {
     if (item.classification === "Missing Evidence") {
       summary.missing += 1;
-    } else if (item.sourceUrl || item.sources?.length) {
+    } else if (item.sourceValidation?.state === "financially-eligible" || item.sourceValidation?.state === "claim-supported") {
       summary.supported += 1;
     } else {
       summary.aiKnowledge += 1;
@@ -161,8 +207,12 @@ export function summarizeSourceCoverage(evidence: CustomEvidenceRecord[]) {
 export function summarizeResearchAudit(evidence: CustomEvidenceRecord[]) {
   const uniqueSources = new Set(
     evidence.flatMap((item) => [
-      ...(item.sources ?? []).map((source) => source.url),
-      ...(item.sourceUrl ? [item.sourceUrl] : []),
+      ...(item.sourceValidation?.state === "financially-eligible" || item.sourceValidation?.state === "claim-supported"
+        ? (item.sources ?? []).map((source) => source.canonicalUrl ?? source.resolvedUrl ?? source.url)
+        : []),
+      ...(item.sourceValidation?.state === "financially-eligible" || item.sourceValidation?.state === "claim-supported"
+        ? (item.sourceUrl ? [item.sourceUrl] : [])
+        : []),
     ]),
   );
   const confidenceTotal = evidence.reduce((total, item) => total + (item.sourceSupportConfidence ?? 0), 0);
@@ -254,6 +304,9 @@ function parseSource(value: unknown): ResearchEvidenceSource | null {
     : "corroborating";
   return {
     url,
+    originalUrl: optionalString(value.originalUrl) ?? url,
+    resolvedUrl: optionalString(value.resolvedUrl) ?? url,
+    canonicalUrl: optionalString(value.canonicalUrl) ?? url,
     title: value.title.trim(),
     publisher: value.publisher.trim(),
     publishedAt: optionalDate(value.publishedAt) ?? null,
@@ -262,11 +315,20 @@ function parseSource(value: unknown): ResearchEvidenceSource | null {
       ? value.accessStatus as EvidenceItem["sourceAccessStatus"]
       : "not provided",
     excerpt: value.excerpt.trim(),
+    ...(isNonEmptyString(value.claimPassage) ? { claimPassage: value.claimPassage.trim() } : {}),
     sourceClass,
     searchDomain: isNonEmptyString(value.searchDomain) ? value.searchDomain.trim() : "project-identity",
     relationship,
     ...(typeof value.exactProject === "boolean" ? { exactProject: value.exactProject } : {}),
+    ...(Array.isArray(value.claimSupport) ? { claimSupport: value.claimSupport } : {}),
+    ...(typeof value.facilityScope === "string" ? { facilityScope: value.facilityScope } : {}),
+    ...(typeof value.phaseScope === "string" ? { phaseScope: value.phaseScope } : {}),
+    ...(value.timePeriod !== undefined ? { timePeriod: value.timePeriod } : {}),
     ...(isNonEmptyString(value.relevanceNote) ? { relevanceNote: value.relevanceNote.trim() } : {}),
+    ...(isNonEmptyString(value.sourceState) ? { sourceState: value.sourceState.trim() } : {}),
+    ...(Array.isArray(value.redirectChain) ? { redirectChain: value.redirectChain.filter(isNonEmptyString) } : {}),
+    ...(typeof value.contentType === "string" ? { contentType: value.contentType } : {}),
+    ...(value.claimCited === true ? { claimCited: true } : {}),
   };
 }
 
@@ -340,9 +402,21 @@ export function containCustomResearchEvidence(item: CustomEvidenceRecord): Custo
     sourceSupportConfidence: item.sourceSupportConfidence,
     coverageStatus: item.coverageStatus,
   });
-  reasons.push(...sourceEligibility.reasons);
   const rawValue = item.rawValue ?? item.value;
   const rawUnit = item.rawUnit ?? item.unit;
+  const claimMappings = item.claimMappings ?? buildClaimPassageMappings({
+    id: item.id,
+    sources: item.sources,
+    project: {},
+    claim: {
+      description: item.description,
+      value: item.rawValue ?? item.value,
+      numericValue: item.numericValue,
+      sourceRelevance: item.sourceRelevance,
+    },
+    coverageStatus: item.coverageStatus,
+    conflictSummary: item.conflictSummary,
+  }) as ResearchClaimPassageMapping[];
   const semantic = normalizeEvidenceRecord({
     id: item.id,
     value: item.rawValue !== undefined || item.numericValue !== undefined ? rawValue : undefined,
@@ -354,7 +428,19 @@ export function containCustomResearchEvidence(item: CustomEvidenceRecord): Custo
     sourceContext: (item.sources ?? []).flatMap((source) => [source.title, source.excerpt]).join(" "),
     explicitZero: rawValue === 0 && Boolean(item.sourceUrl),
   });
-  reasons.push(...semantic.quarantineReasons);
+  const researchEligibility = evaluateResearchEvidenceEligibility({
+    id: item.id,
+    sources: item.sources,
+    sourceUrl: item.sourceUrl,
+    sourceRelevance: item.sourceRelevance,
+    classification: item.classification,
+    sourceSupportConfidence: item.sourceSupportConfidence,
+    coverageStatus: item.coverageStatus,
+    conflictSummary: item.conflictSummary,
+    claimMappings,
+    semanticValidationStatus: semantic.validationStatus,
+  });
+  reasons.push(...sourceEligibility.reasons, ...researchEligibility.reasons, ...semantic.quarantineReasons);
   if (item.conflictSummary || item.coverageStatus === "conflicting") reasons.push("Conflicting source coverage requires reviewer resolution.");
   if (item.classification === "Model Inference" || item.classification === "User Assumption") {
     reasons.push(`${item.classification} is not source-backed and cannot activate custom economics.`);
@@ -379,6 +465,12 @@ export function containCustomResearchEvidence(item: CustomEvidenceRecord): Custo
     acceptedForModel: item.acceptedForModel === true && eligible,
     researchState: item.acceptedForModel === true && eligible ? "accepted" : eligible ? "proposed" : hasSource ? "quarantined" : "retrieved-lead",
     quarantineReasons: [...new Set(reasons)],
+    sourceValidation: {
+      policyVersion: SOURCE_VALIDATION_POLICY_VERSION,
+      state: researchEligibility.state,
+      rejectionCodes: researchEligibility.rejectionCodes,
+      claimMappings,
+    },
   };
 }
 
@@ -437,6 +529,20 @@ function parseResponse(value: unknown): CustomResearchResponse {
       : undefined;
     const hasValidatedSource = sources.length > 0 || Boolean(sourceUrl);
     const classification = candidate.classification as Classification;
+    const claimMappings = buildClaimPassageMappings({
+      id,
+      sources,
+      project: summary,
+      claim: {
+        text: candidate.description,
+        description: candidate.description,
+        value: candidate.rawValue ?? candidate.value,
+        numericValue: candidate.numericValue,
+        sourceRelevance,
+      },
+      coverageStatus,
+      conflictSummary: isNonEmptyString(candidate.conflictSummary) ? candidate.conflictSummary : undefined,
+    }) as ResearchClaimPassageMapping[];
     const safeClassification = classification === "Verified Evidence" && !hasValidatedSource
       ? "Management Assertion"
       : classification;
@@ -463,6 +569,15 @@ function parseResponse(value: unknown): CustomResearchResponse {
         ? candidate.sourceRelevanceNote.trim()
         : sourceUrl ? "The returned source is mapped to this claim; review it before relying on the finding." : "No validated source was mapped to this claim.",
       sourceRelevance,
+      claimMappings,
+      sourceValidation: {
+        policyVersion: SOURCE_VALIDATION_POLICY_VERSION,
+        state: claimMappings.some((mapping) => mapping.supportStatus === "supported")
+          ? "claim-supported"
+          : sources.length ? "evidence-mapped" : "discovered",
+        rejectionCodes: claimMappings.flatMap((mapping) => mapping.rejectionCodes),
+        claimMappings,
+      },
       searchTerms: parseSearchTerms(candidate.searchTerms),
       searchTermsSource: parseSearchTermsSource(candidate.searchTermsSource, parseSearchTerms(candidate.searchTerms)),
       ...(isNonEmptyString(candidate.conflictSummary) ? { conflictSummary: candidate.conflictSummary.trim() } : {}),
@@ -503,11 +618,15 @@ function parseResponse(value: unknown): CustomResearchResponse {
     },
     researchMode: value.researchMode === "default-assumptions"
       ? "default-assumptions"
-       : eligibleEvidence.length > 0
+       : eligibleEvidence.length > 0 || (Array.isArray(value.sourceLedger) && value.sourceLedger.length > 0) || Boolean(value.researchCache)
         ? "ai-researched"
         : "research-incomplete",
      ...(parseResearchCache(value.researchCache) ? { researchCache: parseResearchCache(value.researchCache) } : {}),
      semanticPolicyVersion: typeof value.semanticPolicyVersion === "number" ? value.semanticPolicyVersion : EVIDENCE_SEMANTIC_POLICY_VERSION,
+      sourceValidationPolicyVersion: typeof value.sourceValidationPolicyVersion === "number"
+        ? value.sourceValidationPolicyVersion
+        : SOURCE_VALIDATION_POLICY_VERSION,
+      ...(Array.isArray(value.sourceLedger) ? { sourceLedger: value.sourceLedger } : {}),
     ...(isRecord(value.researchCoverage) ? {
       researchCoverage: {
         searchedDomains: Array.isArray(value.researchCoverage.searchedDomains) ? value.researchCoverage.searchedDomains.filter(isNonEmptyString) : [],
@@ -521,6 +640,14 @@ function parseResponse(value: unknown): CustomResearchResponse {
           ? { toolCallCount: value.researchCoverage.toolCallCount } : {}),
         ...(value.researchCoverage.toolCallLimit === 32 ? { toolCallLimit: 32 } : {}),
         toolCallBudgetExceeded: value.researchCoverage.toolCallBudgetExceeded === true,
+         ...(isRecord(value.researchCoverage.sourceLedgerSummary) ? {
+           sourceLedgerSummary: {
+             rawOccurrenceCount: Number(value.researchCoverage.sourceLedgerSummary.rawOccurrenceCount) || 0,
+             retainedCount: Number(value.researchCoverage.sourceLedgerSummary.retainedCount) || 0,
+             rejectedCount: Number(value.researchCoverage.sourceLedgerSummary.rejectedCount) || 0,
+             capDiscardCount: Number(value.researchCoverage.sourceLedgerSummary.capDiscardCount) || 0,
+           },
+         } : {}),
       },
     } : {}),
      evidence: containedEvidence,

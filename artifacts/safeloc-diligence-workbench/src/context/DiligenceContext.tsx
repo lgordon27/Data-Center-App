@@ -41,6 +41,7 @@ import {
   CUSTOM_EVIDENCE_IDS,
   type ResearchCoverageStatus,
   type ResearchEvidenceSource,
+  type ResearchSourceValidation,
   type CustomResearchResponse,
   type CustomEvidenceRecord,
   type CapacityProvenance,
@@ -131,6 +132,8 @@ export type EvidenceItem = {
   eligibleForModel?: boolean;
   acceptedForModel?: boolean;
   quarantineReasons?: string[];
+  claimMappings?: CustomEvidenceRecord["claimMappings"];
+  sourceValidation?: ResearchSourceValidation;
 };
 
 export type EvidenceCorrection = {
@@ -531,6 +534,15 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
            eligibleForModel: false,
            quarantineReasons: ["Reviewer-submitted corrections require validated research evidence before model activation."],
          } : {}),
+        reviewerSubmittedSource: submittedSource,
+        sourceValidation: proposal?.eligibleForModel
+          ? proposal.sourceValidation
+          : {
+              policyVersion: 1,
+              state: "rejected",
+              rejectionCodes: ["reviewer-submitted"],
+              claimMappings: [],
+            },
         review: { kind: "ai-accepted" as const, reviewedAt: new Date().toISOString() },
       },
     };
@@ -606,10 +618,14 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         title: source.title,
         url: source.url,
         excerpt: source.excerpt,
-        classification: source.accessStatus === "not provided" ? "source-summary" as const : "validated-source" as const,
+        classification: item.sourceValidation?.state === "financially-eligible" && source.exactProject === true
+          ? "validated-source" as const
+          : "source-summary" as const,
       })),
       sourceSupportConfidence: item.sourceSupportConfidence,
       sourceRelevance: item.sourceRelevance,
+      eligibleForModel: item.eligibleForModel,
+      sourceValidation: item.sourceValidation,
     })),
     retrievedSourceCount: project.researchCoverage?.retrievedSourceCount ?? Object.values(agentEvidence).reduce((count, item) => count + (item.sources?.length ?? 0), 0),
     validatedSourceCount: project.kind === "custom"
@@ -625,8 +641,12 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
           title: source.title,
           url: source.url,
           excerpt: source.excerpt,
-          classification: source.accessStatus === "not provided" ? "source-summary" as const : "validated-source" as const,
+          classification: item.sourceValidation?.state === "financially-eligible" && source.exactProject === true
+            ? "validated-source" as const
+            : "source-summary" as const,
         })),
+        eligibleForModel: item.eligibleForModel,
+        sourceValidation: item.sourceValidation,
       })) })
       : Object.values(agentEvidence).filter((item) => item.classification === "Verified Evidence").length,
     materialGapCount: Object.values(agentEvidence).filter((item) => ["Missing Evidence", "Model Inference", "User Assumption"].includes(item.classification)).length,

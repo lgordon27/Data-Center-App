@@ -13,6 +13,15 @@ export declare function parseResearchResponse(body: unknown, retrievedSources?: 
   evidence: Array<Record<string, unknown>>;
 };
 export declare function normalizeRetrievedSources(body: unknown): Array<{ url: string; title: string; date: string | null; excerpt: string }>;
+export declare function canonicalizeSourceUrl(value: unknown): string | null;
+export declare function createSourceLedger(candidates?: Array<Record<string, unknown>>, options?: { maxRetained?: number }): {
+  ledger: Array<Record<string, unknown>>;
+  retained: Array<Record<string, unknown>>;
+  canonicalSources: Array<Record<string, unknown>>;
+  rawOccurrenceCount: number;
+  rejectedCount: number;
+  capDiscardCount: number;
+};
 export declare function normalizeSearchTerms(value: unknown): string[];
 export declare function extractSearchTerms(body: unknown): string[];
 export declare function isExactProjectSource(source: Record<string, unknown>, summary: Record<string, unknown>, itemRelevance?: unknown): boolean;

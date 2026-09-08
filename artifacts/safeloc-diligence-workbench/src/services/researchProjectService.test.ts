@@ -7,6 +7,7 @@ import {
   checkResearchStatus,
   containCustomResearchEvidence,
   CUSTOM_EVIDENCE_IDS,
+  getResearchCategoryClaimAudits,
   parseResponse,
   researchProject,
   RESEARCH_PROJECT_TIMEOUT_MS,
@@ -82,6 +83,97 @@ test("preserves eligible server evidence through client parsing", () => {
   const evidence = parsed.evidence[0];
   assert.equal(evidence.eligibleForModel, true);
   assert.equal(evidence.sourceValidation?.state, "financially-eligible");
+});
+
+test("projects retained passages and non-evidence access receipts into category traces", () => {
+  const valid = structuredClone(response);
+  const source = {
+    url: "https://example.com/atlas/filing.pdf",
+    resolvedUrl: "https://example.com/atlas/filing.pdf?download=1",
+    title: "Atlas filing",
+    publisher: "example.com",
+    publishedAt: null,
+    accessedAt: null,
+    accessStatus: "open" as const,
+    excerpt: "The Atlas facility electricity cost is 48 USD/MWh.",
+    claimPassage: "The Atlas facility electricity cost is 48 USD/MWh.",
+    sourceClass: "primary-company" as const,
+    searchDomain: "electricity",
+    relationship: "primary" as const,
+    exactProject: true,
+    claimSupport: [{ evidenceId: "electricity_cost", value: "48 USD/MWh" }],
+    facilityScope: "exact-facility",
+    phaseScope: "not-applicable",
+    timePeriod: "2026",
+    accessOutcome: {
+      state: "accessible" as const,
+      reason: "retrieved",
+      format: "text-pdf",
+      resolvedUrl: "https://example.com/atlas/filing.pdf?download=1",
+      passage: "The Atlas facility electricity cost is 48 USD/MWh.",
+      pageOrSection: 4,
+      extractionLimitations: ["Page references are unavailable from the bounded text extractor."],
+    },
+  };
+  const blocked = {
+    ...source,
+    url: "https://example.com/atlas/blocked.pdf",
+    resolvedUrl: "https://example.com/atlas/blocked.pdf",
+    accessOutcome: {
+      state: "blocked" as const,
+      reason: "http-403",
+      format: "text-pdf",
+      resolvedUrl: "https://example.com/atlas/blocked.pdf",
+      passage: null,
+      pageOrSection: null,
+      extractionLimitations: ["The source could not be accessed."],
+    },
+  };
+  const unsupported = {
+    ...source,
+    url: "https://example.com/atlas/scan.pdf",
+    resolvedUrl: "https://example.com/atlas/scan.pdf",
+    accessOutcome: {
+      state: "unsupported" as const,
+      reason: "scanned-pdf",
+      format: "text-pdf",
+      resolvedUrl: "https://example.com/atlas/scan.pdf",
+      passage: null,
+      pageOrSection: null,
+      extractionLimitations: ["PDF contained no extractable text; OCR is not performed."],
+    },
+  };
+  valid.evidence[0] = {
+    ...valid.evidence[0],
+    value: 48,
+    unit: "$/MWh",
+    numericValue: 48,
+    sourceUrl: source.url,
+    sourceRelevance: "exact-project",
+    coverageStatus: "supported",
+    sources: [source, blocked, unsupported],
+  };
+  const parsed = parseResponse(valid);
+  const traces = getResearchCategoryClaimAudits({
+    categoryId: "electricity",
+    label: "Electricity",
+    evidenceIds: ["electricity_cost"],
+    requestedPrimaryQuery: "Project Atlas electricity",
+    executedQueries: ["Project Atlas electricity"],
+    state: "Partial",
+    stageCounts: { normalized: 3, accessed: 1, parsed: 1, claimMapped: 1, eligible: 1, retainedCandidates: 3 },
+    rejectionCounts: {},
+    accessLimitations: [],
+    unresolvedGaps: [],
+  }, parsed.evidence);
+  assert.equal(traces.length, 3);
+  const retained = traces.find((trace) => trace.accessState === "accessible");
+  assert.equal(retained?.resolvedUrl, "https://example.com/atlas/filing.pdf?download=1");
+  assert.equal(retained?.retainedPassage, "The Atlas facility electricity cost is 48 USD/MWh.");
+  assert.equal(retained?.pageOrSection, 4);
+  assert.deepEqual(retained?.extractionLimitations, ["Page references are unavailable from the bounded text extractor."]);
+  assert.equal(traces.find((trace) => trace.accessState === "blocked")?.accessReason, "http-403");
+  assert.equal(traces.find((trace) => trace.accessState === "unsupported")?.accessReason, "scanned-pdf");
 });
 
 test("containment rejects residential tariffs and preserves raw incompatible units", () => {

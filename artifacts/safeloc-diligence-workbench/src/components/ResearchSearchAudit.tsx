@@ -1,4 +1,10 @@
-import type { CustomResearchResponse, ResearchCategoryAudit } from "@/services/researchProjectService";
+import {
+  getResearchCategoryClaimAudits,
+  type CustomResearchResponse,
+  type ResearchCategoryAudit,
+  type ResearchCategoryClaimAudit,
+  type ResearchEvidenceAuditItem,
+} from "@/services/researchProjectService";
 
 function categoryTone(category: ResearchCategoryAudit) {
   if (category.state === "Complete") return "bg-[#e0f4ed] text-[#08644f]";
@@ -6,12 +12,75 @@ function categoryTone(category: ResearchCategoryAudit) {
   return "bg-[#fff0d6] text-[#7c4c00]";
 }
 
+function claimTone(claim: ResearchCategoryClaimAudit) {
+  if (claim.supportStatus === "supported" && claim.accessState === "accessible") return "border-[#b7dfcf] bg-[#f2fbf7] text-[#08644f]";
+  if (claim.accessState === "blocked" || claim.accessState === "unsupported" || claim.supportStatus === "blocked") return "border-[#efbac3] bg-[#fff4f6] text-[#8f2437]";
+  return "border-[#f1cb8b] bg-[#fff8e9] text-[#6f460e]";
+}
+
+function claimStatusLabel(claim: ResearchCategoryClaimAudit) {
+  if (claim.accessState === "blocked") return "Blocked · not evidence";
+  if (claim.accessState === "unsupported" && claim.accessReason === "scanned-pdf") return "Scanned PDF · not evidence";
+  if (claim.accessState === "unsupported") return "Unsupported · not evidence";
+  if (claim.supportStatus === "supported" && claim.accessState === "accessible") return "Retained · claim supported";
+  if (claim.supportStatus === "context-only") return "Context only · not evidence";
+  if (claim.supportStatus === "missing-passage") return "Missing passage · not evidence";
+  return `${claim.supportStatus.replaceAll("-", " ")} · not accepted`;
+}
+
+function CategoryClaimTrace({ claim }: { claim: ResearchCategoryClaimAudit }) {
+  const hasPassage = Boolean(claim.retainedPassage || claim.exactQuotation);
+  return (
+    <li className={`rounded border px-2.5 py-2 ${claimTone(claim)}`} data-testid={`research-claim-trace-${claim.evidenceId}`}>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <span className="font-semibold text-[#243844]">{claim.evidenceLabel}</span>
+        <span className="rounded-full border border-current px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-[0.05em]">{claimStatusLabel(claim)}</span>
+      </div>
+      <p className="mt-1 leading-4"><strong>Claim:</strong> {claim.claimText || "Claim text unavailable."}</p>
+      {claim.retainedPassage && (
+        <blockquote className="mt-1 border-l-2 border-current pl-2 leading-4">
+          <strong>Retained passage:</strong> “{claim.retainedPassage}”
+        </blockquote>
+      )}
+      {!claim.retainedPassage && claim.exactQuotation && (
+        <blockquote className="mt-1 border-l-2 border-current pl-2 leading-4">
+          <strong>Claim quotation:</strong> “{claim.exactQuotation}”
+        </blockquote>
+      )}
+      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[8px] uppercase tracking-[0.05em]">
+        {claim.sourceTitle && <span>{claim.sourceTitle}{claim.sourcePublisher ? ` · ${claim.sourcePublisher}` : ""}</span>}
+        {claim.pageOrSection !== null && <span>Page/section: {claim.pageOrSection}</span>}
+        {claim.format && <span>Format: {claim.format}</span>}
+      </div>
+      {claim.resolvedUrl && (
+        <a
+          data-testid={`research-claim-link-${claim.evidenceId}`}
+          href={claim.resolvedUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-1 inline-flex items-center font-semibold text-[#255bb7] underline underline-offset-2"
+        >
+          Open {claim.accessState === "accessible" ? "resolved source" : "source for review"}
+        </a>
+      )}
+      {claim.accessReason && <p className="mt-1"><strong>Access:</strong> {claim.accessReason}</p>}
+      {claim.extractionLimitations.length > 0 && (
+        <p className="mt-1"><strong>Extraction limitation:</strong> {claim.extractionLimitations.join(" · ")}</p>
+      )}
+      {claim.rejectionCodes.length > 0 && <p className="mt-1"><strong>Why not evidence:</strong> {claim.rejectionCodes.join(" · ")}</p>}
+      {!hasPassage && !claim.accessReason && <p className="mt-1">No retained passage was returned; this record remains non-evidence.</p>}
+    </li>
+  );
+}
+
 export function ResearchSearchAudit({
   coverage,
   audit,
+  evidence = [],
 }: {
   coverage?: CustomResearchResponse["researchCoverage"];
   audit?: CustomResearchResponse["researchAudit"];
+  evidence?: ResearchEvidenceAuditItem[];
 }) {
   return (
     <details data-testid="research-search-audit" className="mb-4 rounded-lg border border-[#d9e0e4] bg-white text-[11px] text-[#52616b]">
@@ -34,18 +103,7 @@ export function ResearchSearchAudit({
               </thead>
               <tbody className="divide-y divide-[#e5eae8]">
                 {audit.categories.map((category) => (
-                  <tr key={category.categoryId} data-testid={`research-category-${category.categoryId}`}>
-                    <th scope="row" className="whitespace-nowrap px-2 py-2 align-top font-semibold text-[#243844]">{category.label}</th>
-                    <td className="px-2 py-2 align-top"><span className={`rounded-full px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.05em] ${categoryTone(category)}`}>{category.state}</span></td>
-                    <td className="px-2 py-2 align-top font-mono text-[9px] leading-4">{category.stageCounts.normalized} normalized · {category.stageCounts.accessed} accessed · {category.stageCounts.parsed} parsed · {category.stageCounts.claimMapped} mapped · {category.stageCounts.eligible} eligible</td>
-                    <td className="max-w-[380px] px-2 py-2 align-top text-[9px] leading-4">
-                      <div><strong>Requested:</strong> {category.requestedPrimaryQuery}</div>
-                      <div className="mt-1"><strong>Executed:</strong> {category.executedQueries.length ? category.executedQueries.join(" · ") : "None observed"}</div>
-                      {category.followUpExecutedQuery && <div className="mt-1"><strong>Follow-up:</strong> {category.followUpExecutedQuery}</div>}
-                      {category.unresolvedGaps.length > 0 && <div className="mt-1 text-[#8a5200]"><strong>Gaps:</strong> {category.unresolvedGaps.join(", ")}</div>}
-                      {Object.keys(category.rejectionCounts).length > 0 && <div className="mt-1 text-[#ba2f45]"><strong>Rejected:</strong> {Object.entries(category.rejectionCounts).map(([reason, count]) => `${reason} (${count})`).join(" · ")}</div>}
-                    </td>
-                  </tr>
+                  <CategoryAuditRow key={category.categoryId} category={category} evidence={evidence} />
                 ))}
               </tbody>
             </table>
@@ -61,5 +119,40 @@ export function ResearchSearchAudit({
         ) : <p>No query telemetry was returned. We do not claim the planned searches were completed.</p>}
       </div>
     </details>
+  );
+}
+
+function CategoryAuditRow({
+  category,
+  evidence,
+}: {
+  category: ResearchCategoryAudit;
+  evidence: ResearchEvidenceAuditItem[];
+}) {
+  const claimAudits = getResearchCategoryClaimAudits(category, evidence);
+  return (
+    <tr data-testid={`research-category-${category.categoryId}`}>
+                    <th scope="row" className="whitespace-nowrap px-2 py-2 align-top font-semibold text-[#243844]">{category.label}</th>
+                    <td className="px-2 py-2 align-top"><span className={`rounded-full px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.05em] ${categoryTone(category)}`}>{category.state}</span></td>
+                    <td className="px-2 py-2 align-top font-mono text-[9px] leading-4">{category.stageCounts.normalized} normalized · {category.stageCounts.accessed} accessed · {category.stageCounts.parsed} parsed · {category.stageCounts.claimMapped} mapped · {category.stageCounts.eligible} eligible</td>
+                    <td className="max-w-[380px] px-2 py-2 align-top text-[9px] leading-4">
+                      <div><strong>Requested:</strong> {category.requestedPrimaryQuery}</div>
+                      <div className="mt-1"><strong>Executed:</strong> {category.executedQueries.length ? category.executedQueries.join(" · ") : "None observed"}</div>
+                      {category.followUpExecutedQuery && <div className="mt-1"><strong>Follow-up:</strong> {category.followUpExecutedQuery}</div>}
+                       {category.accessLimitations.length > 0 && <div className="mt-1 text-[#8a5200]"><strong>Access limitations:</strong> {category.accessLimitations.join(" · ")}</div>}
+                       {category.unresolvedGaps.length > 0 && <div className="mt-1 text-[#8a5200]"><strong>Gaps:</strong> {category.unresolvedGaps.join(", ")}</div>}
+                      {Object.keys(category.rejectionCounts).length > 0 && <div className="mt-1 text-[#ba2f45]"><strong>Rejected:</strong> {Object.entries(category.rejectionCounts).map(([reason, count]) => `${reason} (${count})`).join(" · ")}</div>}
+                       {claimAudits.length > 0 && (
+                         <details className="mt-2 rounded border border-[#d9e0e4] bg-white">
+                           <summary className="cursor-pointer list-none px-2 py-1.5 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#60707d] [&::-webkit-details-marker]:hidden">
+                             Claim/source trace · {claimAudits.length} mapping{claimAudits.length === 1 ? "" : "s"}
+                           </summary>
+                           <ul className="space-y-2 border-t border-[#e5eae8] px-2 py-2">
+                             {claimAudits.map((claim, index) => <CategoryClaimTrace key={`${claim.evidenceId}-${claim.sourceUrl ?? "unresolved"}-${index}`} claim={claim} />)}
+                           </ul>
+                         </details>
+                       )}
+                    </td>
+                  </tr>
   );
 }

@@ -195,6 +195,29 @@ export type ResearchCategoryAudit = {
   unresolvedGaps: string[];
   providerFailure?: string | null;
 };
+export type ResearchCategoryClaimAudit = {
+  evidenceId: string;
+  evidenceLabel: string;
+  claimText: string;
+  supportStatus: ResearchClaimPassageMapping["supportStatus"];
+  rejectionCodes: string[];
+  sourceTitle: string | null;
+  sourcePublisher: string | null;
+  sourceUrl: string | null;
+  resolvedUrl: string | null;
+  sourceState: string | null;
+  accessState: "accessible" | "blocked" | "unsupported" | null;
+  accessReason: string | null;
+  retainedPassage: string | null;
+  exactQuotation: string | null;
+  pageOrSection: string | number | null;
+  extractionLimitations: string[];
+  format: string | null;
+};
+export type ResearchEvidenceAuditItem = Pick<
+  CustomEvidenceRecord,
+  "id" | "label" | "description" | "sources" | "claimMappings" | "sourceValidation"
+>;
 export type ResearchAudit = {
   version: number;
   policyVersion: number;
@@ -218,6 +241,52 @@ export type ResearchAudit = {
   categoryGaps: string[];
   providerLimitations: string[];
 };
+
+function sourceMatchesMapping(source: ResearchEvidenceSource, mapping: ResearchClaimPassageMapping) {
+  const sourceIds = [source.canonicalUrl, source.url, source.resolvedUrl].filter(Boolean);
+  return mapping.sourceId ? sourceIds.includes(mapping.sourceId) : false;
+}
+
+/**
+ * Projects retained source receipts into the category audit without changing
+ * the 16-item evidence contract or the human acceptance state.
+ */
+export function getResearchCategoryClaimAudits(
+  category: ResearchCategoryAudit,
+  evidence: ResearchEvidenceAuditItem[] = [],
+): ResearchCategoryClaimAudit[] {
+  return category.evidenceIds.flatMap((evidenceId) => {
+    const item = evidence.find((candidate) => candidate.id === evidenceId);
+    if (!item) return [];
+    const mappings = item.claimMappings ?? item.sourceValidation?.claimMappings ?? [];
+    return mappings.map((mapping) => {
+      const source = item.sources?.find((candidate) => sourceMatchesMapping(candidate, mapping));
+      const accessOutcome = source?.accessOutcome;
+      const resolvedUrl = accessOutcome?.resolvedUrl ?? source?.resolvedUrl ?? source?.canonicalUrl ?? source?.url ?? null;
+      return {
+        evidenceId,
+        evidenceLabel: item.label,
+        claimText: mapping.claimText || item.description,
+        supportStatus: mapping.supportStatus,
+        rejectionCodes: mapping.rejectionCodes,
+        sourceTitle: source?.title ?? null,
+        sourcePublisher: source?.publisher ?? null,
+        sourceUrl: source?.url ?? null,
+        resolvedUrl,
+        sourceState: source?.sourceState ?? null,
+        accessState: accessOutcome?.state ?? null,
+        accessReason: accessOutcome?.reason ?? null,
+        retainedPassage: accessOutcome?.state === "accessible"
+          ? accessOutcome.passage ?? source?.excerpt ?? null
+          : null,
+        exactQuotation: mapping.exactQuotation ?? source?.claimPassage ?? null,
+        pageOrSection: accessOutcome?.pageOrSection ?? null,
+        extractionLimitations: accessOutcome?.extractionLimitations ?? [],
+        format: accessOutcome?.format ?? null,
+      };
+    });
+  });
+}
 
 export type ResearchCacheMetadata = {
   key: string;
@@ -370,8 +439,8 @@ function parseSource(value: unknown): ResearchEvidenceSource | null {
         state: rawAccessOutcome.state as NonNullable<ResearchEvidenceSource["accessOutcome"]>["state"],
         reason: rawAccessOutcome.reason.trim(),
         ...(isNonEmptyString(rawAccessOutcome.format) ? { format: rawAccessOutcome.format.trim() } : {}),
-        ...(optionalString(rawAccessOutcome.resolvedUrl) ? { resolvedUrl: optionalString(rawAccessOutcome.resolvedUrl) } : {}),
-        ...(optionalString(rawAccessOutcome.canonicalUrl) ? { canonicalUrl: optionalString(rawAccessOutcome.canonicalUrl) } : {}),
+         ...(safePublicSourceUrl(rawAccessOutcome.resolvedUrl) ? { resolvedUrl: safePublicSourceUrl(rawAccessOutcome.resolvedUrl) } : {}),
+         ...(safePublicSourceUrl(rawAccessOutcome.canonicalUrl) ? { canonicalUrl: safePublicSourceUrl(rawAccessOutcome.canonicalUrl) } : {}),
         ...(optionalDate(rawAccessOutcome.retrievalTime) ? { retrievalTime: optionalDate(rawAccessOutcome.retrievalTime) } : {}),
         ...(isNonEmptyString(rawAccessOutcome.passage) ? { passage: rawAccessOutcome.passage.trim() } : {}),
         ...(typeof rawAccessOutcome.pageOrSection === "number" || isNonEmptyString(rawAccessOutcome.pageOrSection) ? { pageOrSection: rawAccessOutcome.pageOrSection } : {}),
@@ -381,8 +450,8 @@ function parseSource(value: unknown): ResearchEvidenceSource | null {
   return {
     url,
     originalUrl: optionalString(value.originalUrl) ?? url,
-    resolvedUrl: optionalString(value.resolvedUrl) ?? url,
-    canonicalUrl: optionalString(value.canonicalUrl) ?? url,
+    resolvedUrl: safePublicSourceUrl(value.resolvedUrl) ?? url,
+    canonicalUrl: safePublicSourceUrl(value.canonicalUrl) ?? url,
     title: value.title.trim(),
     publisher: value.publisher.trim(),
     publishedAt: optionalDate(value.publishedAt) ?? null,

@@ -81,6 +81,7 @@ function AppShell() {
   const [evidenceFocusId, setEvidenceFocusId] = useState<string | null>(null);
   const [pendingSection, setPendingSection] = useState<string | null>(null);
   const diligence = useDiligence();
+  const isHome = route === "home";
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLElement>(null);
   const menuWasOpen = useRef(false);
@@ -258,6 +259,7 @@ function AppShell() {
         onHome={() => go("home")}
         onHowItWorks={() => go("how-it-works")}
         onValueChain={() => go("value-chain")}
+        onDirectory={() => go("directory")}
         onWorkbench={() => go("analysis")}
         route={route}
         sessionRestored={diligence.sessionRestored}
@@ -272,12 +274,12 @@ function AppShell() {
               <Target aria-hidden="true" className="h-4 w-4" /> Home
             </button>
             <button data-testid="mobile-navigate-directory" type="button" aria-current={route === "directory" ? "page" : undefined} onClick={() => go("directory")} className={`flex w-full items-center gap-3 rounded px-3 py-3 text-left text-[11px] font-semibold ${route === "directory" ? "bg-[#122232] text-[#d4e86b]" : "text-[#52616b]"}`}>
-              <Target aria-hidden="true" className="h-4 w-4" /> Browse Facilities
+              <Target aria-hidden="true" className="h-4 w-4" /> Facility Directory
             </button>
-            <div className="my-1 border-t border-[#d9e0e4]" />
-            <button data-testid="mobile-navigate-analysis" type="button" aria-current={route === "analysis" ? "page" : undefined} onClick={() => go("analysis")} className={`flex w-full items-center gap-3 rounded px-3 py-3 text-left text-[11px] font-semibold ${route === "analysis" ? "bg-[#122232] text-[#d4e86b]" : "text-[#52616b]"}`}>
+            {!isHome && <div className="my-1 border-t border-[#d9e0e4]" />}
+            {!isHome && <button data-testid="mobile-navigate-analysis" type="button" aria-current={route === "analysis" ? "page" : undefined} onClick={() => go("analysis")} className={`flex w-full items-center gap-3 rounded px-3 py-3 text-left text-[11px] font-semibold ${route === "analysis" ? "bg-[#122232] text-[#d4e86b]" : "text-[#52616b]"}`}>
               <Target aria-hidden="true" className="h-4 w-4" /> Analysis Workbench
-            </button>
+            </button>}
             <div className="my-1 border-t border-[#d9e0e4]" />
             <button data-testid="mobile-navigate-value-chain" type="button" aria-current={route === "value-chain" ? "page" : undefined} onClick={() => go("value-chain")} className={`flex w-full items-center gap-3 rounded px-3 py-3 text-left text-[11px] font-semibold ${route === "value-chain" ? "bg-[#122232] text-[#d4e86b]" : "text-[#52616b]"}`}>
               <Network aria-hidden="true" className="h-4 w-4" /> The AI Chain
@@ -285,7 +287,8 @@ function AppShell() {
             <button data-testid="mobile-navigate-how-it-works" type="button" aria-current={route === "how-it-works" ? "page" : undefined} onClick={() => go("how-it-works")} className={`flex min-h-11 w-full items-center gap-3 rounded px-3 py-3 text-left text-[11px] font-semibold ${route === "how-it-works" ? "bg-[#122232] text-[#d4e86b]" : "text-[#52616b]"}`}>
               <Info aria-hidden="true" className="h-4 w-4" /> How It Works
             </button>
-            {route === "value-chain" && <button data-testid="mobile-return-to-workbench" type="button" onClick={() => go("analysis")} className="flex w-full items-center gap-3 rounded px-3 py-3 text-left text-[11px] font-semibold text-[#ba2f45]">Return to Analysis</button>}
+            {isHome && <button data-testid="mobile-home-analyze-project" type="button" onClick={() => { setMobileOpen(false); window.dispatchEvent(new Event("safeloc-open-custom-project")); }} className="mt-1 flex min-h-11 w-full items-center gap-3 rounded bg-[#d4e86b] px-3 py-3 text-left text-[11px] font-bold text-[#122232]">Analyze a Project</button>}
+            {!isHome && route === "value-chain" && <button data-testid="mobile-return-to-workbench" type="button" onClick={() => go("analysis")} className="flex w-full items-center gap-3 rounded px-3 py-3 text-left text-[11px] font-semibold text-[#ba2f45]">Return to Analysis</button>}
           </nav>
         </>
       )}

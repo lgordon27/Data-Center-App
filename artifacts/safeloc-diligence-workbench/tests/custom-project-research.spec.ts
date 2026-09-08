@@ -20,6 +20,11 @@ const evidenceIds = [
 ];
 const scenariosKey = "safeloc:diligence:scenarios:v1";
 
+async function openCustomProjectDialog(page: import("@playwright/test").Page) {
+  await page.getByTestId("button-analyze-another-project").click();
+  await expect(page.getByTestId("custom-project-dialog")).toBeVisible();
+}
+
 function customResponse() {
   return {
     projectSummary: {
@@ -111,11 +116,11 @@ test.describe("custom project research", () => {
 
   test("launches research from Home, preserves 16 items, and resets to Stargate", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByTestId("home-custom-analysis")).toBeVisible();
+    await openCustomProjectDialog(page);
     await page.getByTestId("input-custom-project-name").fill("Project Atlas");
     await page.getByTestId("input-custom-project-location").fill("Maricopa County, Arizona");
-    await page.getByTestId("button-run-ai-analysis").click();
-    await expect(page).toHaveURL(/#brief$/);
+    await page.getByTestId("button-submit-custom-project").click();
+    await expect(page).toHaveURL(/#analysis$/);
     await expect(page.getByTestId("custom-project-status")).toContainText("AI-researched");
     await expect(page.getByTestId("custom-project-description")).toContainText("equipment procurement");
     await expect(page.getByTestId("custom-project-capacity")).toHaveText("600 MW");
@@ -192,7 +197,7 @@ test.describe("custom project research", () => {
     }
 
     await page.getByTestId("button-open-material-gap-customer_concentration").click();
-    await expect(page).toHaveURL(/#evidence$/);
+    await expect(page).toHaveURL(/#analysis$/);
     await expect(page.getByTestId("row-evidence-customer_concentration")).toHaveAttribute("open", "");
 
     await page.goto("/#decision");
@@ -208,11 +213,17 @@ test.describe("custom project research", () => {
     await expect(page.getByTestId("material-gap-row-community_risk")).toHaveCount(0);
     await expect(page.getByTestId("material-gap-row-electricity_cost")).toHaveCount(0);
     await expect(page.getByTestId("material-gap-row-water_consumption")).toHaveCount(0);
+
+    await page.goto("/#home");
+    await expect(page.getByTestId("home-preview-project-name")).toHaveText("Project Atlas");
+    await expect(page.getByTestId("home-preview-relationship")).toHaveText("No linked holding selected");
+    await expect(page.getByTestId("home-stargate-preview")).toContainText("Maricopa County, Arizona");
     await expect.poll(() => page.evaluate((key) => window.localStorage.getItem(key), scenariosKey)).toBeNull();
 
+    await page.goto("/#analysis");
     await page.getByTestId("button-reset-default").click();
     await page.getByTestId("button-confirm-reset-default").click();
-    await expect(page).toHaveURL(/#brief$/);
+    await expect(page).toHaveURL(/#analysis$/);
     await expect(page.getByRole("heading", { name: /return is only as durable/i })).toBeVisible();
     await expect(page.getByTestId("custom-research-banner")).toHaveCount(0);
     await expect.poll(() => page.evaluate((key) => window.localStorage.getItem(key), scenariosKey)).toBeNull();
@@ -223,10 +234,11 @@ test.describe("custom project research", () => {
 
   test("keeps reviewer source corrections behind the disclosure", async ({ page }) => {
     await page.goto("/");
+    await openCustomProjectDialog(page);
     await page.getByTestId("input-custom-project-name").fill("Project Atlas");
     await page.getByTestId("input-custom-project-location").fill("Maricopa County, Arizona");
-    await page.getByTestId("button-run-ai-analysis").click();
-    await expect(page).toHaveURL(/#brief$/);
+    await page.getByTestId("button-submit-custom-project").click();
+    await expect(page).toHaveURL(/#analysis$/);
     await page.goto("/#evidence");
 
     const row = page.getByTestId("row-evidence-electricity_cost");
@@ -248,10 +260,11 @@ test.describe("custom project research", () => {
 
   test("lets a reviewer force a provider refresh and exposes the resulting cache state", async ({ page }) => {
     await page.goto("/#home");
+    await openCustomProjectDialog(page);
     await page.getByTestId("input-custom-project-name").fill("Project Atlas");
     await page.getByTestId("input-custom-project-location").fill("Maricopa County, Arizona");
-    await page.getByTestId("button-run-ai-analysis").click();
-    await expect(page).toHaveURL(/#brief$/);
+    await page.getByTestId("button-submit-custom-project").click();
+    await expect(page).toHaveURL(/#analysis$/);
     await page.goto("/#evidence");
 
     const requestPromise = page.waitForRequest((request) =>
@@ -373,10 +386,11 @@ test.describe("custom project research", () => {
     });
 
     await page.goto("/");
+    await openCustomProjectDialog(page);
     await page.getByTestId("input-custom-project-name").fill("Project Fallback");
     await page.getByTestId("input-custom-project-location").fill("Texas");
-    await page.getByTestId("button-run-ai-analysis").click();
-    await expect(page).toHaveURL(/#brief$/);
+    await page.getByTestId("button-submit-custom-project").click();
+    await expect(page).toHaveURL(/#analysis$/);
     await expect(page.getByTestId("custom-project-capacity")).toHaveText("1,200 MW");
     await expect(page.getByTestId("custom-project-capacity-note")).toContainText("standardized 1,200 MW default used");
   });
@@ -400,10 +414,11 @@ test.describe("custom project research", () => {
     });
 
     await page.goto("/");
+    await openCustomProjectDialog(page);
     await page.getByTestId("input-custom-project-name").fill("Project Kilby");
     await page.getByTestId("input-custom-project-location").fill("Reeves County, Texas");
-    await page.getByTestId("button-run-ai-analysis").click();
-    await expect(page).toHaveURL(/#brief$/);
+    await page.getByTestId("button-submit-custom-project").click();
+    await expect(page).toHaveURL(/#analysis$/);
     await page.goto("/#evidence");
 
     await page.getByTestId("summary-evidence-electricity_cost").click();
@@ -429,15 +444,16 @@ test.describe("custom project research", () => {
     });
 
     await page.goto("/");
+    await openCustomProjectDialog(page);
     await page.getByTestId("input-custom-project-name").fill("Project Timeout");
     await page.getByTestId("input-custom-project-location").fill("Cook County, Illinois");
-    await page.getByTestId("button-run-ai-analysis").click();
-    await expect(page.getByTestId("home-custom-analysis-loading")).toContainText("retrying");
-    await expect(page.getByTestId("home-custom-analysis-fallback")).toBeVisible();
+    await page.getByTestId("button-submit-custom-project").click();
+    await expect(page.getByTestId("custom-project-loading")).toContainText("retrying");
+    await expect(page.getByTestId("custom-project-fallback")).toBeVisible();
     expect(calls).toBe(2);
-    await page.getByTestId("home-custom-analysis-fallback").click();
+    await page.getByTestId("custom-project-fallback").click();
 
-    await expect(page).toHaveURL(/#brief$/);
+    await expect(page).toHaveURL(/#analysis$/);
     await expect(page.getByTestId("custom-project-status")).toContainText("Default assumptions");
     await expect(page.getByTestId("custom-research-banner")).toContainText("All modeled evidence remains Missing Evidence");
     await page.goto("/#evidence");
@@ -462,10 +478,11 @@ test.describe("custom project research", () => {
     });
 
     await page.goto("/");
+    await openCustomProjectDialog(page);
     await page.getByTestId("input-custom-project-name").fill("Project Atlas");
     await page.getByTestId("input-custom-project-location").fill("Maricopa County, Arizona");
-    await page.getByTestId("button-run-ai-analysis").click();
-    await expect(page).toHaveURL(/#brief$/);
+    await page.getByTestId("button-submit-custom-project").click();
+    await expect(page).toHaveURL(/#analysis$/);
 
     const events = await page.evaluate(() => {
       const analyticsWindow = window as typeof window & {

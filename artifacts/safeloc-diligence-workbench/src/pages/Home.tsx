@@ -264,7 +264,7 @@ export function CustomProjectDialog({
             <h2 id="custom-project-title" className="mt-2 text-[25px] font-semibold tracking-[-0.04em] text-[#122232]">Analyze a different project</h2>
             <p className="mt-2 text-[12px] leading-5 text-[#63717a]">SafeLoc will research a high-level public-source summary and return the same 16 modeled evidence inputs used by the workbench.</p>
           </div>
-          <button data-testid="button-close-custom-project" type="button" onClick={onClose} className="rounded-md px-2 py-1 text-xl leading-none text-[#52616b] hover:bg-[#e7ecef]" aria-label="Close custom project form">×</button>
+          <button data-testid="button-close-custom-project" type="button" onClick={onClose} autoFocus className="rounded-md px-2 py-1 text-xl leading-none text-[#52616b] hover:bg-[#e7ecef]" aria-label="Close custom project form">×</button>
         </div>
         <CustomProjectForm onSuccess={onSuccess} />
         <p className="mt-4 border-t border-[#e5eae8] pt-4 text-[10px] leading-4 text-[#7d898f]">
@@ -871,7 +871,7 @@ export function ComputeAtlasDirectory({ onCurated, onResearchSuccess }: { onCura
   );
 }
 
-export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void } = {}) {
+function LegacyHome({ onNavigate }: { onNavigate?: (route: HomeRoute) => void } = {}) {
   const { loadCustomProject, resetToDefault, originatingCompany, ercotQueue } = useDiligence();
   const initialCompany = COMPANY_PROFILES.some((profile) => profile.key === originatingCompany) ? originatingCompany as CompanyKey : null;
   const [selectedCompany, setSelectedCompany] = useState<CompanyKey | null>(initialCompany);
@@ -1144,6 +1144,280 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
         <div className="mx-auto flex max-w-[1240px] flex-col justify-between gap-2 font-mono text-[9px] uppercase tracking-[0.12em] text-[#8299a5] sm:flex-row sm:items-center">
            <span>Built by LeAndrew Gordon | SafeLoc | Growth for Impact Conference, November 2026</span>
            <span className="text-[#526f7c]">Public Context · Synthetic Returns · Compute Atlas directory</span>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+function homeMetric(value: number | null | undefined, suffix = "") {
+  return typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(1)}${suffix}` : "Unavailable";
+}
+
+/**
+ * Public entry surface. The workbench owns all calculations and handoffs; Home
+ * only presents that state and routes people into the existing flows.
+ */
+export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void } = {}) {
+  const {
+    evidence,
+    metrics,
+    project,
+    originatingCompany,
+    loadCustomProject,
+    resetToDefault,
+  } = useDiligence();
+  const initialCompany = COMPANY_PROFILES.some((profile) => profile.key === originatingCompany) ? originatingCompany as CompanyKey : null;
+  const [selectedCompany, setSelectedCompany] = useState<CompanyKey | null>(initialCompany);
+  const [companyResearchingId, setCompanyResearchingId] = useState<string | null>(null);
+  const [companyResearchError, setCompanyResearchError] = useState<string | null>(null);
+  const companyExposureRef = useRef<HTMLElement>(null);
+
+  const focusCompanyExposure = () => {
+    window.setTimeout(() => {
+      companyExposureRef.current?.scrollIntoView({
+        behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ? "auto" : "smooth",
+        block: "start",
+      });
+      companyExposureRef.current?.focus({ preventScroll: true });
+    }, 0);
+  };
+  const selectCompany = (company: CompanyKey) => {
+    setCompanyResearchError(null);
+    setSelectedCompany(company);
+    trackEvent("company_lens_selected", { company: company.toLowerCase(), entry_point: "home_holdings" });
+    focusCompanyExposure();
+  };
+  const goSecondary = (route: HomeRoute) => {
+    if (onNavigate) onNavigate(route);
+    else window.location.hash = route;
+  };
+  const openCustomProject = () => window.dispatchEvent(new Event("safeloc-open-custom-project"));
+  const handleResearchSuccess = (research: CustomResearchResponse, company: CompanyKey | null = null, projectId = "custom_project", projectKind = "custom") => {
+    loadCustomProject(research, company);
+    trackEvent("research_handoff_completed", {
+      company: company?.toLowerCase() ?? "none",
+      project_id: projectId,
+      project_kind: projectKind,
+      research_mode: research.researchMode === "default-assumptions" ? "default_assumptions" : "ai_researched",
+      destination: "analysis",
+    });
+    window.location.hash = "analysis";
+  };
+
+  const baselineIRR = metrics.baseIRR ?? null;
+  const gapExample = evidence.water_rights?.classification === "Missing Evidence"
+    ? "Water rights and curtailment terms remain unestablished."
+    : evidence.water_consumption?.classification === "Missing Evidence"
+      ? "Facility-level annual water use remains unestablished."
+      : "Review the Evidence screen for the highest-materiality unresolved item.";
+  const projectStatus = project.kind === "curated"
+    ? "Curated public-source case"
+    : project.researchMode === "research-incomplete"
+      ? "Research incomplete"
+      : "Session-only custom case";
+  const previewProjectName = project.name || "Current project";
+  const previewLocation = project.location || "Location unavailable";
+  const previewRelationship = project.kind === "curated"
+    ? "NVIDIA · reported"
+    : originatingCompany
+      ? `${originatingCompany} · selected context`
+      : "No linked holding selected";
+  const recommendation = metrics.recommendationStatus === "READY FOR REVIEW"
+    ? "Ready for review"
+    : metrics.recommendationStatus === "CONDITIONAL"
+      ? "Conditional"
+      : "Blocked";
+
+  return (
+    <div data-testid="home-page" className="home-page overflow-x-hidden bg-[#0a1b2a] text-[#f6f7f2]">
+      <main>
+        <section data-testid="home-hero" className="home-hero relative">
+          <div className="home-hero-grid absolute inset-0 opacity-60" aria-hidden="true" />
+          <div className="relative mx-auto max-w-[1240px] px-5 pb-12 pt-10 sm:px-8 md:pb-16 md:pt-14 xl:px-10">
+            <div className="mb-8 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2 font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-[#d4e86b]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#d4e86b]" /> Evidence-governed infrastructure diligence
+              </div>
+              <span className="hidden font-mono text-[9px] uppercase tracking-[0.16em] text-[#8299a5] sm:block">Public context · synthetic returns</span>
+            </div>
+            <div className="grid items-start gap-9 lg:grid-cols-[1.04fr_0.96fr] lg:gap-14">
+              <div>
+                <h1 data-testid="home-hero-heading" className="max-w-3xl text-[42px] font-semibold leading-[0.98] tracking-[-0.06em] sm:text-[54px] md:text-[60px] xl:text-[64px]">
+                  The AI infrastructure market is splitting in two. <span className="text-[#d4e86b]">Which side are your holdings on?</span>
+                </h1>
+                <p data-testid="home-product-definition" className="mt-5 max-w-2xl text-[16px] font-medium leading-6 text-white md:text-[19px] md:leading-7">
+                  Trace a public company to the infrastructure supporting its growth. Test the evidence. See what changes financially.
+                </p>
+                <p data-testid="home-governance-line" className="mt-3 max-w-xl border-l-2 border-[#d4e86b] pl-3 text-[11px] leading-5 text-[#b9c5c9]">
+                  AI accelerates research. Humans approve classifications. Every return remains traceable to the evidence behind it.
+                </p>
+                <div data-testid="home-primary-actions" className="mt-7 flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center">
+                  <button data-testid="button-start-nvidia" type="button" onClick={() => selectCompany("NVIDIA")} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-[#d4e86b] px-4 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#122232] transition-transform hover:-translate-y-0.5 hover:bg-[#e3f18d] focus:outline-none focus:ring-2 focus:ring-[#d4e86b] focus:ring-offset-2 focus:ring-offset-[#0a1b2a]">
+                    Start with NVIDIA <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" />
+                  </button>
+                  <button data-testid="button-run-stargate" type="button" onClick={() => { resetToDefault(null); window.location.hash = "analysis"; }} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-[#d4e86b]/70 bg-[#173247] px-4 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#d4e86b] transition-colors hover:border-[#d4e86b] hover:bg-[#203f50] focus:outline-none focus:ring-2 focus:ring-[#d4e86b] focus:ring-offset-2 focus:ring-offset-[#0a1b2a]">
+                    Run the Stargate Case <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" />
+                  </button>
+                  <button data-testid="button-analyze-another-project" type="button" onClick={openCustomProject} className="inline-flex min-h-11 items-center justify-center gap-1 rounded-md px-3 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#b9e1f2] underline decoration-[#718894] underline-offset-4 transition-colors hover:text-[#d4e86b] hover:decoration-[#d4e86b]">
+                    Analyze another project
+                  </button>
+                </div>
+                <div data-testid="home-supporting-lines" className="mt-7 max-w-2xl space-y-2 text-[13px] leading-5 text-[#c4d0d6]">
+                  <p>$725 billion is being invested in AI infrastructure this year. $130 billion has already stalled.</p>
+                  <p>Projects that solved their constraints are proceeding. Projects that didn&apos;t are stuck. Evidence determines which is which.</p>
+                  <div className="flex flex-wrap gap-2"><ClaimCitation claimId="stargate-initiative" dark /><ClaimCitation claimId="stargate-cancellation" dark /></div>
+                </div>
+              </div>
+              <article data-testid="home-stargate-preview" aria-labelledby="home-stargate-preview-heading" className="rounded-xl border border-white/15 bg-[#102b3b]/95 p-5 shadow-2xl shadow-black/20 sm:p-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-[#d4e86b]">Live diligence context</div>
+                    <h2 id="home-stargate-preview-heading" data-testid="home-preview-project-name" className="mt-2 text-[25px] font-semibold tracking-[-0.04em] text-white">{previewProjectName}</h2>
+                    <p className="mt-1 text-[11px] text-[#9dafb8]">{projectStatus} · {previewLocation}</p>
+                  </div>
+                  <span data-testid="home-preview-status" className="rounded-full border border-[#f1cb8b]/50 bg-[#3d2d24] px-2.5 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#ffe0a9]">{recommendation}</span>
+                </div>
+                <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  <div className="rounded-lg border border-white/10 bg-[#0d2435] p-3"><div className="font-mono text-[8px] uppercase tracking-[0.1em] text-[#8299a5]">Supplier relationship</div><div data-testid="home-preview-relationship" className="mt-2 text-[11px] font-semibold text-white">{previewRelationship}</div></div>
+                  <div className="rounded-lg border border-white/10 bg-[#0d2435] p-3"><div className="font-mono text-[8px] uppercase tracking-[0.1em] text-[#8299a5]">Evidence confidence</div><div data-testid="home-preview-confidence" className="mt-2 font-mono text-[20px] font-bold text-[#d4e86b]">{homeMetric(metrics.confidenceScore, "%")}</div></div>
+                  <div className="rounded-lg border border-white/10 bg-[#0d2435] p-3"><div className="font-mono text-[8px] uppercase tracking-[0.1em] text-[#8299a5]">Material gaps</div><div data-testid="home-preview-gaps" className="mt-2 font-mono text-[20px] font-bold text-[#f5ddd5]">{metrics.missingMaterialCount}</div></div>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <div className="rounded-lg border border-white/10 bg-[#0d2435] p-3"><div className="font-mono text-[8px] uppercase tracking-[0.1em] text-[#8299a5]">Baseline IRR</div><div data-testid="home-preview-baseline-irr" className="mt-2 font-mono text-[20px] font-bold text-white">{homeMetric(baselineIRR, "%")}</div></div>
+                  <div className="rounded-lg border border-[#d4e86b]/30 bg-[#173247] p-3"><div className="font-mono text-[8px] uppercase tracking-[0.1em] text-[#b9d43a]">Conservative IRR</div><div data-testid="home-preview-conservative-irr" className="mt-2 font-mono text-[20px] font-bold text-[#d4e86b]">{homeMetric(metrics.projectIRR, "%")}</div></div>
+                </div>
+                <div className="mt-4 border-t border-white/10 pt-4">
+                  <div className="flex items-center justify-between gap-3"><span className="font-mono text-[8px] uppercase tracking-[0.1em] text-[#8299a5]">Evidence-quality gap</span><span data-testid="home-preview-gap-label" className="font-mono text-[9px] font-bold uppercase text-[#f1cb8b]">{metrics.missingMaterialCount > 0 ? "Open" : "None identified"}</span></div>
+                  <p data-testid="home-preview-gap-example" className="mt-2 text-[11px] leading-5 text-[#dce4e7]">{gapExample}</p>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2 font-mono text-[8px] uppercase tracking-[0.08em] text-[#9dafb8]">
+                  <span className="rounded-full border border-[#f1cb8b]/40 px-2 py-1">Synthetic economics</span>
+                  <span className="rounded-full border border-[#8dc8e8]/40 px-2 py-1">Public context</span>
+                  <span className="rounded-full border border-[#efabb8]/40 px-2 py-1">Issuer/fund materiality unestablished</span>
+                </div>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section data-testid="home-entry-paths" aria-labelledby="home-entry-paths-heading" className="border-y border-white/10 bg-[#0d2435] px-5 py-10 sm:px-8 md:py-14 xl:px-10">
+          <div className="mx-auto max-w-[1240px]">
+            <div className="max-w-2xl">
+              <div className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-[#d4e86b]">Start with a lens</div>
+              <h2 id="home-entry-paths-heading" className="mt-2 text-[31px] font-semibold leading-none tracking-[-0.05em] text-white md:text-[45px]">One evidence engine. Two ways to begin.</h2>
+              <p className="mt-3 text-[13px] leading-5 text-[#c4d0d6]">Use the same evidence classifications, financial model, and human review path whether you begin with a holding or a facility.</p>
+            </div>
+            <div className="mt-8 grid gap-5 lg:grid-cols-[0.92fr_1.08fr]">
+              <div data-testid="home-stock-picker" className="rounded-xl border border-white/15 bg-[#102b3b] p-4 sm:p-5">
+                <div className="flex items-center justify-between gap-3"><h3 className="text-[17px] font-semibold text-white">A public holding</h3><span className="font-mono text-[8px] uppercase tracking-[0.1em] text-[#8299a5]">Six lenses</span></div>
+                <p className="mt-2 text-[11px] leading-5 text-[#b9c5c9]">Select a company to see connected projects, capacity, tier, and sourced relationship qualifiers.</p>
+                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {COMPANY_PROFILES.map((company) => (
+                    <button key={company.key} data-testid={`company-card-${company.key.toLowerCase()}`} type="button" onClick={() => selectCompany(company.key)} className={`min-h-16 rounded-lg border px-3 py-2 text-left transition-colors hover:border-[#d4e86b] focus:outline-none focus:ring-2 focus:ring-[#d4e86b] ${selectedCompany === company.key ? "border-[#d4e86b] bg-[#d4e86b] text-[#122232]" : "border-white/15 bg-[#173247] text-white"}`}>
+                      <span className={`font-mono text-[9px] font-bold ${selectedCompany === company.key ? "text-[#314207]" : "text-[#d4e86b]"}`}>{company.ticker}</span>
+                      <span className="mt-1 block truncate text-[11px] font-semibold">{company.displayName}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-4 border-t border-white/10 pt-3 text-[10px] leading-4 text-[#9dafb8]">A relationship describes context, not the magnitude of financial exposure or ownership.</p>
+              </div>
+              <div data-testid="home-project-path" className="rounded-xl border border-[#d4e86b]/35 bg-[#102b3b] p-4 sm:p-5">
+                <div className="flex items-center justify-between gap-3"><h3 className="text-[17px] font-semibold text-white">An infrastructure project</h3><MapPin aria-hidden="true" className="h-4 w-4 text-[#d4e86b]" /></div>
+                <p className="mt-2 max-w-xl text-[11px] leading-5 text-[#b9c5c9]">Open the curated Stargate case, analyze a different project with the existing research dialog, or browse public directory context.</p>
+                <div className="mt-5 flex flex-wrap gap-2">
+                  <button data-testid="button-analyze-stargate" type="button" onClick={() => { resetToDefault(null); window.location.hash = "analysis"; }} className="inline-flex min-h-10 items-center gap-2 rounded-md bg-[#d4e86b] px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.08em] text-[#122232]">Analyze Stargate Abilene <ArrowRight aria-hidden="true" className="h-3 w-3" /></button>
+                  <button data-testid="button-analyze-another-project-path" type="button" onClick={openCustomProject} className="inline-flex min-h-10 items-center gap-2 rounded-md border border-white/20 px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.08em] text-[#d4e86b]">Analyze a Project <ArrowRight aria-hidden="true" className="h-3 w-3" /></button>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 border-t border-white/10 pt-4 text-[10px]">
+                  <button data-testid="button-browse-texas-facilities" type="button" onClick={() => goSecondary("directory")} className="text-[#b9e1f2] underline underline-offset-2 hover:text-[#d4e86b]">Browse Texas facilities</button>
+                  <button data-testid="button-browse-nationwide-facilities" type="button" onClick={() => goSecondary("directory")} className="text-[#b9e1f2] underline underline-offset-2 hover:text-[#d4e86b]">Browse nationwide directory</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {selectedCompany && (
+          <CompanyExposure
+            company={selectedCompany}
+            researchError={companyResearchError}
+            researchingProjectId={companyResearchingId}
+            sectionRef={companyExposureRef}
+            onBack={() => setSelectedCompany(null)}
+            onCurated={(company) => { resetToDefault(company); window.location.hash = "analysis"; }}
+            onResearch={(companyProject, company) => {
+              if (!companyProject.facility) return;
+              setCompanyResearchingId(companyProject.id);
+              setCompanyResearchError(null);
+              void researchProject(companyProject.name, companyProject.location, {
+                knownData: { capacity: companyProject.capacityMW, operator: companyProject.operator, status: companyProject.status, sourceUrl: companyProject.facility.sourceUrl },
+              }).then((research) => handleResearchSuccess(research, company, companyProject.id, companyProject.kind))
+                .catch(() => setCompanyResearchError("AI research is unavailable. Try again."))
+                .finally(() => setCompanyResearchingId(null));
+            }}
+          />
+        )}
+        <div role="status" aria-live="polite" data-testid="home-company-announcement" className="sr-only">
+          {selectedCompany ? `${profileForCompany(selectedCompany).displayName} holding context selected.` : "No holding selected."}
+        </div>
+
+        <section data-testid="home-governed-ai" aria-labelledby="home-governed-ai-heading" className="mx-auto max-w-[1240px] px-5 py-11 sm:px-8 md:py-14 xl:px-10">
+          <div className="grid gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:items-start">
+            <div>
+              <div className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-[#d4e86b]">Governed AI / read-only demonstration</div>
+              <h2 id="home-governed-ai-heading" className="mt-2 max-w-md text-[31px] font-semibold leading-[1.02] tracking-[-0.05em] text-white md:text-[42px]">The machine proposes. The reviewer decides.</h2>
+              <p className="mt-4 max-w-md text-[12px] leading-5 text-[#b9c5c9]">SafeLoc turns public-source research into a reviewable proposal, never an automatic fact or investment conclusion.</p>
+            </div>
+            <div className="rounded-xl border border-white/15 bg-[#102b3b] p-4 sm:p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
+                <span className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#9dafb8]">Illustrative evidence proposal</span>
+                <span className="rounded-full border border-[#e6cf70] bg-[#fff6c7] px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#8a6400]">Management Assertion</span>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-[1.25fr_0.75fr]">
+                <div><div className="font-mono text-[8px] uppercase tracking-[0.1em] text-[#8299a5]">Proposal</div><p className="mt-2 text-[13px] font-semibold leading-5 text-white">On-site generation may reduce grid dependency, but disclosed capacity and duration remain unresolved.</p><p className="mt-2 text-[10px] leading-4 text-[#9dafb8]">Illustrative copy · not a Stargate evidence update.</p></div>
+                <div className="rounded-lg border border-white/10 bg-[#0d2435] p-3"><div className="font-mono text-[8px] uppercase tracking-[0.1em] text-[#8299a5]">Human review</div><div className="mt-2 flex items-center gap-2 text-[11px] font-semibold text-[#d4e86b]"><ShieldCheck aria-hidden="true" className="h-4 w-4" /> Accept, override, or leave missing</div></div>
+              </div>
+              <ol className="mt-5 grid gap-2 sm:grid-cols-4">
+                {["Research public sources", "Propose a classification", "Review the source and boundary", "Approve into the model"].map((step, index) => <li key={step} className="rounded-lg border border-white/10 bg-[#173247] p-3"><span className="font-mono text-[9px] font-bold text-[#d4e86b]">0{index + 1}</span><span className="mt-2 block text-[10px] leading-4 text-[#dce4e7]">{step}</span></li>)}
+              </ol>
+            </div>
+          </div>
+        </section>
+
+        <section data-testid="home-market-split" aria-labelledby="home-market-split-heading" className="border-y border-white/10 bg-[#0d2435] px-5 py-10 sm:px-8 md:py-12 xl:px-10">
+          <div className="mx-auto max-w-[1240px]">
+            <div className="max-w-2xl"><div className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-[#8299a5]">Public context / qualified, not facility-level</div><h2 id="home-market-split-heading" className="mt-2 text-[28px] font-semibold leading-[1.03] tracking-[-0.04em] text-white md:text-[37px]">Evidence-supported readiness is different from material readiness gaps.</h2><p className="mt-3 text-[12px] leading-5 text-[#c4d0d6]">Public reporting can frame the market split. The workbench tests the named project, preserves unresolved items, and shows how modeled treatment changes when classifications change.</p></div>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              <BifurcationCard tier="Evidence-supported readiness" title="Constraints addressed" constraints="Independent power, secured water, and permitting support a proceeding case when project-level sources establish them." example="Chevron / Microsoft Project Kilby" evidence="Public example · verify project sources" tone="proceeding" icon={ShieldCheck} />
+              <BifurcationCard tier="Material readiness gaps" title="Constraints remain open" constraints="Grid dependency, municipal water, or unresolved terms can keep a project conditional even when market demand is strong." example="Stargate Abilene" evidence="Diligence context · gaps remain" tone="stalling" icon={TriangleAlert} />
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2"><ClaimCitation claimId="stargate-cancellation" dark /><ClaimCitation claimId="abbott-data-center-audit" dark /></div>
+          </div>
+        </section>
+
+        <section data-testid="home-trust-strip" aria-label="SafeLoc trust and methodology" className="border-b border-white/10 bg-[#071521] px-5 py-8 sm:px-8 md:py-10 xl:px-10">
+          <div className="mx-auto max-w-[1240px]">
+            <div className="grid gap-4 md:grid-cols-[1.1fr_1.9fr] md:items-center">
+              <div><div className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-[#d4e86b]">Trust / method</div><p className="mt-2 text-[12px] leading-5 text-[#c4d0d6]">Public-source links, synthetic-economics labels, five classifications, human approval, and an audit trail stay visible through the handoff.</p></div>
+              <div className="flex flex-wrap gap-2 text-[9px] font-bold uppercase tracking-[0.08em]">
+                <span className="rounded-full border border-[#d4e86b]/40 bg-[#102b3b] px-2.5 py-1.5 text-[#d4e86b]">Synthetic economics</span>
+                <span className="rounded-full border border-[#d4e86b]/40 bg-[#102b3b] px-2.5 py-1.5 text-[#d4e86b]">Human approval</span>
+                {["Verified Evidence", "Management Assertion", "Model Inference", "User Assumption", "Missing Evidence"].map((label) => <span key={label} className="rounded-full border border-white/15 bg-[#102b3b] px-2.5 py-1.5 text-[#b9e1f2]">{label}</span>)}
+              </div>
+            </div>
+            <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 border-t border-white/10 pt-4 text-[10px]">
+              <button data-testid="button-home-methodology" type="button" onClick={() => goSecondary("how-it-works")} className="text-[#b9e1f2] underline underline-offset-2 hover:text-[#d4e86b]">Methodology</button>
+              <button data-testid="button-home-value-chain" type="button" onClick={() => goSecondary("value-chain")} className="text-[#b9e1f2] underline underline-offset-2 hover:text-[#d4e86b]">The AI Chain</button>
+              <button data-testid="button-home-directory" type="button" onClick={() => goSecondary("directory")} className="text-[#b9e1f2] underline underline-offset-2 hover:text-[#d4e86b]">Facility Directory</button>
+              <button data-testid="button-home-builder" type="button" onClick={() => goSecondary("how-it-works")} className="text-[#b9e1f2] underline underline-offset-2 hover:text-[#d4e86b]">Builder / about</button>
+            </div>
+          </div>
+        </section>
+      </main>
+      <footer data-testid="home-footer" className="border-t border-white/10 bg-[#071521] px-5 py-6 sm:px-8">
+        <div className="mx-auto flex max-w-[1240px] flex-col justify-between gap-2 font-mono text-[9px] uppercase tracking-[0.12em] text-[#8299a5] sm:flex-row sm:items-center">
+          <span>SafeLoc Diligence Workbench</span><span className="text-[#526f7c]">Public context · synthetic economics · human review</span>
         </div>
       </footer>
     </div>

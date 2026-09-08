@@ -163,8 +163,8 @@ test.describe("stock-first company exposure flow", () => {
     await expect(page.getByTestId("company-summary-tier1")).toContainText("1");
     await expect(page.getByTestId("company-summary-tier2")).toContainText("1");
     await page.getByTestId("company-project-open-project-kilby").click();
-    await expect(page).toHaveURL(/#brief$/);
-    await expect(page.getByTestId("workbench-breadcrumb")).toContainText("Microsoft → Stargate Abilene → Case Brief");
+    await expect(page).toHaveURL(/#analysis$/);
+    await expect(page.getByTestId("analysis-workbench")).toBeVisible();
     await page.goto("/#advisor");
     await expect(page.getByTestId("advisor-originating-company")).toContainText("Microsoft");
     await expect(page.getByTestId("section-client-exposure")).toContainText(
@@ -248,17 +248,17 @@ test.describe("stock-first company exposure flow", () => {
     const viewportLayout = await page.evaluate(() => {
       const definition = document.querySelector<HTMLElement>("[data-testid='home-product-definition']");
       const actions = document.querySelector<HTMLElement>("[data-testid='home-primary-actions']");
-      const bifurcation = document.querySelector<HTMLElement>("[data-testid='home-bifurcation']");
+      const entryPaths = document.querySelector<HTMLElement>("[data-testid='home-entry-paths']");
       const holdings = document.querySelector<HTMLElement>("[data-testid='home-stock-picker']");
-      if (!definition || !actions || !bifurcation || !holdings) return null;
+      if (!definition || !actions || !entryPaths || !holdings) return null;
       return {
         bodyWidth: document.body.scrollWidth,
         documentWidth: document.documentElement.scrollWidth,
         viewportWidth: window.innerWidth,
         definitionBottom: definition.getBoundingClientRect().bottom,
         actionsBottom: actions.getBoundingClientRect().bottom,
-        actionsBeforeBifurcation: Boolean(actions.compareDocumentPosition(bifurcation) & Node.DOCUMENT_POSITION_FOLLOWING),
-        bifurcationBeforeHoldings: Boolean(bifurcation.compareDocumentPosition(holdings) & Node.DOCUMENT_POSITION_FOLLOWING),
+        actionsBeforeEntryPaths: Boolean(actions.compareDocumentPosition(entryPaths) & Node.DOCUMENT_POSITION_FOLLOWING),
+        entryPathsBeforeHoldings: Boolean(entryPaths.compareDocumentPosition(holdings) & Node.DOCUMENT_POSITION_FOLLOWING),
       };
     });
 
@@ -267,8 +267,8 @@ test.describe("stock-first company exposure flow", () => {
     expect(viewportLayout?.documentWidth).toBeLessThanOrEqual(viewportLayout?.viewportWidth ?? 0);
     expect(viewportLayout?.definitionBottom).toBeLessThanOrEqual(900);
     expect(viewportLayout?.actionsBottom).toBeLessThanOrEqual(900);
-    expect(viewportLayout?.actionsBeforeBifurcation).toBe(true);
-    expect(viewportLayout?.bifurcationBeforeHoldings).toBe(true);
+    expect(viewportLayout?.actionsBeforeEntryPaths).toBe(true);
+    expect(viewportLayout?.entryPathsBeforeHoldings).toBe(true);
 
     const customDialog = page.getByTestId("custom-project-dialog");
     await expect(customDialog).not.toBeVisible();
@@ -288,7 +288,7 @@ test.describe("stock-first company exposure flow", () => {
     await page.getByTestId("company-card-oracle").click();
     await expect(page.getByTestId("company-exposure-view")).toBeVisible();
     await page.getByTestId("button-analyze-stargate").click();
-    await expect(page).toHaveURL(/#brief$/);
+    await expect(page).toHaveURL(/#analysis$/);
     await page.getByTestId("button-reset-default").click();
     await page.getByTestId("button-confirm-reset-default").click();
     await page.goto("/#advisor");

@@ -8,3 +8,4 @@
 - [Project posture vs. fund materiality](project-posture-vs-fund-materiality.md) — project evidence completeness must not be presented as fund-level risk or materiality.
 - [AI research contract resilience](ai-research-contract-resilience.md) — keep 16 evidence IDs strict, but safely normalize empty narrative fields to Missing Evidence instead of failing the project.
 - [Bounded multi-pass research](bounded-multi-pass-research.md) — cap each retrieval call and never discard a valid first synthesis when an optional follow-up exceeds the request budget.
+- [Research confidence and query audit](research-confidence-query-audit.md) — self-ratings are not probabilities; search plans are not observed searches; directory hints must not restrict discovery.

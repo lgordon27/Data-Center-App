@@ -35,6 +35,7 @@ import {
   type ResearchCoverageStatus,
   type ResearchEvidenceSource,
   type CustomResearchResponse,
+  type CustomEvidenceRecord,
   type CapacityProvenance,
 } from "@/services/researchProjectService";
 import type { ClaimId, PublicAccessStatus } from "@/data/claimSources";
@@ -70,6 +71,7 @@ export type EvidenceItem = {
   numericValue?: number;
   qualitativeValue?: QualitativeEvidenceValue;
   sourceSupportConfidence?: number;
+  modelReportedConfidence?: number;
   classificationReason?: string;
   sourceRelevanceNote?: string;
   sourceRelevance?: "exact-project" | "related-context" | "unresolved";
@@ -87,6 +89,8 @@ export type EvidenceCorrection = {
   claim: string;
   sourceUrl: string;
   classification: Classification;
+  /** Only set by acceptance of a server-parsed research proposal, never by the reviewer form. */
+  researchProposal?: CustomEvidenceRecord;
 };
 
 export type EvidenceReviewKind = "manual" | "ai-accepted" | "ai-overridden";
@@ -106,6 +110,7 @@ export type ProjectContext = Omit<CustomResearchResponse["projectSummary"], "cap
   capacityProvenance?: CapacityProvenance;
   researchMode?: CustomResearchResponse["researchMode"];
   researchCache?: CustomResearchResponse["researchCache"];
+  researchCoverage?: CustomResearchResponse["researchCoverage"];
   kind: "curated" | "custom";
 };
 type DiligenceState = {
@@ -363,6 +368,8 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     const currentState = stateRef.current;
     const current = currentState.evidence[id];
     if (!current || !isClassification(correction.classification)) return false;
+    const proposal = correction.researchProposal;
+    if (proposal && (proposal.id !== id || proposal.sourceUrl !== correction.sourceUrl)) return false;
     let parsedUrl: URL;
     try {
       parsedUrl = new URL(correction.sourceUrl);
@@ -400,11 +407,28 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         sourceRole: "Reviewer-submitted source · AI-proposed, human-accepted",
         sources: [submittedSource, ...(current.sources ?? []).map((source) => ({ ...source, relationship: "corroborating" as const }))].slice(0, 4),
         coverageStatus: "partial" as const,
-        sourceSupportConfidence: current.sourceSupportConfidence ?? 0,
+        sourceSupportConfidence: 0,
+        // A changed claim has not received a research confidence assessment.
+        modelReportedConfidence: undefined,
         classificationReason: "Reviewer attached a public source and accepted this AI proposal; independent corroboration remains required.",
         sourceRelevanceNote: correction.claim.trim(),
         searchTerms: [],
         searchTermsSource: "unavailable" as const,
+        ...(proposal ? {
+          ...proposal,
+          numericValue: proposal.numericValue,
+          qualitativeValue: proposal.qualitativeValue,
+          modelReportedConfidence: proposal.modelReportedConfidence,
+          sourceSupportConfidence: proposal.sourceSupportConfidence,
+          sources: proposal.sources,
+          conflictSummary: proposal.conflictSummary,
+          sourceTitle: proposal.sourceTitle,
+          sourcePublisher: proposal.sourcePublisher,
+          sourcePublishedAt: proposal.sourcePublishedAt,
+          sourceAccessedAt: proposal.sourceAccessedAt,
+          sourceAccessStatus: proposal.sourceAccessStatus,
+          sourceRole: `AI-researched · human-accepted · ${proposal.sourceRole}`,
+        } : {}),
         review: { kind: "ai-accepted" as const, reviewedAt: new Date().toISOString() },
       },
     };
@@ -468,6 +492,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       capacityProvenance: research.projectSummary.capacityProvenance,
       researchMode: research.researchMode ?? "ai-researched",
       researchCache: research.researchCache,
+      researchCoverage: research.researchCoverage,
     });
     setOriginatingCompany(company);
     clearStorage(CURRENT_SESSION_STORAGE_KEY);

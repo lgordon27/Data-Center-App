@@ -31,6 +31,7 @@ export type CustomEvidenceRecord = Pick<
   numericValue?: number;
   qualitativeValue?: EvidenceItem["qualitativeValue"];
   sourceSupportConfidence?: number;
+  modelReportedConfidence?: number;
   classificationReason?: string;
   sourceRelevanceNote?: string;
   sourceRelevance?: "exact-project" | "related-context" | "unresolved";
@@ -75,6 +76,9 @@ export type CustomResearchResponse = {
     retrievedSourceCount: number;
     searchTerms: string[];
     searchTermsSource: "tool-observed" | "ai-reported" | "unavailable";
+    toolCallCount?: number;
+    toolCallLimit?: number;
+    toolCallBudgetExceeded?: boolean;
   };
   evidence: CustomEvidenceRecord[];
 };
@@ -250,9 +254,9 @@ function optionalConfidence(value: unknown): number | undefined {
     : undefined;
 }
 
-function parseSearchTerms(value: unknown): string[] {
+function parseSearchTerms(value: unknown, limit = 8): string[] {
   return Array.isArray(value)
-    ? [...new Set(value.filter(isNonEmptyString).map((term) => term.trim().replace(/\s+/g, " ").slice(0, 240)))].slice(0, 8)
+    ? [...new Set(value.filter(isNonEmptyString).map((term) => term.trim().replace(/\s+/g, " ").slice(0, 240)))].slice(0, limit)
     : [];
 }
 
@@ -352,6 +356,7 @@ function parseResponse(value: unknown): CustomResearchResponse {
       searchCoverage: Array.isArray(candidate.searchCoverage) ? candidate.searchCoverage.filter(isNonEmptyString).map((entry) => entry.trim()) : [],
       failedSearchDomains: Array.isArray(candidate.failedSearchDomains) ? candidate.failedSearchDomains.filter(isNonEmptyString).map((entry) => entry.trim()) : [],
       sourceSupportConfidence: optionalConfidence(candidate.sourceSupportConfidence),
+      modelReportedConfidence: optionalConfidence(candidate.modelReportedConfidence),
       classificationReason: isNonEmptyString(candidate.classificationReason)
         ? candidate.classificationReason.trim()
         : "The research response did not provide a concise classification reason.",
@@ -397,8 +402,12 @@ function parseResponse(value: unknown): CustomResearchResponse {
         retrievedSourceCount: typeof value.researchCoverage.retrievedSourceCount === "number" && Number.isFinite(value.researchCoverage.retrievedSourceCount)
           ? value.researchCoverage.retrievedSourceCount
           : 0,
-        searchTerms: parseSearchTerms(value.researchCoverage.searchTerms),
-        searchTermsSource: parseSearchTermsSource(value.researchCoverage.searchTermsSource, parseSearchTerms(value.researchCoverage.searchTerms)),
+        searchTerms: parseSearchTerms(value.researchCoverage.searchTerms, 32),
+        searchTermsSource: parseSearchTermsSource(value.researchCoverage.searchTermsSource, parseSearchTerms(value.researchCoverage.searchTerms, 32)),
+        ...(typeof value.researchCoverage.toolCallCount === "number" && Number.isInteger(value.researchCoverage.toolCallCount) && value.researchCoverage.toolCallCount >= 0
+          ? { toolCallCount: value.researchCoverage.toolCallCount } : {}),
+        ...(value.researchCoverage.toolCallLimit === 32 ? { toolCallLimit: 32 } : {}),
+        toolCallBudgetExceeded: value.researchCoverage.toolCallBudgetExceeded === true,
       },
     } : {}),
     evidence,

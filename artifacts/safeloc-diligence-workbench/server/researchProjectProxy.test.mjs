@@ -10,11 +10,15 @@ import {
   OPENAI_RESPONSES_URL,
   RESEARCH_EVIDENCE_IDS,
   RESEARCH_PROJECT_MAX_TOKENS,
+  RESEARCH_PROJECT_MAX_TOOL_CALLS,
   RESEARCH_PROJECT_MODEL,
   RESEARCH_PROJECT_TIMEOUT_MS,
   RESEARCH_PROJECT_RESPONSE_SCHEMA,
   RESEARCH_PROJECT_SYSTEM_PROMPT,
+  RESEARCH_QUERY_ANGLES,
   buildResearchProjectPrompt,
+  buildVariableQueries,
+  buildVariableQueryPlan,
   handleResearchProjectRequest,
   parseResearchResponse,
   createResearchProjectRateLimiter,
@@ -24,6 +28,9 @@ import {
   parseResearchProjectBody,
   normalizeRetrievedSources,
   extractSearchTerms,
+  extractObservedQueriesByEvidence,
+  countWebSearchCalls,
+  normalizeModelReportedConfidence,
   calculateSourceSupportConfidence,
 } from "./researchProjectProxy.mjs";
 import {
@@ -74,6 +81,7 @@ function validResearchResponse() {
       sourceUrls: index === 1 ? ["https://example.com/atlas/source"] : [],
       conflictSummary: null,
       coverageStatus: index === 1 ? "supported" : "searched-no-support",
+      modelReportedConfidence: index === 0 ? 74 : null,
       ...(index === 1 ? { sourceUrl: "https://example.com/atlas/source" } : {}),
       ...(index === 0 ? { numericValue: 42 } : {}),
       ...(id === "site_hazard_exposure" ? { qualitativeValue: "high" } : {}),
@@ -276,12 +284,44 @@ test("grounds the prompt in known data without treating it as SafeLoc evidence",
   const prompt = buildResearchProjectPrompt({
     name: "Atlas",
     location: "Texas",
-    knownData: { capacity: 840, operator: "Atlas Compute", status: "Planned" },
+    knownData: {
+      capacity: 840,
+      operator: "Atlas Compute",
+      status: "Planned",
+      sourceUrl: "https://directory.example/projects/atlas",
+    },
   }, [retrievedSource]);
   assert.match(prompt, /Compute Atlas public database/);
   assert.match(prompt, /not as SafeLoc evidence or verified project economics/);
   assert.doesNotMatch(prompt, /using only the retrieved sources/i);
   assert.match(prompt, /Management Assertion or lower/);
+  assert.match(prompt, /no more than 32 targeted queries overall/i);
+  assert.match(prompt, /no minimum finding quota/i);
+  assert.match(prompt, /Planned/);
+  assert.match(prompt, /https:\/\/directory\.example\/projects\/atlas/);
+  assert.doesNotMatch(prompt, /site:directory\.example/);
+});
+
+test("builds two bounded, metadata-grounded query angles for every modeled variable", () => {
+  const plan = buildVariableQueryPlan({
+    name: "Project Atlas",
+    location: "Taylor County, Texas",
+    knownData: {
+      operator: "Atlas Compute",
+      status: "Planned",
+      sourceUrl: "https://directory.example/projects/atlas",
+    },
+    focusIds: ["water_rights"],
+  });
+  assert.match(plan.split("\n")[0], /water_rights/);
+  for (const id of RESEARCH_EVIDENCE_IDS) {
+    assert.equal(RESEARCH_QUERY_ANGLES[id].length, 2);
+    assert.match(plan, new RegExp(`- ${id} \\(maximum 2 queries\\):`));
+  }
+  assert.match(plan, /"Project Atlas" "Taylor County, Texas" utility tariff/);
+  assert.match(plan, /"Atlas Compute" "Project Atlas" filed energy contract/);
+  assert.doesNotMatch(plan, /"Planned"|site:directory\.example/);
+  assert.equal(plan.split("\n").length, 16);
 });
 
 test("normalizes and caps sources returned by the single web-search response", () => {
@@ -321,6 +361,102 @@ test("extracts only tool-observed search queries and labels absent telemetry as 
     ],
   }), ["Project Atlas Taylor County permit", "Project Atlas utility filing", "Project Atlas water rights"]);
   assert.deepEqual(extractSearchTerms({ output: [{ type: "message" }] }), []);
+});
+
+test("retains up to the complete 32-query observed budget before attribution", () => {
+  const queries = Array.from({ length: 12 }, (_, index) => `Project Atlas query ${index + 1}`);
+  assert.deepEqual(extractSearchTerms({
+    output: queries.map((query) => ({ type: "web_search_call", action: { query } })),
+  }), queries);
+});
+
+test("counts web-search calls and exposes an explicit over-budget coverage flag", () => {
+  const providerBody = {
+    output: Array.from({ length: 33 }, (_, index) => ({
+      type: "web_search_call",
+      action: { query: `Project Atlas query ${index + 1}` },
+    })),
+  };
+  assert.equal(countWebSearchCalls(providerBody), 33);
+  assert.equal(extractSearchTerms(providerBody).length, 32);
+  const result = parseResearchResponse(validResearchResponse(), [], "2026-09-03", {
+    searchTerms: extractSearchTerms(providerBody),
+    toolCallCount: countWebSearchCalls(providerBody),
+    toolCallBudgetExceeded: true,
+  });
+  assert.equal(result.researchCoverage.toolCallCount, 33);
+  assert.equal(result.researchCoverage.toolCallLimit, 32);
+  assert.equal(result.researchCoverage.toolCallBudgetExceeded, true);
+});
+
+test("attributes only exact deterministic plan queries and keeps overlapping alternates global", () => {
+  const project = {
+    name: "Project Atlas",
+    location: "Taylor County, Texas",
+    knownData: { operator: "Atlas Compute", status: "Planned" },
+  };
+  const electricityQuery = buildVariableQueries(project, "electricity_cost")[0];
+  const waterRightsQuery = buildVariableQueries(project, "water_rights")[1];
+  const overlappingAlternate = "\"Project Atlas\" water permit demand rights consumption allocation";
+  const body = {
+    output: [
+      { type: "web_search_call", action: { query: electricityQuery } },
+      { type: "web_search_call", action: { query: waterRightsQuery } },
+      { type: "web_search_call", action: { query: overlappingAlternate } },
+    ],
+  };
+  assert.deepEqual(extractSearchTerms(body), [electricityQuery, waterRightsQuery, overlappingAlternate]);
+  assert.deepEqual(extractObservedQueriesByEvidence(body, project), {
+    electricity_cost: [electricityQuery],
+    water_rights: [waterRightsQuery],
+  });
+});
+
+test("keeps global observed queries separate from per-variable AI-reported queries", () => {
+  const body = validResearchResponse();
+  const project = { name: "Project Atlas", location: "Taylor County, Texas" };
+  const electricityQuery = buildVariableQueries(project, "electricity_cost")[0];
+  body.evidence[0].searchTerms = ["AI-reported electricity price query"];
+  body.evidence[1].searchTerms = ["AI-reported water use query"];
+  const result = parseResearchResponse(body, [], "2026-09-03", {
+    searchTerms: ["Project Atlas global identity query", electricityQuery],
+    observedQueriesByEvidence: {
+      electricity_cost: [electricityQuery],
+    },
+  });
+  assert.deepEqual(result.researchCoverage.searchTerms, [
+    "Project Atlas global identity query",
+    electricityQuery,
+  ]);
+  assert.deepEqual(result.researchCoverage.observedQueriesByEvidence, {
+    electricity_cost: [electricityQuery],
+  });
+  assert.deepEqual(result.evidence[0].searchTerms, [electricityQuery]);
+  assert.equal(result.evidence[0].searchTermsSource, "tool-observed");
+  assert.deepEqual(result.evidence[1].searchTerms, ["AI-reported water use query"]);
+  assert.equal(result.evidence[1].searchTermsSource, "ai-reported");
+});
+
+test("normalizes model-reported confidence without deriving it from source support", () => {
+  assert.equal(normalizeModelReportedConfidence(73.6), 74);
+  for (const invalid of [null, "88", Number.NaN, -1, 101]) {
+    assert.equal(normalizeModelReportedConfidence(invalid), null);
+  }
+  const body = validResearchResponse();
+  body.evidence[0].modelReportedConfidence = 88.4;
+  body.evidence[0].citation = "No claim-specific source was returned.";
+  body.evidence[0].sourceUrls = [];
+  delete body.evidence[0].sourceUrl;
+  body.evidence[1].modelReportedConfidence = null;
+  body.evidence[1].value = "Company-reported cooling arrangement";
+  const result = parseResearchResponse(body, [{
+    ...retrievedSource,
+    sourceClass: "primary-government",
+  }]);
+  assert.equal(result.evidence[0].modelReportedConfidence, 88);
+  assert.equal(result.evidence[0].sourceSupportConfidence, 0);
+  assert.equal("modelReportedConfidence" in result.evidence[1], false);
+  assert.equal(result.evidence[1].sourceSupportConfidence, 82);
 });
 
 test("computes bounded support confidence from exact-project source class and independence", () => {
@@ -364,13 +500,18 @@ test("maps only validated claim URLs and attaches auditable source metadata", ()
   const parsed = parseResearchResponse(research, [{
     ...retrievedSource,
     sourceClass: "primary-government",
-  }], "2026-09-03", { searchTerms: ["Project Atlas filing"] });
+  }], "2026-09-03", {
+    searchTerms: ["Project Atlas electricity tariff filing"],
+    observedQueriesByEvidence: {
+      electricity_cost: ["Project Atlas electricity tariff filing"],
+    },
+  });
   assert.deepEqual(parsed.evidence[0].sources.map((source) => source.url), [retrievedSource.url]);
   assert.equal(parsed.evidence[0].sourceSupportConfidence, 82);
   assert.equal(parsed.evidence[0].sourceRelevance, "exact-project");
   assert.match(parsed.evidence[0].classificationReason, /public filing/);
   assert.equal(parsed.evidence[0].searchTermsSource, "tool-observed");
-  assert.deepEqual(parsed.evidence[0].searchTerms, ["Project Atlas filing"]);
+  assert.deepEqual(parsed.evidence[0].searchTerms, ["Project Atlas electricity tariff filing"]);
 });
 
 test("rejects malformed custom research requests before calling OpenAI", async () => {
@@ -441,10 +582,16 @@ test("uses exactly one web-search-enabled API call with the strict 16-item schem
   const body = JSON.parse(requestInit.body);
   assert.equal(body.model, RESEARCH_PROJECT_MODEL);
   assert.equal(body.max_output_tokens, RESEARCH_PROJECT_MAX_TOKENS);
+  assert.equal(body.max_tool_calls, RESEARCH_PROJECT_MAX_TOOL_CALLS);
+  assert.equal(body.max_tool_calls, 32);
   assert.deepEqual(body.tools, [{ type: "web_search_preview" }]);
   assert.equal(body.text.format.type, "json_schema");
   assert.equal(body.text.format.strict, true);
   assert.deepEqual(body.text.format.schema, RESEARCH_PROJECT_RESPONSE_SCHEMA);
+  assert.deepEqual(body.text.format.schema.properties.evidence.properties.electricity_cost.properties.modelReportedConfidence, {
+    anyOf: [{ type: "number", minimum: 0, maximum: 100 }, { type: "null" }],
+  });
+  assert.ok(body.text.format.schema.properties.evidence.properties.electricity_cost.required.includes("modelReportedConfidence"));
   assert.equal(body.input.length, 2);
   assert.match(body.input[1].content, /Project Atlas/);
   assert.match(body.input[1].content, /Texas/);
@@ -457,6 +604,9 @@ test("uses exactly one web-search-enabled API call with the strict 16-item schem
     "semiconductor and memory supply-chain constraints",
     "speculative or phantom grid-load requests",
     "not additional modeled evidence inputs",
+    "gas-generation or fuel-supply source does not establish",
+    "water source does not establish water consumption or water rights",
+    "PPA or named offtaker does not establish a customer-concentration number",
   ]) {
     assert.match(RESEARCH_PROJECT_SYSTEM_PROMPT, new RegExp(phrase, "i"));
   }

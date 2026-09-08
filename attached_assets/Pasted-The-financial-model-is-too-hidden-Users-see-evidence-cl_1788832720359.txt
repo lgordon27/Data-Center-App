@@ -1,0 +1,94 @@
+The financial model is too hidden. Users see evidence classifications on Screen 2 and summary returns on Screen 3 but cannot see HOW one connects to the other. The tool's thesis is transparency, but the most important part of the tool is opaque. Make the financial chain visible across Screens 3, 4, and 5.
+
+SCREEN 3 (Financial Materiality) - COMPLETE OVERHAUL OF DEFAULT VIEW:
+
+Replace the current Summary tab default view. Instead of showing three metric cards and then a waterfall below the fold, show the full transparent chain:
+
+SECTION 1: THE HEADLINE (compact, above everything)
+Two large numbers side by side with an arrow:
+"Underwriting Baseline: 13.3% IRR → Conservative Stress: 9.1% IRR"
+"Evidence quality gap: 4.2 percentage points"
+
+SECTION 2: THE CHAIN (this is the core transparency feature)
+A visual flow showing exactly how evidence becomes money. For EACH evidence item that has a financial impact (Financial Drivers only, not Decision Gates or Context Indicators), show a row in a visible table:
+
+| Evidence Variable | Classification | What Changes | Dollar Impact | Annual Effect | IRR Effect |
+|---|---|---|---|---|---|
+| Electricity Cost | Verified | Power OPEX rate | $42/MWh (base) | $0 change | +0.0 pts |
+| Grid Interconnection | Verified | Revenue delay | 0 months added | $0 revenue loss | +0.0 pts |
+| Cooling CAPEX | User Assumption | Capital budget | +$15M contingency | Amortized over 5yr | -0.7 pts |
+| Water Source Resilience | Model Inference | Cooling conversion risk | +$8M contingency | Amortized over 5yr | -1.2 pts |
+| Downtime Cost | User Assumption | Climate disruption OPEX | $285K/day × 2.0x multiplier | $3.7M/year | -2.4 pts |
+
+For each row:
+- The Classification column shows the colored badge
+- The "What Changes" column names the specific cash flow line item affected
+- The "Dollar Impact" column shows the actual dollar amount the conservative stress applies
+- The "Annual Effect" shows how that flows into the annual cash flow
+- The "IRR Effect" shows the marginal impact on IRR (from the waterfall calculation)
+
+This table replaces the waterfall as the default view. The waterfall is a visualization of this table. The table is the transparency.
+
+Sort the table by IRR effect (largest impact first) so users immediately see which evidence items matter most.
+
+SECTION 3: THE FIVE-YEAR CASH FLOW (visible, not behind a tab)
+Show a compact annual summary directly below the chain table:
+
+| Year | Revenue | OPEX | CAPEX | Debt Service | Net Cash Flow | Cumulative |
+|---|---|---|---|---|---|---|
+| Year 1 | $XX.XM | $XX.XM | $XX.XM | $XX.XM | $XX.XM | $XX.XM |
+| Year 2 | ... | ... | ... | ... | ... | ... |
+| Year 3 | ... | ... | ... | ... | ... | ... |
+| Year 4 | ... | ... | ... | ... | ... | ... |
+| Year 5 + Exit | ... | ... | ... | ... | ... | ... |
+
+Show TWO rows per year: the baseline case (all verified) in one color, and the conservative stress case (current evidence) in another. The difference between the two rows is the cost of unverified evidence, visible year by year.
+
+SECTION 4: THE RETURN METRICS
+The IRR, MOIC, NPV, Cash-on-Cash, and Payback cards. These are the output of everything above. Show them AFTER the chain and cash flow, not before. The user should understand HOW the numbers were derived before seeing the numbers themselves.
+
+Keep the Summary/Drivers/Full Model tabs but rename them:
+- "Impact Chain" (default, shows the table above)
+- "Stress Waterfall" (the visual waterfall chart)
+- "Full Assumptions" (the detailed model inputs, debt terms, exit assumptions)
+
+SCREEN 4 (Decision Review) - ADD FINANCIAL CONTEXT TO GAPS:
+
+For each material evidence gap listed, show the financial consequence inline:
+
+Instead of just:
+"Annual Cooling Water - No public disclosure as of Aug 2026 [RESOLVE]"
+
+Show:
+"Annual Cooling Water - No public disclosure as of Aug 2026
+Financial effect: Missing evidence triggers $14.5M water conversion CAPEX contingency + 1.5x water OPEX escalation multiplier. Resolving this item could improve IRR by up to 2.1 points. [RESOLVE]"
+
+This tells the user not just WHAT is missing but HOW MUCH it costs to not know.
+
+SCREEN 5 (Advisor Lens) - ADD THE MARKET TRANSMISSION:
+
+After the exposure chain (Portfolio → Fund → NVIDIA → GPU Orders → CAPEX → Stargate), add a new section:
+
+"FROM PROJECT TO PORTFOLIO: THE FINANCIAL TRANSMISSION"
+
+Show a simplified version of the chain in reverse:
+
+"This project's conservative stress case shows a 4.2 point IRR gap caused by unverified evidence.
+
+At the project level: $XX million in contingency costs and $XX million in deferred revenue from conservative assumptions.
+
+At the hyperscaler level: if XX% of data center projects face similar evidence gaps, aggregate CAPEX deployment slows by an estimated $X billion, which reduces GPU procurement volume.
+
+At the stock level: NVIDIA's forward revenue estimates assume a data center build rate of approximately XX GW per year. The current ERCOT Batch Zero delay (200 GW, studies pushed to January 2027 minimum) suggests the actual build rate may be XX% lower than projected.
+
+At the portfolio level: NVIDIA at 20%+ of the iShares ESG Advanced MSCI USA ETF means this build rate uncertainty is concentrated in your clients' largest holding.
+
+This is not a prediction. It is a chain of dependencies that your fund manager should be able to trace and verify."
+
+Each step in this transmission should reference real numbers from the model and from public sources. Not generic statements. Specific dollar amounts and percentages that the user can follow from the project level to their portfolio.
+
+DESIGN PRINCIPLES:
+- Numbers should be prominent. Not buried in paragraphs. In tables, in large type, in clear columns.
+- The chain from evidence to dollars should be visually traceable without scrolling away from it.
+- Show the work. The tool's credibility comes from transparency, not from impressive-looking summary metrics.
+- Every number should be traceable: the user should be able to point at any financial output and follow it back to the specific evidence item and classification that produced it.

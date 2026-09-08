@@ -55,6 +55,7 @@ import type {
   Screen
 } from "@/components/Shell";
 import { ClaimCitation } from "@/components/ClaimCitation";
+import { ResearchSearchAudit } from "@/components/ResearchSearchAudit";
 import { formatClaimDate, getClaimSources, type ClaimSourceRecord } from "@/data/claimSources";
 import {
   checkResearchStatus,
@@ -265,7 +266,7 @@ function EvidenceRow({
   const { sourceStates, project, applyEvidenceCorrection } = useDiligence();
   const source = item.sourceId ? sourceStates[item.sourceId] : null;
   const providerSource = item.providerSourceId ? sourceStates[item.providerSourceId] : null;
-  const [open, setOpen] = useState(project.kind === "custom");
+  const [open, setOpen] = useState(false);
   const [correctionOpen, setCorrectionOpen] = useState(false);
   const [correctionUrl, setCorrectionUrl] = useState("");
   const [correctionClaim, setCorrectionClaim] = useState("");
@@ -276,6 +277,11 @@ function EvidenceRow({
   useEffect(() => {
     if (assessment || notice || sourceProposal) setOpen(true);
   }, [assessment, notice, sourceProposal]);
+  const validatedSourceCount = item.sourceRole.startsWith("Reviewer-submitted") ? 0 : new Set([
+    ...(item.sourceUrl && !item.sources?.some((candidate) => candidate.url === item.sourceUrl && candidate.sourceClass === "reviewer-submitted") ? [item.sourceUrl] : []),
+    ...(item.sources ?? []).filter((candidate) => candidate.sourceClass !== "reviewer-submitted").map((candidate) => candidate.url),
+  ]).size;
+  const modelReportedConfidence = item.modelReportedConfidence;
   const proposeCorrection = async () => {
     setCorrectionError("");
     let parsedUrl: URL;
@@ -321,17 +327,66 @@ function EvidenceRow({
     setCorrectionOpen(false);
   };
   return (
-    <details id={`evidence-item-${item.id}`} open={open} onToggle={(event) => setOpen(event.currentTarget.open)} tabIndex={-1} data-testid={`row-evidence-${item.id}`} className="group border-b border-[#e4e9e8] last:border-0 focus-within:bg-[#fbfcfa]">
-      <summary className="grid cursor-pointer list-none gap-3 px-4 py-3 transition-colors hover:bg-[#fbfcfa] md:grid-cols-[1.55fr_0.8fr_1.55fr] md:items-center md:px-5 [&::-webkit-details-marker]:hidden">
-         <span className="flex min-w-0 items-center gap-2"><span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: meta.color }} /><span className="min-w-0"><span className="block truncate text-[12px] font-semibold text-[#243844]">{item.label}</span>{project.kind === "custom" && <span data-testid={`badge-ai-researched-${item.id}`} className="mt-1 inline-flex rounded-full bg-[#e9e0f7] px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#7049b7]">AI-researched</span>}</span></span>
-         <span className="min-w-0"><span className="flex flex-wrap items-center gap-2"><span className="font-mono text-[12px] font-bold text-[#122232]">{item.value}</span> <span className="text-[10px] text-[#52616b]">{item.unit}</span>{source ? <SourceStatusBadge source={source} compact testId={`evidence-source-status-${item.id}`} /> : <span data-testid={`evidence-origin-${item.id}`} className="rounded-full bg-[#e7ecef] px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.09em] text-[#52616b]">Embedded</span>}</span></span>
-           <span className="flex flex-wrap items-center justify-between gap-2"><span className="flex min-w-0 flex-1 flex-wrap items-start gap-2"><ImpactRoleBadge role={item.impactRole} compact testId={`badge-impact-role-${item.id}`} /><span className="flex min-w-[150px] flex-1 flex-col items-stretch"><span className="relative min-w-0 flex-1 md:max-w-[220px]"><select data-testid={`select-classification-${item.id}`} aria-label={`Provenance classification for ${item.label}`} value={item.classification} onChange={(event) => onChange(item.id, event.target.value as Classification)} onClick={(event) => event.stopPropagation()} className="w-full appearance-none rounded-md border bg-white py-2 pl-3 pr-8 text-[10px] font-semibold text-[#243844] outline-none focus:ring-2 focus:ring-[#b9d43a]/50" style={{ borderColor: meta.border }}>{classifications.map((classification) => <option key={classification} value={classification}>{classification}</option>)}</select><ChevronDown aria-hidden="true" className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-[#52616b]" /></span>{item.review && <p data-testid={`review-marker-${item.id}`} aria-label={`${reviewLabel(item.review.kind)} · ${formatReviewTime(item.review.reviewedAt)}`} className="mt-1 text-[9px] leading-4 text-[#7d898f]">{reviewLabel(item.review.kind)} · <time dateTime={item.review.reviewedAt}>{formatReviewTime(item.review.reviewedAt)}</time></p>}</span><button data-testid={`button-analyze-ai-${item.id}`} type="button" aria-label={`Analyze ${item.label} with AI`} aria-busy={analysisBusy} disabled={analysisDisabled} onClick={(event) => { event.preventDefault(); event.stopPropagation(); setOpen(true); onAnalyze(item); }} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[#cbd8d4] bg-white px-2 py-2 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#52616b] hover:border-[#7d898f] hover:text-[#243844] disabled:cursor-wait disabled:opacity-60"><Sparkles aria-hidden="true" className="h-3 w-3 text-[#607500]" />{analysisBusy ? "Analyzing…" : "Analyze with AI"}</button></span><ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-[#52616b] transition-transform group-open:rotate-180 md:hidden" /></span>
-       </summary>
-       {project.kind === "custom" && (
-         <div data-testid={`support-confidence-${item.id}`} aria-label={`Source-support confidence for ${item.label}: ${typeof item.sourceSupportConfidence === "number" ? `${item.sourceSupportConfidence}%` : "not measured"}`} className="border-t border-[#d9e0e4] bg-[#f7faf8] px-4 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.08em] text-[#52616b] md:px-5">
-           Source-support confidence: {typeof item.sourceSupportConfidence === "number" ? `${item.sourceSupportConfidence}%` : "not measured"}
-         </div>
-       )}
+    <div className={project.kind === "custom" ? "grid border-b border-[#e4e9e8] last:border-0" : ""}>
+      <details
+        id={`evidence-item-${item.id}`}
+        open={open}
+        onToggle={(event) => setOpen(event.currentTarget.open)}
+        onFocus={(event) => {
+          if (event.target === event.currentTarget) setOpen(true);
+        }}
+        tabIndex={-1}
+        data-testid={`row-evidence-${item.id}`}
+        className={project.kind === "custom" ? "group col-span-full focus-within:bg-[#fbfcfa]" : "group border-b border-[#e4e9e8] last:border-0 focus-within:bg-[#fbfcfa]"}
+      >
+      {project.kind === "custom" ? (
+        <summary
+          data-testid={`summary-evidence-${item.id}`}
+          className="grid cursor-pointer list-none gap-3 px-4 py-3 transition-colors hover:bg-[#fbfcfa] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#b9d43a] md:grid-cols-[1.25fr_0.9fr_1.65fr_auto] md:items-center md:px-5 [&::-webkit-details-marker]:hidden"
+        >
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: meta.color }} />
+            <span className="min-w-0">
+              <span className="block truncate text-[12px] font-semibold text-[#243844]">{item.label}</span>
+              <span data-testid={`badge-ai-researched-${item.id}`} className="mt-1 inline-flex rounded-full bg-[#e9e0f7] px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#7049b7]">AI-researched</span>
+            </span>
+          </span>
+          <span className="min-w-0">
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="font-mono text-[12px] font-bold text-[#122232]">{item.value}</span>
+              <span className="text-[10px] text-[#52616b]">{item.unit}</span>
+            </span>
+            <span className="mt-1 block"><ClassificationBadge value={item.classification} compact /></span>
+          </span>
+          <span className="flex min-w-0 flex-wrap gap-1.5">
+            <span
+              data-testid={`model-confidence-${item.id}`}
+              aria-label={`AI confidence for ${item.label}: ${typeof modelReportedConfidence === "number" ? `${modelReportedConfidence}%` : "not reported"}; self-reported, not a verified probability`}
+              className="rounded-full bg-[#f0ebf8] px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.06em] text-[#7049b7]"
+            >
+              AI confidence: {typeof modelReportedConfidence === "number" ? `${modelReportedConfidence}%` : "not reported"} · self-reported, not verified probability
+            </span>
+            <span
+              data-testid={`support-confidence-${item.id}`}
+              aria-label={`Validated source support for ${item.label}: ${typeof item.sourceSupportConfidence === "number" ? `${item.sourceSupportConfidence}%` : "not measured"}`}
+              className="rounded-full bg-[#e7f2ee] px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.06em] text-[#386a5c]"
+            >
+              Validated source support: {typeof item.sourceSupportConfidence === "number" ? `${item.sourceSupportConfidence}%` : "not measured"}
+            </span>
+            <span data-testid={`evidence-source-status-${item.id}`} className={`rounded-full px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.06em] ${validatedSourceCount ? "bg-[#e0f4ed] text-[#08644f]" : "bg-[#fff0d5] text-[#8a5200]"}`}>
+              <span data-testid={`custom-source-status-${item.id}`}>{validatedSourceCount ? `${validatedSourceCount} validated source${validatedSourceCount === 1 ? "" : "s"}` : "No validated source"}</span>
+            </span>
+          </span>
+          <ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-[#52616b] transition-transform group-open:rotate-180" />
+        </summary>
+      ) : (
+        <summary className="grid cursor-pointer list-none gap-3 px-4 py-3 transition-colors hover:bg-[#fbfcfa] md:grid-cols-[1.55fr_0.8fr_1.55fr] md:items-center md:px-5 [&::-webkit-details-marker]:hidden">
+          <span className="flex min-w-0 items-center gap-2"><span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: meta.color }} /><span className="min-w-0"><span className="block truncate text-[12px] font-semibold text-[#243844]">{item.label}</span></span></span>
+          <span className="min-w-0"><span className="flex flex-wrap items-center gap-2"><span className="font-mono text-[12px] font-bold text-[#122232]">{item.value}</span> <span className="text-[10px] text-[#52616b]">{item.unit}</span>{source ? <SourceStatusBadge source={source} compact testId={`evidence-source-status-${item.id}`} /> : <span data-testid={`evidence-origin-${item.id}`} className="rounded-full bg-[#e7ecef] px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.09em] text-[#52616b]">Embedded</span>}</span></span>
+          <span className="flex flex-wrap items-center justify-between gap-2"><span className="flex min-w-0 flex-1 flex-wrap items-start gap-2"><ImpactRoleBadge role={item.impactRole} compact testId={`badge-impact-role-${item.id}`} /><span className="flex min-w-[150px] flex-1 flex-col items-stretch"><span className="relative min-w-0 flex-1 md:max-w-[220px]"><select data-testid={`select-classification-${item.id}`} aria-label={`Provenance classification for ${item.label}`} value={item.classification} onChange={(event) => onChange(item.id, event.target.value as Classification)} onClick={(event) => event.stopPropagation()} className="w-full appearance-none rounded-md border bg-white py-2 pl-3 pr-8 text-[10px] font-semibold text-[#243844] outline-none focus:ring-2 focus:ring-[#b9d43a]/50" style={{ borderColor: meta.border }}>{classifications.map((classification) => <option key={classification} value={classification}>{classification}</option>)}</select><ChevronDown aria-hidden="true" className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-[#52616b]" /></span>{item.review && <p data-testid={`review-marker-${item.id}`} aria-label={`${reviewLabel(item.review.kind)} · ${formatReviewTime(item.review.reviewedAt)}`} className="mt-1 text-[9px] leading-4 text-[#7d898f]">{reviewLabel(item.review.kind)} · <time dateTime={item.review.reviewedAt}>{formatReviewTime(item.review.reviewedAt)}</time></p>}</span><button data-testid={`button-analyze-ai-${item.id}`} type="button" aria-label={`Analyze ${item.label} with AI`} aria-busy={analysisBusy} disabled={analysisDisabled} onClick={(event) => { event.preventDefault(); event.stopPropagation(); setOpen(true); onAnalyze(item); }} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[#cbd8d4] bg-white px-2 py-2 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#52616b] hover:border-[#7d898f] hover:text-[#243844] disabled:cursor-wait disabled:opacity-60"><Sparkles aria-hidden="true" className="h-3 w-3 text-[#607500]" />{analysisBusy ? "Analyzing…" : "Analyze with AI"}</button></span><ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-[#52616b] transition-transform group-open:rotate-180 md:hidden" /></span>
+        </summary>
+      )}
+      <div className={project.kind === "custom" ? "col-span-full" : "contents"}>
        {analysisBusy && <div data-testid={`status-ai-analysis-${item.id}`} role="status" aria-live="polite" className="border-t border-[#d9e0e4] bg-[#f7faf8] px-4 py-2 text-[10px] text-[#60707d] md:px-5"><LoaderCircle aria-hidden="true" className="mr-1.5 inline h-3 w-3 animate-spin" />Analyzing source quality…</div>}
       <div className="grid gap-3 bg-[#fbfcfa] px-4 pb-4 pt-1 md:grid-cols-[1.55fr_0.8fr_1.55fr] md:px-5">
         <p className="text-[10px] leading-4 text-[#52616b] md:col-span-2">{item.description}</p>
@@ -392,6 +447,14 @@ function EvidenceRow({
                        <span className="font-mono text-[8px] font-bold uppercase tracking-[0.1em] text-[#255bb7]">New source found · review required</span>
                        <span className="mt-2 block text-[10px] font-semibold text-[#243844]">{sourceProposal.value} · {sourceProposal.unit}</span>
                        <span className="mt-1 block text-[9px] leading-4 text-[#52616b]">{sourceProposal.description}</span>
+                        <span className="mt-2 flex flex-wrap gap-1.5">
+                          <span data-testid={`proposal-model-confidence-${item.id}`} className="rounded-full bg-[#f0ebf8] px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.06em] text-[#7049b7]">
+                            AI confidence: {typeof sourceProposal.modelReportedConfidence === "number" ? `${sourceProposal.modelReportedConfidence}%` : "not reported"} · self-reported, not verified probability
+                          </span>
+                          <span data-testid={`proposal-support-confidence-${item.id}`} className="rounded-full bg-[#e7f2ee] px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.06em] text-[#386a5c]">
+                            Validated source support: {typeof sourceProposal.sourceSupportConfidence === "number" ? `${sourceProposal.sourceSupportConfidence}%` : "not measured"}
+                          </span>
+                        </span>
                        <a href={sourceProposal.sourceUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 text-[9px] font-semibold text-[#255bb7] underline underline-offset-2">
                          Open {sourceProposal.sourceTitle ?? "retrieved source"}<ExternalLink aria-hidden="true" className="h-3 w-3" />
                        </a>
@@ -443,8 +506,21 @@ function EvidenceRow({
            </span>
          </div>
       </div>
-       <EvidenceAssessment item={item} assessment={assessment} notice={notice} onAccept={onAccept} onOverride={onOverride} />
-    </details>
+        <EvidenceAssessment item={item} assessment={assessment} notice={notice} onAccept={onAccept} onOverride={onOverride} />
+      </div>
+      </details>
+      {project.kind === "custom" && (
+        <div className="col-span-full row-start-2 flex flex-wrap items-start gap-2 border-t border-[#d9e0e4] bg-[#f7faf8] px-4 py-3 md:px-5">
+          <ImpactRoleBadge role={item.impactRole} compact testId={`badge-impact-role-${item.id}`} />
+          <span className="relative min-w-[190px] flex-1 md:max-w-[260px]">
+            <select data-testid={`select-classification-${item.id}`} aria-label={`Provenance classification for ${item.label}`} value={item.classification} onChange={(event) => onChange(item.id, event.target.value as Classification)} className="w-full appearance-none rounded-md border bg-white py-2 pl-3 pr-8 text-[10px] font-semibold text-[#243844] outline-none focus:ring-2 focus:ring-[#b9d43a]/50" style={{ borderColor: meta.border }}>{classifications.map((classification) => <option key={classification} value={classification}>{classification}</option>)}</select>
+            <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-[#52616b]" />
+            {item.review && <span data-testid={`review-marker-${item.id}`} aria-label={`${reviewLabel(item.review.kind)} · ${formatReviewTime(item.review.reviewedAt)}`} className="mt-1 block text-[9px] leading-4 text-[#7d898f]">{reviewLabel(item.review.kind)} · <time dateTime={item.review.reviewedAt}>{formatReviewTime(item.review.reviewedAt)}</time></span>}
+          </span>
+          <button data-testid={`button-analyze-ai-${item.id}`} type="button" aria-label={`Analyze ${item.label} with AI`} aria-busy={analysisBusy} disabled={analysisDisabled} onClick={() => { setOpen(true); onAnalyze(item); }} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[#cbd8d4] bg-white px-2 py-2 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#52616b] hover:border-[#7d898f] hover:text-[#243844] disabled:cursor-wait disabled:opacity-60"><Sparkles aria-hidden="true" className="h-3 w-3 text-[#607500]" />{analysisBusy ? "Analyzing…" : "Analyze with AI"}</button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -597,6 +673,7 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
   const [sourceResearchError, setSourceResearchError] = useState<string | null>(null);
   const [sourceProposals, setSourceProposals] = useState<Record<string, CustomEvidenceRecord>>({});
   const [sourceCacheNotice, setSourceCacheNotice] = useState<string | null>(null);
+  const [searchCoverage, setSearchCoverage] = useState(project.researchCoverage);
   const [decisionHistory, setDecisionHistory] = useState<DecisionHistoryEntry[]>(getDecisionHistory);
   const isSourceResearchBusy = sourceResearchProgress !== null;
   const isAnalysisBusy = activeAnalysisId !== null || batchProgress !== null || isSourceResearchBusy;
@@ -617,6 +694,7 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
         const status = await checkResearchStatus(project.researchCache!.key);
         if (!active) return;
         if (status.researchCache.refreshStatus === "completed" && status.result) {
+          setSearchCoverage(status.result.researchCoverage);
           const proposals = Object.fromEntries(
             status.result.evidence.filter((item) => Boolean(item.sourceUrl)).map((item) => [item.id, item]),
           );
@@ -712,6 +790,7 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
         forceRefresh,
         onProgress: setSourceResearchProgress,
       });
+      setSearchCoverage(result.researchCoverage);
       const proposals = Object.fromEntries(
         result.evidence
           .filter((item) => focusIds.includes(item.id) && Boolean(item.sourceUrl))
@@ -739,6 +818,7 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
       claim: `${proposal.description} ${proposal.citation}`.trim(),
       sourceUrl: proposal.sourceUrl,
       classification: proposal.classification,
+      researchProposal: proposal,
     });
     if (!accepted) {
       setSourceResearchError(`The proposed source for ${proposal.label} could not be applied.`);
@@ -822,6 +902,7 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
           </div>
         }
       />
+      {customProject && <ResearchSearchAudit coverage={searchCoverage} />}
       {customProject && sourceResearchError && (
         <aside data-testid="source-research-status" role="status" className="mb-5 rounded-lg border border-[#f1cb8b] bg-[#fff8e9] px-4 py-3 text-[10px] text-[#6f460e]">
           {sourceResearchError}

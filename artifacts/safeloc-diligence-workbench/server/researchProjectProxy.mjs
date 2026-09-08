@@ -4,6 +4,7 @@ const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const RESEARCH_PROJECT_MODEL = "gpt-4o";
 const RESEARCH_PROJECT_MAX_TOKENS = 4_000;
 const RESEARCH_PROJECT_TIMEOUT_MS = 90_000;
+const RESEARCH_PROJECT_MAX_TOOL_CALLS = 32;
 const DEFAULT_RESEARCH_CAPACITY_MW = 1_200;
 const MAX_RESEARCH_CAPACITY_MW = 10_000;
 const RESEARCH_PROJECT_REQUEST_LIMIT = 10;
@@ -54,6 +55,7 @@ const RESEARCH_EVIDENCE_RECORD_SCHEMA = {
     conflictSummary: { anyOf: [{ type: "string" }, { type: "null" }] },
     coverageStatus: { type: "string", enum: ["supported", "searched-no-support", "partial", "conflicting"] },
     numericValue: { anyOf: [{ type: "number" }, { type: "null" }] },
+    modelReportedConfidence: { anyOf: [{ type: "number", minimum: 0, maximum: 100 }, { type: "null" }] },
     sourceSupportConfidence: { type: "number", minimum: 0, maximum: 100 },
     classificationReason: { type: "string", minLength: 1 },
     sourceRelevanceNote: { type: "string", minLength: 1 },
@@ -79,6 +81,7 @@ const RESEARCH_EVIDENCE_RECORD_SCHEMA = {
     "conflictSummary",
     "coverageStatus",
     "numericValue",
+    "modelReportedConfidence",
     "sourceSupportConfidence",
     "classificationReason",
     "sourceRelevanceNote",
@@ -122,7 +125,7 @@ SafeLoc models exactly 16 evidence variables: electricity_cost, water_consumptio
 
 The projectSummary.description must explicitly report relevant findings, when available, about electrical-equipment procurement and lead times, jurisdictional bans or moratoriums, noise ordinances and operational impacts, local electricity-rate concerns, and semiconductor and memory supply-chain constraints. It must also identify speculative or phantom grid-load requests when that context is relevant. These are contextual research areas, not additional modeled evidence inputs: do not add them to the evidence array, assign them evidence classifications, or imply that market-wide statistics prove facility-level facts.
 
-Respond with one JSON object matching the supplied schema. projectSummary must contain name, location, description, and capacityMW. Every evidence record must contain label, value, unit, classification, citation, sourceRole, sourceUrl, sourceUrls, conflictSummary, coverageStatus, numericValue, sourceSupportConfidence, classificationReason, sourceRelevance, sourceRelevanceNote, searchTerms, and qualitativeValue. sourceSupportConfidence is an estimate for context only; the server ignores it and computes deterministic support confidence from validated sources. sourceUrl is the strongest direct source, and sourceUrls contains up to four direct supporting, corroborating, or conflicting packet URLs. Use null for sourceUrl, conflictSummary, numericValue, or qualitativeValue and [] for sourceUrls or searchTerms when unavailable. Identify conflicting sources explicitly rather than silently choosing one. When a cited source in the retrieved packet directly supports the finding, return that source's exact URL; never invent or return a URL that is not in the packet. The server will attach validated source metadata. A source URL is a research aid only and never facility-level proof by itself. Use sourceRelevance exact-project only when the source names or otherwise identifies this facility; use related-context for regional or industry context, and unresolved when no source is mapped. sourceRelevanceNote must explain why each matched source is relevant to this claim. classificationReason must concisely explain the provenance classification. Include searchTerms only when actually used or remembered; the server labels them as tool-observed when telemetry exists or AI-reported otherwise. Do not infer numeric zero or categorical none from silence: zero/none is valid only when an exact-project source explicitly establishes it under the variable definition. For grid_interconnection, numericValue is months of delay; for renewable_percentage it is the facility's delivered or contractually procured renewable share. qualitativeValue may only be low, moderate, high, single-source, or diversified. Use concise plain language. Do not include markdown or commentary.`;
+Respond with one JSON object matching the supplied schema. projectSummary must contain name, location, description, and capacityMW. Every evidence record must contain label, value, unit, classification, citation, sourceRole, sourceUrl, sourceUrls, conflictSummary, coverageStatus, numericValue, modelReportedConfidence, sourceSupportConfidence, classificationReason, sourceRelevance, sourceRelevanceNote, searchTerms, and qualitativeValue. modelReportedConfidence is your optional per-variable confidence from 0 to 100; return null when unavailable. It is not source validation and must never be copied from or substituted for sourceSupportConfidence. sourceSupportConfidence is only a schema placeholder; the server ignores it and computes deterministic support confidence from validated sources. sourceUrl is the strongest direct source, and sourceUrls contains up to four direct supporting, corroborating, or conflicting packet URLs. Use null for sourceUrl, conflictSummary, numericValue, modelReportedConfidence, or qualitativeValue and [] for sourceUrls or searchTerms when unavailable. Identify conflicting sources explicitly rather than silently choosing one. When a cited source in the retrieved packet directly supports the finding, return that source's exact URL; never invent or return a URL that is not in the packet. The server will attach validated source metadata. A source URL is a research aid only and never facility-level proof by itself. Use sourceRelevance exact-project only when the source names or otherwise identifies this facility; use related-context for regional or industry context, and unresolved when no source is mapped. sourceRelevanceNote must explain why each matched source is relevant to this claim. classificationReason must concisely explain the provenance classification. Include only queries actually used for this specific variable in its searchTerms; never copy global or other-variable queries to every item. The server separately records global tool-observed telemetry. Do not infer numeric zero or categorical none from silence: zero/none is valid only when an exact-project source explicitly establishes it under the variable definition. For grid_interconnection, numericValue is months of delay; for renewable_percentage it is the facility's delivered or contractually procured renewable share. A gas-generation or fuel-supply source does not establish the facility's electricity price. A source naming a water source does not establish water consumption or water rights. A PPA or named offtaker does not establish a customer-concentration number unless the source explicitly quantifies the relevant facility-level share. qualitativeValue may only be low, moderate, high, single-source, or diversified. Use concise plain language. Do not include markdown or commentary.`;
 
 function sendJson(res, status, body) {
   res.statusCode = status;
@@ -147,7 +150,7 @@ function withCacheMetadata(entry, metadata) {
 }
 
 const WEB_SEARCH_SOURCE_BOUNDARY_PROMPT = `
-Use the built-in web-search tool during this response. Never invent a source, URL, date, excerpt, or facility-level fact. Put the exact public URLs returned by web search into sourceUrl and sourceUrls. Verified Evidence requires an exact-project government, regulator, utility, filed-company, or independent-reporting source returned by this web search; a company announcement is normally Management Assertion. If no searched source independently confirms a claim, do not classify it as Verified Evidence. You may use well-established model knowledge only at a Management Assertion ceiling and must say it requires independent verification. If projectSummary states an exact-project fact such as a named customer or offtaker, behind-the-meter power, disclosed capacity, or a stated water source, map the same fact into the relevant evidence variable at the appropriate classification rather than calling that variable Missing Evidence. Do not classify contextual market or industry reporting as facility-level Verified Evidence. Do not use sourceSupportConfidence to promote a finding: the server recomputes it from validated sources, independence, and conflicts.`;
+Use the built-in web-search tool during this response. Perform all searches and synthesis inside this one response; do not request a follow-up provider call. Never invent a source, URL, date, excerpt, or facility-level fact. Put the exact public URLs returned by web search into sourceUrl and sourceUrls. Verified Evidence requires an exact-project government, regulator, utility, filed-company, or independent-reporting source returned by this web search; a company announcement is normally Management Assertion. If no searched source independently confirms a claim, do not classify it as Verified Evidence. You may use well-established model knowledge only at a Management Assertion ceiling and must say it requires independent verification. If projectSummary states an exact-project fact such as a named customer or offtaker, behind-the-meter power, disclosed capacity, or a stated water source, map the same fact into the relevant evidence variable at the appropriate classification rather than calling that variable Missing Evidence. Do not classify contextual market or industry reporting as facility-level Verified Evidence. There is no finding quota: after bounded searches, leave a variable explicitly unresolved rather than inventing a result. Do not use modelReportedConfidence or sourceSupportConfidence to promote a finding: the server recomputes sourceSupportConfidence from validated sources, independence, and conflicts.`;
 
 function isRecord(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -257,12 +260,49 @@ function normalizeCapacityMW(value) {
   return normalizeReportedCapacityMW(value) ?? DEFAULT_RESEARCH_CAPACITY_MW;
 }
 
-function normalizeSearchTerms(value) {
+function normalizeSearchTerms(value, maxItems = 8) {
   if (!Array.isArray(value)) return [];
   return [...new Set(value
     .filter((term) => typeof term === "string" && term.trim())
     .map((term) => term.trim().replace(/\s+/g, " ").slice(0, 240)))]
-    .slice(0, 8);
+    .slice(0, maxItems);
+}
+
+const RESEARCH_QUERY_ANGLES = {
+  electricity_cost: ["utility tariff electricity rate power price $/MWh", "filed energy contract electricity cost"],
+  water_consumption: ["water demand consumption gallons usage", "water utility demand projection withdrawal volume"],
+  grid_interconnection: ["grid interconnection queue transmission study", "behind-the-meter power grid connection delay"],
+  water_escalation: ["water tariff rate increase escalation", "water utility rate case forecast"],
+  community_risk: ["public hearing opposition complaints community", "noise ordinance moratorium local meeting"],
+  renewable_percentage: ["renewable electricity percentage procurement", "PPA renewable share energy mix"],
+  cooling_capex: ["cooling system capital cost capex", "cooling equipment procurement construction budget"],
+  electricity_escalation: ["electricity tariff escalation rate case", "power price forecast utility increase"],
+  carbon_compliance: ["emissions air permit carbon compliance", "generator emissions regulation environmental filing"],
+  permitting_timeline: ["permit application approval construction timeline", "planning zoning land-use hearing schedule"],
+  customer_concentration: ["customer concentration revenue load share percentage", "tenant offtaker capacity allocation percentage"],
+  water_rights: ["water right permit entitlement allocation", "groundwater withdrawal authorization district permit"],
+  site_hazard_exposure: ["flood wildfire seismic hazard exact site", "FEMA environmental hazard parcel"],
+  backup_power_capacity: ["backup generator capacity MW permit", "emergency generation redundancy capacity"],
+  water_source_resilience: ["water source redundancy drought resilience", "alternate supply recycled groundwater source"],
+  downtime_cost: ["downtime cost outage loss facility", "SLA outage penalty business interruption"],
+};
+
+function extractObservedQueriesByEvidence(body, project) {
+  if (!project) return {};
+  const observedQueries = extractSearchTerms(body);
+  const normalizedObserved = new Map(observedQueries.map((query) => [query.toLowerCase(), query]));
+  return Object.fromEntries(RESEARCH_EVIDENCE_IDS.flatMap((id) => {
+    const matched = buildVariableQueries(project, id)
+      .map((query) => normalizedObserved.get(query.toLowerCase()))
+      .filter(Boolean);
+    return matched.length ? [[id, normalizeSearchTerms(matched)]] : [];
+  }));
+}
+
+function normalizeModelReportedConfidence(value) {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100
+    ? Math.round(value)
+    : null;
 }
 
 function extractSearchTerms(body) {
@@ -279,7 +319,13 @@ function extractSearchTerms(body) {
       else if (isRecord(candidate) && typeof candidate.query === "string") terms.push(candidate.query);
     }
   }
-  return normalizeSearchTerms(terms);
+  return normalizeSearchTerms(terms, RESEARCH_PROJECT_MAX_TOOL_CALLS);
+}
+
+function countWebSearchCalls(body) {
+  return (Array.isArray(body?.output) ? body.output : [])
+    .filter((output) => output?.type === "web_search_call")
+    .length;
 }
 
 function sourceIdentityTokens(value) {
@@ -376,7 +422,7 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
       .map((source) => [safePublicSourceUrl(source.url), source])
       .filter(([url]) => Boolean(url)),
   );
-  const observedSearchTerms = normalizeSearchTerms(coverage?.searchTerms);
+  const observedSearchTerms = normalizeSearchTerms(coverage?.searchTerms, RESEARCH_PROJECT_MAX_TOOL_CALLS);
   const seenIds = new Set();
   const evidence = evidenceCandidates.map((item, index) => {
     if (!isRecord(item)) throw new Error(`Research evidence record ${index + 1} is invalid.`);
@@ -466,8 +512,10 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
       failedSearchDomains: Array.isArray(coverage?.failedByEvidence?.[id])
         ? coverage.failedByEvidence[id]
         : Array.isArray(coverage?.failedDomains) ? coverage.failedDomains : [],
-      searchTerms: observedSearchTerms.length ? observedSearchTerms : normalizeSearchTerms(item.searchTerms),
-      searchTermsSource: observedSearchTerms.length
+      searchTerms: normalizeSearchTerms(coverage?.observedQueriesByEvidence?.[id]).length
+        ? normalizeSearchTerms(coverage.observedQueriesByEvidence[id])
+        : normalizeSearchTerms(item.searchTerms),
+      searchTermsSource: normalizeSearchTerms(coverage?.observedQueriesByEvidence?.[id]).length
         ? "tool-observed"
         : normalizeSearchTerms(item.searchTerms).length ? "ai-reported" : "unavailable",
       sourceRelevanceNote: stringOrFallback(
@@ -478,6 +526,8 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
         500,
       ),
     };
+    const modelReportedConfidence = normalizeModelReportedConfidence(item.modelReportedConfidence);
+    if (modelReportedConfidence !== null) record.modelReportedConfidence = modelReportedConfidence;
     if (sourceUrl) {
       const metadata = supportingSources[0];
       record.sourceUrl = sourceUrl;
@@ -540,6 +590,13 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
       retrievedSourceCount: retrievedSources.length,
       searchTerms: observedSearchTerms,
       searchTermsSource: observedSearchTerms.length ? "tool-observed" : "unavailable",
+      toolCallCount: Number.isInteger(coverage?.toolCallCount) ? coverage.toolCallCount : 0,
+      toolCallLimit: RESEARCH_PROJECT_MAX_TOOL_CALLS,
+      toolCallBudgetExceeded: coverage?.toolCallBudgetExceeded === true,
+      observedQueriesByEvidence: Object.fromEntries(RESEARCH_EVIDENCE_IDS.flatMap((id) => {
+        const terms = normalizeSearchTerms(coverage?.observedQueriesByEvidence?.[id]);
+        return terms.length ? [[id, terms]] : [];
+      })),
     },
     evidence,
   };
@@ -588,11 +645,36 @@ function supportsExplicitZero(id, item, sources) {
   return /\b(0|zero|none)\b/.test(text);
 }
 
+function buildVariableQueries({ name, location, knownData }, id) {
+  const projectAndLocation = `"${name}" "${location}"`;
+  const operatorAndProject = knownData?.operator
+    ? `"${knownData.operator}" "${name}"`
+    : projectAndLocation;
+  return [
+    `${projectAndLocation} ${RESEARCH_QUERY_ANGLES[id][0]}`,
+    `${operatorAndProject} ${RESEARCH_QUERY_ANGLES[id][1]}`,
+  ];
+}
+
+function buildVariableQueryPlan({ name, location, knownData, focusIds }) {
+  const project = { name, location, knownData };
+  const orderedIds = focusIds?.length
+    ? [...focusIds, ...RESEARCH_EVIDENCE_IDS.filter((id) => !focusIds.includes(id))]
+    : RESEARCH_EVIDENCE_IDS;
+  return orderedIds
+    .map((id) => `- ${id} (maximum 2 queries): ${buildVariableQueries(project, id).join(" | ")}`)
+    .join("\n");
+}
+
 function buildResearchProjectPrompt({ name, location, knownData, focusIds, currentEvidence }) {
   const knownDataPrompt = knownData
     ? `\n\nThe following facts are already confirmed from the Compute Atlas public database: ${JSON.stringify(knownData)}. Use them as directory discovery context for project identity and summary fields, not as SafeLoc evidence or verified project economics. Focus your research on the 16 evidence variables, not on rediscovering basic project facts.`
     : "";
-  return `Research and analyze this exact data-center project using the built-in web-search tool: ${name}. Location: ${location}. Search current project, operator, regulatory, utility, grid, water, permitting, community, environmental, capacity, customer, and infrastructure records. Prefer direct government, regulator, utility, land, permit, environmental, and filed-company records over summaries. Verify project, operator, and location identity so similarly named facilities are not mixed. Preserve exact URLs returned by web search, distinguish facility-level findings from regional context, and return the exact JSON contract from the system instruction. When no searched source independently confirms a claim, use Management Assertion or lower and state that verification is required. Do not replace genuine public information with Missing Evidence merely because one query fails.${focusIds?.length ? ` This is a focused refresh for these unresolved variables: ${focusIds.join(", ")}. Search those variables especially carefully, then still return all 16 records. Preserve unrelated existing records unless new searched evidence directly contradicts them.` : ""}${currentEvidence?.length ? `\n\nExisting evidence context:\n${JSON.stringify(currentEvidence)}` : ""}${knownDataPrompt}`;
+  const queryPlan = buildVariableQueryPlan({ name, location, knownData, focusIds });
+  return `Research and analyze this exact data-center project using the built-in web-search tool: ${name}. Location: ${location}. Search current project, operator, regulatory, utility, grid, water, permitting, community, environmental, capacity, customer, and infrastructure records. Prefer direct government, regulator, utility, land, permit, environmental, and filed-company records over summaries. Verify project, operator, and location identity so similarly named facilities are not mixed. Preserve exact URLs returned by web search, distinguish facility-level findings from regional context, and return the exact JSON contract from the system instruction. When no searched source independently confirms a claim, use Management Assertion or lower and state that verification is required. Do not replace genuine public information with Missing Evidence merely because one query fails. Use the bounded per-variable plan below inside this single provider response. Try distinct primary-record and corroboration angles where useful, with no more than two targeted queries per variable and no more than 32 targeted queries overall. These are query hints, not findings. There is no minimum finding quota; exhausted searches must remain unresolved.
+
+Bounded variable query plan:
+${queryPlan}${focusIds?.length ? ` This is a focused refresh for these unresolved variables: ${focusIds.join(", ")}. Prioritize their query angles, then still return all 16 records. Preserve unrelated existing records unless new searched evidence directly contradicts them.` : ""}${currentEvidence?.length ? `\n\nExisting evidence context:\n${JSON.stringify(currentEvidence)}` : ""}${knownDataPrompt}`;
 }
 
 function normalizeRetrievedSources(body, searchDomain = "project-identity") {
@@ -698,6 +780,7 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal) 
         { role: "user", content: buildResearchProjectPrompt(project) },
       ],
       max_output_tokens: RESEARCH_PROJECT_MAX_TOKENS,
+      max_tool_calls: RESEARCH_PROJECT_MAX_TOOL_CALLS,
       include: ["web_search_call.action.sources"],
       text: {
         format: {
@@ -737,6 +820,8 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal) 
   }
   const sources = normalizeRetrievedSources(body, "web-search");
   const searchTerms = extractSearchTerms(body);
+  const observedQueriesByEvidence = extractObservedQueriesByEvidence(body, project);
+  const toolCallCount = countWebSearchCalls(body);
   return {
     research,
     sources,
@@ -745,6 +830,9 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal) 
       failedDomains: [],
       retrievedSourceCount: sources.length,
       searchTerms,
+      observedQueriesByEvidence,
+      toolCallCount,
+      toolCallBudgetExceeded: toolCallCount > RESEARCH_PROJECT_MAX_TOOL_CALLS,
       searchTermsSource: searchTerms.length ? "tool-observed" : "unavailable",
     },
   };
@@ -946,11 +1034,15 @@ export {
   OPENAI_RESPONSES_URL,
   RESEARCH_EVIDENCE_IDS,
   RESEARCH_PROJECT_MAX_TOKENS,
+  RESEARCH_PROJECT_MAX_TOOL_CALLS,
   RESEARCH_PROJECT_MODEL,
   RESEARCH_PROJECT_TIMEOUT_MS,
   RESEARCH_PROJECT_RESPONSE_SCHEMA,
   RESEARCH_PROJECT_SYSTEM_PROMPT,
+  RESEARCH_QUERY_ANGLES,
   buildResearchProjectPrompt,
+  buildVariableQueries,
+  buildVariableQueryPlan,
   extractResponseOutputText,
   researchProjectWithWebSearch,
   normalizeCapacityMW,
@@ -960,6 +1052,9 @@ export {
   normalizeRetrievedSources,
   normalizeSearchTerms,
   extractSearchTerms,
+  extractObservedQueriesByEvidence,
+  countWebSearchCalls,
+  normalizeModelReportedConfidence,
   calculateSourceSupportConfidence,
   isExactProjectSource,
   normalizePublicDate,

@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { calculateCashFlowModel } from "@/model/cashFlowEngine";
+import { getAdvisorEvidenceSummary } from "@/model/advisorLens";
 import {
   createDefaultAssumptionResearch,
   checkResearchStatus,
@@ -40,6 +42,32 @@ test("accepts the exact 16-item custom research contract", () => {
   assert.equal(parsed.projectSummary.capacityProvenance, "ai-reported");
 });
 
+test("keeps model self-confidence separate from source support and every model output", () => {
+  const parseWithConfidence = (score: unknown) => parseResponse({
+    ...response,
+    evidence: response.evidence.map((item) => ({
+      ...item,
+      sourceUrl: undefined,
+      sourceSupportConfidence: 0,
+      modelReportedConfidence: score,
+    })),
+  });
+  const low = parseWithConfidence(0);
+  const high = parseWithConfidence(99);
+  assert.equal(high.evidence[0].modelReportedConfidence, 99);
+  assert.equal(high.evidence[0].sourceSupportConfidence, 0);
+  assert.equal(high.evidence[0].classification, "Missing Evidence");
+  const asRecord = (parsed: typeof high) => Object.fromEntries(parsed.evidence.map((item) => [item.id, item]));
+  assert.deepEqual(calculateCashFlowModel(asRecord(high)), calculateCashFlowModel(asRecord(low)));
+  assert.deepEqual(getAdvisorEvidenceSummary(asRecord(high)), getAdvisorEvidenceSummary(asRecord(low)));
+  assert.deepEqual(summarizeResearchAudit(high.evidence), summarizeResearchAudit(low.evidence));
+  for (const invalid of [undefined, null, "99", -1, 101, NaN, Infinity]) {
+    assert.equal(parseWithConfidence(invalid).evidence[0].modelReportedConfidence, undefined);
+  }
+  assert.equal(parseWithConfidence(73.6).evidence[0].modelReportedConfidence, 74);
+  assert.equal(createDefaultAssumptionResearch("Fallback", "Texas").evidence[0].modelReportedConfidence, undefined);
+});
+
 test("reports mutually exclusive source coverage counts that total sixteen", () => {
   const parsed = parseResponse({
     ...response,
@@ -54,6 +82,18 @@ test("reports mutually exclusive source coverage counts that total sixteen", () 
   const coverage = summarizeSourceCoverage(parsed.evidence);
   assert.deepEqual(coverage, { supported: 0, aiKnowledge: 1, missing: 15 });
   assert.equal(coverage.supported + coverage.aiKnowledge + coverage.missing, 16);
+});
+
+test("retains the complete bounded response-level search audit beyond eight queries", () => {
+  const queries = Array.from({ length: 32 }, (_, i) => `Project Atlas targeted query ${i}`);
+  const result = parseResponse({
+    ...response,
+    researchCoverage: { searchTerms: queries, searchTermsSource: "tool-observed", toolCallCount: 33, toolCallLimit: 32, toolCallBudgetExceeded: true },
+  });
+  assert.deepEqual(result.researchCoverage?.searchTerms, queries);
+  assert.equal(result.researchCoverage?.searchTermsSource, "tool-observed");
+  assert.equal(result.researchCoverage?.toolCallCount, 33);
+  assert.equal(result.researchCoverage?.toolCallBudgetExceeded, true);
 });
 
 test("uses the standardized capacity fallback for malformed or implausible capacity", () => {

@@ -35,6 +35,13 @@ function customResponse() {
       refreshStatus: "idle",
       providerAvailable: true,
     },
+    researchCoverage: {
+      searchTerms: Array.from({ length: 32 }, (_, i) => `Atlas observed query ${i + 1}`),
+      searchTermsSource: "tool-observed",
+      toolCallCount: 32,
+      toolCallLimit: 32,
+      toolCallBudgetExceeded: false,
+    },
     evidence: evidenceIds.map((id, index) => ({
       id,
       label: id.replaceAll("_", " "),
@@ -52,6 +59,9 @@ function customResponse() {
       } : {}),
       description: "The public record does not establish a facility-level value.",
       sourceRole: "AI-researched public-source review",
+      modelReportedConfidence: index === 0 ? 91 : 76,
+      ...(index === 0 ? { sourceSupportConfidence: 84 } : {}),
+      ...(index === 1 ? { sourceSupportConfidence: 0 } : {}),
       ...(index === 0 ? { numericValue: 48 } : {}),
       ...(id === "site_hazard_exposure" ? { qualitativeValue: "high" } : {}),
       ...(id === "water_source_resilience" ? { qualitativeValue: "single-source" } : {}),
@@ -124,6 +134,35 @@ test.describe("custom project research", () => {
     await page.goto("/#evidence");
     await expect(page.getByTestId("text-evidence-count")).toContainText("16 / 16");
     await expect(page.getByTestId("badge-ai-researched-electricity_cost")).toBeVisible();
+    const electricityRow = page.getByTestId("row-evidence-electricity_cost");
+    const electricitySummary = page.getByTestId("summary-evidence-electricity_cost");
+    await expect(electricityRow).not.toHaveAttribute("open", "");
+    await expect(electricitySummary).toContainText("$\/MWh");
+    await expect(electricitySummary.getByTestId("badge-classification-missing")).toBeVisible();
+    await expect(page.getByTestId("model-confidence-electricity_cost")).toContainText("AI confidence: 91%");
+    await expect(page.getByTestId("model-confidence-electricity_cost")).toContainText("self-reported, not verified probability");
+    await expect(page.getByTestId("support-confidence-electricity_cost")).toContainText("Validated source support: 84%");
+    await expect(page.getByTestId("evidence-source-status-electricity_cost")).toHaveText("1 validated source");
+    await expect(page.getByTestId("model-confidence-water_consumption")).toContainText("AI confidence: 76%");
+    await expect(page.getByTestId("support-confidence-water_consumption")).toContainText("Validated source support: 0%");
+    const searchAudit = page.getByTestId("research-search-audit");
+    await expect(searchAudit).not.toHaveAttribute("open", "");
+    await searchAudit.locator("summary").click();
+    await expect(searchAudit).toContainText("Atlas observed query 32");
+    await searchAudit.locator("summary").click();
+    await expect(page.getByTestId("evidence-source-status-water_consumption")).toHaveText("No validated source");
+    await expect(electricitySummary.locator("button, select, input, textarea, a")).toHaveCount(0);
+    const collapsedClassification = page.getByTestId("select-classification-electricity_cost");
+    await expect(collapsedClassification).toBeVisible();
+    await expect(page.getByTestId("button-analyze-ai-electricity_cost")).toBeVisible();
+    await collapsedClassification.selectOption("Management Assertion");
+    await expect(collapsedClassification).toHaveValue("Management Assertion");
+    await expect(page.getByTestId("review-marker-electricity_cost")).toBeVisible();
+    await expect(electricityRow).not.toHaveAttribute("open", "");
+    await collapsedClassification.selectOption("Missing Evidence");
+    await electricitySummary.focus();
+    await page.keyboard.press("Enter");
+    await expect(electricityRow).toHaveAttribute("open", "");
     await expect(page.getByTestId("select-classification-electricity_cost")).toBeVisible();
     await expect(page.getByTestId("custom-research-banner")).toBeVisible();
     await expect(page.getByTestId("eia-electricity-evidence")).toHaveCount(0);
@@ -138,13 +177,23 @@ test.describe("custom project research", () => {
     await expect(page.getByTestId("custom-source-metadata-electricity_cost")).toContainText("Aug 30, 2026");
     await expect(page.getByTestId("custom-source-metadata-electricity_cost")).toContainText("not provided");
     await expect(page.getByTestId("custom-source-context-electricity_cost")).toContainText("not facility-level proof");
+    await page.getByTestId("summary-evidence-water_consumption").focus();
+    await page.keyboard.press(" ");
+    await expect(page.getByTestId("row-evidence-water_consumption")).toHaveAttribute("open", "");
     await expect(page.getByTestId("custom-source-missing-water_consumption")).toContainText("No validated direct source link returned");
+    await page.getByTestId("summary-evidence-water_consumption").focus();
+    await page.keyboard.press(" ");
+    await expect(page.getByTestId("row-evidence-water_consumption")).not.toHaveAttribute("open", "");
 
     for (const route of ["materiality", "decision", "advisor"]) {
       await page.goto(`/#${route}`);
       await expect(page.getByTestId("custom-research-banner")).toContainText("Project Atlas");
       await expect(page.locator("main")).not.toContainText("Stargate Abilene");
     }
+
+    await page.getByTestId("button-open-material-gap-customer_concentration").click();
+    await expect(page).toHaveURL(/#evidence$/);
+    await expect(page.getByTestId("row-evidence-customer_concentration")).toHaveAttribute("open", "");
 
     await page.goto("/#decision");
     await expect(page.getByTestId("custom-scenario-disabled")).toContainText("not saved to browser storage");
@@ -170,6 +219,31 @@ test.describe("custom project research", () => {
     await page.reload();
     await expect(page.getByTestId("custom-research-banner")).toHaveCount(0);
     await expect(page).toHaveURL(/#brief$/);
+  });
+
+  test("keeps reviewer source corrections behind the disclosure", async ({ page }) => {
+    await page.goto("/");
+    await page.getByTestId("input-custom-project-name").fill("Project Atlas");
+    await page.getByTestId("input-custom-project-location").fill("Maricopa County, Arizona");
+    await page.getByTestId("button-run-ai-analysis").click();
+    await expect(page).toHaveURL(/#brief$/);
+    await page.goto("/#evidence");
+
+    const row = page.getByTestId("row-evidence-electricity_cost");
+    await expect(row).not.toHaveAttribute("open", "");
+    await expect(page.getByTestId("button-correct-source-electricity_cost")).toBeHidden();
+    await page.getByTestId("summary-evidence-electricity_cost").click();
+    await page.getByTestId("button-correct-source-electricity_cost").click();
+    await page.getByTestId("input-correction-url-electricity_cost").fill("https://example.com/atlas/reviewer-filing");
+    await page.getByTestId("input-correction-claim-electricity_cost").fill("A reviewer filing supports the revised electricity cost.");
+    await page.getByTestId("input-correction-value-electricity_cost").fill("46");
+    await page.getByTestId("button-propose-correction-electricity_cost").click();
+    await expect(page.getByTestId("correction-proposal-electricity_cost").getByTestId("badge-classification-verified")).toBeVisible();
+    await page.getByTestId("button-accept-correction-electricity_cost").click();
+    await expect(page.getByTestId("model-confidence-electricity_cost")).toContainText("not reported");
+    await expect(page.getByTestId("support-confidence-electricity_cost")).toContainText("0%");
+    await expect(page.getByTestId("evidence-source-status-electricity_cost")).toHaveText("No validated source");
+    await expect(page.getByTestId("link-custom-source-electricity_cost")).toHaveAttribute("href", "https://example.com/atlas/reviewer-filing");
   });
 
   test("lets a reviewer force a provider refresh and exposes the resulting cache state", async ({ page }) => {
@@ -274,9 +348,13 @@ test.describe("custom project research", () => {
     expect(researchRequests[1].focusIds).toContain("grid_interconnection");
     expect(researchRequests[1].focusIds).toContain("water_consumption");
     await expect(page.getByTestId("source-research-summary")).toContainText("new source-backed proposal");
+    await expect(page.getByTestId("row-evidence-grid_interconnection")).toHaveAttribute("open", "");
     await expect(page.getByTestId("source-research-proposal-grid_interconnection")).toContainText("Behind-the-meter generation");
+    await expect(page.getByTestId("proposal-model-confidence-grid_interconnection")).toContainText("self-reported, not verified probability");
+    await expect(page.getByTestId("proposal-support-confidence-grid_interconnection")).toContainText("Validated source support");
     await expect(page.getByTestId("select-classification-grid_interconnection")).toHaveValue("Missing Evidence");
     await page.getByTestId("button-accept-source-proposal-grid_interconnection").click();
+    await expect(page.getByTestId("model-confidence-grid_interconnection")).toContainText("76%");
     await expect(page.getByTestId("select-classification-grid_interconnection")).toHaveValue("Verified Evidence");
     await expect(page.getByTestId("link-custom-source-grid_interconnection")).toHaveAttribute("href", "https://example.com/atlas/grid-filing");
     await expect(page.getByTestId("ai-decision-history")).toContainText("Accepted by human");
@@ -328,9 +406,11 @@ test.describe("custom project research", () => {
     await expect(page).toHaveURL(/#brief$/);
     await page.goto("/#evidence");
 
+    await page.getByTestId("summary-evidence-electricity_cost").click();
     await expect(page.getByTestId("select-classification-electricity_cost")).toHaveValue("Management Assertion");
     await expect(page.getByTestId("coverage-status-electricity_cost")).toHaveText("partial");
     await expect(page.getByTestId("row-evidence-electricity_cost")).toContainText("AI classification downgraded");
+    await page.getByTestId("summary-evidence-grid_interconnection").click();
     await expect(page.getByTestId("select-classification-grid_interconnection")).toHaveValue("Model Inference");
     await expect(page.getByTestId("coverage-status-grid_interconnection")).toHaveText("partial");
   });

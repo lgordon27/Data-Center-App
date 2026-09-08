@@ -295,7 +295,7 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
         </div>
         <div className="hidden flex-1 items-center justify-center lg:flex">
           <div className="text-center">
-             <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-[#b9d43a]">{project.kind === "custom" ? project.researchMode === "default-assumptions" ? "Default assumptions · research unavailable" : "AI-researched · high-level project" : "Evidence-Governed Investment Intelligence"}</div>
+             <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-[#b9d43a]">{project.kind === "custom" ? project.researchMode === "default-assumptions" ? "Default assumptions · research unavailable" : "AI-researched · high-level project" : "Current project"}</div>
              <div className="mt-1 text-[10px] text-[#96a4ad]">{project.name} / {project.location} · IC pre-read</div>
           </div>
         </div>

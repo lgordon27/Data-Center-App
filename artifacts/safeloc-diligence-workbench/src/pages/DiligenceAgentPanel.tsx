@@ -215,8 +215,8 @@ export function DiligenceAgentPanel() {
         <div className="grid gap-0 lg:grid-cols-[1.25fr_.75fr]">
           <div className="p-5 md:p-7">
             <SectionKicker tone="lime" className="!text-[#d4e86b]">Governed diligence agent</SectionKicker>
-            <h2 id="diligence-agent-heading" className="max-w-2xl text-[28px] font-semibold leading-[1.08] tracking-[-0.04em] md:text-[38px]">Run the review. Keep the decision human.</h2>
-            <p className="mt-4 max-w-2xl text-[11px] leading-5 text-[#b9c7cd]">The agent works through bounded stages using the current evidence, community review, and financial model. It prepares proposals only—it cannot approve evidence, alter economics, infer legal conclusions, or make an investment recommendation.</p>
+            <h2 id="diligence-agent-heading" className="max-w-2xl text-[24px] font-semibold leading-[1.08] tracking-[-0.04em] md:text-[30px]">Run the review. Keep the decision human.</h2>
+            <p className="mt-3 max-w-2xl text-[11px] leading-5 text-[#b9c7cd]">The agent prepares bounded review proposals from the current evidence. It cannot approve evidence, alter economics, infer legal conclusions, or make an investment recommendation.</p>
             <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
               <button
                 data-testid="button-run-diligence-agent"
@@ -234,6 +234,11 @@ export function DiligenceAgentPanel() {
               </div>
             </div>
             <p data-testid="agent-run-summary" className="mt-4 text-[10px] leading-4 text-[#9fb0b8]">{agentRun.summary}</p>
+            <div className="mt-4 grid gap-2 border-t border-white/10 pt-4 sm:grid-cols-3">
+              <div><div className="font-mono text-[8px] uppercase tracking-[0.12em] text-[#82939c]">Current state</div><div data-testid="agent-current-state" className="mt-1 text-[11px] font-semibold text-white">{runStatusLabels[agentRun.status]}</div></div>
+              <div><div className="font-mono text-[8px] uppercase tracking-[0.12em] text-[#82939c]">Last run</div><div data-testid="agent-last-run" className="mt-1 text-[11px] font-semibold text-white">{agentRun.completedAt ?? agentRun.startedAt ?? "Not run"}</div></div>
+              <div><div className="font-mono text-[8px] uppercase tracking-[0.12em] text-[#82939c]">Awaiting review</div><div data-testid="agent-pending-count" className="mt-1 text-[11px] font-semibold text-[#d4e86b]">{pendingCount} {pendingCount === 1 ? "proposal" : "proposals"}</div></div>
+            </div>
           </div>
           <div className="border-t border-white/10 bg-white/[0.04] p-5 lg:border-l lg:border-t-0 md:p-7">
             <div className="font-mono text-[9px] font-bold uppercase tracking-[0.15em] text-[#d4e86b]">Control boundary</div>
@@ -249,7 +254,8 @@ export function DiligenceAgentPanel() {
         </div>
       </section>
 
-      <section data-testid="agent-stage-list" className="rounded-xl border border-[#d9e0e4] bg-white p-4 md:p-5" aria-labelledby="agent-stages-heading">
+       <Disclosure title="View activity" testId="agent-activity-disclosure" className="mt-4">
+       <section data-testid="agent-stage-list" className="rounded-xl border-0 bg-transparent p-0" aria-labelledby="agent-stages-heading">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <SectionKicker>Stage progress</SectionKicker>
@@ -275,9 +281,9 @@ export function DiligenceAgentPanel() {
             </li>
           ))}
         </ol>
-      </section>
+       </section>
 
-      <Disclosure title="Activity log" testId="agent-activity-log" className="mt-4">
+       <Disclosure title="Activity log" testId="agent-activity-log" className="mt-4">
         <ol className="space-y-2">
           {agentRun.stages.filter((stage) => stage.summary || stage.error || stage.startedAt).map((stage) => (
             <li key={stage.id} className="flex flex-wrap items-baseline gap-x-2 rounded-md border border-[#e0e4e0] bg-[#fafbfa] px-3 py-2 text-[9px] leading-4 text-[#52616b]">
@@ -291,7 +297,8 @@ export function DiligenceAgentPanel() {
             <li className="text-[9px] leading-4 text-[#71818a]">No activity yet. Run the diligence agent to populate the log.</li>
           )}
         </ol>
-      </Disclosure>
+       </Disclosure>
+       </Disclosure>
 
       {packageReady && (
         <section data-testid="agent-results-summary" className="flex flex-col items-start justify-between gap-3 rounded-xl border border-[#cbd8d4] bg-[#f0f4ef] p-4 sm:flex-row sm:items-center md:px-5" aria-label="Run results summary">

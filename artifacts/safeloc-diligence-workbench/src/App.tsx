@@ -127,13 +127,25 @@ function AppShell() {
               ? "SafeLoc · Analysis"
               : "SafeLoc Diligence Workbench";
     if (route === "analysis" && pendingSection) {
-      const timer = window.setTimeout(() => {
+      let attempts = 0;
+      let timer: number | undefined;
+      const revealTarget = () => {
         const target = document.getElementById(pendingSection);
-        target?.scrollIntoView({ behavior: "auto", block: "start" });
-        target?.focus({ preventScroll: true });
+        if (!target && attempts < 8) {
+          attempts += 1;
+          timer = window.setTimeout(revealTarget, 50);
+          return;
+        }
+        if (target) {
+          target.scrollIntoView({ behavior: "auto", block: "start" });
+          target.focus({ preventScroll: true });
+        }
         setPendingSection(null);
-      }, 50);
-      return () => window.clearTimeout(timer);
+      };
+      timer = window.setTimeout(revealTarget, 0);
+      return () => {
+        if (timer) window.clearTimeout(timer);
+      };
     }
     window.scrollTo({ top: 0, behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ? "auto" : "smooth" });
     return undefined;

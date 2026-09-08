@@ -7,7 +7,8 @@ import {
   SectionKicker,
   LowConfidenceWarning,
   PageIntro,
-  BottomNav
+  BottomNav,
+  Disclosure
   ,formatCount
 } from "@/components/Shell";
 
@@ -155,17 +156,44 @@ export function DecisionReview({ onNavigate, onResolve, requestedAction, onReque
       {project.kind === "custom" && <div role="status" data-testid="custom-scenario-disabled" className="mb-5 rounded-lg border border-[#f1cb8b] bg-[#fff8e9] px-4 py-3 text-[11px] leading-5 font-semibold text-[#7f6337]">Named scenarios and comparisons are disabled for custom research. Custom results remain session-only and are not saved to browser storage.</div>}
       {project.kind !== "custom" && scenarioItems.length >= 5 && <div role="status" data-testid="text-scenario-capacity" className="mb-5 rounded-lg border border-[#ecd39d] bg-[#fff8e9] px-4 py-3 text-[11px] font-semibold text-[#7f6337]">Scenario capacity reached (5/5). Save Scenario is disabled; named snapshots remain independent of the live case.</div>}
       {saveFeedback && <div role="status" data-testid="text-scenario-feedback" className={`mb-5 rounded-lg border px-4 py-3 text-[11px] font-semibold ${saveFeedback.startsWith("A scenario") || saveFeedback.startsWith("Five") ? "border-[#efabb8] bg-[#fff3f4] text-[#ba2f45]" : "border-[#9bd8c5] bg-[#e0f4ed] text-[#0b7a63]"}`}>{saveFeedback}</div>}
-       <SavedScenarioList
-         scenarios={scenarioItems}
-         onRename={(scenario) => {
-           setRenameScenarioId(scenario.id);
-           setRenameName(scenario.name);
-           setRenameFeedback("");
-           setRenameOpen(true);
-         }}
-         onRemove={(scenario) => setRemoveScenarioId(scenario.id)}
-       />
-      {showComparison && <ScenarioComparison scenarios={scenarioItems} />}
+      <section data-testid="decision-action-summary" className="mb-5 rounded-xl border-2 border-[#122232] bg-[#122232] p-5 text-white md:p-6" aria-labelledby="decision-action-summary-title">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div>
+            <SectionKicker tone="lime" className="!text-[#d4e86b]">Decision action</SectionKicker>
+            <h2 id="decision-action-summary-title" className="text-[23px] font-semibold tracking-[-0.035em]">{decisionCopy.title}</h2>
+            <p className="mt-2 max-w-2xl text-[11px] leading-5 text-[#c4d0d6]">{decisionCopy.description}</p>
+          </div>
+          <div className="shrink-0 rounded-lg border border-white/15 bg-white/5 px-4 py-3">
+            <div className="font-mono text-[8px] uppercase tracking-[0.13em] text-[#9dafb8]">Material gaps</div>
+            <div data-testid="decision-action-gap-count" className="mt-1 font-mono text-2xl font-bold text-[#f5ddd5]">{metrics.missingMaterialCount}</div>
+          </div>
+        </div>
+        <div className="mt-4 border-t border-white/15 pt-4">
+          <div className="font-mono text-[8px] font-bold uppercase tracking-[0.13em] text-[#d4e86b]">Required next actions</div>
+          {materialGapItems.length > 0 ? (
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {materialGapItems.slice(0, 4).map((item) => (
+                <button key={item.id} type="button" data-testid={`decision-summary-resolve-${item.id}`} onClick={() => onResolve(item.id)} className="flex min-h-10 items-center justify-between gap-3 rounded-md border border-white/15 bg-white/5 px-3 text-left text-[10px] font-semibold text-white hover:border-[#d4e86b]">
+                  <span className="min-w-0 truncate">{item.label}</span><ArrowRight aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-[#d4e86b]" />
+                </button>
+              ))}
+            </div>
+          ) : <p className="mt-2 text-[10px] text-[#c4d0d6]">No material evidence gaps require resolution.</p>}
+        </div>
+      </section>
+      {scenarioItems.length > 0 && <Disclosure title={`Saved scenarios · ${scenarioItems.length}/5`} testId="disclosure-saved-scenarios">
+        <SavedScenarioList
+          scenarios={scenarioItems}
+          onRename={(scenario) => {
+            setRenameScenarioId(scenario.id);
+            setRenameName(scenario.name);
+            setRenameFeedback("");
+            setRenameOpen(true);
+          }}
+          onRemove={(scenario) => setRemoveScenarioId(scenario.id)}
+        />
+      </Disclosure>}
+      {showComparison && <Disclosure title="Scenario comparison" testId="disclosure-scenario-comparison" defaultOpen><ScenarioComparison scenarios={scenarioItems} /></Disclosure>}
       {metrics.recommendationStatus === "BLOCKED" && <div data-testid="banner-recommendation-blocked" className="mb-5 flex items-start gap-3 rounded-xl border-2 border-[#ba2f45] bg-[#fff3f4] px-5 py-4 text-[#7f2635]"><CircleAlert className="mt-0.5 h-5 w-5 shrink-0" /><div><div className="font-mono text-[12px] font-bold tracking-[0.08em]">RECOMMENDATION BLOCKED: {formatCount(metrics.missingMaterialCount, "material item")} missing evidence</div><div className="mt-1 text-[11px] leading-5 text-[#96525d]">Resolve the material evidence gaps below before treating the Underwriting Baseline as investment-grade.</div></div></div>}
       {metrics.recommendationStatus === "CONDITIONAL" && <div data-testid="banner-recommendation-conditional" className="mb-5 flex items-start gap-3 rounded-xl border-2 border-[#a65a00] bg-[#fff8e9] px-5 py-4 text-[#6f460e]"><CircleAlert className="mt-0.5 h-5 w-5 shrink-0" /><div><div className="font-mono text-[12px] font-bold tracking-[0.08em]">CONDITIONAL: {formatCount(metrics.materialUnverifiedCount, "material assumption")} remain unverified</div><div className="mt-1 text-[11px] leading-5 text-[#806d51]">Name the evidence owners and carry these conditions into review.</div></div></div>}
       {metrics.recommendationStatus === "READY FOR REVIEW" && <div data-testid="banner-recommendation-ready" className="mb-5 flex items-start gap-3 rounded-xl border-2 border-[#0b7a63] bg-[#f0faf5] px-5 py-4 text-[#0b6351]"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0" /><div><div className="font-mono text-[12px] font-bold tracking-[0.08em]">READY FOR REVIEW: all material evidence is supported</div><div className="mt-1 text-[11px] leading-5 text-[#4b756b]">The return is ready for an IC discussion with its provenance preserved.</div></div></div>}

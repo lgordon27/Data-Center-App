@@ -15,6 +15,7 @@ test.describe("governed diligence agent", () => {
     const runButton = page.getByTestId("button-run-diligence-agent");
     await expect(runButton).toBeVisible();
     await expect(page.getByTestId("agent-run-status")).toContainText("Not run");
+    await expect(page.getByTestId("agent-activity-disclosure")).not.toHaveJSProperty("open", true);
 
     await runButton.click();
     await expect(page.getByTestId("agent-stage-identity")).toContainText("Identity");

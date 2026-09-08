@@ -142,6 +142,25 @@ export function AdvisorLens({
         description={`A practical handoff for advisors reviewing how ${projectName}’s physical infrastructure assumptions may connect to public-market exposure. Use the live evidence posture, not a generic sustainability label, to frame the next question.`}
         right={<div className="flex items-center gap-2 rounded-md border border-[#cbb7ec] bg-[#eee7fa] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#7049b7]"><Leaf className="h-3.5 w-3.5" /> Advisor handoff</div>}
       />
+      <section data-testid="advisor-action-summary" className="mb-5 rounded-xl border-2 border-[#122232] bg-[#122232] p-5 text-white md:p-6" aria-labelledby="advisor-action-summary-title">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <SectionKicker tone="lime" className="!text-[#d4e86b]">Advisor action</SectionKicker>
+            <h2 id="advisor-action-summary-title" className="text-[23px] font-semibold tracking-[-0.035em]">Start with the exposure chain, then ask what is evidenced.</h2>
+            <p className="mt-2 max-w-3xl text-[11px] leading-5 text-[#c4d0d6]">This is a project-level diligence handoff. The evidence-quality gap is a question for stewardship, not a fund-return forecast or trading signal.</p>
+          </div>
+          <div className="shrink-0 rounded-lg border border-[#d4e86b]/35 bg-[#d4e86b]/10 px-4 py-3">
+            <div className="font-mono text-[8px] uppercase tracking-[0.13em] text-[#d4e86b]">Evidence-quality gap</div>
+            <div data-testid="advisor-action-gap" className="mt-1 font-mono text-2xl font-bold text-[#d4e86b]">{formatPercentagePoints(governanceGap === null ? null : Math.abs(governanceGap))}</div>
+          </div>
+        </div>
+        <div data-testid="advisor-action-exposure-chain" className="mt-4 flex flex-wrap items-center gap-2 border-t border-white/15 pt-4" aria-label="Exposure chain summary">
+          {exposureChain.map((node, index) => <span key={node.label} className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-2.5 py-1.5 text-[9px] font-semibold text-[#e3eaed]"><span className="font-mono text-[#d4e86b]">0{index + 1}</span>{node.label}{index < exposureChain.length - 1 && <ArrowRight aria-hidden="true" className="h-3 w-3 text-[#8299a5]" />}</span>)}
+        </div>
+        <div className="mt-4 grid gap-2 border-t border-white/15 pt-4 md:grid-cols-3">
+          {conversations.map((conversation) => <Disclosure key={conversation.number} title={`${conversation.number} · ${conversation.question}`} testId={`advisor-action-question-${conversation.number}`} className="border-white/15 bg-white/5 text-white"><p className="text-[10px] leading-4 text-[#c4d0d6]">{conversation.framework}</p><p className="mt-2 border-t border-white/10 pt-2 text-[9px] font-semibold text-[#d4e86b]">Next prompt: {conversation.action}</p></Disclosure>)}
+        </div>
+      </section>
       <section data-testid="text-advisor-summary" className="mb-5 rounded-xl border border-[#cbd8d4] bg-[#f9faf8] p-5 md:p-6" aria-labelledby="advisor-live-posture-heading">
         <SectionKicker>Live evidence posture</SectionKicker>
          <h2 id="advisor-live-posture-heading" className="sr-only">Live evidence posture</h2>

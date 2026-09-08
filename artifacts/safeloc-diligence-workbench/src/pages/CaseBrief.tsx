@@ -160,6 +160,31 @@ export function CaseBrief({ onNavigate, onFocusCommunity }: { onNavigate: (scree
         right={<div className="flex items-center gap-2 self-start rounded-full border border-[#cbd8d4] bg-[#f9faf8] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#60707d] md:self-auto"><span className="h-2 w-2 rounded-full bg-[#ba2f45]" /> Location · Taylor County, TX</div>}
       />
       <div className="mb-5"><ScopeLimitationsDisclosure /></div>
+      <section data-testid="brief-overview-summary" className="mb-5 rounded-xl border border-[#cbd8d4] bg-white p-5 md:p-6" aria-labelledby="brief-overview-summary-title">
+        <div className="flex flex-col gap-4 border-b border-[#e5eae8] pb-4 md:flex-row md:items-end md:justify-between">
+          <div>
+            <SectionKicker>Decision snapshot</SectionKicker>
+            <h2 id="brief-overview-summary-title" className="text-[22px] font-semibold tracking-[-0.03em] text-[#122232]">Stargate Abilene · Taylor County, Texas</h2>
+            <p className="mt-1 text-[11px] text-[#52616b]">Operator context: OpenAI · Oracle · Crusoe Energy · current operating footprint with a 1.2 GW target.</p>
+          </div>
+          <span className="rounded-full border border-[#f1cb8b] bg-[#fff8e9] px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#6f460e]">IC pre-read · evidence under review</span>
+        </div>
+        <p className="mt-4 max-w-3xl text-[14px] font-semibold leading-6 text-[#344550]">Contracted AI demand meets physical infrastructure limits; the investment question is whether grid, water, cooling, and community evidence is strong enough to support the modeled return.</p>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            ["Water disclosure", "Missing", "Use and rights remain undisclosed"],
+            ["Grid expansion", "Cancelled", "Reported interconnection delay"],
+            ["Cooling resilience", "Tested", "Winter storm damage reported"],
+            ["Construction peak", "~6,400", "Local capacity pressure"],
+          ].map(([label, value, detail]) => (
+            <div key={label} className="rounded-lg border border-[#d9e0e4] bg-[#f7faf8] p-3">
+              <div className="font-mono text-[8px] font-bold uppercase tracking-[0.12em] text-[#60707d]">{label}</div>
+              <div className="mt-1 font-mono text-[16px] font-bold text-[#122232]">{value}</div>
+              <div className="mt-1 text-[10px] leading-4 text-[#52616b]">{detail}</div>
+            </div>
+          ))}
+        </div>
+      </section>
       <div className="grid gap-5 xl:grid-cols-[1.4fr_0.8fr]">
         <section className="relative min-h-[360px] overflow-hidden rounded-xl bg-[#122232] p-6 text-white md:p-8">
           <div className="absolute right-0 top-0 h-full w-1/2 opacity-40 [background-image:linear-gradient(#345063_1px,transparent_1px),linear-gradient(90deg,#345063_1px,transparent_1px)] [background-size:30px_30px] [mask-image:linear-gradient(90deg,transparent,black)]" />
@@ -213,6 +238,7 @@ export function CaseBrief({ onNavigate, onFocusCommunity }: { onNavigate: (scree
         </p>
         <div className="flex flex-wrap gap-2"><ClaimCitation claimId="abbott-data-center-audit" /><ClaimCitation claimId="stargate-cancellation" /></div>
       </aside>
+      <Disclosure title="Regional context · ERCOT and FEMA detail" testId="disclosure-regional-context">
       <section data-testid="ercot-queue-statistics" className="mt-5 rounded-xl border border-[#cbd8d4] bg-white p-5 md:p-6" aria-labelledby="ercot-queue-title">
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#e5eae8] pb-4">
           <div>
@@ -289,6 +315,7 @@ export function CaseBrief({ onNavigate, onFocusCommunity }: { onNavigate: (scree
         <p className="mt-3 text-[10px] leading-4 text-[#60707d]">FEMA county measurements are public evidence. They do not replace SafeLoc’s separate synthetic transaction economics or CRVA/model assumptions.</p>
         <ClaimCitation claimId="fema-taylor-county" />
       </section>
+      </Disclosure>
       <div className="mt-5 grid gap-3 md:grid-cols-2">
         <Disclosure title="Public-site context · Taylor County buildout" testId="disclosure-public-site-context">
           <div className="flex gap-3">
@@ -334,7 +361,8 @@ export function CaseBrief({ onNavigate, onFocusCommunity }: { onNavigate: (scree
       <CommunityReadiness onFocusCommunity={onFocusCommunity} />
       <ClaimCitation claimId="stargate-cancellation" />
       <ClaimCitation claimId="stargate-cooling-damage" />
-      <div className="mt-5 rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-6">
+      <Disclosure title="Synthetic transaction assumptions" testId="disclosure-synthetic-transaction">
+      <div className="rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-6">
         <div className="flex items-end justify-between border-b border-[#e5eae8] pb-4">
           <div>
             <SectionKicker tone="warning">Synthetic transaction assumptions</SectionKicker>
@@ -358,6 +386,7 @@ export function CaseBrief({ onNavigate, onFocusCommunity }: { onNavigate: (scree
         </div>
         <ClaimCitation claimId="synthetic-transaction" />
       </div>
+      </Disclosure>
       <BottomNav screen="brief" onNavigate={onNavigate} />
     </div>
   );

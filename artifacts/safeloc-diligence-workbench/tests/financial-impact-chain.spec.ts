@@ -20,16 +20,16 @@ test.describe("Financial Impact Chain", () => {
     await expect(page.getByTestId("text-decision-irr")).toHaveText(stressIrr ?? "");
 
     await page.goto("/#materiality");
-    await page.getByRole("button", { name: "Stress Waterfall" }).click();
+    await page.getByRole("tab", { name: "Drivers" }).click();
     await expect(page.getByTestId("panel-impact-chain")).toBeHidden();
     await expect(page.getByTestId("panel-irr-waterfall")).toBeVisible();
     await expect(page.getByTestId("waterfall-methodology")).toContainText("weaker evidence");
 
-    await page.getByRole("button", { name: "Full Assumptions" }).click();
+    await page.getByRole("tab", { name: "Full Model" }).click();
     await expect(page.getByTestId("disclosure-full-model-detail")).toHaveAttribute("open", "");
-    await page.getByRole("button", { name: "Stress Waterfall" }).click();
+    await page.getByRole("tab", { name: "Drivers" }).click();
     await expect(page.getByTestId("panel-irr-waterfall")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Stress Waterfall" })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("tab", { name: "Drivers" })).toHaveAttribute("aria-selected", "true");
   });
 
   test("drawer explains marginal treatment and reclassification updates the chain", async ({ page }) => {

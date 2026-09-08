@@ -19,7 +19,10 @@ import { WorkbenchDrawerProvider } from "@/components/ContextDrawer";
 import { useDiligence } from "@/context/DiligenceContext";
 import type { Screen } from "@/components/Shell";
 
-const sectionForScreen: Record<Screen, string> = {
+type AnalysisDestination = Screen | "agent";
+
+const sectionForDestination: Record<AnalysisDestination, string> = {
+  agent: "analysis-agent",
   brief: "analysis-overview",
   evidence: "analysis-evidence",
   materiality: "analysis-financial",
@@ -27,7 +30,8 @@ const sectionForScreen: Record<Screen, string> = {
   advisor: "analysis-advisor",
 };
 
-const analysisSections: { id: string; screen: Screen; label: string; short: string; icon: typeof BookOpen }[] = [
+const analysisSections: { id: string; screen: AnalysisDestination; label: string; short: string; icon: typeof BookOpen }[] = [
+  { id: "analysis-agent", screen: "agent", label: "Analysis Agent", short: "Agent", icon: Network },
   { id: "analysis-overview", screen: "brief", label: "Project Overview", short: "Overview", icon: BookOpen },
   { id: "analysis-evidence", screen: "evidence", label: "Evidence", short: "Evidence", icon: FileCheck2 },
   { id: "analysis-financial", screen: "materiality", label: "Financial Impact", short: "Returns", icon: BarChart3 },
@@ -121,7 +125,7 @@ function GuidedNextStep({ compact = false }: { compact?: boolean }) {
   );
 }
 
-function AnalysisSummaryRail({ activeSection, onSection, onReset, onDecisionAction }: { activeSection: string; onSection: (screen: Screen) => void; onReset: () => void; onDecisionAction: (action: "save" | "compare") => void }) {
+function AnalysisSummaryRail({ activeSection, onSection, onReset, onDecisionAction }: { activeSection: string; onSection: (screen: AnalysisDestination) => void; onReset: () => void; onDecisionAction: (action: "save" | "compare") => void }) {
   const { project, metrics, evidence } = useDiligence();
   const evidenceGap = metrics.baseIRR !== null && metrics.projectIRR !== null ? metrics.baseIRR - metrics.projectIRR : null;
   return (
@@ -167,7 +171,7 @@ function AnalysisSummaryRail({ activeSection, onSection, onReset, onDecisionActi
   );
 }
 
-function MobileAnalysisSummary({ expanded, setExpanded, activeSection, onSection }: { expanded: boolean; setExpanded: (value: boolean) => void; activeSection: string; onSection: (screen: Screen) => void }) {
+function MobileAnalysisSummary({ expanded, setExpanded, activeSection, onSection }: { expanded: boolean; setExpanded: (value: boolean) => void; activeSection: string; onSection: (screen: AnalysisDestination) => void }) {
   const { project, metrics } = useDiligence();
   return (
     <div data-testid="mobile-analysis-summary" className="sticky top-0 z-20 -mx-4 mb-5 border-b border-[#cbd8d4] bg-[#f9faf8]/95 px-4 py-2 shadow-sm backdrop-blur-md lg:hidden">
@@ -207,8 +211,8 @@ function AnalysisWorkbenchBody({ onResolveEvidence, onReset }: { onResolveEviden
   const { ercotQueue } = useDiligence();
   // The context drawer is a pure overlay at every width: the workspace never
   // reflows when it opens, so the reviewer's scroll position is preserved.
-  const goToSection = (screen: Screen) => {
-    const id = sectionForScreen[screen];
+  const goToSection = (screen: AnalysisDestination) => {
+    const id = sectionForDestination[screen];
     scrollToElement(id);
     setActiveSection(id);
   };

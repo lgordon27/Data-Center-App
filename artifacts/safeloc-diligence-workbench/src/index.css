@@ -203,6 +203,21 @@
   min-height: calc(100dvh - 76px);
 }
 
+/* Route targets must clear both the shell header and the compact analysis rail. */
+[id^="analysis-"],
+[id^="materiality-"],
+[id^="evidence-item-"] {
+  scroll-margin-top: 6.5rem;
+}
+
+@media (max-width: 767px) {
+  [id^="analysis-"],
+  [id^="materiality-"],
+  [id^="evidence-item-"] {
+    scroll-margin-top: 8rem;
+  }
+}
+
 .home-hero {
   background:
     radial-gradient(circle at 78% 42%, rgb(38 86 93 / 0.3), transparent 31rem),

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   ClassificationBadge,
   ImpactRoleBadge,
@@ -167,6 +167,19 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
   const irrDelta = currentIRR === null || baseIRR === null ? null : currentIRR - baseIRR;
   const waterfallSteps = metrics.waterfall;
   const [financialView, setFinancialView] = useState<"impact-chain" | "waterfall" | "full-model">("impact-chain");
+  const financialTabs = ["impact-chain", "waterfall", "full-model"] as const;
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const moveFinancialTab = (current: typeof financialView, direction: "next" | "previous" | "first" | "last") => {
+    const index = financialTabs.indexOf(current);
+    const nextIndex = direction === "first"
+      ? 0
+      : direction === "last"
+        ? financialTabs.length - 1
+        : (index + (direction === "next" ? 1 : -1) + financialTabs.length) % financialTabs.length;
+    const next = financialTabs[nextIndex];
+    setFinancialView(next);
+    window.setTimeout(() => tabRefs.current[nextIndex]?.focus(), 0);
+  };
   const rankedAttributions = Object.values(metrics.attribution)
     .filter((item) => item.impactRole === "Financial Driver")
     .sort((a, b) => Math.abs(b.singleInputSensitivityIRR ?? 0) - Math.abs(a.singleInputSensitivityIRR ?? 0));
@@ -193,13 +206,13 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
           <p><strong className="font-semibold text-[#122232]">Change a classification</strong> to see the financial stress case, decision posture, or contextual assessment update.</p>
         </aside>
       )}
-      <nav aria-label="Financial materiality sections" className="sticky top-0 z-10 mb-4 flex gap-1 overflow-x-auto rounded-lg border border-[#d9e0e4] bg-[#f9faf8]/95 p-1.5 backdrop-blur-md">
+      <div role="tablist" aria-label="Financial impact views" className="sticky top-0 z-10 mb-4 flex gap-1 overflow-x-auto rounded-lg border border-[#d9e0e4] bg-[#f9faf8]/95 p-1.5 backdrop-blur-md">
         {[
-          ["impact-chain", "Impact Chain"],
-          ["waterfall", "Stress Waterfall"],
-          ["full-model", "Full Assumptions"],
-        ].map(([view, label]) => <button key={view} type="button" aria-pressed={financialView === view} onClick={() => setFinancialView(view as typeof financialView)} className={`min-h-10 shrink-0 rounded-md px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] ${financialView === view ? "bg-[#122232] text-[#d4e86b]" : "text-[#52616b] hover:bg-white hover:text-[#122232]"}`}>{label}</button>)}
-      </nav>
+          ["impact-chain", "Summary"],
+          ["waterfall", "Drivers"],
+          ["full-model", "Full Model"],
+        ].map(([view, label], index) => <button key={view} ref={(element) => { tabRefs.current[index] = element; }} id={`financial-tab-${view}`} type="button" role="tab" aria-selected={financialView === view} aria-controls={view === "full-model" ? "materiality-full-model" : `financial-panel-${view}`} tabIndex={financialView === view ? 0 : -1} onClick={() => setFinancialView(view as typeof financialView)} onKeyDown={(event) => { if (event.key === "ArrowRight") { event.preventDefault(); moveFinancialTab(view as typeof financialView, "next"); } else if (event.key === "ArrowLeft") { event.preventDefault(); moveFinancialTab(view as typeof financialView, "previous"); } else if (event.key === "Home") { event.preventDefault(); moveFinancialTab(view as typeof financialView, "first"); } else if (event.key === "End") { event.preventDefault(); moveFinancialTab(view as typeof financialView, "last"); } }} className={`min-h-10 shrink-0 rounded-md px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b9d43a] ${financialView === view ? "bg-[#122232] text-[#d4e86b]" : "text-[#52616b] hover:bg-white hover:text-[#122232]"}`}>{label}</button>)}
+      </div>
       {lowConfidence && <div className="mb-5"><LowConfidenceWarning testId="warning-low-confidence-materiality" /></div>}
       {metrics.mechanicalDisclaimer && (
         <div data-testid="banner-mechanical-disclaimer" className="mb-5 flex items-start gap-3 rounded-xl border-2 border-[#ba2f45] bg-[#fff3f4] px-5 py-4 text-[#7f2635]">
@@ -212,7 +225,7 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
       )}
       {financialView === "impact-chain" && (
         <>
-          <section data-testid="panel-impact-chain" aria-labelledby="impact-chain-title" className="rounded-xl border-2 border-[#122232] bg-[#122232] p-5 text-white md:p-6">
+           <section id="financial-panel-impact-chain" data-testid="panel-impact-chain" role="tabpanel" tabIndex={0} aria-labelledby="financial-tab-impact-chain impact-chain-title" className="rounded-xl border-2 border-[#122232] bg-[#122232] p-5 text-white md:p-6">
             <div className="flex flex-col justify-between gap-3 border-b border-white/15 pb-4 md:flex-row md:items-end">
               <div><SectionKicker tone="lime" className="!text-[#d4e86b]">Impact Chain</SectionKicker><h2 id="impact-chain-title" className="text-[22px] font-semibold tracking-[-0.035em]">Underwriting Baseline → Conservative Stress</h2></div>
               <span data-testid="impact-chain-evidence-gap" className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#f5ddd5]">{irrDelta === null ? "Evidence-quality gap unavailable" : `${formatPercentagePoints(Math.abs(irrDelta))} evidence-quality gap`}</span>
@@ -271,7 +284,7 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
             <p data-testid="portfolio-connection-message" className="min-w-0 flex-1 text-[11px] leading-5 text-[#344550]">NVIDIA GPU contracts and hyperscaler CAPEX connect values-aligned funds to the infrastructure buildout. Evidence gaps at the project level can become exposure gaps in portfolio returns. This is market context, not facility-level {customProject ? `${projectName} evidence` : "Stargate evidence"} or a new modeled input.</p>
          </div>
        </aside>
-        {financialView === "waterfall" && <section id="materiality-drivers" data-testid="panel-irr-waterfall" aria-labelledby="irr-waterfall-title" aria-describedby="irr-waterfall-description irr-waterfall-methodology" className="mt-5 scroll-mt-24 rounded-xl border-2 border-[#122232] bg-[#122232] p-5 text-white md:p-6">
+        {financialView === "waterfall" && <section id="financial-panel-waterfall" data-testid="panel-irr-waterfall" role="tabpanel" tabIndex={0} aria-labelledby="financial-tab-waterfall irr-waterfall-title" aria-describedby="irr-waterfall-description irr-waterfall-methodology" className="mt-5 scroll-mt-24 rounded-xl border-2 border-[#122232] bg-[#122232] p-5 text-white md:p-6">
         <div className="flex flex-col justify-between gap-3 border-b border-white/15 pb-4 md:flex-row md:items-end">
           <div><SectionKicker tone="lime" className="!text-[#d4e86b]">Stress Waterfall</SectionKicker><h2 id="irr-waterfall-title" className="text-[22px] font-semibold tracking-[-0.035em]">Sequential stress attribution</h2></div>
           <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#9dafb8]">Sequential · interacting effects are not additive</span>
@@ -375,7 +388,7 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
           </div>
         </section>
       </div>
-       <details id="materiality-full-model" data-testid="disclosure-full-model-detail" open={financialView === "full-model"} className="mt-5 scroll-mt-24 rounded-xl border border-[#d9e0e4] bg-[#eef2f1]">
+       {financialView === "full-model" && <details id="materiality-full-model" data-testid="disclosure-full-model-detail" open className="mt-5 scroll-mt-24 rounded-xl border border-[#d9e0e4] bg-[#eef2f1]" role="tabpanel" aria-labelledby="financial-tab-full-model">
         <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 text-[11px] font-bold uppercase tracking-[0.12em] text-[#122232] [&::-webkit-details-marker]:hidden"><span>Full Model Detail · assumptions and cash flow</span><ChevronDown aria-hidden="true" className="h-4 w-4 transition-transform [details[open]_&]:rotate-180" /></summary>
         <section className="border-t border-[#d9e0e4] p-5 md:p-6">
         <div className="flex items-end justify-between border-b border-[#d6e0dc] pb-4">
@@ -442,7 +455,7 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
           </table>
         </div>
        </section>
-       </details>
+       </details>}
       <section className="mt-5 rounded-xl border border-[#d9e0e4] bg-white p-5 md:p-6" aria-labelledby="mechanics-flow-title">
         <SectionKicker>Model mechanics</SectionKicker>
         <h2 id="mechanics-flow-title" className="text-[19px] font-semibold tracking-[-0.025em] text-[#122232]">Five links from evidence to return.</h2>

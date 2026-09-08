@@ -336,7 +336,6 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
            >
              Analyze a different project
            </button>}
-           {isHome && <button data-testid="button-home-analyze-project" type="button" onClick={onAnalyzeCustom ?? openCustomProject} className="hidden min-h-11 items-center rounded border border-[#d4e86b] bg-[#d4e86b] px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#122232] transition-colors hover:bg-[#e3f18d] lg:inline-flex">Analyze a Project</button>}
            <button
              data-testid="button-how-it-works"
              type="button"

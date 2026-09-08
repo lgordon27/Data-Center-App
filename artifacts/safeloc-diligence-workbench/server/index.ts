@@ -6,7 +6,7 @@ import { handleEiaElectricityRequest } from "./eiaProxy.mjs";
 import { handleAnalyzeEvidenceRequest } from "./aiEvidenceProxy.mjs";
 import { handleResearchProjectRequest } from "./researchProjectProxy.mjs";
 import { handleDirectoryRequest, handleDirectoryStatsRequest } from "./computeAtlasProxy.mjs";
-import { handleVersionRequest } from "./version.mjs";
+import { handleReleaseDocumentRequest, handleVersionRequest } from "./version.mjs";
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
 const artifactDir = path.resolve(serverDir, "..");
@@ -16,6 +16,7 @@ export async function createApp(): Promise<Express> {
   app.disable("x-powered-by");
   app.use(express.json());
   app.get("/api/version", handleVersionRequest);
+  app.get("/release.json", handleReleaseDocumentRequest);
   app.all("/api/analyze-evidence", async (request: Request, response: Response) => {
     await handleAnalyzeEvidenceRequest(request, response);
   });

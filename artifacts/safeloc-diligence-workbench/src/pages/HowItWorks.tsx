@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import {
   milestones
 } from "@/data/timeline";
@@ -30,6 +31,7 @@ import { useDiligence } from "@/context/DiligenceContext";
 type HowItWorksProps = {
   onReturn: () => void;
   onOpenScreen: (screen: "brief" | "evidence" | "materiality" | "decision" | "advisor") => void;
+  initialSection?: string | null;
 };
 
 const tourSections = [
@@ -83,8 +85,22 @@ function TourKicker({ children, dark = false }: { children: React.ReactNode; dar
   );
 }
 
-export function HowItWorks({ onReturn, onOpenScreen }: HowItWorksProps) {
+export function HowItWorks({ onReturn, onOpenScreen, initialSection }: HowItWorksProps) {
   const { ercotQueue } = useDiligence();
+  useEffect(() => {
+    if (!initialSection) return undefined;
+    const timer = window.setTimeout(() => {
+      const target = document.getElementById(initialSection);
+      if (!target) return;
+      if (!target.hasAttribute("tabindex")) target.setAttribute("tabindex", "-1");
+      target.scrollIntoView({
+        behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ? "auto" : "smooth",
+        block: "start",
+      });
+      target.focus({ preventScroll: true });
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [initialSection]);
   return (
     <div className="min-h-[100dvh] bg-[#f4f6f4] text-[#122232]">
       <a href="#tour-main" className="sr-only z-50 rounded bg-[#d4e86b] px-3 py-2 text-sm text-[#122232] focus:not-sr-only focus:fixed focus:left-4 focus:top-4">

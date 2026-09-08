@@ -1,0 +1,252 @@
+{
+  "generatedAt": "2026-09-08T21:29:57.820Z",
+  "measurements": [
+    {
+      "viewport": "1440x900",
+      "home": {
+        "width": 1440,
+        "height": 900,
+        "pageHeight": 2604,
+        "overflowX": false,
+        "primaryActions": [
+          "Start with NVIDIA",
+          "Choose a project"
+        ],
+        "directoryActions": [
+          "Facility Directory"
+        ],
+        "legacyChrome": 0
+      },
+      "analysis": {
+        "pageHeight": 22008,
+        "overflowX": false,
+        "sections": [
+          {
+            "id": "analysis-section-agent",
+            "height": 509
+          },
+          {
+            "id": "analysis-section-overview",
+            "height": 2303
+          },
+          {
+            "id": "analysis-section-evidence",
+            "height": 4182
+          },
+          {
+            "id": "analysis-section-financial",
+            "height": 5035
+          },
+          {
+            "id": "analysis-section-decision",
+            "height": 3892
+          },
+          {
+            "id": "analysis-section-advisor",
+            "height": 5699
+          }
+        ]
+      }
+    },
+    {
+      "viewport": "1366x768",
+      "home": {
+        "width": 1366,
+        "height": 768,
+        "pageHeight": 2604,
+        "overflowX": false,
+        "primaryActions": [
+          "Start with NVIDIA",
+          "Choose a project"
+        ],
+        "directoryActions": [
+          "Facility Directory"
+        ],
+        "legacyChrome": 0
+      },
+      "analysis": {
+        "pageHeight": 22008,
+        "overflowX": false,
+        "sections": [
+          {
+            "id": "analysis-section-agent",
+            "height": 509
+          },
+          {
+            "id": "analysis-section-overview",
+            "height": 2303
+          },
+          {
+            "id": "analysis-section-evidence",
+            "height": 4182
+          },
+          {
+            "id": "analysis-section-financial",
+            "height": 5035
+          },
+          {
+            "id": "analysis-section-decision",
+            "height": 3892
+          },
+          {
+            "id": "analysis-section-advisor",
+            "height": 5699
+          }
+        ]
+      }
+    },
+    {
+      "viewport": "1024x768",
+      "home": {
+        "width": 1024,
+        "height": 768,
+        "pageHeight": 2754,
+        "overflowX": false,
+        "primaryActions": [
+          "Start with NVIDIA",
+          "Choose a project"
+        ],
+        "directoryActions": [
+          "Facility Directory"
+        ],
+        "legacyChrome": 0
+      },
+      "analysis": {
+        "pageHeight": 26439,
+        "overflowX": false,
+        "sections": [
+          {
+            "id": "analysis-section-agent",
+            "height": 578
+          },
+          {
+            "id": "analysis-section-overview",
+            "height": 2676
+          },
+          {
+            "id": "analysis-section-evidence",
+            "height": 4951
+          },
+          {
+            "id": "analysis-section-financial",
+            "height": 5967
+          },
+          {
+            "id": "analysis-section-decision",
+            "height": 4543
+          },
+          {
+            "id": "analysis-section-advisor",
+            "height": 7336
+          }
+        ]
+      }
+    },
+    {
+      "viewport": "768x1024",
+      "home": {
+        "width": 768,
+        "height": 1024,
+        "pageHeight": 3474,
+        "overflowX": false,
+        "primaryActions": [
+          "Start with NVIDIA",
+          "Choose a project"
+        ],
+        "directoryActions": [
+          "Facility Directory"
+        ],
+        "legacyChrome": 0
+      },
+      "analysis": {
+        "pageHeight": 26468,
+        "overflowX": false,
+        "sections": [
+          {
+            "id": "analysis-section-agent",
+            "height": 663
+          },
+          {
+            "id": "analysis-section-overview",
+            "height": 2631
+          },
+          {
+            "id": "analysis-section-evidence",
+            "height": 5226
+          },
+          {
+            "id": "analysis-section-financial",
+            "height": 5835
+          },
+          {
+            "id": "analysis-section-decision",
+            "height": 4473
+          },
+          {
+            "id": "analysis-section-advisor",
+            "height": 7071
+          }
+        ]
+      }
+    },
+    {
+      "viewport": "390x844",
+      "home": {
+        "width": 390,
+        "height": 844,
+        "pageHeight": 2695,
+        "overflowX": false,
+        "primaryActions": [
+          "Start with NVIDIA",
+          "Choose a project"
+        ],
+        "directoryActions": [
+          "Facility Directory"
+        ],
+        "legacyChrome": 0
+      },
+      "analysis": {
+        "pageHeight": 35560,
+        "overflowX": false,
+        "sections": [
+          {
+            "id": "analysis-section-agent",
+            "height": 853
+          },
+          {
+            "id": "analysis-section-overview",
+            "height": 3638
+          },
+          {
+            "id": "analysis-section-evidence",
+            "height": 6238
+          },
+          {
+            "id": "analysis-section-financial",
+            "height": 8338
+          },
+          {
+            "id": "analysis-section-decision",
+            "height": 5687
+          },
+          {
+            "id": "analysis-section-advisor",
+            "height": 10132
+          }
+        ]
+      }
+    }
+  ],
+  "focus": {
+    "sourcesFocus": {
+      "route": "#how-it-works/tour-sources",
+      "activeId": "tour-sources",
+      "heading": null
+    },
+    "builderFocus": {
+      "route": "#how-it-works/tour-built-by",
+      "activeId": "tour-built-by",
+      "heading": null
+    }
+  }
+}

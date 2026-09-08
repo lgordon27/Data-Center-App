@@ -1,5 +1,5 @@
 import type { DirectoryFacility } from "@/services/directoryService";
-import type { ClaimId } from "@/data/claimSources";
+import { getClaimSources, type ClaimId } from "@/data/claimSources";
 
 export type CompanyKey = "NVIDIA" | "Microsoft" | "Meta" | "Google" | "Oracle" | "Amazon";
 
@@ -12,6 +12,12 @@ export const COMPANY_CONNECTION_TYPES = [
 ] as const;
 
 export type CompanyConnectionType = typeof COMPANY_CONNECTION_TYPES[number];
+
+export type CompanyExposureProvenance = {
+  sourceCount: number;
+  sourceTitles: string[];
+  asOf: string | null;
+};
 
 export type CompanyProfile = {
   key: CompanyKey;
@@ -37,6 +43,7 @@ export type CompanyProject = {
   connectionType: CompanyConnectionType;
   description: string;
   kind: "curated" | "directory";
+  claimIds?: ClaimId[];
   facility?: DirectoryFacility;
 };
 
@@ -109,6 +116,17 @@ export const COMPANY_PROFILES: CompanyProfile[] = [
   },
 ];
 
+export function getCompanyExposureProvenance(company: CompanyKey): CompanyExposureProvenance {
+  const profile = COMPANY_PROFILES.find((candidate) => candidate.key === company);
+  const sources = [...new Map((profile?.claimIds ?? []).flatMap((claimId) => getClaimSources(claimId)).map((source) => [source.id, source])).values()];
+  const verifiedDates = sources.map((source) => source.lastVerifiedAt ?? source.accessedAt).filter((date): date is string => Boolean(date)).sort();
+  return {
+    sourceCount: sources.length,
+    sourceTitles: sources.map((source) => source.title),
+    asOf: verifiedDates.at(-1) ?? null,
+  };
+}
+
 const CURATED_PROJECTS: Partial<Record<CompanyKey, CompanyProject[]>> = {
   NVIDIA: [
     {
@@ -123,6 +141,7 @@ const CURATED_PROJECTS: Partial<Record<CompanyKey, CompanyProject[]>> = {
       connectionType: "Supplier Relationship",
       description: "Reported NVIDIA GPU deployment connects the chip supplier to a grid-dependent Stargate buildout.",
       kind: "curated",
+      claimIds: ["stargate-oracle-gpus", "stargate-campus"],
     },
   ],
   Microsoft: [
@@ -138,6 +157,7 @@ const CURATED_PROJECTS: Partial<Record<CompanyKey, CompanyProject[]>> = {
       connectionType: "Developer/Operator",
       description: "Public market context describes behind-the-meter generation that bypasses the grid.",
       kind: "curated",
+      claimIds: [],
     },
     {
       id: "project-rainier-microsoft-wi",
@@ -183,6 +203,7 @@ const CURATED_PROJECTS: Partial<Record<CompanyKey, CompanyProject[]>> = {
       connectionType: "Direct Contractual",
       description: "Oracle's reported lease and customer relationship are reviewed alongside Stargate's public evidence profile.",
       kind: "curated",
+      claimIds: ["stargate-oracle-gpus", "stargate-campus"],
     },
   ],
   Meta: [

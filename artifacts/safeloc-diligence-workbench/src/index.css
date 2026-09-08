@@ -356,6 +356,15 @@ details[tabindex="-1"]:focus-visible {
   }
 }
 
+@media (max-width: 640px) {
+  /* The Home preview and holding/project paths stay actionable on small screens.
+     Supporting market education remains available on wider layouts and analysis. */
+  [data-testid="home-governed-ai"],
+  [data-testid="home-market-split"] {
+    display: none;
+  }
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;

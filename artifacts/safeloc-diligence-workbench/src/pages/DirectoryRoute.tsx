@@ -108,7 +108,7 @@ export default function DirectoryRoute({
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [stateFilter, setStateFilter] = useState<(typeof STATES)[number]>("All");
+  const [stateFilter, setStateFilter] = useState<(typeof STATES)[number]>("TX");
   const [companyFilter, setCompanyFilter] = useState<string | null>(null);
   const [researching, setResearching] = useState<Record<string, ResearchState>>({});
 

@@ -388,7 +388,7 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
           </div>
         </section>
       </div>
-       {financialView === "full-model" && <details id="materiality-full-model" data-testid="disclosure-full-model-detail" open className="mt-5 scroll-mt-24 rounded-xl border border-[#d9e0e4] bg-[#eef2f1]" role="tabpanel" aria-labelledby="financial-tab-full-model">
+       {financialView === "full-model" && <details id="materiality-full-model" data-testid="disclosure-full-model-detail" className="mt-5 scroll-mt-24 rounded-xl border border-[#d9e0e4] bg-[#eef2f1]" role="tabpanel" aria-labelledby="financial-tab-full-model">
         <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 text-[11px] font-bold uppercase tracking-[0.12em] text-[#122232] [&::-webkit-details-marker]:hidden"><span>Full Model Detail · assumptions and cash flow</span><ChevronDown aria-hidden="true" className="h-4 w-4 transition-transform [details[open]_&]:rotate-180" /></summary>
         <section className="border-t border-[#d9e0e4] p-5 md:p-6">
         <div className="flex items-end justify-between border-b border-[#d6e0dc] pb-4">

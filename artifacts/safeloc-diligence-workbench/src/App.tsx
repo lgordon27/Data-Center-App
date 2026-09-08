@@ -38,7 +38,7 @@ const legacySectionRoutes: Record<string, string> = {
 };
 
 function routeFromHash(hash: string): AppRoute | null {
-  const route = hash.replace(/^#/, "");
+  const route = hash.replace(/^#/, "").split("/")[0];
   if (!route) return "home";
   if (route === "analysis" || legacySectionRoutes[route]) return "analysis";
   return (["home", "directory", "value-chain", "how-it-works"] as readonly string[]).includes(route) ? route as AppRoute : null;
@@ -80,6 +80,7 @@ function AppShell() {
   const [resetOpen, setResetOpen] = useState(false);
   const [evidenceFocusId, setEvidenceFocusId] = useState<string | null>(null);
   const [pendingSection, setPendingSection] = useState<string | null>(null);
+  const [pendingTourSection, setPendingTourSection] = useState<string | null>(null);
   const diligence = useDiligence();
   const isHome = route === "home";
   const menuButtonRef = useRef<HTMLButtonElement>(null);
@@ -96,14 +97,20 @@ function AppShell() {
     let isInitialSync = true;
     const syncFromHash = () => {
       const rawHash = window.location.hash.replace(/^#/, "");
+      const [rawRoute, rawTourSection] = rawHash.split("/");
       const next = routeFromHash(window.location.hash);
       if (!next) {
         window.history.replaceState(null, "", "#home");
         setRoute("home");
       } else {
-        if (legacySectionRoutes[rawHash]) {
+        if (legacySectionRoutes[rawRoute]) {
           window.history.replaceState(null, "", "#analysis");
-          setPendingSection(legacySectionRoutes[rawHash]);
+          setPendingSection(legacySectionRoutes[rawRoute]);
+          setPendingTourSection(null);
+        } else if (next === "how-it-works" && rawTourSection) {
+          setPendingTourSection(rawTourSection);
+      } else {
+        setPendingTourSection(null);
         }
         setRoute(next);
       }
@@ -172,6 +179,7 @@ function AppShell() {
   const go = (next: AppRoute) => {
     if (next !== route) diligence.clearLastChange();
     setMobileOpen(false);
+    if (next !== "how-it-works") setPendingTourSection(null);
     const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false;
     window.scrollTo({ top: 0, behavior: prefersReducedMotion ? "auto" : "smooth" });
     if (window.location.hash !== `#${next}`) {
@@ -287,7 +295,6 @@ function AppShell() {
             <button data-testid="mobile-navigate-how-it-works" type="button" aria-current={route === "how-it-works" ? "page" : undefined} onClick={() => go("how-it-works")} className={`flex min-h-11 w-full items-center gap-3 rounded px-3 py-3 text-left text-[11px] font-semibold ${route === "how-it-works" ? "bg-[#122232] text-[#d4e86b]" : "text-[#52616b]"}`}>
               <Info aria-hidden="true" className="h-4 w-4" /> How It Works
             </button>
-            {isHome && <button data-testid="mobile-home-analyze-project" type="button" onClick={() => { setMobileOpen(false); window.dispatchEvent(new Event("safeloc-open-custom-project")); }} className="mt-1 flex min-h-11 w-full items-center gap-3 rounded bg-[#d4e86b] px-3 py-3 text-left text-[11px] font-bold text-[#122232]">Analyze a Project</button>}
             {!isHome && route === "value-chain" && <button data-testid="mobile-return-to-workbench" type="button" onClick={() => go("analysis")} className="flex w-full items-center gap-3 rounded px-3 py-3 text-left text-[11px] font-semibold text-[#ba2f45]">Return to Analysis</button>}
           </nav>
         </>
@@ -305,7 +312,7 @@ function AppShell() {
         </div>
       )}
       {route === "how-it-works" ? (
-        <HowItWorks onReturn={() => go("analysis")} onOpenScreen={(screen) => {
+        <HowItWorks initialSection={pendingTourSection} onReturn={() => go("analysis")} onOpenScreen={(screen) => {
           const section = legacySectionRoutes[screen];
           setPendingSection(section);
           go("analysis");

@@ -1,8 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const applicationVersion = process.env.npm_package_version || "0.0.0";
+const serverDir = path.dirname(fileURLToPath(import.meta.url));
+
 function gitValue(args) {
   try {
     return execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim() || null;
@@ -10,9 +12,29 @@ function gitValue(args) {
     return null;
   }
 }
-const commitSha = process.env.COMMIT_SHA || process.env.GIT_COMMIT_SHA || process.env.REPLIT_GIT_COMMIT_SHA || gitValue(["rev-parse", "HEAD"]);
-const releaseId = process.env.RELEASE_ID || process.env.REPLIT_DEPLOYMENT_ID || commitSha || `local-${applicationVersion}`;
-const buildTimestamp = process.env.BUILD_TIMESTAMP
+
+function readBuiltIdentity() {
+  try {
+    return JSON.parse(readFileSync(path.join(serverDir, "..", "dist", "public", "release.json"), "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+const builtIdentity = readBuiltIdentity();
+const applicationVersion = builtIdentity?.applicationVersion || process.env.npm_package_version || "0.0.0";
+const commitSha = builtIdentity?.commitSha
+  || process.env.COMMIT_SHA
+  || process.env.GIT_COMMIT_SHA
+  || process.env.REPLIT_GIT_COMMIT_SHA
+  || gitValue(["rev-parse", "HEAD"]);
+const releaseId = builtIdentity?.releaseId
+  || process.env.RELEASE_ID
+  || process.env.REPLIT_DEPLOYMENT_ID
+  || commitSha
+  || `local-${applicationVersion}`;
+const buildTimestamp = builtIdentity?.buildTimestamp
+  || process.env.BUILD_TIMESTAMP
   || process.env.REPLIT_BUILD_TIMESTAMP
   || gitValue(["show", "-s", "--format=%cI", "HEAD"])
   || (() => {
@@ -27,6 +49,7 @@ export const releaseIdentity = Object.freeze({
   applicationVersion,
   releaseId,
   commitSha,
+  deploymentId: builtIdentity?.deploymentId ?? null,
   buildTimestamp,
 });
 
@@ -35,4 +58,12 @@ export function handleVersionRequest(_req, res) {
   res.setHeader("content-type", "application/json; charset=utf-8");
   res.setHeader("cache-control", "no-store");
   res.end(JSON.stringify(releaseIdentity));
+}
+
+export function handleReleaseDocumentRequest(_req, res) {
+  const identity = readBuiltIdentity() ?? releaseIdentity;
+  res.statusCode = 200;
+  res.setHeader("content-type", "application/json; charset=utf-8");
+  res.setHeader("cache-control", "no-store");
+  res.end(JSON.stringify(identity));
 }

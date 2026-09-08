@@ -1,6 +1,7 @@
 import { strict as assert } from "node:assert";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 
@@ -89,6 +90,13 @@ test("production entry point serves active API routes without retired endpoints"
     assert.equal(typeof version.buildTimestamp, "string");
     assert.ok(version.commitSha || version.releaseId, "release identity must include a commit SHA or release ID");
     assert.deepEqual(versionAgain, version, "release identity must be immutable for the process lifetime");
+    const releaseDocument = await waitForJson(`${baseUrl}/release.json`, child);
+    const generatedReleaseDocument = JSON.parse(readFileSync(path.join(packageRoot, "dist/public/release.json"), "utf8"));
+    assert.deepEqual(generatedReleaseDocument, version, "runtime release identity must match the generated release document");
+    assert.deepEqual(releaseDocument, generatedReleaseDocument, "the public release route must serve the generated release document");
+    assert.deepEqual(releaseDocument, version, "the public build release document must match the API identity");
+    const versionHeaders = await fetch(`${baseUrl}/api/version`);
+    assert.equal(versionHeaders.headers.get("cache-control"), "no-store");
     const aiMethod = await fetch(`${baseUrl}/api/analyze-evidence`);
     assert.equal(aiMethod.status, 405);
     for (const retiredPath of ["/api/grid/status", "/api/grid/diagnostics", "/api/grid/query"]) {

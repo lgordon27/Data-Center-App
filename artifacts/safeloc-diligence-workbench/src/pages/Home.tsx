@@ -31,6 +31,7 @@ import {
 import {
   COMPANY_PROFILES,
   companyProjects,
+  getCompanyExposureProvenance,
   profileForCompany,
   projectSummary,
   type CompanyKey,
@@ -43,30 +44,9 @@ import { ProviderQueueSnapshot } from "@/components/ProviderQueueSnapshot";
 type HomeRoute = "directory" | "how-it-works" | "value-chain";
 
 const homeEntryPoints = [
-  {
-    id: "value-chain",
-    title: "The AI Chain",
-    subtitle: "Trace the $725B from chip fabs to your portfolio.",
-    href: "#value-chain",
-    icon: Network,
-    accent: "blue",
-  },
-  {
-    id: "how-it-works",
-    title: "How It Works",
-    subtitle: "Evidence methodology, sources, and the builder's story.",
-    href: "#how-it-works",
-    icon: Info,
-    accent: "coral",
-  },
-  {
-    id: "advisor",
-    title: "Advisor handoff",
-    subtitle: "Jump to the client-conversation section of the analysis.",
-    href: "#analysis-advisor",
-    icon: Leaf,
-    accent: "violet",
-  },
+  { id: "value-chain", title: "The AI Chain", subtitle: "Trace the infrastructure chain from chips to portfolios.", href: "#value-chain", icon: Network, accent: "blue" },
+  { id: "how-it-works", title: "How It Works", subtitle: "Evidence methodology, sources, and the builder's story.", href: "#how-it-works", icon: Info, accent: "coral" },
+  { id: "advisor", title: "Advisor handoff", subtitle: "Jump to the client-conversation section of the analysis.", href: "#analysis-advisor", icon: Leaf, accent: "violet" },
 ] as const;
 
 type CustomProjectFormProps = {
@@ -463,7 +443,20 @@ function CompanyProjectCard({
       </div>
       <p className="mt-3 text-[11px] leading-5 text-[#52616b]">{project.description}</p>
       <div className="mt-3 flex flex-wrap items-center gap-2 font-mono text-[8px] uppercase tracking-[0.08em] text-[#71808a]">
-        <span>{project.kind === "curated" ? "Reviewed case context" : "Compute Atlas discovery metadata"}</span>
+        {project.facility?.sourceUrl ? (
+          <a href={project.facility.sourceUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2 hover:text-[#122232]">
+            Source: Compute Atlas
+          </a>
+        ) : project.claimIds?.length ? (
+          <span className="flex flex-wrap items-center gap-1">
+            Source:
+            {project.claimIds.map((claimId) => <ClaimCitation key={claimId} claimId={claimId} />)}
+          </span>
+        ) : (
+          <span>Source: project relationship not established</span>
+        )}
+        <span aria-hidden="true">·</span>
+        <span>{project.facility?.lastUpdated ? `as of ${project.facility.lastUpdated}` : "as-of date not established"}</span>
         <span aria-hidden="true">·</span>
         <span>Not ownership proof or a modeled input</span>
       </div>
@@ -489,6 +482,7 @@ function CompanyExposure({
   sectionRef?: React.RefObject<HTMLElement | null>;
 }) {
   const profile = profileForCompany(company);
+  const provenance = getCompanyExposureProvenance(company);
   const projects = companyProjects(company, []);
   const summary = projectSummary(projects);
   return (
@@ -503,7 +497,12 @@ function CompanyExposure({
             <h2 id="company-exposure-heading" className="mt-2 text-[32px] font-semibold leading-none tracking-[-0.05em] md:text-[46px]">{profile.displayName} AI Infrastructure Exposure</h2>
             <p className="mt-3 max-w-2xl text-[12px] leading-5 text-[#52616b]">{profile.headline}. The projects below show public market-context connections and discovery metadata—not proof that {profile.displayName} owns or controls a facility.</p>
            <p data-testid="company-connection-note" className="mt-3 max-w-2xl text-[11px] font-semibold leading-5 text-[#314207]">Connection types indicate the nature of the relationship, not the magnitude of financial exposure.</p>
-           <div className="flex flex-wrap gap-2">{profile.claimIds.map((claimId) => <ClaimCitation key={claimId} claimId={claimId} />)}</div>
+          <div className="flex flex-wrap gap-2">{profile.claimIds.map((claimId) => <ClaimCitation key={claimId} claimId={claimId} />)}</div>
+          <p data-testid="company-exposure-provenance" className="mt-3 font-mono text-[9px] uppercase tracking-[0.08em] text-[#71808a]">
+            {provenance.sourceCount > 0
+              ? `Public claim sources: ${provenance.sourceCount} · last verified ${provenance.asOf ?? "date not established"}`
+              : "No attached public claim source · as-of date not established"}
+          </p>
           </div>
           <div data-testid="company-fund-context" className="max-w-xs rounded-lg border border-[#cbb7ec] bg-[#eee7fa] p-4 text-[10px] leading-4 text-[#482873]">
             <div className="font-mono text-[8px] font-bold uppercase tracking-[0.12em]">Held in:</div>
@@ -871,6 +870,7 @@ export function ComputeAtlasDirectory({ onCurated, onResearchSuccess }: { onCura
   );
 }
 
+/* Legacy Home implementation removed from the release bundle.
 function LegacyHome({ onNavigate }: { onNavigate?: (route: HomeRoute) => void } = {}) {
   const { loadCustomProject, resetToDefault, originatingCompany, ercotQueue } = useDiligence();
   const initialCompany = COMPANY_PROFILES.some((profile) => profile.key === originatingCompany) ? originatingCompany as CompanyKey : null;
@@ -915,9 +915,9 @@ function LegacyHome({ onNavigate }: { onNavigate?: (route: HomeRoute) => void } 
     });
     window.location.hash = "analysis";
   };
-  const goSecondary = (route: HomeRoute) => {
-    if (onNavigate) onNavigate(route);
-    else window.location.hash = route;
+  const goSecondary = (route: HomeRoute, target?: string) => {
+    if (onNavigate && !target) onNavigate(route);
+    else window.location.hash = target ? `${route}/${target}` : route;
   };
   const accentClasses = {
     blue: "border-[#8dc8e8]/35 bg-[#8dc8e8]/[0.07] text-[#8dc8e8]",
@@ -1149,6 +1149,7 @@ function LegacyHome({ onNavigate }: { onNavigate?: (route: HomeRoute) => void } 
     </div>
   );
 }
+*/
 
 function homeMetric(value: number | null | undefined, suffix = "") {
   return typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(1)}${suffix}` : "Unavailable";
@@ -1188,9 +1189,9 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
     trackEvent("company_lens_selected", { company: company.toLowerCase(), entry_point: "home_holdings" });
     focusCompanyExposure();
   };
-  const goSecondary = (route: HomeRoute) => {
-    if (onNavigate) onNavigate(route);
-    else window.location.hash = route;
+  const goSecondary = (route: HomeRoute, target?: string) => {
+    if (onNavigate && !target) onNavigate(route);
+    else window.location.hash = target ? `${route}/${target}` : route;
   };
   const openCustomProject = () => window.dispatchEvent(new Event("safeloc-open-custom-project"));
   const handleResearchSuccess = (research: CustomResearchResponse, company: CompanyKey | null = null, projectId = "custom_project", projectKind = "custom") => {
@@ -1256,11 +1257,17 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
                   <button data-testid="button-start-nvidia" type="button" onClick={() => selectCompany("NVIDIA")} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-[#d4e86b] px-4 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#122232] transition-transform hover:-translate-y-0.5 hover:bg-[#e3f18d] focus:outline-none focus:ring-2 focus:ring-[#d4e86b] focus:ring-offset-2 focus:ring-offset-[#0a1b2a]">
                     Start with NVIDIA <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" />
                   </button>
-                  <button data-testid="button-run-stargate" type="button" onClick={() => { resetToDefault(null); window.location.hash = "analysis"; }} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-[#d4e86b]/70 bg-[#173247] px-4 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#d4e86b] transition-colors hover:border-[#d4e86b] hover:bg-[#203f50] focus:outline-none focus:ring-2 focus:ring-[#d4e86b] focus:ring-offset-2 focus:ring-offset-[#0a1b2a]">
-                    Run the Stargate Case <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" />
-                  </button>
-                  <button data-testid="button-analyze-another-project" type="button" onClick={openCustomProject} className="inline-flex min-h-11 items-center justify-center gap-1 rounded-md px-3 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#b9e1f2] underline decoration-[#718894] underline-offset-4 transition-colors hover:text-[#d4e86b] hover:decoration-[#d4e86b]">
-                    Analyze another project
+                  <button
+                    data-testid="button-choose-project"
+                    type="button"
+                    onClick={() => {
+                      const target = document.getElementById("home-entry-paths");
+                      target?.scrollIntoView({ behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ? "auto" : "smooth", block: "start" });
+                      target?.focus({ preventScroll: true });
+                    }}
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-[#d4e86b]/70 bg-[#173247] px-4 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#d4e86b] transition-colors hover:border-[#d4e86b] hover:bg-[#203f50] focus:outline-none focus:ring-2 focus:ring-[#d4e86b] focus:ring-offset-2 focus:ring-offset-[#0a1b2a]"
+                  >
+                    Choose a project <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" />
                   </button>
                 </div>
                 <div data-testid="home-supporting-lines" className="mt-7 max-w-2xl space-y-2 text-[13px] leading-5 text-[#c4d0d6]">
@@ -1301,7 +1308,7 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
           </div>
         </section>
 
-        <section data-testid="home-entry-paths" aria-labelledby="home-entry-paths-heading" className="border-y border-white/10 bg-[#0d2435] px-5 py-10 sm:px-8 md:py-14 xl:px-10">
+        <section id="home-entry-paths" data-testid="home-entry-paths" tabIndex={-1} aria-labelledby="home-entry-paths-heading" className="border-y border-white/10 bg-[#0d2435] px-5 py-10 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#d4e86b] sm:px-8 md:py-14 xl:px-10">
           <div className="mx-auto max-w-[1240px]">
             <div className="max-w-2xl">
               <div className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-[#d4e86b]">Start with a lens</div>
@@ -1324,14 +1331,12 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
               </div>
               <div data-testid="home-project-path" className="rounded-xl border border-[#d4e86b]/35 bg-[#102b3b] p-4 sm:p-5">
                 <div className="flex items-center justify-between gap-3"><h3 className="text-[17px] font-semibold text-white">An infrastructure project</h3><MapPin aria-hidden="true" className="h-4 w-4 text-[#d4e86b]" /></div>
-                <p className="mt-2 max-w-xl text-[11px] leading-5 text-[#b9c5c9]">Open the curated Stargate case, analyze a different project with the existing research dialog, or browse public directory context.</p>
+                 <p className="mt-2 max-w-xl text-[11px] leading-5 text-[#b9c5c9]">Open the curated Stargate case, analyze a different project with the existing research dialog, or browse the Texas rollout directory.</p>
                 <div className="mt-5 flex flex-wrap gap-2">
                   <button data-testid="button-analyze-stargate" type="button" onClick={() => { resetToDefault(null); window.location.hash = "analysis"; }} className="inline-flex min-h-10 items-center gap-2 rounded-md bg-[#d4e86b] px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.08em] text-[#122232]">Analyze Stargate Abilene <ArrowRight aria-hidden="true" className="h-3 w-3" /></button>
                   <button data-testid="button-analyze-another-project-path" type="button" onClick={openCustomProject} className="inline-flex min-h-10 items-center gap-2 rounded-md border border-white/20 px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.08em] text-[#d4e86b]">Analyze a Project <ArrowRight aria-hidden="true" className="h-3 w-3" /></button>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 border-t border-white/10 pt-4 text-[10px]">
-                  <button data-testid="button-browse-texas-facilities" type="button" onClick={() => goSecondary("directory")} className="text-[#b9e1f2] underline underline-offset-2 hover:text-[#d4e86b]">Browse Texas facilities</button>
-                  <button data-testid="button-browse-nationwide-facilities" type="button" onClick={() => goSecondary("directory")} className="text-[#b9e1f2] underline underline-offset-2 hover:text-[#d4e86b]">Browse nationwide directory</button>
                 </div>
               </div>
             </div>
@@ -1407,10 +1412,9 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
               </div>
             </div>
             <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 border-t border-white/10 pt-4 text-[10px]">
-              <button data-testid="button-home-methodology" type="button" onClick={() => goSecondary("how-it-works")} className="text-[#b9e1f2] underline underline-offset-2 hover:text-[#d4e86b]">Methodology</button>
+              <button data-testid="button-home-methodology" type="button" onClick={() => goSecondary("how-it-works", "tour-sources")} className="text-[#b9e1f2] underline underline-offset-2 hover:text-[#d4e86b]">Methodology</button>
               <button data-testid="button-home-value-chain" type="button" onClick={() => goSecondary("value-chain")} className="text-[#b9e1f2] underline underline-offset-2 hover:text-[#d4e86b]">The AI Chain</button>
-              <button data-testid="button-home-directory" type="button" onClick={() => goSecondary("directory")} className="text-[#b9e1f2] underline underline-offset-2 hover:text-[#d4e86b]">Facility Directory</button>
-              <button data-testid="button-home-builder" type="button" onClick={() => goSecondary("how-it-works")} className="text-[#b9e1f2] underline underline-offset-2 hover:text-[#d4e86b]">Builder / about</button>
+              <button data-testid="button-home-builder" type="button" onClick={() => goSecondary("how-it-works", "tour-built-by")} className="text-[#b9e1f2] underline underline-offset-2 hover:text-[#d4e86b]">About the Builder</button>
             </div>
           </div>
         </section>

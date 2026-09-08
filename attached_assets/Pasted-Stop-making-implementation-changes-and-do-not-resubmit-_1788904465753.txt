@@ -1,0 +1,58 @@
+Stop making implementation changes and do not resubmit this task for review again yet.
+
+The task has entered a repeated release-identity loop and has been rejected multiple times. Before any additional edits, provide a read-only reconciliation report for the workspace’s exact current state.
+
+Do not commit, build, deploy, reset, revert, amend, rebase or modify files while preparing this report.
+
+REPORT THE FOLLOWING
+
+1. Current Git HEAD
+2. Current branch
+3. Complete `git status`
+4. Every commit created by Task #165
+5. Every file changed by Task #165
+6. Every generated file created by Task #165
+7. Whether any other task or agent changed the same files concurrently
+8. Whether the auditable category-research task changed any overlapping files
+9. Exact final reviewer rejection reason
+10. Current local `/api/version` response
+11. Current local `/release.json` response
+12. Current production `/api/version` response
+13. Current production `/release.json` response
+14. Current unit-test totals
+15. Current browser-test totals
+16. Names and messages for every remaining failing browser test
+17. Final measured homepage height at all five required viewport sizes
+18. Whether the public production deployment was changed
+19. Whether `LegacyHome` was deleted, commented out, left unused or excluded through another mechanism
+20. Whether the final local build contains the redesigned homepage
+
+RELEASE-IDENTITY DIAGNOSIS
+
+Explain whether the current implementation creates this circular dependency:
+
+* A build records Git HEAD.
+* A release report containing that HEAD is committed.
+* Committing the report advances HEAD.
+* The recorded revision is therefore stale.
+
+Do not attempt to repair this by repeatedly rebuilding and committing another updated report.
+
+The intended release identity is:
+
+* `sourceRevision`: the final committed source revision used as build input
+* `bundleId`: a content hash derived from the resulting build artifact
+* `buildTimestamp`: build metadata
+
+Generated reports and build artifacts must not advance the source revision after the build. They should remain uncommitted build outputs, deployment artifacts or CI/release metadata.
+
+TASK STATUS
+
+Conclude with exactly one status:
+
+* SAFE TO CONTINUE
+* REQUIRES RECONCILIATION
+* CONCURRENT WORK CONFLICT
+* WORKTREE NOT REPRODUCIBLE
+
+Do not describe the task as complete while review remains rejected, production remains stale or browser tests remain unresolved.

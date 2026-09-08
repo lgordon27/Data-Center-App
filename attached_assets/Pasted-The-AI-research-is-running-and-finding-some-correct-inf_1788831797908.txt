@@ -1,0 +1,19 @@
+The AI research is running and finding some correct information (Project Kilby correctly identified as off-grid with natural gas generation), but two issues remain:
+
+ISSUE 1: Source-support confidence shows 0% on every item even when the AI found correct information and assigned a reasonable classification. This is because the source URL validation rejects URLs that aren't in the web_search_preview tool's output metadata. The classification tiering fix works (Verified gets downgraded to Management Assertion instead of Missing Evidence), but the confidence display still shows 0% which makes the results look empty.
+
+Fix: Source-support confidence should reflect the AI's own assessment of its finding, not the URL validation result. Add a field to the system prompt asking the AI to rate its own confidence (0-100) for each item based on what it found. Display that confidence score. Keep the source validation badges (PARTIAL, SEARCHED NO SUPPORT, etc.) as separate indicators of URL verification status, but don't let URL validation override the confidence display.
+
+When the AI returns a real finding (like "Off-grid, utilizing on-site natural gas generation") with reasoning, that should show a non-zero confidence even if the specific URL wasn't captured in the search metadata.
+
+ISSUE 2: The AI is not searching deeply enough for each variable. It finds the project at a high level but returns "Not specified" for most individual variables. For a well-documented project like Project Kilby, electricity source (Permian Basin natural gas), water source (brackish groundwater from Texas Pacific Land), customer (Microsoft 20-year PPA), and capacity (2.67 GW) are all publicly documented.
+
+Fix: Update the system prompt to be more aggressive about searching. Add this instruction:
+
+"Search multiple times using different queries to find information about each variable. Do not return 'Not specified' or 'Unknown' without first trying at least two different search queries for that specific variable. For example, if searching '[project name] electricity cost' returns nothing, also try '[operator name] power source', '[location] energy infrastructure', or '[project name] natural gas'. You have web search available. Use it extensively. A well-documented project should return specific findings for at least 8-10 of the 16 variables."
+
+Also add project-specific search hints when Compute Atlas metadata is available: "Known operator: [operator]. Known capacity: [capacity]. Known status: [status]. Use these facts to construct more targeted searches."
+
+ISSUE 3: The evidence item display is too verbose for AI-researched items. Each item shows the classification, the source validation status, the classification basis, the source relevance, the search transparency link, and the "add or replace a missed source" button, all expanded by default. This makes the Evidence Room extremely long and hard to scan. 
+
+Fix: For AI-researched items, collapse the source detail by default. Show only: variable name, value, classification dropdown, and confidence bar. The source validation detail, classification basis, and search transparency should be behind an expand toggle.

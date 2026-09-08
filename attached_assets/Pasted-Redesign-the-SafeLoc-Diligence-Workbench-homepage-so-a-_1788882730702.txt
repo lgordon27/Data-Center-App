@@ -1,0 +1,378 @@
+Redesign the SafeLoc Diligence Workbench homepage so a first-time visitor understands the product within ten seconds and has only two conceptual ways to begin:
+
+1. Start from a public holding
+2. Start from an infrastructure project
+
+Preserve the current SafeLoc visual identity, color palette, typography and editorial character. Do not convert this into a generic SaaS landing page. Do not change the evidence data model, financial formulas, AI contracts, localStorage schemas or analysis-section functionality in this task.
+
+PRIMARY OBJECTIVE
+
+The homepage currently explains the AI infrastructure market well, but it does not immediately demonstrate the product. It also contains too many overlapping entry points:
+
+* Start with NVIDIA
+* Run the Stargate Case
+* Analyze Another Project
+* Start with the directory
+* Six company cards
+* A second Stargate CTA
+* A second custom-project form
+* Browse All Facilities
+
+Simplify the hierarchy, show the product in the hero and preserve analytical depth through progressive disclosure.
+
+## 1. REDESIGN THE HEADER
+
+On the homepage, show:
+
+* SafeLoc logo
+* The AI Chain
+* How It Works
+* Facility Directory
+* Analyze a Project as the primary header button
+
+Remove from the homepage header:
+
+* “Evidence-Governed Investment Intelligence”
+* Active project name
+* “IC pre-read”
+* Reset to Default
+* Duplicate Home button if the logo already returns Home
+
+Reset, project context, save, compare and other workbench controls should appear only inside the analysis experience.
+
+Keep the header compact, responsive and keyboard accessible.
+
+## 2. BUILD A TWO-COLUMN HERO
+
+Use the currently underutilized right half of the hero.
+
+### Left column
+
+Eyebrow:
+
+AI INFRASTRUCTURE DILIGENCE FOR INVESTORS AND ADVISORS
+
+Headline:
+
+The AI infrastructure market is splitting in two. Which side are your holdings on?
+
+Description:
+
+Trace a holding to the projects supporting its growth. Test the evidence behind those projects and see how uncertainty changes expected returns.
+
+Primary action:
+
+Explore NVIDIA Exposure
+
+Secondary action:
+
+Analyze a Project
+
+Tertiary text link:
+
+Run the Curated Stargate Case
+
+Supporting governance line:
+
+AI proposes. Evidence supports. You make the call.
+
+Remove “Launch brief · 2026.”
+
+### Hero action behavior
+
+Explore NVIDIA Exposure:
+
+* Select NVIDIA using the existing company-exposure state.
+* Move to the holdings entry section immediately below the hero.
+* Display the NVIDIA relationship result there.
+* Focus the result heading accessibly.
+* Do not unexpectedly move the user several full screens down the page.
+* The result must contain one obvious next action: “Review Stargate Evidence.”
+* Entering the analysis through NVIDIA should preserve a Financial Advisor/public-markets entry context if the existing context API supports this.
+
+Analyze a Project:
+
+* Open the existing custom-project dialog.
+* Do not add a duplicate project form to the homepage.
+
+Run the Curated Stargate Case:
+
+* Open the existing curated Stargate analysis at `#analysis`.
+* Preserve existing reset, persistence and session behavior.
+* Enter with the Project Investor lens or entry context if supported.
+
+## 3. ADD A LIVE PRODUCT PREVIEW TO THE HERO
+
+The right column should show a compact preview of the curated Stargate analysis.
+
+The preview should include:
+
+* Stargate Abilene
+* Taylor County, Texas
+* Current project status
+* NVIDIA → Supplier Relationship → Stargate Abilene
+* Evidence confidence
+* Underwriting baseline IRR
+* Conservative stress-case IRR
+* Evidence-quality gap
+* Recommendation status
+* Number of material evidence gaps
+* One material-gap example
+* “Inspect the Evidence” button
+
+Important requirements:
+
+* Derive every value from the existing diligence context and financial-model selectors.
+* Do not hard-code IRR, confidence, gap counts or recommendation status.
+* Do not create a second calculation source.
+* Label the NVIDIA relationship as a supplier relationship, not ownership or project control.
+* State that issuer or fund materiality has not been established.
+* Keep the preview compact enough to fit above the fold at a 1366×768 desktop viewport.
+* On smaller screens, place the preview below the hero copy without horizontal overflow.
+* If the curated case is not loaded or the metrics are unavailable, show a truthful fallback rather than invented values.
+
+The preview should make the application immediately feel like a functioning investment product rather than a research article.
+
+## 4. CREATE ONE “TWO WAYS TO START” SECTION
+
+Immediately after the hero, add a section titled:
+
+One evidence engine. Two ways to begin.
+
+Use two visually distinct paths.
+
+### Path A: Start from a holding
+
+Audience label:
+
+For financial advisors and public-markets investors
+
+Description:
+
+Trace a public company to the infrastructure supporting its AI growth, then examine the strength of the relationship and the evidence behind the project.
+
+Provide a compact company selector for:
+
+* NVIDIA
+* Microsoft
+* Meta
+* Alphabet
+* Oracle
+* Amazon
+
+Do not display six large editorial cards by default. Use compact selectable controls with company name and ticker.
+
+After selection, show the existing company-exposure result directly within this path:
+
+* Relationship type
+* Relationship qualifier
+* Connected projects
+* Disclosed capacity
+* Tier/readiness context
+* Fund or index context, with as-of dates
+* Explicit statement that the relationship does not establish financial materiality
+* One primary action: inspect the selected project’s evidence
+
+Preserve the existing sourced qualifiers and do not overstate ownership, revenue dependency or portfolio impact.
+
+### Path B: Start from a project
+
+Audience label:
+
+For infrastructure investors, lenders and diligence teams
+
+Description:
+
+Search a data-center project and test its power, water, community, climate and financial assumptions.
+
+Show:
+
+* Analyze a Project button
+* Curated Stargate Abilene option
+* Browse Texas Facilities link
+* Browse Nationwide Directory as a smaller secondary link
+
+Do not place a second custom-project form directly on the homepage.
+
+Texas should be the featured rollout geography, but nationwide coverage must remain visible.
+
+## 5. ADD A GOVERNED-AI DEMONSTRATION
+
+Create a compact section titled:
+
+AI proposes. Evidence supports. Humans decide.
+
+Show one illustrative evidence interaction using the same visual components as the Evidence section.
+
+Example:
+
+GRID INTERCONNECTION
+
+Current classification:
+Verified Evidence
+
+AI proposal:
+Missing Evidence
+
+Reason:
+No project-specific executed interconnection agreement or energization date was found in the reviewed sources.
+
+Potential model effect:
+Show a dynamically formatted example or clearly label it as an illustration.
+
+Actions shown visually:
+
+* Accept
+* Override
+* Leave unresolved
+
+This homepage demonstration is explanatory only. It must not mutate the real workbench state unless the user explicitly opens the analysis and acts there.
+
+Explain the workflow in four short steps:
+
+1. AI gathers and evaluates available evidence.
+2. Each input receives a visible provenance classification.
+3. The user accepts, overrides or leaves the proposal unresolved.
+4. Approved changes update the model and decision posture.
+
+Do not claim the AI performed live public-source research unless a live retrieval actually occurred. Use truthful language such as “AI evaluates available evidence and proposes a classification.”
+
+## 6. RETAIN AND SIMPLIFY THE MARKET-SPLIT VISUAL
+
+Keep the Tier 1 versus Tier 2 concept after the product demonstration.
+
+Use concise cards:
+
+### Evidence-supported readiness
+
+* Power path established
+* Water strategy supported
+* Permits and community terms documented
+* Critical dependencies identified
+
+### Material readiness gaps
+
+* Grid or generation path unresolved
+* Water assumptions unsupported
+* Permitting or community obligations unclear
+* Schedule or capital assumptions exposed
+
+Do not imply that behind-the-meter power automatically makes a project Tier 1 or that public-grid reliance automatically makes a project Tier 2. Tier/readiness must be an evidence-supported conclusion.
+
+Examples such as Project Kilby and Stargate Abilene must remain labeled as public market context and carry source links.
+
+## 7. ADD A COMPACT TRUST AND METHODOLOGY STRIP
+
+Near the bottom of the page, show:
+
+* Public sources linked
+* Synthetic economics labeled
+* Five evidence classifications
+* Human approval required
+* Changes recorded in an audit trail
+
+Add links to:
+
+* View Methodology
+* Explore the AI Chain
+* Browse Facility Directory
+* About the Builder
+
+Keep the Growth for Impact conference and builder credential in a restrained footer or About section. Do not let founder credentials compete with the product above the fold.
+
+## 8. REMOVE OR CONSOLIDATE CURRENT CONTENT
+
+Remove the current standalone or duplicate versions of:
+
+* Start with the directory callout near the hero
+* Six oversized company cards
+* Second curated Stargate CTA section
+* Second custom-project form
+* Repeated “Browse All Facilities” CTA
+* Repeated market-statistics strip
+* “Go deeper when you’re ready”
+* Duplicate source pills
+* Repeated explanatory paragraphs
+* “Launch brief · 2026”
+
+Retain necessary source qualifications, but attach them to the claim or component they qualify rather than repeating large disclaimer paragraphs.
+
+## 9. DATA AND CLAIM REQUIREMENTS
+
+* Any fund holding percentage must show an as-of date.
+* Any directory count must come from the live directory provider state.
+* Any ERCOT queue figure must show provider and freshness date.
+* Any market-spending or paused-project statistic must have a specific source.
+* Do not hard-code 1,280+ if the current directory contains 1,405 records.
+* Do not show conflicting ERCOT values without explaining different reporting dates or definitions.
+* Do not state or imply that one project is financially material to NVIDIA, a fund or a household portfolio without supporting analysis.
+* Preserve “public context,” “synthetic economics” and project-versus-fund materiality qualifiers.
+
+## 10. RESPONSIVE AND ACCESSIBILITY REQUIREMENTS
+
+Test at:
+
+* 1440×900
+* 1366×768
+* 1024×768
+* 768×1024
+* 390×844
+
+Verify:
+
+* Main headline, description, primary actions and product preview are visible or substantially visible above the fold on desktop.
+* No horizontal page overflow.
+* The company selector is keyboard accessible.
+* Selected-company state is announced accessibly.
+* Focus moves correctly after selecting NVIDIA.
+* Dialog focus is trapped and restored correctly.
+* CTA text states what will happen.
+* Source links have descriptive accessible names.
+* Color is not the only means of communicating status.
+* Motion respects reduced-motion preferences.
+* Text remains readable without relying on tiny uppercase labels.
+
+## 11. TEST COVERAGE
+
+Add or update tests for:
+
+* Homepage header contents
+* Removal of legacy subtitle, active-project text and reset control from Home
+* NVIDIA selection and result focus
+* NVIDIA relationship qualifiers
+* Curated Stargate launch
+* Custom-project dialog launch
+* Texas-directory and nationwide-directory links
+* Hero metrics matching the existing diligence context
+* Hero preview responding to valid context changes
+* No duplicated custom-project form
+* No duplicated Stargate entry section
+* No hard-coded stale directory count
+* Correct keyboard navigation
+* No horizontal overflow at required widths
+* Direct navigation and browser history
+* Existing analysis, persistence, scenario, reset and AI-evidence functionality remaining unchanged
+
+Run:
+
+* Typecheck
+* Unit tests
+* Production build
+* Full Playwright suite
+
+Capture screenshots of the finished homepage at 1440×900, 768×1024 and 390×844.
+
+DELIVERABLE SUMMARY
+
+When finished, report:
+
+1. Files changed
+2. Components removed or consolidated
+3. How each homepage entry path behaves
+4. Which metrics are dynamically derived
+5. Responsive test results
+6. Accessibility test results
+7. Any remaining hard-coded or unverified claims
+8. Any existing tests that had to be changed and why
+
+Do not modify the financial model, evidence classifications, community-agreement data or agent approval behavior as part of this homepage-only task.

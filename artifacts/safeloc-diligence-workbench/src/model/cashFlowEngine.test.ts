@@ -110,7 +110,7 @@ test("custom research boundary quarantines incompatible units and source-free pr
     },
   };
   const boundary = containEvidenceForModel(unsafe);
-  assert.ok(boundary.quarantined.electricity_cost.some((reason) => /unit/i.test(reason)));
+  assert.ok(boundary.quarantined.electricity_cost.some((reason) => /source|classification/i.test(reason)));
   assert.ok(boundary.quarantined.grid_interconnection.some((reason) => /unit/i.test(reason)));
   assert.deepEqual(calculateCashFlowModel(unsafe), calculateCashFlowModel(baseline));
   for (const classification of ["Management Assertion", "Model Inference", "User Assumption"] as const) {

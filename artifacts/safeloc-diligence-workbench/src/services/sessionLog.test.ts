@@ -38,3 +38,32 @@ test("records AI outcomes and manual classification changes without losing decis
   clearDecisionHistory();
   assert.deepEqual(getDecisionHistory(), []);
 });
+
+test("persists decision history into the current session snapshot", () => {
+  const key = "safeloc:diligence:current-session:v1";
+  const values = new Map<string, string>([[key, JSON.stringify({ version: 2, classifications: {} })]]);
+  const previousWindow = (globalThis as typeof globalThis & { window?: unknown }).window;
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      localStorage: {
+        getItem: (storageKey: string) => values.get(storageKey) ?? null,
+        setItem: (storageKey: string, value: string) => values.set(storageKey, value),
+      },
+      dispatchEvent: () => true,
+    },
+  });
+  try {
+    clearDecisionHistory();
+    recordAIDecision("electricity_cost", "Missing Evidence", "Facility tariff not established.", "accepted", "Missing Evidence");
+    const stored = JSON.parse(values.get(key) ?? "{}");
+    assert.equal(stored.decisionHistory.length, 1);
+    assert.equal(stored.decisionHistory[0].itemId, "electricity_cost");
+  } finally {
+    clearDecisionHistory();
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: previousWindow,
+    });
+  }
+});

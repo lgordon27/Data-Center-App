@@ -2,6 +2,7 @@ import type { Classification } from "@/model/cashFlowEngine";
 
 export const SESSION_ACTION_EVENT = "safeloc:session-action";
 export const DECISION_HISTORY_EVENT = "safeloc:decision-history";
+const CURRENT_SESSION_STORAGE_KEY = "safeloc:diligence:current-session:v1";
 
 export type SessionAction = {
   action: string;
@@ -62,6 +63,7 @@ export function recordAIDecision(
     recordedAt: new Date().toISOString(),
   };
   decisionHistory.push(entry);
+  persistDecisionHistory();
   dispatchDecisionHistoryEvent(entry);
 }
 
@@ -78,11 +80,17 @@ export function recordManualClassificationChange(
     recordedAt: new Date().toISOString(),
   };
   decisionHistory.push(entry);
+  persistDecisionHistory();
   dispatchDecisionHistoryEvent(entry);
 }
 
 export function getDecisionHistory(): DecisionHistoryEntry[] {
   return decisionHistory.map((entry) => ({ ...entry }));
+}
+
+export function restoreDecisionHistory(entries: DecisionHistoryEntry[]) {
+  decisionHistory.length = 0;
+  decisionHistory.push(...entries.map((entry) => ({ ...entry })));
 }
 
 export function clearDecisionHistory() {
@@ -95,5 +103,21 @@ export function clearDecisionHistory() {
 function dispatchDecisionHistoryEvent(entry: DecisionHistoryEntry) {
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent<DecisionHistoryEntry>(DECISION_HISTORY_EVENT, { detail: entry }));
+  }
+}
+
+function persistDecisionHistory() {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = window.localStorage.getItem(CURRENT_SESSION_STORAGE_KEY);
+    if (!raw) return;
+    const session = JSON.parse(raw);
+    if (!session || typeof session !== "object" || Array.isArray(session)) return;
+    window.localStorage.setItem(
+      CURRENT_SESSION_STORAGE_KEY,
+      JSON.stringify({ ...session, decisionHistory: getDecisionHistory() }),
+    );
+  } catch {
+    // Session history is an optional persistence enhancement.
   }
 }

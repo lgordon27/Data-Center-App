@@ -94,15 +94,40 @@ test("containment rejects residential tariffs and preserves raw incompatible uni
       accessedAt: null,
       accessStatus: "open",
       excerpt: "365 days",
-      sourceClass: "primary-regulatory",
+      sourceClass: "primary-government",
       searchDomain: "project-identity",
       relationship: "primary",
       exactProject: true,
     }],
     sourceSupportConfidence: 94,
   });
-  assert.equal(duration.eligibleForModel, false);
-  assert.match(duration.quarantineReasons?.join(" ") ?? "", /incompatible/i);
+  assert.equal(duration.eligibleForModel, true);
+  assert.equal(duration.normalizedUnit, "months");
+  assert.ok(Math.abs((duration.normalizedValue ?? 0) - (365 / 30.4375)) < 0.01);
+  const recontained = containCustomResearchEvidence(duration);
+  assert.equal(recontained.normalizedUnit, "months");
+  assert.equal(recontained.normalizedValue, duration.normalizedValue);
+  assert.equal(recontained.numericValue, duration.numericValue);
+  assert.equal(recontained.rawValue, 365);
+  assert.equal(recontained.rawUnit, "days");
+});
+
+test("full client parsing remains idempotent when containment runs twice", () => {
+  const source = structuredClone(response);
+  const timeline = source.evidence.find((item) => item.id === "grid_interconnection");
+  timeline.value = 365;
+  timeline.unit = "days";
+  timeline.numericValue = 365;
+  const first = parseResponse(source);
+  const second = parseResponse(first);
+  const firstTimeline = first.evidence.find((item) => item.id === "grid_interconnection");
+  const secondTimeline = second.evidence.find((item) => item.id === "grid_interconnection");
+  assert.equal(firstTimeline.normalizedUnit, "months");
+  assert.equal(secondTimeline.normalizedUnit, "months");
+  assert.equal(secondTimeline.normalizedValue, firstTimeline.normalizedValue);
+  assert.equal(secondTimeline.numericValue, firstTimeline.numericValue);
+  assert.equal(secondTimeline.rawValue, 365);
+  assert.equal(secondTimeline.rawUnit, "days");
 });
 
 test("keeps model self-confidence separate from source support and every model output", () => {

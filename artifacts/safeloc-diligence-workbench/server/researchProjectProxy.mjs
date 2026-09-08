@@ -1,4 +1,9 @@
 import { defaultResearchProjectCache } from "./researchProjectCache.mjs";
+import {
+  EVIDENCE_SEMANTIC_POLICY_VERSION,
+  evaluateEvidenceSourceEligibility,
+  normalizeEvidenceRecord,
+} from "../src/data/evidenceSemanticPolicy.mjs";
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const RESEARCH_PROJECT_MODEL = "gpt-4o";
@@ -143,6 +148,8 @@ function cacheMetadata(key, entry, state, refreshStatus = "idle", extras = {}) {
     storedAt: entry?.storedAt ?? null,
     refreshStatus,
     providerAvailable: extras.providerAvailable ?? true,
+    validationPolicyVersion: entry?.validationPolicyVersion ?? EVIDENCE_SEMANTIC_POLICY_VERSION,
+    revalidated: entry?.needsRevalidation === true,
     ...(extras.errorType ? { errorType: extras.errorType } : {}),
   };
 }
@@ -390,40 +397,33 @@ function defaultClassificationReason(classification, supportedByRetrievedSource,
   return `${classification} has a validated link, but the retrieved packet provides limited exact-project support.`;
 }
 
-const MODEL_UNIT_RULES = {
-  electricity_cost: /^\s*(?:\$|usd)\s*\/\s*mwh\s*$/i,
-  water_consumption: /^\s*(?:m\s*gal\s*\/\s*(?:yr|year)|mgal\s*\/\s*(?:yr|year))\s*$/i,
-  grid_interconnection: /^\s*months?\s*$/i,
-  permitting_timeline: /^\s*months?\s*$/i,
-  water_escalation: /^\s*%(?:\s*(?:annual|year))?\s*$/i,
-  electricity_escalation: /^\s*%(?:\s*(?:annual|year))?\s*$/i,
-  renewable_percentage: /^\s*%\s*$/i,
-  cooling_capex: /^\s*\$?\s*m(?:illion)?\s*$/i,
-  carbon_compliance: /^\s*\$?\s*m(?:illion)?\s*\/\s*(?:yr|year)\s*$/i,
-  backup_power_capacity: /^\s*(?:hours?|h)\s*$/i,
-  downtime_cost: /^\s*(?:\$|usd)\s*(?:\/\s*(?:day|d)|per\s+day)\s*$/i,
-};
-
 function containResearchRecord(item) {
   const reasons = [];
   const sources = Array.isArray(item.sources) ? item.sources : [];
   const hasSource = Boolean(item.sourceUrl) || sources.length > 0;
-  const exactProject = sources.some((source) => source.exactProject === true);
-  const nonReviewer = sources.some((source) => source.sourceClass !== "reviewer-submitted") ||
-    (item.sourceUrl && !String(item.sourceRole ?? "").toLowerCase().includes("reviewer-submitted"));
-  if (!hasSource) reasons.push("No validated project-specific source was returned.");
-  if (!exactProject || !nonReviewer || !["Verified Evidence", "Management Assertion"].includes(item.classification) || (item.sourceSupportConfidence ?? 0) < 60) {
-    reasons.push("Source provenance is not eligible for model activation.");
-  }
-  const rule = MODEL_UNIT_RULES[item.id];
-  if (item.numericValue !== undefined && rule && (!item.unit || !rule.test(item.unit))) {
-    reasons.push(`Incompatible unit for ${item.id}: ${item.unit}. Raw value retained for review.`);
-  }
-  if (item.id === "electricity_cost" && /\b(residential|household|homeowner|domestic)\b/i.test(
-    [item.value, item.description, item.citation, ...sources.flatMap((source) => [source.title, source.excerpt])].join(" "),
-  )) {
-    reasons.push("Residential electricity pricing is not eligible as a facility tariff.");
-  }
+  const sourceEligibility = evaluateEvidenceSourceEligibility({
+    id: item.id,
+    sources,
+    sourceUrl: item.sourceUrl,
+    classification: item.classification,
+    sourceSupportConfidence: item.sourceSupportConfidence,
+    coverageStatus: item.coverageStatus,
+  });
+  reasons.push(...sourceEligibility.reasons);
+  const rawValue = item.rawValue ?? item.value;
+  const rawUnit = item.rawUnit ?? item.unit;
+  const semantic = normalizeEvidenceRecord({
+    id: item.id,
+    value: item.rawValue !== undefined || item.numericValue !== undefined ? rawValue : undefined,
+    unit: rawUnit,
+    numericValue: item.rawValue === undefined ? item.numericValue : rawValue,
+    qualitativeValue: item.qualitativeValue,
+    description: item.description,
+    citation: item.citation,
+    sourceContext: sources.flatMap((source) => [source.title, source.excerpt]).join(" "),
+    explicitZero: item.explicitZero === true || (rawValue === 0 && Boolean(item.sourceUrl)),
+  });
+  reasons.push(...semantic.quarantineReasons);
   if (item.coverageStatus === "conflicting" || item.conflictSummary) reasons.push("Conflicting source coverage requires reviewer resolution.");
   if (item.classification === "Model Inference" || item.classification === "User Assumption") {
     reasons.push(`${item.classification} is not source-backed and cannot activate custom economics.`);
@@ -433,10 +433,21 @@ function containResearchRecord(item) {
     ...item,
     rawValue: item.rawValue ?? item.value,
     rawUnit: item.rawUnit ?? item.unit,
-    eligibleForModel: eligible,
+    rawText: item.rawText ?? String(item.value ?? ""),
+    normalizedValue: semantic.normalizedValue,
+    normalizedUnit: semantic.normalizedUnit,
+    ...(typeof semantic.normalizedValue === "number" ? { numericValue: semantic.normalizedValue } : {}),
+    ...(typeof semantic.normalizedValue === "string" ? { qualitativeValue: semantic.normalizedValue } : {}),
+    normalization: {
+      policyVersion: semantic.policyVersion,
+      conversion: semantic.conversion,
+      validationStatus: semantic.validationStatus,
+    },
+    semanticValidationStatus: semantic.validationStatus,
+    eligibleForModel: eligible && semantic.modelEligible,
     acceptedForModel: false,
     researchState: eligible ? "proposed" : hasSource ? "quarantined" : "retrieved-lead",
-    quarantineReasons: reasons,
+    quarantineReasons: [...new Set(reasons)],
   };
 }
 
@@ -445,6 +456,7 @@ export function containResearchResult(result) {
   const eligibleEvidence = evidence.filter((item) => item.eligibleForModel === true);
   return {
     ...result,
+    semanticPolicyVersion: EVIDENCE_SEMANTIC_POLICY_VERSION,
     evidence,
     retrievedLeads: evidence.filter((item) => item.researchState === "retrieved-lead" || item.researchState === "quarantined"),
     eligibleEvidence,
@@ -563,6 +575,13 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
         ? item.value
         : stringOrFallback(item.value, "Not established", 1_000),
       unit: stringOrFallback(item.unit, "Not disclosed", 100),
+      ...(item.rawValue !== undefined
+        ? {
+          rawValue: item.rawValue,
+          rawUnit: item.rawUnit ?? item.unit,
+          rawText: item.rawText ?? String(item.rawValue ?? ""),
+        }
+        : {}),
       classification,
       citation: supportedByRetrievedSource ? citation : `No validated source match for this claim.${sourceMismatchNote} ${citation}`,
       description: stringOrFallback(item.description, "The searched public record did not establish a facility-level value.", 2_000),
@@ -1064,13 +1083,14 @@ export async function handleResearchProjectRequest(
   const retained = await cache.read(key);
   const containedRetained = retained ? { ...retained, result: containResearchResult(retained.result) } : null;
   const retainedState = retained ? cache.age(retained) : "expired";
-  if (!project.forceRefresh && containedRetained && (retainedState === "fresh" || retainedState === "recent")) {
+  const retainedNeedsRevalidation = retained?.needsRevalidation === true;
+  if (!project.forceRefresh && containedRetained && !retainedNeedsRevalidation && (retainedState === "fresh" || retainedState === "recent")) {
     sendJson(res, 200, withCacheMetadata(containedRetained, cacheMetadata(key, containedRetained, retainedState)));
     return;
   }
 
   const refresh = () => cache.refresh(key, () => runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, req }));
-   if (!project.forceRefresh && containedRetained && retainedState === "stale") {
+   if (!project.forceRefresh && containedRetained && !retainedNeedsRevalidation && retainedState === "stale") {
     const background = refresh();
     void background.promise.catch((error) => {
       console.error("[research-project] Background refresh failed:", classifyResearchFailure(error).type);

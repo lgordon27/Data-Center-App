@@ -1,0 +1,52 @@
+export const EVIDENCE_SEMANTIC_POLICY_VERSION: number;
+export const EVIDENCE_SEMANTIC_IDS: readonly string[];
+export const EVIDENCE_SEMANTIC_POLICY: Readonly<Record<string, {
+  id: string;
+  label: string;
+  meaning: string;
+  dimension: string;
+  valueKind: "numeric" | "qualitative";
+  canonicalUnit: string;
+  allowedUnits: readonly string[];
+  plausibleBounds: { min: number; max: number } | null;
+  zeroSemantics: string;
+  modelDestination: string | null;
+  impactRole: string;
+  materiality: string;
+  fallbackPolicy: string;
+  eligibleSourceScope: string;
+  eligibleSourceTypes: readonly string[];
+  projectSpecificityRequired: boolean;
+  humanAcceptanceRequired: boolean;
+  requiresFacilityContext?: boolean;
+  allowedValues?: readonly string[];
+}>>;
+export function getEvidenceSemanticDefinition(id: string): (typeof EVIDENCE_SEMANTIC_POLICY)[string] | null;
+export function assertEvidenceSemanticPolicyCoverage(ids?: readonly string[]): true;
+export function evaluateEvidenceSourceEligibility(input?: {
+  id?: string;
+  sources?: readonly { sourceClass?: string; exactProject?: boolean }[];
+  sourceUrl?: string;
+  classification?: string;
+  sourceSupportConfidence?: number;
+  coverageStatus?: string;
+}): { eligible: boolean; reasons: string[] };
+export function normalizeEvidenceRecord(input: {
+  id: string;
+  value?: unknown;
+  unit?: unknown;
+  numericValue?: unknown;
+  qualitativeValue?: unknown;
+  description?: unknown;
+  citation?: unknown;
+  sourceContext?: unknown;
+  explicitZero?: boolean;
+}): {
+  policyVersion: number;
+  validationStatus: "valid" | "unresolved" | "quarantined";
+  modelEligible: boolean;
+  quarantineReasons: string[];
+  conversion: string;
+  normalizedValue?: number | string;
+  normalizedUnit: string;
+};

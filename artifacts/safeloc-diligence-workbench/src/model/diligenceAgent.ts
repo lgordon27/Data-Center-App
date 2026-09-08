@@ -50,6 +50,7 @@ export type AgentAuditEvent = {
   projectKey?: string;
   evidenceSnapshotKey?: string;
   afterEvidenceSnapshotKey?: string;
+  noOpAcknowledgment?: boolean;
 };
 
 export type AppliedAgentChange = AgentAuditEvent & {
@@ -352,6 +353,9 @@ export function applyAgentFindingDecision(
   if (decision === "overridden" && (!finalClassification || finding.action !== "reclassify-evidence")) return state;
   const finalValue = decision === "accepted" ? finding.proposedValue : undefined;
   const appliedClassification = decision === "accepted" ? finding.proposedClassification : finalClassification;
+  const noOpAcknowledgment = decision === "accepted" &&
+    finding.proposedValue === finding.currentValue &&
+    finding.proposedClassification === finding.currentClassification;
   const audit: AgentAuditEvent = {
     id: `audit-${findingId}-${now.replace(/[^0-9]/g, "")}-${state.auditEvents.length}`,
     proposalId: finding.id,
@@ -370,6 +374,7 @@ export function applyAgentFindingDecision(
     note: reviewerNote?.trim() || undefined,
     projectKey: state.projectKey ?? undefined,
     evidenceSnapshotKey: state.evidenceSnapshotKey ?? undefined,
+    noOpAcknowledgment,
   };
   return {
     ...state,
@@ -384,7 +389,7 @@ export function applyAgentFindingDecision(
     dealProtection: state.dealProtection.map((item) => item.findingId === findingId ? { ...item, decision } : item),
     valueAtRisk: state.valueAtRisk.map((item) => item.findingId === findingId ? { ...item, decision } : item),
     auditEvents: [...state.auditEvents, audit],
-    appliedChanges: (decision === "accepted" || decision === "overridden") && finding.action !== "review-only" && Boolean(finding.affectedEvidenceId)
+    appliedChanges: (decision === "accepted" || decision === "overridden") && !noOpAcknowledgment && finding.action !== "review-only" && Boolean(finding.affectedEvidenceId)
       ? [...state.appliedChanges, audit]
       : state.appliedChanges,
   };

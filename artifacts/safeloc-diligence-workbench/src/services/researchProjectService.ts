@@ -1,4 +1,10 @@
 import type { Classification, EvidenceItem } from "@/context/DiligenceContext";
+import {
+  EVIDENCE_SEMANTIC_POLICY_VERSION,
+  EVIDENCE_SEMANTIC_POLICY,
+  evaluateEvidenceSourceEligibility,
+  normalizeEvidenceRecord,
+} from "@/data/evidenceSemanticPolicy.mjs";
 
 export const RESEARCH_PROJECT_ENDPOINT = "/api/research-project";
 export const RESEARCH_PROJECT_TIMEOUT_MS = 90_000;
@@ -44,6 +50,16 @@ export type CustomEvidenceRecord = Pick<
   conflictSummary?: string;
   rawValue?: string | number;
   rawUnit?: string;
+  rawText?: string;
+  normalizedValue?: number | string;
+  normalizedUnit?: string;
+  normalization?: {
+    policyVersion: number;
+    conversion: string;
+    validationStatus: "valid" | "unresolved" | "quarantined";
+  };
+  semanticValidationStatus?: "valid" | "unresolved" | "quarantined";
+  noOpAcknowledged?: boolean;
   researchState?: ResearchEvidenceState;
   eligibleForModel?: boolean;
   acceptedForModel?: boolean;
@@ -78,6 +94,7 @@ export type CustomResearchResponse = {
   };
   researchMode?: ResearchMode;
   researchCache?: ResearchCacheMetadata;
+  semanticPolicyVersion?: number;
   researchCoverage?: {
     searchedDomains: string[];
     failedDomains: string[];
@@ -102,6 +119,7 @@ export type ResearchCacheMetadata = {
   storedAt: string | null;
   refreshStatus: "idle" | "running" | "completed" | "failed";
   providerAvailable: boolean;
+  validationPolicyVersion?: number;
   errorType?: "quota-exhausted" | "authentication" | "timeout" | "malformed-response" | "request-limit" | "not-configured" | "upstream";
 };
 
@@ -156,24 +174,15 @@ export function summarizeResearchAudit(evidence: CustomEvidenceRecord[]) {
   };
 }
 
-const DEFAULT_EVIDENCE_DEFINITIONS: Record<(typeof CUSTOM_EVIDENCE_IDS)[number], { label: string; unit: string }> = {
-  electricity_cost: { label: "Electricity Cost / MWh", unit: "$/MWh" },
-  water_consumption: { label: "Annual Cooling Water", unit: "Facility total" },
-  grid_interconnection: { label: "Grid Interconnection Timeline", unit: "Project timeline" },
-  water_escalation: { label: "5-Yr Water Cost Escalation", unit: "%" },
-  community_risk: { label: "Community Infrastructure Strain", unit: "Local impact" },
-  renewable_percentage: { label: "Renewable Procurement", unit: "Power mix" },
-  cooling_capex: { label: "Cooling Infrastructure CAPEX", unit: "$M" },
-  electricity_escalation: { label: "5-Yr Electricity Price Increase", unit: "%" },
-  carbon_compliance: { label: "Carbon Compliance Cost", unit: "$M/yr" },
-  permitting_timeline: { label: "Core Build Timeline", unit: "Project timeline" },
-  customer_concentration: { label: "Customer Terms & Concentration", unit: "Customer mix" },
-  water_rights: { label: "Local Water Rights & Allocation", unit: "Facility rights" },
-  site_hazard_exposure: { label: "Site Hazard Exposure Profile", unit: "Facility exposure" },
-  backup_power_capacity: { label: "Backup Power Capacity", unit: "Resilience" },
-  water_source_resilience: { label: "Water Source Resilience", unit: "Supply" },
-  downtime_cost: { label: "Estimated Downtime Cost", unit: "Operating loss" },
-};
+const DEFAULT_EVIDENCE_DEFINITIONS = Object.fromEntries(
+  CUSTOM_EVIDENCE_IDS.map((id) => [
+    id,
+    {
+      label: EVIDENCE_SEMANTIC_POLICY[id].label,
+      unit: EVIDENCE_SEMANTIC_POLICY[id].canonicalUnit,
+    },
+  ]),
+) as Record<(typeof CUSTOM_EVIDENCE_IDS)[number], { label: string; unit: string }>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -291,6 +300,7 @@ function parseResearchCache(value: unknown): ResearchCacheMetadata | undefined {
     storedAt: isNonEmptyString(value.storedAt) && Number.isFinite(Date.parse(value.storedAt)) ? value.storedAt : null,
     refreshStatus: value.refreshStatus as ResearchCacheMetadata["refreshStatus"],
     providerAvailable: value.providerAvailable !== false,
+    ...(typeof value.validationPolicyVersion === "number" ? { validationPolicyVersion: value.validationPolicyVersion } : {}),
     ...(errorTypes.includes(value.errorType as typeof errorTypes[number]) ? { errorType: value.errorType as ResearchCacheMetadata["errorType"] } : {}),
   };
 }
@@ -303,49 +313,48 @@ const VALID_CLASSIFICATIONS: Classification[] = [
   "Missing Evidence",
 ];
 
-const MODEL_UNIT_RULES: Record<string, RegExp> = {
-  electricity_cost: /^\s*(?:\$|usd)\s*\/\s*mwh\s*$/i,
-  water_consumption: /^\s*(?:m\s*gal\s*\/\s*(?:yr|year)|mgal\s*\/\s*(?:yr|year))\s*$/i,
-  grid_interconnection: /^\s*months?\s*$/i,
-  permitting_timeline: /^\s*months?\s*$/i,
-  water_escalation: /^\s*%(?:\s*(?:annual|year))?\s*$/i,
-  electricity_escalation: /^\s*%(?:\s*(?:annual|year))?\s*$/i,
-  renewable_percentage: /^\s*%\s*$/i,
-  cooling_capex: /^\s*\$?\s*m(?:illion)?\s*$/i,
-  carbon_compliance: /^\s*\$?\s*m(?:illion)?\s*\/\s*(?:yr|year)\s*$/i,
-  backup_power_capacity: /^\s*(?:hours?|h)\s*$/i,
-  downtime_cost: /^\s*(?:\$|usd)\s*(?:\/\s*(?:day|d)|per\s+day)\s*$/i,
-};
-
 export function isCompatibleResearchUnit(id: string, unit: string): boolean {
-  const rule = MODEL_UNIT_RULES[id];
-  return !rule || rule.test(unit);
-}
-
-function sourceIsEligible(item: CustomEvidenceRecord): boolean {
-  const sources = item.sources ?? [];
-  const exactProject = sources.some((source) => source.exactProject === true);
-  const nonReviewer = sources.some((source) => source.sourceClass !== "reviewer-submitted") ||
-    Boolean(item.sourceUrl && !item.sourceRole.toLowerCase().includes("reviewer-submitted"));
-  const supportedClassification = item.classification === "Verified Evidence" || item.classification === "Management Assertion";
-  return exactProject && nonReviewer && supportedClassification &&
-    (item.sourceSupportConfidence ?? 0) >= 60 &&
-    item.coverageStatus !== "conflicting";
+  const definition = EVIDENCE_SEMANTIC_POLICY[id];
+  if (!definition) return false;
+  if (definition.valueKind === "qualitative") {
+    return definition.allowedUnits.some((allowed) => allowed.toLowerCase() === unit.trim().toLowerCase());
+  }
+  return normalizeEvidenceRecord({
+    id,
+    value: 1,
+    numericValue: 1,
+    unit,
+    description: "facility project tariff",
+    explicitZero: true,
+  }).validationStatus === "valid";
 }
 
 export function containCustomResearchEvidence(item: CustomEvidenceRecord): CustomEvidenceRecord {
   const reasons: string[] = [];
   const hasSource = Boolean(item.sourceUrl) || Boolean(item.sources?.length);
-  if (!hasSource) reasons.push("No validated project-specific source was returned.");
-  if (!sourceIsEligible(item)) reasons.push("Source provenance is not eligible for model activation.");
-  if (item.numericValue !== undefined && !isCompatibleResearchUnit(item.id, item.unit)) {
-    reasons.push(`Incompatible unit for ${item.id}: ${item.unit}. Raw value retained for review.`);
-  }
-  if (item.id === "electricity_cost" && /\b(residential|household|homeowner|domestic)\b/i.test(
-    [item.value, item.description, item.citation, ...(item.sources ?? []).flatMap((source) => [source.title, source.excerpt])].join(" "),
-  )) {
-    reasons.push("Residential electricity pricing is not eligible as a facility tariff.");
-  }
+  const sourceEligibility = evaluateEvidenceSourceEligibility({
+    id: item.id,
+    sources: item.sources,
+    sourceUrl: item.sourceUrl,
+    classification: item.classification,
+    sourceSupportConfidence: item.sourceSupportConfidence,
+    coverageStatus: item.coverageStatus,
+  });
+  reasons.push(...sourceEligibility.reasons);
+  const rawValue = item.rawValue ?? item.value;
+  const rawUnit = item.rawUnit ?? item.unit;
+  const semantic = normalizeEvidenceRecord({
+    id: item.id,
+    value: item.rawValue !== undefined || item.numericValue !== undefined ? rawValue : undefined,
+    unit: rawUnit,
+    numericValue: item.rawValue === undefined ? item.numericValue : rawValue,
+    qualitativeValue: item.qualitativeValue,
+    description: item.description,
+    citation: item.citation,
+    sourceContext: (item.sources ?? []).flatMap((source) => [source.title, source.excerpt]).join(" "),
+    explicitZero: rawValue === 0 && Boolean(item.sourceUrl),
+  });
+  reasons.push(...semantic.quarantineReasons);
   if (item.conflictSummary || item.coverageStatus === "conflicting") reasons.push("Conflicting source coverage requires reviewer resolution.");
   if (item.classification === "Model Inference" || item.classification === "User Assumption") {
     reasons.push(`${item.classification} is not source-backed and cannot activate custom economics.`);
@@ -355,10 +364,21 @@ export function containCustomResearchEvidence(item: CustomEvidenceRecord): Custo
     ...item,
     rawValue: item.rawValue ?? item.value,
     rawUnit: item.rawUnit ?? item.unit,
-    eligibleForModel: eligible,
+    rawText: item.rawText ?? String(item.value ?? ""),
+    normalizedValue: semantic.normalizedValue,
+    normalizedUnit: semantic.normalizedUnit,
+    ...(typeof semantic.normalizedValue === "number" ? { numericValue: semantic.normalizedValue } : {}),
+    ...(typeof semantic.normalizedValue === "string" ? { qualitativeValue: semantic.normalizedValue as EvidenceItem["qualitativeValue"] } : {}),
+    normalization: {
+      policyVersion: semantic.policyVersion,
+      conversion: semantic.conversion,
+      validationStatus: semantic.validationStatus,
+    },
+    semanticValidationStatus: semantic.validationStatus,
+    eligibleForModel: eligible && semantic.modelEligible,
     acceptedForModel: item.acceptedForModel === true && eligible,
     researchState: item.acceptedForModel === true && eligible ? "accepted" : eligible ? "proposed" : hasSource ? "quarantined" : "retrieved-lead",
-    quarantineReasons: reasons,
+    quarantineReasons: [...new Set(reasons)],
   };
 }
 
@@ -446,6 +466,11 @@ function parseResponse(value: unknown): CustomResearchResponse {
       searchTerms: parseSearchTerms(candidate.searchTerms),
       searchTermsSource: parseSearchTermsSource(candidate.searchTermsSource, parseSearchTerms(candidate.searchTerms)),
       ...(isNonEmptyString(candidate.conflictSummary) ? { conflictSummary: candidate.conflictSummary.trim() } : {}),
+      ...(candidate.rawValue !== undefined ? {
+        rawValue: candidate.rawValue as string | number,
+        rawUnit: isNonEmptyString(candidate.rawUnit) ? candidate.rawUnit : candidate.unit as string,
+        rawText: isNonEmptyString(candidate.rawText) ? candidate.rawText : String(candidate.rawValue ?? ""),
+      } : {}),
       ...(sources.length ? { sources } : {}),
       ...(sourceUrl ? {
         sourceUrl,
@@ -481,7 +506,8 @@ function parseResponse(value: unknown): CustomResearchResponse {
        : eligibleEvidence.length > 0
         ? "ai-researched"
         : "research-incomplete",
-    ...(parseResearchCache(value.researchCache) ? { researchCache: parseResearchCache(value.researchCache) } : {}),
+     ...(parseResearchCache(value.researchCache) ? { researchCache: parseResearchCache(value.researchCache) } : {}),
+     semanticPolicyVersion: typeof value.semanticPolicyVersion === "number" ? value.semanticPolicyVersion : EVIDENCE_SEMANTIC_POLICY_VERSION,
     ...(isRecord(value.researchCoverage) ? {
       researchCoverage: {
         searchedDomains: Array.isArray(value.researchCoverage.searchedDomains) ? value.researchCoverage.searchedDomains.filter(isNonEmptyString) : [],

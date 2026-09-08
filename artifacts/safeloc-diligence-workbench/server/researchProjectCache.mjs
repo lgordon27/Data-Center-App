@@ -2,8 +2,9 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { EVIDENCE_SEMANTIC_POLICY_VERSION } from "../src/data/evidenceSemanticPolicy.mjs";
 
-export const RESEARCH_CACHE_VERSION = 2;
+export const RESEARCH_CACHE_VERSION = 3;
 export const RESEARCH_CACHE_FRESH_MS = 6 * 60 * 60 * 1000;
 export const RESEARCH_CACHE_RECENT_MS = 24 * 60 * 60 * 1000;
 export const RESEARCH_CACHE_STALE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -61,11 +62,13 @@ export function createResearchProjectCache({
     try {
       const parsed = JSON.parse(await readFile(cacheFile(directory, key), "utf8"));
       if (
-        parsed?.version !== RESEARCH_CACHE_VERSION ||
+        ![2, RESEARCH_CACHE_VERSION].includes(parsed?.version) ||
         parsed?.key !== key ||
         typeof parsed?.storedAt !== "string" ||
         !parsed?.result
       ) return null;
+      parsed.validationPolicyVersion = parsed.validationPolicyVersion ?? parsed.result.semanticPolicyVersion ?? 0;
+      parsed.needsRevalidation = parsed.validationPolicyVersion !== EVIDENCE_SEMANTIC_POLICY_VERSION;
       memory.set(key, parsed);
       return parsed;
     } catch {
@@ -76,6 +79,8 @@ export function createResearchProjectCache({
   async function write(key, result) {
     const entry = {
       version: RESEARCH_CACHE_VERSION,
+      validationPolicyVersion: EVIDENCE_SEMANTIC_POLICY_VERSION,
+      needsRevalidation: false,
       key,
       storedAt: new Date(now()).toISOString(),
       result,

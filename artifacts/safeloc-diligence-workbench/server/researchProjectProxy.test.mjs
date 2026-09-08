@@ -249,9 +249,13 @@ test("exposes observable completion status for a background stale refresh", asyn
     fetchImpl: async () => singleCallResponse(),
   });
   assert.equal(stale.json().researchCache.refreshStatus, "running");
-  await new Promise((resolve) => setTimeout(resolve, 10));
-  const status = responseRecorder();
-  await handleResearchProjectRequest({ method: "GET", url: `/api/research-project?cacheKey=${key}` }, status, { cache });
+  let status;
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    status = responseRecorder();
+    await handleResearchProjectRequest({ method: "GET", url: `/api/research-project?cacheKey=${key}` }, status, { cache });
+    if (status.json().researchCache.refreshStatus === "completed") break;
+  }
   assert.equal(status.statusCode, 200);
   assert.equal(status.json().researchCache.refreshStatus, "completed");
   assert.equal(status.json().result.evidence.length, 16);
@@ -754,6 +758,28 @@ test("normalizes the strict keyed evidence contract and ignores nullable optiona
   assert.deepEqual(response.evidence.map((item) => item.id), RESEARCH_EVIDENCE_IDS);
   assert.equal(response.evidence[0].numericValue, undefined);
   assert.equal(response.evidence[0].qualitativeValue, undefined);
+});
+
+test("recontains converted research from raw fields without double conversion", () => {
+  const body = validResearchResponse();
+  const timeline = body.evidence.find((item) => item.id === "grid_interconnection");
+  timeline.value = 365;
+  timeline.unit = "days";
+  timeline.numericValue = 365;
+  timeline.classification = "Management Assertion";
+  timeline.sourceUrl = retrievedSource.url;
+  timeline.sourceUrls = [retrievedSource.url];
+  timeline.citation = `Project milestone: ${retrievedSource.url}`;
+  const first = parseResearchResponse(body, [retrievedSource]);
+  const second = parseResearchResponse(first, [retrievedSource]);
+  const firstTimeline = first.evidence.find((item) => item.id === "grid_interconnection");
+  const secondTimeline = second.evidence.find((item) => item.id === "grid_interconnection");
+  assert.equal(firstTimeline.normalizedUnit, "months");
+  assert.equal(secondTimeline.normalizedUnit, "months");
+  assert.equal(secondTimeline.normalizedValue, firstTimeline.normalizedValue);
+  assert.equal(secondTimeline.numericValue, firstTimeline.numericValue);
+  assert.equal(secondTimeline.rawValue, 365);
+  assert.equal(secondTimeline.rawUnit, "days");
 });
 
 test("keeps a complete response when missing-evidence narrative fields are empty", () => {

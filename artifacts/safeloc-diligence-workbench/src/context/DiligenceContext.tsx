@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   calculateCashFlowModel,
+  containEvidenceForModel,
   Classification,
   EvidenceRecord,
   DEFAULT_CAPACITY_MW,
@@ -32,6 +33,9 @@ import {
   logSessionAction,
   recordAIDecision,
   recordManualClassificationChange,
+  getDecisionHistory,
+  restoreDecisionHistory,
+  type DecisionHistoryEntry,
 } from "@/services/sessionLog";
 import {
   CUSTOM_EVIDENCE_IDS,
@@ -117,6 +121,12 @@ export type EvidenceItem = {
   conflictSummary?: string;
   rawValue?: string | number;
   rawUnit?: string;
+  rawText?: string;
+  normalizedValue?: number | string;
+  normalizedUnit?: string;
+  normalization?: CustomEvidenceRecord["normalization"];
+  semanticValidationStatus?: CustomEvidenceRecord["semanticValidationStatus"];
+  noOpAcknowledged?: boolean;
   researchState?: CustomEvidenceRecord["researchState"];
   eligibleForModel?: boolean;
   acceptedForModel?: boolean;
@@ -306,7 +316,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   const initialSession = useMemo(() => loadCurrentSession(), []);
   const [state, setState] = useState({
     evidence: initialSession.evidence,
-    modelEvidence: initialSession.evidence,
+    modelEvidence: initialSession.modelEvidence,
     hasChangedClassification: initialSession.hasChangedClassification,
     lastChange: null as FinancialMetrics['lastChange'],
   });
@@ -400,7 +410,11 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       [id]: {
         ...currentState.evidence[id],
         ...(classificationChanged ? { classification } : {}),
-        review: { kind: reviewKind, reviewedAt: new Date().toISOString() },
+        review: {
+          kind: reviewKind,
+          reviewedAt: new Date().toISOString(),
+          ...(classificationChanged ? {} : { noOp: true }),
+        },
       },
     };
     const nextIrr = classificationChanged
@@ -427,7 +441,11 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       recordManualClassificationChange(id, previous, classification);
     }
     if (project.kind === "curated") {
-      writeStorage(CURRENT_SESSION_STORAGE_KEY, createSessionPayload(nextEvidence, nextState.hasChangedClassification));
+      writeStorage(CURRENT_SESSION_STORAGE_KEY, createSessionPayload(
+        nextEvidence,
+        nextState.hasChangedClassification,
+        nextState.modelEvidence,
+      ));
     }
     return true;
   }, [eiaData, project]);
@@ -716,6 +734,14 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         decision,
         targetClassification,
       );
+      if (project.kind === "curated") {
+        const persistedState = stateRef.current;
+        writeStorage(CURRENT_SESSION_STORAGE_KEY, createSessionPayload(
+          persistedState.evidence,
+          persistedState.hasChangedClassification,
+          persistedState.modelEvidence,
+        ));
+      }
     }
     setPersistedAgentRun(authorizedRun);
     logSessionAction(`Agent proposal ${decision}`, finding.title);
@@ -759,7 +785,13 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     };
     stateRef.current = nextState;
     setState(nextState);
-    if (project.kind === "curated") writeStorage(CURRENT_SESSION_STORAGE_KEY, createSessionPayload(nextEvidence, true));
+    if (project.kind === "curated") {
+      writeStorage(CURRENT_SESSION_STORAGE_KEY, createSessionPayload(
+        nextEvidence,
+        true,
+        nextState.modelEvidence,
+      ));
+    }
     setPersistedAgentRun(reverseAgentChangeState(current, auditId));
     logSessionAction("Reversed agent proposal", applied.proposalId);
     return true;
@@ -1155,11 +1187,14 @@ type SessionPayload = {
   classifications: Record<string, Classification>;
   overrides: Record<string, Classification>;
   reviewMetadata: Record<string, EvidenceReview>;
+  modelEvidence?: Record<string, EvidenceItem>;
+  decisionHistory?: DecisionHistoryEntry[];
 };
 
 function createSessionPayload(
   evidence: Record<string, EvidenceItem>,
   hasChangedClassification: boolean,
+  modelEvidence: Record<string, EvidenceItem> = evidence,
 ): SessionPayload {
   return {
     version: SESSION_STORAGE_VERSION,
@@ -1170,7 +1205,41 @@ function createSessionPayload(
     ),
     overrides: getClassificationOverrides(evidence),
     reviewMetadata: getReviewMetadata(evidence),
+    modelEvidence,
+    decisionHistory: getDecisionHistory(),
   };
+}
+
+function parseDecisionHistory(value: unknown): DecisionHistoryEntry[] {
+  if (!Array.isArray(value)) return [];
+  const ids = new Set(Object.keys(INITIAL_EVIDENCE));
+  return value.filter((entry): entry is DecisionHistoryEntry => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return false;
+    const candidate = entry as Partial<DecisionHistoryEntry>;
+    if (!candidate.itemId || !ids.has(candidate.itemId) || typeof candidate.recordedAt !== "string") return false;
+    if (!Number.isFinite(new Date(candidate.recordedAt).getTime())) return false;
+    if (candidate.kind === "ai") {
+      return isClassification(candidate.proposedClassification) &&
+        isClassification(candidate.resultingClassification) &&
+        (candidate.decision === "accepted" || candidate.decision === "overridden") &&
+        typeof candidate.reasoning === "string";
+    }
+    return candidate.kind === "manual" &&
+      isClassification(candidate.previousClassification) &&
+      isClassification(candidate.resultingClassification);
+  });
+}
+
+function parsePersistedModelEvidence(value: unknown, evidence: Record<string, EvidenceItem>) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return evidence;
+  const records = value as Record<string, unknown>;
+  const ids = Object.keys(INITIAL_EVIDENCE);
+  if (ids.some((id) => !records[id] || typeof records[id] !== "object" || Array.isArray(records[id]))) return evidence;
+  const merged = Object.fromEntries(ids.map((id) => [
+    id,
+    { ...evidence[id], ...(records[id] as Partial<EvidenceItem>), classification: evidence[id].classification },
+  ])) as Record<string, EvidenceItem>;
+  return containEvidenceForModel(merged as EvidenceRecord).evidence as Record<string, EvidenceItem>;
 }
 
 function getReviewMetadata(
@@ -1213,7 +1282,11 @@ function applyClassificationOverrides(
 
 function loadCurrentSession() {
   const raw = readStorage(CURRENT_SESSION_STORAGE_KEY);
-  if (!raw) return { evidence: cloneEvidence(INITIAL_EVIDENCE), hasChangedClassification: false, restored: false, migrated: false };
+  if (!raw) {
+    restoreDecisionHistory([]);
+    const evidence = cloneEvidence(INITIAL_EVIDENCE);
+    return { evidence, modelEvidence: evidence, hasChangedClassification: false, restored: false, migrated: false };
+  }
 
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -1222,7 +1295,8 @@ function loadCurrentSession() {
         ? (parsed as { classifications?: unknown }).classifications
         : parsed;
     if (!classifications || typeof classifications !== 'object' || Array.isArray(classifications)) {
-      return { evidence: cloneEvidence(INITIAL_EVIDENCE), hasChangedClassification: false, restored: false, migrated: false };
+      const evidence = cloneEvidence(INITIAL_EVIDENCE);
+      return { evidence, modelEvidence: evidence, hasChangedClassification: false, restored: false, migrated: false };
     }
 
     const entries = Object.entries(classifications);
@@ -1232,7 +1306,8 @@ function loadCurrentSession() {
       expectedIds.some((id) => !Object.prototype.hasOwnProperty.call(classifications, id)) ||
       entries.some(([, value]) => !isClassification(value))
     ) {
-      return { evidence: cloneEvidence(INITIAL_EVIDENCE), hasChangedClassification: false, restored: false, migrated: false };
+      const evidence = cloneEvidence(INITIAL_EVIDENCE);
+      return { evidence, modelEvidence: evidence, hasChangedClassification: false, restored: false, migrated: false };
     }
 
     const parsedRecord = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
@@ -1240,6 +1315,8 @@ function loadCurrentSession() {
       : null;
     const storedOverrides = parsedRecord ? parseClassificationOverrides(parsedRecord.overrides) : null;
     const storedReviewMetadata = parsedRecord ? parseReviewMetadata(parsedRecord.reviewMetadata) : {};
+    const storedDecisionHistory = parsedRecord ? parseDecisionHistory(parsedRecord.decisionHistory) : [];
+    restoreDecisionHistory(storedDecisionHistory);
     const isCurrentProvenance = parsedRecord?.canonicalProvenanceVersion === CURRENT_PROVENANCE_VERSION;
     let evidence: Record<string, EvidenceItem>;
     let migrated = false;
@@ -1268,16 +1345,19 @@ function loadCurrentSession() {
       migrated = true;
     }
     evidence = applyReviewMetadata(evidence, storedReviewMetadata);
+    const modelEvidence = parsePersistedModelEvidence(parsedRecord?.modelEvidence, evidence);
     const hasChangedClassification = Boolean(
       parsedRecord?.hasChangedClassification === true ||
       Object.keys(getClassificationOverrides(evidence)).length > 0,
     );
     if (migrated) {
-      writeStorage(CURRENT_SESSION_STORAGE_KEY, createSessionPayload(evidence, hasChangedClassification));
+      writeStorage(CURRENT_SESSION_STORAGE_KEY, createSessionPayload(evidence, hasChangedClassification, modelEvidence));
     }
-    return { evidence, hasChangedClassification, restored: true, migrated };
+    return { evidence, modelEvidence, hasChangedClassification, restored: true, migrated };
   } catch {
-    return { evidence: cloneEvidence(INITIAL_EVIDENCE), hasChangedClassification: false, restored: false, migrated: false };
+    restoreDecisionHistory([]);
+    const evidence = cloneEvidence(INITIAL_EVIDENCE);
+    return { evidence, modelEvidence: evidence, hasChangedClassification: false, restored: false, migrated: false };
   }
 }
 
@@ -1366,6 +1446,7 @@ function isEvidenceReview(value: unknown): value is EvidenceReview {
 export type EvidenceReview = {
   kind: EvidenceReviewKind;
   reviewedAt: string;
+  noOp?: boolean;
 };
 
 function applyReviewMetadata(

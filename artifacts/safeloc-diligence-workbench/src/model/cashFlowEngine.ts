@@ -2,6 +2,12 @@ import {
   getEvidenceImpactRole,
   type ImpactRole,
 } from "@/data/evidenceImpactRoles";
+import {
+  EVIDENCE_SEMANTIC_POLICY_VERSION,
+  evaluateEvidenceSourceEligibility,
+  getEvidenceSemanticDefinition,
+  normalizeEvidenceRecord,
+} from "@/data/evidenceSemanticPolicy.mjs";
 
 export type Classification =
   | "Verified Evidence"
@@ -35,6 +41,22 @@ export type EvidenceRecord = Record<
      eligibleForModel?: boolean;
      acceptedForModel?: boolean;
      quarantineReasons?: string[];
+     rawValue?: string | number;
+     rawUnit?: string;
+     rawText?: string;
+     normalizedValue?: number | string;
+     normalizedUnit?: string;
+     normalization?: {
+       policyVersion: number;
+       conversion: string;
+       validationStatus: "valid" | "unresolved" | "quarantined";
+     };
+     semanticValidationStatus?: "valid" | "unresolved" | "quarantined";
+     description?: string;
+     citation?: string;
+     sourceUrl?: string;
+      coverageStatus?: string;
+     sources?: Array<{ exactProject?: boolean; sourceClass?: string }>;
   }
 >;
 
@@ -43,31 +65,46 @@ export type ModelBoundaryResult = {
   quarantined: Record<string, string[]>;
 };
 
-const MODEL_DIMENSION_RULES: Record<string, RegExp> = {
-  electricity_cost: /^\s*(?:\$|usd)\s*\/\s*mwh\s*$/i,
-  water_consumption: /^\s*(?:m\s*gal\s*\/\s*(?:yr|year)|mgal\s*\/\s*(?:yr|year))\s*$/i,
-  grid_interconnection: /^\s*months?\s*$/i,
-  permitting_timeline: /^\s*months?\s*$/i,
-  water_escalation: /^\s*%(?:\s*(?:annual|year))?\s*$/i,
-  electricity_escalation: /^\s*%(?:\s*(?:annual|year))?\s*$/i,
-  renewable_percentage: /^\s*%\s*$/i,
-  cooling_capex: /^\s*\$?\s*m(?:illion)?\s*$/i,
-  carbon_compliance: /^\s*\$?\s*m(?:illion)?\s*\/\s*(?:yr|year)\s*$/i,
-  backup_power_capacity: /^\s*(?:hours?|h)\s*$/i,
-  downtime_cost: /^\s*(?:\$|usd)\s*(?:\/\s*(?:day|d)|per\s+day)\s*$/i,
-};
-
 export function containEvidenceForModel(evidence: EvidenceRecord): ModelBoundaryResult {
   const next: EvidenceRecord = {};
   const quarantined: Record<string, string[]> = {};
   for (const [id, item] of Object.entries(evidence)) {
     const reasons = [...(item.quarantineReasons ?? [])];
     const customInput = item.acceptedForModel !== undefined || item.researchState !== undefined;
+    let semanticNormalization: ReturnType<typeof normalizeEvidenceRecord> | null = null;
     if (customInput && item.acceptedForModel !== true) reasons.push("Custom research has not been explicitly accepted by a reviewer.");
     if (customInput && item.eligibleForModel !== true) reasons.push("Custom research did not pass source-eligibility validation.");
-    const rule = MODEL_DIMENSION_RULES[id];
-    if (customInput && item.numericValue !== undefined && (!item.unit || (rule && !rule.test(item.unit)))) {
-      reasons.push(`Unsupported or incompatible unit for ${id}.`);
+    if (customInput) {
+      reasons.push(...evaluateEvidenceSourceEligibility({
+        id,
+        sources: item.sources,
+        sourceUrl: item.sourceUrl,
+        classification: item.classification,
+        sourceSupportConfidence: item.sourceSupportConfidence,
+        coverageStatus: item.coverageStatus,
+      }).reasons);
+    }
+    if (customInput) {
+      const policyValidated = item.semanticValidationStatus === "valid" &&
+        item.normalization?.policyVersion === EVIDENCE_SEMANTIC_POLICY_VERSION;
+      if (!policyValidated) {
+        const rawValue = item.rawValue ?? item.value;
+        semanticNormalization = normalizeEvidenceRecord({
+          id,
+          value: rawValue,
+          unit: item.rawUnit ?? item.unit,
+          numericValue: item.rawValue === undefined ? item.numericValue : rawValue,
+          qualitativeValue: item.qualitativeValue,
+          description: item.description,
+          citation: item.citation,
+          sourceContext: item.rawText,
+          explicitZero: rawValue === 0 && Boolean(item.sourceUrl),
+        });
+        reasons.push(...semanticNormalization.quarantineReasons);
+      }
+      if (!getEvidenceSemanticDefinition(id)?.modelDestination) {
+        reasons.push("This evidence variable is context-only or a decision gate and cannot enter cash-flow calculations.");
+      }
     }
     if (reasons.length) {
       quarantined[id] = [...new Set(reasons)];
@@ -79,7 +116,23 @@ export function containEvidenceForModel(evidence: EvidenceRecord): ModelBoundary
         qualitativeValue: undefined,
       };
     } else {
-      next[id] = item;
+      next[id] = semanticNormalization?.normalizedValue !== undefined
+        ? {
+            ...item,
+            numericValue: typeof semanticNormalization.normalizedValue === "number"
+              ? semanticNormalization.normalizedValue
+              : item.numericValue,
+            unit: semanticNormalization.normalizedUnit,
+            normalizedValue: semanticNormalization.normalizedValue,
+            normalizedUnit: semanticNormalization.normalizedUnit,
+            semanticValidationStatus: "valid",
+            normalization: {
+              policyVersion: semanticNormalization.policyVersion,
+              conversion: semanticNormalization.conversion,
+              validationStatus: "valid",
+            },
+          }
+        : item;
     }
   }
   return { evidence: next, quarantined };

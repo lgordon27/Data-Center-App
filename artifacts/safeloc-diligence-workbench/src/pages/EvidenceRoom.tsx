@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useMemo,
   useEffect,
   useState
@@ -194,7 +195,7 @@ function CommunityAgreementsReview() {
                 const comparisons = selectCommunityComparisons(definition.id);
                 const isExpanded = expandedTerm === definition.id;
                 return (
-                  <tbody key={definition.id} className="contents">
+                  <Fragment key={definition.id}>
                     <tr id={`evidence-item-community-${definition.id}`} data-testid={`community-term-row-${definition.id}`} className={isExpanded ? "bg-[#fbfcfa]" : undefined}>
                       <th scope="row" className="px-3 py-3 align-top text-[11px] font-semibold text-[#243844]">
                         <button type="button" onClick={() => setExpandedTerm(isExpanded ? null : definition.id)} aria-expanded={isExpanded} aria-controls={`community-detail-${definition.id}`} className="text-left underline decoration-transparent underline-offset-2 hover:decoration-[#255bb7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b9d43a]">{definition.label}</button>
@@ -240,7 +241,7 @@ function CommunityAgreementsReview() {
                         </td>
                       </tr>
                     )}
-                  </tbody>
+                  </Fragment>
                 );
               })}
             </tbody>

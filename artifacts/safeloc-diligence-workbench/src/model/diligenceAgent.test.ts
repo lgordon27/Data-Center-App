@@ -26,11 +26,12 @@ test("review decisions are explicit and do not change the finding into evidence"
   const finding = run.proposedFindings.find((item) => item.id === "agent-finding-grid");
   assert.equal(finding?.decision, "accepted");
   assert.equal(finding?.proposedClassification, undefined);
-  assert.equal(run.relationships.find((item) => item.findingId === finding?.id)?.decision, "accepted");
+  assert.equal(finding?.reviewerNote, "Validate with ERCOT before close.");
 });
 
 test("review package keeps relationship categories distinct and ranges unresolved without support", () => {
   const pkg = buildAgentReviewPackage({ projectName: "Test", location: "Texas", capacityMW: 100, evidenceIds: [], communityUnresolvedCount: 0 });
   assert.deepEqual(pkg.relationships.map((item) => item.relationship), ["Direct", "Related", "Comparable", "Not found"]);
   assert.ok(pkg.valueAtRisk.every((item) => item.low === null && item.high === null && item.unit === "unresolved"));
+  assert.ok(pkg.proposedFindings.every((item) => item.decision === "pending"));
 });

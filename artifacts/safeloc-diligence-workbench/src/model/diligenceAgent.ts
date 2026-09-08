@@ -16,7 +16,7 @@ export const DILIGENCE_STAGE_DEFINITIONS = [
 export type DiligenceStageId = typeof DILIGENCE_STAGE_DEFINITIONS[number]["id"];
 export type AgentStageStatus = "pending" | "running" | "completed" | "failed" | "retryable";
 export type DiligenceRunStatus = "idle" | "running" | "partial-failure" | "review-ready" | "failed";
-export type ReviewDecision = "accepted" | "overridden" | "unresolved";
+export type ReviewDecision = "pending" | "accepted" | "overridden" | "unresolved";
 export type AgentRelationshipKind = "Direct" | "Related" | "Comparable" | "Not found";
 export type AgentLensId = "project-investor" | "asset-manager" | "financial-advisor";
 export type AgentFindingKind = "classification" | "relationship" | "financial-relevance" | "review-gap";
@@ -101,6 +101,7 @@ export type ValueAtRiskRangeProposal = {
   unit: "USD" | "IRR points" | "days" | "unresolved";
   basis: string;
   findingId: string;
+  decision: ReviewDecision;
 };
 
 export type DiligenceAgentState = {
@@ -160,13 +161,14 @@ export function createInitialDiligenceAgent(): DiligenceAgentState {
 export function startDiligenceAgent(previous: DiligenceAgentState, now = new Date().toISOString()): DiligenceAgentState {
   const stages = previous.stages.map((stage) => ({
     ...stage,
-    status: stage.status === "completed" ? "completed" : "pending" as AgentStageStatus,
+    status: "pending" as AgentStageStatus,
     error: undefined,
     retryable: undefined,
-    startedAt: stage.status === "completed" ? stage.startedAt : undefined,
-    completedAt: stage.status === "completed" ? stage.completedAt : undefined,
+    startedAt: undefined,
+    completedAt: undefined,
+    summary: undefined,
   }));
-  const firstPending = stages.find((stage) => stage.status === "pending")?.id ?? "identity";
+  const firstPending = stages[0]?.id ?? "identity";
   return {
     ...createInitialDiligenceAgent(),
     runId: `agent-${now.replace(/[^0-9]/g, "").slice(0, 14)}`,
@@ -246,16 +248,16 @@ export function applyAgentFindingDecision(
 export function buildAgentReviewPackage(input: AgentProjectInput): Pick<DiligenceAgentState, "proposedFindings" | "relationships" | "lenses" | "riskAllocation" | "capitalAtRisk" | "conditionsPrecedent" | "dealProtection" | "valueAtRisk"> {
   const ids = (requested: string[]) => requested.filter((id) => input.evidenceIds.includes(id));
   const findings: AgentFinding[] = [
-    { id: "agent-finding-identity", kind: "review-gap", title: "Identity boundary is ready for review", summary: `${input.projectName} is scoped to ${input.location} at ${input.capacityMW.toLocaleString()} MW. This confirms scope only; it does not establish ownership or financing.`, evidenceIds: [], sourceIds: [], sourceSupportConfidence: null, modelReportedConfidence: null, consequential: true, decision: "unresolved" },
-    { id: "agent-finding-grid", kind: "financial-relevance", title: "Grid and energization remain consequential", summary: "The existing grid record is a decision input. Validate queue status and milestone dates before changing any modeled assumption.", evidenceIds: ids(["grid_interconnection", "backup_power_capacity"]), sourceIds: ["ercot-queue"], sourceSupportConfidence: 0.68, modelReportedConfidence: null, consequential: true, decision: "unresolved" },
-    { id: "agent-finding-community", kind: "relationship", title: "Community terms need human disposition", summary: input.communityUnresolvedCount > 0 ? `${input.communityUnresolvedCount} community terms remain unresolved. Benchmarks can inform questions but cannot become project evidence.` : "Community terms have a reviewed state; confirm whether any precedent is truly comparable before relying on it.", evidenceIds: ids(["community_risk", "permitting_timeline"]), sourceIds: ["community-snapshot"], sourceSupportConfidence: null, modelReportedConfidence: null, consequential: true, decision: "unresolved" },
-    { id: "agent-finding-capital", kind: "financial-relevance", title: "Capital-at-risk timing is a review topic", summary: "The agent can organize timing questions, but it cannot infer probabilities, penalties, or an IRR impact from incomplete provisions.", evidenceIds: ids(["cooling_capex", "downtime_cost"]), sourceIds: [], sourceSupportConfidence: null, modelReportedConfidence: null, consequential: true, decision: "unresolved" },
+    { id: "agent-finding-identity", kind: "review-gap", title: "Identity boundary is ready for review", summary: `${input.projectName} is scoped to ${input.location} at ${input.capacityMW.toLocaleString()} MW. This confirms scope only; it does not establish ownership or financing.`, evidenceIds: [], sourceIds: [], sourceSupportConfidence: null, modelReportedConfidence: null, consequential: true, decision: "pending" },
+    { id: "agent-finding-grid", kind: "financial-relevance", title: "Grid and energization remain consequential", summary: "The existing grid record is a decision input. Validate queue status and milestone dates before changing any modeled assumption.", evidenceIds: ids(["grid_interconnection", "backup_power_capacity"]), sourceIds: ["ercot-queue"], sourceSupportConfidence: 0.68, modelReportedConfidence: null, consequential: true, decision: "pending" },
+    { id: "agent-finding-community", kind: "relationship", title: "Community terms need human disposition", summary: input.communityUnresolvedCount > 0 ? `${input.communityUnresolvedCount} community terms remain unresolved. Benchmarks can inform questions but cannot become project evidence.` : "Community terms have a reviewed state; confirm whether any precedent is truly comparable before relying on it.", evidenceIds: ids(["community_risk", "permitting_timeline"]), sourceIds: ["community-snapshot"], sourceSupportConfidence: null, modelReportedConfidence: null, consequential: true, decision: "pending" },
+    { id: "agent-finding-capital", kind: "financial-relevance", title: "Capital-at-risk timing is a review topic", summary: "The agent can organize timing questions, but it cannot infer probabilities, penalties, or an IRR impact from incomplete provisions.", evidenceIds: ids(["cooling_capex", "downtime_cost"]), sourceIds: [], sourceSupportConfidence: null, modelReportedConfidence: null, consequential: true, decision: "pending" },
   ];
   const relationships: AgentRelationship[] = [
-    { id: "relationship-project", label: input.projectName, relationship: "Direct", basis: "Current case identity and supplied project context.", evidenceIds: [], findingId: "agent-finding-identity", decision: "unresolved" },
-    { id: "relationship-community", label: "Community agreement snapshot", relationship: "Related", basis: "Community context can inform review questions but is not direct project evidence.", evidenceIds: ids(["community_risk"]), findingId: "agent-finding-community", decision: "unresolved" },
-    { id: "relationship-precedent", label: "Comparable agreement precedents", relationship: "Comparable", basis: "A precedent is only comparable after a reviewer confirms scope, jurisdiction, and term alignment.", evidenceIds: [], findingId: "agent-finding-community", decision: "unresolved" },
-    { id: "relationship-ownership", label: "Issuer ownership or control", relationship: "Not found", basis: "No automatic ownership conclusion is permitted from facility, directory, or market-context records.", evidenceIds: [], findingId: "agent-finding-identity", decision: "unresolved" },
+    { id: "relationship-project", label: input.projectName, relationship: "Direct", basis: "Current case identity and supplied project context.", evidenceIds: [], findingId: "agent-finding-identity", decision: "pending" },
+    { id: "relationship-community", label: "Community agreement snapshot", relationship: "Related", basis: "Community context can inform review questions but is not direct project evidence.", evidenceIds: ids(["community_risk"]), findingId: "agent-finding-community", decision: "pending" },
+    { id: "relationship-precedent", label: "Comparable agreement precedents", relationship: "Comparable", basis: "A precedent is only comparable after a reviewer confirms scope, jurisdiction, and term alignment.", evidenceIds: [], findingId: "agent-finding-community", decision: "pending" },
+    { id: "relationship-ownership", label: "Issuer ownership or control", relationship: "Not found", basis: "No automatic ownership conclusion is permitted from facility, directory, or market-context records.", evidenceIds: [], findingId: "agent-finding-identity", decision: "pending" },
   ];
   const lenses: AgentLens[] = [
     { id: "project-investor", label: "Project Investor", question: "Can the project earn approval without hiding unresolved execution risk?", posture: "Focus on evidence sufficiency, conditions precedent, and capital-at-risk timing.", focusAreas: ["Execution gates", "Downside support", "Conditions precedent"], evidenceIds: ids(["grid_interconnection", "water_rights", "permitting_timeline"]), unresolvedCount: 2 },
@@ -273,16 +275,16 @@ export function buildAgentReviewPackage(input: AgentProjectInput): Pick<Diligenc
     { id: "capital-operations", phase: "operations", exposure: "unresolved", basis: "Operating safeguards and remedies remain review topics.", findingId: "agent-finding-capital" },
   ];
   const conditionsPrecedent: ReviewTopicProposal[] = [
-    { id: "condition-grid", label: "Validate interconnection milestone and remedy package", basis: "Required before treating energization as investable.", findingId: "agent-finding-grid", decision: "unresolved" },
-    { id: "condition-community", label: "Resolve material community agreement terms", basis: "Do not convert benchmark language into project evidence.", findingId: "agent-finding-community", decision: "unresolved" },
+    { id: "condition-grid", label: "Validate interconnection milestone and remedy package", basis: "Required before treating energization as investable.", findingId: "agent-finding-grid", decision: "pending" },
+    { id: "condition-community", label: "Resolve material community agreement terms", basis: "Do not convert benchmark language into project evidence.", findingId: "agent-finding-community", decision: "pending" },
   ];
   const dealProtection: ReviewTopicProposal[] = [
-    { id: "protection-delay", label: "Confirm delay allocation, notice, and termination rights", basis: "The current record does not support a legal conclusion or penalty.", findingId: "agent-finding-grid", decision: "unresolved" },
-    { id: "protection-diligence", label: "Preserve evidence access and audit rights", basis: "Review topic for counsel and transaction teams; not drafted legal language.", findingId: "agent-finding-capital", decision: "unresolved" },
+    { id: "protection-delay", label: "Confirm delay allocation, notice, and termination rights", basis: "The current record does not support a legal conclusion or penalty.", findingId: "agent-finding-grid", decision: "pending" },
+    { id: "protection-diligence", label: "Preserve evidence access and audit rights", basis: "Review topic for counsel and transaction teams; not drafted legal language.", findingId: "agent-finding-capital", decision: "pending" },
   ];
   const valueAtRisk: ValueAtRiskRangeProposal[] = [
-    { id: "var-grid", label: "Grid delay value-at-risk", low: null, high: null, unit: "unresolved", basis: "No supported probability, penalty, or cash-flow adjustment is available.", findingId: "agent-finding-grid", decision: "unresolved" },
-    { id: "var-community", label: "Community commitment value-at-risk", low: null, high: null, unit: "unresolved", basis: "Incomplete terms cannot create an invented IRR penalty.", findingId: "agent-finding-community", decision: "unresolved" },
+    { id: "var-grid", label: "Grid delay value-at-risk", low: null, high: null, unit: "unresolved", basis: "No supported probability, penalty, or cash-flow adjustment is available.", findingId: "agent-finding-grid", decision: "pending" },
+    { id: "var-community", label: "Community commitment value-at-risk", low: null, high: null, unit: "unresolved", basis: "Incomplete terms cannot create an invented IRR penalty.", findingId: "agent-finding-community", decision: "pending" },
   ];
   return { proposedFindings: findings, relationships, lenses, riskAllocation, capitalAtRisk, conditionsPrecedent, dealProtection, valueAtRisk };
 }

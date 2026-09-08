@@ -65,7 +65,7 @@ import {
   beginDiligenceStage,
   createInitialDiligenceAgent,
   hydrateReviewPackage,
-  retryDiligenceStage,
+  retryDiligenceStage as retryDiligenceStageTransition,
   startDiligenceAgent,
   type AgentProjectInput,
   type DiligenceAgentState,
@@ -563,9 +563,9 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     }
   }, [agentInput, project.name, setPersistedAgentRun]);
 
-  const retryAgentStage = useCallback(async (id: DiligenceStageId) => {
+  const retryDiligenceStage = useCallback(async (id: DiligenceStageId) => {
     if (agentActiveRef.current) return;
-    const retried = retryDiligenceStage(agentRunRef.current, id);
+    const retried = retryDiligenceStageTransition(agentRunRef.current, id);
     if (retried === agentRunRef.current) return;
     agentActiveRef.current = true;
     let next = retried;
@@ -574,10 +574,16 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       await new Promise((resolve) => window.setTimeout(resolve, 110));
       next = advanceDiligenceStage(next, id, { summary: "Retry completed with bounded, reviewer-visible output." });
       setPersistedAgentRun(next);
-      if (next.status === "review-ready") {
-        next = hydrateReviewPackage(next, agentInput());
+      for (const stage of next.stages) {
+        if (stage.status !== "pending") continue;
+        next = beginDiligenceStage(next, stage.id);
+        setPersistedAgentRun(next);
+        await new Promise((resolve) => window.setTimeout(resolve, 110));
+        next = advanceDiligenceStage(next, stage.id, { summary: `${stage.label} completed after the retained retry.` });
         setPersistedAgentRun(next);
       }
+      next = hydrateReviewPackage(next, agentInput());
+      setPersistedAgentRun(next);
     } finally {
       agentActiveRef.current = false;
     }

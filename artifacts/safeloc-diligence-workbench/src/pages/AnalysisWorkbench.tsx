@@ -5,6 +5,7 @@ import { EvidenceRoom } from "@/pages/EvidenceRoom";
 import { FinancialMateriality } from "@/pages/FinancialMateriality";
 import { DecisionReview } from "@/pages/DecisionReview";
 import { AdvisorLens } from "@/pages/AdvisorLens";
+import { DiligenceAgentPanel } from "@/pages/DiligenceAgentPanel";
 import {
   classifications,
   classMeta,
@@ -162,6 +163,10 @@ export function AnalysisWorkbench({ onResolveEvidence, onReset }: { onResolveEvi
       <div className="flex min-w-0 gap-0">
         <AnalysisSummaryRail activeSection={activeSection} onSection={goToSection} onReset={onReset} onDecisionAction={requestDecisionAction} />
         <div className="min-w-0 flex-1 space-y-10 lg:pl-8">
+          <section id="analysis-agent" data-testid="analysis-section-agent" tabIndex={-1} className="scroll-mt-28 outline-none" aria-labelledby="analysis-agent-heading">
+            <h2 id="analysis-agent-heading" className="sr-only">Governed Diligence Agent</h2>
+            <DiligenceAgentPanel />
+          </section>
           <section id="analysis-overview" data-testid="analysis-section-overview" tabIndex={-1} className="scroll-mt-28 outline-none" aria-labelledby="analysis-overview-heading">
             <h2 id="analysis-overview-heading" className="sr-only">Project Overview</h2>
              <CaseBrief {...sectionProps} onFocusCommunity={() => onResolveEvidence("community-agreements")} />

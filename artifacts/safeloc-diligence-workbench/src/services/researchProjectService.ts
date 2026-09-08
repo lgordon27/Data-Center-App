@@ -98,6 +98,17 @@ export type ResearchEvidenceSource = {
   redirectChain?: string[];
   contentType?: string | null;
   claimCited?: boolean;
+  accessOutcome?: {
+    state: "accessible" | "blocked" | "unsupported";
+    reason: string;
+    format?: string;
+    resolvedUrl?: string | null;
+    canonicalUrl?: string | null;
+    retrievalTime?: string | null;
+    passage?: string | null;
+    pageOrSection?: string | number | null;
+    extractionLimitations?: string[];
+  };
 };
 export type ResearchClaimPassageMapping = {
   id: string;
@@ -151,12 +162,61 @@ export type CustomResearchResponse = {
       capDiscardCount: number;
     };
   };
+  researchAudit?: ResearchAudit;
   evidence: CustomEvidenceRecord[];
   retrievedLeads?: CustomEvidenceRecord[];
   eligibleEvidence?: CustomEvidenceRecord[];
   proposedInputs?: CustomEvidenceRecord[];
   acceptedModelInputs?: CustomEvidenceRecord[];
   quarantineReasons?: string[];
+};
+
+export type ResearchCategoryState = "Complete" | "Partial" | "No eligible evidence" | "Provider failure" | "Timed out" | "Not searched";
+export type ResearchAuditStageCounts = {
+  normalized: number;
+  accessed: number;
+  parsed: number;
+  claimMapped: number;
+  eligible: number;
+  retainedCandidates: number;
+};
+export type ResearchCategoryAudit = {
+  categoryId: string;
+  label: string;
+  evidenceIds: string[];
+  requestedPrimaryQuery: string;
+  executedQueries: string[];
+  optionalFollowUpQuery?: string | null;
+  followUpExecutedQuery?: string | null;
+  state: ResearchCategoryState;
+  stageCounts: ResearchAuditStageCounts;
+  rejectionCounts: Record<string, number>;
+  accessLimitations: string[];
+  unresolvedGaps: string[];
+  providerFailure?: string | null;
+};
+export type ResearchAudit = {
+  version: number;
+  policyVersion: number;
+  provider: string;
+  model: string;
+  providerResponseId: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  elapsedMs: number | null;
+  budget: {
+    deadlineMs: number;
+    maxProviderRequests: number;
+    maxFollowUps: number;
+    maxCandidatesPerCategory: number;
+    maxTotalCandidates: number;
+    maxToolCalls: number;
+  };
+  toolCallCount: number;
+  providerRequestCount: number;
+  categories: ResearchCategoryAudit[];
+  categoryGaps: string[];
+  providerLimitations: string[];
 };
 
 export type ResearchCacheMetadata = {
@@ -166,6 +226,8 @@ export type ResearchCacheMetadata = {
   refreshStatus: "idle" | "running" | "completed" | "failed";
   providerAvailable: boolean;
   validationPolicyVersion?: number;
+  researchPolicyVersion?: number;
+  modelVersion?: string;
   errorType?: "quota-exhausted" | "authentication" | "timeout" | "malformed-response" | "request-limit" | "not-configured" | "upstream";
 };
 
@@ -302,6 +364,20 @@ function parseSource(value: unknown): ResearchEvidenceSource | null {
   const relationship = ["primary", "corroborating", "conflicting"].includes(String(value.relationship))
     ? value.relationship as ResearchEvidenceSource["relationship"]
     : "corroborating";
+  const rawAccessOutcome = isRecord(value.accessOutcome) ? value.accessOutcome : null;
+  const accessOutcome = rawAccessOutcome && ["accessible", "blocked", "unsupported"].includes(String(rawAccessOutcome.state)) && isNonEmptyString(rawAccessOutcome.reason)
+    ? {
+        state: rawAccessOutcome.state as NonNullable<ResearchEvidenceSource["accessOutcome"]>["state"],
+        reason: rawAccessOutcome.reason.trim(),
+        ...(isNonEmptyString(rawAccessOutcome.format) ? { format: rawAccessOutcome.format.trim() } : {}),
+        ...(optionalString(rawAccessOutcome.resolvedUrl) ? { resolvedUrl: optionalString(rawAccessOutcome.resolvedUrl) } : {}),
+        ...(optionalString(rawAccessOutcome.canonicalUrl) ? { canonicalUrl: optionalString(rawAccessOutcome.canonicalUrl) } : {}),
+        ...(optionalDate(rawAccessOutcome.retrievalTime) ? { retrievalTime: optionalDate(rawAccessOutcome.retrievalTime) } : {}),
+        ...(isNonEmptyString(rawAccessOutcome.passage) ? { passage: rawAccessOutcome.passage.trim() } : {}),
+        ...(typeof rawAccessOutcome.pageOrSection === "number" || isNonEmptyString(rawAccessOutcome.pageOrSection) ? { pageOrSection: rawAccessOutcome.pageOrSection } : {}),
+        ...(Array.isArray(rawAccessOutcome.extractionLimitations) ? { extractionLimitations: rawAccessOutcome.extractionLimitations.filter(isNonEmptyString) } : {}),
+      }
+    : null;
   return {
     url,
     originalUrl: optionalString(value.originalUrl) ?? url,
@@ -328,6 +404,7 @@ function parseSource(value: unknown): ResearchEvidenceSource | null {
     ...(isNonEmptyString(value.sourceState) ? { sourceState: value.sourceState.trim() } : {}),
     ...(Array.isArray(value.redirectChain) ? { redirectChain: value.redirectChain.filter(isNonEmptyString) } : {}),
     ...(typeof value.contentType === "string" ? { contentType: value.contentType } : {}),
+    ...(accessOutcome ? { accessOutcome } : {}),
     ...(value.claimCited === true ? { claimCited: true } : {}),
   };
 }
@@ -363,7 +440,67 @@ function parseResearchCache(value: unknown): ResearchCacheMetadata | undefined {
     refreshStatus: value.refreshStatus as ResearchCacheMetadata["refreshStatus"],
     providerAvailable: value.providerAvailable !== false,
     ...(typeof value.validationPolicyVersion === "number" ? { validationPolicyVersion: value.validationPolicyVersion } : {}),
+    ...(typeof value.researchPolicyVersion === "number" ? { researchPolicyVersion: value.researchPolicyVersion } : {}),
+    ...(isNonEmptyString(value.modelVersion) ? { modelVersion: value.modelVersion } : {}),
     ...(errorTypes.includes(value.errorType as typeof errorTypes[number]) ? { errorType: value.errorType as ResearchCacheMetadata["errorType"] } : {}),
+  };
+}
+
+function parseResearchAudit(value: unknown): ResearchAudit | undefined {
+  if (!isRecord(value) || !Array.isArray(value.categories)) return undefined;
+  const states: ResearchCategoryState[] = ["Complete", "Partial", "No eligible evidence", "Provider failure", "Timed out", "Not searched"];
+  const categories = value.categories.flatMap((candidate) => {
+    if (!isRecord(candidate) || !isNonEmptyString(candidate.categoryId) || !isNonEmptyString(candidate.label)) return [];
+    const counts = isRecord(candidate.stageCounts) ? candidate.stageCounts : {};
+    const state = states.includes(candidate.state as ResearchCategoryState) ? candidate.state as ResearchCategoryState : "Not searched";
+    return [{
+      categoryId: candidate.categoryId,
+      label: candidate.label,
+      evidenceIds: Array.isArray(candidate.evidenceIds) ? candidate.evidenceIds.filter(isNonEmptyString) : [],
+      requestedPrimaryQuery: isNonEmptyString(candidate.requestedPrimaryQuery) ? candidate.requestedPrimaryQuery : "Not available",
+      executedQueries: parseSearchTerms(candidate.executedQueries, 9),
+      ...(isNonEmptyString(candidate.optionalFollowUpQuery) ? { optionalFollowUpQuery: candidate.optionalFollowUpQuery } : {}),
+      ...(isNonEmptyString(candidate.followUpExecutedQuery) ? { followUpExecutedQuery: candidate.followUpExecutedQuery } : {}),
+      state,
+      stageCounts: {
+        normalized: Number(counts.normalized) || 0,
+        accessed: Number(counts.accessed) || 0,
+        parsed: Number(counts.parsed) || 0,
+        claimMapped: Number(counts.claimMapped) || 0,
+        eligible: Number(counts.eligible) || 0,
+        retainedCandidates: Number(counts.retainedCandidates) || 0,
+      },
+      rejectionCounts: isRecord(candidate.rejectionCounts)
+        ? Object.fromEntries(Object.entries(candidate.rejectionCounts).map(([key, count]) => [key, Number(count) || 0]))
+        : {},
+      accessLimitations: Array.isArray(candidate.accessLimitations) ? candidate.accessLimitations.filter(isNonEmptyString).slice(0, 8) : [],
+      unresolvedGaps: Array.isArray(candidate.unresolvedGaps) ? candidate.unresolvedGaps.filter(isNonEmptyString).slice(0, 8) : [],
+      ...(isNonEmptyString(candidate.providerFailure) ? { providerFailure: candidate.providerFailure } : {}),
+    } satisfies ResearchCategoryAudit];
+  });
+  const budget = isRecord(value.budget) ? value.budget : {};
+  return {
+    version: Number(value.version) || 1,
+    policyVersion: Number(value.policyVersion) || 1,
+    provider: isNonEmptyString(value.provider) ? value.provider : "unknown",
+    model: isNonEmptyString(value.model) ? value.model : "unknown",
+    providerResponseId: value.providerResponseId === null || isNonEmptyString(value.providerResponseId) ? value.providerResponseId as string | null : null,
+    startedAt: isNonEmptyString(value.startedAt) ? value.startedAt : null,
+    finishedAt: isNonEmptyString(value.finishedAt) ? value.finishedAt : null,
+    elapsedMs: typeof value.elapsedMs === "number" && Number.isFinite(value.elapsedMs) ? value.elapsedMs : null,
+    budget: {
+      deadlineMs: Number(budget.deadlineMs) || 90_000,
+      maxProviderRequests: Number(budget.maxProviderRequests) || 16,
+      maxFollowUps: Number(budget.maxFollowUps) || 8,
+      maxCandidatesPerCategory: Number(budget.maxCandidatesPerCategory) || 10,
+      maxTotalCandidates: Number(budget.maxTotalCandidates) || 80,
+      maxToolCalls: Number(budget.maxToolCalls) || 32,
+    },
+    toolCallCount: Number(value.toolCallCount) || 0,
+    providerRequestCount: Number(value.providerRequestCount) || 0,
+    categories,
+    categoryGaps: Array.isArray(value.categoryGaps) ? value.categoryGaps.filter(isNonEmptyString) : categories.filter((category) => category.state !== "Complete").map((category) => category.categoryId),
+    providerLimitations: Array.isArray(value.providerLimitations) ? value.providerLimitations.filter(isNonEmptyString).slice(0, 12) : [],
   };
 }
 
@@ -627,6 +764,7 @@ function parseResponse(value: unknown): CustomResearchResponse {
         ? value.sourceValidationPolicyVersion
         : SOURCE_VALIDATION_POLICY_VERSION,
       ...(Array.isArray(value.sourceLedger) ? { sourceLedger: value.sourceLedger } : {}),
+     ...(parseResearchAudit(value.researchAudit) ? { researchAudit: parseResearchAudit(value.researchAudit) } : {}),
     ...(isRecord(value.researchCoverage) ? {
       researchCoverage: {
         searchedDomains: Array.isArray(value.researchCoverage.searchedDomains) ? value.researchCoverage.searchedDomains.filter(isNonEmptyString) : [],

@@ -4,7 +4,9 @@ import os from "node:os";
 import path from "node:path";
 import { EVIDENCE_SEMANTIC_POLICY_VERSION } from "../src/data/evidenceSemanticPolicy.mjs";
 
-export const RESEARCH_CACHE_VERSION = 3;
+export const RESEARCH_CACHE_VERSION = 4;
+export const RESEARCH_CACHE_RESEARCH_POLICY_VERSION = 1;
+export const RESEARCH_CACHE_MODEL_VERSION = "gpt-4o";
 export const RESEARCH_CACHE_FRESH_MS = 6 * 60 * 60 * 1000;
 export const RESEARCH_CACHE_RECENT_MS = 24 * 60 * 60 * 1000;
 export const RESEARCH_CACHE_STALE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -25,6 +27,9 @@ function stableValue(value) {
 
 export function researchProjectCacheKey(project) {
   const identity = {
+    cacheContractVersion: RESEARCH_CACHE_VERSION,
+    researchPolicyVersion: RESEARCH_CACHE_RESEARCH_POLICY_VERSION,
+    modelVersion: RESEARCH_CACHE_MODEL_VERSION,
     name: normalizedText(project?.name),
     location: normalizedText(project?.location),
     knownData: stableValue(project?.knownData ?? null),
@@ -62,13 +67,18 @@ export function createResearchProjectCache({
     try {
       const parsed = JSON.parse(await readFile(cacheFile(directory, key), "utf8"));
       if (
-        ![2, RESEARCH_CACHE_VERSION].includes(parsed?.version) ||
+        ![2, 3, RESEARCH_CACHE_VERSION].includes(parsed?.version) ||
         parsed?.key !== key ||
         typeof parsed?.storedAt !== "string" ||
         !parsed?.result
       ) return null;
       parsed.validationPolicyVersion = parsed.validationPolicyVersion ?? parsed.result.semanticPolicyVersion ?? 0;
       parsed.needsRevalidation = parsed.validationPolicyVersion !== EVIDENCE_SEMANTIC_POLICY_VERSION;
+      parsed.researchPolicyVersion = parsed.researchPolicyVersion ?? parsed.result.researchAudit?.policyVersion ?? 0;
+      parsed.modelVersion = parsed.modelVersion ?? parsed.result.researchAudit?.model ?? null;
+      parsed.needsRevalidation = parsed.needsRevalidation
+        || parsed.researchPolicyVersion !== RESEARCH_CACHE_RESEARCH_POLICY_VERSION
+        || parsed.modelVersion !== RESEARCH_CACHE_MODEL_VERSION;
       memory.set(key, parsed);
       return parsed;
     } catch {
@@ -80,6 +90,8 @@ export function createResearchProjectCache({
     const entry = {
       version: RESEARCH_CACHE_VERSION,
       validationPolicyVersion: EVIDENCE_SEMANTIC_POLICY_VERSION,
+      researchPolicyVersion: RESEARCH_CACHE_RESEARCH_POLICY_VERSION,
+      modelVersion: RESEARCH_CACHE_MODEL_VERSION,
       needsRevalidation: false,
       key,
       storedAt: new Date(now()).toISOString(),

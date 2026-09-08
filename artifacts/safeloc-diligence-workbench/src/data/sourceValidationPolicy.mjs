@@ -275,10 +275,27 @@ export function evaluateResearchEvidenceEligibility(input = {}) {
     reasons.push("No immutable claim-to-passage mapping supports this evidence claim.");
     rejectionCodes.push(...new Set(mappings.flatMap((mapping) => mapping?.rejectionCodes ?? [])));
     if (!rejectionCodes.length) rejectionCodes.push("claim-not-mapped");
+  } else {
+    const mappingSourceId = supportedMapping.sourceId;
+    const mappingSource = (Array.isArray(input.sources) ? input.sources : []).find((source) => (
+      (source?.canonicalUrl ?? source?.url ?? source?.resolvedUrl) === mappingSourceId
+    ));
+    if (!mappingSource) {
+      reasons.push("The supported claim mapping does not resolve to a retained source.");
+      rejectionCodes.push("source-not-in-packet");
+    } else if (mappingSource.accessOutcome && mappingSource.accessOutcome.state !== "accessible") {
+      reasons.push("The source named by the supported claim mapping was not successfully accessed.");
+      rejectionCodes.push("inaccessible-without-capture");
+    }
   }
   if (input.coverageStatus === "conflicting" || input.conflictSummary) rejectionCodes.push("blocking-contradiction");
   if (input.semanticValidationStatus === "quarantined") rejectionCodes.push("semantic-mismatch");
   if (input.sources?.some((source) => source?.sourceClass === "reviewer-submitted")) rejectionCodes.push("reviewer-submitted");
+  const accessedSources = Array.isArray(input.sources) ? input.sources.filter((source) => source?.accessOutcome) : [];
+  if (accessedSources.length && !accessedSources.some((source) => source.accessOutcome?.state === "accessible")) {
+    reasons.push("No bounded document access receipt supports this evidence claim.");
+    rejectionCodes.push("document-not-accessible");
+  }
   if (input.sourceRelevance === "related-context" || input.sourceRelevance === "unresolved") rejectionCodes.push("not-project-specific");
   return {
     eligible: reasons.length === 0,
@@ -308,12 +325,14 @@ export function createSourceLedger(candidates = [], { maxRetained = 10 } = {}) {
       title: normalizeText(candidate?.title) || "Retrieved public source",
       excerpt: normalizeText(candidate?.excerpt),
       sourceClass: candidate?.sourceClass ?? "secondary-reporting",
+      searchDomain: candidate?.searchDomain ?? "project-identity",
       accessStatus: candidate?.accessStatus ?? "not provided",
       contentType: candidate?.contentType ?? null,
       date: candidate?.date ?? candidate?.publishedAt ?? candidate?.published_date ?? null,
       redirectChain: Array.isArray(candidate?.redirectChain) ? candidate.redirectChain.filter(Boolean) : [],
       claimCited: candidate?.claimCited === true,
       claimSupport: candidate?.claimSupport ?? null,
+      accessOutcome: candidate?.accessOutcome ?? null,
       facilityScope: candidate?.facilityScope ?? "unknown",
       phaseScope: candidate?.phaseScope ?? "unknown",
       timePeriod: candidate?.timePeriod ?? null,
@@ -321,9 +340,12 @@ export function createSourceLedger(candidates = [], { maxRetained = 10 } = {}) {
         ? { exactProject: candidate.exactProject }
         : {}),
       sourceState: "discovered",
-      accessibilityState: candidate?.accessStatus === "open" ? "accessible" : "unknown",
+      accessibilityState: candidate?.accessOutcome?.state ?? "unknown",
       redirectState: Array.isArray(candidate?.redirectChain) && candidate.redirectChain.length ? "redirected" : "unknown",
-      parsingState: normalizeText(candidate?.excerpt ?? candidate?.snippet) ? "parsed" : "unknown",
+      parsingState: candidate?.parsingState
+        ?? (candidate?.accessOutcome
+          ? (candidate.accessOutcome.state === "accessible" && candidate.accessOutcome.passage ? "parsed" : "failed")
+          : (normalizeText(candidate?.excerpt ?? candidate?.snippet) ? "parsed" : "unknown")),
       evidenceMappingState: "unknown",
       claimSupportState: "unknown",
       projectSpecificityState: candidate?.exactProject === true ? "project-specific" : "unknown",

@@ -3,6 +3,7 @@ import test from "node:test";
 import { mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { deflateSync } from "node:zlib";
 
 import {
   DEFAULT_RESEARCH_CAPACITY_MW,
@@ -33,6 +34,13 @@ import {
   normalizeModelReportedConfidence,
   calculateSourceSupportConfidence,
   containResearchResult,
+  buildResearchAudit,
+  buildResearchCategoryPlan,
+  mergeCategoryResearchResults,
+  buildCategoryFollowUpQuery,
+  evaluateResearchDocumentAccess,
+  accessResearchDocument,
+  orchestrateCategoryResearch,
 } from "./researchProjectProxy.mjs";
 import {
   classifyResearchCacheAge,
@@ -132,8 +140,319 @@ function singleCallResponse(research = validResearchResponse(), sources = [retri
   }), { status: 200 });
 }
 
+function categoryMappedResearch(evidenceId, sourceUrl, value = 42) {
+  const research = validResearchResponse();
+  const item = research.evidence.find((candidate) => candidate.id === evidenceId);
+  Object.assign(item, {
+    value,
+    numericValue: value,
+    unit: evidenceId === "grid_interconnection" ? "days" : evidenceId === "electricity_cost" ? "$/MWh" : "Mgal/year",
+    classification: "Management Assertion",
+    sourceUrl,
+    sourceUrls: [sourceUrl],
+    coverageStatus: "supported",
+    claimPassage: "Project Atlas filing reports the project-specific value.",
+    description: "The filing reports a project-specific value.",
+    claimTimePeriod: "2026",
+  });
+  return research;
+}
+
+function categorySource(url, accessState = "accessible") {
+  return {
+    ...retrievedSource,
+    url,
+    title: "Project Atlas category filing",
+    excerpt: "Project Atlas filing reports the project-specific value.",
+    claimPassage: "Project Atlas filing reports the project-specific value.",
+    claimSupport: [{ evidenceId: "electricity_cost", values: [42] }],
+    facilityScope: "exact-project",
+    phaseScope: "exact-phase",
+    timePeriod: "2026",
+    accessOutcome: {
+      state: accessState,
+      passage: accessState === "accessible" ? "Project Atlas filing reports the project-specific value." : null,
+    },
+  };
+}
+
+function compressedTextPdf(text) {
+  const stream = deflateSync(Buffer.from(`BT /F1 12 Tf 72 720 Td (${text}) Tj ET\n`));
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+    Buffer.concat([Buffer.from(`<< /Length ${stream.length} /Filter /FlateDecode >>\nstream\n`), stream, Buffer.from("\nendstream")]),
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+  ];
+  const chunks = [Buffer.from("%PDF-1.4\n")];
+  const offsets = [0];
+  for (let index = 0; index < objects.length; index += 1) {
+    offsets.push(Buffer.concat(chunks).length);
+    chunks.push(Buffer.from(`${index + 1} 0 obj\n`));
+    chunks.push(Buffer.isBuffer(objects[index]) ? objects[index] : Buffer.from(objects[index]));
+    chunks.push(Buffer.from("\nendobj\n"));
+  }
+  const xrefOffset = Buffer.concat(chunks).length;
+  chunks.push(Buffer.from(`xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`));
+  chunks.push(Buffer.from(offsets.slice(1).map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`).join("")));
+  chunks.push(Buffer.from(`trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`));
+  return Buffer.concat(chunks);
+}
+
 test("uses a 90-second server research budget", () => {
   assert.equal(RESEARCH_PROJECT_TIMEOUT_MS, 90_000);
+});
+
+test("builds an auditable eight-category plan without changing the 16 identifiers", () => {
+  const plan = buildResearchCategoryPlan({ name: "Atlas", location: "Taylor County, Texas" });
+  assert.equal(plan.categories.length, 8);
+  assert.deepEqual(plan.categories.map((category) => category.categoryId), [
+    "project-identity",
+    "grid",
+    "electricity",
+    "water",
+    "permitting-community",
+    "construction-capital",
+    "tenant-counterparty",
+    "climate-operational-hazard",
+  ]);
+  assert.equal(new Set(plan.categories.map((category) => category.requestedPrimaryQuery)).size, 8);
+  assert.equal(plan.budget.maxFollowUps, 8);
+});
+
+test("targets the unresolved evidence item in a category follow-up", () => {
+  const water = buildResearchCategoryPlan({ name: "Atlas", location: "Taylor County, Texas" }).categories
+    .find((category) => category.categoryId === "water");
+  const followUp = buildCategoryFollowUpQuery(
+    { name: "Atlas", location: "Taylor County, Texas" },
+    water,
+    ["water_rights"],
+  );
+  assert.match(followUp, /water right|groundwater withdrawal authorization/i);
+  assert.doesNotMatch(followUp, /water demand consumption gallons usage/i);
+});
+
+test("rejects unsafe, blocked, scanned, and unsupported documents explicitly", () => {
+  assert.equal(evaluateResearchDocumentAccess({ url: "javascript:alert(1)" }).reason, "unsafe-url");
+  assert.equal(evaluateResearchDocumentAccess({ url: "https://example.gov/report.pdf", contentType: "application/pdf", accessStatus: "open", scanned: true }).reason, "scanned-pdf");
+  assert.equal(evaluateResearchDocumentAccess({ url: "https://example.gov/report.zip", contentType: "application/zip", accessStatus: "open" }).reason, "unsupported-source-type");
+  const pdf = evaluateResearchDocumentAccess({
+    url: "https://example.gov/report.pdf?utm_source=test&id=7",
+    contentType: "application/pdf",
+    accessStatus: "open",
+    passage: "Project Atlas record.",
+    page: 4,
+  });
+  assert.equal(pdf.state, "accessible");
+  assert.equal(pdf.format, "text-pdf");
+  assert.equal(pdf.canonicalUrl, "https://example.gov/report.pdf?id=7");
+  assert.equal(pdf.pageOrSection, 4);
+});
+
+test("reads bounded HTML and text PDFs while recording retrieval limitations", async () => {
+  const html = await accessResearchDocument({ url: "https://example.gov/atlas", accessStatus: "open" }, {
+    fetchImpl: async () => new Response("<html><body><h1>Project Atlas</h1><p>Permit record.</p></body></html>", {
+      status: 200,
+      headers: { "content-type": "text/html" },
+    }),
+    now: () => "2026-09-08T12:00:00.000Z",
+  });
+  assert.equal(html.state, "accessible");
+  assert.match(html.passage, /Project Atlas Permit record/);
+  assert.equal(html.retrievalTime, "2026-09-08T12:00:00.000Z");
+  const pdf = await accessResearchDocument({ url: "https://example.gov/atlas.pdf", accessStatus: "open" }, {
+    fetchImpl: async () => new Response(compressedTextPdf("Project Atlas permit record."), {
+      status: 200,
+      headers: { "content-type": "application/pdf" },
+    }),
+  });
+  assert.equal(pdf.state, "accessible");
+  assert.equal(pdf.format, "text-pdf");
+  assert.match(pdf.passage, /Project Atlas permit record/);
+  assert.match(pdf.extractionLimitations.join(" "), /Page references/);
+});
+
+test("blocks DNS rebinding before a default outbound document request", async () => {
+  const result = await accessResearchDocument({ url: "https://rebind.example.gov/atlas", accessStatus: "open" }, {
+    dnsLookup: async () => [{ address: "127.0.0.1", family: 4 }],
+  });
+  assert.equal(result.state, "blocked");
+  assert.equal(result.reason, "private-destination");
+});
+
+test("blocks mapped IPv4-mapped IPv6 destinations and oversized streamed responses", async () => {
+  assert.equal(evaluateResearchDocumentAccess({ url: "https://[::ffff:127.0.0.1]/admin" }).reason, "private-destination");
+  const oversized = await accessResearchDocument({ url: "https://example.gov/large", accessStatus: "open" }, {
+    maxBytes: 8,
+    fetchImpl: async () => new Response(new Uint8Array(32), {
+      status: 200,
+      headers: { "content-type": "text/plain" },
+    }),
+  });
+  assert.equal(oversized.state, "blocked");
+  assert.equal(oversized.reason, "size-limit");
+});
+
+test("bounds category retrieval, allows one gap follow-up, and preserves provider failures", async () => {
+  const calls = [];
+  const run = await orchestrateCategoryResearch(
+    { name: "Atlas", location: "Texas" },
+    {
+      retrieveCategory: async ({ categoryId, attempt }) => {
+        calls.push(`${categoryId}:${attempt}`);
+        if (categoryId === "water") throw new Error("fixture provider failure");
+        if (categoryId === "grid" && attempt === "primary") return {
+          candidates: [{ url: "https://example.gov/grid", eligible: true }],
+          gapDrivenFollowUp: true,
+          observedQueries: ["observed grid primary"],
+        };
+        if (categoryId === "grid") return {
+          candidates: [{ url: "https://example.gov/grid-follow-up" }],
+          observedQueries: ["observed grid follow-up"],
+        };
+        return { candidates: [] };
+      },
+    },
+  );
+  assert.equal(run.categoryExecutions.grid.state, "Complete");
+  assert.equal(run.categoryExecutions.grid.executedQueries.length, 2);
+  assert.equal(run.categoryExecutions.water.state, "Provider failure");
+  assert.equal(run.followUps, 1);
+  assert.ok(run.providerRequests <= 8 + 1);
+  assert.ok(calls.includes("grid:follow-up"));
+});
+
+test("does not let blocked, source-free, or overlapping follow-ups erase an accessible claim", () => {
+  const project = { name: "Project Atlas", location: "Texas", knownData: null };
+  const primaryUrl = "https://example.gov/grid/primary";
+  const primaryResearch = categoryMappedResearch("electricity_cost", primaryUrl, 42);
+  const primaryResult = {
+    categoryId: "grid",
+    research: primaryResearch,
+    sources: [categorySource(primaryUrl)],
+    coverage: { searchedDomains: ["grid"] },
+  };
+
+  const blockedUrl = "https://example.gov/grid/blocked";
+  const blockedResearch = categoryMappedResearch("electricity_cost", blockedUrl, 99);
+  const blockedMerge = mergeCategoryResearchResults(project, [
+    primaryResult,
+    {
+      categoryId: "grid",
+      research: blockedResearch,
+      sources: [categorySource(blockedUrl, "blocked")],
+      coverage: { searchedDomains: ["grid"] },
+    },
+  ]);
+  assert.equal(blockedMerge.evidence.find((item) => item.id === "electricity_cost").sourceUrl, primaryUrl);
+
+  const sourceFreeResearch = validResearchResponse();
+  const sourceFreeMerge = mergeCategoryResearchResults(project, [
+    primaryResult,
+    {
+      categoryId: "grid",
+      research: sourceFreeResearch,
+      sources: [],
+      coverage: { searchedDomains: ["grid"] },
+    },
+  ]);
+  assert.equal(sourceFreeMerge.evidence.find((item) => item.id === "electricity_cost").sourceUrl, primaryUrl);
+
+  const overlappingLaterMerge = mergeCategoryResearchResults(project, [
+    primaryResult,
+    {
+      categoryId: "electricity",
+      research: sourceFreeResearch,
+      sources: [],
+      coverage: { searchedDomains: ["electricity"] },
+    },
+  ]);
+  assert.equal(overlappingLaterMerge.evidence.find((item) => item.id === "electricity_cost").sourceUrl, primaryUrl);
+});
+
+test("enforces the run-wide tool-call budget across category requests", async () => {
+  let calls = 0;
+  const run = await orchestrateCategoryResearch(
+    { name: "Atlas", location: "Texas" },
+    {
+      budget: {
+        deadlineMs: 90_000,
+        maxProviderRequests: 16,
+        maxFollowUps: 1,
+        maxCandidatesPerCategory: 10,
+        maxTotalCandidates: 80,
+        maxToolCalls: 3,
+      },
+      retrieveCategory: async () => {
+        calls += 1;
+        return {
+        candidates: [],
+        toolCallCount: 2,
+        gapDrivenFollowUp: true,
+        };
+      },
+    },
+  );
+  assert.equal(run.toolCalls, 3);
+  assert.equal(run.toolCallBudgetExceeded, true);
+  assert.equal(run.categoryResults.length, 2);
+  assert.equal(calls, 2);
+  assert.equal(run.categoryExecutions.water.state, "Timed out");
+  assert.equal(run.categoryExecutions.water.executedQueries.length, 0);
+});
+
+test("records category counts and gaps without copying a query to every category", () => {
+  const audit = buildResearchAudit({
+    project: { name: "Atlas", location: "Texas" },
+    coverage: { searchTerms: ['"Atlas" "Texas" utility tariff electricity rate power price $/MWh'], toolCallCount: 1 },
+    sources: [],
+    evidence: [],
+  });
+  assert.equal(audit.categories.length, 8);
+  assert.equal(audit.categories.find((category) => category.categoryId === "electricity").executedQueries.length, 1);
+  assert.equal(audit.categories.filter((category) => category.executedQueries.length === 0).length, 7);
+  assert.ok(audit.categoryGaps.includes("water"));
+});
+
+test("marks a category complete only when every category evidence item is eligible", () => {
+  const grid = buildResearchCategoryPlan({ name: "Atlas", location: "Texas" }).categories.find((category) => category.categoryId === "grid");
+  const sources = grid.evidenceIds.map((id) => ({
+    url: `https://example.gov/${id}`,
+    searchDomain: "grid",
+    sourceState: "retained",
+    accessOutcome: { state: "accessible" },
+    parsingState: "parsed",
+  }));
+  const eligibleEvidence = grid.evidenceIds.map((id) => ({ id, eligibleForModel: true }));
+  const complete = buildResearchAudit({
+    project: { name: "Atlas", location: "Texas" },
+    coverage: { categoryExecutions: { grid: { executedQueries: [grid.requestedPrimaryQuery] } } },
+    sources,
+    evidence: eligibleEvidence,
+  });
+  const completeGrid = complete.categories.find((category) => category.categoryId === "grid");
+  assert.equal(completeGrid.state, "Complete");
+  assert.deepEqual(completeGrid.unresolvedGaps, []);
+
+  const partial = buildResearchAudit({
+    project: { name: "Atlas", location: "Texas" },
+    coverage: { categoryExecutions: { grid: { executedQueries: [grid.requestedPrimaryQuery] } } },
+    sources,
+    evidence: eligibleEvidence.slice(0, -1),
+  });
+  const partialGrid = partial.categories.find((category) => category.categoryId === "grid");
+  assert.equal(partialGrid.state, "Partial");
+  assert.ok(partialGrid.unresolvedGaps.includes(grid.evidenceIds.at(-1)));
+
+  const identity = buildResearchAudit({
+    project: { name: "Atlas", location: "Texas" },
+    coverage: { categoryExecutions: { "project-identity": { executedQueries: ["Atlas identity filing"] } } },
+    sources: [],
+    evidence: [],
+  }).categories.find((category) => category.categoryId === "project-identity");
+  assert.equal(identity.state, "No eligible evidence");
+  assert.deepEqual(identity.unresolvedGaps, ["project-identity"]);
 });
 
 test("uses collision-resistant normalized project cache keys and deterministic age tiers", () => {
@@ -184,6 +503,10 @@ test("serves fresh cached research without another provider call", async () => {
       providerCalls += 1;
       return singleCallResponse();
     },
+    documentFetchImpl: async () => new Response("<html><body>Project Atlas public filing.</body></html>", {
+      status: 200,
+      headers: { "content-type": "text/html" },
+    }),
   };
   const first = responseRecorder();
   await handleResearchProjectRequest(request({ name: "Cached Atlas", location: "Texas" }), first, options);
@@ -193,7 +516,7 @@ test("serves fresh cached research without another provider call", async () => {
   await handleResearchProjectRequest(request({ name: "Cached Atlas", location: "Texas" }), second, options);
   assert.equal(second.statusCode, 200);
   assert.equal(second.json().researchCache.state, "fresh");
-  assert.equal(providerCalls, 1);
+  assert.equal(providerCalls, 15);
 });
 
 test("recontains a cached result instead of trusting prior acceptance", async () => {
@@ -261,10 +584,14 @@ test("exposes observable completion status for a background stale refresh", asyn
     apiKey: "server-secret-for-test",
     cache,
     fetchImpl: async () => singleCallResponse(),
+    documentFetchImpl: async () => new Response("<html><body>Project Atlas public filing.</body></html>", {
+      status: 200,
+      headers: { "content-type": "text/html" },
+    }),
   });
   assert.equal(stale.json().researchCache.refreshStatus, "running");
   let status;
-  for (let attempt = 0; attempt < 20; attempt += 1) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 5));
     status = responseRecorder();
     await handleResearchProjectRequest({ method: "GET", url: `/api/research-project?cacheKey=${key}` }, status, { cache });
@@ -614,7 +941,7 @@ test("counts web-search calls and exposes an explicit over-budget coverage flag"
     toolCallCount: countWebSearchCalls(providerBody),
     toolCallBudgetExceeded: true,
   });
-  assert.equal(result.researchCoverage.toolCallCount, 33);
+  assert.equal(result.researchCoverage.toolCallCount, 32);
   assert.equal(result.researchCoverage.toolCallLimit, 32);
   assert.equal(result.researchCoverage.toolCallBudgetExceeded, true);
 });
@@ -744,6 +1071,38 @@ test("maps only validated claim URLs and attaches auditable source metadata", ()
   assert.deepEqual(parsed.evidence[0].searchTerms, ["Project Atlas electricity tariff filing"]);
 });
 
+test("does not let an accessible sibling source authorize a blocked mapped claim", () => {
+  const blocked = {
+    ...retrievedSource,
+    url: "https://example.com/atlas/blocked",
+    exactProject: true,
+    accessOutcome: { state: "blocked", reason: "http-403" },
+  };
+  const accessibleSibling = {
+    ...retrievedSource,
+    url: "https://example.com/atlas/unrelated",
+    claimPassage: "A different public fact about Project Atlas.",
+    excerpt: "A different public fact about Project Atlas.",
+    claimSupport: [],
+    accessOutcome: { state: "accessible", passage: "A different public fact about Project Atlas." },
+  };
+  const research = validResearchResponse();
+  const gridRecord = research.evidence.find((item) => item.id === "grid_interconnection");
+  Object.assign(gridRecord, {
+    sourceUrl: blocked.url,
+    sourceUrls: [blocked.url, accessibleSibling.url],
+    claimPassage: blocked.claimPassage,
+    classification: "Management Assertion",
+    value: 365,
+    numericValue: 365,
+    unit: "days",
+  });
+  const parsed = parseResearchResponse(research, [blocked, accessibleSibling]);
+  const record = parsed.evidence.find((item) => item.id === "grid_interconnection");
+  assert.equal(record.eligibleForModel, false);
+  assert.ok(record.quarantineReasons.some((reason) => /source named|inaccessible|mapped claim/i.test(reason)));
+});
+
 test("rejects malformed custom research requests before calling OpenAI", async () => {
   const missingResponse = responseRecorder();
   let calls = 0;
@@ -769,6 +1128,7 @@ test("limits paid custom research requests by client IP", async () => {
   const rateLimiter = createResearchProjectRateLimiter({ limit: 1, windowMs: 60_000, now: () => now });
   const options = {
     apiKey: "server-secret-for-test",
+    cache: createResearchProjectCache({ directory: await mkdtemp(path.join(os.tmpdir(), "safeloc-research-rate-limit-")) }),
     rateLimiter,
     fetchImpl: async () => singleCallResponse(),
   };
@@ -784,36 +1144,49 @@ test("limits paid custom research requests by client IP", async () => {
   assert.equal(allowedAgain.statusCode, 200);
 });
 
-test("uses exactly one web-search-enabled API call with the strict 16-item schema", async () => {
+test("uses eight bounded category web-search calls with the strict 16-item schema", async () => {
   const response = responseRecorder();
   let requestUrl;
   let requestInit;
   let calls = 0;
+  let providerCalls = 0;
   await handleResearchProjectRequest(request({
     name: "Project Atlas",
     location: "Texas",
     knownData: { operator: "Atlas Compute" },
   }), response, {
     apiKey: "server-secret-for-test",
+    cache: createResearchProjectCache({ directory: await mkdtemp(path.join(os.tmpdir(), "safeloc-research-schema-")) }),
     fetchImpl: async (url, init) => {
       requestUrl = url;
       requestInit = init;
-      calls += 1;
+       calls += 1;
+       if (url === OPENAI_RESPONSES_URL) providerCalls += 1;
       const researched = validResearchResponse();
       researched.evidence[1].value = "Company-reported cooling arrangement";
       return singleCallResponse(researched);
     },
+    documentFetchImpl: async () => new Response("<html><body>Project Atlas public filing.</body></html>", {
+      status: 200,
+      headers: { "content-type": "text/html" },
+    }),
   });
   assert.equal(response.statusCode, 200);
-  assert.equal(calls, 1);
+  assert.ok(providerCalls >= 8 && providerCalls <= 16);
+  assert.ok(providerCalls > 8);
   assert.equal(response.json().evidence[1].classification, "Management Assertion");
   assert.equal(response.json().evidence[1].sourceUrl, retrievedSource.url);
+  assert.equal(calls, providerCalls);
+  assert.equal(response.json().researchAudit.categories.length, 8);
+  assert.ok(response.json().researchAudit.categories.every((category) => category.executedQueries.length === 0));
+  assert.ok(response.json().researchAudit.categories.every((category) => category.requestedPrimaryQuery.length > 0));
+  assert.ok(response.json().researchAudit.categories.some((category) => category.stageCounts.accessed > 0));
+  assert.equal(response.json().evidence[0].sources[0].accessOutcome.state, "accessible");
   assert.equal(requestUrl, OPENAI_RESPONSES_URL);
   const body = JSON.parse(requestInit.body);
   assert.equal(body.model, RESEARCH_PROJECT_MODEL);
   assert.equal(body.max_output_tokens, RESEARCH_PROJECT_MAX_TOKENS);
-  assert.equal(body.max_tool_calls, RESEARCH_PROJECT_MAX_TOOL_CALLS);
-  assert.equal(body.max_tool_calls, 32);
+  assert.ok(body.max_tool_calls > 0 && body.max_tool_calls <= RESEARCH_PROJECT_MAX_TOOL_CALLS);
   assert.deepEqual(body.tools, [{ type: "web_search_preview" }]);
   assert.equal(body.text.format.type, "json_schema");
   assert.equal(body.text.format.strict, true);
@@ -850,6 +1223,121 @@ test("uses exactly one web-search-enabled API call with the strict 16-item schem
   ]) {
     assert.match(RESEARCH_PROJECT_SYSTEM_PROMPT, new RegExp(phrase, "i"));
   }
+});
+
+test("retains blocked access receipts and prevents blocked passages from becoming eligible", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "safeloc-research-blocked-access-"));
+  const response = responseRecorder();
+  await handleResearchProjectRequest(request({ name: "Blocked Atlas", location: "Texas", forceRefresh: true }), response, {
+    apiKey: "server-secret-for-test",
+    cache: createResearchProjectCache({ directory }),
+    fetchImpl: async () => singleCallResponse(),
+    documentFetchImpl: async () => new Response("blocked", { status: 403 }),
+  });
+  const body = response.json();
+  assert.equal(response.statusCode, 200);
+  assert.ok(body.evidence[0].sources.every((source) => source.accessOutcome?.state === "blocked"));
+  assert.ok(body.evidence.every((item) => item.eligibleForModel !== true));
+  assert.ok(body.researchAudit.categories.every((category) => category.stageCounts.accessed === 0));
+  assert.ok(body.researchAudit.categories.some((category) => category.state === "No eligible evidence" || category.state === "Partial"));
+});
+
+test("enforces per-category and run-wide candidate caps before document access", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "safeloc-research-candidate-caps-"));
+  const candidates = Array.from({ length: 12 }, (_, index) => ({
+    ...retrievedSource,
+    url: `https://example.com/atlas/source-${index + 1}`,
+    title: `Project Atlas public filing ${index + 1}`,
+  }));
+  let documentFetches = 0;
+  const response = responseRecorder();
+  await handleResearchProjectRequest(request({ name: "Capped Atlas", location: "Texas", forceRefresh: true }), response, {
+    apiKey: "server-secret-for-test",
+    cache: createResearchProjectCache({ directory }),
+    fetchImpl: async () => singleCallResponse(validResearchResponse(), candidates),
+    documentFetchImpl: async () => {
+      documentFetches += 1;
+      return new Response("<html><body>Project Atlas filing passage.</body></html>", {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      });
+    },
+  });
+  assert.equal(response.statusCode, 200);
+  assert.equal(documentFetches, 80);
+});
+
+test("retains and validates mapped sources from later categories after final containment", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "safeloc-research-later-category-ledger-"));
+  const categoryEvidence = {
+    "Project identity": null,
+    Grid: "grid_interconnection",
+    Electricity: "electricity_cost",
+    Water: "water_consumption",
+    "Permitting and community": "community_risk",
+    "Construction and capital": "cooling_capex",
+    "Tenant and counterparty": "customer_concentration",
+    "Climate and operational hazard": "site_hazard_exposure",
+  };
+  let providerCalls = 0;
+  const response = responseRecorder();
+  await handleResearchProjectRequest(request({ name: "Ledger Atlas", location: "Texas", forceRefresh: true }), response, {
+    apiKey: "server-secret-for-test",
+    cache: createResearchProjectCache({ directory }),
+    fetchImpl: async (_url, init) => {
+      providerCalls += 1;
+      const payload = JSON.parse(init.body);
+      const prompt = payload.input?.[1]?.content ?? "";
+      const label = Object.keys(categoryEvidence).find((candidate) => prompt.includes(`observed ${candidate} category attempt`)) ?? "Project identity";
+      const evidenceId = categoryEvidence[label];
+      const sourceUrl = `https://example.gov/${label.toLowerCase().replaceAll(" ", "-")}/source-${providerCalls}`;
+      const research = validResearchResponse();
+      if (evidenceId) {
+        const item = research.evidence.find((candidate) => candidate.id === evidenceId);
+        Object.assign(item, {
+          value: 42,
+          numericValue: 42,
+          unit: evidenceId === "water_consumption" ? "Mgal/year" : "days",
+          classification: "Management Assertion",
+          sourceUrl,
+          sourceUrls: [sourceUrl],
+          coverageStatus: "supported",
+          claimPassage: "Project Atlas filing reports 42 exact project.",
+          description: "The filing reports a project-specific value.",
+          claimTimePeriod: "2026",
+        });
+      }
+      const source = {
+        ...retrievedSource,
+        url: sourceUrl,
+        title: `Project Atlas ${label} filing`,
+        excerpt: "Project Atlas filing reports 42 exact project.",
+        claimPassage: "Project Atlas filing reports 42 exact project.",
+        claimSupport: evidenceId ? [{ evidenceId, values: [42] }] : [],
+        facilityScope: "exact-project",
+        phaseScope: "exact-phase",
+        timePeriod: "2026",
+      };
+      return singleCallResponse(research, Array.from({ length: 12 }, (_, index) => index === 0
+        ? source
+        : {
+          ...source,
+          url: `${sourceUrl}-${index + 1}`,
+          claimSupport: [],
+        }));
+    },
+    documentFetchImpl: async () => new Response("<html><body>Project Atlas filing reports 42 exact project.</body></html>", {
+      status: 200,
+      headers: { "content-type": "text/html" },
+    }),
+  });
+  const body = response.json();
+  assert.equal(response.statusCode, 200);
+  assert.ok(providerCalls >= 8);
+  assert.ok(body.researchCoverage.sourceLedgerSummary.retainedCount > 10);
+  const water = body.evidence.find((item) => item.id === "water_consumption");
+  assert.equal(water.eligibleForModel, true);
+  assert.ok(body.sourceLedger?.some((source) => source.originalUrl?.includes("/water/source-")));
 });
 
 test("returns exactly 16 normalized evidence items and safely falls back for invalid capacity", () => {
@@ -1171,10 +1659,12 @@ test("does not convert source silence into a modeled zero", () => {
 
 test("rejects an incomplete provider response without leaking provider details", async () => {
   const response = responseRecorder();
+  const cache = createResearchProjectCache({ directory: await mkdtemp(path.join(os.tmpdir(), "safeloc-research-incomplete-")) });
   const incomplete = validResearchResponse();
   incomplete.evidence = incomplete.evidence.slice(0, 15);
     await handleResearchProjectRequest(request({ name: "Project Atlas", location: "Texas", forceRefresh: true }), response, {
     apiKey: "server-secret-for-test",
+    cache,
     fetchImpl: async (_, init) => {
       assert.match(init.body, /web_search_preview/);
       return singleCallResponse(incomplete);
@@ -1186,9 +1676,13 @@ test("rejects an incomplete provider response without leaking provider details",
 });
 
 test("returns specific safe quota, authentication, parse, and timeout errors", async () => {
+  const cache = createResearchProjectCache({ directory: await mkdtemp(path.join(os.tmpdir(), "safeloc-research-errors-")) });
+  const rateLimiter = createResearchProjectRateLimiter({ limit: 10, windowMs: 60_000 });
   const providerResponse = responseRecorder();
   await handleResearchProjectRequest(request({ name: "Project Atlas", location: "Texas" }), providerResponse, {
     apiKey: "server-secret-for-test",
+    cache,
+    rateLimiter,
     fetchImpl: async () => new Response("provider private detail", { status: 429 }),
   });
   assert.equal(providerResponse.statusCode, 429);
@@ -1198,6 +1692,8 @@ test("returns specific safe quota, authentication, parse, and timeout errors", a
   const authenticationResponse = responseRecorder();
   await handleResearchProjectRequest(request({ name: "Project Atlas", location: "Texas" }), authenticationResponse, {
     apiKey: "server-secret-for-test",
+    cache,
+    rateLimiter,
     fetchImpl: async () => new Response(JSON.stringify({ error: { message: "invalid key" } }), { status: 401 }),
   });
   assert.equal(authenticationResponse.statusCode, 502);
@@ -1207,6 +1703,8 @@ test("returns specific safe quota, authentication, parse, and timeout errors", a
   const parseResponse = responseRecorder();
   await handleResearchProjectRequest(request({ name: "Project Atlas", location: "Texas" }), parseResponse, {
     apiKey: "server-secret-for-test",
+    cache,
+    rateLimiter,
     fetchImpl: async () => new Response("not json", { status: 200 }),
   });
   assert.equal(parseResponse.statusCode, 502);
@@ -1215,6 +1713,8 @@ test("returns specific safe quota, authentication, parse, and timeout errors", a
   const timeoutResponse = responseRecorder();
   await handleResearchProjectRequest(request({ name: "Project Atlas", location: "Texas" }), timeoutResponse, {
     apiKey: "server-secret-for-test",
+    cache,
+    rateLimiter,
     fetchImpl: async () => {
       const error = new Error("aborted");
       error.name = "AbortError";

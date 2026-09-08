@@ -1,5 +1,7 @@
 export type ResearchCacheState = "fresh" | "recent" | "stale" | "expired";
 export declare const RESEARCH_CACHE_VERSION: number;
+export declare const RESEARCH_CACHE_RESEARCH_POLICY_VERSION: number;
+export declare const RESEARCH_CACHE_MODEL_VERSION: string;
 export declare const RESEARCH_CACHE_FRESH_MS: number;
 export declare const RESEARCH_CACHE_RECENT_MS: number;
 export declare const RESEARCH_CACHE_STALE_MS: number;

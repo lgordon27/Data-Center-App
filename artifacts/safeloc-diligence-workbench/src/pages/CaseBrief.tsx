@@ -31,6 +31,7 @@ import {
 } from "@/data/femaNRI";
 import { ClaimCitation } from "@/components/ClaimCitation";
 import { summarizeResearchAudit, summarizeSourceCoverage } from "@/services/researchProjectService";
+import { ResearchSearchAudit } from "@/components/ResearchSearchAudit";
 
 function ScopeLimitationsDisclosure() {
   return (
@@ -144,6 +145,7 @@ function CustomCaseBrief({ project, onNavigate, onFocusCommunity }: { project: R
             </div>
           </div>
         )}
+        {!isDefaultAssumptions && <ResearchSearchAudit coverage={project.researchCoverage} audit={project.researchAudit} />}
          <div className="mt-5 rounded-lg border border-[#f1cb8b] bg-[#fff8e9] p-4 text-[10px] leading-5 text-[#6f460e]">{isDefaultAssumptions ? "AI research did not complete. All 16 evidence variables are Missing Evidence, so no project-specific finding changes the synthetic return until a reviewer supplies and accepts evidence." : isResearchIncomplete ? "RESEARCH INCOMPLETE: zero eligible project-specific sources passed containment. Generated content is shown only under Unverified leads and cannot be promoted into the model." : `Research proposals are quarantined until explicit human acceptance. Findings are not facility-level proof unless the cited project source supports them; the modeled set remains exactly ${Object.keys(evidence).length} synthetic variables.`}</div>
       </section>
       <div className="mt-5"><ScopeLimitationsDisclosure /></div>

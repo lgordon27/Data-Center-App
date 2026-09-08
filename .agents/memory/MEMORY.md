@@ -15,3 +15,5 @@
 - [Community benchmark provenance](community-benchmark-provenance.md) — external benchmark rows need immutable source fields, explicit review state, and no invented quote or primary-document fallback.
 - [Evidence semantic boundaries](evidence-semantic-boundaries.md) — normalize once, preserve raw research, and persist accepted model/history state separately from reviewer-visible proposals.
 - [Source validation pipeline](source-validation-pipeline.md) — provider links stay candidates until identity, passage, scope, time, and financial gates all pass.
+- [Category query attribution](category-query-attribution.md) — audit executed queries against each category’s own planned query, not shared evidence-variable keywords.
+- [Research audit ledger](research-audit-ledger.md) — enforce run-wide tool budgets before every attempt and count audit stages from the full normalized ledger.

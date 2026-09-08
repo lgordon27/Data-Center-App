@@ -1,4 +1,14 @@
 import { defaultResearchProjectCache } from "./researchProjectCache.mjs";
+import dns from "node:dns/promises";
+import http from "node:http";
+import https from "node:https";
+import { Readable } from "node:stream";
+import { execFile as execFileCallback } from "node:child_process";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { promisify } from "node:util";
+import { isIP } from "node:net";
 import {
   EVIDENCE_SEMANTIC_POLICY_VERSION,
   evaluateEvidenceSourceEligibility,
@@ -20,8 +30,39 @@ function sourceStateTransition(from, to, reason) {
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const RESEARCH_PROJECT_MODEL = "gpt-4o";
 const RESEARCH_PROJECT_MAX_TOKENS = 4_000;
+const execFile = promisify(execFileCallback);
 const RESEARCH_PROJECT_TIMEOUT_MS = 90_000;
 const RESEARCH_PROJECT_MAX_TOOL_CALLS = 32;
+const RESEARCH_POLICY_VERSION = 1;
+const RESEARCH_CATEGORY_AUDIT_VERSION = 1;
+const RESEARCH_RUN_BUDGET = Object.freeze({
+  deadlineMs: RESEARCH_PROJECT_TIMEOUT_MS,
+  maxProviderRequests: 16,
+  maxFollowUps: 8,
+  maxCandidatesPerCategory: 10,
+  maxTotalCandidates: 80,
+  maxToolCalls: RESEARCH_PROJECT_MAX_TOOL_CALLS,
+});
+const RESEARCH_DOCUMENT_MAX_BYTES = 1_000_000;
+const RESEARCH_DOCUMENT_MAX_REDIRECTS = 3;
+const RESEARCH_CATEGORY_STATES = Object.freeze([
+  "Complete",
+  "Partial",
+  "No eligible evidence",
+  "Provider failure",
+  "Timed out",
+  "Not searched",
+]);
+const RESEARCH_CATEGORIES = Object.freeze([
+  { id: "project-identity", label: "Project identity", evidenceIds: [] },
+  { id: "grid", label: "Grid", evidenceIds: ["grid_interconnection", "electricity_cost", "electricity_escalation", "renewable_percentage"] },
+  { id: "electricity", label: "Electricity", evidenceIds: ["electricity_cost", "electricity_escalation", "renewable_percentage", "carbon_compliance"] },
+  { id: "water", label: "Water", evidenceIds: ["water_consumption", "water_escalation", "water_rights", "water_source_resilience"] },
+  { id: "permitting-community", label: "Permitting and community", evidenceIds: ["community_risk", "permitting_timeline", "carbon_compliance"] },
+  { id: "construction-capital", label: "Construction and capital", evidenceIds: ["cooling_capex", "backup_power_capacity", "downtime_cost"] },
+  { id: "tenant-counterparty", label: "Tenant and counterparty", evidenceIds: ["customer_concentration", "downtime_cost"] },
+  { id: "climate-operational-hazard", label: "Climate and operational hazard", evidenceIds: ["site_hazard_exposure", "backup_power_capacity", "water_source_resilience", "downtime_cost"] },
+]);
 const DEFAULT_RESEARCH_CAPACITY_MW = 1_200;
 const MAX_RESEARCH_CAPACITY_MW = 10_000;
 const RESEARCH_PROJECT_REQUEST_LIMIT = 10;
@@ -169,6 +210,8 @@ function cacheMetadata(key, entry, state, refreshStatus = "idle", extras = {}) {
     refreshStatus,
     providerAvailable: extras.providerAvailable ?? true,
     validationPolicyVersion: entry?.validationPolicyVersion ?? EVIDENCE_SEMANTIC_POLICY_VERSION,
+    researchPolicyVersion: entry?.researchPolicyVersion ?? RESEARCH_POLICY_VERSION,
+    modelVersion: entry?.modelVersion ?? RESEARCH_PROJECT_MODEL,
     revalidated: entry?.needsRevalidation === true,
     ...(extras.errorType ? { errorType: extras.errorType } : {}),
   };
@@ -212,13 +255,98 @@ function safePublicSourceUrl(value) {
   if (typeof value !== "string" || !value.trim()) return null;
   try {
     const url = new URL(value.trim());
-    if (!["http:", "https:"].includes(url.protocol) || !url.hostname || url.username || url.password) {
+    const hostname = url.hostname.toLowerCase();
+    if (!["http:", "https:"].includes(url.protocol) || !hostname || url.username || url.password
+      || hostname === "localhost" || hostname.endsWith(".localhost") || hostname.endsWith(".local")
+      || hostname === "metadata.google.internal" || isPrivateNetworkHostname(hostname)) {
       return null;
     }
     return url.href;
   } catch {
     return null;
   }
+}
+
+function isPrivateNetworkHostname(hostname) {
+  const normalized = String(hostname ?? "").toLowerCase().replace(/^\[|\]$/g, "");
+  const ip = normalized.match(/^\d{1,3}(?:\.\d{1,3}){3}$/)?.[0];
+  if (ip) {
+    const octets = ip.split(".").map(Number);
+    if (octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) return true;
+    const value = octets.reduce((total, octet) => total * 256 + octet, 0);
+    return octets[0] === 0
+      || octets[0] === 10
+      || octets[0] === 127
+      || (octets[0] === 100 && octets[1] >= 64 && octets[1] <= 127)
+      || (octets[0] === 169 && octets[1] === 254)
+      || (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31)
+      || (octets[0] === 192 && (octets[1] === 0 || octets[1] === 2 || octets[1] === 168))
+      || (octets[0] === 192 && octets[1] === 88 && octets[2] === 99)
+      || (octets[0] === 198 && octets[1] >= 18 && octets[1] <= 19)
+      || (octets[0] === 198 && octets[1] === 51 && octets[2] === 100)
+      || (octets[0] === 203 && octets[1] === 0 && octets[2] === 113)
+      || octets[0] >= 224
+      || value === 0xffffffff;
+  }
+  if (!normalized.includes(":")) return false;
+  if (isIP(normalized) !== 6) return true;
+  const groups = normalized.split("::");
+  const left = groups[0] ? groups[0].split(":") : [];
+  const right = groups[1] ? groups[1].split(":") : [];
+  const expanded = groups.length === 2
+    ? [...left, ...Array(8 - left.length - right.length).fill("0"), ...right]
+    : left;
+  if (expanded.length !== 8) return true;
+  const value = expanded.reduce((total, part) => (total << 16n) | BigInt(`0x${part || "0"}`), 0n);
+  const mappedIpv4 = (value >> 32n) === 0xffffn;
+  if (mappedIpv4) {
+    const mapped = Number(value & 0xffffffffn);
+    return isPrivateNetworkHostname(`${mapped >>> 24}.${(mapped >>> 16) & 255}.${(mapped >>> 8) & 255}.${mapped & 255}`);
+  }
+  const topByte = Number(value >> 120n);
+  return value === 0n || value === 1n || topByte === 0xff
+    || (topByte & 0xfe) === 0xfc
+    || topByte === 0xfe
+    || (value >> 96n) === 0x20010db8n;
+}
+
+async function resolvePublicAddress(url, dnsLookup = dns.lookup) {
+  const parsed = new URL(url);
+  if (isPrivateNetworkHostname(parsed.hostname)) throw new Error("private-destination");
+  const addresses = await dnsLookup(parsed.hostname, { all: true, verbatim: true });
+  if (!addresses.length || addresses.some((address) => isPrivateNetworkHostname(address.address))) {
+    throw new Error("private-destination");
+  }
+  return addresses[0];
+}
+
+function fetchPinnedPublicUrl(url, init = {}, dnsLookup = dns.lookup) {
+  return resolvePublicAddress(url, dnsLookup).then((address) => new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const transport = parsed.protocol === "https:" ? https : http;
+    const request = transport.request({
+      hostname: parsed.hostname,
+      port: parsed.port || undefined,
+      path: `${parsed.pathname}${parsed.search}`,
+      method: init.method ?? "GET",
+      headers: init.headers,
+      lookup: (_hostname, _options, callback) => callback(null, address.address, address.family),
+      servername: parsed.hostname,
+      signal: init.signal,
+    }, (response) => {
+      const headers = new Headers();
+      for (const [name, value] of Object.entries(response.headers)) {
+        if (Array.isArray(value)) headers.set(name, value.join(", "));
+        else if (value !== undefined) headers.set(name, value);
+      }
+      resolve(new Response(Readable.toWeb(response), {
+        status: response.statusCode ?? 502,
+        headers,
+      }));
+    });
+    request.once("error", reject);
+    request.end();
+  }));
 }
 
 function parseResearchProjectBody(body) {
@@ -315,6 +443,480 @@ const RESEARCH_QUERY_ANGLES = {
   water_source_resilience: ["water source redundancy drought resilience", "alternate supply recycled groundwater source"],
   downtime_cost: ["downtime cost outage loss facility", "SLA outage penalty business interruption"],
 };
+
+function researchCategoryForEvidence(id) {
+  return RESEARCH_CATEGORIES.filter((category) => category.evidenceIds.includes(id)).map((category) => category.id);
+}
+
+function buildResearchCategoryPlan(project) {
+  const plan = RESEARCH_CATEGORIES.map((category) => {
+    const firstEvidenceId = category.evidenceIds[0];
+    const followUpEvidenceId = category.evidenceIds[1] ?? firstEvidenceId;
+    const requestedPrimaryQuery = firstEvidenceId
+      ? buildVariableQueries(project, firstEvidenceId)[0]
+      : `"${project.name}" "${project.location}" project operator facility identity permit record`;
+    const optionalFollowUpQuery = followUpEvidenceId
+      ? buildVariableQueries(project, followUpEvidenceId)[0]
+      : `"${project.name}" "${project.location}" alternate name owner operator filing`;
+    return {
+      categoryId: category.id,
+      label: category.label,
+      evidenceIds: [...category.evidenceIds],
+      requestedPrimaryQuery,
+      optionalFollowUpQuery,
+      primaryAttempt: "not-started",
+      followUpAttempt: "not-started",
+    };
+  });
+  return {
+    version: RESEARCH_CATEGORY_AUDIT_VERSION,
+    categories: plan,
+    budget: { ...RESEARCH_RUN_BUDGET },
+  };
+}
+
+function buildCategoryFollowUpQuery(project, category, unresolvedEvidenceIds = []) {
+  const fallbackId = category.evidenceIds[1] ?? category.evidenceIds[0];
+  const evidenceId = unresolvedEvidenceIds.find((id) => id !== category.evidenceIds[0]) ?? fallbackId;
+  if (evidenceId) return buildVariableQueries(project, evidenceId)[0];
+  return `"${project.name}" "${project.location}" alternate name owner operator filing`;
+}
+
+function evaluateResearchDocumentAccess(candidate = {}) {
+  const rawUrls = [candidate.originalUrl ?? candidate.url, candidate.resolvedUrl ?? candidate.finalUrl ?? candidate.url];
+  for (const rawUrl of rawUrls) {
+    try {
+      if (isPrivateNetworkHostname(new URL(rawUrl).hostname)) {
+        return {
+          state: "blocked",
+          reason: "private-destination",
+          originalUrl: null,
+          resolvedUrl: null,
+          contentType: String(candidate.contentType ?? candidate.mimeType ?? "").toLowerCase().split(";")[0].trim() || null,
+          redirectChain: [],
+          extractionLimitations: ["Private, loopback, link-local, or reserved destinations are never fetched."],
+        };
+      }
+    } catch {
+      // The normal URL validation below reports malformed values as unsafe.
+    }
+  }
+  const originalUrl = safePublicSourceUrl(candidate.originalUrl ?? candidate.url);
+  const resolvedUrl = safePublicSourceUrl(candidate.resolvedUrl ?? candidate.finalUrl ?? candidate.url);
+  const contentType = String(candidate.contentType ?? candidate.mimeType ?? "").toLowerCase().split(";")[0].trim() || null;
+  const redirectChain = Array.isArray(candidate.redirectChain) ? candidate.redirectChain.filter(Boolean).slice(0, 5) : [];
+  if (!originalUrl || !resolvedUrl) {
+    return { state: "blocked", reason: "unsafe-url", originalUrl: originalUrl ?? null, resolvedUrl: null, contentType, redirectChain, extractionLimitations: ["URL is missing, invalid, or contains credentials."] };
+  }
+  if (redirectChain.length > 3) {
+    return { state: "blocked", reason: "redirect-limit", originalUrl, resolvedUrl, contentType, redirectChain, extractionLimitations: ["Redirect chain exceeded the bounded access limit."] };
+  }
+  if (["paywall", "registration", "blocked", "unsafe"].includes(candidate.accessStatus)) {
+    return { state: "blocked", reason: String(candidate.accessStatus), originalUrl, resolvedUrl, contentType, redirectChain, extractionLimitations: ["The destination was not openly accessible; no unsupported material is treated as reviewed."] };
+  }
+  if (candidate.javascriptOnly === true || candidate.blocked === true) {
+    return { state: "blocked", reason: candidate.javascriptOnly === true ? "javascript-only" : "blocked", originalUrl, resolvedUrl, contentType, redirectChain, extractionLimitations: ["The destination requires blocked or browser-only access."] };
+  }
+  const extension = new URL(resolvedUrl).pathname.toLowerCase();
+  const format = contentType === "application/pdf" || extension.endsWith(".pdf")
+    ? "text-pdf"
+    : contentType === "text/plain" || contentType === "text/csv"
+      ? "text"
+      : contentType === "text/html" || !contentType
+        ? "html"
+        : null;
+  if (!format) {
+    return { state: "unsupported", reason: "unsupported-source-type", originalUrl, resolvedUrl, contentType, redirectChain, extractionLimitations: [`Content type ${contentType} is outside the bounded HTML, text, and text-PDF pipeline.`] };
+  }
+  if (format === "text-pdf" && (candidate.scanned === true || candidate.ocrRequired === true)) {
+    return { state: "unsupported", reason: "scanned-pdf", format, originalUrl, resolvedUrl, contentType, redirectChain, extractionLimitations: ["Scanned PDFs are not OCRed by the research pipeline."] };
+  }
+  return {
+    state: "accessible",
+    reason: "supported-source-type",
+    format,
+    originalUrl,
+    resolvedUrl,
+    canonicalUrl: canonicalizeSourceUrl(resolvedUrl),
+    contentType,
+    redirectChain,
+    retrievalTime: candidate.retrievedAt ?? null,
+    passage: typeof candidate.passage === "string" ? candidate.passage.slice(0, 4_000) : null,
+    pageOrSection: candidate.pageOrSection ?? candidate.page ?? candidate.section ?? null,
+    extractionLimitations: format === "html" ? ["Passage and page references depend on provider capture."] : [],
+  };
+}
+
+async function extractTextPdfPassage(buffer, {
+  maxPages = 20,
+  timeoutMs = 5_000,
+  maxOutputBytes = 64_000,
+} = {}) {
+  if (!Buffer.from(buffer).subarray(0, 5).equals(Buffer.from("%PDF-"))) return "";
+  const directory = await mkdtemp(path.join(os.tmpdir(), "safeloc-pdf-"));
+  const inputPath = path.join(directory, "document.pdf");
+  try {
+    await writeFile(inputPath, buffer);
+    const result = await execFile(
+      "pdftotext",
+      ["-f", "1", "-l", String(maxPages), "-layout", inputPath, "-"],
+      { timeout: timeoutMs, maxBuffer: maxOutputBytes },
+    );
+    return String(result.stdout ?? "").replace(/\s+/g, " ").trim().slice(0, 4_000);
+  } catch {
+    return "";
+  } finally {
+    await rm(directory, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+async function accessResearchDocument(candidate = {}, {
+  fetchImpl = fetch,
+  now = () => new Date().toISOString(),
+  maxBytes = RESEARCH_DOCUMENT_MAX_BYTES,
+  maxRedirects = RESEARCH_DOCUMENT_MAX_REDIRECTS,
+  signal,
+  dnsLookup = dns.lookup,
+} = {}) {
+  const initial = evaluateResearchDocumentAccess(candidate);
+  if (initial.state !== "accessible") return initial;
+  let currentUrl = initial.resolvedUrl;
+  const redirectChain = [];
+  for (let redirect = 0; redirect <= maxRedirects; redirect += 1) {
+    let response;
+    try {
+      const requestInit = {
+        method: "GET",
+        headers: { accept: "text/html, text/plain, application/pdf" },
+        redirect: "manual",
+        signal,
+      };
+      response = fetchImpl === fetch
+        ? await fetchPinnedPublicUrl(currentUrl, requestInit, dnsLookup)
+        : await fetchImpl(currentUrl, requestInit);
+    } catch (error) {
+      return {
+        ...initial,
+        state: "blocked",
+        reason: error?.message === "private-destination" ? "private-destination" : "network-failure",
+        resolvedUrl: currentUrl,
+        redirectChain,
+        extractionLimitations: ["The destination could not be retrieved by the bounded server reader."],
+      };
+    }
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers?.get?.("location");
+      const safeLocation = safePublicSourceUrl(location ? new URL(location, currentUrl).href : null);
+      if (!safeLocation || redirect === maxRedirects) {
+        return {
+          ...initial,
+          state: "blocked",
+          reason: "redirect-limit",
+          resolvedUrl: currentUrl,
+          redirectChain,
+          extractionLimitations: ["Redirect chain exceeded the bounded access limit or supplied an unsafe destination."],
+        };
+      }
+      redirectChain.push(safeLocation);
+      currentUrl = safeLocation;
+      continue;
+    }
+    if (!response.ok) {
+      return {
+        ...initial,
+        state: "blocked",
+        reason: `http-${response.status}`,
+        resolvedUrl: currentUrl,
+        redirectChain,
+        extractionLimitations: [`The destination returned HTTP ${response.status}; no passage was retained.`],
+      };
+    }
+    const contentType = response.headers?.get?.("content-type") ?? candidate.contentType ?? null;
+    const contentLength = Number(response.headers?.get?.("content-length"));
+    if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+      return { ...initial, state: "blocked", reason: "size-limit", resolvedUrl: currentUrl, redirectChain, contentType, extractionLimitations: [`Document exceeds the ${maxBytes}-byte access limit.`] };
+    }
+    let bytes;
+    try {
+      if (response.body?.getReader) {
+        const reader = response.body.getReader();
+        const chunks = [];
+        let total = 0;
+        while (true) {
+          const part = await reader.read();
+          if (part.done) break;
+          total += part.value.byteLength;
+          if (total > maxBytes) {
+            await reader.cancel();
+            throw new Error("size-limit");
+          }
+          chunks.push(Buffer.from(part.value));
+        }
+        bytes = Buffer.concat(chunks, total);
+      } else {
+        const buffered = await response.arrayBuffer();
+        if (buffered.byteLength > maxBytes) throw new Error("size-limit");
+        bytes = Buffer.from(buffered);
+      }
+    } catch (error) {
+      return {
+        ...initial,
+        state: "blocked",
+        reason: error?.message === "size-limit" ? "size-limit" : "read-failure",
+        resolvedUrl: currentUrl,
+        redirectChain,
+        contentType,
+        extractionLimitations: ["The bounded reader stopped before retaining the complete response."],
+      };
+    }
+    const format = evaluateResearchDocumentAccess({ ...candidate, resolvedUrl: currentUrl, contentType, accessStatus: "open", redirectChain }).format;
+    if (!format) return { ...initial, state: "unsupported", reason: "unsupported-source-type", resolvedUrl: currentUrl, redirectChain, contentType, extractionLimitations: ["The response content type is outside the bounded reader."] };
+    const passage = format === "text-pdf"
+      ? await extractTextPdfPassage(bytes)
+      : Buffer.from(bytes).toString("utf8").replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ").replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 4_000);
+    if (!passage) {
+      return {
+        ...initial,
+        state: "unsupported",
+        reason: format === "text-pdf" ? "scanned-pdf" : "empty-passage",
+        format,
+        resolvedUrl: currentUrl,
+        redirectChain,
+        contentType,
+        retrievalTime: now(),
+        extractionLimitations: [format === "text-pdf" ? "PDF contained no extractable text; OCR is not performed." : "The response contained no bounded text passage."],
+      };
+    }
+    return {
+      ...initial,
+      state: "accessible",
+      reason: "retrieved",
+      format,
+      originalUrl: initial.originalUrl,
+      resolvedUrl: currentUrl,
+      canonicalUrl: canonicalizeSourceUrl(currentUrl),
+      contentType,
+      redirectChain,
+      retrievalTime: now(),
+      passage,
+      pageOrSection: null,
+      extractionLimitations: format === "text-pdf" ? ["Page references are unavailable from the bounded text extractor."] : ["HTML section references depend on the captured passage."],
+    };
+  }
+  return { ...initial, state: "blocked", reason: "redirect-limit", redirectChain, extractionLimitations: ["Redirect chain exceeded the bounded access limit."] };
+}
+
+function categoryQueryMatches(category, query) {
+  const normalized = String(query ?? "").toLowerCase();
+  if (!normalized) return false;
+  if (normalized.includes(category.categoryId.replaceAll("-", " ")) || normalized.includes(category.label.toLowerCase())) return true;
+  return [category.requestedPrimaryQuery]
+    .filter(Boolean)
+    .some((plannedQuery) => normalized.includes(String(plannedQuery).toLowerCase()));
+}
+
+function categoryStageCounts(category, sources, evidence, project = {}) {
+  const sourceCandidates = sources.filter((source) =>
+    source.searchDomain === category.categoryId
+    || (Array.isArray(source.supportedEvidenceIds) && source.supportedEvidenceIds.some((id) => category.evidenceIds.includes(id))));
+  const categoryEvidence = evidence.filter((item) => category.evidenceIds.includes(item.id));
+  const mapped = categoryEvidence.filter((item) => (item.claimMappings ?? []).some((mapping) => mapping.supportStatus !== "context-only"));
+  const eligible = categoryEvidence.filter((item) => item.eligibleForModel === true);
+  const allEvidenceEligible = category.evidenceIds.length
+    ? category.evidenceIds.every((id) => categoryEvidence.some((item) => item.id === id && item.eligibleForModel === true))
+    : sourceCandidates.some((source) =>
+      source.accessOutcome?.state === "accessible"
+      && (source.exactProject === true || isSourceProjectSpecific(source, project)));
+  const rejectionReasons = categoryEvidence.flatMap((item) => item.quarantineReasons ?? []);
+  return {
+    normalized: sourceCandidates.length,
+    accessed: sourceCandidates.filter((source) => source.accessOutcome?.state === "accessible").length,
+    parsed: sourceCandidates.filter((source) => source.parsingState === "parsed" || source.accessOutcome?.passage).length,
+    claimMapped: mapped.length,
+    eligible: eligible.length,
+    retainedCandidates: sourceCandidates.filter((source) =>
+      ["retained", "redirected", "claim-supported", "project-specific", "evidence-mapped"].includes(source.sourceState)).length,
+    allEvidenceEligible,
+    rejectionCounts: Object.fromEntries([...new Set(rejectionReasons)].map((reason) => [
+      reason,
+      rejectionReasons.filter((candidate) => candidate === reason).length,
+    ])),
+  };
+}
+
+function buildResearchAudit({
+  project,
+  coverage = {},
+  sources = [],
+  evidence = [],
+  responseId = null,
+  startedAt = null,
+  finishedAt = null,
+} = {}) {
+  coverage = isRecord(coverage) ? coverage : {};
+  const plan = buildResearchCategoryPlan(project);
+  const observedQueries = normalizeSearchTerms(coverage.searchTerms, RESEARCH_PROJECT_MAX_TOOL_CALLS);
+  const executions = isRecord(coverage.categoryExecutions) ? coverage.categoryExecutions : {};
+  const categories = plan.categories.map((category) => {
+    const supplied = isRecord(executions[category.categoryId]) ? executions[category.categoryId] : {};
+    const executedQueries = normalizeSearchTerms(
+      supplied.executedQueries ?? observedQueries.filter((query) => categoryQueryMatches(category, query)),
+      RESEARCH_RUN_BUDGET.maxFollowUps + 1,
+    );
+    const counts = categoryStageCounts(category, sources, evidence, project);
+    const explicitFailureState = ["Provider failure", "Timed out", "Not searched"].includes(supplied.state) ? supplied.state : null;
+    const state = explicitFailureState ?? (
+      counts.allEvidenceEligible ? "Complete"
+        : counts.claimMapped > 0 || counts.retainedCandidates > 0 ? "Partial"
+          : executedQueries.length ? "No eligible evidence"
+            : "Not searched"
+    );
+    return {
+      categoryId: category.categoryId,
+      label: category.label,
+      evidenceIds: category.evidenceIds,
+      requestedPrimaryQuery: category.requestedPrimaryQuery,
+      executedQueries,
+      optionalFollowUpQuery: supplied.optionalFollowUpQuery ?? category.optionalFollowUpQuery,
+      followUpExecutedQuery: typeof supplied.followUpExecutedQuery === "string" ? supplied.followUpExecutedQuery : null,
+      state,
+      stageCounts: counts,
+      rejectionCounts: counts.rejectionCounts,
+      accessLimitations: Array.isArray(supplied.accessLimitations) ? supplied.accessLimitations.slice(0, 8) : [],
+       unresolvedGaps: counts.allEvidenceEligible
+         ? []
+         : category.evidenceIds.length
+           ? category.evidenceIds.filter((id) => !evidence.some((item) => item.id === id && item.eligibleForModel))
+           : [category.categoryId],
+      providerFailure: supplied.providerFailure ?? null,
+    };
+  });
+  return {
+    version: RESEARCH_CATEGORY_AUDIT_VERSION,
+    policyVersion: RESEARCH_POLICY_VERSION,
+    provider: coverage.provider ?? "openai",
+    model: coverage.model ?? RESEARCH_PROJECT_MODEL,
+    providerResponseId: responseId ?? coverage.providerResponseIds?.[0] ?? null,
+    providerResponseIds: Array.isArray(coverage.providerResponseIds) ? coverage.providerResponseIds.filter(Boolean).slice(0, 16) : [],
+    startedAt,
+    finishedAt,
+    budget: { ...RESEARCH_RUN_BUDGET },
+    elapsedMs: startedAt && finishedAt ? Math.max(0, Date.parse(finishedAt) - Date.parse(startedAt)) : null,
+    toolCallCount: Number.isInteger(coverage.toolCallCount)
+      ? Math.min(RESEARCH_RUN_BUDGET.maxToolCalls, Math.max(0, coverage.toolCallCount))
+      : 0,
+    providerRequestCount: Number.isInteger(coverage.providerRequestCount) ? coverage.providerRequestCount : 0,
+    categories,
+    categoryGaps: categories.filter((category) => category.state !== "Complete").map((category) => category.categoryId),
+    providerLimitations: Array.isArray(coverage.providerLimitations) ? coverage.providerLimitations.slice(0, 12) : [],
+  };
+}
+
+async function orchestrateCategoryResearch(project, {
+  retrieveCategory,
+  now = () => Date.now(),
+  budget = RESEARCH_RUN_BUDGET,
+} = {}) {
+  if (typeof retrieveCategory !== "function") throw new Error("A bounded category retrieval function is required.");
+  const startedAtMs = now();
+  const categoryExecutions = {};
+  const candidates = [];
+  const categoryResults = [];
+  let providerRequests = 0;
+  let followUps = 0;
+  let lastError = null;
+  let toolCalls = 0;
+  let toolCallBudgetExceeded = false;
+  for (const category of buildResearchCategoryPlan(project).categories) {
+    const elapsed = now() - startedAtMs;
+    if (elapsed >= budget.deadlineMs || toolCalls >= budget.maxToolCalls) {
+      categoryExecutions[category.categoryId] = {
+        state: "Timed out",
+        executedQueries: [],
+        unresolvedGaps: category.evidenceIds,
+      };
+      continue;
+    }
+    const executedQueries = [];
+    let categoryCandidates = [];
+    let state = "No eligible evidence";
+    let providerFailure = null;
+    try {
+      providerRequests += 1;
+      const primary = await retrieveCategory({
+        categoryId: category.categoryId,
+        query: category.requestedPrimaryQuery,
+        attempt: "primary",
+        remainingMs: Math.max(0, budget.deadlineMs - (now() - startedAtMs)),
+        remainingToolCalls: Math.max(0, budget.maxToolCalls - toolCalls),
+      });
+      const primaryToolCalls = Number.isInteger(primary?.toolCallCount) ? Math.max(0, primary.toolCallCount) : 0;
+      if (primaryToolCalls > budget.maxToolCalls - toolCalls) toolCallBudgetExceeded = true;
+      toolCalls = Math.min(budget.maxToolCalls, toolCalls + primaryToolCalls);
+      if (primary?.categoryResult) categoryResults.push(primary.categoryResult);
+      else categoryResults.push({ categoryId: category.categoryId, ...primary });
+      executedQueries.push(...(Array.isArray(primary?.observedQueries) ? primary.observedQueries : []));
+      categoryCandidates = Array.isArray(primary?.candidates) ? primary.candidates.slice(0, budget.maxCandidatesPerCategory) : [];
+      candidates.push(...categoryCandidates);
+      if (primary?.gapDrivenFollowUp === true
+        && toolCalls < budget.maxToolCalls
+        && followUps < budget.maxFollowUps
+        && providerRequests < budget.maxProviderRequests
+        && now() - startedAtMs < budget.deadlineMs) {
+        followUps += 1;
+        providerRequests += 1;
+        const followUp = await retrieveCategory({
+          categoryId: category.categoryId,
+          query: primary?.followUpQuery ?? category.optionalFollowUpQuery,
+          attempt: "follow-up",
+          remainingMs: Math.max(0, budget.deadlineMs - (now() - startedAtMs)),
+          remainingToolCalls: Math.max(0, budget.maxToolCalls - toolCalls),
+        });
+        const followUpToolCalls = Number.isInteger(followUp?.toolCallCount) ? Math.max(0, followUp.toolCallCount) : 0;
+        if (followUpToolCalls > budget.maxToolCalls - toolCalls) toolCallBudgetExceeded = true;
+        toolCalls = Math.min(budget.maxToolCalls, toolCalls + followUpToolCalls);
+        if (followUp?.categoryResult) categoryResults.push(followUp.categoryResult);
+        else categoryResults.push({ categoryId: category.categoryId, ...followUp });
+        executedQueries.push(...(Array.isArray(followUp?.observedQueries) ? followUp.observedQueries : []));
+        const followUpCandidates = Array.isArray(followUp?.candidates) ? followUp.candidates.slice(0, budget.maxCandidatesPerCategory - categoryCandidates.length) : [];
+        categoryCandidates = [...categoryCandidates, ...followUpCandidates];
+        candidates.push(...followUpCandidates);
+        categoryExecutions[category.categoryId] = {
+          followUpExecutedQuery: Array.isArray(followUp?.observedQueries) ? followUp.observedQueries[0] ?? null : null,
+        };
+      }
+      state = categoryCandidates.length ? "Partial" : "No eligible evidence";
+      if (primary?.eligibleCount > 0 || categoryCandidates.some((candidate) => candidate.eligible === true)) state = "Complete";
+    } catch (error) {
+      lastError = error;
+      providerFailure = error?.name === "AbortError" ? null : "Category provider request failed.";
+      state = error?.name === "AbortError" ? "Timed out" : "Provider failure";
+    }
+    categoryExecutions[category.categoryId] = {
+      ...(categoryExecutions[category.categoryId] ?? {}),
+      state,
+      executedQueries,
+      providerFailure,
+      unresolvedGaps: state === "Complete" ? [] : category.evidenceIds,
+    };
+  }
+  const finishedAtMs = now();
+  return {
+    policyVersion: RESEARCH_POLICY_VERSION,
+    startedAt: new Date(startedAtMs).toISOString(),
+    finishedAt: new Date(finishedAtMs).toISOString(),
+    elapsedMs: Math.max(0, finishedAtMs - startedAtMs),
+    providerRequests,
+    toolCalls,
+    toolCallBudgetExceeded,
+    followUps,
+    candidates: candidates.slice(0, budget.maxTotalCandidates),
+    categoryResults,
+    lastError,
+    categoryExecutions,
+    budget: { ...budget },
+  };
+}
 
 function extractObservedQueriesByEvidence(body, project) {
   if (!project) return {};
@@ -548,7 +1150,10 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
   const expectedIds = new Set(RESEARCH_EVIDENCE_IDS);
   const packetLedger = retrievedSources?.sourceLedger
     ? retrievedSources.sourceLedger
-    : createSourceLedger(Array.isArray(retrievedSources) ? retrievedSources : []);
+    : createSourceLedger(
+      Array.isArray(retrievedSources) ? retrievedSources : [],
+      { maxRetained: RESEARCH_RUN_BUDGET.maxTotalCandidates },
+    );
   const sourcePacket = packetLedger.retained;
   const sourceByUrl = new Map(
     sourcePacket
@@ -603,6 +1208,7 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
         sourceState: metadata?.sourceState ?? "retained",
         redirectChain: metadata?.redirectChain ?? [],
         contentType: metadata?.contentType ?? null,
+         accessOutcome: metadata?.accessOutcome ?? null,
         claimCited: metadata?.claimCited === true,
          supportedEvidenceIds: Array.isArray(metadata?.supportedEvidenceIds) ? metadata.supportedEvidenceIds : [],
          claimSupport: metadata?.claimSupport ?? null,
@@ -812,7 +1418,9 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
       },
       searchTerms: observedSearchTerms,
       searchTermsSource: observedSearchTerms.length ? "tool-observed" : "unavailable",
-      toolCallCount: Number.isInteger(coverage?.toolCallCount) ? coverage.toolCallCount : 0,
+      toolCallCount: Number.isInteger(coverage?.toolCallCount)
+        ? Math.min(RESEARCH_RUN_BUDGET.maxToolCalls, Math.max(0, coverage.toolCallCount))
+        : 0,
       toolCallLimit: RESEARCH_PROJECT_MAX_TOOL_CALLS,
       toolCallBudgetExceeded: coverage?.toolCallBudgetExceeded === true,
       observedQueriesByEvidence: Object.fromEntries(RESEARCH_EVIDENCE_IDS.flatMap((id) => {
@@ -822,7 +1430,17 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
     },
     evidence,
   };
-  return containResearchResult(parsedResult);
+  const containedResult = containResearchResult(parsedResult);
+  containedResult.researchAudit = buildResearchAudit({
+    project: { name: summaryFields.name, location: summaryFields.location, knownData },
+    coverage,
+    sources: packetLedger.ledger,
+    evidence: containedResult.evidence,
+    responseId: coverage?.providerResponseId ?? null,
+    startedAt: coverage?.startedAt ?? null,
+    finishedAt: coverage?.finishedAt ?? null,
+  });
+  return containedResult;
 }
 
 function normalizePublicDate(value) {
@@ -889,15 +1507,24 @@ function buildVariableQueryPlan({ name, location, knownData, focusIds }) {
     .join("\n");
 }
 
-function buildResearchProjectPrompt({ name, location, knownData, focusIds, currentEvidence }) {
+function buildResearchProjectPrompt({ name, location, knownData, focusIds, currentEvidence, activeCategory }) {
   const knownDataPrompt = knownData
     ? `\n\nThe following facts are already confirmed from the Compute Atlas public database: ${JSON.stringify(knownData)}. Use them as directory discovery context for project identity and summary fields, not as SafeLoc evidence or verified project economics. Focus your research on the 16 evidence variables, not on rediscovering basic project facts.`
     : "";
   const queryPlan = buildVariableQueryPlan({ name, location, knownData, focusIds });
-  return `Research and analyze this exact data-center project using the built-in web-search tool: ${name}. Location: ${location}. Search current project, operator, regulatory, utility, grid, water, permitting, community, environmental, capacity, customer, and infrastructure records. Prefer direct government, regulator, utility, land, permit, environmental, and filed-company records over summaries. Verify project, operator, and location identity so similarly named facilities are not mixed. Preserve exact URLs returned by web search, distinguish facility-level findings from regional context, and return the exact JSON contract from the system instruction. When no searched source independently confirms a claim, use Management Assertion or lower and state that verification is required. Do not replace genuine public information with Missing Evidence merely because one query fails. Use the bounded per-variable plan below inside this single provider response. Try distinct primary-record and corroboration angles where useful, with no more than two targeted queries per variable and no more than 32 targeted queries overall. These are query hints, not findings. There is no minimum finding quota; exhausted searches must remain unresolved.
+  const categoryPlan = buildResearchCategoryPlan({ name, location, knownData }).categories
+    .map((category) => `- ${category.label}: primary ${category.requestedPrimaryQuery}; optional gap follow-up ${category.optionalFollowUpQuery}`)
+    .join("\n");
+  const activeCategoryPrompt = activeCategory
+    ? `\n\nThis is the observed ${activeCategory.label} category attempt. Execute this exact query now and do not substitute a plan for execution: ${activeCategory.query}. Return the full 16-item contract, but prioritize claims and sources relevant to this category.`
+    : "";
+  return `Research and analyze this exact data-center project using the built-in web-search tool: ${name}. Location: ${location}. Search current project, operator, regulatory, utility, grid, water, permitting, community, environmental, capacity, customer, and infrastructure records. Prefer direct government, regulator, utility, land, permit, environmental, and filed-company records over summaries. Verify project, operator, and location identity so similarly named facilities are not mixed. Preserve exact URLs returned by web search, distinguish facility-level findings from regional context, and return the exact JSON contract from the system instruction. When no searched source independently confirms a claim, use Management Assertion or lower and state that verification is required. Do not replace genuine public information with Missing Evidence merely because one query fails. The server-governed run schedules these eight categories independently: project identity, grid, electricity, water, permitting/community, construction/capital, tenant/counterparty, and climate/operational hazard. Record only queries actually executed; each category may have at most one gap-driven follow-up. Try distinct primary-record and corroboration angles where useful, with no more than two targeted queries per variable and no more than 32 targeted queries overall. There is no minimum finding quota; exhausted searches must remain unresolved. The category schedule below is a requested plan, not proof of execution.${activeCategoryPrompt}
 
 Bounded variable query plan:
-${queryPlan}${focusIds?.length ? ` This is a focused refresh for these unresolved variables: ${focusIds.join(", ")}. Prioritize their query angles, then still return all 16 records. Preserve unrelated existing records unless new searched evidence directly contradicts them.` : ""}${currentEvidence?.length ? `\n\nExisting evidence context:\n${JSON.stringify(currentEvidence)}` : ""}${knownDataPrompt}`;
+${queryPlan}
+
+Governed category schedule:
+${categoryPlan}${focusIds?.length ? ` This is a focused refresh for these unresolved variables: ${focusIds.join(", ")}. Prioritize their query angles, then still return all 16 records. Preserve unrelated existing records unless new searched evidence directly contradicts them.` : ""}${currentEvidence?.length ? `\n\nExisting evidence context:\n${JSON.stringify(currentEvidence)}` : ""}${knownDataPrompt}`;
 }
 
 function normalizeRetrievedSources(body, searchDomain = "project-identity") {
@@ -933,12 +1560,13 @@ function normalizeRetrievedSources(body, searchDomain = "project-identity") {
       date: typeof source.published_date === "string" ? source.published_date : typeof source.date === "string" ? source.date : null,
       excerpt: typeof source.snippet === "string" ? source.snippet.trim() : typeof source.excerpt === "string" ? source.excerpt.trim() : "",
       accessStatus: ["open", "paywall", "registration"].includes(source.access_status) ? source.access_status : "not provided",
+      contentType: typeof source.content_type === "string" ? source.content_type : typeof source.contentType === "string" ? source.contentType : null,
       sourceClass: url ? classifySource(url, title) : "secondary-reporting",
       searchDomain,
       ...(typeof source.exactProject === "boolean" ? { exactProject: source.exactProject } : {}),
       relevanceNote: typeof source.relevanceNote === "string" ? source.relevanceNote.trim().slice(0, 500) : null,
     };
-  }));
+  }), { maxRetained: RESEARCH_RUN_BUDGET.maxCandidatesPerCategory });
   const result = ledger.retained.map((source) => ({
     ...source,
     date: candidates.find((candidate) => safePublicSourceUrl(candidate.url) === source.originalUrl)?.date ?? null,
@@ -998,7 +1626,8 @@ function extractResponseOutputText(body) {
   return null;
 }
 
-async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal) {
+async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, activeCategory = null) {
+  const startedAt = new Date().toISOString();
   const response = await fetchImpl(OPENAI_RESPONSES_URL, {
     method: "POST",
     headers: {
@@ -1011,10 +1640,10 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal) 
       tools: [{ type: "web_search_preview" }],
       input: [
         { role: "system", content: `${RESEARCH_PROJECT_SYSTEM_PROMPT}${WEB_SEARCH_SOURCE_BOUNDARY_PROMPT}` },
-        { role: "user", content: buildResearchProjectPrompt(project) },
+         { role: "user", content: buildResearchProjectPrompt({ ...project, activeCategory }) },
       ],
       max_output_tokens: RESEARCH_PROJECT_MAX_TOKENS,
-      max_tool_calls: RESEARCH_PROJECT_MAX_TOOL_CALLS,
+       max_tool_calls: activeCategory?.maxToolCalls ?? RESEARCH_PROJECT_MAX_TOOL_CALLS,
       include: ["web_search_call.action.sources"],
       text: {
         format: {
@@ -1056,6 +1685,7 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal) 
   const searchTerms = extractSearchTerms(body);
   const observedQueriesByEvidence = extractObservedQueriesByEvidence(body, project);
   const toolCallCount = countWebSearchCalls(body);
+  const finishedAt = new Date().toISOString();
   return {
     research,
     sources,
@@ -1066,8 +1696,15 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal) 
       searchTerms,
       observedQueriesByEvidence,
       toolCallCount,
-      toolCallBudgetExceeded: toolCallCount > RESEARCH_PROJECT_MAX_TOOL_CALLS,
+       toolCallBudgetExceeded: toolCallCount > (activeCategory?.maxToolCalls ?? RESEARCH_PROJECT_MAX_TOOL_CALLS),
       searchTermsSource: searchTerms.length ? "tool-observed" : "unavailable",
+      provider: "openai",
+      model: RESEARCH_PROJECT_MODEL,
+      providerResponseId: typeof body.id === "string" ? body.id : null,
+       activeCategoryId: activeCategory?.categoryId ?? null,
+       executedQuery: activeCategory?.query ?? null,
+      startedAt,
+      finishedAt,
     },
   };
 }
@@ -1140,7 +1777,82 @@ function classifyResearchFailure(error) {
   return { status: 502, type: "upstream", message: "Project research upstream request failed." };
 }
 
-async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, req }) {
+function mergeCategoryResearchResults(project, categoryResults) {
+  const first = categoryResults[0]?.research;
+  if (!first || !Array.isArray(first.evidence)) return null;
+  const evidenceById = new Map(first.evidence.map((item) => [item.id, item]));
+  const planByCategory = new Map(buildResearchCategoryPlan(project).categories.map((category) => [category.categoryId, category]));
+  for (const result of categoryResults) {
+    const category = planByCategory.get(result.categoryId);
+    const retainedCategoryUrls = new Set((result.sources ?? [])
+      .map((source) => canonicalizeSourceUrl(source.canonicalUrl ?? source.resolvedUrl ?? source.url))
+      .filter(Boolean));
+    const accessibleCategoryUrls = new Set((result.sources ?? [])
+      .filter((source) => source.accessOutcome?.state === "accessible")
+      .map((source) => canonicalizeSourceUrl(source.canonicalUrl ?? source.resolvedUrl ?? source.url))
+      .filter(Boolean));
+    let containedEvidence = new Map();
+    try {
+      const contained = containResearchResult(parseResearchResponse(
+        result.research,
+        result.sources ?? [],
+        new Date().toISOString().slice(0, 10),
+        result.coverage ?? null,
+        project.knownData ?? null,
+      ));
+      containedEvidence = new Map(contained.evidence.map((item) => [item.id, item]));
+    } catch {
+      containedEvidence = new Map();
+    }
+    for (const item of Array.isArray(result.research?.evidence) ? result.research.evidence : []) {
+      if (!category?.evidenceIds.includes(item.id)) continue;
+      const mappedUrls = [
+        item.sourceUrl,
+        ...(Array.isArray(item.sourceUrls) ? item.sourceUrls : []),
+      ].map((url) => canonicalizeSourceUrl(url)).filter(Boolean);
+      if (!mappedUrls.length) continue;
+      const namedSourceUrl = mappedUrls[0];
+      if (!retainedCategoryUrls.has(namedSourceUrl) || !accessibleCategoryUrls.has(namedSourceUrl)) continue;
+      const containedItem = containedEvidence.get(item.id);
+      if (
+        !containedItem
+        || containedItem.researchState === "quarantined"
+        || containedItem.sourceValidation?.state === "rejected"
+        || !containedItem.claimMappings?.some((mapping) => mapping.supportStatus === "supported")
+      ) continue;
+      evidenceById.set(item.id, item);
+    }
+  }
+  return {
+    ...first,
+    evidence: RESEARCH_EVIDENCE_IDS.map((id) => evidenceById.get(id)).filter(Boolean),
+  };
+}
+
+function categoryResearchIsResolved(category, research, sources, project, coverage) {
+  if (!category.evidenceIds.length) {
+    const resolved = sources.some((source) =>
+      source.accessOutcome?.state === "accessible"
+      && (source.exactProject === true || isSourceProjectSpecific(source, project)));
+    return { resolved, unresolvedEvidenceIds: resolved ? [] : [category.categoryId] };
+  }
+  try {
+    const contained = containResearchResult(parseResearchResponse(
+      research,
+      sources,
+      new Date().toISOString().slice(0, 10),
+      coverage,
+      project.knownData ?? null,
+    ));
+    const unresolvedEvidenceIds = category.evidenceIds.filter((id) =>
+      !contained.evidence.some((item) => item.id === id && item.eligibleForModel === true));
+    return { resolved: unresolvedEvidenceIds.length === 0, unresolvedEvidenceIds };
+  } catch {
+    return { resolved: false, unresolvedEvidenceIds: [...category.evidenceIds] };
+  }
+}
+
+async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, req, documentFetchImpl = fetch }) {
   if (!apiKey) {
     const error = new Error("Project research not configured.");
     error.name = "ConfigurationError";
@@ -1157,8 +1869,87 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
   }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), RESEARCH_PROJECT_TIMEOUT_MS);
+  const fetchedCandidatesByCategory = new Map();
+  let fetchedCandidateCount = 0;
   try {
-    const result = await researchProjectWithWebSearch(project, apiKey, fetchImpl, controller.signal);
+    const orchestration = await orchestrateCategoryResearch(project, {
+      budget: RESEARCH_RUN_BUDGET,
+      retrieveCategory: async ({ categoryId, query, attempt, remainingToolCalls }) => {
+        const category = buildResearchCategoryPlan(project).categories.find((candidate) => candidate.categoryId === categoryId);
+        const categoryResult = await researchProjectWithWebSearch(project, apiKey, fetchImpl, controller.signal, {
+          categoryId,
+          label: category?.label ?? categoryId,
+          query,
+          attempt,
+          maxToolCalls: Math.max(1, Math.min(RESEARCH_PROJECT_MAX_TOOL_CALLS, remainingToolCalls ?? RESEARCH_PROJECT_MAX_TOOL_CALLS)),
+        });
+        const categoryFetched = fetchedCandidatesByCategory.get(categoryId) ?? 0;
+        const remainingCategory = Math.max(0, RESEARCH_RUN_BUDGET.maxCandidatesPerCategory - categoryFetched);
+        const remainingTotal = Math.max(0, RESEARCH_RUN_BUDGET.maxTotalCandidates - fetchedCandidateCount);
+        const boundedSources = categoryResult.sources.slice(0, Math.min(remainingCategory, remainingTotal));
+        fetchedCandidatesByCategory.set(categoryId, categoryFetched + boundedSources.length);
+        fetchedCandidateCount += boundedSources.length;
+        const accessedSources = [];
+        for (const source of boundedSources) {
+          const accessOutcome = await accessResearchDocument(source, { fetchImpl: documentFetchImpl, signal: controller.signal });
+          accessedSources.push({
+            ...source,
+            searchDomain: categoryId,
+            accessOutcome,
+            accessibilityState: accessOutcome.state,
+            parsingState: accessOutcome.state === "accessible" ? "parsed" : "failed",
+            ...(accessOutcome.passage ? { excerpt: accessOutcome.passage } : {}),
+          });
+        }
+        const eligibleCount = accessedSources.filter((source) => source.accessOutcome?.state === "accessible").length;
+        const observedQueries = normalizeSearchTerms(
+          categoryResult.coverage?.searchTerms,
+          RESEARCH_PROJECT_MAX_TOOL_CALLS,
+        );
+        const categoryResolution = categoryResearchIsResolved(
+          category,
+          categoryResult.research,
+          accessedSources,
+          project,
+          categoryResult.coverage,
+        );
+        return {
+          candidates: accessedSources,
+          eligibleCount,
+          gapDrivenFollowUp: !categoryResolution.resolved,
+          followUpQuery: buildCategoryFollowUpQuery(project, category, categoryResolution.unresolvedEvidenceIds),
+          unresolvedEvidenceIds: categoryResolution.unresolvedEvidenceIds,
+          observedQueries,
+          toolCallCount: categoryResult.coverage?.toolCallCount ?? 0,
+          categoryResult: {
+            categoryId,
+            research: categoryResult.research,
+            sources: accessedSources,
+            coverage: categoryResult.coverage,
+          },
+        };
+      },
+    });
+    if (!orchestration.categoryResults.length) throw orchestration.lastError ?? new Error("No category research completed.");
+    const mergedResearch = mergeCategoryResearchResults(project, orchestration.categoryResults);
+    if (!mergedResearch) throw new Error("Category research did not return a complete structured response.");
+    const result = {
+      research: mergedResearch,
+      sources: orchestration.categoryResults.flatMap((category) => category.sources ?? []),
+      coverage: {
+        ...orchestration.categoryResults[0].coverage,
+        searchedDomains: [...new Set(orchestration.categoryResults.flatMap((category) => category.coverage?.searchedDomains ?? []))],
+        searchTerms: [...new Set(orchestration.categoryResults.flatMap((category) => category.coverage?.searchTerms ?? []))],
+        toolCallCount: orchestration.toolCalls,
+        providerRequestCount: orchestration.providerRequests,
+        toolCallBudgetExceeded: orchestration.toolCallBudgetExceeded,
+        providerResponseIds: orchestration.categoryResults.map((category) => category.coverage?.providerResponseId).filter(Boolean),
+        categoryExecutions: orchestration.categoryExecutions,
+        providerLimitations: orchestration.categoryResults.flatMap((category) => category.coverage?.providerLimitations ?? []),
+        startedAt: orchestration.startedAt,
+        finishedAt: orchestration.finishedAt,
+      },
+    };
     try {
       return parseResearchResponse(
         result.research,
@@ -1188,6 +1979,7 @@ export async function handleResearchProjectRequest(
   {
     apiKey = process.env.OPENAI_API_KEY,
     fetchImpl = fetch,
+    documentFetchImpl = fetch,
     rateLimiter = defaultRateLimiter,
     cache = defaultResearchProjectCache,
   } = {},
@@ -1235,7 +2027,7 @@ export async function handleResearchProjectRequest(
     return;
   }
 
-  const refresh = () => cache.refresh(key, () => runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, req }));
+  const refresh = () => cache.refresh(key, () => runValidatedResearch(project, { apiKey, fetchImpl, documentFetchImpl, rateLimiter, req }));
    if (!project.forceRefresh && containedRetained && !retainedNeedsRevalidation && retainedState === "stale") {
     const background = refresh();
     void background.promise.catch((error) => {
@@ -1270,18 +2062,30 @@ export {
   DEFAULT_RESEARCH_CAPACITY_MW,
   MAX_RESEARCH_CAPACITY_MW,
   OPENAI_RESPONSES_URL,
+  RESEARCH_CATEGORIES,
+  RESEARCH_CATEGORY_AUDIT_VERSION,
+  RESEARCH_CATEGORY_STATES,
   RESEARCH_EVIDENCE_IDS,
   RESEARCH_PROJECT_MAX_TOKENS,
   RESEARCH_PROJECT_MAX_TOOL_CALLS,
   RESEARCH_PROJECT_MODEL,
   RESEARCH_PROJECT_TIMEOUT_MS,
+  RESEARCH_POLICY_VERSION,
+  RESEARCH_RUN_BUDGET,
   RESEARCH_PROJECT_RESPONSE_SCHEMA,
   RESEARCH_PROJECT_SYSTEM_PROMPT,
   RESEARCH_QUERY_ANGLES,
+  buildResearchAudit,
+  buildResearchCategoryPlan,
+  mergeCategoryResearchResults,
+  buildCategoryFollowUpQuery,
   buildResearchProjectPrompt,
   buildVariableQueries,
   buildVariableQueryPlan,
+  accessResearchDocument,
+  evaluateResearchDocumentAccess,
   extractResponseOutputText,
+  orchestrateCategoryResearch,
   researchProjectWithWebSearch,
   normalizeCapacityMW,
   normalizeReportedCapacityMW,

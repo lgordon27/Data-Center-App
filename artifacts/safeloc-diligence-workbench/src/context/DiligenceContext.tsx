@@ -59,6 +59,19 @@ import {
   type CommunityReviewState,
   type CommunityTermDecision,
 } from "@/model/communityAgreements";
+import {
+  advanceDiligenceStage,
+  applyAgentFindingDecision,
+  beginDiligenceStage,
+  createInitialDiligenceAgent,
+  hydrateReviewPackage,
+  retryDiligenceStage,
+  startDiligenceAgent,
+  type AgentProjectInput,
+  type DiligenceAgentState,
+  type DiligenceStageId,
+  type ReviewDecision,
+} from "@/model/diligenceAgent";
 
 export type { Classification } from '@/model/cashFlowEngine';
 
@@ -163,11 +176,16 @@ type DiligenceState = {
     humanStatus?: CommunityHumanStatus,
     reviewerNote?: string,
   ) => boolean;
+  agentRun: DiligenceAgentState;
+  runDiligenceAgent: () => Promise<void>;
+  retryDiligenceStage: (id: DiligenceStageId) => Promise<void>;
+  reviewAgentFinding: (id: string, decision: ReviewDecision, reviewerNote?: string) => boolean;
 };
 
 export const CURRENT_SESSION_STORAGE_KEY = 'safeloc:diligence:current-session:v1';
 export const COMMUNITY_REVIEW_STORAGE_KEY = 'safeloc:diligence:community-review:v1';
 export const EVIDENCE_TIP_DISMISSED_STORAGE_KEY = 'safeloc:diligence:evidence-room-tip-dismissed:v1';
+export const DILIGENCE_AGENT_STORAGE_KEY = 'safeloc:diligence:agent-run:v1';
 export const CURRENT_PROVENANCE_VERSION = 2;
 const INITIAL_EVIDENCE_SOURCE: Record<string, Omit<EvidenceItem, "impactRole">> = {
   electricity_cost: { id: 'electricity_cost', label: 'Electricity Cost / MWh', value: 42, numericValue: 42, unit: '$/MWh', classification: 'User Assumption', citation: 'Synthetic analyst-selected electricity-cost input (2026); public market context does not establish a Stargate contract tariff', description: 'Representative West Texas blended power rate selected for underwriting; it is a synthetic input anchored to public EIA and Oncor data, not a disclosed Stargate contract tariff.', sourceId: null, providerSourceId: 'eia', sourceRole: 'Synthetic electricity-cost assumption', claimIds: ['synthetic-transaction'] },

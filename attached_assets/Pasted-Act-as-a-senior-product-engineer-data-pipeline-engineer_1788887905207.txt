@@ -1,0 +1,156 @@
+Act as a senior product engineer, data-pipeline engineer and skeptical investment-product reviewer. Audit the entire SafeLoc Diligence Workbench repository and deployed experience before changing any code.
+
+Do not implement fixes during this first pass.
+
+CONTEXT
+
+The application is intended to:
+
+* Trace public companies to AI infrastructure projects
+* Research project-specific public evidence
+* Classify evidence into five provenance categories
+* Connect evidence quality to financial assumptions
+* Require human approval before AI proposals affect accepted analysis
+* Serve financial advisors, asset managers and infrastructure investors
+* Prioritize Texas data centers before nationwide expansion
+
+The current product has three major failures:
+
+1. Custom project research retrieves too few validated sources.
+2. The application presents far too much text and supporting detail at once.
+3. The homepage redesign did not materially simplify or demonstrate the product.
+
+AUDIT REQUIREMENTS
+
+1. Run the application and all existing tests.
+2. Inspect the live deployed experience and local application at desktop, tablet and mobile widths.
+3. Trace the complete curated Stargate case.
+4. Trace at least two custom Texas project searches.
+5. Record all provider requests, responses, errors, timeouts and fallback behavior.
+6. Inspect how source results become evidence records.
+7. Inspect how evidence records become financial assumptions.
+8. Inspect how agent proposals become, or fail to become, accepted state.
+9. Inspect every route and homepage CTA.
+10. Measure the rendered height of Home and every Analysis section.
+11. Identify duplicate content, duplicate CTAs and permanently expanded supporting material.
+12. Compare the current homepage against its stated acceptance criteria.
+13. Identify stale, hard-coded or contradictory metrics.
+14. Identify tests that pass despite broken user-facing behavior.
+
+SOURCE-PIPELINE QUESTIONS
+
+Determine and report:
+
+* What search or research provider is actually called?
+* Does it perform live retrieval, or rely on model knowledge?
+* How many queries are issued per project?
+* What are the generated queries?
+* Are queries tailored by evidence category?
+* How many results are returned?
+* How many results are discarded?
+* Why is each result discarded?
+* Are redirects followed?
+* Are PDFs and government documents processed?
+* Are JavaScript-rendered pages supported?
+* Are domains restricted?
+* Are request failures surfaced or silently swallowed?
+* Are timeouts, rate limits or API failures visible?
+* Are duplicate sources removed correctly?
+* Can one source support multiple evidence variables?
+* Does entity resolution reject sources using alternate project, campus or developer names?
+* Can the system distinguish a facility, campus, project phase, developer, operator, tenant and supplier?
+* Does zero-source research fail closed?
+* Can unsupported generated prose enter the project summary?
+* Can unsupported content become Verified Evidence?
+
+For each custom project tested, provide:
+
+* Queries sent
+* Providers called
+* Raw result count
+* Parsed result count
+* Validated source count
+* Rejected source count
+* Rejection reasons
+* Evidence-variable coverage
+* Final confidence
+* Any generated statements lacking support
+
+UX QUESTIONS
+
+Determine and report:
+
+* How many viewport lengths does each page and section require?
+* Which content is permanently expanded?
+* Which purported tabs are not functional?
+* Which controls have unclear outcomes?
+* Which content repeats elsewhere?
+* Which sections should become tabs, tables, accordions or drawers?
+* Does each section have one obvious next action?
+* Do cross-page deep links reach the requested section?
+* Do sticky headers cover anchor targets?
+* Is mobile navigation usable?
+* Is there horizontal overflow?
+* Does the product feel like a tool or a long research report?
+
+HOMEPAGE QUESTIONS
+
+Determine and report:
+
+* What can a visitor understand within ten seconds?
+* Is the actual product demonstrated above the fold?
+* How many competing entry paths are presented?
+* Why did the previous redesign leave most of the original structure intact?
+* Is the hero’s right side being used?
+* Does Start with NVIDIA behave as its label suggests?
+* Are holdings-first and project-first journeys clearly distinguished?
+* Are custom-project forms or Stargate CTAs duplicated?
+* Are legacy header elements still present?
+* Are dynamically changing figures hard-coded?
+* Which requested acceptance criteria were not implemented?
+
+TEST QUALITY
+
+Identify missing tests for:
+
+* Actual source counts
+* Retrieval failures
+* Zero-source fail-closed behavior
+* URL validity
+* Source-to-project matching
+* Exact quote versus generated summary
+* Homepage section removal
+* Duplicate CTAs
+* Functional financial tabs
+* Default collapsed states
+* Page-height or content-density budgets
+* Cross-page anchor behavior
+* Dynamic metric consistency
+* Responsive screenshots
+* Visual regression
+
+DELIVERABLE
+
+Produce a report with:
+
+1. Executive verdict
+2. Architecture map
+3. Source-retrieval failure analysis
+4. Evidence-processing failure analysis
+5. UX and content-density analysis
+6. Homepage implementation gap analysis
+7. Financial and state-consistency issues
+8. Test-suite blind spots
+9. Release blockers
+10. Prioritized repairs divided into small implementation batches
+11. Relevant files for every repair
+12. Exact acceptance criteria for every batch
+
+Rank findings:
+
+* P0: Invalid data, unsupported claims or broken core workflow
+* P1: Material product or credibility problem
+* P2: UX and comprehension problem
+* P3: Polish
+
+Do not praise the application generically. Do not assume existing architecture is correct. Do not change code. Support every conclusion with an observed behavior, source-file reference, test result or provider response.

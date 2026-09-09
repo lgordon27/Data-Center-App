@@ -28,8 +28,18 @@ function statusLabel(status: DirectoryFacility["status"]) {
   return { operating: "Operating", construction: "Construction", planned: "Planned", delayed: "Delayed", cancelled: "Cancelled", unknown: "Unknown" }[status];
 }
 
+const LOCATION_PLACEHOLDERS = new Set(["undisclosed", "unknown", "n/a", "na", "not available", "not disclosed"]);
+
+function meaningfulLocationPart(value: string | null | undefined) {
+  const normalized = value?.trim() ?? "";
+  return normalized && !LOCATION_PLACEHOLDERS.has(normalized.toLowerCase()) ? normalized : "";
+}
+
 function locationLabel(facility: DirectoryFacility) {
-  return [facility.city, facility.county ? `${facility.county} County` : "", facility.state].filter(Boolean).join(" · ");
+  const city = meaningfulLocationPart(facility.city);
+  const county = meaningfulLocationPart(facility.county);
+  const state = meaningfulLocationPart(facility.state);
+  return [city, county ? `${county} County` : "", state].filter(Boolean).join(" · ");
 }
 
 const STATE_NAMES: Record<string, string> = {
@@ -37,7 +47,10 @@ const STATE_NAMES: Record<string, string> = {
 };
 
 function researchLocationLabel(facility: DirectoryFacility) {
-  return [facility.city, facility.county ? `${facility.county} County` : "", STATE_NAMES[facility.state] ?? facility.state]
+  const city = meaningfulLocationPart(facility.city);
+  const county = meaningfulLocationPart(facility.county);
+  const state = meaningfulLocationPart(facility.state);
+  return [city, county ? `${county} County` : "", state ? STATE_NAMES[state] ?? state : ""]
     .filter(Boolean)
     .join(", ");
 }

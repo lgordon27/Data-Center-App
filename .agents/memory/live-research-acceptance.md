@@ -8,3 +8,9 @@ When a live category-research provider run fails before returning an audit, repo
 **Why:** A refresh failure can return a successful HTTP status while carrying an older cached audit, so status code alone cannot establish that current provider telemetry exists.
 
 **How to apply:** Keep timeout and partial-provider outcomes visible in acceptance reports, separate current and retained fields, and rely on the retained-cache path only for previously valid results.
+
+Browser recovery deadlines must be enforced by UI-owned wall-clock state, independent of fetch rejection and abort delivery. Network and server timeouts remain cleanup boundaries, not the trigger for showing recovery.
+
+**Why:** Proxied requests can remain pending beyond fetch or server budgets, leaving users trapped in loading even when abort signals are expected to fire.
+
+**How to apply:** At the visible deadline, disregard late results, attempt cancellation, and render recovery choices immediately; verify with a genuinely unresolved browser request and elapsed real time.

@@ -399,8 +399,8 @@ test("aggregates unique sources and support quality without counting missing ite
   });
 });
 
-test("uses a 90-second request budget", () => {
-  assert.equal(RESEARCH_PROJECT_TIMEOUT_MS, 90_000);
+test("uses a 45-second browser request budget", () => {
+  assert.equal(RESEARCH_PROJECT_TIMEOUT_MS, 45_000);
 });
 
 test("retries one timeout response and reports retry progress", async () => {
@@ -433,7 +433,7 @@ test("retries one timeout response and reports retry progress", async () => {
   });
   assert.equal(result.evidence.length, 16);
   assert.equal(calls, 2);
-  assert.deepEqual(progress, ["identifying", "researching", "retrying", "researching", "extracting", "evaluating", "preparing"]);
+  assert.deepEqual(progress, ["researching", "retrying", "researching"]);
 });
 
 test("does not retry non-timeout failures", async () => {

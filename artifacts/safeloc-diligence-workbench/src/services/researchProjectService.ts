@@ -12,7 +12,7 @@ import {
 } from "@/data/sourceValidationPolicy.mjs";
 
 export const RESEARCH_PROJECT_ENDPOINT = "/api/research-project";
-export const RESEARCH_PROJECT_TIMEOUT_MS = 90_000;
+export const RESEARCH_PROJECT_TIMEOUT_MS = 45_000;
 export const DEFAULT_RESEARCH_CAPACITY_MW = 1_200;
 export const MAX_RESEARCH_CAPACITY_MW = 10_000;
 
@@ -314,7 +314,7 @@ export type KnownProjectData = {
   sourceUrl?: string | null;
   providerId?: string | null;
 };
-export type ResearchProgress = "identifying" | "researching" | "extracting" | "evaluating" | "preparing" | "retrying";
+export type ResearchProgress = "researching" | "retrying";
 export type ResearchProjectOptions = {
   knownData?: KnownProjectData;
   onProgress?: (progress: ResearchProgress) => void;
@@ -983,10 +983,7 @@ async function requestResearchProject(
     }
     if (!response.ok) {
       if (isRecord(body) && isRecord(body.result)) {
-        onProgress?.("extracting");
         const partial = parseResponse(body.result);
-        onProgress?.("evaluating");
-        onProgress?.("preparing");
         const researchMode: ResearchMode = partial.researchMode === "default-assumptions" || partial.researchMode === "research-incomplete"
           ? partial.researchMode
           : "partial-public-source";
@@ -999,11 +996,7 @@ async function requestResearchProject(
       const message = isRecord(body) && isNonEmptyString(body.error) ? body.error : "Project research is unavailable. Try again or use the curated case.";
       throw new Error(message);
     }
-    onProgress?.("extracting");
-    const parsed = parseResponse(body);
-    onProgress?.("evaluating");
-    onProgress?.("preparing");
-    return parsed;
+    return parseResponse(body);
   } catch (error) {
     if (signal?.aborted) throw new ResearchCancelledError();
     if (error instanceof ResearchTimeoutError) throw error;
@@ -1025,8 +1018,8 @@ export async function researchProject(
   const options = typeof optionsOrFetch === "function" ? legacyOptions : optionsOrFetch;
   const knownData = normalizeKnownData(options.knownData);
   const focusIds = options.focusIds?.filter((id) => CUSTOM_EVIDENCE_IDS.includes(id as (typeof CUSTOM_EVIDENCE_IDS)[number]));
-  options.onProgress?.("identifying");
   for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (options.signal?.aborted) throw new ResearchCancelledError();
     try {
       return await requestResearchProject(name, location, knownData, focusIds, options.currentEvidence, options.forceRefresh === true, options.signal, options.onProgress, fetchImpl);
     } catch (error) {

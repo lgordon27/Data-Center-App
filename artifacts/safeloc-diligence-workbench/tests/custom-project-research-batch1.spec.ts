@@ -34,6 +34,11 @@ const directoryResponse = {
   }],
 };
 
+const placeholderDirectoryResponse = {
+  ...directoryResponse,
+  facilities: [{ ...directoryResponse.facilities[0], city: "Undisclosed" }],
+};
+
 function incompleteResearch(name: string, location: string) {
   return {
     projectSummary: { name, location, description: "Bounded public-source review.", capacityMW: 800 },
@@ -60,6 +65,12 @@ test.describe("Batch 1 custom-project research lifecycle", () => {
   });
 
   test("prefills GW Ranch exactly and sends directory context without claiming evidence", async ({ page }) => {
+    await page.unroute("**/api/directory**");
+    await page.route("**/api/directory**", (route) => route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(placeholderDirectoryResponse),
+    }));
     let requestBody: Record<string, unknown> | null = null;
     await page.route("**/api/research-project", async (route) => {
       requestBody = route.request().postDataJSON() as Record<string, unknown>;
@@ -131,5 +142,27 @@ test.describe("Batch 1 custom-project research lifecycle", () => {
     await expect(page.getByTestId("custom-project-return-curated")).toBeVisible();
     await page.getByTestId("button-close-custom-project").click();
     await expect(page.getByTestId("custom-project-dialog")).not.toBeVisible();
+  });
+
+  test("shows recovery within 46 seconds when the production research client never resolves", async ({ page }) => {
+    test.setTimeout(55_000);
+    await page.route("**/api/research-project", () => {
+      // Intentionally unresolved: the browser UI wall clock must surface recovery.
+    });
+
+    await page.goto("/#directory");
+    await page.getByTestId("compute-atlas-open-gw-ranch-pecos-tx").click();
+    const startedAt = Date.now();
+    await page.getByTestId("button-submit-custom-project").click();
+    await expect(page.getByTestId("custom-project-loading")).toContainText("Searching public sources, up to 45 seconds.");
+    await expect(page.getByText("Project research timed out after 45 seconds.")).toBeVisible({ timeout: 46_000 });
+    const elapsedMs = Date.now() - startedAt;
+    console.log(`Measured browser wall-clock timeout: ${elapsedMs}ms`);
+    expect(elapsedMs).toBeGreaterThanOrEqual(44_500);
+    expect(elapsedMs).toBeLessThanOrEqual(46_000);
+    await expect(page.getByTestId("custom-project-retry")).toBeVisible();
+    await expect(page.getByTestId("custom-project-edit")).toBeVisible();
+    await expect(page.getByTestId("custom-project-fallback")).toBeVisible();
+    await expect(page.getByTestId("custom-project-return-curated")).toBeVisible();
   });
 });

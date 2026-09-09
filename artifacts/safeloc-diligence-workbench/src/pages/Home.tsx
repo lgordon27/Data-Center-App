@@ -19,6 +19,7 @@ import {
 import { useDiligence } from "@/context/DiligenceContext";
 import {
   createDefaultAssumptionResearch,
+  RESEARCH_PROJECT_TIMEOUT_MS,
   researchProject,
   type CustomResearchResponse,
   type KnownProjectData,
@@ -75,6 +76,7 @@ export function CustomProjectForm({ onSuccess, compact = false, initialValues, o
   const [progress, setProgress] = useState<ResearchProgress>("researching");
   const [fallbackAvailable, setFallbackAvailable] = useState(false);
   const requestController = useRef<AbortController | null>(null);
+  const requestGeneration = useRef(0);
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -87,6 +89,7 @@ export function CustomProjectForm({ onSuccess, compact = false, initialValues, o
 
   useEffect(() => () => {
     mounted.current = false;
+    requestGeneration.current += 1;
     requestController.current?.abort();
   }, []);
 
@@ -99,22 +102,36 @@ export function CustomProjectForm({ onSuccess, compact = false, initialValues, o
     setBusy(true);
     setError(null);
     setFallbackAvailable(false);
-    setProgress("identifying");
+    setProgress("researching");
     const controller = new AbortController();
+    const generation = requestGeneration.current + 1;
+    requestGeneration.current = generation;
     requestController.current = controller;
+    let wallClockTimedOut = false;
+    const wallClockTimeout = window.setTimeout(() => {
+      if (!mounted.current || requestGeneration.current !== generation) return;
+      wallClockTimedOut = true;
+      requestGeneration.current += 1;
+      controller.abort();
+      requestController.current = null;
+      setBusy(false);
+      setError("Project research timed out after 45 seconds.");
+      setFallbackAvailable(true);
+    }, RESEARCH_PROJECT_TIMEOUT_MS);
     try {
       const result = await researchProject(name.trim(), location.trim(), {
         knownData: initialValues?.knownData,
         onProgress: setProgress,
         signal: controller.signal,
       });
-      if (mounted.current && !controller.signal.aborted) onSuccess(result);
+      if (mounted.current && requestGeneration.current === generation && !controller.signal.aborted) onSuccess(result);
     } catch (requestError) {
-      if (controller.signal.aborted || !mounted.current) return;
+      if (wallClockTimedOut || controller.signal.aborted || !mounted.current || requestGeneration.current !== generation) return;
       setError(requestError instanceof Error ? requestError.message : "Project research is unavailable. Try again.");
       setFallbackAvailable(true);
     } finally {
-      if (mounted.current) setBusy(false);
+      window.clearTimeout(wallClockTimeout);
+      if (mounted.current && requestGeneration.current === generation) setBusy(false);
       if (requestController.current === controller) requestController.current = null;
     }
   };
@@ -242,14 +259,8 @@ export function CustomProjectForm({ onSuccess, compact = false, initialValues, o
             : "rounded-md bg-[#eef5ff] px-3 py-2.5 text-[10px] text-[#255bb7]"}
         >
           {progress === "retrying"
-            ? "Research taking longer than expected, retrying..."
-            : ({
-                identifying: "Identifying project",
-                researching: "Searching public sources",
-                extracting: "Extracting claims",
-                evaluating: "Evaluating source support",
-                preparing: "Preparing analysis",
-              }[progress] ?? "Researching public sources")}
+            ? "A provider attempt timed out; retrying within the 45-second limit."
+            : "Searching public sources, up to 45 seconds."}
           <button
             data-testid={compact ? "home-custom-analysis-cancel" : "custom-project-cancel"}
             type="button"

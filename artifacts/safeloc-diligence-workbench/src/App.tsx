@@ -36,6 +36,13 @@ const legacySectionRoutes: Record<string, string> = {
   "analysis-decision": "analysis-decision",
   "analysis-advisor": "analysis-advisor",
 };
+const analysisTabBySection: Record<string, string> = {
+  "analysis-overview": "market",
+  "analysis-evidence": "reality",
+  "analysis-financial": "transmission",
+  "analysis-decision": "advisor",
+  "analysis-advisor": "advisor",
+};
 
 function routeFromHash(hash: string): AppRoute | null {
   const route = hash.replace(/^#/, "").split("/")[0];
@@ -156,7 +163,8 @@ function AppShell() {
         }
         if (target) {
           target.scrollIntoView({ behavior: "auto", block: "start" });
-          target.focus({ preventScroll: true });
+          const tab = analysisTabBySection[pendingSection];
+          (tab ? document.getElementById(`conference-tab-${tab}`) : target)?.focus({ preventScroll: true });
         }
         setPendingSection(null);
       };
@@ -325,7 +333,12 @@ function AppShell() {
       )}
       {route === "how-it-works" ? (
         <HowItWorks initialSection={pendingTourSection} onReturn={() => go("analysis")} onOpenScreen={(screen) => {
-          const section = legacySectionRoutes[screen];
+          const section = {
+            market: "analysis-overview",
+            reality: "analysis-evidence",
+            transmission: "analysis-financial",
+            advisor: "analysis-advisor",
+          }[screen];
           setPendingSection(section);
           go("analysis");
         }} />

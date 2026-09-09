@@ -11,7 +11,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { DiligenceProvider, useDiligence } from "@/context/DiligenceContext";
-import { DiligenceLiveRegions, formatIRR, formatPercentagePoints, Header } from "@/components/Shell";
+import { Header } from "@/components/Shell";
 import { AnalysisWorkbench } from "@/pages/AnalysisWorkbench";
 import { ValueChain } from "@/pages/ValueChain";
 import { Home } from "@/pages/Home";
@@ -80,6 +80,7 @@ function AppShell() {
   const [resetOpen, setResetOpen] = useState(false);
   const [evidenceFocusId, setEvidenceFocusId] = useState<string | null>(null);
   const [pendingSection, setPendingSection] = useState<string | null>(null);
+  const [analysisEpoch, setAnalysisEpoch] = useState(0);
   const [pendingTourSection, setPendingTourSection] = useState<string | null>(null);
   const diligence = useDiligence();
   const isHome = route === "home";
@@ -191,6 +192,8 @@ function AppShell() {
 
   const confirmReset = () => {
     diligence.resetToDefault();
+    setAnalysisEpoch((value) => value + 1);
+    setPendingSection(null);
     setResetOpen(false);
     go("analysis");
   };
@@ -200,6 +203,7 @@ function AppShell() {
     // timer runs, so an active filter can never hide the resolve target.
     window.dispatchEvent(new CustomEvent("safeloc:evidence-focus-request", { detail: id }));
     setEvidenceFocusId(id);
+    setPendingSection("analysis-evidence");
     go("analysis");
   };
 
@@ -304,8 +308,7 @@ function AppShell() {
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="font-mono text-[9px] font-bold uppercase tracking-[0.16em] text-[#b9d43a]">Evidence reclassified</div>
-              <div className="mt-2 text-[11px] leading-5 text-[#dce4e7]">Conservative stress case updated from <span className="font-mono text-white">{formatIRR(diligence.metrics.lastChange.from)}</span> to <span className="font-mono text-white">{formatIRR(diligence.metrics.lastChange.to)}</span>.</div>
-              <div className={`mt-1 font-mono text-[12px] font-bold ${diligence.metrics.lastChange.delta < 0 ? "text-[#f5ddd5]" : "text-[#d4e86b]"}`}>{formatPercentagePoints(diligence.metrics.lastChange.delta, { signed: true })} IRR</div>
+              <div className="mt-2 text-[11px] leading-5 text-[#dce4e7]">Your evidence change has been saved. Explore the Illustrative Project Stress Test to inspect its financial effect.</div>
             </div>
             <button data-testid="button-dismiss-reclassification" aria-label="Dismiss reclassification notification" onClick={diligence.clearLastChange} className="rounded p-1 text-[#a4b4bd] hover:bg-white/10 hover:text-white"><span aria-hidden="true">×</span></button>
           </div>
@@ -331,12 +334,12 @@ function AppShell() {
                        </Suspense>
                      </ErrorBoundary>
                    )}
-                  {route === "analysis" && <AnalysisWorkbench onResolveEvidence={resolveEvidence} onReset={() => setResetOpen(true)} />}
+                  {route === "analysis" && <AnalysisWorkbench key={analysisEpoch} focusSectionId={pendingSection ?? undefined} onResolveEvidence={resolveEvidence} onReset={() => setResetOpen(true)} />}
                 </div>
               </main>
             </div>
           )}
-          {route !== "home" && <><DiligenceLiveRegions metrics={diligence.metrics} /><Footer /></>}
+          {route !== "home" && <Footer />}
         </>
       )}
       <AlertDialog open={resetOpen} onOpenChange={setResetOpen}>

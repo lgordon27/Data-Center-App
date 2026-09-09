@@ -4,6 +4,7 @@ import {
   ArrowRight,
   ArrowUpRight,
   Building2,
+  ChevronDown,
   ExternalLink,
   Info,
   Leaf,
@@ -40,6 +41,7 @@ import {
 import { ClaimCitation } from "@/components/ClaimCitation";
 import { trackEvent } from "@/services/analytics";
 import { ProviderQueueSnapshot } from "@/components/ProviderQueueSnapshot";
+import { Footer } from "@/components/Footer";
 
 type HomeRoute = "directory" | "how-it-works" | "value-chain";
 
@@ -405,6 +407,8 @@ function CompanyProjectCard({
   researching: boolean;
 }) {
   const isTierOne = project.tier === 1;
+  const isStargateShortcut = project.kind === "curated" && project.name.trim().toLowerCase() === "stargate abilene";
+  const unsupportedCuratedProject = project.kind === "curated" && !isStargateShortcut;
   return (
     <article data-testid={`company-project-${project.id}`} className="rounded-lg border border-[#d9e0e4] bg-white p-4">
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
@@ -428,11 +432,11 @@ function CompanyProjectCard({
           data-testid={`company-project-open-${project.id}`}
           type="button"
           onClick={onSelect}
-          disabled={researching}
+          disabled={researching || unsupportedCuratedProject}
           aria-busy={researching}
-          className={`inline-flex min-h-10 shrink-0 items-center justify-center gap-1 rounded-md px-3 font-mono text-[9px] font-bold uppercase tracking-[0.08em] disabled:cursor-wait disabled:opacity-60 ${project.kind === "curated" ? "bg-[#122232] text-[#d4e86b] hover:bg-[#203a4c]" : "border border-[#255bb7] text-[#255bb7] hover:bg-[#e5efff]"}`}
+          className={`inline-flex min-h-10 shrink-0 items-center justify-center gap-1 rounded-md px-3 font-mono text-[9px] font-bold uppercase tracking-[0.08em] disabled:cursor-not-allowed disabled:opacity-60 ${isStargateShortcut ? "bg-[#122232] text-[#d4e86b] hover:bg-[#203a4c]" : "border border-[#255bb7] text-[#255bb7] hover:bg-[#e5efff]"}`}
         >
-          {researching ? "Researching…" : project.kind === "curated" ? "Open curated deep dive" : "Research with AI"}
+          {researching ? "Researching…" : isStargateShortcut ? "Open curated deep dive" : unsupportedCuratedProject ? "Beta research unavailable" : "Research with AI (Beta)"}
           <ArrowRight aria-hidden="true" className="h-3 w-3" />
         </button>
       </div>
@@ -477,7 +481,7 @@ function CompanyExposure({
   researchError: string | null;
   researchingProjectId: string | null;
   onBack: () => void;
-  onCurated: (company: CompanyKey) => void;
+  onCurated: (project: CompanyProject, company: CompanyKey) => void;
   onResearch: (project: CompanyProject, company: CompanyKey) => void;
   sectionRef?: React.RefObject<HTMLElement | null>;
 }) {
@@ -536,9 +540,9 @@ function CompanyExposure({
                   company: company.toLowerCase(),
                   project_id: project.id,
                   project_kind: project.kind,
-                  action: project.kind === "curated" ? "open_curated" : "research_with_ai",
+                  action: project.kind === "curated" && project.name.trim().toLowerCase() === "stargate abilene" ? "open_curated" : "research_with_ai",
                 });
-                if (project.kind === "curated") onCurated(company);
+                if (project.kind === "curated" && project.name.trim().toLowerCase() === "stargate abilene") onCurated(project, company);
                 else onResearch(project, company);
               }}
             />
@@ -1043,7 +1047,8 @@ function LegacyHome({ onNavigate }: { onNavigate?: (route: HomeRoute) => void } 
              researchingProjectId={companyResearchingId}
             sectionRef={companyExposureRef}
              onBack={() => setSelectedCompany(null)}
-             onCurated={(company) => {
+             onCurated={(project, company) => {
+               if (project.name.trim().toLowerCase() !== "stargate abilene") return;
                resetToDefault(company);
                window.location.hash = "analysis";
              }}
@@ -1159,7 +1164,7 @@ function homeMetric(value: number | null | undefined, suffix = "") {
  * Public entry surface. The workbench owns all calculations and handoffs; Home
  * only presents that state and routes people into the existing flows.
  */
-export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void } = {}) {
+export function LegacyCompanyExploration({ onNavigate }: { onNavigate?: (route: HomeRoute) => void } = {}) {
   const {
     evidence,
     metrics,
@@ -1219,11 +1224,9 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
       : "Session-only custom case";
   const previewProjectName = project.name || "Current project";
   const previewLocation = project.location || "Location unavailable";
-  const previewRelationship = project.kind === "curated"
-    ? "NVIDIA · reported"
-    : originatingCompany
-      ? `${originatingCompany} · selected context`
-      : "No linked holding selected";
+  const previewRelationship = originatingCompany
+    ? `${originatingCompany} · selected context`
+    : "No linked holding selected";
   const recommendation = metrics.recommendationStatus === "READY FOR REVIEW"
     ? "Ready for review"
     : metrics.recommendationStatus === "CONDITIONAL"
@@ -1350,7 +1353,11 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
             researchingProjectId={companyResearchingId}
             sectionRef={companyExposureRef}
             onBack={() => setSelectedCompany(null)}
-            onCurated={(company) => { resetToDefault(company); window.location.hash = "analysis"; }}
+            onCurated={(project, company) => {
+              if (project.name.trim().toLowerCase() !== "stargate abilene") return;
+              resetToDefault(company);
+              window.location.hash = "analysis";
+            }}
             onResearch={(companyProject, company) => {
               if (!companyProject.facility) return;
               setCompanyResearchingId(companyProject.id);
@@ -1424,6 +1431,184 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
           <span>SafeLoc Diligence Workbench</span><span className="text-[#526f7c]">Public context · synthetic economics · human review</span>
         </div>
       </footer>
+    </div>
+  );
+}
+
+export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void } = {}) {
+  const { loadCustomProject, resetToDefault, originatingCompany } = useDiligence();
+  const initialCompany = COMPANY_PROFILES.some((profile) => profile.key === originatingCompany)
+    ? originatingCompany as CompanyKey
+    : null;
+  const [selectedCompany, setSelectedCompany] = useState<CompanyKey | null>(initialCompany);
+  const [companyResearchingId, setCompanyResearchingId] = useState<string | null>(null);
+  const [companyResearchError, setCompanyResearchError] = useState<string | null>(null);
+  const companyExposureRef = useRef<HTMLElement>(null);
+
+  const openStargate = (company: CompanyKey | null = null) => {
+    resetToDefault(company);
+    window.location.hash = "analysis";
+  };
+  const selectCompany = (company: CompanyKey) => {
+    setCompanyResearchError(null);
+    setSelectedCompany(company);
+    trackEvent("company_lens_selected", {
+      company: company.toLowerCase(),
+      entry_point: "home_holdings",
+    });
+    window.setTimeout(() => {
+      companyExposureRef.current?.scrollIntoView({
+        behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ? "auto" : "smooth",
+        block: "start",
+      });
+      companyExposureRef.current?.focus({ preventScroll: true });
+    }, 0);
+  };
+  const completeResearch = (
+    research: CustomResearchResponse,
+    company: CompanyKey | null = null,
+    projectId = "custom_project",
+    projectKind = "custom",
+  ) => {
+    loadCustomProject(research, company);
+    trackEvent("research_handoff_completed", {
+      company: company?.toLowerCase() ?? "none",
+      project_id: projectId,
+      project_kind: projectKind,
+      research_mode: research.researchMode === "default-assumptions" ? "default_assumptions" : "ai_researched",
+      destination: "analysis",
+    });
+    window.location.hash = "analysis";
+  };
+  const navigate = (route: HomeRoute) => {
+    if (onNavigate) onNavigate(route);
+    else window.location.hash = route;
+  };
+
+  return (
+    <div data-testid="home-page" className="min-h-[calc(100vh-72px)] overflow-x-hidden bg-[#0a1b2a] text-[#f6f7f2]">
+      <main>
+        <section data-testid="home-hero" className="home-hero relative border-b border-white/10">
+          <div className="home-hero-grid absolute inset-0 opacity-50" aria-hidden="true" />
+          <div className="relative mx-auto flex min-h-[calc(100vh-146px)] max-w-[1180px] flex-col justify-center px-5 py-10 sm:px-8 lg:py-12">
+            <div className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-[#d4e86b]">
+              Growth for Impact Conference · SafeLoc
+            </div>
+            <div className="mt-6 grid items-center gap-8 lg:grid-cols-[1.12fr_0.88fr] lg:gap-14">
+              <div>
+                <h1 data-testid="home-hero-heading" className="max-w-3xl text-[40px] font-semibold leading-[0.98] tracking-[-0.055em] sm:text-[54px] lg:text-[62px]">
+                  Follow the evidence behind an AI data center.
+                </h1>
+                <p className="mt-5 max-w-xl text-[15px] leading-6 text-[#c4d0d6] sm:text-[17px]">
+                  Open the curated Stargate Abilene case and move from project context to sourced evidence in one click.
+                </p>
+                <button
+                  data-testid="button-run-stargate"
+                  type="button"
+                  onClick={() => openStargate("Oracle")}
+                  className="mt-7 inline-flex min-h-12 items-center justify-center gap-2 rounded-md bg-[#d4e86b] px-5 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.11em] text-[#122232] transition-transform hover:-translate-y-0.5 hover:bg-[#e3f18d] focus:outline-none focus:ring-2 focus:ring-[#d4e86b] focus:ring-offset-2 focus:ring-offset-[#0a1b2a]"
+                >
+                  Open the Stargate demo <ArrowRight aria-hidden="true" className="h-4 w-4" />
+                </button>
+                <p className="mt-3 text-[10px] leading-4 text-[#9dafb8]">
+                  Curated public-source case · Oracle relationship · Abilene, Texas
+                </p>
+              </div>
+              <article className="rounded-xl border border-white/15 bg-[#102b3b]/95 p-5 shadow-2xl shadow-black/20 sm:p-6">
+                <div className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-[#d4e86b]">Conference walkthrough</div>
+                <h2 className="mt-2 text-[26px] font-semibold tracking-[-0.04em] text-white">Stargate Abilene</h2>
+                <p className="mt-2 text-[12px] leading-5 text-[#c4d0d6]">
+                  Inspect the project brief, trace each classification to its source, and see which evidence gaps remain open.
+                </p>
+                <ol className="mt-5 grid gap-2 sm:grid-cols-3 lg:grid-cols-1">
+                  {["Frame the project", "Inspect the evidence", "Review the decision path"].map((label, index) => (
+                    <li key={label} className="flex items-center gap-3 rounded-lg border border-white/10 bg-[#0d2435] px-3 py-2.5 text-[11px] text-[#dce4e7]">
+                      <span className="font-mono text-[9px] font-bold text-[#d4e86b]">0{index + 1}</span>
+                      {label}
+                    </li>
+                  ))}
+                </ol>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <ClaimCitation claimId="stargate-initiative" dark />
+                  <ClaimCitation claimId="stargate-cancellation" dark />
+                </div>
+              </article>
+            </div>
+            <details data-testid="home-explore-panel" className="group mt-8 rounded-xl border border-white/15 bg-[#0d2435]/95">
+              <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-4 px-4 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-[#d4e86b] [&::-webkit-details-marker]:hidden">
+                Explore companies and other paths
+                <ChevronDown aria-hidden="true" className="h-4 w-4 transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="grid gap-5 border-t border-white/10 p-4 md:grid-cols-[1.35fr_0.65fr]">
+                <div>
+                  <h2 className="text-[17px] font-semibold text-white">Explore a supported company</h2>
+                  <p className="mt-1 text-[11px] leading-5 text-[#9dafb8]">Select a company to inspect its sourced infrastructure connections.</p>
+                  <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    {COMPANY_PROFILES.map((company) => (
+                      <button
+                        key={company.key}
+                        data-testid={`company-card-${company.key.toLowerCase()}`}
+                        type="button"
+                        onClick={() => selectCompany(company.key)}
+                        className="min-h-14 rounded-lg border border-white/15 bg-[#173247] px-3 py-2 text-left hover:border-[#d4e86b] focus:outline-none focus:ring-2 focus:ring-[#d4e86b]"
+                      >
+                        <span className="font-mono text-[9px] font-bold text-[#d4e86b]">{company.ticker}</span>
+                        <span className="mt-1 block truncate text-[11px] font-semibold text-white">{company.displayName}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="border-t border-white/10 pt-4 md:border-l md:border-t-0 md:pl-5 md:pt-0">
+                  <h2 className="text-[17px] font-semibold text-white">More</h2>
+                  <div className="mt-3 flex flex-col items-start gap-3 text-[11px]">
+                    <button type="button" onClick={() => navigate("directory")} className="text-[#b9e1f2] underline underline-offset-4 hover:text-[#d4e86b]">Browse the facility directory</button>
+                    <button type="button" onClick={() => navigate("value-chain")} className="text-[#b9e1f2] underline underline-offset-4 hover:text-[#d4e86b]">View the AI Chain</button>
+                    <button
+                      data-testid="button-analyze-another-project"
+                      type="button"
+                      onClick={() => window.dispatchEvent(new Event("safeloc-open-custom-project"))}
+                      className="text-left text-[#b9e1f2] underline underline-offset-4 hover:text-[#d4e86b]"
+                    >
+                      Custom project research <span className="ml-1 rounded border border-[#f1cb8b]/50 px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase text-[#f1cb8b]">Beta</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </details>
+          </div>
+        </section>
+
+        {selectedCompany && (
+          <CompanyExposure
+            company={selectedCompany}
+            researchError={companyResearchError}
+            researchingProjectId={companyResearchingId}
+            sectionRef={companyExposureRef}
+            onBack={() => setSelectedCompany(null)}
+            onCurated={(project, company) => {
+              if (project.name.trim().toLowerCase() !== "stargate abilene") return;
+              openStargate(company);
+            }}
+            onResearch={(companyProject, company) => {
+              if (!companyProject.facility) return;
+              setCompanyResearchingId(companyProject.id);
+              setCompanyResearchError(null);
+              void researchProject(companyProject.name, companyProject.location, {
+                knownData: {
+                  capacity: companyProject.capacityMW,
+                  operator: companyProject.operator,
+                  status: companyProject.status,
+                  sourceUrl: companyProject.facility.sourceUrl,
+                },
+              })
+                .then((research) => completeResearch(research, company, companyProject.id, companyProject.kind))
+                .catch(() => setCompanyResearchError("AI research is unavailable. Try again."))
+                .finally(() => setCompanyResearchingId(null));
+            }}
+          />
+        )}
+      </main>
+      <Footer />
     </div>
   );
 }

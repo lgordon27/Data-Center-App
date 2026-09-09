@@ -38,7 +38,7 @@ export function Footer() {
   const showsFemaNri = route === "analysis";
 
   useEffect(() => {
-    void fetch("/api/version", { headers: { accept: "application/json" } })
+    void fetch(`${import.meta.env.BASE_URL}api/version`, { headers: { accept: "application/json" } })
       .then((response) => response.ok ? response.json() as Promise<ReleaseIdentity> : null)
       .then((payload) => { if (payload) setReleaseIdentity(payload); })
       .catch(() => undefined);
@@ -72,6 +72,16 @@ export function Footer() {
     };
   }, [consoleOpen]);
 
+  const shortCommit = releaseIdentity?.commitSha?.slice(0, 7)
+    ?? releaseIdentity?.releaseId?.slice(0, 10)
+    ?? "local";
+  const shortTimestamp = releaseIdentity?.buildTimestamp
+    ? `${releaseIdentity.buildTimestamp.slice(0, 16).replace("T", " ")}${releaseIdentity.buildTimestamp.endsWith("Z") ? "Z" : ""}`
+    : null;
+  const releaseTitle = releaseIdentity
+    ? `Version ${releaseIdentity.applicationVersion ?? "unknown"} · commit ${releaseIdentity.commitSha ?? releaseIdentity.releaseId ?? "local"} · built ${releaseIdentity.buildTimestamp ?? "unknown"}`
+    : undefined;
+
   return (
     <>
       {workbenchRoutes.has(route) && <DataSources />}
@@ -79,13 +89,18 @@ export function Footer() {
         <div className="mx-auto flex max-w-[1480px] flex-col justify-between gap-3 text-[9px] uppercase tracking-[0.12em] text-[#52616b] sm:flex-row sm:items-center">
           <span>SafeLoc Diligence Workbench</span>
           <span className="flex flex-col gap-1">
-            <span>Proof of Concept | Transaction assumptions are synthetic | Environmental and infrastructure data from public sources</span>
-            <span data-testid="footer-eia-attribution" className="font-mono normal-case tracking-normal text-[#344550]">Electricity data: U.S. Energy Information Administration Open Data</span>
-            {showsFemaNri && <span data-testid="footer-fema-attribution" className="font-mono normal-case tracking-normal text-[#344550]">Climate risk data: FEMA National Risk Index v1.20</span>}
-            {releaseIdentity && <span data-testid="footer-release-identity" className="font-mono normal-case tracking-normal text-[#344550]">Release {releaseIdentity.applicationVersion ?? "unknown"} · {releaseIdentity.commitSha ?? releaseIdentity.releaseId ?? "local"} · built {releaseIdentity.buildTimestamp ?? "unknown"}</span>}
+            <span>Public-source diligence · synthetic transaction assumptions</span>
+            <details className="group normal-case tracking-normal">
+              <summary className="cursor-pointer list-none font-mono text-[#344550] [&::-webkit-details-marker]:hidden">
+                Sources and methodology
+              </summary>
+              <span data-testid="footer-eia-attribution" className="mt-1 block">Electricity: U.S. Energy Information Administration Open Data</span>
+              {showsFemaNri && <span data-testid="footer-fema-attribution" className="mt-1 block">Climate risk: FEMA National Risk Index v1.20</span>}
+              {releaseIdentity && <span className="mt-1 block font-mono" title={releaseTitle}>{releaseTitle}</span>}
+            </details>
           </span>
           <span className="flex items-center gap-2 font-mono">
-            2024 / 24-017
+            {releaseIdentity && <span data-testid="footer-release-identity" title={releaseTitle}>{shortCommit}{shortTimestamp ? ` · ${shortTimestamp}` : ""}</span>}
             <button
               data-testid="ercot-console-toggle"
               type="button"

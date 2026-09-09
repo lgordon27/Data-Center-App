@@ -1,9 +1,15 @@
 import { expect, test } from "@playwright/test";
 
 test.describe("Financial Impact Chain", () => {
-  test("opens on the live marginal chain with a baseline/stress cash-flow comparison", async ({ page }) => {
-    await page.goto("/#materiality");
+  test("keeps the live marginal chain behind the illustrative stress-test disclosure", async ({ page }) => {
+    await page.goto("/#analysis");
+    await page.getByTestId("tab-transmission").click();
 
+    const stressTest = page.getByRole("button", { name: /Illustrative Project Stress Test/i });
+    await expect(stressTest).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByTestId("panel-impact-chain")).toHaveCount(0);
+    await stressTest.click();
+    await expect(stressTest).toHaveAttribute("aria-expanded", "true");
     await expect(page.getByTestId("panel-impact-chain")).toBeVisible();
     await expect(page.getByTestId("impact-chain-baseline-irr")).toContainText("%");
     await expect(page.getByTestId("impact-chain-stress-irr")).toContainText("%");
@@ -16,16 +22,15 @@ test.describe("Financial Impact Chain", () => {
     await expect(page.getByTestId("panel-decision-context-treatment")).toContainText("Financial role:");
 
     const stressIrr = await page.getByTestId("impact-chain-stress-irr").textContent();
-    await page.goto("/#decision");
-    await expect(page.getByTestId("text-decision-irr")).toHaveText(stressIrr ?? "");
+    await expect(page.getByTestId("text-current-irr-materiality")).toHaveText(stressIrr ?? "");
 
-    await page.goto("/#materiality");
     await page.getByRole("tab", { name: "Drivers" }).click();
     await expect(page.getByTestId("panel-impact-chain")).toBeHidden();
     await expect(page.getByTestId("panel-irr-waterfall")).toBeVisible();
     await expect(page.getByTestId("waterfall-methodology")).toContainText("weaker evidence");
 
     await page.getByRole("tab", { name: "Full Model" }).click();
+    await page.getByTestId("disclosure-full-model-detail").locator(":scope > summary").click();
     await expect(page.getByTestId("disclosure-full-model-detail")).toHaveAttribute("open", "");
     await page.getByRole("tab", { name: "Drivers" }).click();
     await expect(page.getByTestId("panel-irr-waterfall")).toBeVisible();
@@ -33,7 +38,9 @@ test.describe("Financial Impact Chain", () => {
   });
 
   test("drawer explains marginal treatment and reclassification updates the chain", async ({ page }) => {
-    await page.goto("/#materiality");
+    await page.goto("/#analysis");
+    await page.getByTestId("tab-transmission").click();
+    await page.getByRole("button", { name: /Illustrative Project Stress Test/i }).click();
     const row = page.getByTestId("impact-chain-row-electricity_cost");
     await expect(row).toContainText("User Assumption");
     await row.getByTestId("button-trace-impact-chain-electricity_cost").click();
@@ -46,33 +53,43 @@ test.describe("Financial Impact Chain", () => {
     await expect(drawer).toContainText("higher cost");
     await page.keyboard.press("Escape");
 
-    await page.goto("/#evidence");
-    await page.getByTestId("row-evidence-electricity_cost").locator("summary").first().click();
+    await page.getByTestId("tab-reality").click();
+    await page.getByRole("button", { name: /Detailed Evidence Record/i }).click();
+    await page.getByTestId("filter-evidence-all").click();
+    await page.getByTestId("row-evidence-electricity_cost").locator(":scope > summary").click();
     await page.getByTestId("select-classification-electricity_cost").selectOption("Missing Evidence");
-    await page.goto("/#materiality");
+    await page.getByTestId("tab-transmission").click();
+    await page.getByRole("button", { name: /Illustrative Project Stress Test/i }).click();
     await expect(page.getByTestId("impact-chain-row-electricity_cost")).toContainText("Missing");
   });
 
-  test("decision consequences and advisor transmission preserve role boundaries", async ({ page }) => {
-    await page.goto("/#decision");
-    await expect(page.getByTestId("decision-consequence-register")).toBeVisible();
-    await expect(page.getByTestId("decision-consequence-water_rights")).toContainText("no direct modeled adjustment");
-    await expect(page.getByTestId("decision-consequence-site_hazard_exposure")).toContainText("modeled treatment: Model Inference");
+  test("conference transmission and advisor brief preserve project-versus-fund boundaries", async ({ page }) => {
+    await page.goto("/#analysis");
+    await page.getByTestId("tab-transmission").click();
+    const transmission = page.getByTestId("conference-view-transmission");
+    await expect(transmission).toContainText("Real Factor");
+    await expect(transmission).toContainText("Project Delay & Cost Overrun");
+    await expect(transmission).toContainText("Issuer Implication");
+    await expect(transmission).not.toContainText(/\b(?:HIGH|MODERATE|LOW)\b/);
 
-    await page.goto("/#advisor");
-    await expect(page.getByTestId("advisor-transmission-bridge")).toBeVisible();
-    await expect(page.getByTestId("advisor-bridge-project-model")).toContainText("stress");
-    await expect(page.getByTestId("advisor-bridge-public-context")).toContainText("Public-source context");
-    await expect(page.getByTestId("advisor-bridge-analyst-scenario")).toContainText("Do not convert");
+    await page.getByTestId("tab-advisor").click();
+    const advisor = page.getByTestId("conference-view-advisor");
+    await expect(advisor.locator("[data-testid^='advisor-manager-question-']")).toHaveCount(3);
+    await expect(advisor.getByTestId("advisor-recommended-action")).toHaveCount(1);
+    await expect(advisor).not.toContainText(/\b(?:HIGH|MODERATE|LOW)\b/);
   });
 
   test("provider queue values and date semantics stay identical across public surfaces", async ({ page }) => {
-    const routes = ["/", "/#value-chain", "/#how-it-works", "/#analysis"];
+    // Compare the same deterministic embedded snapshot, not a race between the
+    // initial snapshot and a live provider response arriving during navigation.
+    await page.route("**/api/ercot-queue**", (route) => route.abort());
+    const routes = ["/#value-chain", "/#how-it-works"];
     const snapshots: string[] = [];
     for (const route of routes) {
       await page.goto(route);
       const snapshot = page.getByTestId("shared-provider-queue-snapshot");
       await expect(snapshot).toBeVisible();
+      await expect(snapshot).toContainText("Embedded snapshot");
       await expect(snapshot).toContainText("aggregate values as of");
       await expect(snapshot).toContainText("source refreshed");
       await expect(snapshot).toContainText("provider response");

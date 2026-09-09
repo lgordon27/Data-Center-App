@@ -71,9 +71,9 @@ import { ClaimCitation } from "@/components/ClaimCitation";
 import { COMMUNITY_TERM_DEFINITIONS } from "@/data/communityAgreements";
 
 const holdingsConnectionCopy: Record<RecommendationStatus, string> = {
-  BLOCKED: "NVIDIA GPU contracts and hyperscaler CAPEX may connect values-aligned funds to this buildout, but unresolved project evidence leaves a material exposure gap. This blocked status is a diligence signal—not a facility-level Stargate fact or a holdings recommendation.",
-  CONDITIONAL: "NVIDIA GPU contracts and hyperscaler CAPEX may connect values-aligned funds to this buildout. The exposure gap remains conditional while unverified project assumptions are carried into review; this is market context, not a holdings recommendation.",
-  "READY FOR REVIEW": "NVIDIA GPU contracts and hyperscaler CAPEX connect values-aligned funds to this buildout. The project evidence is ready for review, while portfolio exposure remains market context—not proof of facility-level Stargate exposure or a holdings recommendation.",
+  BLOCKED: "Unresolved project evidence blocks this diligence review. Establish the company–project contract relationship and actual holding weights before assessing portfolio relevance. This is not a fund-risk rating or a holdings recommendation.",
+  CONDITIONAL: "This project review remains conditional while unverified assumptions are carried forward. Issuer implications require documented contractual dependence; actual portfolio relevance remains unquantified.",
+  "READY FOR REVIEW": "The project evidence is ready for review, not an investment conclusion. Confirm the documented company relationship, contractual dependence and actual holding weights before assessing portfolio relevance.",
 };
 
 export function DecisionReview({ onNavigate, onResolve, requestedAction, onRequestedActionHandled }: { onNavigate: (screen: Screen) => void; onResolve: (id: string) => void; requestedAction?: "save" | "compare" | null; onRequestedActionHandled?: () => void }) {

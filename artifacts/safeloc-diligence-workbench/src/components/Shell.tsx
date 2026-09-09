@@ -19,7 +19,6 @@ import {
   Clock3,
   FileCheck2,
   Gauge,
-  Info,
   Link2,
   Loader2,
   MapPin,
@@ -260,7 +259,7 @@ export function ProgressNav({ current, onNavigate }: { current: Screen; onNaviga
   );
 }
 
-export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, onDirectory, onWorkbench, onAnalyzeCustom, route, sessionRestored, mobileOpen, menuButtonRef }: { onMenu: () => void; onReset: () => void; onHome: () => void; onHowItWorks: () => void; onValueChain: () => void; onDirectory: () => void; onWorkbench: () => void; onAnalyzeCustom?: () => void; route: AppRoute; sessionRestored: boolean; mobileOpen: boolean; menuButtonRef: RefObject<HTMLButtonElement | null> }) {
+export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, onDirectory, onWorkbench, route, sessionRestored, mobileOpen, menuButtonRef }: { onMenu: () => void; onReset: () => void; onHome: () => void; onHowItWorks: () => void; onValueChain: () => void; onDirectory: () => void; onWorkbench: () => void; onAnalyzeCustom?: () => void; route: AppRoute; sessionRestored: boolean; mobileOpen: boolean; menuButtonRef: RefObject<HTMLButtonElement | null> }) {
   const { sessionMigrated, project, loadCustomProject } = useDiligence();
   const [customProjectOpen, setCustomProjectOpen] = useState(false);
   const dialogReturnFocus = useRef<HTMLElement | null>(null);
@@ -305,45 +304,45 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
         <div className={`hidden flex-1 items-center justify-center lg:flex ${isHome ? "opacity-0" : ""}`} aria-hidden={isHome}>
           <div className="text-center">
              <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-[#b9d43a]">{project.kind === "custom" ? project.researchMode === "default-assumptions" ? "Default assumptions · research unavailable" : project.researchMode === "research-incomplete" ? "Research incomplete · no validated sources" : "AI-researched · high-level project" : "Current project"}</div>
-             <div className="mt-1 text-[10px] text-[#96a4ad]">{project.name} / {project.location} · IC pre-read</div>
+              <div className="mt-1 text-[10px] text-[#96a4ad]">{project.name} / {project.location} · Advisor demonstration</div>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          {!isHome && <button
-            data-testid="button-home"
-            type="button"
-            onClick={onHome}
-            className="hidden rounded border border-[#60717f] px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#d4e86b] transition-colors hover:border-[#d4e86b] hover:bg-white/10 md:inline-flex"
-          >
-            Home
-          </button>}
-          {!isHome && <button
-            data-testid="button-open-value-chain"
-            type="button"
-            onClick={onValueChain}
-            aria-current={route === "value-chain" ? "page" : undefined}
-            className={`hidden rounded border px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] transition-colors md:inline-flex ${route === "value-chain" ? "border-[#d4e86b] bg-[#d4e86b] text-[#122232]" : "border-[#60717f] text-[#d4e86b] hover:border-[#d4e86b] hover:bg-white/10"}`}
-          >
-            The AI Chain
-          </button>}
-          {isHome && <button data-testid="button-home-value-chain" type="button" onClick={onValueChain} className="hidden rounded border border-[#60717f] px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#d4e86b] transition-colors hover:border-[#d4e86b] hover:bg-white/10 md:inline-flex">The AI Chain</button>}
-          {isHome && <button data-testid="button-home-directory" type="button" onClick={onDirectory} className="hidden rounded border border-[#60717f] px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#d4e86b] transition-colors hover:border-[#d4e86b] hover:bg-white/10 md:inline-flex">Facility Directory</button>}
-          {!isHome && <button
-             data-testid="button-analyze-different-project"
+        <div className="flex items-center gap-1 sm:gap-2">
+           <button
+             data-testid="button-home"
              type="button"
-             onClick={onAnalyzeCustom ?? (() => setCustomProjectOpen(true))}
-             className="hidden min-h-11 items-center rounded border border-[#60717f] px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#d4e86b] transition-colors hover:border-[#d4e86b] hover:bg-white/10 lg:inline-flex"
+             onClick={onHome}
+             aria-current={route === "home" ? "page" : undefined}
+             className={`hidden px-2 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] transition-colors md:inline-flex ${route === "home" ? "text-white underline decoration-[#d4e86b] underline-offset-4" : "text-[#b9c5c9] hover:text-[#d4e86b]"}`}
            >
-             Analyze a different project
-           </button>}
+             Home
+           </button>
+           <button
+             data-testid="button-open-value-chain"
+             type="button"
+             onClick={onValueChain}
+             aria-current={route === "value-chain" ? "page" : undefined}
+             className={`hidden px-2 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] transition-colors md:inline-flex ${route === "value-chain" ? "text-white underline decoration-[#d4e86b] underline-offset-4" : "text-[#b9c5c9] hover:text-[#d4e86b]"}`}
+           >
+             AI Chain
+           </button>
            <button
              data-testid="button-how-it-works"
              type="button"
              onClick={onHowItWorks}
              aria-current={route === "how-it-works" ? "page" : undefined}
-             className={`hidden min-h-11 items-center gap-2 rounded border px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] transition-colors sm:inline-flex ${route === "how-it-works" ? "border-[#d4e86b] bg-[#d4e86b] text-[#122232]" : "border-[#60717f] text-[#d4e86b] hover:border-[#d4e86b] hover:bg-white/10"}`}
+             className={`hidden px-2 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] transition-colors sm:inline-flex ${route === "how-it-works" ? "text-white underline decoration-[#d4e86b] underline-offset-4" : "text-[#b9c5c9] hover:text-[#d4e86b]"}`}
            >
-             <Info aria-hidden="true" className="h-3.5 w-3.5" /> How It Works
+             How It Works
+           </button>
+           <button
+             data-testid="button-home-directory"
+             type="button"
+             onClick={onDirectory}
+             aria-current={route === "directory" ? "page" : undefined}
+             className={`hidden px-2 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] transition-colors lg:inline-flex ${route === "directory" ? "text-white underline decoration-[#d4e86b] underline-offset-4" : "text-[#b9c5c9] hover:text-[#d4e86b]"}`}
+           >
+             Directory
            </button>
           {!isHome && route === "value-chain" && (
             <button
@@ -355,8 +354,8 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
               Return to Analysis
             </button>
           )}
-          {!isHome && sessionRestored && <span role="status" data-testid="text-session-restored" className="absolute right-4 top-full z-20 rounded border border-[#b9d43a]/40 bg-[#122232] px-2.5 py-1.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-[#d4e86b] shadow-md md:right-8">{sessionMigrated ? "Session updated to audited defaults" : "Session restored"}</span>}
-          {!isHome && <button data-testid="button-reset-default" type="button" onClick={onReset} className="rounded border border-[#60717f] px-2.5 py-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.08em] text-[#d4e86b] transition-colors hover:border-[#d4e86b] hover:bg-white/10">Reset to Default</button>}
+           {!isHome && sessionRestored && <span role="status" data-testid="text-session-restored" className="absolute right-4 top-full z-20 rounded border border-[#b9d43a]/40 bg-[#122232] px-2.5 py-1.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-[#d4e86b] shadow-md md:right-8">{sessionMigrated ? "Session updated to audited defaults" : "Session restored"}</span>}
+           <button data-testid="button-reset-default" type="button" onClick={onReset} className="rounded border border-[#60717f] px-2.5 py-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.08em] text-[#d4e86b] transition-colors hover:border-[#d4e86b] hover:bg-white/10">Reset</button>
         </div>
       </div>
     </header>

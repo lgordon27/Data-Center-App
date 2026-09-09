@@ -996,7 +996,7 @@ function EiaElectricityEvidence({
   );
 }
 
-export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
+export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNavigate: (screen: Screen) => void; showModelConfidence?: boolean }) {
   const { evidence, researchEvidence, updateClassification, applyEvidenceCorrection, metrics, ercotQueue, eiaData, eiaLoading, sourceStates, project } = useDiligence();
   const customProject = project.kind === "custom";
   const items = useMemo(() => Object.values(project.kind === "custom" ? (researchEvidence ?? evidence) : evidence), [evidence, project.kind, researchEvidence]);
@@ -1481,7 +1481,7 @@ export function EvidenceRoom({ onNavigate }: { onNavigate: (screen: Screen) => v
       <CommunityAgreementsReview />
       <div className="mt-5 flex flex-col gap-3 rounded-lg border border-[#f1cb8b] bg-[#fff8e9] p-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-3"><TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-[#a65a00]" /><div><div className="text-[11px] font-bold text-[#6f460e]">Classification changes are live</div><div className="mt-1 text-[10px] leading-4 text-[#7f6337]">Materiality, confidence, and the recommendation status update as soon as a dropdown changes.</div></div></div>
-        <div className="flex shrink-0 items-center gap-2 rounded border border-[#ecd39d] bg-white/50 px-2.5 py-2"><RefreshCw className="h-3.5 w-3.5 text-[#a65a00]" /><span data-testid="text-live-confidence" className="font-mono text-[10px] font-bold text-[#6f460e]">{metrics.confidenceScore}% confidence</span></div>
+        {showModelConfidence && <div className="flex shrink-0 items-center gap-2 rounded border border-[#ecd39d] bg-white/50 px-2.5 py-2"><RefreshCw className="h-3.5 w-3.5 text-[#a65a00]" /><span data-testid="text-live-confidence" className="font-mono text-[10px] font-bold text-[#6f460e]">{metrics.confidenceScore}% confidence</span></div>}
       </div>
       <BottomNav screen="evidence" onNavigate={onNavigate} />
     </div>

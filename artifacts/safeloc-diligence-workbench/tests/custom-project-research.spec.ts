@@ -21,6 +21,10 @@ const evidenceIds = [
 const scenariosKey = "safeloc:diligence:scenarios:v1";
 
 async function openCustomProjectDialog(page: import("@playwright/test").Page) {
+  const paths = page.getByTestId("home-explore-panel");
+  if (await paths.count() && await paths.getAttribute("open") === null) {
+    await paths.locator(":scope > summary").click();
+  }
   await page.getByTestId("button-analyze-another-project").click();
   await expect(page.getByTestId("custom-project-dialog")).toBeVisible();
 }
@@ -554,5 +558,33 @@ test.describe("custom project research", () => {
     const scope = page.getByTestId("disclosure-scope-limitations");
     await expect(scope).not.toHaveAttribute("open", "");
     await expect(scope.getByTestId("scope-limitations-content")).toBeHidden();
+  });
+
+  test("contains a no-origin Research Incomplete project until scenario analysis is explicitly requested", async ({ page }) => {
+    await page.goto("/");
+    await openCustomProjectDialog(page);
+    await page.getByTestId("input-custom-project-name").fill("Project Atlas");
+    await page.getByTestId("input-custom-project-location").fill("Maricopa County, Arizona");
+    await page.getByTestId("button-submit-custom-project").click();
+    await expect(page).toHaveURL(/#analysis$/);
+
+    const market = page.getByTestId("conference-view-market");
+    await expect(market).toBeVisible();
+    await expect(page.getByTestId("conference-research-status")).toHaveText("Research Incomplete");
+    await expect(market).toContainText("No company selected");
+    await expect(market).not.toContainText(/NVIDIA|GPU demand|hyperscaler CAPEX/i);
+    await expect(page.getByTestId("market-exposure-chain")).toHaveCount(0);
+    await expect(page.getByTestId("live-current-irr")).toHaveCount(0);
+    await expect(page.getByTestId("metric-project-irr")).toHaveCount(0);
+    await expect(page.getByTestId("metric-moic")).toHaveCount(0);
+    await page.getByTestId("tab-transmission").click();
+    await expect(page.getByTestId("button-opt-in-scenario")).toBeVisible();
+
+    await page.getByTestId("button-opt-in-scenario").click();
+    await expect(page.getByTestId("conference-view-transmission")).toBeVisible();
+    await expect(page.getByTestId("banner-mechanical-disclaimer")).toContainText(
+      /scenario mechanics|synthetic/i,
+    );
+    await expect(page.getByTestId("metric-project-irr")).toBeVisible();
   });
 });

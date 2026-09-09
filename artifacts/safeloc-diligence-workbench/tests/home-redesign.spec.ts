@@ -1,50 +1,69 @@
 import { expect, test } from "@playwright/test";
 
-test.describe("SafeLoc product-first Home", () => {
-  test("keeps public navigation compact and removes the old launch-brief hierarchy", async ({ page }) => {
+test.describe("compact conference Home", () => {
+  test.beforeEach(async ({ page }) => {
     await page.goto("/#home");
+  });
 
-    await expect(page.getByTestId("home-hero-heading")).toBeVisible();
-    await expect(page.getByTestId("home-stargate-preview")).toBeVisible();
-    await expect(page.getByTestId("home-entry-paths")).toContainText("One evidence engine. Two ways to begin.");
-    await expect(page.getByTestId("home-governed-ai")).toBeVisible();
-    await expect(page.getByTestId("home-trust-strip")).toBeVisible();
-    await expect(page.getByRole("banner").getByTestId("button-home-value-chain")).toContainText("The AI Chain");
-    await expect(page.getByRole("banner").getByTestId("button-home-directory")).toContainText("Facility Directory");
-    await expect(page.getByTestId("button-home-analyze-project")).toContainText("Analyze a Project");
-    await expect(page.getByTestId("button-reset-default")).toHaveCount(0);
-    await expect(page.getByText("Launch brief · 2026")).toHaveCount(0);
-    await expect(page.locator("[data-testid='button-analyze-stargate']")).toHaveCount(1);
+  test("foregrounds one curated conference walkthrough and keeps exploration secondary", async ({ page }) => {
+    await expect(page.getByTestId("home-hero-heading")).toHaveText(
+      "Follow the evidence behind an AI data center.",
+    );
+    await expect(page.getByText("Growth for Impact Conference · SafeLoc")).toBeVisible();
+    await expect(page.getByTestId("button-run-stargate")).toHaveText(/Open the Stargate demo/i);
+    await expect(page.getByText("Curated public-source case · Oracle relationship · Abilene, Texas")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Stargate Abilene" })).toBeVisible();
+    await expect(page.getByText("Frame the project")).toBeVisible();
+    await expect(page.getByText("Inspect the evidence")).toBeVisible();
+    await expect(page.getByText("Review the decision path")).toBeVisible();
+
+    const exploration = page.getByTestId("home-explore-panel");
+    await expect(exploration).not.toHaveAttribute("open", "");
+    await expect(page.locator("[data-testid^='company-card-']")).toHaveCount(6);
+    await expect(page.locator("[data-testid^='company-card-']").first()).toBeHidden();
+    await expect(page.getByTestId("button-reset-default")).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   });
 
-  test("reveals holding context and restores focus after the existing project dialog", async ({ page }) => {
-    await page.goto("/#home");
+  test("labels custom research Beta and reveals all secondary exploration paths on request", async ({ page }) => {
+    const exploration = page.getByTestId("home-explore-panel");
+    await exploration.locator("summary").click();
+    await expect(exploration).toHaveAttribute("open", "");
+    await expect(page.locator("[data-testid^='company-card-']")).toHaveCount(6);
+    await expect(page.getByRole("button", { name: /Custom project research Beta/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Browse the facility directory" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "View the AI Chain" })).toBeVisible();
 
-    await page.getByTestId("button-start-nvidia").click();
-    await expect(page.getByTestId("company-exposure-view")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "NVIDIA AI Infrastructure Exposure" })).toBeVisible();
-    await expect(page.getByTestId("company-connection-note")).toContainText("not the magnitude of financial exposure");
-    await expect(page.getByTestId("home-company-announcement")).toContainText("NVIDIA holding context selected");
-
-    const trigger = page.getByTestId("button-analyze-another-project");
-    await trigger.focus();
-    await trigger.click();
+    const customTrigger = page.getByTestId("button-analyze-another-project");
+    await customTrigger.click();
     const dialog = page.getByTestId("custom-project-dialog");
     await expect(dialog).toBeVisible();
-    await expect(page.getByTestId("button-close-custom-project")).toBeFocused();
+    await expect(dialog.getByText(/session-only/i)).toBeVisible();
     await page.getByTestId("button-close-custom-project").click();
     await expect(dialog).toHaveCount(0);
-    await expect(trigger).toBeFocused();
+    await expect(customTrigger).toBeFocused();
   });
 
-  test("routes the two directory links without creating another analysis form", async ({ page }) => {
-    await page.goto("/#home");
-    await expect(page.getByTestId("home-project-path")).toBeVisible();
-    await expect(page.getByTestId("home-custom-analysis")).toHaveCount(0);
+  test("opens the curated Oracle relationship directly into Market Exposure", async ({ page }) => {
+    await page.getByTestId("button-run-stargate").click();
+    await expect(page).toHaveURL(/#analysis$/);
+    await expect(page.getByTestId("conference-view-market")).toBeVisible();
+    await expect(page.getByTestId("tab-market")).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByTestId("market-company")).toContainText("Oracle");
+    await expect(page.getByTestId("market-exposure-chain")).toBeVisible();
+    await expect(page.getByTestId("market-relationship-evidence")).toBeVisible();
+  });
 
-    await page.getByTestId("button-browse-texas-facilities").click();
-    await expect(page).toHaveURL(/#directory$/);
-    await expect(page.getByTestId("compute-atlas-page")).toBeVisible();
+  test("reveals and closes a supported company exploration", async ({ page }) => {
+    await page.getByTestId("home-explore-panel").locator("summary").click();
+    const trigger = page.getByTestId("company-card-nvidia");
+    await trigger.click();
+    await expect(page.getByTestId("company-exposure-view")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "NVIDIA AI Infrastructure Exposure" })).toBeVisible();
+    await expect(page.getByTestId("company-connection-note")).toContainText(
+      "not the magnitude of financial exposure",
+    );
+    await page.getByTestId("button-company-back").click();
+    await expect(page.getByTestId("company-exposure-view")).toHaveCount(0);
   });
 });

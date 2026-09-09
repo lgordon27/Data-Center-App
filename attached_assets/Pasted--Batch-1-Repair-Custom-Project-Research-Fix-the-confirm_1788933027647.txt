@@ -1,0 +1,99 @@
+# Batch 1: Repair Custom Project Research
+
+Fix the confirmed custom-project research failures in SafeLoc Diligence Workbench. Focus only on directory-to-research behavior, research lifecycle state, timeout recovery, and incomplete-result safeguards.
+
+## Confirmed live failures
+
+During a browser walkthrough:
+
+* Clicking `Research · Beta` on GW Ranch did not prefill the facility name or location.
+* Research remained stuck at “Research taking longer than expected, retrying...”
+* The close button did not close the modal.
+* Navigation did not dismiss the modal.
+* The modal persisted over unrelated routes.
+* The user could escape only by selecting `Continue with synthetic assumptions`.
+
+## Required changes
+
+### Directory prefill
+
+When a directory facility’s `Research · Beta` button is clicked:
+
+* Prefill its exact project name.
+* Prefill city, county, and state when available.
+* Pass operator, capacity, and provider ID as directory context.
+* Do not classify directory metadata as verified project evidence.
+
+GW Ranch must prefill:
+
+* Project: GW Ranch
+* Location: Pecos County, Texas
+
+### Bounded progress
+
+Show these stages:
+
+1. Identifying project
+2. Searching public sources
+3. Extracting claims
+4. Evaluating source support
+5. Preparing analysis
+
+Prevent duplicate submissions.
+
+### Cancel, close, and timeout
+
+* Add a working `Cancel research` control during research.
+* The X button must work during loading and after timeout.
+* Closing or canceling must abort or safely ignore the pending request.
+* A pending modal must not follow the user to Home, AI Chain, How It Works, or Directory.
+* Use a bounded timeout.
+* Make retries idempotent.
+
+After timeout, offer:
+
+* Retry research
+* Edit project identity
+* Continue with synthetic assumptions
+* Return to Stargate demonstration
+
+### Partial and incomplete results
+
+If credible sources are found before timeout:
+
+* Retain them.
+* Label the result `Partial public-source research`.
+* Leave unsupported categories as Missing Evidence.
+
+If insufficient evidence is found:
+
+* Label the result `Research Incomplete`.
+* Do not foreground IRR or return conclusions.
+* Do not create an issuer relationship.
+* Do not show a portfolio exposure chain.
+* Require an explicit click before displaying synthetic economics.
+
+Preserve the current working no-origin safeguards.
+
+## Testing
+
+Add tests for:
+
+* Directory prefill
+* GW Ranch identity and location
+* Duplicate-submission prevention
+* Cancel during research
+* Close during research
+* Close after timeout
+* Route changes dismissing the modal
+* Retry behavior
+* Partial source retention
+* Research Incomplete behavior
+* Explicit synthetic-scenario opt-in
+* No issuer or portfolio attribution without a documented relationship
+
+Run typecheck, relevant unit tests, production build, and relevant Playwright tests.
+
+Do not modify financial formulas, homepage copy, How It Works, AI Chain, financial-page layout, evidence-page layout, or global visual styling in this batch.
+
+Report the commit SHA, files changed, tests run, and any remaining failure.

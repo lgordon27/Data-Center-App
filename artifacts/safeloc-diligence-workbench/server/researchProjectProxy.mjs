@@ -363,11 +363,15 @@ function parseResearchProjectBody(body) {
       ? body.knownData.status.trim().slice(0, 80)
       : null;
     const sourceUrl = safePublicSourceUrl(body.knownData.sourceUrl);
+    const providerId = typeof body.knownData.providerId === "string" && body.knownData.providerId.trim()
+      ? body.knownData.providerId.trim().slice(0, 160)
+      : null;
     const normalized = {
       ...(capacity === null ? {} : { capacity }),
       ...(operator ? { operator } : {}),
       ...(status ? { status } : {}),
       ...(sourceUrl ? { sourceUrl } : {}),
+      ...(providerId ? { providerId } : {}),
     };
     if (Object.keys(normalized).length) knownData = normalized;
   }

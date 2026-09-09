@@ -306,17 +306,19 @@ export type ResearchStatusResponse = {
 };
 
 export type CapacityProvenance = "ai-reported" | "directory-reported" | "standardized-default";
-export type ResearchMode = "ai-researched" | "default-assumptions" | "research-incomplete";
+export type ResearchMode = "ai-researched" | "partial-public-source" | "default-assumptions" | "research-incomplete";
 export type KnownProjectData = {
   capacity?: number | null;
   operator?: string | null;
   status?: string | null;
   sourceUrl?: string | null;
+  providerId?: string | null;
 };
-export type ResearchProgress = "researching" | "retrying";
+export type ResearchProgress = "identifying" | "researching" | "extracting" | "evaluating" | "preparing" | "retrying";
 export type ResearchProjectOptions = {
   knownData?: KnownProjectData;
   onProgress?: (progress: ResearchProgress) => void;
+  signal?: AbortSignal;
   focusIds?: string[];
   currentEvidence?: Array<Pick<CustomEvidenceRecord, "id" | "label" | "value" | "classification" | "citation">>;
   forceRefresh?: boolean;
@@ -414,11 +416,13 @@ function normalizeKnownData(value: KnownProjectData | undefined): KnownProjectDa
   const operator = isNonEmptyString(value.operator) ? value.operator.trim().slice(0, 160) : undefined;
   const status = isNonEmptyString(value.status) ? value.status.trim().slice(0, 80) : undefined;
   const sourceUrl = safePublicSourceUrl(value.sourceUrl);
+  const providerId = isNonEmptyString(value.providerId) ? value.providerId.trim().slice(0, 160) : undefined;
   const normalized = {
     ...(capacity === null ? {} : { capacity }),
     ...(operator ? { operator } : {}),
     ...(status ? { status } : {}),
     ...(sourceUrl ? { sourceUrl } : {}),
+    ...(providerId ? { providerId } : {}),
   };
   return Object.keys(normalized).length ? normalized : undefined;
 }
@@ -824,8 +828,10 @@ function parseResponse(value: unknown): CustomResearchResponse {
     },
     researchMode: value.researchMode === "default-assumptions"
       ? "default-assumptions"
-       : eligibleEvidence.length > 0 || (Array.isArray(value.sourceLedger) && value.sourceLedger.length > 0) || Boolean(value.researchCache)
-        ? "ai-researched"
+      : eligibleEvidence.length > 0 || (Array.isArray(value.sourceLedger) && value.sourceLedger.length > 0) || Boolean(value.researchCache)
+        ? eligibleEvidence.length > 0 && containedEvidence.some((item) => item.classification === "Missing Evidence")
+          ? "partial-public-source"
+          : "ai-researched"
         : "research-incomplete",
      ...(parseResearchCache(value.researchCache) ? { researchCache: parseResearchCache(value.researchCache) } : {}),
      semanticPolicyVersion: typeof value.semanticPolicyVersion === "number" ? value.semanticPolicyVersion : EVIDENCE_SEMANTIC_POLICY_VERSION,
@@ -931,6 +937,13 @@ class ResearchTimeoutError extends Error {
   }
 }
 
+class ResearchCancelledError extends Error {
+  constructor() {
+    super("Project research was cancelled.");
+    this.name = "ResearchCancelledError";
+  }
+}
+
 async function requestResearchProject(
   name: string,
   location: string,
@@ -938,11 +951,16 @@ async function requestResearchProject(
   focusIds: string[] | undefined,
   currentEvidence: ResearchProjectOptions["currentEvidence"],
   forceRefresh: boolean,
+  signal: AbortSignal | undefined,
+  onProgress: ResearchProjectOptions["onProgress"],
   fetchImpl: typeof fetch,
 ) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), RESEARCH_PROJECT_TIMEOUT_MS);
+  const abortFromCaller = () => controller.abort();
+  signal?.addEventListener("abort", abortFromCaller, { once: true });
   try {
+    onProgress?.("researching");
     const response = await fetchImpl(RESEARCH_PROJECT_ENDPOINT, {
       method: "POST",
       headers: { accept: "application/json", "content-type": "application/json" },
@@ -964,17 +982,36 @@ async function requestResearchProject(
       body = null;
     }
     if (!response.ok) {
+      if (isRecord(body) && isRecord(body.result)) {
+        onProgress?.("extracting");
+        const partial = parseResponse(body.result);
+        onProgress?.("evaluating");
+        onProgress?.("preparing");
+        const researchMode: ResearchMode = partial.researchMode === "default-assumptions" || partial.researchMode === "research-incomplete"
+          ? partial.researchMode
+          : "partial-public-source";
+        return {
+          ...partial,
+          researchMode,
+        };
+      }
       if (response.status === 504) throw new ResearchTimeoutError();
       const message = isRecord(body) && isNonEmptyString(body.error) ? body.error : "Project research is unavailable. Try again or use the curated case.";
       throw new Error(message);
     }
-    return parseResponse(body);
+    onProgress?.("extracting");
+    const parsed = parseResponse(body);
+    onProgress?.("evaluating");
+    onProgress?.("preparing");
+    return parsed;
   } catch (error) {
+    if (signal?.aborted) throw new ResearchCancelledError();
     if (error instanceof ResearchTimeoutError) throw error;
     if (error instanceof Error && error.name === "AbortError") throw new ResearchTimeoutError();
     throw error instanceof Error ? error : new Error("Project research is unavailable. Try again or use the curated case.");
   } finally {
     clearTimeout(timeout);
+    signal?.removeEventListener("abort", abortFromCaller);
   }
 }
 
@@ -988,11 +1025,12 @@ export async function researchProject(
   const options = typeof optionsOrFetch === "function" ? legacyOptions : optionsOrFetch;
   const knownData = normalizeKnownData(options.knownData);
   const focusIds = options.focusIds?.filter((id) => CUSTOM_EVIDENCE_IDS.includes(id as (typeof CUSTOM_EVIDENCE_IDS)[number]));
-  options.onProgress?.("researching");
+  options.onProgress?.("identifying");
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      return await requestResearchProject(name, location, knownData, focusIds, options.currentEvidence, options.forceRefresh === true, fetchImpl);
+      return await requestResearchProject(name, location, knownData, focusIds, options.currentEvidence, options.forceRefresh === true, options.signal, options.onProgress, fetchImpl);
     } catch (error) {
+      if (error instanceof ResearchCancelledError) throw error;
       if (error instanceof ResearchTimeoutError && attempt === 0) {
         options.onProgress?.("retrying");
         continue;

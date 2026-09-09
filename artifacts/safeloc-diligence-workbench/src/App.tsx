@@ -89,6 +89,15 @@ function AppShell() {
   const menuWasOpen = useRef(false);
 
   useEffect(() => {
+    const returnToCurated = () => {
+      diligence.resetToDefault();
+      go("analysis");
+    };
+    window.addEventListener("safeloc-return-to-curated", returnToCurated);
+    return () => window.removeEventListener("safeloc-return-to-curated", returnToCurated);
+  }, [diligence]);
+
+  useEffect(() => {
     if (!diligence.metrics.lastChange) return undefined;
     const timer = window.setTimeout(diligence.clearLastChange, 8000);
     return () => window.clearTimeout(timer);

@@ -433,7 +433,7 @@ test("retries one timeout response and reports retry progress", async () => {
   });
   assert.equal(result.evidence.length, 16);
   assert.equal(calls, 2);
-  assert.deepEqual(progress, ["researching", "retrying"]);
+  assert.deepEqual(progress, ["identifying", "researching", "retrying", "researching", "extracting", "evaluating", "preparing"]);
 });
 
 test("does not retry non-timeout failures", async () => {

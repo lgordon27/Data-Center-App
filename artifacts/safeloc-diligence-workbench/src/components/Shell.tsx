@@ -41,6 +41,7 @@ import {
   type EvidenceCompletenessTier
 } from "@/model/advisorLens";
 import { CustomProjectDialog } from "@/pages/Home";
+import type { KnownProjectData } from "@/services/researchProjectService";
 import type { ImpactRole } from "@/data/evidenceImpactRoles";
 
 export type Screen = "brief" | "evidence" | "materiality" | "decision" | "advisor";
@@ -262,18 +263,30 @@ export function ProgressNav({ current, onNavigate }: { current: Screen; onNaviga
 export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, onDirectory, onWorkbench, route, sessionRestored, mobileOpen, menuButtonRef }: { onMenu: () => void; onReset: () => void; onHome: () => void; onHowItWorks: () => void; onValueChain: () => void; onDirectory: () => void; onWorkbench: () => void; onAnalyzeCustom?: () => void; route: AppRoute; sessionRestored: boolean; mobileOpen: boolean; menuButtonRef: RefObject<HTMLButtonElement | null> }) {
   const { sessionMigrated, project, loadCustomProject } = useDiligence();
   const [customProjectOpen, setCustomProjectOpen] = useState(false);
+  const [customProjectPrefill, setCustomProjectPrefill] = useState<{ name: string; location: string; knownData?: KnownProjectData } | null>(null);
   const dialogReturnFocus = useRef<HTMLElement | null>(null);
+  const previousRoute = useRef(route);
   const isHome = route === "home";
-  const openCustomProject = () => {
+  const openCustomProject = (event?: Event) => {
     dialogReturnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const detail = event instanceof CustomEvent ? event.detail as { name?: string; location?: string; knownData?: KnownProjectData } : undefined;
+    setCustomProjectPrefill(detail?.name && detail?.location ? { name: detail.name, location: detail.location, knownData: detail.knownData } : null);
     setCustomProjectOpen(true);
   };
   useEffect(() => {
     window.addEventListener("safeloc-open-custom-project", openCustomProject);
     return () => window.removeEventListener("safeloc-open-custom-project", openCustomProject);
   }, []);
+  useEffect(() => {
+    if (previousRoute.current !== route && customProjectOpen) {
+      setCustomProjectOpen(false);
+      setCustomProjectPrefill(null);
+    }
+    previousRoute.current = route;
+  }, [customProjectOpen, route]);
   const closeCustomProject = () => {
     setCustomProjectOpen(false);
+    setCustomProjectPrefill(null);
     window.setTimeout(() => dialogReturnFocus.current?.focus(), 0);
   };
   return (
@@ -303,7 +316,7 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
         </div>
         <div className={`hidden flex-1 items-center justify-center lg:flex ${isHome ? "opacity-0" : ""}`} aria-hidden={isHome}>
           <div className="text-center">
-             <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-[#b9d43a]">{project.kind === "custom" ? project.researchMode === "default-assumptions" ? "Default assumptions · research unavailable" : project.researchMode === "research-incomplete" ? "Research incomplete · no validated sources" : "AI-researched · high-level project" : "Current project"}</div>
+             <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-[#b9d43a]">{project.kind === "custom" ? project.researchMode === "default-assumptions" ? "Default assumptions · research unavailable" : project.researchMode === "research-incomplete" ? "Research incomplete · no validated sources" : project.researchMode === "partial-public-source" ? "Partial public-source research" : "AI-researched · high-level project" : "Current project"}</div>
               <div className="mt-1 text-[10px] text-[#96a4ad]">{project.name} / {project.location} · Advisor demonstration</div>
           </div>
         </div>
@@ -362,6 +375,11 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
     <CustomProjectDialog
       open={customProjectOpen}
       onClose={closeCustomProject}
+      initialValues={customProjectPrefill ?? undefined}
+      onReturnToCurated={() => {
+        closeCustomProject();
+        window.dispatchEvent(new Event("safeloc-return-to-curated"));
+      }}
       onSuccess={(research) => {
         loadCustomProject(research);
         closeCustomProject();
@@ -380,7 +398,7 @@ export function ShellAside({ screen, metrics, onNavigate, onReset }: { screen: S
       <SectionKicker>Active mandate</SectionKicker>
       <div className="mb-7">
          <div className="font-mono text-[11px] font-bold text-[#122232]">{project.kind === "custom" ? "CUSTOM / SESSION-ONLY" : "STARGATE / ABI-26-001"}</div>
-          <div className="mt-1 text-xs leading-5 text-[#52616b]">{project.kind === "custom" ? project.researchMode === "default-assumptions" ? "Default-assumptions project" : project.researchMode === "research-incomplete" ? "Research Incomplete" : "AI-researched project" : "AI infrastructure diligence case"}</div>
+          <div className="mt-1 text-xs leading-5 text-[#52616b]">{project.kind === "custom" ? project.researchMode === "default-assumptions" ? "Default-assumptions project" : project.researchMode === "research-incomplete" ? "Research Incomplete" : project.researchMode === "partial-public-source" ? "Partial public-source research" : "AI-researched project" : "AI infrastructure diligence case"}</div>
       </div>
       <div className="mb-8 rounded-lg border border-[#cbd8d4] bg-[#f9faf8] p-3.5">
         <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#60707d]">
@@ -431,11 +449,12 @@ export function CustomResearchBanner() {
   const { project } = useDiligence();
   if (project.kind !== "custom") return null;
   const isDefaultAssumptions = project.researchMode === "default-assumptions";
+  const isPartialResearch = project.researchMode === "partial-public-source";
   const isResearchIncomplete = project.researchMode === "research-incomplete";
   return (
     <aside data-testid="custom-research-banner" role="note" className="mb-5 flex items-start gap-3 rounded-lg border-2 border-[#f1cb8b] bg-[#fff8e9] px-4 py-3 text-[#6f460e]">
       <TriangleAlert aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
-      <p className="text-[11px] leading-5"><strong className="font-semibold">{isDefaultAssumptions ? "Default assumptions · AI research unavailable" : isResearchIncomplete ? "RESEARCH INCOMPLETE · no eligible sources" : "Custom research · not yet accepted into the model"}: {project.name}.</strong> {isDefaultAssumptions ? "All modeled evidence remains Missing Evidence. Directory facts provide identity context only and do not count as SafeLoc evidence." : isResearchIncomplete ? "Generated content is retained only under Unverified leads. It cannot become a model input until a source-backed proposal passes containment and a reviewer explicitly accepts it." : "Research findings are proposals only. Loading, reviewing, refreshing, and caching them cannot change accepted economics; only explicit acceptance of an eligible proposal can do so."} Financial outputs remain synthetic assumptions scaled to the displayed capacity.</p>
+      <p className="text-[11px] leading-5"><strong className="font-semibold">{isDefaultAssumptions ? "Default assumptions · AI research unavailable" : isResearchIncomplete ? "RESEARCH INCOMPLETE · no eligible sources" : isPartialResearch ? "Partial public-source research" : "Custom research · not yet accepted into the model"}: {project.name}.</strong> {isDefaultAssumptions ? "All modeled evidence remains Missing Evidence. Directory facts provide identity context only and do not count as SafeLoc evidence." : isResearchIncomplete ? "Generated content is retained only under Unverified leads. It cannot become a model input until a source-backed proposal passes containment and a reviewer explicitly accepts it." : isPartialResearch ? "Credible public-source passages are retained, while unsupported categories remain Missing Evidence. Financial outputs remain synthetic and no return conclusion is presented." : "Research findings are proposals only. Loading, reviewing, refreshing, and caching them cannot change accepted economics; only explicit acceptance of an eligible proposal can do so."} Financial outputs remain synthetic assumptions scaled to the displayed capacity.</p>
     </aside>
   );
 }

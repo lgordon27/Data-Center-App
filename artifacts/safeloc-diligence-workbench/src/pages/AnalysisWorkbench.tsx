@@ -66,8 +66,8 @@ function ConferenceWorkbench({ onResolveEvidence, onReset, focusSectionId }: Pro
             <h1 className="break-words text-lg font-semibold text-[#122232]">{project.name}</h1>
             <p className="break-words text-[11px] text-[#52616b]">{project.location}</p>
           </div>
-          <span data-testid="conference-research-status" className={`rounded-md px-3 py-2 text-[11px] font-semibold ${incomplete ? "bg-[#fff0d6] text-[#805000]" : "bg-[#e5eeea] text-[#365b4c]"}`}>
-            {incomplete ? "Research Incomplete" : project.kind === "custom" ? "Project evidence review" : "Curated public-source demonstration"}
+           <span data-testid="conference-research-status" className={`rounded-md px-3 py-2 text-[11px] font-semibold ${incomplete ? "bg-[#fff0d6] text-[#805000]" : "bg-[#e5eeea] text-[#365b4c]"}`}>
+             {project.researchMode === "partial-public-source" ? "Partial public-source research" : incomplete ? "Research Incomplete" : project.kind === "custom" ? "Project evidence review" : "Curated public-source demonstration"}
           </span>
         </div>
       </div>

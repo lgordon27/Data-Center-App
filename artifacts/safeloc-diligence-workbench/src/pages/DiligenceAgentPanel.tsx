@@ -64,7 +64,7 @@ function describeFinding(finding: AgentFinding, evidence: Record<string, Evidenc
     return {
       current: first ? first.classification : "Current record",
       proposed: finding.proposedClassification ?? "Awaiting proposal",
-      effect: "No return metric changes until an analyst accepts a reclassification.",
+      effect: "No return metric changes until a human approves a reclassification.",
     };
   }
   if (finding.kind === "relationship") {
@@ -78,23 +78,22 @@ function describeFinding(finding: AgentFinding, evidence: Record<string, Evidenc
     return {
       current: finding.evidenceIds.map((id) => evidence[id]?.label).filter(Boolean).join("; ") || "Current evidence record",
       proposed: "Review topic prepared",
-      effect: "No return metric changes until an analyst accepts.",
+      effect: "No return metric changes until a human approves.",
     };
   }
   return {
     current: "Scoped from project identity",
-    proposed: "Ready for analyst review",
+    proposed: "Ready for human review",
     effect: "Governs review scope only; no evidence or economics change.",
   };
 }
 
 function FindingCard({ finding }: { finding: AgentFinding }) {
-  const { agentRun, evidence, reviewAgentFinding, reverseAgentChange, agentProposalsStale } = useDiligence();
+  const { agentRun, evidence, reviewAgentFinding, reverseAgentChange } = useDiligence();
   const { openDrawer } = useWorkbenchDrawer();
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [overrideClassification, setOverrideClassification] = useState<Classification>(finding.currentClassification ?? "Missing Evidence");
   const [overrideNote, setOverrideNote] = useState("");
-  const [overrideValue, setOverrideValue] = useState(String(finding.proposedValue ?? finding.currentValue ?? ""));
   const linkedRelationship = agentRun.relationships.find((rel) => rel.findingId === finding.id && finding.kind === "relationship");
   const presentation = describeFinding(finding, evidence, linkedRelationship?.relationship);
   const evidenceLabels = finding.evidenceIds.map((id) => evidence[id]?.label ?? id);
@@ -104,14 +103,14 @@ function FindingCard({ finding }: { finding: AgentFinding }) {
   const openDetails = (event: React.MouseEvent<HTMLButtonElement>) => {
     openDrawer({
       key: `agent-finding:${finding.id}`,
-      kicker: "Proposed finding · analyst action",
+      kicker: "Proposed finding · human review required",
       title: finding.title,
       render: () => (
         <div className="space-y-4">
           <DrawerSection label="Proposal">
             <div className="grid gap-2 sm:grid-cols-2">
-              <DrawerField label="Current value / classification" value={`${finding.currentValue ?? presentation.current} · ${finding.currentClassification ?? "Not classified"}`} />
-              <DrawerField label="Proposed value / classification" value={`${finding.proposedValue ?? presentation.proposed} · ${finding.proposedClassification ?? "No model change"}`} />
+              <DrawerField label="Current value" value={presentation.current} />
+              <DrawerField label="Proposed value" value={presentation.proposed} />
             </div>
             <p>{finding.summary}</p>
             <div className="grid gap-2 sm:grid-cols-2">
@@ -120,9 +119,7 @@ function FindingCard({ finding }: { finding: AgentFinding }) {
             </div>
           </DrawerSection>
           <DrawerSection label="Decision effect">
-            <DrawerField label="Affected financial-model line" value={finding.affectedModelLine ?? "No direct modeled line"} />
-            <p>{finding.estimatedMetricEffect ?? finding.financialPreview}</p>
-            <p>{finding.estimatedRecommendationEffect ?? "No recommendation effect estimated."}</p>
+            <p>{finding.financialPreview}</p>
             <p>{finding.decisionPosture}</p>
           </DrawerSection>
           <DrawerSection label="Evidence and sources">
@@ -132,16 +129,10 @@ function FindingCard({ finding }: { finding: AgentFinding }) {
               <p>No project evidence records are attached to this proposal.</p>
             )}
             <div className="grid gap-2 sm:grid-cols-2">
-              <DrawerField label="Raw value / units" value={`${finding.rawValue ?? "Not retained"} ${finding.rawUnit ?? ""}`.trim()} />
-              <DrawerField label="Normalized value / units" value={`${finding.normalizedValue ?? "Not retained"} ${finding.normalizedUnit ?? ""}`.trim()} />
-              <DrawerField label="Source eligibility" value={finding.eligibility ?? "unresolved"} />
-              <DrawerField label="Project relevance" value={finding.exactProjectRelevance ?? "unresolved"} />
               <DrawerField label="Source support" value={finding.sourceSupportConfidence === null ? "Not rated" : `${Math.round(finding.sourceSupportConfidence * 100)}% of cited sources support`} />
               <DrawerField label="Model self-rating" value={finding.modelReportedConfidence === null ? "Not provided" : `${Math.round(finding.modelReportedConfidence * 100)}% (self-reported, not a probability)`} />
             </div>
-            {finding.exactClaim && <p><strong>Exact supporting claim:</strong> {finding.exactClaim}</p>}
-            {finding.exactPassage && <blockquote className="border-l-2 border-[#aac6f4] pl-3">{finding.exactPassage}</blockquote>}
-            {finding.supportingSources.length > 0 && <ul className="space-y-2">{finding.supportingSources.map((source) => <li key={source.sourceId} className="rounded border border-[#e0e4e0] bg-[#fafbfa] p-2"><strong>{source.title}</strong> · {source.classification}<span className="mt-1 block">{source.claimPassage ?? source.excerpt}</span>{source.url && <a className="mt-1 block text-[#255bb7] underline" href={source.url} target="_blank" rel="noreferrer">Open retained source</a>}</li>)}</ul>}
+            {finding.supportingSources.length > 0 && <ul className="space-y-2">{finding.supportingSources.map((source) => <li key={source.sourceId} className="rounded border border-[#e0e4e0] bg-[#fafbfa] p-2"><strong>{source.title}</strong> · {source.classification}<span className="mt-1 block">{source.excerpt}</span></li>)}</ul>}
           </DrawerSection>
           <DrawerSection label="Audit">
             <div className="grid gap-2 sm:grid-cols-2">
@@ -149,7 +140,7 @@ function FindingCard({ finding }: { finding: AgentFinding }) {
               <DrawerField label="Agent run" value={agentRun.runId ?? "No active run"} />
             </div>
             {finding.reviewerNote && <p>Reviewer note: {finding.reviewerNote}</p>}
-            <p className="text-[#7c8b93]">Recorded {agentRun.completedAt ?? agentRun.startedAt ?? "—"} · the preview remains separate from accepted state until an analyst acts.</p>
+            <p className="text-[#7c8b93]">Recorded {agentRun.completedAt ?? agentRun.startedAt ?? "—"} · the preview is immutable until a human authorizes a change.</p>
           </DrawerSection>
         </div>
       ),
@@ -181,14 +172,12 @@ function FindingCard({ finding }: { finding: AgentFinding }) {
          <div className="rounded-md border border-[#e0e4e0] bg-[#f8faf8] px-2.5 py-1.5"><div className="font-mono text-[8px] font-bold uppercase tracking-[0.12em] text-[#7c8b93]">Source support</div><div className="mt-0.5 text-[10px] font-semibold text-[#1c2b33]">{finding.sourceSupportConfidence === null ? "Not validated" : `${Math.round(finding.sourceSupportConfidence * 100)}%`} · {finding.supportingSources.length} source{finding.supportingSources.length === 1 ? "" : "s"}</div></div>
        </div>
        <p className="mt-2 border-l-2 border-[#d4e86b] pl-2 text-[9px] font-semibold leading-4 text-[#33454e]">Financial preview: {finding.financialPreview}</p>
-       {agentProposalsStale && finding.decision === "pending" && <div role="alert" data-testid={`agent-stale-${finding.id}`} className="mt-3 rounded-md border border-[#d99a47] bg-[#fff7e8] p-3 text-[9px] leading-4 text-[#704600]"><strong>Proposal is stale.</strong> Refresh it, or deliberately apply it against the newer state.</div>}
        <p className="mt-1 border-l-2 border-[#aac6f4] pl-2 text-[9px] leading-4 text-[#52616b]">Decision posture: {finding.decisionPosture}</p>
        {finding.supportingSources.length > 0 && <p className="mt-2 text-[9px] leading-4 text-[#60707d]"><strong>Supporting source:</strong> {finding.supportingSources[0].title} — {finding.supportingSources[0].excerpt}</p>}
        <p className="mt-2 text-[9px] leading-4 text-[#52616b]"><strong>Reasoning:</strong> {finding.reasoning}</p>
       {evidenceLabels.length > 0 && <div className="mt-3 flex flex-wrap gap-1.5">{evidenceLabels.map((label) => <span key={label} className="rounded-full border border-[#d9e0e4] bg-[#f7f9f8] px-2 py-1 text-[8px] text-[#52616b]">{label}</span>)}</div>}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-         {!decided && !agentProposalsStale && <ReviewButtons finding={finding} onOverride={() => setOverrideOpen(true)} />}
-         {!decided && agentProposalsStale && finding.consequential && <button data-testid={`agent-apply-stale-${finding.id}`} type="button" onClick={() => reviewAgentFinding(finding.id, "accepted", undefined, undefined, true)} className="min-h-10 rounded-md border border-[#a76516] bg-white px-3 font-mono text-[8px] font-bold uppercase text-[#704600]">Apply against newer state</button>}
+         {!decided && <ReviewButtons finding={finding} onOverride={() => setOverrideOpen(true)} />}
         <button
           data-testid={`button-agent-finding-details-${finding.id}`}
           type="button"
@@ -201,7 +190,7 @@ function FindingCard({ finding }: { finding: AgentFinding }) {
       {appliedChange && <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-[#a9d7c8] bg-[#f1fbf6] px-3 py-2 text-[9px] text-[#0e3e2f]"><span><strong>Applied and audited.</strong> Before: {appliedChange.beforeClassification}; after: {appliedChange.finalClassification}.</span><button data-testid={`agent-reverse-${finding.id}`} type="button" onClick={() => reverseAgentChange(appliedChange.id)} className="min-h-8 rounded border border-[#0e3e2f] px-2 font-mono text-[8px] font-bold uppercase tracking-[0.08em]">Reverse change</button></div>}
       {overrideOpen && finding.action === "reclassify-evidence" && (
         <div data-testid={`agent-override-form-${finding.id}`} className="mt-3 rounded-md border border-[#cbb7ec] bg-[#f8f4fd] p-3">
-          <div className="font-mono text-[8px] font-bold uppercase tracking-[0.11em] text-[#7049b7]">Confirm analyst override</div>
+          <div className="font-mono text-[8px] font-bold uppercase tracking-[0.11em] text-[#7049b7]">Confirm human override</div>
           <p className="mt-1 text-[9px] leading-4 text-[#5e5870]">The AI proposal stays recorded separately. Choose the final classification and confirm before any metric recalculation.</p>
           <label className="mt-2 block text-[9px] font-semibold text-[#52616b]">Final classification
             <select data-testid={`agent-override-classification-${finding.id}`} value={overrideClassification} onChange={(event) => setOverrideClassification(event.target.value as Classification)} className="mt-1 block min-h-9 w-full rounded border border-[#cbb7ec] bg-white px-2 text-[10px] text-[#243844]">
@@ -211,11 +200,8 @@ function FindingCard({ finding }: { finding: AgentFinding }) {
           <label className="mt-2 block text-[9px] font-semibold text-[#52616b]">Reviewer note
             <textarea data-testid={`agent-override-note-${finding.id}`} value={overrideNote} onChange={(event) => setOverrideNote(event.target.value)} className="mt-1 block min-h-16 w-full rounded border border-[#cbb7ec] bg-white p-2 text-[10px] text-[#243844]" placeholder="Why does the source support this final value?" />
           </label>
-          <label className="mt-2 block text-[9px] font-semibold text-[#52616b]">Final value
-            <input data-testid={`agent-override-value-${finding.id}`} value={overrideValue} onChange={(event) => setOverrideValue(event.target.value)} className="mt-1 block min-h-9 w-full rounded border border-[#cbb7ec] bg-white px-2 text-[10px] text-[#243844]" />
-          </label>
           <div className="mt-2 flex flex-wrap gap-2">
-            <button data-testid={`agent-confirm-override-${finding.id}`} type="button" onClick={() => { reviewAgentFinding(finding.id, "overridden", overrideClassification, overrideNote, agentProposalsStale, overrideValue); setOverrideOpen(false); }} className="rounded bg-[#7049b7] px-3 py-2 font-mono text-[8px] font-bold uppercase text-white">Confirm override</button>
+            <button data-testid={`agent-confirm-override-${finding.id}`} type="button" onClick={() => { reviewAgentFinding(finding.id, "overridden", overrideClassification, overrideNote); setOverrideOpen(false); }} className="rounded bg-[#7049b7] px-3 py-2 font-mono text-[8px] font-bold uppercase text-white">Confirm override</button>
             <button type="button" onClick={() => setOverrideOpen(false)} className="rounded border border-[#cbb7ec] bg-white px-3 py-2 font-mono text-[8px] font-bold uppercase text-[#7049b7]">Cancel</button>
           </div>
         </div>
@@ -248,7 +234,7 @@ const lensBridgeCopy: Record<AgentLensId, { heading: string; steps: string[]; no
 };
 
 export function DiligenceAgentPanel() {
-  const { agentRun, runDiligenceAgent, retryDiligenceStage, originatingCompany, bulkReviewAgentFindings, agentProposalsStale, activityHistory } = useDiligence();
+  const { agentRun, runDiligenceAgent, retryDiligenceStage, originatingCompany } = useDiligence();
   const [activeLens, setActiveLens] = useState<AgentLensId>(originatingCompany ? "financial-advisor" : "project-investor");
   const isRunning = agentRun.status === "running";
   const completedCount = agentRun.stages.filter((stage) => stage.status === "completed").length;
@@ -263,9 +249,9 @@ export function DiligenceAgentPanel() {
       <section data-testid="diligence-agent-panel" className="overflow-hidden rounded-xl border border-[#243844] bg-[#122232] text-white" aria-labelledby="diligence-agent-heading">
         <div className="grid gap-0 lg:grid-cols-[1.25fr_.75fr]">
           <div className="p-5 md:p-7">
-            <SectionKicker tone="lime" className="!text-[#d4e86b]">Analyst review assistant</SectionKicker>
-            <h2 id="diligence-agent-heading" className="max-w-2xl text-[24px] font-semibold leading-[1.08] tracking-[-0.04em] md:text-[30px]">Research, compare, decide.</h2>
-            <p className="mt-3 max-w-2xl text-[11px] leading-5 text-[#b9c7cd]">The assistant reads retained research operations, matches source passages to evidence variables, previews the existing financial model, and prepares proposals. Nothing accepted changes until you act.</p>
+            <SectionKicker tone="lime" className="!text-[#d4e86b]">Governed diligence agent</SectionKicker>
+            <h2 id="diligence-agent-heading" className="max-w-2xl text-[24px] font-semibold leading-[1.08] tracking-[-0.04em] md:text-[30px]">Run the review. Keep the decision human.</h2>
+            <p className="mt-3 max-w-2xl text-[11px] leading-5 text-[#b9c7cd]">The agent prepares bounded review proposals from the current evidence. It cannot approve evidence, alter economics, infer legal conclusions, or make an investment recommendation.</p>
             <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
               <button
                 data-testid="button-run-diligence-agent"
@@ -275,7 +261,7 @@ export function DiligenceAgentPanel() {
                 className="inline-flex min-h-12 items-center justify-center gap-2 rounded-md bg-[#d4e86b] px-5 font-mono text-[10px] font-bold uppercase tracking-[0.11em] text-[#122232] hover:bg-[#e1ef8a] disabled:cursor-wait disabled:opacity-70"
               >
                 {isRunning ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <Sparkles aria-hidden="true" className="h-4 w-4" />}
-                {isRunning ? "Preparing proposals" : agentRun.runId ? "Refresh proposals" : "Prepare proposals"}
+                {isRunning ? "Running diligence agent" : agentRun.runId ? "Run diligence agent again" : "Run Diligence Agent"}
               </button>
               <div data-testid="agent-run-status" role="status" aria-live="polite" className="inline-flex min-h-10 items-center gap-2 rounded-md border border-white/15 bg-white/5 px-3 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#dce5e8]">
                 <span className={`h-2 w-2 rounded-full ${agentRun.status === "review-ready" ? "bg-[#d4e86b]" : agentRun.status === "running" ? "animate-pulse bg-[#7aa7ed]" : agentRun.status.includes("failure") || agentRun.status === "failed" ? "bg-[#ef8193]" : "bg-[#82939c]"}`} />
@@ -295,31 +281,29 @@ export function DiligenceAgentPanel() {
             <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 font-mono text-[9px] uppercase tracking-[0.08em] text-[#a7bbc2]">
               <span data-testid="agent-retrieved-source-count">Retrieved sources: {agentRun.retrievedSourceCount}</span>
               <span data-testid="agent-validated-source-count">Validated sources: {agentRun.validatedSourceCount}</span>
-              <span>Stages: recorded operations</span>
+              <span>Stages: presentation only</span>
             </div>
           </div>
           <div className="border-t border-white/10 bg-white/[0.04] p-5 lg:border-l lg:border-t-0 md:p-7">
-            <div className="font-mono text-[9px] font-bold uppercase tracking-[0.15em] text-[#d4e86b]">Fast analyst controls</div>
+            <div className="font-mono text-[9px] font-bold uppercase tracking-[0.15em] text-[#d4e86b]">Control boundary</div>
             <div className="mt-4 space-y-3 text-[10px] leading-4 text-[#c6d2d7]">
               {[
                 "Approved-source and current-record review only",
                 "Completed stages survive a partial failure",
                 "Confidence never promotes provenance",
-                "One-click Accept, plus Override, Reject, or Leave unresolved",
+                "Accept, Override, Reject, or Leave Unresolved",
               ].map((item) => <div key={item} className="flex gap-2"><ShieldCheck aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#d4e86b]" /><span>{item}</span></div>)}
             </div>
           </div>
         </div>
       </section>
 
-      {agentProposalsStale && <div data-testid="agent-stale-warning" role="alert" className="rounded-lg border border-[#d99a47] bg-[#fff7e8] p-4 text-[10px] leading-5 text-[#704600]"><strong>Proposals are stale.</strong> Evidence, source lineage, model inputs, or project identity changed after they were prepared. Refresh proposals, or deliberately apply an individual proposal against the newer state.</div>}
-
        <Disclosure title="View activity" testId="agent-activity-disclosure" className="mt-4">
        <section data-testid="agent-stage-list" className="rounded-xl border-0 bg-transparent p-0" aria-labelledby="agent-stages-heading">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <SectionKicker>Stage progress</SectionKicker>
-            <h3 id="agent-stages-heading" className="text-[19px] font-semibold tracking-[-0.025em] text-[#122232]">Ten recorded operations</h3>
+            <h3 id="agent-stages-heading" className="text-[19px] font-semibold tracking-[-0.025em] text-[#122232]">Ten bounded stages</h3>
           </div>
           <span className="font-mono text-[8px] uppercase tracking-[0.1em] text-[#71818a]">Waiting · Running · Complete · Needs review · Could not complete</span>
         </div>
@@ -389,11 +373,11 @@ export function DiligenceAgentPanel() {
           <section data-testid="agent-review-package" className="rounded-xl border border-[#cbd8d4] bg-[#f8faf8] p-4 md:p-6" aria-labelledby="agent-review-heading">
             <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
               <div>
-                 <SectionKicker tone="lime">Analyst action</SectionKicker>
-                 <h3 id="agent-review-heading" tabIndex={-1} className="scroll-mt-28 text-[21px] font-semibold tracking-[-0.03em] text-[#122232] outline-none">Review proposed findings</h3>
-                 <p className="mt-2 max-w-3xl text-[10px] leading-4 text-[#60707d]">Accepting or overriding an eligible proposal updates accepted evidence and recalculates the existing model. Reject and Leave unresolved preserve the model. Project evidence never establishes issuer, security, fund, or portfolio materiality by itself.</p>
+                <SectionKicker tone="lime">Human Review Required</SectionKicker>
+                <h3 id="agent-review-heading" tabIndex={-1} className="scroll-mt-28 text-[21px] font-semibold tracking-[-0.03em] text-[#122232] outline-none">Review proposed findings</h3>
+                <p className="mt-2 max-w-3xl text-[10px] leading-4 text-[#60707d]">Each proposal shows the current value, the proposed value, and its financial effect. Accepting a proposal does not reclassify evidence, change a financial assumption, establish issuer materiality, or approve an investment — and no return metric changes until a human approves.</p>
               </div>
-               <div className="flex flex-wrap items-center gap-2"><button data-testid="agent-bulk-accept" type="button" disabled={agentProposalsStale} onClick={() => bulkReviewAgentFindings("accepted")} className="min-h-10 rounded-md bg-[#365b4c] px-3 font-mono text-[8px] font-bold uppercase text-white disabled:opacity-40">Accept non-conflicting</button><button data-testid="agent-bulk-reject" type="button" disabled={agentProposalsStale} onClick={() => bulkReviewAgentFindings("rejected")} className="min-h-10 rounded-md border border-[#9b3d4d] bg-white px-3 font-mono text-[8px] font-bold uppercase text-[#9b3d4d] disabled:opacity-40">Reject non-conflicting</button><span data-testid="agent-review-count" className="font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#52616b]">{reviewedCount}/{agentRun.proposedFindings.length} dispositioned</span></div>
+              <span data-testid="agent-review-count" className="font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#52616b]">{reviewedCount}/{agentRun.proposedFindings.length} dispositioned</span>
             </div>
             <div className="mt-5 grid gap-3 lg:grid-cols-2">
               {agentRun.proposedFindings.map((finding) => (
@@ -402,9 +386,9 @@ export function DiligenceAgentPanel() {
             </div>
           </section>
 
-           <Disclosure title="Analyst decision history" testId="agent-audit-timeline" defaultOpen={agentRun.auditEvents.length > 0}>
+          <Disclosure title="Governed audit history" testId="agent-audit-timeline" defaultOpen={agentRun.auditEvents.length > 0}>
             <p className="mb-3 text-[10px] leading-4 text-[#60707d]">Every accepted, overridden, rejected, unresolved, and reversed outcome remains visible. Audit events do not themselves change evidence.</p>
-            {agentRun.auditEvents.length === 0 ? <p className="text-[10px] text-[#71818a]">No analyst decisions recorded yet.</p> : (
+            {agentRun.auditEvents.length === 0 ? <p className="text-[10px] text-[#71818a]">No reviewer decisions recorded yet.</p> : (
               <ol className="space-y-2">
                 {[...agentRun.auditEvents].reverse().map((event) => (
                   <li key={event.id} data-testid={`agent-audit-event-${event.id}`} className="rounded-md border border-[#d9e0e4] bg-white p-3 text-[9px] leading-4 text-[#52616b]">
@@ -416,14 +400,6 @@ export function DiligenceAgentPanel() {
               </ol>
             )}
           </Disclosure>
-
-           <Disclosure title="Research and financial lineage" testId="financial-lineage-history">
-             <p className="mb-3 text-[10px] leading-4 text-[#60707d]">Append-only events retain research, proposal, analyst action, reversal, scenario, and recalculation lineage. Corrections add events; they do not rewrite prior history.</p>
-             <ol className="max-h-96 space-y-2 overflow-auto">
-               {[...activityHistory].reverse().map((event) => <li key={event.id} data-testid={`lineage-event-${event.id}`} className="rounded-md border border-[#d9e0e4] bg-white p-3 text-[9px] leading-4 text-[#52616b]"><div className="flex flex-wrap gap-2"><strong className="text-[#243844]">{event.action.replaceAll("-", " ")}</strong><span>{event.actor}</span><time dateTime={event.recordedAt}>{event.recordedAt}</time></div><div>{event.evidenceId ?? event.proposalId ?? event.scenarioId ?? event.projectKey}</div>{event.modelEffect && <div>{event.modelEffect}</div>}{event.passage && <details><summary className="cursor-pointer">Supporting passage</summary><blockquote className="mt-1 border-l-2 pl-2">{event.passage}</blockquote></details>}</li>)}
-               {!activityHistory.length && <li className="text-[10px] text-[#71818a]">No lineage events recorded yet.</li>}
-             </ol>
-           </Disclosure>
 
           <section data-testid="agent-lenses" className="rounded-xl border border-[#d9e0e4] bg-white p-4 md:p-6" aria-labelledby="agent-lenses-heading">
             <SectionKicker>One record · three lenses</SectionKicker>

@@ -4,7 +4,6 @@ import { ClaimCitation } from "@/components/ClaimCitation";
 import { ClassificationBadge } from "@/components/Shell";
 import { EvidenceRoom } from "@/pages/EvidenceRoom";
 import { getCommunityDocumentation, getConferenceEvidenceSummary } from "@/model/conferenceEvidence";
-import { DiligenceAgentPanel } from "@/pages/DiligenceAgentPanel";
 
 const categories = [
   { name: "Power", ids: ["grid_interconnection", "electricity_cost", "electricity_escalation", "backup_power_capacity", "renewable_percentage"] },
@@ -63,7 +62,6 @@ export function ProjectReality({ evidenceOpen, onEvidenceOpenChange, onNavigate 
         </details>
       </div>
       </>}
-      <DiligenceAgentPanel />
       <div className="rounded-lg border border-[#cbd8d4] bg-white">
         <button type="button" data-testid="button-detailed-evidence" aria-expanded={evidenceOpen} aria-controls="conference-evidence-detail" onClick={() => onEvidenceOpenChange(!evidenceOpen)} className="flex min-h-12 w-full items-center justify-between gap-3 px-5 py-3 text-left text-sm font-semibold">
           Detailed Evidence Record<ChevronDown aria-hidden="true" className={`h-4 w-4 shrink-0 transition-transform ${evidenceOpen ? "rotate-180" : ""}`} />

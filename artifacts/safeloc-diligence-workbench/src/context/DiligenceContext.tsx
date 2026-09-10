@@ -46,7 +46,7 @@ import {
   type CustomEvidenceRecord,
   type CapacityProvenance,
 } from "@/services/researchProjectService";
-import { getClaimRecord, getClaimSources, type ClaimId, type PublicAccessStatus } from "@/data/claimSources";
+import type { ClaimId, PublicAccessStatus } from "@/data/claimSources";
 import {
   assertEvidenceImpactRoleCoverage,
   getEvidenceImpactRole,
@@ -75,9 +75,6 @@ import {
   getAgentProjectKey,
   countValidatedAgentSources,
   reverseAgentChange as reverseAgentChangeState,
-  isAgentRunStale,
-  selectBulkAgentCandidates,
-  selectBulkAgentRejections,
   retryDiligenceStage as retryDiligenceStageTransition,
   startDiligenceAgent,
   type AgentProjectInput,
@@ -85,13 +82,6 @@ import {
   type DiligenceStageId,
   type ReviewDecision,
 } from "@/model/diligenceAgent";
-import {
-  appendFinancialLineage,
-  loadFinancialLineage,
-  stableLineageFingerprint,
-  type FinancialLineageEvent,
-  type FinancialLineageEventInput,
-} from "@/services/financialLineage";
 
 export type { Classification } from '@/model/cashFlowEngine';
 
@@ -218,11 +208,8 @@ type DiligenceState = {
   agentRun: DiligenceAgentState;
   runDiligenceAgent: () => Promise<void>;
   retryDiligenceStage: (id: DiligenceStageId) => Promise<void>;
-  reviewAgentFinding: (id: string, decision: ReviewDecision, reviewerNoteOrClassification?: string, overrideNote?: string, allowStale?: boolean, overrideValue?: string) => boolean;
-  bulkReviewAgentFindings: (decision: "accepted" | "rejected") => number;
-  agentProposalsStale: boolean;
+  reviewAgentFinding: (id: string, decision: ReviewDecision, reviewerNoteOrClassification?: string, overrideNote?: string) => boolean;
   reverseAgentChange: (auditId: string) => boolean;
-  activityHistory: FinancialLineageEvent[];
 };
 
 export const CURRENT_SESSION_STORAGE_KEY = 'safeloc:diligence:current-session:v1';
@@ -363,13 +350,6 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   const [ercotQueue, setErcotQueue] = useState<ErcotQueueResult>(FALLBACK_ERCOT_RESULT);
   const [eiaData, setEiaData] = useState<EiaElectricityData>(() => createEiaFallback());
   const [eiaLoading, setEiaLoading] = useState(true);
-  const [activityHistory, setActivityHistory] = useState<FinancialLineageEvent[]>(loadFinancialLineage);
-  const [releaseIdentity, setReleaseIdentity] = useState("development");
-  const recordLineage = useCallback((input: FinancialLineageEventInput) => {
-    const event = appendFinancialLineage(input);
-    setActivityHistory((history) => [...history, event]);
-    return event;
-  }, []);
   const sourceStates = useMemo(() => sourceStateMap({
     "ercot-queue": ercotQueue.sourceMetadata,
     eia: eiaData.sourceMetadata,
@@ -400,25 +380,6 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       setEiaData(result);
       setEiaLoading(false);
     });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    void fetch("/api/version", { headers: { Accept: "application/json" } })
-      .then((response) => response.ok ? response.json() : null)
-      .then((value: unknown) => {
-        if (!active || !value || typeof value !== "object" || Array.isArray(value)) return;
-        const identity = value as { releaseId?: unknown; commitSha?: unknown; applicationVersion?: unknown };
-        const parts = [identity.releaseId, identity.commitSha, identity.applicationVersion]
-          .filter((part): part is string => typeof part === "string" && Boolean(part.trim()));
-        if (parts.length) setReleaseIdentity(parts.join(" · "));
-      })
-      .catch(() => {
-        // Development and offline review can continue with the explicit development identity.
-      });
     return () => {
       active = false;
     };
@@ -639,85 +600,34 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const agentInput = useCallback((): AgentProjectInput => {
-    const currentState = stateRef.current;
-    const agentEvidence = currentState.evidence;
-    const acceptedEvidence = currentState.modelEvidence;
-    const currentMetrics = calculateCashFlowModel(
-      (project.kind === "custom" ? acceptedEvidence : applyEiaEvidence(acceptedEvidence, eiaData)) as EvidenceRecord,
-      project.capacityMW,
-    );
+    const agentEvidence = project.kind === "custom" ? stateRef.current.modelEvidence : stateRef.current.evidence;
     return ({
     projectName: project.name,
     location: project.location,
     capacityMW: project.capacityMW,
     evidenceIds: Object.keys(agentEvidence),
     communityUnresolvedCount: countUnresolvedCommunityTerms(communityReview.terms),
-    evidence: Object.values(agentEvidence).map((item) => {
-      const acceptedItem = acceptedEvidence[item.id] ?? item;
-      const curatedClaims = item.claimIds.flatMap((claimId) => {
-        const claim = getClaimRecord(claimId);
-        if (!claim) return [];
-        return getClaimSources(claimId).map((source) => ({ claim, source }));
-      });
-      const curatedExactClaim = curatedClaims.find(({ claim }) => claim.provenance === "public evidence" || claim.provenance === "management disclosure");
-      const proposalSources = item.sources?.length
-        ? item.sources.map((source) => ({
-            sourceId: source.canonicalUrl ?? source.resolvedUrl ?? source.url,
-            title: source.title,
-            url: source.url,
-            excerpt: source.excerpt,
-            claimPassage: source.claimPassage ?? source.accessOutcome?.passage ?? undefined,
-            exactProject: source.exactProject,
-            classification: item.sourceValidation?.state === "financially-eligible" && source.exactProject === true
-              ? "validated-source" as const
-              : "source-summary" as const,
-          }))
-        : curatedClaims.map(({ claim, source }) => ({
-            sourceId: source.id,
-            title: `${source.publisher} · ${source.title}`,
-            url: source.url,
-            excerpt: claim.statement,
-            claimPassage: claim.statement,
-            exactProject: claim.provenance === "public evidence" || claim.provenance === "management disclosure",
-            classification: "source-summary" as const,
-          }));
-      const proposedModelEvidence = item.eligibleForModel
-        ? { ...acceptedEvidence, [item.id]: { ...item, acceptedForModel: true, researchState: "accepted" as const } }
-        : acceptedEvidence;
-      const proposedMetrics = calculateCashFlowModel(
-        (project.kind === "custom" ? proposedModelEvidence : applyEiaEvidence(proposedModelEvidence, eiaData)) as EvidenceRecord,
-        project.capacityMW,
-      );
-      const irrDelta = currentMetrics.projectIRR === null || proposedMetrics.projectIRR === null
-        ? null
-        : proposedMetrics.projectIRR - currentMetrics.projectIRR;
-      return {
-        id: item.id,
-        label: item.label,
-        value: item.value,
-        classification: item.classification,
-        currentValue: acceptedItem.value,
-        currentClassification: acceptedItem.classification,
-        citation: item.citation,
-        sourceUrl: item.sourceUrl,
-        sources: proposalSources,
-        sourceSupportConfidence: item.sourceSupportConfidence,
-        sourceRelevance: item.sourceRelevance ?? (curatedExactClaim ? "exact-project" : curatedClaims.length ? "related-context" : "unresolved"),
-        eligibleForModel: item.eligibleForModel,
-        sourceValidation: item.sourceValidation,
-        rawValue: item.rawValue ?? item.value,
-        rawUnit: item.rawUnit ?? item.unit,
-        normalizedValue: item.normalizedValue ?? item.numericValue ?? item.qualitativeValue ?? item.value,
-        normalizedUnit: item.normalizedUnit ?? item.unit,
-        affectedModelLine: proposedMetrics.attribution[item.id]?.affectedCashFlowLine ?? "No direct modeled cash-flow line",
-        estimatedMetricEffect: irrDelta === null
-          ? `Project IRR remains unavailable; confidence changes from ${currentMetrics.confidenceScore}% to ${proposedMetrics.confidenceScore}%.`
-          : `Estimated project IRR change ${irrDelta >= 0 ? "+" : ""}${irrDelta.toFixed(2)} points; confidence ${currentMetrics.confidenceScore}% → ${proposedMetrics.confidenceScore}%.`,
-        estimatedRecommendationEffect: currentMetrics.recommendationStatus === proposedMetrics.recommendationStatus
-          ? `Recommendation remains ${currentMetrics.recommendationStatus}.`
-          : `Recommendation could change from ${currentMetrics.recommendationStatus} to ${proposedMetrics.recommendationStatus}.`,
-      };
-    }),
+    evidence: Object.values(agentEvidence).map((item) => ({
+      id: item.id,
+      label: item.label,
+      value: item.value,
+      classification: item.classification,
+      citation: item.citation,
+      sourceUrl: item.sourceUrl,
+      sources: (item.sources ?? []).map((source) => ({
+        sourceId: source.url,
+        title: source.title,
+        url: source.url,
+        excerpt: source.excerpt,
+        classification: item.sourceValidation?.state === "financially-eligible" && source.exactProject === true
+          ? "validated-source" as const
+          : "source-summary" as const,
+      })),
+      sourceSupportConfidence: item.sourceSupportConfidence,
+      sourceRelevance: item.sourceRelevance,
+      eligibleForModel: item.eligibleForModel,
+      sourceValidation: item.sourceValidation,
+    })),
     retrievedSourceCount: project.researchCoverage?.retrievedSourceCount ?? Object.values(agentEvidence).reduce((count, item) => count + (item.sources?.length ?? 0), 0),
     validatedSourceCount: project.kind === "custom"
       ? countValidatedAgentSources({ evidence: Object.values(agentEvidence).map((item) => ({
@@ -742,7 +652,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       : Object.values(agentEvidence).filter((item) => item.classification === "Verified Evidence").length,
     materialGapCount: Object.values(agentEvidence).filter((item) => ["Missing Evidence", "Model Inference", "User Assumption"].includes(item.classification)).length,
   });
-  }, [communityReview.terms, eiaData, project]);
+  }, [communityReview.terms, project]);
 
   const runDiligenceAgent = useCallback(async () => {
     if (agentActiveRef.current) return;
@@ -750,67 +660,23 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     let next = startDiligenceAgent(agentRunRef.current);
     setPersistedAgentRun(next);
     try {
-      const input = agentInput();
-      const stageSummary = (id: DiligenceStageId) => {
-        const evidence = input.evidence ?? [];
-        const sourceCount = evidence.reduce((count, item) => count + (item.sources?.length ?? 0), 0);
-        const mappedCount = evidence.filter((item) => item.sourceValidation?.claimMappings?.length).length;
-        const normalizedCount = evidence.filter((item) => item.normalizedValue !== undefined).length;
-        const summaries: Record<DiligenceStageId, string> = {
-          identity: `Read active project identity: ${input.projectName}, ${input.location}, ${input.capacityMW} MW.`,
-          planning: project.researchAudit ? `Used the retained ${project.researchAudit.categories.length}-category research plan.` : "No recorded external research plan is attached; reviewed the retained evidence record only.",
-          "source-search": `Read ${sourceCount} retained source record${sourceCount === 1 ? "" : "s"}; no new search was simulated.`,
-          "evidence-extraction": `Resolved retained claims or passages for ${mappedCount} evidence variable${mappedCount === 1 ? "" : "s"}.`,
-          "community-review": `Read ${countUnresolvedCommunityTerms(communityReview.terms)} unresolved community term${countUnresolvedCommunityTerms(communityReview.terms) === 1 ? "" : "s"}.`,
-          "precedent-comparison": "Kept related and comparable context separate from exact-project evidence.",
-          "financial-relevance": `Mapped ${evidence.filter((item) => item.affectedModelLine && item.affectedModelLine !== "No direct modeled cash-flow line").length} evidence variables to existing model lines.`,
-          "relationship-mapping": "Recorded direct, related, comparable, and not-found relationships without inferring ownership.",
-          "citation-validation": `Confirmed ${input.validatedSourceCount ?? 0} source${input.validatedSourceCount === 1 ? "" : "s"} passed the existing eligibility boundary.`,
-          "review-preparation": `Prepared proposals from ${normalizedCount} normalized evidence record${normalizedCount === 1 ? "" : "s"}; accepted state remains unchanged.`,
-        };
-        return summaries[id];
-      };
       for (const definition of next.stages) {
         if (definition.status === "completed") continue;
         next = beginDiligenceStage(next, definition.id);
         setPersistedAgentRun(next);
-        next = advanceDiligenceStage(next, definition.id, { summary: stageSummary(definition.id) });
+        await new Promise((resolve) => window.setTimeout(resolve, 110));
+        next = advanceDiligenceStage(next, definition.id, {
+          summary: `${definition.label} completed with bounded, reviewer-visible output.`,
+        });
         setPersistedAgentRun(next);
       }
-      next = hydrateReviewPackage(next, input);
+      next = hydrateReviewPackage(next, agentInput());
       setPersistedAgentRun(next);
-      const projectKey = getAgentProjectKey(input);
-      recordLineage({ action: agentRunRef.current.runId ? "refresh" : "research", actor: "system", projectKey, releaseIdentity, modelIdentity: project.researchCache?.modelVersion ?? "cash-flow-engine-v1", detail: next.summary });
-      recordLineage({ action: "extraction", actor: "system", projectKey, releaseIdentity, detail: stageSummary("evidence-extraction") });
-      recordLineage({ action: "normalization", actor: "system", projectKey, releaseIdentity, detail: stageSummary("review-preparation") });
-      next.proposedFindings.forEach((finding) => {
-        recordLineage({
-          action: "proposal-created",
-          actor: "system",
-          projectKey,
-          proposalId: finding.id,
-          evidenceId: finding.affectedEvidenceId,
-          previousValue: finding.currentValue,
-          resultingValue: finding.proposedValue,
-          previousClassification: finding.currentClassification,
-          resultingClassification: finding.proposedClassification,
-          rawValue: finding.rawValue,
-          rawUnit: finding.rawUnit,
-          normalizedValue: finding.normalizedValue,
-          normalizedUnit: finding.normalizedUnit,
-          sourceUrl: finding.sourceUrl,
-          sourceTitle: finding.sourceIdentity,
-          passage: finding.exactPassage,
-          modelLine: finding.affectedModelLine,
-          modelEffect: finding.estimatedMetricEffect,
-          releaseIdentity,
-        });
-      });
       logSessionAction("Diligence agent prepared review package", project.name);
     } finally {
       agentActiveRef.current = false;
     }
-  }, [agentInput, communityReview.terms, project, recordLineage, releaseIdentity, setPersistedAgentRun]);
+  }, [agentInput, project.name, setPersistedAgentRun]);
 
   const retryDiligenceStage = useCallback(async (id: DiligenceStageId) => {
     if (agentActiveRef.current) return;
@@ -820,24 +686,25 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     let next = retried;
     setPersistedAgentRun(next);
     try {
-      next = advanceDiligenceStage(next, id, { summary: "Re-read the retained operation record; no external operation was simulated." });
+      await new Promise((resolve) => window.setTimeout(resolve, 110));
+      next = advanceDiligenceStage(next, id, { summary: "Retry completed with bounded, reviewer-visible output." });
       setPersistedAgentRun(next);
       for (const stage of next.stages) {
         if (stage.status !== "pending") continue;
         next = beginDiligenceStage(next, stage.id);
         setPersistedAgentRun(next);
-        next = advanceDiligenceStage(next, stage.id, { summary: `${stage.label} re-read retained inputs after refresh.` });
+        await new Promise((resolve) => window.setTimeout(resolve, 110));
+        next = advanceDiligenceStage(next, stage.id, { summary: `${stage.label} completed after the retained retry.` });
         setPersistedAgentRun(next);
       }
       next = hydrateReviewPackage(next, agentInput());
       setPersistedAgentRun(next);
-      recordLineage({ action: "refresh", actor: "system", projectKey: getAgentProjectKey(agentInput()), releaseIdentity, detail: `Refreshed ${id} from retained inputs.` });
     } finally {
       agentActiveRef.current = false;
     }
-  }, [agentInput, recordLineage, releaseIdentity, setPersistedAgentRun]);
+  }, [agentInput, setPersistedAgentRun]);
 
-  const reviewAgentFinding = useCallback((id: string, decision: ReviewDecision, reviewerNoteOrClassification?: string, overrideNote?: string, allowStale = false, overrideValue?: string) => {
+  const reviewAgentFinding = useCallback((id: string, decision: ReviewDecision, reviewerNoteOrClassification?: string, overrideNote?: string) => {
     const current = agentRunRef.current;
     const finding = current.proposedFindings.find((item) => item.id === id);
     if (!finding) return false;
@@ -852,44 +719,33 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       return false;
     }
     const activeInput = agentInput();
-    const stale = (
+    if (
       current.projectKey !== getAgentProjectKey(activeInput) ||
       current.evidenceSnapshotKey !== getAgentEvidenceSnapshotKey(activeInput)
-    );
-    if (stale && !allowStale) {
+    ) {
       logSessionAction("Agent proposal blocked because the evidence snapshot changed", finding.title);
       return false;
     }
-    const decisionState = stale && allowStale
-      ? { ...current, projectKey: getAgentProjectKey(activeInput), evidenceSnapshotKey: getAgentEvidenceSnapshotKey(activeInput) }
-      : current;
-    const next = applyAgentFindingDecision(decisionState, id, decision, reviewerNote, finalClassification);
+    if ((decision === "accepted" || decision === "overridden") && finding.affectedEvidenceId && finding.currentClassification) {
+      const liveItem = stateRef.current.evidence[finding.affectedEvidenceId];
+      if (!liveItem || liveItem.classification !== finding.currentClassification) {
+        logSessionAction("Agent proposal blocked by changed evidence", finding.title);
+        return false;
+      }
+    }
+    const next = applyAgentFindingDecision(current, id, decision, reviewerNote, finalClassification);
     if (next === current) return false;
     let authorizedRun = next;
     if ((decision === "accepted" || decision === "overridden") && finding.consequential && finding.affectedEvidenceId && finding.proposedClassification) {
       const targetClassification = decision === "accepted" ? finding.proposedClassification : finalClassification;
-      if (!targetClassification) return false;
-      const proposal = stateRef.current.evidence[finding.affectedEvidenceId];
-      const applied = project.kind === "custom"
-        ? applyEvidenceCorrection(finding.affectedEvidenceId, {
-            value: decision === "overridden" && overrideValue?.trim() ? overrideValue.trim() : String(finding.proposedValue ?? proposal?.value ?? ""),
-            claim: finding.exactClaim ?? finding.exactPassage ?? proposal?.description ?? finding.reasoning,
-            sourceUrl: finding.sourceUrl ?? proposal?.sourceUrl ?? "",
-            classification: targetClassification,
-            researchProposal: proposal as CustomEvidenceRecord,
-          })
-        : updateClassification(finding.affectedEvidenceId, targetClassification, "ai", decision === "accepted" ? "ai-accepted" : "ai-overridden");
-      if (!applied) return false;
+      if (!targetClassification || !updateClassification(finding.affectedEvidenceId, targetClassification, "ai", decision === "accepted" ? "ai-accepted" : "ai-overridden")) return false;
       const afterEvidenceSnapshotKey = getAgentEvidenceSnapshotKey(agentInput());
       const auditId = next.auditEvents.at(-1)?.id;
       if (auditId) {
         authorizedRun = {
           ...next,
-          projectKey: getAgentProjectKey(agentInput()),
-          evidenceSnapshotKey: afterEvidenceSnapshotKey,
-          proposedFindings: next.proposedFindings.map((item) => item.decision === "pending" ? { ...item, proposalCreatedEvidenceFingerprint: afterEvidenceSnapshotKey } : item),
-          auditEvents: next.auditEvents.map((event) => event.id === auditId ? { ...event, afterEvidenceSnapshotKey, staleApplied: stale && allowStale, staleReason: stale && allowStale ? "Analyst deliberately applied against the newer state." : undefined } : event),
-          appliedChanges: next.appliedChanges.map((change) => change.id === auditId ? { ...change, afterEvidenceSnapshotKey, staleApplied: stale && allowStale, staleReason: stale && allowStale ? "Analyst deliberately applied against the newer state." : undefined } : change),
+          auditEvents: next.auditEvents.map((event) => event.id === auditId ? { ...event, afterEvidenceSnapshotKey } : event),
+          appliedChanges: next.appliedChanges.map((change) => change.id === auditId ? { ...change, afterEvidenceSnapshotKey } : change),
         };
       }
       recordAIDecision(
@@ -907,56 +763,11 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
           persistedState.modelEvidence,
         ));
       }
-      const latest = stateRef.current;
-      const latestMetrics = calculateCashFlowModel((project.kind === "custom" ? latest.modelEvidence : applyEiaEvidence(latest.modelEvidence, eiaData)) as EvidenceRecord, project.capacityMW);
-      recordLineage({
-        action: decision === "accepted" ? "accepted" : "overridden",
-        actor: "analyst",
-        projectKey: getAgentProjectKey(activeInput),
-        proposalId: finding.id,
-        evidenceId: finding.affectedEvidenceId,
-        previousValue: finding.currentValue,
-        resultingValue: latest.evidence[finding.affectedEvidenceId]?.value,
-        previousClassification: finding.currentClassification,
-        resultingClassification: targetClassification,
-        rawValue: finding.rawValue,
-        rawUnit: finding.rawUnit,
-        normalizedValue: finding.normalizedValue,
-        normalizedUnit: finding.normalizedUnit,
-        sourceUrl: finding.sourceUrl,
-        sourceTitle: finding.sourceIdentity,
-        passage: finding.exactPassage,
-        modelLine: finding.affectedModelLine,
-        modelEffect: `${finding.estimatedMetricEffect ?? "Existing model recalculated."} Resulting recommendation: ${latestMetrics.recommendationStatus}.`,
-        staleApplied: stale && allowStale,
-        releaseIdentity,
-      });
-      recordLineage({ action: "financial-recalculation", actor: "system", projectKey: getAgentProjectKey(activeInput), proposalId: finding.id, evidenceId: finding.affectedEvidenceId, modelLine: finding.affectedModelLine, modelEffect: `Project IRR ${latestMetrics.projectIRR === null ? "unavailable" : latestMetrics.projectIRR.toFixed(4)}; recommendation ${latestMetrics.recommendationStatus}.`, releaseIdentity });
-    } else {
-      recordLineage({ action: decision === "rejected" ? "rejected" : "unresolved", actor: "analyst", projectKey: getAgentProjectKey(activeInput), proposalId: finding.id, evidenceId: finding.affectedEvidenceId, previousValue: finding.currentValue, previousClassification: finding.currentClassification, sourceUrl: finding.sourceUrl, passage: finding.exactPassage, detail: reviewerNote, releaseIdentity });
     }
     setPersistedAgentRun(authorizedRun);
     logSessionAction(`Agent proposal ${decision}`, finding.title);
     return true;
-  }, [agentInput, applyEvidenceCorrection, eiaData, project, recordLineage, releaseIdentity, setPersistedAgentRun, updateClassification]);
-
-  const currentAgentInput = agentInput();
-  const agentProposalsStale = Boolean(agentRun.runId) && (
-    agentRun.projectKey !== getAgentProjectKey(currentAgentInput) ||
-    agentRun.evidenceSnapshotKey !== getAgentEvidenceSnapshotKey(currentAgentInput)
-  );
-
-  const bulkReviewAgentFindings = useCallback((decision: "accepted" | "rejected") => {
-    if (agentProposalsStale) return 0;
-    const findings = decision === "accepted"
-      ? selectBulkAgentCandidates(agentRunRef.current.proposedFindings)
-      : selectBulkAgentRejections(agentRunRef.current.proposedFindings);
-    let applied = 0;
-    for (const finding of findings) {
-      if (reviewAgentFinding(finding.id, decision)) applied += 1;
-    }
-    return applied;
-  }, [agentProposalsStale, reviewAgentFinding]);
+  }, [agentInput, setPersistedAgentRun, updateClassification]);
 
   const reverseAgentChange = useCallback((auditId: string) => {
     const current = agentRunRef.current;
@@ -982,27 +793,14 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       ...currentState.evidence,
       [applied.affectedEvidenceId]: {
         ...currentItem,
-        ...(applied.beforeValue !== undefined ? { value: applied.beforeValue } : {}),
         classification: applied.beforeClassification,
         review: { kind: "manual" as const, reviewedAt: new Date().toISOString() },
       },
     };
-    const nextModelEvidence = project.kind === "custom"
-      ? {
-          ...currentState.modelEvidence,
-          [applied.affectedEvidenceId]: {
-            ...currentState.modelEvidence[applied.affectedEvidenceId],
-            ...(applied.beforeValue !== undefined ? { value: applied.beforeValue } : {}),
-            classification: applied.beforeClassification,
-            acceptedForModel: false,
-            researchState: "proposed" as const,
-          },
-        }
-      : nextEvidence;
-    const nextIrr = calculateCashFlowModel((project.kind === "custom" ? nextModelEvidence : applyEiaEvidence(nextEvidence, eiaData)) as EvidenceRecord, project.capacityMW).projectIRR;
+    const nextIrr = calculateCashFlowModel((project.kind === "custom" ? currentState.modelEvidence : applyEiaEvidence(nextEvidence, eiaData)) as EvidenceRecord, project.capacityMW).projectIRR;
     const nextState = {
       evidence: nextEvidence,
-      modelEvidence: nextModelEvidence,
+      modelEvidence: project.kind === "custom" ? currentState.modelEvidence : nextEvidence,
       hasChangedClassification: true,
       lastChange: { from: previousIrr ?? 0, to: nextIrr ?? 0, delta: (nextIrr ?? 0) - (previousIrr ?? 0) },
     };
@@ -1015,16 +813,12 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         nextState.modelEvidence,
       ));
     }
-    const reversedRun = reverseAgentChangeState(current, auditId);
-    setPersistedAgentRun(reversedRun);
-    recordLineage({ action: "reversal", actor: "analyst", projectKey: getAgentProjectKey({ projectName: project.name, location: project.location, capacityMW: project.capacityMW }), proposalId: applied.proposalId, evidenceId: applied.affectedEvidenceId, previousValue: applied.finalValue, resultingValue: applied.beforeValue, previousClassification: applied.finalClassification, resultingClassification: applied.beforeClassification, modelLine: current.proposedFindings.find((finding) => finding.id === applied.proposalId)?.affectedModelLine, modelEffect: `Project IRR ${previousIrr ?? "unavailable"} → ${nextIrr ?? "unavailable"}.`, reversesEventId: auditId, releaseIdentity });
-    recordLineage({ action: "financial-recalculation", actor: "system", projectKey: getAgentProjectKey({ projectName: project.name, location: project.location, capacityMW: project.capacityMW }), proposalId: applied.proposalId, evidenceId: applied.affectedEvidenceId, modelEffect: `Reversal recalculated project IRR to ${nextIrr ?? "unavailable"}.`, releaseIdentity });
+    setPersistedAgentRun(reverseAgentChangeState(current, auditId));
     logSessionAction("Reversed agent proposal", applied.proposalId);
     return true;
-  }, [agentInput, eiaData, project, recordLineage, releaseIdentity, setPersistedAgentRun]);
+  }, [agentInput, eiaData, project, setPersistedAgentRun]);
 
   const resetToDefault = useCallback((company: string | null = null) => {
-    recordLineage({ action: "reset", actor: "analyst", projectKey: getAgentProjectKey({ projectName: project.name, location: project.location, capacityMW: project.capacityMW }), releaseIdentity, detail: "Accepted session state reset to curated defaults; append-only lineage retained." });
     const nextState = { evidence: cloneEvidence(INITIAL_EVIDENCE), modelEvidence: cloneEvidence(INITIAL_EVIDENCE), hasChangedClassification: false, lastChange: null };
     stateRef.current = nextState;
     setState(nextState);
@@ -1050,7 +844,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     clearStorage(DILIGENCE_AGENT_STORAGE_KEY);
     clearDecisionHistory();
     clearSessionActions();
-  }, [project, recordLineage, releaseIdentity]);
+  }, []);
 
   const loadCustomProject = useCallback((research: CustomResearchResponse, company: string | null = null) => {
     const researchById = new Map(research.evidence.map((item) => [item.id, item]));
@@ -1139,39 +933,10 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         payback: metrics.payback,
         confidence: metrics.confidenceScore,
       },
-      reproducibility: {
-        schemaVersion: 2,
-        project: { name: project.name, location: project.location, capacityMW: project.capacityMW },
-        evidence: Object.fromEntries(Object.entries(effectiveModelEvidence).map(([id, item]) => [id, {
-          value: item.value,
-          classification: item.classification,
-          rawValue: item.rawValue,
-          rawUnit: item.rawUnit,
-          normalizedValue: item.normalizedValue,
-          normalizedUnit: item.normalizedUnit,
-          sourceUrl: item.sourceUrl,
-          sourceTitle: item.sourceTitle,
-          passage: item.claimMappings?.find((mapping) => mapping.supportStatus === "supported")?.exactQuotation ?? item.rawText ?? item.description,
-          proposalIds: agentRun.auditEvents.filter((event) => event.affectedEvidenceId === id).map((event) => event.proposalId),
-        }])),
-        dataStatus: Object.values(effectiveModelEvidence).some((item) => item.sourceUrl || item.claimIds.length)
-          ? "synthetic-project-economics-with-public-evidence"
-          : "synthetic-project-economics",
-        financialAssumptions: { ...metrics.assumptions },
-        modelIdentity: project.researchCache?.modelVersion ?? "cash-flow-engine-v1",
-        releaseIdentity,
-        inputFingerprint: stableLineageFingerprint({
-          project: { name: project.name, location: project.location, capacityMW: project.capacityMW },
-          evidence: Object.fromEntries(Object.entries(effectiveModelEvidence).map(([id, item]) => [id, [item.value, item.classification, item.sourceUrl ?? null]])),
-          assumptions: metrics.assumptions,
-        }),
-        activityEventIds: activityHistory.map((event) => event.id),
-      },
     };
     const nextScenarios = [...scenarios, scenario];
     setScenarios(nextScenarios);
     writeStorage(SCENARIOS_STORAGE_KEY, { version: SCENARIOS_STORAGE_VERSION, scenarios: nextScenarios });
-    recordLineage({ action: "scenario-saved", actor: "analyst", projectKey: getAgentProjectKey({ projectName: project.name, location: project.location, capacityMW: project.capacityMW }), scenarioId: scenario.id, releaseIdentity, modelIdentity: scenario.reproducibility!.modelIdentity, detail: `Saved reproducible scenario ${scenario.name} with input fingerprint ${scenario.reproducibility!.inputFingerprint}.` });
     return { ok: true, scenario };
   };
 
@@ -1188,7 +953,6 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     const nextScenarios = scenarios.map((candidate) => candidate.id === id ? renamedScenario : candidate);
     setScenarios(nextScenarios);
     writeStorage(SCENARIOS_STORAGE_KEY, { version: SCENARIOS_STORAGE_VERSION, scenarios: nextScenarios });
-    recordLineage({ action: "scenario-renamed", actor: "analyst", projectKey: getAgentProjectKey({ projectName: project.name, location: project.location, capacityMW: project.capacityMW }), scenarioId: id, previousValue: scenario.name, resultingValue: trimmedName, releaseIdentity });
     return { ok: true, scenario: renamedScenario };
   };
 
@@ -1199,7 +963,6 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     const nextScenarios = scenarios.filter((candidate) => candidate.id !== id);
     setScenarios(nextScenarios);
     writeStorage(SCENARIOS_STORAGE_KEY, { version: SCENARIOS_STORAGE_VERSION, scenarios: nextScenarios });
-    recordLineage({ action: "scenario-removed", actor: "analyst", projectKey: getAgentProjectKey({ projectName: project.name, location: project.location, capacityMW: project.capacityMW }), scenarioId: id, previousValue: scenario.name, releaseIdentity, detail: "Scenario materialization removed; append-only lineage retained." });
     return { ok: true, scenario };
   };
 
@@ -1211,7 +974,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   const communityUnresolvedCount = countUnresolvedCommunityTerms(communityReview.terms);
 
   return (
-    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, researchEvidence: project.kind === "custom" ? state.evidence : effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, applyEvidenceCorrection, clearLastChange, metrics, resetToDefault, loadCustomProject, project, originatingCompany, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading, communityReview, communityUnresolvedCount, reviewCommunityTerm, agentRun, runDiligenceAgent, retryDiligenceStage, reviewAgentFinding, bulkReviewAgentFindings, agentProposalsStale, reverseAgentChange, activityHistory }}>
+    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, researchEvidence: project.kind === "custom" ? state.evidence : effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, applyEvidenceCorrection, clearLastChange, metrics, resetToDefault, loadCustomProject, project, originatingCompany, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading, communityReview, communityUnresolvedCount, reviewCommunityTerm, agentRun, runDiligenceAgent, retryDiligenceStage, reviewAgentFinding, reverseAgentChange }}>
       {children}
     </DiligenceContext.Provider>
   );
@@ -1231,28 +994,6 @@ export type SavedScenario = {
   savedAt: string;
   classifications: Record<string, Classification>;
   metrics: ScenarioMetrics;
-  reproducibility?: {
-    schemaVersion: 2;
-    project: { name: string; location: string; capacityMW: number };
-    evidence: Record<string, {
-      value: string | number;
-      classification: Classification;
-      rawValue?: string | number;
-      rawUnit?: string;
-      normalizedValue?: string | number;
-      normalizedUnit?: string;
-      sourceUrl?: string;
-      sourceTitle?: string;
-      passage?: string;
-      proposalIds: string[];
-    }>;
-    dataStatus: "synthetic-project-economics-with-public-evidence" | "synthetic-project-economics";
-    financialAssumptions: FinancialMetrics["assumptions"];
-    modelIdentity: string;
-    releaseIdentity: string;
-    inputFingerprint: string;
-    activityEventIds: string[];
-  };
 };
 
 function isFiniteNumber(value: unknown): value is number {

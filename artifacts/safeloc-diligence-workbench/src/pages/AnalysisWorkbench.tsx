@@ -6,7 +6,6 @@ import { MarketExposure } from "@/components/conference/MarketExposure";
 import { ProjectReality } from "@/components/conference/ProjectReality";
 import { FinancialTransmission } from "@/components/conference/FinancialTransmission";
 import { AdvisorBrief } from "@/components/conference/AdvisorBrief";
-import { DiligenceAgentPanel } from "@/pages/DiligenceAgentPanel";
 import { isConferenceResearchIncomplete } from "@/model/conferenceEvidence";
 
 const VIEWS = ["market", "reality", "transmission", "advisor"] as const;
@@ -18,7 +17,7 @@ const META: Record<View, { title: string; icon: LucideIcon; anchor: string }> = 
   advisor: { title: "Advisor Brief", icon: BookOpen, anchor: "analysis-advisor" },
 };
 const legacyViews: Record<string, View> = {
-  "analysis-agent": "reality", "analysis-overview": "market", "analysis-evidence": "reality",
+  "analysis-agent": "market", "analysis-overview": "market", "analysis-evidence": "reality",
   "analysis-financial": "transmission", "analysis-decision": "advisor", "analysis-advisor": "advisor",
 };
 type Props = { onResolveEvidence: (id: string) => void; onReset: () => void; focusSectionId?: string };
@@ -91,7 +90,7 @@ function ConferenceWorkbench({ onResolveEvidence, onReset, focusSectionId }: Pro
 
       <div id="conference-panel" ref={contentRef} role="tabpanel" aria-labelledby={`conference-tab-${view}`} tabIndex={-1} className="min-w-0 outline-none">
         <div id={META[view].anchor} className="scroll-mt-44">
-          {view === "market" && <><MarketExposure /><div className="mt-6"><DiligenceAgentPanel /></div></>}
+          {view === "market" && <MarketExposure />}
           {view === "reality" && <ProjectReality evidenceOpen={evidenceOpen} onEvidenceOpenChange={setEvidenceOpen} onNavigate={handleNavigate} />}
           {view === "transmission" && <FinancialTransmission onNavigate={handleNavigate} onResolveEvidence={onResolveEvidence} />}
           {view === "advisor" && <AdvisorBrief />}

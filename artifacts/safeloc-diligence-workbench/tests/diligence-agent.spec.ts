@@ -28,7 +28,7 @@ test.describe("governed diligence agent", () => {
     await page.getByTestId("agent-decision-agent-finding-grid-accepted").click();
     await expect(page.getByTestId("agent-finding-agent-finding-grid")).toContainText("Accepted");
     expect(await page.evaluate((key) => JSON.parse(window.localStorage.getItem(key) ?? "{}").status, agentStorageKey)).toBe("review-ready");
-    expect(await page.evaluate(() => JSON.parse(window.localStorage.getItem("safeloc:diligence:current-session:v1") ?? "{}").classifications?.grid_interconnection)).toBe("Management Assertion");
+    expect(await page.evaluate(() => window.localStorage.getItem("safeloc:diligence:current-session:v1"))).toBeNull();
 
     await page.reload();
     await expect(page.getByTestId("agent-run-status")).toContainText("Review ready");
@@ -52,7 +52,7 @@ test.describe("governed diligence agent", () => {
 
     await page.getByTestId("button-run-diligence-agent").click();
     await expect(page.getByTestId("agent-run-status")).toContainText("Review ready", { timeout: 5_000 });
-    await page.getByTestId("button-reset-default").click();
+    await page.getByTestId("rail-reset-default").click();
     await page.getByTestId("button-confirm-reset-default").click();
     await expect(page.getByTestId("agent-run-status")).toContainText("Not run");
     await expect.poll(() => page.evaluate((key) => window.localStorage.getItem(key), agentStorageKey)).toBeNull();

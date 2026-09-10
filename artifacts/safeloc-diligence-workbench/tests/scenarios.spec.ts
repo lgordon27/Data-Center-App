@@ -22,7 +22,12 @@ const evidenceIds = [
 ] as const;
 
 async function saveScenario(page: Page, name: string) {
-  await page.getByTestId("button-save-scenario").click();
+  if (await page.getByTestId("conference-scenarios").count() === 0) {
+    await page.getByTestId("rail-save-scenario").click();
+    await expect(page.getByTestId("conference-scenarios")).toBeVisible();
+  } else {
+    await page.getByTestId("button-save-scenario").click();
+  }
   const input = page.getByTestId("input-scenario-name");
   await expect(input).toBeVisible();
   await input.fill(name);
@@ -32,13 +37,37 @@ async function saveScenario(page: Page, name: string) {
   await page.waitForTimeout(250);
 }
 
+async function openFinancialTransmission(page: Page) {
+  await page.getByTestId("tab-transmission").click();
+  const stressTest = page.getByRole("button", { name: /Illustrative Project Stress Test/i });
+  if (await stressTest.getAttribute("aria-expanded") === "false") await stressTest.click();
+  await expect(stressTest).toHaveAttribute("aria-expanded", "true");
+}
+
+async function openEvidenceReview(page: Page) {
+  await page.getByTestId("tab-reality").click();
+  const evidenceReview = page.getByRole("button", { name: /Detailed Evidence Record/i });
+  if (await evidenceReview.getAttribute("aria-expanded") === "false") await evidenceReview.click();
+  await expect(evidenceReview).toHaveAttribute("aria-expanded", "true");
+  await page.getByTestId("filter-evidence-all").click();
+}
+
+async function openSavedScenarios(page: Page) {
+  const disclosure = page.getByTestId("disclosure-saved-scenarios");
+  if (await disclosure.getAttribute("open") === null) {
+    await disclosure.locator(":scope > summary").click();
+  }
+  await expect(disclosure).toHaveAttribute("open", "");
+}
+
 test.describe("named scenario snapshots and comparisons", () => {
   test.skip(({ viewport }) => viewport?.width !== 1440, "Scenario behavior only needs one browser viewport.");
 
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
     await page.evaluate(() => window.localStorage.clear());
-    await page.goto("/#decision");
+    await page.goto("/#analysis");
+    await openFinancialTransmission(page);
   });
 
   test("captures immutable snapshots and enforces the five-scenario limit", async ({ page }) => {
@@ -47,11 +76,15 @@ test.describe("named scenario snapshots and comparisons", () => {
     expect(originalSnapshot.metrics.projectIRR).not.toBe(Number(originalSnapshot.metrics.projectIRR.toFixed(1)));
     expect(originalSnapshot.metrics.moic).not.toBe(Number(originalSnapshot.metrics.moic.toFixed(2)));
     expect(originalSnapshot.metrics.npv).not.toBe(Number(originalSnapshot.metrics.npv.toFixed(0)));
-    expect(originalSnapshot.metrics.payback).not.toBe(Number(originalSnapshot.metrics.payback.toFixed(1)));
+    if (originalSnapshot.metrics.payback === null) {
+      expect(originalSnapshot.metrics.payback).toBeNull();
+    } else {
+      expect(originalSnapshot.metrics.payback).not.toBe(Number(originalSnapshot.metrics.payback.toFixed(1)));
+    }
 
-    await page.goto("/#evidence");
+    await openEvidenceReview(page);
     await page.getByTestId("select-classification-electricity_cost").selectOption("Missing Evidence");
-    await page.goto("/#decision");
+    await openFinancialTransmission(page);
 
     const unchangedSnapshot = await page.evaluate((key) => JSON.parse(window.localStorage.getItem(key) ?? "{}").scenarios[0], scenariosKey);
     expect(unchangedSnapshot).toEqual(originalSnapshot);
@@ -93,7 +126,9 @@ test.describe("named scenario snapshots and comparisons", () => {
       },
     );
     await page.reload();
-    await page.getByTestId("button-compare-scenarios").click();
+    await openFinancialTransmission(page);
+    await page.getByTestId("rail-compare-scenarios").click();
+    await expect(page.getByTestId("conference-scenarios")).toBeVisible();
 
     const expectedRows = {
       projectIRR: ["10.0%", "8.5%", "-1.6 pts"],
@@ -119,6 +154,7 @@ test.describe("named scenario snapshots and comparisons", () => {
     await saveScenario(page, "Downside");
     const originalSnapshot = await page.evaluate((key) => JSON.parse(window.localStorage.getItem(key) ?? "{}").scenarios[0], scenariosKey);
 
+    await openSavedScenarios(page);
     await page.getByTestId(`button-rename-scenario-${originalSnapshot.id}`).click();
     const input = page.getByTestId("input-rename-scenario-name");
     await expect(input).toBeVisible();
@@ -145,6 +181,7 @@ test.describe("named scenario snapshots and comparisons", () => {
 
     await page.getByTestId("button-compare-scenarios").click();
     await expect(page.getByTestId("select-scenario-first")).toHaveValue(snapshots[0].id);
+    await openSavedScenarios(page);
     await page.getByTestId(`button-remove-scenario-${snapshots[0].id}`).click();
     await expect(page.getByRole("alertdialog")).toContainText("Your live evidence classifications will not change.");
     await page.getByTestId("button-cancel-remove-scenario").click();

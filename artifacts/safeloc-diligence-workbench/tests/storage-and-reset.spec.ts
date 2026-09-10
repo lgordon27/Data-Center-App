@@ -4,16 +4,32 @@ const currentSessionKey = "safeloc:diligence:current-session:v1";
 const scenariosKey = "safeloc:diligence:scenarios:v1";
 const evidenceTipDismissedKey = "safeloc:diligence:evidence-room-tip-dismissed:v1";
 
+async function openProjectRealityEvidenceReview(page: import("@playwright/test").Page) {
+  await page.getByTestId("tab-reality").click();
+  const evidenceReview = page.getByRole("button", { name: /Detailed Evidence Record/i });
+  if (await evidenceReview.getAttribute("aria-expanded") === "false") await evidenceReview.click();
+  await expect(evidenceReview).toHaveAttribute("aria-expanded", "true");
+  await page.getByTestId("filter-evidence-all").click();
+}
+
+async function openFinancialTransmission(page: import("@playwright/test").Page) {
+  await page.getByTestId("tab-transmission").click();
+  const stressTest = page.getByRole("button", { name: /Illustrative Project Stress Test/i });
+  if (await stressTest.getAttribute("aria-expanded") === "false") await stressTest.click();
+  await expect(stressTest).toHaveAttribute("aria-expanded", "true");
+}
+
 test.describe("current-session recovery and reset isolation", () => {
   test.skip(({ viewport }) => viewport?.width !== 1440, "Storage behavior only needs one browser viewport.");
 
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
     await page.evaluate(() => window.localStorage.clear());
+    await page.goto("/#analysis");
   });
 
   test("persists a classification and shows restore feedback for three seconds", async ({ page }) => {
-    await page.goto("/#evidence");
+    await openProjectRealityEvidenceReview(page);
     const classification = page.getByTestId("select-classification-electricity_cost");
 
     await classification.selectOption("Missing Evidence");
@@ -27,22 +43,24 @@ test.describe("current-session recovery and reset isolation", () => {
     expect(storedReview.kind).toBe("manual");
     expect(storedReview.reviewedAt).toMatch(/^\d{4}-\d{2}-\d{2}T.*Z$/);
 
+    const reloadStartedAt = Date.now();
     await page.reload();
+    await openProjectRealityEvidenceReview(page);
     await expect(classification).toHaveValue("Missing Evidence");
     await expect(marker).toContainText("Reviewed by analyst");
     await expect(marker.locator("time")).toHaveAttribute("datetime", storedReview.reviewedAt);
     await expect(page.getByTestId("text-session-restored")).toHaveText("Session restored");
-    await page.waitForTimeout(3_000);
+    await page.waitForTimeout(Math.max(0, 3_000 - (Date.now() - reloadStartedAt)));
     await expect(page.getByTestId("text-session-restored")).toBeVisible();
-    await expect(page.getByTestId("text-session-restored")).toBeHidden({ timeout: 2_000 });
+    await expect(page.getByTestId("text-session-restored")).toBeHidden({ timeout: 2_500 });
 
-    await page.goto("/#materiality");
-    await page.goto("/#evidence");
+    await openFinancialTransmission(page);
+    await openProjectRealityEvidenceReview(page);
     await expect(marker).toContainText("Reviewed by analyst");
   });
 
   test("guides the first classification interaction and remembers the tip dismissal", async ({ page }) => {
-    await page.goto("/#evidence");
+    await openProjectRealityEvidenceReview(page);
 
     const evidenceTip = page.getByTestId("evidence-classification-tip");
     await expect(evidenceTip).toBeVisible();
@@ -54,28 +72,30 @@ test.describe("current-session recovery and reset isolation", () => {
     await expect.poll(() => page.evaluate((key) => window.localStorage.getItem(key), evidenceTipDismissedKey)).toBe("true");
 
     await page.reload();
+    await openProjectRealityEvidenceReview(page);
     await expect(page.getByTestId("evidence-classification-tip")).toHaveCount(0);
   });
 
   test("removes the materiality prompt after a classification recalculates the return", async ({ page }) => {
-    await page.goto("/#materiality");
-    await expect(page.getByTestId("materiality-classification-prompt")).toContainText("Change a classification to see the return update.");
+    await openFinancialTransmission(page);
+    await expect(page.getByTestId("materiality-classification-prompt")).toContainText("Change a classification to see the return, driver ranking, confidence and recommendation update.");
 
-    await page.goto("/#evidence");
+    await openProjectRealityEvidenceReview(page);
     await page.getByTestId("select-classification-electricity_cost").selectOption("Missing Evidence");
-    await expect(page.getByTestId("toast-reclassification")).toContainText("Conservative stress case updated");
+    await expect(page.getByTestId("toast-reclassification")).toContainText("Your evidence change has been saved. Explore the Illustrative Project Stress Test to inspect its financial effect.");
 
-    await page.goto("/#materiality");
+    await openFinancialTransmission(page);
     await expect(page.getByTestId("materiality-classification-prompt")).toHaveCount(0);
     await expect(page.getByTestId("live-current-irr")).toContainText("Conservative stress case IRR is now");
     await page.reload();
+    await openFinancialTransmission(page);
     await expect(page.getByTestId("materiality-classification-prompt")).toHaveCount(0);
   });
 
   test("falls back to defaults when current-session storage is malformed", async ({ page }) => {
     await page.evaluate((key) => window.localStorage.setItem(key, "{malformed"), currentSessionKey);
-    await page.goto("/#evidence");
     await page.reload();
+    await openProjectRealityEvidenceReview(page);
 
     await expect(page.getByTestId("select-classification-electricity_cost")).toHaveValue("User Assumption");
     await expect(page.getByTestId("text-session-restored")).toHaveCount(0);
@@ -113,8 +133,8 @@ test.describe("current-session recovery and reset isolation", () => {
       { key: currentSessionKey, classifications: legacyClassifications },
     );
 
-    await page.goto("/#evidence");
     await page.reload();
+    await openProjectRealityEvidenceReview(page);
 
     await expect(page.getByTestId("select-classification-electricity_cost")).toHaveValue("User Assumption");
     await expect(page.getByTestId("select-classification-electricity_escalation")).toHaveValue("Model Inference");
@@ -134,7 +154,7 @@ test.describe("current-session recovery and reset isolation", () => {
   });
 
   test("requires reset confirmation and preserves named scenarios", async ({ page }) => {
-    await page.goto("/#evidence");
+    await openProjectRealityEvidenceReview(page);
     const classification = page.getByTestId("select-classification-electricity_cost");
     await classification.selectOption("Missing Evidence");
     await expect(page.getByTestId("review-marker-electricity_cost")).toContainText("Reviewed by analyst");
@@ -156,6 +176,7 @@ test.describe("current-session recovery and reset isolation", () => {
     });
     await page.evaluate(({ key, value }) => window.localStorage.setItem(key, value), { key: scenariosKey, value: savedScenarios });
     await page.reload();
+    await openProjectRealityEvidenceReview(page);
 
     await page.getByTestId("button-reset-default").click();
     await expect(page.getByRole("heading", { name: "Reset to Default?" })).toBeVisible();
@@ -167,14 +188,15 @@ test.describe("current-session recovery and reset isolation", () => {
     await page.getByTestId("button-reset-default").click();
     await page.getByTestId("button-confirm-reset-default").focus();
     await page.keyboard.press("Enter");
-    await expect(page).toHaveURL(/#brief$/);
+    await expect(page).toHaveURL(/#analysis$/);
+    await expect(page.getByTestId("tab-market")).toHaveAttribute("aria-selected", "true");
     await expect.poll(() => page.evaluate((key) => window.localStorage.getItem(key), currentSessionKey)).toBeNull();
     await expect.poll(() => page.evaluate((key) => JSON.parse(window.localStorage.getItem(key) ?? "{}").scenarios?.[0]?.name, scenariosKey)).toBe("Keep me");
 
-    await page.goto("/#evidence");
+    await openProjectRealityEvidenceReview(page);
     await expect(classification).toHaveValue("User Assumption");
     await expect(page.getByTestId("review-marker-electricity_cost")).toHaveCount(0);
-    await page.goto("/#materiality");
+    await openFinancialTransmission(page);
     await expect(page.getByTestId("materiality-classification-prompt")).toBeVisible();
   });
 });

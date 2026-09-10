@@ -104,23 +104,45 @@ test.describe("Batch 1 custom-project research lifecycle", () => {
   });
 
   test("cancels and closes pending research, and route changes dismiss the modal", async ({ page }) => {
+    let releaseRequest = () => {};
+    const requestReleased = new Promise<void>((resolve) => {
+      releaseRequest = resolve;
+    });
+    let markRequestStarted = () => {};
+    const requestStarted = new Promise<void>((resolve) => {
+      markRequestStarted = resolve;
+    });
+    let markRequestFinished = () => {};
+    const requestFinished = new Promise<void>((resolve) => {
+      markRequestFinished = resolve;
+    });
     await page.route("**/api/research-project", async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 1_000));
-      if (!route.request().isNavigationRequest()) {
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify(incompleteResearch("GW Ranch", "Pecos County, Texas")),
-        }).catch(() => undefined);
+      markRequestStarted();
+      await requestReleased;
+      try {
+        if (!route.request().isNavigationRequest()) {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify(incompleteResearch("GW Ranch", "Pecos County, Texas")),
+          });
+        }
+      } catch {
+        // The browser may abort the request as part of the tested cancellation flow.
+      } finally {
+        markRequestFinished();
       }
     });
     await page.goto("/#directory");
     await page.getByTestId("compute-atlas-open-gw-ranch-pecos-tx").click();
     await page.getByTestId("button-submit-custom-project").click();
+    await requestStarted;
     await expect(page.getByTestId("custom-project-loading")).toBeVisible();
     await expect(page.getByTestId("custom-project-cancel")).toBeVisible();
-    await page.getByTestId("custom-project-cancel").dispatchEvent("click");
+    await page.getByTestId("custom-project-cancel").click();
     await expect(page.getByTestId("custom-project-loading")).not.toBeVisible();
+    releaseRequest();
+    await requestFinished;
     await page.goto("/#home");
     await expect(page.getByTestId("custom-project-dialog")).not.toBeVisible();
   });
@@ -144,21 +166,17 @@ test.describe("Batch 1 custom-project research lifecycle", () => {
   });
 
   test("shows recovery within 46 seconds when the production research client never resolves", async ({ page }) => {
-    test.setTimeout(55_000);
     await page.route("**/api/research-project", () => {
-      // Intentionally unresolved: the browser UI wall clock must surface recovery.
+      // Intentionally unresolved: the controlled page clock must surface recovery.
     });
 
     await page.goto("/#directory");
     await page.getByTestId("compute-atlas-open-gw-ranch-pecos-tx").click();
-    const startedAt = Date.now();
+    await page.clock.install();
     await page.getByTestId("button-submit-custom-project").click();
     await expect(page.getByTestId("custom-project-loading")).toContainText("Searching public sources, up to 45 seconds.");
-    await expect(page.getByText("Project research timed out after 45 seconds.")).toBeVisible({ timeout: 46_000 });
-    const elapsedMs = Date.now() - startedAt;
-    console.log(`Measured browser wall-clock timeout: ${elapsedMs}ms`);
-    expect(elapsedMs).toBeGreaterThanOrEqual(44_500);
-    expect(elapsedMs).toBeLessThanOrEqual(47_000);
+    await page.clock.fastForward(45_000);
+    await expect(page.getByText("Project research timed out after 45 seconds.")).toBeVisible();
     await expect(page.getByTestId("custom-project-retry")).toBeVisible();
     await expect(page.getByTestId("custom-project-edit")).toBeVisible();
     await expect(page.getByTestId("custom-project-fallback")).toBeVisible();

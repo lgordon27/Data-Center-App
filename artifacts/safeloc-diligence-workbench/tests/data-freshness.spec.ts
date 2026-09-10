@@ -2,6 +2,24 @@ import { expect, test, type Page } from "@playwright/test";
 
 const workbenchRoutes = ["analysis"] as const;
 const nonWorkbenchRoutes = ["home", "value-chain", "how-it-works"] as const;
+const eiaEndpoint = "**/api/eia/electricity";
+const liveEiaResponse = {
+  status: "live",
+  fetchedAt: "2026-09-10T12:00:00.000Z",
+  sourceUpdatedAt: "2026-06-01T00:00:00.000Z",
+  data: {
+    priceHistory: [{ period: "2026-05", pricePerMwh: 55 }],
+    latestPrice: 55,
+    latestPricePeriod: "2026-05",
+    generationHistory: [{
+      period: "2026-05",
+      generationMwh: { naturalGas: 1, wind: 1, solar: 1, nuclear: 1, coal: 1, other: 1 },
+      totalMwh: 6,
+      shares: { naturalGas: 1 / 6, wind: 1 / 6, solar: 1 / 6, nuclear: 1 / 6, coal: 1 / 6, other: 1 / 6 },
+    }],
+    consumptionHistory: [{ period: "2026-05", consumptionMwh: 6 }],
+  },
+};
 
 async function openAnalysisView(page: Page, view: "market" | "reality" | "transmission") {
   await page.goto("/#analysis");
@@ -9,6 +27,12 @@ async function openAnalysisView(page: Page, view: "market" | "reality" | "transm
 }
 
 test("shows the expandable three-source bar only on workbench routes", async ({ page }) => {
+  await page.route(eiaEndpoint, (route) => route.fulfill({
+    status: 503,
+    contentType: "application/json",
+    body: JSON.stringify({ diagnostics: { error: "deterministic embedded fallback" } }),
+  }));
+
   for (const route of workbenchRoutes) {
     await page.goto(`/#${route}`);
     await expect(page.getByTestId("data-sources")).toBeVisible();
@@ -25,6 +49,15 @@ test("shows the expandable three-source bar only on workbench routes", async ({ 
   await expect(page.getByTestId("data-sources-fallback")).toHaveText(
     "All external feeds automatically fall back to cached values during an unavailable live demonstration.",
   );
+
+  await page.unroute(eiaEndpoint);
+  await page.route(eiaEndpoint, (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify(liveEiaResponse),
+  }));
+  await page.reload();
+  await expect(page.getByTestId("data-source-status-eia")).toHaveText("Live · Jun 1, 2026");
 
   for (const route of nonWorkbenchRoutes) {
     await page.goto(`/#${route}`);

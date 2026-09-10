@@ -6,6 +6,7 @@ import path from "node:path";
 import { test } from "node:test";
 
 const packageRoot = path.resolve(import.meta.dirname, "..");
+const packageMetadata = JSON.parse(readFileSync(path.join(packageRoot, "package.json"), "utf8")) as { version: string };
 
 async function run(command: string, args: string[], env: NodeJS.ProcessEnv = {}) {
   const child = spawn(command, args, {
@@ -86,6 +87,8 @@ test("production entry point serves active API routes without retired endpoints"
     const version = await waitForJson(`${baseUrl}/api/version`, child);
     const versionAgain = await waitForJson(`${baseUrl}/api/version`, child);
     assert.equal(typeof version.applicationVersion, "string");
+    assert.equal(version.applicationVersion, packageMetadata.version);
+    assert.notEqual(version.applicationVersion, "0.0.0", "the user-facing product version must not be the package placeholder");
     assert.equal(typeof version.releaseId, "string");
     assert.equal(typeof version.buildTimestamp, "string");
     assert.ok(version.commitSha || version.releaseId, "release identity must include a commit SHA or release ID");

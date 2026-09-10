@@ -21,7 +21,8 @@ function readBuiltIdentity() {
   }
 }
 
-const builtIdentity = readBuiltIdentity();
+const isProduction = process.env.NODE_ENV === "production";
+const builtIdentity = isProduction ? readBuiltIdentity() : null;
 const applicationVersion = builtIdentity?.applicationVersion || process.env.npm_package_version || "0.0.0";
 const commitSha = builtIdentity?.commitSha
   || process.env.COMMIT_SHA
@@ -61,7 +62,7 @@ export function handleVersionRequest(_req, res) {
 }
 
 export function handleReleaseDocumentRequest(_req, res) {
-  const identity = readBuiltIdentity() ?? releaseIdentity;
+  const identity = isProduction ? (readBuiltIdentity() ?? releaseIdentity) : releaseIdentity;
   res.statusCode = 200;
   res.setHeader("content-type", "application/json; charset=utf-8");
   res.setHeader("cache-control", "no-store");

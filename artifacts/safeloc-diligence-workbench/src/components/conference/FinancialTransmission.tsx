@@ -1,26 +1,19 @@
 import { useState } from "react";
-import { ArrowRight, ChevronDown, Save, Scale } from "lucide-react";
+import { ChevronDown, Save, Scale } from "lucide-react";
 import { useDiligence } from "@/context/DiligenceContext";
 import { FinancialMateriality } from "@/pages/FinancialMateriality";
 import { DecisionReview } from "@/pages/DecisionReview";
 import { DiligenceLiveRegions } from "@/components/Shell";
-import { getConferenceRelationship, isConferenceResearchIncomplete } from "@/model/conferenceEvidence";
+import { isConferenceResearchIncomplete } from "@/model/conferenceEvidence";
 
 export function FinancialTransmission({ onNavigate, onResolveEvidence }: { onNavigate: (screen: string) => void; onResolveEvidence: (id: string) => void }) {
-  const { project, evidence, originatingCompany, metrics } = useDiligence();
+  const { project, evidence, metrics } = useDiligence();
   const incomplete = isConferenceResearchIncomplete(project, evidence);
   const [showStressTest, setShowStressTest] = useState(() => !incomplete);
   const [scenarioOpen, setScenarioOpen] = useState(false);
   const [requestedAction, setRequestedAction] = useState<"save" | "compare" | null>(null);
   const openScenario = (action: "save" | "compare" | null) => { setScenarioOpen(true); setRequestedAction(action); };
   const detailNavigate = (screen: string) => screen === "decision" ? openScenario(null) : onNavigate(screen);
-  const relationship = getConferenceRelationship(project, originatingCompany);
-  const links = [
-    { label: "Real Factor", title: "Power, water & community conditions", detail: "Timing, availability and documented obligations are reviewed in Project Reality." },
-    { label: "Project Consequence", title: "Project Delay & Cost Overrun", detail: "A constraint could defer commissioning or change operating and capital costs. This is a possible pathway, not a forecast." },
-    { label: "Potential Issuer Implication", title: relationship.established ? relationship.company!.displayName : "Issuer link not established", detail: relationship.established ? "Depending on contracts, delivery timing or input costs could affect revenue or margins. The amount is not established." : "Do not attribute project outcomes to a company without a documented relationship." },
-    { label: "Portfolio Relevance", title: "Materiality remains unquantified", detail: "Check actual holding weights, issuer dependence and diversification. A single project cannot establish a fund-risk rating." },
-  ];
   return (
     <section data-testid="conference-view-transmission" className="space-y-5">
       <div><p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#607500]">03 / Trace a possible financial pathway</p><h2 className="mt-2 text-2xl font-semibold tracking-tight">How could a physical constraint reach a holding?</h2></div>
@@ -47,13 +40,6 @@ export function FinancialTransmission({ onNavigate, onResolveEvidence }: { onNav
             <DecisionReview onNavigate={detailNavigate} onResolve={onResolveEvidence} requestedAction={requestedAction} onRequestedActionHandled={() => setRequestedAction(null)} />
           </section> : <FinancialMateriality onNavigate={detailNavigate} />}
         </div>}
-      </div>
-      <div className="grid gap-3 lg:grid-cols-4">
-        {links.map((link, index) => <article key={link.label} className={`relative min-w-0 rounded-xl border p-5 ${index === 3 ? "border-[#122232] bg-[#122232] text-white" : "border-[#cbd8d4] bg-white"}`}>
-          <div className={`text-[10px] font-semibold uppercase tracking-[0.1em] ${index === 3 ? "text-[#d4e86b]" : "text-[#607500]"}`}>{index + 1} / {link.label}</div>
-          <h3 className="mt-3 text-base font-semibold">{link.title}</h3><p className={`mt-3 text-xs leading-5 ${index === 3 ? "text-[#c4d0d6]" : "text-[#52616b]"}`}>{link.detail}</p>
-          {index < 3 && <ArrowRight aria-hidden="true" className="mt-4 h-4 w-4 rotate-90 text-[#607500] lg:rotate-0" />}
-        </article>)}
       </div>
     </section>
   );

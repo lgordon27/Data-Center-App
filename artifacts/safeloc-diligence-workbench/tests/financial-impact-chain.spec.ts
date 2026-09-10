@@ -70,9 +70,9 @@ test.describe("Financial Impact Chain", () => {
     await page.goto("/#analysis");
     await page.getByTestId("tab-transmission").click();
     const transmission = page.getByTestId("conference-view-transmission");
-    await expect(transmission).toContainText("Real Factor");
-    await expect(transmission).toContainText("Project Delay & Cost Overrun");
-    await expect(transmission).toContainText("Issuer Implication");
+    await expect(transmission.getByTestId("transmission-pathway")).toHaveCount(1);
+    await expect(transmission.getByTestId("transmission-pathway")).toContainText(/Real factor/i);
+    await expect(transmission.getByTestId("transmission-pathway")).toContainText(/Potential issuer implication/i);
     await expect(transmission).not.toContainText(/\b(?:HIGH|MODERATE|LOW)\b/);
 
     await page.getByTestId("tab-advisor").click();

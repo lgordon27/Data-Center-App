@@ -8,3 +8,5 @@ SafeLoc release acceptance treats the built public bundle as the release artifac
 **Why:** The local redesigned Home and the public deployment can drift while both appear healthy; visual checks alone cannot distinguish a stale cached bundle or an obsolete production entry point.
 
 **How to apply:** Run the production contract test and a cache-aware local/production release comparison after every release-interface change. Keep deployment blocked when the public host does not expose the release documents or renders the old Home markers.
+
+Development identity must come from the live Git HEAD and package metadata rather than a previously generated `dist` document. Production identity must continue to come from the generated, content-hashed release document so the running server and built bundle remain identical.

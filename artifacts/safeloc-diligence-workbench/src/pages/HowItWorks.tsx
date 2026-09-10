@@ -262,7 +262,7 @@ export function HowItWorks({ onReturn, onOpenScreen, initialSection }: HowItWork
 
               <Disclosure id="builder" title="Builder background" preview="Why SafeLoc starts with physical infrastructure evidence.">
                 <p data-testid="tour-builder-story" className="max-w-3xl text-[12px] leading-5 text-[#52616b]">Built by LeAndrew Gordon, Founder and CEO of SafeLoc, a former Private Wealth Financial Advisor and Chartered SRI Counselor, for the Growth for Impact Conference. SafeLoc applies values-aligned evidence standards to the infrastructure layer so sustainability professionals can help steer the AI economy.</p>
-                <div className="mt-4 flex items-center gap-2 font-mono text-[9px] uppercase tracking-[0.12em] text-[#607500]"><Zap aria-hidden="true" className="h-3.5 w-3.5" /> SafeLoc / evidence-governed investment intelligence</div>
+                <div className="mt-4 flex items-center gap-2 font-mono text-[9px] uppercase tracking-[0.12em] text-[#607500]"><Zap aria-hidden="true" className="h-3.5 w-3.5" /> SafeLoc / AI infrastructure investment intelligence</div>
               </Disclosure>
             </div>
           </div>
@@ -272,7 +272,7 @@ export function HowItWorks({ onReturn, onOpenScreen, initialSection }: HowItWork
       <footer className="border-t border-white/10 bg-[#122232] px-4 pb-8 pt-1 md:px-8">
         <div className="mx-auto flex max-w-[1240px] flex-col gap-5 border-t border-[#60717f] pt-7 sm:flex-row sm:items-center sm:justify-between">
           <ReturnButton onReturn={onReturn} />
-          <div className="flex items-center gap-2 font-mono text-[9px] uppercase tracking-[0.12em] text-[#9dafb8]"><Zap aria-hidden="true" className="h-3.5 w-3.5 text-[#b9d43a]" /> SafeLoc / private working paper</div>
+          <div className="flex items-center gap-2 font-mono text-[9px] uppercase tracking-[0.12em] text-[#9dafb8]"><Zap aria-hidden="true" className="h-3.5 w-3.5 text-[#b9d43a]" /> SafeLoc / AI infrastructure investment intelligence</div>
           <a href="#tour-context" className="inline-flex min-h-11 items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#d4e86b] hover:text-white">Back to top <ArrowRight aria-hidden="true" className="h-3.5 w-3.5 rotate-[-90deg]" /></a>
         </div>
       </footer>

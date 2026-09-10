@@ -26,11 +26,11 @@ The application keeps provider credentials and transport server-side. A canonica
 - Browser `localStorage` for the current evidence-classification session and named scenario snapshots
 - No database or authentication dependency; server-side GridTracker configuration is environment-only
 
-The artifact is registered as a path-routed web artifact in `artifacts/safeloc-diligence-workbench/.replit-artifact/artifact.toml`. Its single `web` service owns `/`, receives the workflow-provided port and base path, and serves both the development and production application through the canonical Express host.
+The artifact is registered as a path-routed web artifact in `artifacts/safeloc-diligence-workbench/.replit-artifact/artifact.toml`. Its development service runs on the workflow-provided port and serves the artifact at `/`.
 
 ## Key files
 
-- `artifacts/safeloc-diligence-workbench/.replit-artifact/artifact.toml` — artifact identity, `/` preview path, the single web service, development/production commands, and `PORT`/`BASE_PATH` values.
+- `artifacts/safeloc-diligence-workbench/.replit-artifact/artifact.toml` — artifact identity, `/` preview path, web service, development command, static production build, and `PORT`/`BASE_PATH` values.
 - `artifacts/safeloc-diligence-workbench/package.json` — SafeLoc scripts for development, build, preview, typecheck, unit tests, and Playwright tests.
 - `artifacts/safeloc-diligence-workbench/src/main.tsx` — React entrypoint; mounts `App` inside the error boundary and loads the global CSS.
 - `artifacts/safeloc-diligence-workbench/src/App.tsx` — active shell, hash route handling, navigation, home page, five workbench screens, AI Chain view, scenario comparison, reset flow, and presentation components.
@@ -43,7 +43,7 @@ The artifact is registered as a path-routed web artifact in `artifacts/safeloc-d
 - `artifacts/safeloc-diligence-workbench/src/model/*.test.ts` — model and advisor-lens unit tests.
 - `artifacts/safeloc-diligence-workbench/tests/*.spec.ts` — browser regression coverage for routing, storage/reset behavior, and scenarios.
 - `artifacts/safeloc-diligence-workbench/vite.config.ts` — Vite/Tailwind setup, aliases, required environment validation, host/port configuration, and static output path.
-- `artifacts/safeloc-diligence-workbench/server/index.ts` — canonical Express host for the development Vite middleware, production client, and same-origin API routes.
+- `artifacts/safeloc-diligence-workbench/server/index.ts` — Express host for the development Vite middleware, production client, and same-origin GridTracker routes.
 - `artifacts/safeloc-diligence-workbench/server/mcp/gridtracker.ts` — MCP initialization and tool discovery, normalized query results, TTL cache, stale fallback, and redacted diagnostics.
 
 ## Routes and user flow
@@ -128,7 +128,7 @@ pnpm --filter @workspace/mockup-sandbox run typecheck
 pnpm --filter @workspace/mockup-sandbox run build
 ```
 
-The SafeLoc runtime requires both `PORT` and `BASE_PATH`. The registered artifact supplies `PORT=25519` and `BASE_PATH=/`; when running the package outside the managed workflow, provide them explicitly. Missing or malformed values fail with an actionable startup error:
+The Vite configuration requires both `PORT` and `BASE_PATH` for every Vite command (`dev`, `build`, and `serve`). The registered artifact supplies `PORT=25519` and `BASE_PATH=/`; when running the package outside the managed workflow, provide them explicitly:
 
 ```bash
 PORT=25519 BASE_PATH=/ pnpm --filter @workspace/safeloc-diligence-workbench run dev
@@ -144,7 +144,7 @@ pnpm --filter @workspace/safeloc-diligence-workbench run test
 pnpm --filter @workspace/safeloc-diligence-workbench run test:e2e
 ```
 
-The production build is a Vite output under `artifacts/safeloc-diligence-workbench/dist/public`. Both `pnpm ... run start` (the artifact deployment command) and `pnpm ... run serve` (the local alias) start the same production Express host, which serves that directory and preserves the API and release routes before the SPA fallback. Unknown browser paths receive the application entry document; unknown `/api/*` paths remain JSON 404s instead of being swallowed by the client fallback.
+The production build is a Vite output under `artifacts/safeloc-diligence-workbench/dist/public`. `pnpm ... run serve` starts the production Express host, which serves that directory and keeps `/api/gridtracker/*` same-origin. The artifact manifest retains the static preview declaration for the managed artifact preview; deployments that run the package can use the Express `serve` script.
 
 For Playwright tests, `playwright.config.ts` starts the SafeLoc dev server on port `4173` with `PORT=4173 BASE_PATH=/` unless `PLAYWRIGHT_BASE_URL` is provided. If a custom base URL is used, start a compatible SafeLoc server yourself and set `PLAYWRIGHT_BASE_URL` to it.
 

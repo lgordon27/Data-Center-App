@@ -8,12 +8,12 @@ import { getConferenceRelationship, isConferenceResearchIncomplete } from "@/mod
 
 export function FinancialTransmission({ onNavigate, onResolveEvidence }: { onNavigate: (screen: string) => void; onResolveEvidence: (id: string) => void }) {
   const { project, evidence, originatingCompany, metrics } = useDiligence();
-  const [showStressTest, setShowStressTest] = useState(false);
+  const incomplete = isConferenceResearchIncomplete(project, evidence);
+  const [showStressTest, setShowStressTest] = useState(() => !incomplete);
   const [scenarioOpen, setScenarioOpen] = useState(false);
   const [requestedAction, setRequestedAction] = useState<"save" | "compare" | null>(null);
   const openScenario = (action: "save" | "compare" | null) => { setScenarioOpen(true); setRequestedAction(action); };
   const detailNavigate = (screen: string) => screen === "decision" ? openScenario(null) : onNavigate(screen);
-  const incomplete = isConferenceResearchIncomplete(project, evidence);
   const relationship = getConferenceRelationship(project, originatingCompany);
   const links = [
     { label: "Real Factor", title: "Power, water & community conditions", detail: "Timing, availability and documented obligations are reviewed in Project Reality." },
@@ -26,13 +26,6 @@ export function FinancialTransmission({ onNavigate, onResolveEvidence }: { onNav
       <div><p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#607500]">03 / Trace a possible financial pathway</p><h2 className="mt-2 text-2xl font-semibold tracking-tight">How could a physical constraint reach a holding?</h2></div>
       {incomplete && <div data-testid="transmission-research-incomplete" className="rounded-lg border border-[#e3d4b6] bg-[#fffbf2] p-5">
         <h3 className="font-semibold text-[#805000]">Research Incomplete</h3><p className="mt-2 text-sm leading-6 text-[#52616b]">The custom project lacks sufficient accepted, source-backed material evidence. No return conclusion is presented. You can inspect the research or explicitly explore a synthetic scenario.</p>
-      </div>}
-      {!showStressTest && <div className="grid gap-3 lg:grid-cols-4">
-        {links.map((link, index) => <article key={link.label} className={`relative min-w-0 rounded-xl border p-5 ${index === 3 ? "border-[#122232] bg-[#122232] text-white" : "border-[#cbd8d4] bg-white"}`}>
-          <div className={`text-[10px] font-semibold uppercase tracking-[0.1em] ${index === 3 ? "text-[#d4e86b]" : "text-[#607500]"}`}>{index + 1} / {link.label}</div>
-          <h3 className="mt-3 text-base font-semibold">{link.title}</h3><p className={`mt-3 text-xs leading-5 ${index === 3 ? "text-[#c4d0d6]" : "text-[#52616b]"}`}>{link.detail}</p>
-          {index < 3 && <ArrowRight aria-hidden="true" className="mt-4 h-4 w-4 rotate-90 text-[#607500] lg:rotate-0" />}
-        </article>)}
       </div>}
       <p className="text-xs leading-5 text-[#60707d]">Synthetic project economics are not reported transaction terms, issuer valuation or investment advice.</p>
       <div className="rounded-xl border border-[#cbd8d4] bg-white">
@@ -54,6 +47,13 @@ export function FinancialTransmission({ onNavigate, onResolveEvidence }: { onNav
             <DecisionReview onNavigate={detailNavigate} onResolve={onResolveEvidence} requestedAction={requestedAction} onRequestedActionHandled={() => setRequestedAction(null)} />
           </section> : <FinancialMateriality onNavigate={detailNavigate} />}
         </div>}
+      </div>
+      <div className="grid gap-3 lg:grid-cols-4">
+        {links.map((link, index) => <article key={link.label} className={`relative min-w-0 rounded-xl border p-5 ${index === 3 ? "border-[#122232] bg-[#122232] text-white" : "border-[#cbd8d4] bg-white"}`}>
+          <div className={`text-[10px] font-semibold uppercase tracking-[0.1em] ${index === 3 ? "text-[#d4e86b]" : "text-[#607500]"}`}>{index + 1} / {link.label}</div>
+          <h3 className="mt-3 text-base font-semibold">{link.title}</h3><p className={`mt-3 text-xs leading-5 ${index === 3 ? "text-[#c4d0d6]" : "text-[#52616b]"}`}>{link.detail}</p>
+          {index < 3 && <ArrowRight aria-hidden="true" className="mt-4 h-4 w-4 rotate-90 text-[#607500] lg:rotate-0" />}
+        </article>)}
       </div>
     </section>
   );

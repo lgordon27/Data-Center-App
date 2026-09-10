@@ -1,46 +1,49 @@
 import { expect, test } from "@playwright/test";
 
 test.describe("Financial Impact Chain", () => {
-  test("keeps the live marginal chain behind the illustrative stress-test disclosure", async ({ page }) => {
+  test("opens on the return overview and separates drivers, cash flows, and assumptions", async ({ page }) => {
     await page.goto("/#analysis");
     await page.getByTestId("tab-transmission").click();
 
     const stressTest = page.getByRole("button", { name: /Illustrative Project Stress Test/i });
-    await expect(stressTest).toHaveAttribute("aria-expanded", "false");
-    await expect(page.getByTestId("panel-impact-chain")).toHaveCount(0);
-    await stressTest.click();
     await expect(stressTest).toHaveAttribute("aria-expanded", "true");
     await expect(page.getByTestId("panel-impact-chain")).toBeVisible();
     await expect(page.getByTestId("impact-chain-baseline-irr")).toContainText("%");
     await expect(page.getByTestId("impact-chain-stress-irr")).toContainText("%");
-    await expect(page.getByTestId("impact-chain-evidence-gap")).toContainText("gap");
+    await expect(page.getByTestId("impact-chain-evidence-gap")).toContainText("difference");
+    await expect(page.getByTestId("cash-flow-comparison-y0")).toHaveCount(0);
+    await expect(page.getByTestId("panel-decision-context-treatment")).toHaveCount(0);
+
+    await page.getByRole("tab", { name: "Cash Flows" }).click();
     await expect(page.getByTestId("cash-flow-comparison-y0")).toContainText("Close / Year 0");
     await expect(page.getByTestId("cash-flow-comparison-y5")).toBeVisible();
     await expect(page.getByTestId("metric-project-irr")).toBeVisible();
+
+    await page.getByRole("tab", { name: "Assumptions" }).click();
     await expect(page.getByTestId("panel-decision-context-treatment")).toContainText("Source provenance:");
     await expect(page.getByTestId("panel-decision-context-treatment")).toContainText("Current classification:");
     await expect(page.getByTestId("panel-decision-context-treatment")).toContainText("Financial role:");
 
-    const stressIrr = await page.getByTestId("impact-chain-stress-irr").textContent();
-    await expect(page.getByTestId("text-current-irr-materiality")).toHaveText(stressIrr ?? "");
+    await page.getByRole("tab", { name: "Overview" }).click();
+    await expect(page.getByTestId("text-current-irr-materiality")).toContainText("%");
 
-    await page.getByRole("tab", { name: "Drivers" }).click();
+    await page.getByRole("tab", { name: "Key Drivers" }).click();
     await expect(page.getByTestId("panel-impact-chain")).toBeHidden();
     await expect(page.getByTestId("panel-irr-waterfall")).toBeVisible();
-    await expect(page.getByTestId("waterfall-methodology")).toContainText("weaker evidence");
+    await expect(page.getByTestId("waterfall-methodology")).toContainText(/weaker evidence/i);
 
-    await page.getByRole("tab", { name: "Full Model" }).click();
+    await page.getByRole("tab", { name: "Assumptions" }).click();
     await page.getByTestId("disclosure-full-model-detail").locator(":scope > summary").click();
     await expect(page.getByTestId("disclosure-full-model-detail")).toHaveAttribute("open", "");
-    await page.getByRole("tab", { name: "Drivers" }).click();
+    await page.getByRole("tab", { name: "Key Drivers" }).click();
     await expect(page.getByTestId("panel-irr-waterfall")).toBeVisible();
-    await expect(page.getByRole("tab", { name: "Drivers" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("tab", { name: "Key Drivers" })).toHaveAttribute("aria-selected", "true");
   });
 
   test("drawer explains marginal treatment and reclassification updates the chain", async ({ page }) => {
     await page.goto("/#analysis");
     await page.getByTestId("tab-transmission").click();
-    await page.getByRole("button", { name: /Illustrative Project Stress Test/i }).click();
+    await page.getByRole("tab", { name: "Key Drivers" }).click();
     const row = page.getByTestId("impact-chain-row-electricity_cost");
     await expect(row).toContainText("User Assumption");
     await row.getByTestId("button-trace-impact-chain-electricity_cost").click();
@@ -59,7 +62,7 @@ test.describe("Financial Impact Chain", () => {
     await page.getByTestId("row-evidence-electricity_cost").locator(":scope > summary").click();
     await page.getByTestId("select-classification-electricity_cost").selectOption("Missing Evidence");
     await page.getByTestId("tab-transmission").click();
-    await page.getByRole("button", { name: /Illustrative Project Stress Test/i }).click();
+    await page.getByRole("tab", { name: "Key Drivers" }).click();
     await expect(page.getByTestId("impact-chain-row-electricity_cost")).toContainText("Missing");
   });
 

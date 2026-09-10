@@ -32,6 +32,11 @@ async function expectNoHorizontalOverflow(page: Page) {
   }))).toEqual({ body: true, document: true, main: true });
 }
 
+async function ensureStressModelOpen(page: Page) {
+  const toggle = page.getByRole("button", { name: /Illustrative Project Stress Test/i });
+  if (await toggle.getAttribute("aria-expanded") === "false") await toggle.click();
+}
+
 function exactTestIdPrefix(scope: Locator, prefix: string) {
   return scope.locator(
     `[data-testid^="${prefix}"]:not([data-testid^="${prefix}detail-"])`,
@@ -119,7 +124,6 @@ test.describe("analysis conference", () => {
     await expect(page.getByTestId("live-current-irr")).toHaveCount(0);
     await page.getByTestId("tab-transmission").click();
     const toggle = page.getByRole("button", { name: /Illustrative Project Stress Test/i });
-    await toggle.click();
     await page.getByTestId("rail-compare-scenarios").click();
     await expect(page.getByTestId("conference-scenarios")).toBeVisible();
     await toggle.click();
@@ -132,9 +136,9 @@ test.describe("analysis conference", () => {
     await page.keyboard.press("ArrowRight");
     await expect(page.getByTestId("tab-advisor")).toHaveAttribute("aria-selected", "true");
     await page.keyboard.press("ArrowLeft");
-    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
     await expect(page.getByTestId("conference-scenarios")).toHaveCount(0);
-    await expect(page.getByTestId("live-current-irr")).toHaveCount(0);
+    await expect(page.getByTestId("live-current-irr")).toHaveCount(1);
   });
 
   test("delivers a one-page Advisor Brief with three manager questions and one action", async ({ page, viewport }) => {
@@ -154,7 +158,8 @@ test.describe("analysis conference", () => {
 
   test("preserves live calculations and session state while moving between conference views", async ({ page }) => {
     await page.getByTestId("tab-transmission").click();
-    await page.getByRole("button", { name: /Illustrative Project Stress Test/i }).click();
+    await ensureStressModelOpen(page);
+    await page.getByRole("tab", { name: "Cash Flows" }).click();
     const initialIrr = await page.getByTestId("metric-project-irr").textContent();
     expect(initialIrr).toContain("%");
 
@@ -166,7 +171,8 @@ test.describe("analysis conference", () => {
     await expect(page.getByTestId("review-marker-electricity_cost")).toContainText("Reviewed by analyst");
 
     await page.getByTestId("tab-transmission").click();
-    await page.getByRole("button", { name: /Illustrative Project Stress Test/i }).click();
+    await ensureStressModelOpen(page);
+    await page.getByRole("tab", { name: "Cash Flows" }).click();
     await expect(page.getByTestId("metric-project-irr")).not.toHaveText(initialIrr ?? "");
     const recalculatedIrr = await page.getByTestId("metric-project-irr").textContent();
 
@@ -177,7 +183,8 @@ test.describe("analysis conference", () => {
     await page.getByTestId("row-evidence-electricity_cost").locator(":scope > summary").click();
     await expect(page.getByTestId("select-classification-electricity_cost")).toHaveValue("Missing Evidence");
     await page.getByTestId("tab-transmission").click();
-    await page.getByRole("button", { name: /Illustrative Project Stress Test/i }).click();
+    await ensureStressModelOpen(page);
+    await page.getByRole("tab", { name: "Cash Flows" }).click();
     await expect(page.getByTestId("metric-project-irr")).toHaveText(recalculatedIrr ?? "");
 
     await page.getByTestId("button-reset-default").click();
@@ -192,7 +199,7 @@ test.describe("analysis conference", () => {
 
   test("preserves save, compare, rename, and remove behavior in the conference scenario workspace", async ({ page }) => {
     await page.getByTestId("tab-transmission").click();
-    await page.getByRole("button", { name: /Illustrative Project Stress Test/i }).click();
+    await ensureStressModelOpen(page);
     await page.getByTestId("rail-save-scenario").click();
     await expect(page.getByTestId("conference-scenarios")).toBeVisible();
 

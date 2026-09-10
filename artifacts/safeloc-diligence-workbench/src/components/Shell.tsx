@@ -612,18 +612,3 @@ export function ReviewDecisionBadge({ value, testId }: { value: ReviewDecisionSt
   const meta = reviewDecisionMeta[value];
   return <StatusBadge tone={meta.tone} label={meta.label} icon={meta.icon} testId={testId} />;
 }
-
-export type AgentStageState = "pending" | "running" | "completed" | "retryable" | "failed";
-
-export const agentStageMeta: Record<AgentStageState, { tone: StatusTone; icon: typeof Check; label: string; spin?: boolean }> = {
-  pending: { tone: "neutral", icon: CircleDashed, label: "Waiting" },
-  running: { tone: "info", icon: Loader2, label: "Running", spin: true },
-  completed: { tone: "verified", icon: CheckCircle2, label: "Complete" },
-  retryable: { tone: "assumption", icon: CircleAlert, label: "Needs review" },
-  failed: { tone: "missing", icon: XCircle, label: "Could not complete" },
-};
-
-export function AgentStageBadge({ value, testId }: { value: AgentStageState; testId?: string }) {
-  const meta = agentStageMeta[value];
-  return <StatusBadge tone={meta.tone} label={meta.label} icon={meta.icon} testId={testId} spin={meta.spin} />;
-}

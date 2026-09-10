@@ -57,6 +57,8 @@ test.describe("ERCOTQueue governed source flow", () => {
     await expect(page.getByTestId("ercot-grid-evidence")).toBeVisible();
     await expect(page.getByTestId("ercot-matching-record")).toContainText("Crusoe Stargate Abilene");
     await expect(page.getByTestId("ercot-matching-record")).toContainText("Queue position 42");
+    await expect(page.getByTestId("eia-electricity-evidence")).toBeVisible();
+    await expect(page.getByTestId("eia-loading")).toHaveCount(0);
 
     const classification = page.getByTestId("select-classification-grid_interconnection");
     await classification.selectOption("Management Assertion");

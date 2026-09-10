@@ -43,16 +43,17 @@ test.describe("current-session recovery and reset isolation", () => {
     expect(storedReview.kind).toBe("manual");
     expect(storedReview.reviewedAt).toMatch(/^\d{4}-\d{2}-\d{2}T.*Z$/);
 
-    const reloadStartedAt = Date.now();
     await page.reload();
-    await expect(page.getByTestId("text-session-restored")).toHaveText("Session restored");
+    const sessionRestored = page.getByTestId("text-session-restored");
+    await expect(sessionRestored).toBeVisible();
+    await expect(sessionRestored).toHaveText("Session restored");
+    const sessionRestoredShownAt = Date.now();
     await openProjectRealityEvidenceReview(page);
     await expect(classification).toHaveValue("Missing Evidence");
     await expect(marker).toContainText("Reviewed by analyst");
     await expect(marker.locator("time")).toHaveAttribute("datetime", storedReview.reviewedAt);
-    await page.waitForTimeout(Math.max(0, 3_000 - (Date.now() - reloadStartedAt)));
-    await expect(page.getByTestId("text-session-restored")).toBeVisible();
-    await expect(page.getByTestId("text-session-restored")).toBeHidden({ timeout: 2_500 });
+    await expect(sessionRestored).toBeHidden({ timeout: 5_000 });
+    expect(Date.now() - sessionRestoredShownAt).toBeGreaterThanOrEqual(3_500);
 
     await openFinancialTransmission(page);
     await openProjectRealityEvidenceReview(page);
@@ -134,13 +135,15 @@ test.describe("current-session recovery and reset isolation", () => {
     );
 
     await page.reload();
+    const migrationNotice = page.getByTestId("text-session-restored");
+    await expect(migrationNotice).toBeVisible();
+    await expect(migrationNotice).toHaveText("Session updated to audited defaults");
     await openProjectRealityEvidenceReview(page);
 
     await expect(page.getByTestId("select-classification-electricity_cost")).toHaveValue("User Assumption");
     await expect(page.getByTestId("select-classification-electricity_escalation")).toHaveValue("Model Inference");
     await expect(page.getByTestId("select-classification-customer_concentration")).toHaveValue("Missing Evidence");
     await expect(page.getByTestId("select-classification-water_consumption")).toHaveValue("Verified Evidence");
-    await expect(page.getByTestId("text-session-restored")).toHaveText("Session updated to audited defaults");
 
     const migrated = await page.evaluate((key) => JSON.parse(window.localStorage.getItem(key) ?? "{}"), currentSessionKey);
     expect(migrated.version).toBe(2);

@@ -73,7 +73,7 @@ Every definition also declares allowed source scope and source types, project-sp
 - `src/services/researchProjectService.ts` — client hydration/containment routed through the shared policy.
 - `src/context/DiligenceContext.tsx` — semantic metadata propagation, guarded model snapshots, no-op review records, and session/model/history restoration.
 - `src/model/cashFlowEngine.ts` — shared-policy model boundary and accepted-input-only normalization.
-- `src/model/diligenceAgent.ts` — no-op agent acknowledgements without applied model changes.
+- Active evidence acceptance and decision-history persistence remain in `src/pages/EvidenceRoom.tsx`, `src/context/DiligenceContext.tsx`, and `src/services/sessionLog.ts`; the retired analyst-agent module is not part of the current architecture.
 - `src/services/sessionLog.ts` — decision-history persistence after Evidence Room acceptance.
 - Updated regression tests in `server/researchProjectProxy.test.mjs`, `src/data/evidenceSemanticPolicy.test.ts`, `src/model/cashFlowEngine.test.ts`, `src/services/researchProjectService.test.ts`, and `src/services/sessionLog.test.ts`, including repeated server/cache/client containment, cross-dimension rejection, and per-variable source rules.
 

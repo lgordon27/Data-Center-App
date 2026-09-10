@@ -45,11 +45,11 @@ test.describe("current-session recovery and reset isolation", () => {
 
     const reloadStartedAt = Date.now();
     await page.reload();
+    await expect(page.getByTestId("text-session-restored")).toHaveText("Session restored");
     await openProjectRealityEvidenceReview(page);
     await expect(classification).toHaveValue("Missing Evidence");
     await expect(marker).toContainText("Reviewed by analyst");
     await expect(marker.locator("time")).toHaveAttribute("datetime", storedReview.reviewedAt);
-    await expect(page.getByTestId("text-session-restored")).toHaveText("Session restored");
     await page.waitForTimeout(Math.max(0, 3_000 - (Date.now() - reloadStartedAt)));
     await expect(page.getByTestId("text-session-restored")).toBeVisible();
     await expect(page.getByTestId("text-session-restored")).toBeHidden({ timeout: 2_500 });

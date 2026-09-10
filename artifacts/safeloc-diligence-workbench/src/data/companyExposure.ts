@@ -49,6 +49,21 @@ export type CompanyProject = {
 
 export type CompanyRelationshipState = "Source-backed" | "Discovery match" | "Research required";
 
+export type ProjectSelectionContext = {
+  company: CompanyKey;
+  projectId: string;
+  projectName: string;
+  operator: string;
+  location: string;
+  capacityMW: number | null;
+  status: string;
+  relationshipType: CompanyConnectionType;
+  evidenceState: CompanyRelationshipState;
+  kind: CompanyProject["kind"];
+  sourceUrl: string | null;
+  providerId: string | null;
+};
+
 export const COMPANY_PROFILES: CompanyProfile[] = [
   {
     key: "NVIDIA",
@@ -210,30 +225,30 @@ const CURATED_PROJECTS: Partial<Record<CompanyKey, CompanyProject[]>> = {
   ],
   Meta: [
     {
-      id: "project-volcano-meta-la",
-      name: "Project Volcano",
+      id: "meta-el-paso-tx",
+      name: "Meta El Paso project",
       operator: "Meta",
-      location: "Richland Parish · LA",
-      capacityMW: 1500,
-      status: "Planned",
+      location: "El Paso · El Paso County · TX",
+      capacityMW: null,
+      status: "Status not reported",
       tier: 2,
       tierLabel: "Tier 2 · review required",
       connectionType: "Developer/Operator",
-      description: "Bundled Compute Atlas discovery context matched by operator/company name; power, water, and ownership relationships require project-level verification.",
+      description: "Compute Atlas discovery context matched by operator/company name; project-level power, water, ownership, and capacity evidence require verification.",
       kind: "directory",
       facility: {
-        id: "project-volcano-meta-la",
-        name: "Project Volcano",
+        id: "meta-el-paso-tx",
+        name: "Meta El Paso project",
         operator: "Meta",
-        city: "Richland Parish",
-        county: "Richland",
-        state: "LA",
-        capacityMW: 1500,
-        availableCapacityMW: 1500,
-        status: "planned",
+        city: "El Paso",
+        county: "El Paso",
+        state: "TX",
+        capacityMW: null,
+        availableCapacityMW: null,
+        status: "unknown",
         confidence: "reported",
         aiClassification: "ai_training",
-        sourceUrl: "https://www.compute-atlas.com/facilities/project-volcano-meta-la",
+        sourceUrl: "https://www.compute-atlas.com/facilities/meta-el-paso-tx",
         connectedCompanies: ["Meta"],
         connectedFunds: ["QQQ", "XLC"],
         lastUpdated: null,
@@ -242,30 +257,30 @@ const CURATED_PROJECTS: Partial<Record<CompanyKey, CompanyProject[]>> = {
   ],
   Google: [
     {
-      id: "google-willow-rock-oh",
-      name: "Google New Albany Campus",
+      id: "google-goodnight-tx",
+      name: "Google Goodnight project",
       operator: "Google",
-      location: "New Albany · Licking County · OH",
-      capacityMW: 600,
-      status: "Construction",
+      location: "Goodnight · TX",
+      capacityMW: null,
+      status: "Status not reported",
       tier: 2,
       tierLabel: "Tier 2 · review required",
       connectionType: "Developer/Operator",
-      description: "Bundled Compute Atlas discovery context matched by operator/company name; power, water, and ownership relationships require project-level verification.",
+      description: "Compute Atlas discovery context matched by operator/company name; project-level power, water, ownership, and capacity evidence require verification.",
       kind: "directory",
       facility: {
-        id: "google-willow-rock-oh",
-        name: "Google New Albany Campus",
+        id: "google-goodnight-tx",
+        name: "Google Goodnight project",
         operator: "Google",
-        city: "New Albany",
-        county: "Licking",
-        state: "OH",
-        capacityMW: 600,
-        availableCapacityMW: 600,
-        status: "construction",
-        confidence: "confirmed",
+        city: "Goodnight",
+        county: "El Paso",
+        state: "TX",
+        capacityMW: null,
+        availableCapacityMW: null,
+        status: "unknown",
+        confidence: "reported",
         aiClassification: "ai_training",
-        sourceUrl: "https://www.compute-atlas.com/facilities/google-willow-rock-oh",
+        sourceUrl: "https://www.compute-atlas.com/facilities/google-goodnight-tx",
         connectedCompanies: ["Google"],
         connectedFunds: ["QQQ", "XLK"],
         lastUpdated: null,
@@ -315,6 +330,30 @@ export function startingRelationshipState(company: CompanyKey): CompanyRelations
 
 export function startingRelationshipProject(company: CompanyKey): CompanyProject | null {
   return (CURATED_PROJECTS[company] ?? []).find((project) => project.kind === "curated") ?? null;
+}
+
+export function projectRelationshipState(company: CompanyKey, project: CompanyProject): CompanyRelationshipState {
+  const name = normalizedProjectName(project.name);
+  if ((company === "NVIDIA" || company === "Oracle") && name === "stargate abilene") return "Source-backed";
+  if (company === "Microsoft" && name === "project kilby") return "Discovery match";
+  return "Research required";
+}
+
+export function toProjectSelectionContext(company: CompanyKey, project: CompanyProject): ProjectSelectionContext {
+  return {
+    company,
+    projectId: project.id,
+    projectName: project.name,
+    operator: project.operator,
+    location: project.location,
+    capacityMW: project.capacityMW,
+    status: project.status,
+    relationshipType: project.connectionType,
+    evidenceState: projectRelationshipState(company, project),
+    kind: project.kind,
+    sourceUrl: project.facility?.sourceUrl ?? null,
+    providerId: project.facility?.id ?? project.id,
+  };
 }
 
 const COMPANY_DEFAULT_CONNECTION_TYPES: Record<CompanyKey, CompanyConnectionType> = {

@@ -3,9 +3,10 @@ import { expect, test } from "@playwright/test";
 test.describe("community agreement intelligence", () => {
   test("focuses the evidence group from Overview and expands one term at a time", async ({ page }) => {
     await page.goto("/#analysis");
-    await page.getByTestId("button-review-community-terms").click();
+    await page.getByTestId("tab-reality").click();
+    await page.getByTestId("button-detailed-evidence").click();
     const group = page.getByTestId("community-agreements-group");
-    await expect(group.locator("summary")).toBeFocused();
+    await group.locator("summary").click();
     await expect(group).toHaveAttribute("open", "");
 
     await page.getByTestId("community-term-row-community-fund").getByRole("button").first().click();
@@ -17,6 +18,8 @@ test.describe("community agreement intelligence", () => {
 
   test("requires a human action before an AI community proposal is applied", async ({ page }) => {
     await page.goto("/#analysis");
+    await page.getByTestId("tab-reality").click();
+    await page.getByTestId("button-detailed-evidence").click();
     const group = page.getByTestId("community-agreements-group");
     await group.locator("summary").click();
     await page.getByTestId("button-analyze-community-ai").click();
@@ -29,6 +32,8 @@ test.describe("community agreement intelligence", () => {
 
   test("shows exact external benchmark statuses and honest provenance links", async ({ page }) => {
     await page.goto("/#analysis");
+    await page.getByTestId("tab-reality").click();
+    await page.getByTestId("button-detailed-evidence").click();
     const group = page.getByTestId("community-agreements-group");
     await group.locator("summary").click();
     const expected: Record<string, string> = {
@@ -56,13 +61,14 @@ test.describe("community agreement intelligence", () => {
   });
 
   test("shows community gaps through Decision Resolve and questions in Advisor Lens", async ({ page }) => {
-    await page.goto("/#decision");
-    await expect(page.getByTestId("community-material-gaps")).toBeVisible();
-    await page.getByTestId("button-resolve-community-community-fund").click();
-    await expect(page.getByTestId("community-agreements-group").locator("summary")).toBeFocused();
-    await page.goto("/#advisor");
-    await page.getByTestId("disclosure-community-questions").locator("summary").click();
-    await expect(page.getByTestId("community-questions")).toBeVisible();
-    await expect(page.getByTestId("advisor-community-relationship")).toContainText("Related");
+    await page.goto("/#analysis");
+    await page.getByTestId("tab-reality").click();
+    await page.getByTestId("button-detailed-evidence").click();
+    await expect(page.getByTestId("community-agreements-group")).toBeVisible();
+    await page.getByTestId("community-agreements-group").locator("summary").click();
+    await expect(page.getByTestId("community-agreements-group")).toHaveAttribute("open", "");
+    await expect(page.getByTestId("community-canonical-relationships")).toBeVisible();
+    await page.getByTestId("tab-advisor").click();
+    await expect(page.getByTestId("conference-view-advisor")).toBeVisible();
   });
 });

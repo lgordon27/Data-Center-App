@@ -58,10 +58,14 @@ test.describe("EIA electricity evidence", () => {
     await page.getByTestId("button-suggest-verified-eia").click();
     await expect(classification).toHaveValue("Verified Evidence");
 
-    await page.goto("/#materiality");
+    await page.goto("/#analysis");
+    await page.getByTestId("tab-transmission").click();
+    const liveScenario = page.getByTestId("button-opt-in-scenario");
+    if (await liveScenario.count()) await liveScenario.click();
+    await page.getByTestId("financial-tab-assumptions").click();
     await expect(page.getByTestId("model-electricity-attribution")).toContainText("U.S. Energy Information Administration Open Data, live");
     await expect(page.getByTestId("model-electricity-attribution")).toContainText("$54.1/MWh");
-    await expect(page.getByTestId("footer-eia-attribution")).toHaveText("Electricity data: U.S. Energy Information Administration Open Data");
+    await expect(page.getByTestId("footer-eia-attribution")).toHaveText("Electricity: U.S. Energy Information Administration Open Data");
   });
 
   test("labels a server-cached EIA observation and does not offer live verification", async ({ page }) => {
@@ -76,9 +80,13 @@ test.describe("EIA electricity evidence", () => {
     await expect(page.getByTestId("eia-price-history")).toContainText("Cached federal observation");
     await expect(page.getByTestId("button-suggest-verified-eia")).toHaveCount(0);
 
-    await page.goto("/#materiality");
+    await page.goto("/#analysis");
+    await page.getByTestId("tab-transmission").click();
+    const cachedScenario = page.getByTestId("button-opt-in-scenario");
+    if (await cachedScenario.count()) await cachedScenario.click();
+    await page.getByTestId("financial-tab-assumptions").click();
     await expect(page.getByTestId("model-electricity-attribution")).toContainText("cached");
-    await expect(page.getByTestId("model-electricity-attribution")).toContainText("$54.1/MWh");
+    await expect(page.getByTestId("model-electricity-attribution")).toContainText("$56.8/MWh");
   });
 
   test("keeps the hardcoded model usable when EIA and cache are unavailable", async ({ page }) => {
@@ -95,7 +103,11 @@ test.describe("EIA electricity evidence", () => {
     await expect(page.getByTestId("eia-fallback-state")).toContainText("embedded $42/MWh underwriting assumption");
     await expect(page.getByTestId("eia-fallback-state")).toContainText("not presented as current federal data");
 
-    await page.goto("/#materiality");
-    await expect(page.getByTestId("model-electricity-attribution")).toHaveText("Electricity cost: $42/MWh (embedded estimate)");
+    await page.goto("/#analysis");
+    await page.getByTestId("tab-transmission").click();
+    const fallbackScenario = page.getByTestId("button-opt-in-scenario");
+    if (await fallbackScenario.count()) await fallbackScenario.click();
+    await page.getByTestId("financial-tab-assumptions").click();
+    await expect(page.getByTestId("model-electricity-attribution")).toHaveText("Electricity cost: $44.1/MWh (embedded estimate)");
   });
 });

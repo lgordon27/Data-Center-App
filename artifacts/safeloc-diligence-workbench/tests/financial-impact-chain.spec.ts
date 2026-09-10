@@ -91,6 +91,11 @@ test.describe("Financial Impact Chain", () => {
     for (const route of routes) {
       await page.goto(route);
       const snapshot = page.getByTestId("shared-provider-queue-snapshot");
+      if (route === "/#value-chain") {
+        await page.getByTestId("value-chain-supporting-context").locator("summary").first().click();
+      } else {
+        await page.getByTestId("tour-disclosure-freshness").locator("summary").click();
+      }
       await expect(snapshot).toBeVisible();
       await expect(snapshot).toContainText("Embedded snapshot");
       await expect(snapshot).toContainText("aggregate values as of");

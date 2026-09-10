@@ -53,7 +53,9 @@ import {
   type ImpactRole,
 } from "@/data/evidenceImpactRoles";
 import {
+  COMPANY_CONNECTION_TYPES,
   COMPANY_PROFILES,
+  type ProjectSelectionContext,
   type CompanyKey,
 } from "@/data/companyExposure";
 import {
@@ -199,9 +201,11 @@ type DiligenceState = {
   financialInputState: FinancialInputState;
   resetToDefault: (originatingCompany?: string | null) => void;
   setOriginatingCompany: (originatingCompany: CompanyKey | null) => void;
-  loadCustomProject: (research: CustomResearchResponse, originatingCompany?: string | null) => void;
+  setProjectSelection: (selection: ProjectSelectionContext | null) => void;
+  loadCustomProject: (research: CustomResearchResponse, originatingCompany?: string | null, projectSelection?: ProjectSelectionContext | null) => void;
   project: ProjectContext;
   originatingCompany: string | null;
+  selectedProjectContext: ProjectSelectionContext | null;
   sessionRestored: boolean;
   sessionMigrated: boolean;
   scenarios: SavedScenario[];
@@ -357,6 +361,9 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     location: "Taylor County, TX",
   }));
   const [originatingCompany, setOriginatingCompanyState] = useState<CompanyKey | null>(initialSession.originatingCompany);
+  const [selectedProjectContext, setSelectedProjectContext] = useState<ProjectSelectionContext | null>(initialSession.selectedProjectContext ?? null);
+  const selectedProjectContextRef = useRef<ProjectSelectionContext | null>(selectedProjectContext);
+  selectedProjectContextRef.current = selectedProjectContext;
   const [scenarios, setScenarios] = useState<SavedScenario[]>(loadScenarios);
   const curatedProjectKey = getAgentProjectKey({ projectName: "Stargate Abilene", location: "Taylor County, TX", capacityMW: DEFAULT_CAPACITY_MW });
   const [agentRun, setAgentRun] = useState<DiligenceAgentState>(() => loadAgentRun(curatedProjectKey));
@@ -492,6 +499,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         nextState.hasChangedClassification,
         nextState.modelEvidence,
         originatingCompany,
+        selectedProjectContextRef.current,
       ));
     }
     return true;
@@ -504,7 +512,12 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setOriginatingCompany = useCallback((company: CompanyKey | null) => {
+    const nextSelection = selectedProjectContextRef.current?.company === company
+      ? selectedProjectContextRef.current
+      : null;
     setOriginatingCompanyState(company);
+    setSelectedProjectContext(nextSelection);
+    selectedProjectContextRef.current = nextSelection;
     if (project.kind === "curated") {
       const currentState = stateRef.current;
       writeStorage(CURRENT_SESSION_STORAGE_KEY, createSessionPayload(
@@ -512,9 +525,25 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         currentState.hasChangedClassification,
         currentState.modelEvidence,
         company,
+        nextSelection,
       ));
     }
   }, [project.kind]);
+
+  const setProjectSelection = useCallback((selection: ProjectSelectionContext | null) => {
+    const nextCompany = selection?.company ?? originatingCompany;
+    setOriginatingCompanyState(nextCompany);
+    setSelectedProjectContext(selection);
+    selectedProjectContextRef.current = selection;
+    const currentState = stateRef.current;
+    writeStorage(CURRENT_SESSION_STORAGE_KEY, createSessionPayload(
+      currentState.evidence,
+      currentState.hasChangedClassification,
+      currentState.modelEvidence,
+      nextCompany,
+      selection,
+    ));
+  }, [originatingCompany]);
 
   const applyEvidenceCorrection = useCallback((id: string, correction: EvidenceCorrection) => {
     if (project.kind !== "custom") return false;
@@ -817,7 +846,8 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
           persistedState.evidence,
           persistedState.hasChangedClassification,
           persistedState.modelEvidence,
-        originatingCompany,
+          originatingCompany,
+          selectedProjectContextRef.current,
         ));
       }
     }
@@ -876,6 +906,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         true,
         nextState.modelEvidence,
         originatingCompany,
+        selectedProjectContextRef.current,
       ));
     }
     setPersistedAgentRun(reverseAgentChangeState(current, auditId));
@@ -909,15 +940,34 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     clearStorage(DILIGENCE_AGENT_STORAGE_KEY);
     clearDecisionHistory();
     clearSessionActions();
+    const nextSelection = nextCompany === "Oracle" || nextCompany === "NVIDIA"
+      ? {
+        company: nextCompany,
+        projectId: "stargate-abilene",
+        projectName: "Stargate Abilene",
+        operator: "Oracle / OpenAI",
+        location: "Taylor County, TX",
+        capacityMW: DEFAULT_CAPACITY_MW,
+        status: "Operating / expansion reported",
+        relationshipType: "Developer/Operator" as const,
+        evidenceState: "Source-backed" as const,
+        kind: "curated" as const,
+        sourceUrl: null,
+        providerId: "stargate-abilene",
+      }
+      : null;
+    setSelectedProjectContext(nextSelection);
+    selectedProjectContextRef.current = nextSelection;
     writeStorage(CURRENT_SESSION_STORAGE_KEY, createSessionPayload(
       nextState.evidence,
       nextState.hasChangedClassification,
       nextState.modelEvidence,
       nextCompany,
+      nextSelection,
     ));
   }, []);
 
-  const loadCustomProject = useCallback((research: CustomResearchResponse, company: string | null = null) => {
+  const loadCustomProject = useCallback((research: CustomResearchResponse, company: string | null = null, projectSelection: ProjectSelectionContext | null = null) => {
     const researchById = new Map(research.evidence.map((item) => [item.id, item]));
     const customEvidence = Object.fromEntries(
       CUSTOM_EVIDENCE_IDS.map((id) => {
@@ -972,6 +1022,8 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     setCommunityReview(nextCommunityReview);
     writeCommunityReview(nextCommunityReview, customCommunityProject);
     setOriginatingCompanyState(parseOriginatingCompany(company));
+    setSelectedProjectContext(projectSelection);
+    selectedProjectContextRef.current = projectSelection;
     clearStorage(CURRENT_SESSION_STORAGE_KEY);
     const nextAgentRun = createInitialDiligenceAgent();
     setAgentRun(nextAgentRun);
@@ -1045,7 +1097,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   const communityUnresolvedCount = countUnresolvedCommunityTerms(communityReview.terms);
 
   return (
-    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, researchEvidence: project.kind === "custom" ? state.evidence : effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, applyEvidenceCorrection, clearLastChange, metrics, financialInputState, resetToDefault, setOriginatingCompany, loadCustomProject, project, originatingCompany, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading, communityReview, communityUnresolvedCount, reviewCommunityTerm, agentRun, runDiligenceAgent, retryDiligenceStage, reviewAgentFinding, reverseAgentChange }}>
+    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, researchEvidence: project.kind === "custom" ? state.evidence : effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, applyEvidenceCorrection, clearLastChange, metrics, financialInputState, resetToDefault, setOriginatingCompany, setProjectSelection, loadCustomProject, project, originatingCompany, selectedProjectContext, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading, communityReview, communityUnresolvedCount, reviewCommunityTerm, agentRun, runDiligenceAgent, retryDiligenceStage, reviewAgentFinding, reverseAgentChange }}>
       {children}
     </DiligenceContext.Provider>
   );
@@ -1283,6 +1335,7 @@ type SessionPayload = {
   modelEvidence?: Record<string, EvidenceItem>;
   decisionHistory?: DecisionHistoryEntry[];
   originatingCompany?: CompanyKey | null;
+  selectedProjectContext?: ProjectSelectionContext | null;
 };
 
 function createSessionPayload(
@@ -1290,6 +1343,7 @@ function createSessionPayload(
   hasChangedClassification: boolean,
   modelEvidence: Record<string, EvidenceItem> = evidence,
   originatingCompany: CompanyKey | null = null,
+  selectedProjectContext: ProjectSelectionContext | null = null,
 ): SessionPayload {
   return {
     version: SESSION_STORAGE_VERSION,
@@ -1303,6 +1357,7 @@ function createSessionPayload(
     modelEvidence,
     decisionHistory: getDecisionHistory(),
     originatingCompany,
+    selectedProjectContext,
   };
 }
 
@@ -1310,6 +1365,43 @@ function parseOriginatingCompany(value: unknown): CompanyKey | null {
   return typeof value === "string" && COMPANY_PROFILES.some((profile) => profile.key === value)
     ? value as CompanyKey
     : null;
+}
+
+function parseProjectSelectionContext(value: unknown): ProjectSelectionContext | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as Partial<ProjectSelectionContext>;
+  const company = parseOriginatingCompany(candidate.company);
+  const evidenceState = candidate.evidenceState;
+  const kind = candidate.kind;
+  const relationshipType = candidate.relationshipType;
+  if (
+    !company ||
+    typeof candidate.projectId !== "string" ||
+    typeof candidate.projectName !== "string" ||
+    typeof candidate.operator !== "string" ||
+    typeof candidate.location !== "string" ||
+    typeof candidate.status !== "string" ||
+    (candidate.capacityMW !== null && typeof candidate.capacityMW !== "number") ||
+    !["Source-backed", "Discovery match", "Research required"].includes(evidenceState as string) ||
+    !["curated", "directory"].includes(kind as string) ||
+    !COMPANY_CONNECTION_TYPES.includes(relationshipType as typeof COMPANY_CONNECTION_TYPES[number]) ||
+    (candidate.sourceUrl !== null && typeof candidate.sourceUrl !== "string") ||
+    (candidate.providerId !== null && typeof candidate.providerId !== "string")
+  ) return null;
+  return {
+    company,
+    projectId: candidate.projectId,
+    projectName: candidate.projectName,
+    operator: candidate.operator,
+    location: candidate.location,
+    capacityMW: candidate.capacityMW ?? null,
+    status: candidate.status,
+    relationshipType: relationshipType as typeof COMPANY_CONNECTION_TYPES[number],
+    evidenceState: evidenceState as ProjectSelectionContext["evidenceState"],
+    kind: kind as ProjectSelectionContext["kind"],
+    sourceUrl: candidate.sourceUrl ?? null,
+    providerId: candidate.providerId ?? null,
+  };
 }
 
 function parseDecisionHistory(value: unknown): DecisionHistoryEntry[] {
@@ -1387,7 +1479,7 @@ function loadCurrentSession() {
   if (!raw) {
     restoreDecisionHistory([]);
     const evidence = cloneEvidence(INITIAL_EVIDENCE);
-    return { evidence, modelEvidence: evidence, hasChangedClassification: false, originatingCompany: null, restored: false, migrated: false };
+    return { evidence, modelEvidence: evidence, hasChangedClassification: false, originatingCompany: null, selectedProjectContext: null, restored: false, migrated: false };
   }
 
   try {
@@ -1398,7 +1490,7 @@ function loadCurrentSession() {
         : parsed;
     if (!classifications || typeof classifications !== 'object' || Array.isArray(classifications)) {
       const evidence = cloneEvidence(INITIAL_EVIDENCE);
-      return { evidence, modelEvidence: evidence, hasChangedClassification: false, originatingCompany: null, restored: false, migrated: false };
+      return { evidence, modelEvidence: evidence, hasChangedClassification: false, originatingCompany: null, selectedProjectContext: null, restored: false, migrated: false };
     }
 
     const entries = Object.entries(classifications);
@@ -1409,7 +1501,7 @@ function loadCurrentSession() {
       entries.some(([, value]) => !isClassification(value))
     ) {
       const evidence = cloneEvidence(INITIAL_EVIDENCE);
-      return { evidence, modelEvidence: evidence, hasChangedClassification: false, originatingCompany: null, restored: false, migrated: false };
+      return { evidence, modelEvidence: evidence, hasChangedClassification: false, originatingCompany: null, selectedProjectContext: null, restored: false, migrated: false };
     }
 
     const parsedRecord = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
@@ -1453,13 +1545,27 @@ function loadCurrentSession() {
       Object.keys(getClassificationOverrides(evidence)).length > 0,
     );
     if (migrated) {
-      writeStorage(CURRENT_SESSION_STORAGE_KEY, createSessionPayload(evidence, hasChangedClassification, modelEvidence, parseOriginatingCompany(parsedRecord?.originatingCompany)));
+      writeStorage(CURRENT_SESSION_STORAGE_KEY, createSessionPayload(
+        evidence,
+        hasChangedClassification,
+        modelEvidence,
+        parseOriginatingCompany(parsedRecord?.originatingCompany),
+        parseProjectSelectionContext(parsedRecord?.selectedProjectContext),
+      ));
     }
-    return { evidence, modelEvidence, hasChangedClassification, originatingCompany: parseOriginatingCompany(parsedRecord?.originatingCompany), restored: true, migrated };
+    return {
+      evidence,
+      modelEvidence,
+      hasChangedClassification,
+      originatingCompany: parseOriginatingCompany(parsedRecord?.originatingCompany),
+      selectedProjectContext: parseProjectSelectionContext(parsedRecord?.selectedProjectContext),
+      restored: true,
+      migrated,
+    };
   } catch {
     restoreDecisionHistory([]);
     const evidence = cloneEvidence(INITIAL_EVIDENCE);
-    return { evidence, modelEvidence: evidence, hasChangedClassification: false, originatingCompany: null, restored: false, migrated: false };
+    return { evidence, modelEvidence: evidence, hasChangedClassification: false, originatingCompany: null, selectedProjectContext: null, restored: false, migrated: false };
   }
 }
 

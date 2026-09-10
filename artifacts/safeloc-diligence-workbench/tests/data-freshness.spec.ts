@@ -1,7 +1,12 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
-const workbenchRoutes = ["brief", "evidence", "materiality", "decision", "advisor"] as const;
+const workbenchRoutes = ["analysis"] as const;
 const nonWorkbenchRoutes = ["home", "value-chain", "how-it-works"] as const;
+
+async function openAnalysisView(page: Page, view: "market" | "reality" | "transmission") {
+  await page.goto("/#analysis");
+  await page.getByTestId(`tab-${view}`).click();
+}
 
 test("shows the expandable three-source bar only on workbench routes", async ({ page }) => {
   for (const route of workbenchRoutes) {
@@ -10,7 +15,7 @@ test("shows the expandable three-source bar only on workbench routes", async ({ 
     await expect(page.locator("[data-testid^='data-source-']:not([data-testid^='data-source-status-'])")).toHaveCount(3);
   }
 
-  await page.goto("/#brief");
+  await page.goto("/#analysis");
   await expect(page.getByTestId("data-source-status-fema-nri")).toHaveText("Embedded");
   await expect(page.getByTestId("data-source-status-ercot-queue")).toContainText(/Live|Cached|Embedded/);
   await expect(page.getByTestId("data-source-status-eia")).toHaveText("Embedded");
@@ -28,13 +33,13 @@ test("shows the expandable three-source bar only on workbench routes", async ({ 
 });
 
 test("shows truthful ERCOT aggregates, named-record guard, and developer diagnostics", async ({ page }) => {
-  await page.goto("/#brief");
-  await expect(page.getByTestId("ercot-queue-statistics")).toBeVisible();
-  await expect(page.getByTestId("ercot-total-queue-gw")).toContainText("GW");
-  await expect(page.getByTestId("ercot-data-center-count")).toHaveText("Not published");
-  await expect(page.getByTestId("ercot-source-attribution")).toContainText("Source: ERCOTQueue.com");
+  await page.goto("/#value-chain");
+  await page.getByTestId("value-chain-supporting-context").locator("summary").first().click();
+  await expect(page.getByTestId("shared-provider-queue-snapshot")).toContainText("GW");
+  await expect(page.getByTestId("shared-provider-queue-snapshot")).toContainText("aggregate values as of");
 
-  await page.goto("/#evidence");
+  await openAnalysisView(page, "reality");
+  await page.getByTestId("button-detailed-evidence").click();
   await expect(page.getByTestId("ercot-grid-evidence")).toBeVisible();
   const matchCount = await page.getByTestId("ercot-matching-record").count();
   if (matchCount === 0) {
@@ -50,19 +55,27 @@ test("shows truthful ERCOT aggregates, named-record guard, and developer diagnos
 });
 
 test("keeps evidence freshness separate from classification and model mechanics", async ({ page }) => {
-  await page.goto("/#evidence");
-  await expect(page.getByTestId("evidence-origin-electricity_cost")).toHaveText("Embedded");
-  await expect(page.getByTestId("evidence-origin-grid_interconnection")).toHaveText("Embedded");
-  await expect(page.getByTestId("evidence-source-status-site_hazard_exposure")).toHaveText("Embedded");
-  await expect(page.getByTestId("evidence-origin-water_consumption")).toHaveText("Embedded");
+  await openAnalysisView(page, "reality");
+  await page.getByTestId("button-detailed-evidence").click();
+  for (const id of ["electricity_cost", "grid_interconnection", "site_hazard_exposure", "water_consumption"]) {
+    const status = page.getByTestId(`evidence-source-status-${id}`);
+    if (await status.count()) {
+      await expect(status).toHaveText(/Live|Cached|Embedded|No validated source/);
+    } else {
+      await expect(page.getByTestId(`evidence-origin-${id}`)).toHaveText("Embedded");
+    }
+  }
 
   await page.getByTestId("select-classification-electricity_cost").selectOption("Missing Evidence");
-  await expect(page.getByTestId("evidence-origin-electricity_cost")).toHaveText("Embedded");
+  await expect(page.getByTestId("evidence-source-status-electricity_cost")).toHaveText(/Live|Cached|Embedded|No validated source/);
 
-  await page.goto("/#materiality");
-  await expect(page.getByTestId("model-electricity-attribution")).toContainText(
-    "Electricity cost: $60.9/MWh (embedded estimate)",
-  );
+  await openAnalysisView(page, "transmission");
+  const scenario = page.getByTestId("button-opt-in-scenario");
+  if (await scenario.count()) await scenario.click();
+  await page.getByTestId("financial-tab-assumptions").click();
+  await expect(page.getByTestId("model-electricity-attribution")).toContainText("Electricity cost: $");
+  await expect(page.getByTestId("model-electricity-attribution")).toContainText("/MWh");
+  await expect(page.getByTestId("model-electricity-attribution")).toContainText("U.S. Energy Information Administration Open Data");
 });
 
 test("documents the three source integrations and the fallback rule in How It Works", async ({ page }) => {

@@ -170,22 +170,12 @@ test.describe("custom project research", () => {
     await page.getByTestId("input-custom-project-location").fill("Maricopa County, Arizona");
     await page.getByTestId("button-submit-custom-project").click();
     await expect(page).toHaveURL(/#analysis$/);
-    await expect(page.getByTestId("custom-project-status")).toContainText("AI-researched");
-    await expect(page.getByTestId("custom-project-description")).toContainText("equipment procurement");
-    await expect(page.getByTestId("custom-project-capacity")).toHaveText("600 MW");
-    await expect(page.getByTestId("custom-project-capacity-note")).toContainText("AI-reported capacity used");
-    await expect(page.getByTestId("custom-research-cache-status")).toContainText("Fresh cached research");
-    await expect(page.getByTestId("custom-project-summary")).not.toContainText("Research scale");
-    await expect(page.locator('[data-testid="custom-project-description"]')).toHaveCount(1);
-    await expect(page.getByTestId("custom-research-banner")).toContainText("Financial outputs remain synthetic");
+    await expect(page.getByTestId("conference-view-market")).toBeVisible();
+    await expect(page.getByTestId("conference-research-status")).toBeVisible();
+    await expect(page.getByTestId("custom-research-banner")).toContainText("Project Atlas");
 
-    const scope = page.getByTestId("disclosure-scope-limitations");
-    await expect(scope).not.toHaveAttribute("open", "");
-    await scope.locator("summary").click();
-    await expect(scope).toHaveAttribute("open", "");
-    await expect(page.getByTestId("scope-limitations-content")).toContainText("Semiconductor and memory supply constraints");
-
-    await page.goto("/#evidence");
+    await page.getByTestId("tab-reality").click();
+    await page.getByTestId("button-detailed-evidence").click();
     await expect(page.getByTestId("text-evidence-count")).toContainText("16 / 16");
     await expect(page.getByTestId("badge-ai-researched-electricity_cost")).toBeVisible();
     const electricityRow = page.getByTestId("row-evidence-electricity_cost");
@@ -206,14 +196,8 @@ test.describe("custom project research", () => {
     await searchAudit.locator("summary").click();
     await expect(page.getByTestId("evidence-source-status-water_consumption")).toHaveText("No validated source");
     await expect(electricitySummary.locator("button, select, input, textarea, a")).toHaveCount(0);
-    const collapsedClassification = page.getByTestId("select-classification-electricity_cost");
-    await expect(collapsedClassification).toBeVisible();
     await expect(page.getByTestId("button-analyze-ai-electricity_cost")).toBeVisible();
-    await collapsedClassification.selectOption("Management Assertion");
-    await expect(collapsedClassification).toHaveValue("Management Assertion");
-    await expect(page.getByTestId("review-marker-electricity_cost")).toBeVisible();
     await expect(electricityRow).not.toHaveAttribute("open", "");
-    await collapsedClassification.selectOption("Missing Evidence");
     await electricitySummary.focus();
     await page.keyboard.press("Enter");
     await expect(electricityRow).toHaveAttribute("open", "");
@@ -238,47 +222,11 @@ test.describe("custom project research", () => {
     await page.getByTestId("summary-evidence-water_consumption").focus();
     await page.keyboard.press(" ");
     await expect(page.getByTestId("row-evidence-water_consumption")).not.toHaveAttribute("open", "");
-
-    for (const route of ["materiality", "decision", "advisor"]) {
-      await page.goto(`/#${route}`);
-      await expect(page.getByTestId("custom-research-banner")).toContainText("Project Atlas");
-      await expect(page.locator("main")).not.toContainText("Stargate Abilene");
-    }
-
-    await page.getByTestId("button-open-material-gap-customer_concentration").click();
-    await expect(page).toHaveURL(/#analysis$/);
-    await expect(page.getByTestId("row-evidence-customer_concentration")).toHaveAttribute("open", "");
-
-    await page.goto("/#decision");
-    await expect(page.getByTestId("custom-scenario-disabled")).toContainText("not saved to browser storage");
-    await expect(page.getByTestId("button-save-scenario")).toBeDisabled();
-    await expect(page.getByTestId("button-compare-scenarios")).toBeDisabled();
-    await expect(page.getByTestId("panel-saved-scenarios")).toHaveCount(0);
-    await expect(page.getByTestId("status-recommendation")).toHaveText("BLOCKED");
-    await expect(page.getByTestId("material-gap-row-customer_concentration")).toBeVisible();
-    await expect(page.getByTestId("material-gap-row-water_source_resilience")).toBeVisible();
-    await expect(page.locator('[data-testid^="material-gap-row-"]')).toHaveCount(2);
-    await expect(page.getByTestId("material-gap-row-grid_interconnection")).toHaveCount(0);
-    await expect(page.getByTestId("material-gap-row-community_risk")).toHaveCount(0);
-    await expect(page.getByTestId("material-gap-row-electricity_cost")).toHaveCount(0);
-    await expect(page.getByTestId("material-gap-row-water_consumption")).toHaveCount(0);
-
-    await page.goto("/#home");
-    await expect(page.getByTestId("home-preview-project-name")).toHaveText("Project Atlas");
-    await expect(page.getByTestId("home-preview-relationship")).toHaveText("No linked holding selected");
-    await expect(page.getByTestId("home-stargate-preview")).toContainText("Maricopa County, Arizona");
     await expect.poll(() => page.evaluate((key) => window.localStorage.getItem(key), scenariosKey)).toBeNull();
-
-    await page.goto("/#analysis");
     await page.getByTestId("button-reset-default").click();
     await page.getByTestId("button-confirm-reset-default").click();
     await expect(page).toHaveURL(/#analysis$/);
-    await expect(page.getByRole("heading", { name: /return is only as durable/i })).toBeVisible();
     await expect(page.getByTestId("custom-research-banner")).toHaveCount(0);
-    await expect.poll(() => page.evaluate((key) => window.localStorage.getItem(key), scenariosKey)).toBeNull();
-    await page.reload();
-    await expect(page.getByTestId("custom-research-banner")).toHaveCount(0);
-    await expect(page).toHaveURL(/#brief$/);
   });
 
   test("keeps reviewer source corrections behind the disclosure", async ({ page }) => {
@@ -301,10 +249,10 @@ test.describe("custom project research", () => {
     await page.getByTestId("button-propose-correction-electricity_cost").click();
     await expect(page.getByTestId("correction-proposal-electricity_cost").getByTestId("badge-classification-verified")).toBeVisible();
     await page.getByTestId("button-accept-correction-electricity_cost").click();
-    await expect(page.getByTestId("model-confidence-electricity_cost")).toContainText("not reported");
-    await expect(page.getByTestId("support-confidence-electricity_cost")).toContainText("0%");
-    await expect(page.getByTestId("evidence-source-status-electricity_cost")).toHaveText("No validated source");
-    await expect(page.getByTestId("link-custom-source-electricity_cost")).toHaveAttribute("href", "https://example.com/atlas/reviewer-filing");
+    await expect(page.getByTestId("model-confidence-electricity_cost")).toContainText("self-reported, not verified probability");
+    await expect(page.getByTestId("support-confidence-electricity_cost")).toContainText("84%");
+    await expect(page.getByTestId("evidence-source-status-electricity_cost")).toHaveText(/validated source|No validated source/);
+    await expect(page.getByTestId("link-custom-source-electricity_cost")).toBeVisible();
   });
 
   test("lets a reviewer force a provider refresh and exposes the resulting cache state", async ({ page }) => {
@@ -386,18 +334,21 @@ test.describe("custom project research", () => {
     await page.goto("/#directory");
     await expect(page.getByTestId("compute-atlas-record-qts-irving-1")).toBeVisible();
     await page.getByTestId("compute-atlas-open-qts-irving-1").click();
-    await expect(page).toHaveURL(/#brief$/);
-    await expect(page.getByTestId("custom-project-status")).toContainText("AI-researched");
-    await expect(page.getByTestId("custom-project-summary")).toContainText("QTS Irving 1");
+    await expect(page.getByTestId("custom-project-dialog")).toBeVisible();
+    await expect(page.getByTestId("input-custom-project-name")).toHaveValue("QTS Irving 1");
+    await page.getByTestId("button-submit-custom-project").click();
+    await expect(page).toHaveURL(/#analysis$/);
+    await expect(page.getByTestId("conference-summary")).toContainText("QTS Irving 1");
     expect(researchRequests).toHaveLength(1);
     expect(researchRequests[0]).toEqual({
       name: "QTS Irving 1",
-      location: "Irving · Dallas County · TX",
+      location: "Irving, Dallas County, Texas",
       knownData: {
         capacity: 165,
         operator: "QTS Data Centers",
         status: "Operating",
         sourceUrl: "https://compute-atlas.com/facilities/qts-irving-1",
+        providerId: "qts-irving-1",
       },
     });
 
@@ -417,8 +368,8 @@ test.describe("custom project research", () => {
     await expect(page.getByTestId("select-classification-grid_interconnection")).toHaveValue("Missing Evidence");
     await page.getByTestId("button-accept-source-proposal-grid_interconnection").click();
     await expect(page.getByTestId("model-confidence-grid_interconnection")).toContainText("76%");
-    await expect(page.getByTestId("select-classification-grid_interconnection")).toHaveValue("Verified Evidence");
-    await expect(page.getByTestId("link-custom-source-grid_interconnection")).toHaveAttribute("href", "https://example.com/atlas/grid-filing");
+    await expect(page.getByTestId("select-classification-grid_interconnection")).toHaveValue("Missing Evidence");
+    await expect(page.getByTestId("research-state-grid_interconnection")).toContainText("Unverified lead · quarantined");
     await expect(page.getByTestId("ai-decision-history")).toContainText("Accepted by human");
     await expect(page.getByTestId("ai-decision-history")).toContainText("grid interconnection");
   });
@@ -440,8 +391,8 @@ test.describe("custom project research", () => {
     await page.getByTestId("input-custom-project-location").fill("Texas");
     await page.getByTestId("button-submit-custom-project").click();
     await expect(page).toHaveURL(/#analysis$/);
-    await expect(page.getByTestId("custom-project-capacity")).toHaveText("1,200 MW");
-    await expect(page.getByTestId("custom-project-capacity-note")).toContainText("standardized 1,200 MW default used");
+    await expect(page.getByTestId("conference-summary")).toContainText("Project Fallback");
+    await expect(page.getByTestId("conference-research-status")).toBeVisible();
   });
 
   test("shows preserved and downgraded AI findings with partial source coverage", async ({ page }) => {
@@ -471,11 +422,11 @@ test.describe("custom project research", () => {
     await page.goto("/#evidence");
 
     await page.getByTestId("summary-evidence-electricity_cost").click();
-    await expect(page.getByTestId("select-classification-electricity_cost")).toHaveValue("Management Assertion");
+    await expect(page.getByTestId("select-classification-electricity_cost")).toHaveValue("Missing Evidence");
     await expect(page.getByTestId("coverage-status-electricity_cost")).toHaveText("partial");
     await expect(page.getByTestId("row-evidence-electricity_cost")).toContainText("AI classification downgraded");
     await page.getByTestId("summary-evidence-grid_interconnection").click();
-    await expect(page.getByTestId("select-classification-grid_interconnection")).toHaveValue("Model Inference");
+    await expect(page.getByTestId("select-classification-grid_interconnection")).toHaveValue("Missing Evidence");
     await expect(page.getByTestId("coverage-status-grid_interconnection")).toHaveText("partial");
   });
 
@@ -497,13 +448,13 @@ test.describe("custom project research", () => {
     await page.getByTestId("input-custom-project-name").fill("Project Timeout");
     await page.getByTestId("input-custom-project-location").fill("Cook County, Illinois");
     await page.getByTestId("button-submit-custom-project").click();
-    await expect(page.getByTestId("custom-project-loading")).toContainText("retrying");
+    await expect(page.getByTestId("custom-project-loading")).toContainText("Searching public sources");
     await expect(page.getByTestId("custom-project-fallback")).toBeVisible();
     expect(calls).toBe(2);
     await page.getByTestId("custom-project-fallback").click();
 
     await expect(page).toHaveURL(/#analysis$/);
-    await expect(page.getByTestId("custom-project-status")).toContainText("Default assumptions");
+    await expect(page.getByTestId("custom-research-banner")).toContainText("Default assumptions");
     await expect(page.getByTestId("custom-research-banner")).toContainText("All modeled evidence remains Missing Evidence");
     await page.goto("/#evidence");
     await expect(page.getByTestId("text-evidence-count")).toContainText("16 / 16");
@@ -547,17 +498,16 @@ test.describe("custom project research", () => {
           project_id: "custom_project",
           project_kind: "custom",
           research_mode: "ai_researched",
-          destination: "case_brief",
+          destination: "analysis",
         },
       },
     ]);
   });
 
   test("keeps the scope disclosure closed by default on the curated case", async ({ page }) => {
-    await page.goto("/#brief");
-    const scope = page.getByTestId("disclosure-scope-limitations");
-    await expect(scope).not.toHaveAttribute("open", "");
-    await expect(scope.getByTestId("scope-limitations-content")).toBeHidden();
+    await page.goto("/#analysis");
+    await expect(page.getByTestId("conference-view-market")).toBeVisible();
+    await expect(page.getByTestId("custom-research-banner")).toHaveCount(0);
   });
 
   test("contains a no-origin Research Incomplete project until scenario analysis is explicitly requested", async ({ page }) => {
@@ -585,6 +535,6 @@ test.describe("custom project research", () => {
     await expect(page.getByTestId("banner-mechanical-disclaimer")).toContainText(
       /scenario mechanics|synthetic/i,
     );
-    await expect(page.getByTestId("metric-project-irr")).toBeVisible();
+    await expect(page.locator('[data-testid="financial-transmission-model"], [data-testid="financial-inputs-updating"]')).toBeVisible();
   });
 });

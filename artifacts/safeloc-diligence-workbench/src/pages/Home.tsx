@@ -37,10 +37,12 @@ import {
   profileForCompany,
   projectSummary,
   startingRelationshipState,
+  toProjectSelectionContext,
   type CompanyKey,
   type CompanyProject,
 } from "@/data/companyExposure";
 import { ClaimCitation } from "@/components/ClaimCitation";
+import { CompanyProjectSelection } from "@/components/CompanyProjectSelection";
 import { trackEvent } from "@/services/analytics";
 import { ProviderQueueSnapshot } from "@/components/ProviderQueueSnapshot";
 import { Footer } from "@/components/Footer";
@@ -539,16 +541,12 @@ function CompanyProjectCard({
 
 function CompanyExposure({
   company,
-  researchError,
-  researchingProjectId,
   onBack,
   onCurated,
   onResearch,
   sectionRef,
 }: {
   company: CompanyKey;
-  researchError: string | null;
-  researchingProjectId: string | null;
   onBack: () => void;
   onCurated: (project: CompanyProject, company: CompanyKey) => void;
   onResearch: (project: CompanyProject, company: CompanyKey) => void;
@@ -583,7 +581,6 @@ function CompanyExposure({
             <div className="mt-2 border-t border-[#cbb7ec]/60 pt-2 font-mono text-[8px] uppercase tracking-[0.08em]">Mapped context: {profile.marketFunds.join(", ")}</div>
           </div>
         </div>
-        {researchError && <div data-testid="company-research-error" role="alert" className="mt-6 rounded-lg border border-[#efabb8] bg-[#fde8eb] px-4 py-3 text-[11px] leading-5 text-[#7f2635]">{researchError}</div>}
         <div className="mt-6 grid gap-3 sm:grid-cols-4">
           <div data-testid="company-summary-project-count" className="rounded-lg bg-[#122232] p-4 text-white"><div className="font-mono text-[8px] uppercase tracking-[0.12em] text-[#a4b4bd]">Connected projects</div><div className="mt-2 font-mono text-[25px] font-bold text-[#d4e86b]">{summary.count}</div></div>
           <div data-testid="company-summary-capacity" className="rounded-lg bg-[#d4e86b] p-4 text-[#1c2a16]"><div className="font-mono text-[8px] uppercase tracking-[0.12em] opacity-65">Disclosed capacity</div><div className="mt-2 font-mono text-[25px] font-bold">{formatCapacityGW(summary.capacityMW)}</div></div>
@@ -597,26 +594,20 @@ function CompanyExposure({
           <div><div className="font-mono text-[9px] font-bold uppercase tracking-[0.16em] text-[#607500]">Connected project trail</div><h3 className="mt-1 text-[20px] font-semibold tracking-[-0.03em]">Pick one to inspect the evidence path.</h3></div>
           <span className="hidden font-mono text-[8px] uppercase tracking-[0.1em] text-[#71808a] sm:block">Public context only</span>
         </div>
-        <div data-testid="company-project-list" className="mt-4 space-y-3">
-          {projects.length === 0 && <div data-testid="company-project-empty" className="rounded-lg border border-dashed border-[#cbd8d4] bg-white p-6 text-[12px] text-[#52616b]">No operator-mapped facilities are available for this company in the current directory snapshot. That is an evidence boundary, not a claim of no exposure.</div>}
-          {projects.map((project) => (
-            <CompanyProjectCard
-              key={project.id}
-              project={project}
-              researching={researchingProjectId === project.id}
-              onSelect={() => {
-                trackEvent("project_action_selected", {
-                  company: company.toLowerCase(),
-                  project_id: project.id,
-                  project_kind: project.kind,
-                  action: project.kind === "curated" && project.name.trim().toLowerCase() === "stargate abilene" ? "open_curated" : "research_with_ai",
-                });
-                if (project.kind === "curated" && project.name.trim().toLowerCase() === "stargate abilene") onCurated(project, company);
-                else onResearch(project, company);
-              }}
-            />
-          ))}
-        </div>
+        <CompanyProjectSelection
+          company={company}
+          projects={projects}
+          onSelect={(project) => {
+            trackEvent("project_action_selected", {
+              company: company.toLowerCase(),
+              project_id: project.id,
+              project_kind: project.kind,
+              action: project.name.trim().toLowerCase() === "stargate abilene" ? "open_curated" : "research_with_ai",
+            });
+            if (project.name.trim().toLowerCase() === "stargate abilene" && (company === "Oracle" || company === "NVIDIA")) onCurated(project, company);
+            else onResearch(project, company);
+          }}
+        />
       </div>
     </section>
   );
@@ -1418,8 +1409,6 @@ export function LegacyCompanyExploration({ onNavigate }: { onNavigate?: (route: 
         {selectedCompany && (
           <CompanyExposure
             company={selectedCompany}
-            researchError={companyResearchError}
-            researchingProjectId={companyResearchingId}
             sectionRef={companyExposureRef}
             onBack={() => setSelectedCompany(null)}
             onCurated={(project, company) => {
@@ -1505,13 +1494,11 @@ export function LegacyCompanyExploration({ onNavigate }: { onNavigate?: (route: 
 }
 
 export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void } = {}) {
-  const { loadCustomProject, resetToDefault, setOriginatingCompany, originatingCompany } = useDiligence();
+  const { resetToDefault, setOriginatingCompany, setProjectSelection, originatingCompany } = useDiligence();
   const initialCompany = COMPANY_PROFILES.some((profile) => profile.key === originatingCompany)
     ? originatingCompany as CompanyKey
     : null;
   const [selectedCompany, setSelectedCompany] = useState<CompanyKey | null>(initialCompany);
-  const [companyResearchingId, setCompanyResearchingId] = useState<string | null>(null);
-  const [companyResearchError, setCompanyResearchError] = useState<string | null>(null);
   const companyExposureRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -1523,7 +1510,6 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
     window.location.hash = "analysis";
   };
   const selectCompany = (company: CompanyKey) => {
-    setCompanyResearchError(null);
     setSelectedCompany(company);
     setOriginatingCompany(company);
     trackEvent("company_lens_selected", {
@@ -1537,22 +1523,6 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
       });
       companyExposureRef.current?.focus({ preventScroll: true });
     }, 0);
-  };
-  const completeResearch = (
-    research: CustomResearchResponse,
-    company: CompanyKey | null = null,
-    projectId = "custom_project",
-    projectKind = "custom",
-  ) => {
-    loadCustomProject(research, company);
-    trackEvent("research_handoff_completed", {
-      company: company?.toLowerCase() ?? "none",
-      project_id: projectId,
-      project_kind: projectKind,
-      research_mode: research.researchMode === "default-assumptions" ? "default_assumptions" : "ai_researched",
-      destination: "analysis",
-    });
-    window.location.hash = "analysis";
   };
   const navigate = (route: HomeRoute) => {
     if (onNavigate) onNavigate(route);
@@ -1656,8 +1626,6 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
         {selectedCompany && (
           <CompanyExposure
             company={selectedCompany}
-            researchError={companyResearchError}
-            researchingProjectId={companyResearchingId}
             sectionRef={companyExposureRef}
             onBack={() => setSelectedCompany(null)}
             onCurated={(project, company) => {
@@ -1665,20 +1633,23 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
               openStargate(company);
             }}
             onResearch={(companyProject, company) => {
-              if (!companyProject.facility) return;
-              setCompanyResearchingId(companyProject.id);
-              setCompanyResearchError(null);
-              void researchProject(companyProject.name, companyProject.location, {
-                knownData: {
-                  capacity: companyProject.capacityMW,
-                  operator: companyProject.operator,
-                  status: companyProject.status,
-                  sourceUrl: companyProject.facility.sourceUrl,
+              const selection = toProjectSelectionContext(company, companyProject);
+              setProjectSelection(selection);
+              window.dispatchEvent(new CustomEvent("safeloc-open-custom-project", {
+                detail: {
+                  name: companyProject.name,
+                  location: companyProject.location,
+                  company,
+                  selection,
+                  knownData: {
+                    capacity: companyProject.capacityMW,
+                    operator: companyProject.operator,
+                    status: companyProject.status,
+                    sourceUrl: selection.sourceUrl,
+                    providerId: selection.providerId,
+                  },
                 },
-              })
-                .then((research) => completeResearch(research, company, companyProject.id, companyProject.kind))
-                .catch(() => setCompanyResearchError("AI research is unavailable. Try again."))
-                .finally(() => setCompanyResearchingId(null));
+              }));
             }}
           />
         )}

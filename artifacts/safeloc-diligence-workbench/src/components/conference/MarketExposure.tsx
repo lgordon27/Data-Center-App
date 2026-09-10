@@ -2,13 +2,16 @@ import { ArrowRight, Building2, ExternalLink } from "lucide-react";
 import { useDiligence } from "@/context/DiligenceContext";
 import {
   COMPANY_PROFILES,
+  companyProjects,
   startingRelationshipProject,
   startingRelationshipState,
+  toProjectSelectionContext,
 } from "@/data/companyExposure";
+import { CompanyProjectSelection } from "@/components/CompanyProjectSelection";
 import { getConferenceRelationship } from "@/model/conferenceEvidence";
 
 export function MarketExposure() {
-  const { project, originatingCompany, resetToDefault } = useDiligence();
+  const { project, originatingCompany, resetToDefault, setOriginatingCompany, setProjectSelection } = useDiligence();
   const relationship = getConferenceRelationship(project, originatingCompany);
   const options = COMPANY_PROFILES;
   const selectedState = relationship.established
@@ -32,12 +35,12 @@ export function MarketExposure() {
               {relationship.company && <p className="text-xs text-[#60707d]">{relationship.company.ticker}</p>}</div>
           </div>
           {project.kind === "curated" && options.length > 0 && <label className="text-xs text-[#52616b]">Select a starting holding
-            <select aria-label="Select public holding" data-testid="market-company-select" value={relationship.company?.key ?? ""} onChange={(event) => { if (event.target.value) resetToDefault(event.target.value); }}
+            <select aria-label="Select public holding" data-testid="market-company-select" value={relationship.company?.key ?? ""} onChange={(event) => { if (event.target.value) setOriginatingCompany(event.target.value as typeof COMPANY_PROFILES[number]["key"]); }}
               className="mt-1 block min-h-11 w-full rounded-md border border-[#cbd8d4] bg-[#f9faf8] px-3 text-sm text-[#122232]">
               <option value="" disabled>Choose a company</option>
               {options.map((company) => <option key={company.key} value={company.key}>{company.displayName} ({company.ticker}) · {relationship.established && relationship.company?.key === company.key ? "Source-backed" : startingRelationshipState(company.key)}</option>)}
             </select>
-            <span className="mt-1 block max-w-xs text-[10px]">Loads the curated starting case; named scenarios are retained. A relationship state is not an exposure conclusion.</span>
+            <span className="mt-1 block max-w-xs text-[10px]">Changes the holding context without substituting a project. Select a project below to open the supported case or start research.</span>
           </label>}
         </div>
         {project.kind === "curated" && <div data-testid="market-holding-states" className="mt-5 grid gap-2 border-t border-[#e5eae8] pt-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -46,13 +49,49 @@ export function MarketExposure() {
               ? "Source-backed"
               : startingRelationshipState(company.key);
             return (
-              <button key={company.key} data-testid={`market-holding-state-${company.key.toLowerCase()}`} type="button" onClick={() => resetToDefault(company.key)} className="rounded-lg border border-[#d9e0e4] bg-[#f9faf8] p-3 text-left hover:border-[#255bb7]">
+              <button key={company.key} data-testid={`market-holding-state-${company.key.toLowerCase()}`} type="button" onClick={() => setOriginatingCompany(company.key)} className="rounded-lg border border-[#d9e0e4] bg-[#f9faf8] p-3 text-left hover:border-[#255bb7]">
                 <span className="block text-xs font-semibold text-[#122232]">{company.displayName}</span>
                 <span className="mt-1 block text-[10px] text-[#60707d]">{state}</span>
               </button>
             );
           })}
         </div>}
+        {relationship.company && (
+          <div data-testid="market-project-selection" className="mt-5 border-t border-[#e5eae8] pt-5">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#607500]">Project selection</p>
+              <h3 className="mt-1 text-lg font-semibold">Choose the project context before drawing an exposure conclusion.</h3>
+              <p className="mt-1 max-w-2xl text-xs leading-5 text-[#52616b]">Every row keeps its location, status, capacity disclosure, relationship type, and evidence state visible. Research-required rows open the shared prefilled research dialog.</p>
+            </div>
+            <CompanyProjectSelection
+              company={relationship.company.key}
+              projects={companyProjects(relationship.company.key, [])}
+              onSelect={(selectedProject) => {
+                const selection = toProjectSelectionContext(relationship.company!.key, selectedProject);
+                if (selection.evidenceState === "Source-backed" && selectedProject.name.trim().toLowerCase() === "stargate abilene") {
+                  resetToDefault(relationship.company!.key);
+                  return;
+                }
+                setProjectSelection(selection);
+                window.dispatchEvent(new CustomEvent("safeloc-open-custom-project", {
+                  detail: {
+                    name: selectedProject.name,
+                    location: selectedProject.location,
+                    company: relationship.company!.key,
+                    selection,
+                    knownData: {
+                      capacity: selectedProject.capacityMW,
+                      operator: selectedProject.operator,
+                      status: selectedProject.status,
+                      ...(selection.sourceUrl ? { sourceUrl: selection.sourceUrl } : {}),
+                      providerId: selection.providerId,
+                    },
+                  },
+                }));
+              }}
+            />
+          </div>
+        )}
         <dl className="mt-5 grid gap-4 border-t border-[#e5eae8] pt-5 sm:grid-cols-3">
           <div><dt className="text-xs text-[#60707d]">Infrastructure project</dt><dd className="mt-1 font-semibold">{project.name}</dd></div>
           <div><dt className="text-xs text-[#60707d]">Relationship type</dt><dd data-testid="market-relationship-type" className="mt-1 font-semibold">{relationship.type}</dd></div>

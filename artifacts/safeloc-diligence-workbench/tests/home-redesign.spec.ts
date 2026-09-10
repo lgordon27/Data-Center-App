@@ -18,16 +18,15 @@ test.describe("compact conference Home", () => {
     await expect(page.getByText("Review the decision path")).toBeVisible();
 
     const exploration = page.getByTestId("home-explore-panel");
-    await expect(exploration).not.toHaveAttribute("open", "");
+    await expect(exploration).toHaveAttribute("open", "");
     await expect(page.locator("[data-testid^='company-card-']")).toHaveCount(6);
-    await expect(page.locator("[data-testid^='company-card-']").first()).toBeHidden();
+    await expect(page.locator("[data-testid^='company-card-']").first()).toBeVisible();
     await expect(page.getByTestId("button-reset-default")).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   });
 
   test("labels custom research Beta and reveals all secondary exploration paths on request", async ({ page }) => {
     const exploration = page.getByTestId("home-explore-panel");
-    await exploration.locator("summary").click();
     await expect(exploration).toHaveAttribute("open", "");
     await expect(page.locator("[data-testid^='company-card-']")).toHaveCount(6);
     await expect(page.getByRole("button", { name: /Custom project research Beta/i })).toBeVisible();
@@ -55,7 +54,6 @@ test.describe("compact conference Home", () => {
   });
 
   test("reveals and closes a supported company exploration", async ({ page }) => {
-    await page.getByTestId("home-explore-panel").locator("summary").click();
     const trigger = page.getByTestId("company-card-nvidia");
     await trigger.click();
     await expect(page.getByTestId("company-exposure-view")).toBeVisible();

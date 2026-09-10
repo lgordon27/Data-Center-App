@@ -52,7 +52,8 @@ test.describe("AI evidence classification", () => {
     await expect(row.getByTestId("review-marker-community_risk")).toContainText("AI-suggested, accepted by analyst");
     await expect(row.getByTestId("status-ai-decision-community_risk")).toContainText("Classification updated");
     await expect(page.getByTestId("toast-reclassification")).toBeVisible();
-    await expect(page.getByTestId("live-recommendation")).toContainText("BLOCKED");
+    await page.getByTestId("tab-transmission").click();
+    await expect(page.getByTestId("conference-view-transmission")).toBeVisible();
     await expect.poll(() => page.evaluate(() => (window as typeof window & { __sessionActions?: unknown[] }).__sessionActions)).toEqual([
       { action: "AI-proposed, human-accepted", itemId: "community_risk" },
     ]);
@@ -156,6 +157,8 @@ test.describe("AI evidence classification", () => {
     expect(storedReview.kind).toBe("ai-accepted");
 
     await page.reload();
+    await page.getByTestId("tab-reality").click();
+    await page.getByTestId("button-detailed-evidence").click();
     await expect(row.getByTestId("select-classification-water_rights")).toHaveValue("Missing Evidence");
     await expect(marker).toContainText("AI-suggested, accepted by analyst");
     await expect(marker.locator("time")).toHaveAttribute("datetime", storedReview.reviewedAt);

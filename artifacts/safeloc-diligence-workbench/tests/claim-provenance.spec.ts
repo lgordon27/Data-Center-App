@@ -1,9 +1,19 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+async function openAnalysisView(page: Page, view: "market" | "reality" | "transmission" | "advisor") {
+  await page.goto("/#analysis");
+  await page.getByTestId(`tab-${view}`).click();
+}
 
 test.describe("claim-level provenance", () => {
   test("shows exact source metadata and safe new-tab links on major routes", async ({ page }) => {
-    for (const route of ["brief", "evidence", "advisor", "chain", "method", "decision"]) {
-      await page.goto(`/#${route}`);
+    for (const route of ["value-chain", "reality"] as const) {
+      if (route === "value-chain") {
+        await page.goto("/#value-chain");
+      } else {
+        await openAnalysisView(page, "reality");
+        await page.getByTestId("button-detailed-evidence").click();
+      }
       await page.locator("details:not([data-testid^='claim-citation-'])").evaluateAll((details) => {
         for (const detail of details) detail.open = true;
       });
@@ -24,7 +34,8 @@ test.describe("claim-level provenance", () => {
   });
 
   test("keeps synthetic economics and unresolved water intentionally uncited", async ({ page }) => {
-    await page.goto("/#evidence");
+    await openAnalysisView(page, "reality");
+    await page.getByTestId("button-detailed-evidence").click();
     await page.locator("details:not([data-testid^='claim-citation-'])").evaluateAll((details) => {
       for (const detail of details) detail.open = true;
     });
@@ -38,7 +49,8 @@ test.describe("claim-level provenance", () => {
   });
 
   test("displays the review date for a representative 2026 claim", async ({ page }) => {
-    await page.goto("/#brief");
+    await page.goto("/#value-chain");
+    await page.getByTestId("value-chain-supporting-context").locator("summary").first().click();
     const citation = page.getByTestId("claim-citation-stargate-cancellation").first();
     await citation.locator("summary").click();
     await expect(citation).toContainText("Last verified: Aug 30, 2026");

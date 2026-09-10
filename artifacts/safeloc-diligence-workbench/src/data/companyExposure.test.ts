@@ -66,9 +66,10 @@ test("directory projects always receive a connection type through the shared map
       connectedCompanies: ["Meta"],
     }),
   ]);
-  assert.equal(projects.length, 1);
-  assert.equal(projects[0].kind, "directory");
-  assert.equal(projects[0].connectionType, "Developer/Operator");
+  assert.equal(projects.length, 2);
+  const directoryProject = projects.find((project) => project.id === "meta-volcano");
+  assert.equal(directoryProject?.kind, "directory");
+  assert.equal(directoryProject?.connectionType, "Developer/Operator");
 });
 
 test("project summary keeps undisclosed capacity out of disclosed totals", () => {

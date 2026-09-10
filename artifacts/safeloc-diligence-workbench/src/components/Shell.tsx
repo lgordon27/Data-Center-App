@@ -42,7 +42,9 @@ import {
 } from "@/model/advisorLens";
 import { CustomProjectDialog } from "@/pages/Home";
 import type { KnownProjectData } from "@/services/researchProjectService";
+import { trackEvent } from "@/services/analytics";
 import type { ImpactRole } from "@/data/evidenceImpactRoles";
+import type { CompanyKey, ProjectSelectionContext } from "@/data/companyExposure";
 
 export type Screen = "brief" | "evidence" | "materiality" | "decision" | "advisor";
 type AppRoute = "analysis" | "home" | "directory" | "value-chain" | "how-it-works";
@@ -264,13 +266,15 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
   const { sessionMigrated, project, loadCustomProject } = useDiligence();
   const [customProjectOpen, setCustomProjectOpen] = useState(false);
   const [customProjectPrefill, setCustomProjectPrefill] = useState<{ name: string; location: string; knownData?: KnownProjectData } | null>(null);
+  const [customProjectSelection, setCustomProjectSelection] = useState<{ company: CompanyKey | null; selection: ProjectSelectionContext | null } | null>(null);
   const dialogReturnFocus = useRef<HTMLElement | null>(null);
   const previousRoute = useRef(route);
   const isHome = route === "home";
   const openCustomProject = (event?: Event) => {
     dialogReturnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const detail = event instanceof CustomEvent ? event.detail as { name?: string; location?: string; knownData?: KnownProjectData } : undefined;
+    const detail = event instanceof CustomEvent ? event.detail as { name?: string; location?: string; knownData?: KnownProjectData; company?: CompanyKey | null; selection?: ProjectSelectionContext | null } : undefined;
     setCustomProjectPrefill(detail?.name && detail?.location ? { name: detail.name, location: detail.location, knownData: detail.knownData } : null);
+    setCustomProjectSelection(detail?.selection || detail?.company ? { company: detail.company ?? null, selection: detail.selection ?? null } : null);
     setCustomProjectOpen(true);
   };
   useEffect(() => {
@@ -281,12 +285,14 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
     if (previousRoute.current !== route && customProjectOpen) {
       setCustomProjectOpen(false);
       setCustomProjectPrefill(null);
+      setCustomProjectSelection(null);
     }
     previousRoute.current = route;
   }, [customProjectOpen, route]);
   const closeCustomProject = () => {
     setCustomProjectOpen(false);
     setCustomProjectPrefill(null);
+    setCustomProjectSelection(null);
     window.setTimeout(() => dialogReturnFocus.current?.focus(), 0);
   };
   return (
@@ -381,7 +387,14 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
         window.dispatchEvent(new Event("safeloc-return-to-curated"));
       }}
       onSuccess={(research) => {
-        loadCustomProject(research);
+        loadCustomProject(research, customProjectSelection?.company, customProjectSelection?.selection);
+        trackEvent("research_handoff_completed", {
+          company: customProjectSelection?.company?.toLowerCase() ?? "none",
+          project_id: "custom_project",
+          project_kind: "custom",
+          research_mode: research.researchMode === "default-assumptions" ? "default_assumptions" : "ai_researched",
+          destination: "analysis",
+        });
         closeCustomProject();
         window.location.hash = "analysis";
       }}

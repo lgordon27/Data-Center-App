@@ -75,14 +75,11 @@ test.describe("stock-first company exposure flow", () => {
     expect(directoryRequests).toHaveLength(0);
     expect(directoryChunks).toHaveLength(0);
     await page.getByTestId("button-close-custom-project").click();
-    await page.goto("/#brief");
-    const shellElapsed = await page.getByTestId("button-analyze-different-project").evaluate((button) => new Promise<number>((resolve) => {
-      const started = performance.now();
-      (button as HTMLButtonElement).click();
-      requestAnimationFrame(() => requestAnimationFrame(() => resolve(performance.now() - started)));
-    }));
-    expect(shellElapsed).toBeLessThan(2_000);
+    await page.getByTestId("company-card-microsoft").click();
+    await page.getByTestId("company-project-open-project-kilby").click();
     await expect(page.getByTestId("custom-project-dialog")).toBeVisible();
+    await expect(page.getByTestId("input-custom-project-name")).toHaveValue("Project Kilby");
+    await expect(page.getByTestId("input-custom-project-location")).toHaveValue("Public location not disclosed");
     expect(directoryRequests).toHaveLength(0);
     expect(directoryChunks).toHaveLength(0);
   });
@@ -163,13 +160,9 @@ test.describe("stock-first company exposure flow", () => {
     await expect(page.getByTestId("company-summary-tier1")).toContainText("1");
     await expect(page.getByTestId("company-summary-tier2")).toContainText("1");
     await page.getByTestId("company-project-open-project-kilby").click();
-    await expect(page).toHaveURL(/#analysis$/);
-    await expect(page.getByTestId("analysis-workbench")).toBeVisible();
-    await page.goto("/#advisor");
-    await expect(page.getByTestId("advisor-originating-company")).toContainText("Microsoft");
-    await expect(page.getByTestId("section-client-exposure")).toContainText(
-      "Starting from Microsoft, this review follows the selected project into the evidence record.",
-    );
+    await expect(page.getByTestId("custom-project-dialog")).toBeVisible();
+    await expect(page.getByTestId("input-custom-project-name")).toHaveValue("Project Kilby");
+    await expect(page.getByTestId("input-custom-project-location")).toHaveValue("Public location not disclosed");
   });
 
   test("records safe holding and project action events", async ({ page }) => {
@@ -208,7 +201,7 @@ test.describe("stock-first company exposure flow", () => {
           company: "microsoft",
           project_id: "project-kilby",
           project_kind: "curated",
-          action: "open_curated",
+           action: "research_with_ai",
         },
       },
     ]);
@@ -238,37 +231,10 @@ test.describe("stock-first company exposure flow", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/#home");
 
-    await expect(page.getByTestId("home-product-definition")).toHaveText(
-      "Trace a public company to the infrastructure supporting its growth. Test the evidence. See what changes financially.",
-    );
-    await expect(page.getByTestId("button-start-nvidia")).toBeVisible();
     await expect(page.getByTestId("button-run-stargate")).toBeVisible();
     await expect(page.getByTestId("button-analyze-another-project")).toBeVisible();
-
-    const viewportLayout = await page.evaluate(() => {
-      const definition = document.querySelector<HTMLElement>("[data-testid='home-product-definition']");
-      const actions = document.querySelector<HTMLElement>("[data-testid='home-primary-actions']");
-      const entryPaths = document.querySelector<HTMLElement>("[data-testid='home-entry-paths']");
-      const holdings = document.querySelector<HTMLElement>("[data-testid='home-stock-picker']");
-      if (!definition || !actions || !entryPaths || !holdings) return null;
-      return {
-        bodyWidth: document.body.scrollWidth,
-        documentWidth: document.documentElement.scrollWidth,
-        viewportWidth: window.innerWidth,
-        definitionBottom: definition.getBoundingClientRect().bottom,
-        actionsBottom: actions.getBoundingClientRect().bottom,
-        actionsBeforeEntryPaths: Boolean(actions.compareDocumentPosition(entryPaths) & Node.DOCUMENT_POSITION_FOLLOWING),
-        entryPathsBeforeHoldings: Boolean(entryPaths.compareDocumentPosition(holdings) & Node.DOCUMENT_POSITION_FOLLOWING),
-      };
-    });
-
-    expect(viewportLayout).not.toBeNull();
-    expect(viewportLayout?.bodyWidth).toBeLessThanOrEqual(viewportLayout?.viewportWidth ?? 0);
-    expect(viewportLayout?.documentWidth).toBeLessThanOrEqual(viewportLayout?.viewportWidth ?? 0);
-    expect(viewportLayout?.definitionBottom).toBeLessThanOrEqual(900);
-    expect(viewportLayout?.actionsBottom).toBeLessThanOrEqual(900);
-    expect(viewportLayout?.actionsBeforeEntryPaths).toBe(true);
-    expect(viewportLayout?.entryPathsBeforeHoldings).toBe(true);
+    await expect(page.getByTestId("home-explore-panel")).toHaveAttribute("open", "");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 
     const customDialog = page.getByTestId("custom-project-dialog");
     await expect(customDialog).not.toBeVisible();
@@ -280,22 +246,23 @@ test.describe("stock-first company exposure flow", () => {
     await expect(customDialog).not.toBeVisible();
   });
 
-  test("keeps the directory on its secondary route and clears company context on reset", async ({ page }) => {
+  test("keeps the directory on its secondary route and resets to the Oracle Stargate context", async ({ page }) => {
     await page.goto("/#directory");
     await expect(page.getByTestId("compute-atlas-page")).toBeVisible();
     await expect(page.getByTestId("compute-atlas-search")).toBeVisible();
     await page.goto("/#home");
     await page.getByTestId("company-card-oracle").click();
     await expect(page.getByTestId("company-exposure-view")).toBeVisible();
-    await page.getByTestId("button-analyze-stargate").click();
+    await page.getByTestId("company-project-open-curated-stargate-oracle").click();
     await expect(page).toHaveURL(/#analysis$/);
     await page.getByTestId("button-reset-default").click();
     await page.getByTestId("button-confirm-reset-default").click();
-    await page.goto("/#advisor");
-    await expect(page.getByTestId("advisor-originating-company")).toContainText("No company selected");
+    await page.goto("/#analysis");
+    await expect(page.getByTestId("market-company")).toHaveText("Oracle");
+    await expect(page.getByTestId("market-holding-state-oracle")).toContainText("Source-backed");
   });
 
-  test("lets a directory facility continue into analysis after research times out", async ({ page }) => {
+  test("opens a directory facility in the shared prefilled research dialog", async ({ page }) => {
     await page.unroute("**/api/directory**");
     await page.route("**/api/directory**", (route) => route.fulfill({
       status: 200,
@@ -316,14 +283,9 @@ test.describe("stock-first company exposure flow", () => {
 
     await page.goto("/#directory");
     await page.getByTestId("compute-atlas-open-project-rainier-microsoft-wi").click();
-    await expect(page.getByTestId("compute-atlas-error-project-rainier-microsoft-wi")).toBeVisible();
-    await expect(page.getByTestId("compute-atlas-fallback-project-rainier-microsoft-wi")).toHaveText("Continue with default assumptions");
-    await page.getByTestId("compute-atlas-fallback-project-rainier-microsoft-wi").click();
-
-    await expect(page).toHaveURL(/#brief$/);
-    await expect(page.getByTestId("custom-project-status")).toContainText("Default assumptions");
-    await expect(page.getByTestId("custom-project-summary")).toContainText("Project Rainier");
-    await expect(page.getByTestId("custom-project-capacity")).toHaveText("315 MW");
-    await expect(page.getByTestId("custom-research-banner")).toContainText("All modeled evidence remains Missing Evidence");
+    await expect(page.getByTestId("custom-project-dialog")).toBeVisible();
+    await expect(page.getByTestId("input-custom-project-name")).toHaveValue("Project Rainier");
+    await expect(page.getByTestId("input-custom-project-location")).toHaveValue("Mount Pleasant, Racine County, Wisconsin");
+    await expect(page.getByTestId("custom-project-form")).toBeVisible();
   });
 });

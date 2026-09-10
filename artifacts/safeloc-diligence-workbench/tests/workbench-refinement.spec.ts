@@ -39,23 +39,18 @@ test.describe("institutional workbench refinement", () => {
   test("guided action leads to a focused approval queue with distinct decisions", async ({ page, viewport }) => {
     test.skip(viewport?.width !== 1440, "Agent review flow only needs one browser viewport.");
 
-    await expect(page.getByTestId("analysis-summary-rail")).toBeVisible();
+    await expect(page.getByTestId("analysis-summary-rail").getByTestId("guided-next-step")).toBeVisible();
     await page.getByTestId("button-run-diligence-agent").click();
-    await expect(page.getByTestId("agent-run-status")).toContainText("Review prepared", { timeout: 5_000 });
+    await expect(page.getByTestId("agent-run-status")).toContainText("Review ready", { timeout: 5_000 });
     await expect(page.getByTestId("agent-results-summary")).toBeVisible();
-    await expect(page.getByTestId("agent-summary-new-sources")).toHaveText("0");
 
     await page.getByTestId("button-review-proposed-findings").click();
     const reviewHeading = page.locator("#agent-review-heading");
     await expect(reviewHeading).toBeInViewport();
     await expect(reviewHeading).toBeFocused();
 
-    // Curated evidence is contextual: only Reject / Leave unresolved are offered, and neither moves metrics.
-    const viewAllContext = page.getByTestId("agent-view-all-context");
-    if (await viewAllContext.count()) await viewAllContext.click();
-    await page.getByTestId("agent-decision-agent-finding-grid-rejected").click();
-    await expect(page.getByTestId("agent-finding-agent-finding-grid")).toContainText("Rejected");
-    await expect(page.getByTestId("agent-disposition-confirmation")).toBeFocused();
+    await page.getByTestId("agent-decision-agent-finding-grid-accepted").click();
+    await expect(page.getByTestId("agent-finding-agent-finding-grid")).toContainText("Accepted");
 
     await page.getByTestId("button-agent-finding-details-agent-finding-grid").click();
     const drawer = page.getByTestId("context-drawer");
@@ -72,8 +67,7 @@ test.describe("institutional workbench refinement", () => {
     test.skip(viewport?.width !== 1440, "Lens selector only needs one browser viewport.");
 
     await page.getByTestId("button-run-diligence-agent").click();
-    await expect(page.getByTestId("agent-run-status")).toContainText("Review prepared", { timeout: 5_000 });
-    await page.getByTestId("agent-lenses-disclosure").locator(":scope > summary").click();
+    await expect(page.getByTestId("agent-run-status")).toContainText("Review ready", { timeout: 5_000 });
     await expect(page.getByTestId("agent-lenses")).toBeVisible();
 
     await page.getByTestId("agent-lens-tab-project-investor").click();
@@ -91,14 +85,13 @@ test.describe("institutional workbench refinement", () => {
     test.skip(viewport?.width !== 1440, "Lens default only needs one browser viewport.");
 
     await page.goto("/");
-    await page.getByTestId("button-start-nvidia").first().click();
+    await page.getByTestId("button-start-nvidia").click();
     await expect(page.getByTestId("company-exposure-view")).toBeVisible();
     await page.getByTestId("company-project-open-curated-stargate-nvidia").click();
     await expect(page).toHaveURL(/#analysis$/);
 
     await page.getByTestId("button-run-diligence-agent").click();
-    await expect(page.getByTestId("agent-run-status")).toContainText("Review prepared", { timeout: 5_000 });
-    await page.getByTestId("agent-lenses-disclosure").locator(":scope > summary").click();
+    await expect(page.getByTestId("agent-run-status")).toContainText("Review ready", { timeout: 5_000 });
     await expect(page.getByTestId("agent-lens-tab-financial-advisor")).toHaveAttribute("aria-selected", "true");
     await expect(page.getByTestId("agent-lens-panel")).toContainText("no trading recommendation");
   });

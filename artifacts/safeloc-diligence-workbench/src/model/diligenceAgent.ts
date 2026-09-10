@@ -10,7 +10,7 @@ export const DILIGENCE_STAGE_DEFINITIONS = [
   { id: "financial-relevance", label: "Financial relevance", description: "Map supported issues to model inputs without changing economics." },
   { id: "relationship-mapping", label: "Relationship mapping", description: "Separate direct, related, comparable, and not-found relationships." },
   { id: "citation-validation", label: "Citation validation", description: "Check source attribution, access state, and unresolved conflicts." },
-  { id: "review-preparation", label: "Review preparation", description: "Prepare bounded proposals for a human reviewer." },
+  { id: "review-preparation", label: "Review preparation", description: "Prepare bounded proposals for analyst review." },
 ] as const;
 
 export type DiligenceStageId = typeof DILIGENCE_STAGE_DEFINITIONS[number]["id"];
@@ -29,6 +29,8 @@ export type AgentSupportingSource = {
   url?: string;
   excerpt: string;
   classification: "validated-source" | "source-summary" | "unverified-lead";
+  claimPassage?: string;
+  exactProject?: boolean;
 };
 
 export type AgentAuditEvent = {
@@ -36,7 +38,7 @@ export type AgentAuditEvent = {
   proposalId: string;
   action: AgentProposalAction;
   outcome: Exclude<ReviewDecision, "pending">;
-  actor: "human-reviewer";
+  actor: "analyst";
   recordedAt: string;
   affectedEvidenceId?: string;
   beforeValue?: string | number;
@@ -51,6 +53,12 @@ export type AgentAuditEvent = {
   evidenceSnapshotKey?: string;
   afterEvidenceSnapshotKey?: string;
   noOpAcknowledgment?: boolean;
+  proposalCreatedEvidenceFingerprint?: string;
+  proposalCreatedProjectFingerprint?: string;
+  appliedAgainstEvidenceFingerprint?: string;
+  appliedAgainstProjectFingerprint?: string;
+  staleApplied?: boolean;
+  staleReason?: string;
 };
 
 export type AppliedAgentChange = AgentAuditEvent & {
@@ -100,6 +108,22 @@ export type AgentFinding = {
     sourceIds: string[];
   };
   humanFinalClassification?: Classification;
+  rawValue?: string | number;
+  rawUnit?: string;
+  normalizedValue?: string | number;
+  normalizedUnit?: string;
+  exactClaim?: string;
+  exactPassage?: string;
+  sourceIdentity?: string;
+  sourceUrl?: string;
+  eligibility?: "eligible" | "ineligible" | "unresolved";
+  exactProjectRelevance?: "exact-project" | "related-context" | "unresolved";
+  confidence?: number | null;
+  affectedModelLine?: string;
+  estimatedMetricEffect?: string;
+  estimatedRecommendationEffect?: string;
+  proposalCreatedEvidenceFingerprint?: string;
+  proposalCreatedProjectFingerprint?: string;
 };
 
 export type AgentRelationship = {
@@ -205,7 +229,22 @@ export type AgentProjectInput = {
     sourceValidation?: {
       state?: string;
       rejectionCodes?: string[];
+      claimMappings?: Array<{
+        sourceId?: string | null;
+        exactQuotation?: string | null;
+        claimText?: string;
+        supportStatus?: string;
+      }>;
     };
+    rawValue?: string | number;
+    rawUnit?: string;
+    normalizedValue?: string | number;
+    normalizedUnit?: string;
+    currentValue?: string | number;
+    currentClassification?: Classification;
+    affectedModelLine?: string;
+    estimatedMetricEffect?: string;
+    estimatedRecommendationEffect?: string;
   }>;
   retrievedSourceCount?: number;
   validatedSourceCount?: number;
@@ -226,7 +265,7 @@ export function createInitialDiligenceAgent(): DiligenceAgentState {
     runId: null,
     status: "idle",
     stages: DILIGENCE_STAGE_DEFINITIONS.map((stage) => ({ ...stage, status: "pending" })),
-    summary: "No agent run yet. Run the governed review to prepare proposals for a human decision.",
+    summary: "No assistant run yet. Prepare proposals from the active evidence set before analyst review.",
     proposedFindings: [],
     relationships: [],
     lenses: [],
@@ -328,7 +367,7 @@ export function advanceDiligenceStage(
     status: complete ? "review-ready" : "running",
     completedAt: complete ? now : undefined,
     lastError: undefined,
-    summary: complete ? "Review package prepared. Proposed changes remain unresolved until a human accepts or overrides them." : `${current.label} completed. Continuing through the governed review stages.`,
+    summary: complete ? "Review package prepared. Proposed changes remain separate until an analyst accepts or overrides them." : `${current.label} completed. Continuing through the recorded review operations.`,
   };
 }
 
@@ -356,9 +395,10 @@ export function applyAgentFindingDecision(
   const finding = state.proposedFindings.find((item) => item.id === findingId);
   if (!finding) return state;
   if (finding.decision !== "pending") return state;
-  if (decision === "overridden" && (!finalClassification || finding.action !== "reclassify-evidence")) return state;
+  if (decision === "overridden" && !finalClassification) return state;
   const finalValue = decision === "accepted" ? finding.proposedValue : undefined;
   const appliedClassification = decision === "accepted" ? finding.proposedClassification : finalClassification;
+  const staleApplied = isAgentRunStale(finding, state);
   const noOpAcknowledgment = decision === "accepted" &&
     finding.proposedValue === finding.currentValue &&
     finding.proposedClassification === finding.currentClassification;
@@ -367,7 +407,7 @@ export function applyAgentFindingDecision(
     proposalId: finding.id,
     action: finding.action,
     outcome: decision as Exclude<ReviewDecision, "pending">,
-    actor: "human-reviewer",
+    actor: "analyst",
     recordedAt: now,
     affectedEvidenceId: finding.affectedEvidenceId,
     beforeValue: finding.currentValue,
@@ -381,6 +421,12 @@ export function applyAgentFindingDecision(
     projectKey: state.projectKey ?? undefined,
     evidenceSnapshotKey: state.evidenceSnapshotKey ?? undefined,
     noOpAcknowledgment,
+    proposalCreatedEvidenceFingerprint: finding.proposalCreatedEvidenceFingerprint,
+    proposalCreatedProjectFingerprint: finding.proposalCreatedProjectFingerprint,
+    appliedAgainstEvidenceFingerprint: state.evidenceSnapshotKey ?? undefined,
+    appliedAgainstProjectFingerprint: state.projectKey ?? undefined,
+    staleApplied,
+    staleReason: staleApplied ? "Evidence or project identity changed after proposal creation." : undefined,
   };
   return {
     ...state,
@@ -421,24 +467,152 @@ export function reverseAgentChange(state: DiligenceAgentState, auditId: string, 
   };
 }
 
+/** Resolves the strongest citation attached to an evidence record without inventing a passage. */
+export function resolveAgentEvidenceSource(evidence: NonNullable<AgentProjectInput["evidence"]>[number]): {
+  sourceId?: string;
+  sourceUrl?: string;
+  claim?: string;
+  passage?: string;
+} {
+  const source = evidence.sources?.find((item) => item.classification === "validated-source") ?? evidence.sources?.[0];
+  const mapping = evidence.sourceValidation?.claimMappings?.find((item) => !item.sourceId || item.sourceId === source?.sourceId);
+  return {
+    sourceId: source?.sourceId,
+    sourceUrl: source?.url ?? evidence.sourceUrl,
+    claim: mapping?.claimText,
+    passage: mapping?.exactQuotation ?? source?.claimPassage ?? source?.excerpt ?? evidence.citation,
+  };
+}
+
+export function isAgentEvidenceEligible(evidence: NonNullable<AgentProjectInput["evidence"]>[number]): boolean {
+  const supportedMapping = evidence.sourceValidation?.claimMappings?.some((mapping) => (
+    mapping.supportStatus === "supported" &&
+    Boolean(mapping.exactQuotation?.trim()) &&
+    Boolean(mapping.sourceId)
+  ));
+  return (evidence.eligibleForModel === true || evidence.sourceValidation?.state === "financially-eligible") &&
+    (evidence.sourceRelevance === "exact-project" || Boolean(evidence.sources?.some((source) => source.exactProject === true))) &&
+    !(evidence.sourceValidation?.rejectionCodes?.length) &&
+    Boolean(evidence.sources?.some((source) => source.classification === "validated-source")) &&
+    Boolean(supportedMapping);
+}
+
+export function isAgentRunStale(
+  proposal: Pick<AgentFinding, "proposalCreatedEvidenceFingerprint" | "proposalCreatedProjectFingerprint">,
+  current: Pick<DiligenceAgentState, "evidenceSnapshotKey" | "projectKey">,
+): boolean {
+  return Boolean(
+    (proposal.proposalCreatedEvidenceFingerprint && proposal.proposalCreatedEvidenceFingerprint !== current.evidenceSnapshotKey) ||
+    (proposal.proposalCreatedProjectFingerprint && proposal.proposalCreatedProjectFingerprint !== current.projectKey),
+  );
+}
+
+export const detectAgentRunStale = isAgentRunStale;
+
+export function selectBulkAgentCandidates(findings: AgentFinding[]): AgentFinding[] {
+  const candidates = findings.filter((finding) => finding.decision === "pending" && finding.consequential && finding.action !== "review-only" && finding.affectedEvidenceId);
+  const ids = new Set<string>();
+  return candidates.filter((finding) => {
+    if (!finding.affectedEvidenceId || ids.has(finding.affectedEvidenceId)) return false;
+    ids.add(finding.affectedEvidenceId);
+    return true;
+  });
+}
+
+export const selectBulkAgentProposalCandidates = selectBulkAgentCandidates;
+
+/** Rejection is safe for review-only proposals too, provided one evidence record is not duplicated. */
+export function selectBulkAgentRejections(findings: AgentFinding[]): AgentFinding[] {
+  const ids = new Set<string>();
+  return findings.filter((finding) => {
+    if (finding.decision !== "pending") return false;
+    if (!finding.affectedEvidenceId) return true;
+    if (ids.has(finding.affectedEvidenceId)) return false;
+    ids.add(finding.affectedEvidenceId);
+    return true;
+  });
+}
+
 export function buildAgentReviewPackage(input: AgentProjectInput): Pick<DiligenceAgentState, "proposedFindings" | "relationships" | "lenses" | "riskAllocation" | "capitalAtRisk" | "conditionsPrecedent" | "dealProtection" | "valueAtRisk"> {
   const ids = (requested: string[]) => requested.filter((id) => input.evidenceIds.includes(id));
   const evidenceById = new Map((input.evidence ?? []).map((item) => [item.id, item]));
   const grid = evidenceById.get("grid_interconnection");
   const gridSources = grid?.sources ?? [];
-  const supportedGrid = Boolean(grid) && (
-    grid?.eligibleForModel === true ||
-    grid?.sourceValidation?.state === "financially-eligible" ||
-    ((input.validatedSourceCount ?? 0) > 0 &&
-      gridSources.some((source) => source.classification === "validated-source") &&
-      !(grid?.sourceValidation?.rejectionCodes?.length))
-  );
+  const supportedGrid = Boolean(grid) && (grid?.sourceRelevance === "exact-project" || grid?.sources?.some((source) => source.exactProject === true)) && (isAgentEvidenceEligible(grid) ||
+    ((input.validatedSourceCount ?? 0) > 0 && gridSources.some((source) => source.classification === "validated-source") &&
+      !(grid?.sourceValidation?.rejectionCodes?.length)));
+  const projectKey = getAgentProjectKey(input);
+  const evidenceSnapshotKey = getAgentEvidenceSnapshotKey(input);
+  const makeEvidenceFinding = (evidence: NonNullable<AgentProjectInput["evidence"]>[number]): AgentFinding => {
+    const source = resolveAgentEvidenceSource(evidence);
+    const eligible = isAgentEvidenceEligible(evidence);
+    const exact = evidence.sourceRelevance === "exact-project" || Boolean(evidence.sources?.some((source) => source.exactProject === true));
+    const consequential = eligible && exact;
+    const currentValue = evidence.currentValue ?? evidence.value;
+    const currentClassification = evidence.currentClassification ?? evidence.classification;
+    const proposedValue = evidence.normalizedValue ?? evidence.value;
+    const proposedClassification = consequential ? evidence.classification : undefined;
+    const classificationChanges = consequential && currentClassification !== proposedClassification;
+    const valueChanges = consequential && currentValue !== proposedValue;
+    const action: AgentProposalAction = classificationChanges
+      ? "reclassify-evidence"
+      : valueChanges ? "update-assumption" : "review-only";
+    return {
+      id: `agent-finding-${evidence.id}`,
+      kind: action === "reclassify-evidence" ? "classification" : "financial-relevance",
+      title: `${evidence.label} requires analyst review`,
+      summary: consequential
+        ? `${evidence.label} is supported by an exact-project source and is proposed for analyst confirmation; it is not verified until accepted.`
+        : `${evidence.label} is review-only because the record is ${evidence.sourceRelevance === "related-context" ? "context-only" : "not sufficiently source-backed"}; it is not verified.`,
+      evidenceIds: [evidence.id],
+      proposedClassification,
+      sourceIds: evidence.sources?.map((item) => item.sourceId) ?? [],
+      sourceSupportConfidence: typeof evidence.sourceSupportConfidence === "number" ? evidence.sourceSupportConfidence / 100 : null,
+      modelReportedConfidence: null,
+      consequential: consequential && (classificationChanges || valueChanges),
+      decision: "pending",
+      action,
+      affectedEvidenceId: evidence.id,
+      currentValue,
+      proposedValue: consequential ? proposedValue : undefined,
+      currentClassification,
+      evidenceClassification: evidence.classification,
+      supportingSources: evidence.sources ?? [],
+      financialPreview: consequential
+        ? (evidence.estimatedMetricEffect ?? "Acceptance may update the affected model input; no formula is changed.")
+        : "No metric changes: unsupported or contextual evidence remains outside the model.",
+      decisionPosture: consequential
+        ? "A source-backed proposal remains an analyst decision and does not establish broader issuer or portfolio materiality."
+        : "Context-only, related, or unmapped records remain unresolved and cannot be described as verified.",
+      reasoning: consequential ? "Exact-project source support permits a bounded proposal." : "The evidence boundary fails closed when exact-project support or mapping is absent.",
+      originalProposal: consequential ? { proposedValue: evidence.normalizedValue ?? evidence.value, proposedClassification, reasoning: "Deterministic proposal from one evidence record.", sourceIds: source.sourceId ? [source.sourceId] : [] } : undefined,
+      rawValue: evidence.rawValue ?? evidence.value,
+      rawUnit: evidence.rawUnit ?? evidence.normalizedUnit,
+      normalizedValue: evidence.normalizedValue,
+      normalizedUnit: evidence.normalizedUnit,
+      exactClaim: source.claim,
+      exactPassage: source.passage,
+      sourceIdentity: source.sourceId,
+      sourceUrl: source.sourceUrl,
+      eligibility: eligible ? "eligible" : evidence.sourceRelevance ? "ineligible" : "unresolved",
+      exactProjectRelevance: exact ? "exact-project" : evidence.sourceRelevance ?? "unresolved",
+      confidence: typeof evidence.sourceSupportConfidence === "number" ? evidence.sourceSupportConfidence / 100 : null,
+      affectedModelLine: evidence.affectedModelLine,
+      estimatedMetricEffect: evidence.estimatedMetricEffect,
+      estimatedRecommendationEffect: evidence.estimatedRecommendationEffect,
+      proposalCreatedEvidenceFingerprint: evidenceSnapshotKey,
+      proposalCreatedProjectFingerprint: projectKey,
+    };
+  };
+  const generatedFindings = (input.evidence ?? [])
+    .filter((evidence) => evidence.id !== "grid_interconnection")
+    .map(makeEvidenceFinding);
   const gridFinding: AgentFinding = supportedGrid && grid
     ? {
       id: "agent-finding-grid",
       kind: "classification",
-      title: "Grid evidence classification requires authorization",
-      summary: `${grid.label} is currently classified as ${grid.classification}. The agent proposes a governed classification change only because a source packet is attached; the reviewer must confirm whether the source supports the exact project claim.`,
+      title: "Grid evidence classification requires analyst review",
+      summary: `${grid.label} is currently classified as ${grid.classification}. The assistant proposes a classification change because a source packet is attached; the analyst must confirm whether the source supports the exact project claim.`,
       evidenceIds: ["grid_interconnection"],
       proposedClassification: grid.sourceRelevance === "exact-project" ? "Verified Evidence" : "Management Assertion",
       sourceIds: gridSources.map((source) => source.sourceId).concat(grid.sourceUrl ? ["grid-interconnection-source"] : []),
@@ -468,27 +642,73 @@ export function buildAgentReviewPackage(input: AgentProjectInput): Pick<Diligenc
         reasoning: "Source-linked classification proposal; exact-project support controls whether Verified Evidence is permissible.",
         sourceIds: gridSources.map((source) => source.sourceId),
       },
+       rawValue: grid.rawValue ?? grid.value,
+       rawUnit: grid.rawUnit ?? grid.normalizedUnit,
+       normalizedValue: grid.normalizedValue,
+       normalizedUnit: grid.normalizedUnit,
+       exactClaim: resolveAgentEvidenceSource(grid).claim,
+       exactPassage: resolveAgentEvidenceSource(grid).passage,
+       sourceIdentity: resolveAgentEvidenceSource(grid).sourceId,
+       sourceUrl: resolveAgentEvidenceSource(grid).sourceUrl,
+       eligibility: supportedGrid ? "eligible" : "ineligible",
+       exactProjectRelevance: (grid.sourceRelevance === "exact-project" || gridSources.some((source) => source.exactProject === true)) ? "exact-project" : grid.sourceRelevance ?? "unresolved",
+       confidence: typeof grid.sourceSupportConfidence === "number" ? grid.sourceSupportConfidence / 100 : null,
+       affectedModelLine: grid.affectedModelLine,
+       estimatedMetricEffect: grid.estimatedMetricEffect,
+       estimatedRecommendationEffect: grid.estimatedRecommendationEffect,
+       proposalCreatedEvidenceFingerprint: evidenceSnapshotKey,
+       proposalCreatedProjectFingerprint: projectKey,
     }
     : {
       id: "agent-finding-grid",
-      kind: "financial-relevance",
-      title: "Grid and energization remain consequential",
-      summary: "No validated source packet supports an evidence mutation. Keep the current record unchanged and resolve the grid gate through a source-backed review.",
+      kind: grid && gridSources.length ? "classification" : "financial-relevance",
+      title: grid && gridSources.length ? "Separate the project cancellation from ERCOT market context" : "Grid and energization remain consequential",
+      summary: grid && gridSources.length ? "The retained record combines an exact-project cancellation claim with broader grid-process context. The assistant proposes Management Assertion so related context is not presented as facility-level verification." : "No validated source packet supports an evidence mutation. Keep the current record unchanged and resolve the grid gate through a source-backed review.",
       evidenceIds: ids(["grid_interconnection", "backup_power_capacity"]),
-      sourceIds: [],
-      sourceSupportConfidence: null,
+      sourceIds: gridSources.map((source) => source.sourceId),
+      sourceSupportConfidence: grid?.sourceSupportConfidence ?? null,
       modelReportedConfidence: null,
-      consequential: false,
+      consequential: Boolean(grid && gridSources.length),
       decision: "pending",
-      action: "review-only",
-      financialPreview: "No metric changes: this is a review topic without an authorized state transition.",
-      decisionPosture: "The project remains blocked or conditional according to the existing material evidence record.",
-      reasoning: "The agent fails closed when it cannot attach a validated source.",
-      supportingSources: [],
+      action: grid && gridSources.length ? "reclassify-evidence" : "review-only",
+      proposedClassification: grid && gridSources.length ? "Management Assertion" : undefined,
+      affectedEvidenceId: grid && gridSources.length ? grid.id : undefined,
+      financialPreview: grid?.estimatedMetricEffect ?? "No metric changes: this is a review topic without an accepted state transition.",
+      estimatedMetricEffect: grid?.estimatedMetricEffect,
+      estimatedRecommendationEffect: grid?.estimatedRecommendationEffect,
+      affectedModelLine: grid?.affectedModelLine,
+      decisionPosture: "Project evidence remains separate from issuer, security, fund, and portfolio conclusions.",
+      reasoning: grid ? "Mixed exact-project and market-context support should not be labeled fully verified." : "The assistant fails closed when it cannot attach a validated source.",
+      supportingSources: gridSources,
+      ...(grid ? {
+        currentValue: grid.currentValue ?? grid.value,
+        proposedValue: grid.value,
+        currentClassification: grid.currentClassification ?? grid.classification,
+        evidenceClassification: grid.classification,
+        rawValue: grid.rawValue ?? grid.value,
+        rawUnit: grid.rawUnit,
+        normalizedValue: grid.normalizedValue ?? grid.value,
+        normalizedUnit: grid.normalizedUnit,
+        exactClaim: resolveAgentEvidenceSource(grid).claim,
+        exactPassage: resolveAgentEvidenceSource(grid).passage,
+        sourceIdentity: resolveAgentEvidenceSource(grid).sourceId,
+        sourceUrl: resolveAgentEvidenceSource(grid).sourceUrl,
+        eligibility: "ineligible",
+        exactProjectRelevance: grid.sourceRelevance ?? "unresolved",
+        proposalCreatedEvidenceFingerprint: evidenceSnapshotKey,
+        proposalCreatedProjectFingerprint: projectKey,
+        originalProposal: {
+          proposedValue: grid.value,
+          proposedClassification: "Management Assertion",
+          reasoning: "Downgrade the mixed record so market context is not presented as facility verification.",
+          sourceIds: gridSources.map((source) => source.sourceId),
+        },
+      } : {}),
     };
   const findings: AgentFinding[] = [
     { id: "agent-finding-identity", kind: "review-gap", title: "Identity boundary is ready for review", summary: `${input.projectName} is scoped to ${input.location} at ${input.capacityMW.toLocaleString()} MW. This confirms scope only; it does not establish ownership or financing.`, evidenceIds: [], sourceIds: [], sourceSupportConfidence: null, modelReportedConfidence: null, consequential: false, decision: "pending", action: "review-only", supportingSources: [], financialPreview: "No metric changes.", decisionPosture: "Project identity is separate from issuer, fund, and client-portfolio conclusions.", reasoning: "Identity is a scope boundary, not a modeled evidence claim." },
-    gridFinding,
+     gridFinding,
+     ...generatedFindings,
     { id: "agent-finding-community", kind: "relationship", title: "Community terms need human disposition", summary: input.communityUnresolvedCount > 0 ? `${input.communityUnresolvedCount} community terms remain unresolved. Benchmarks can inform questions but cannot become project evidence.` : "Community terms have a reviewed state; confirm whether any precedent is truly comparable before relying on it.", evidenceIds: ids(["community_risk", "permitting_timeline"]), sourceIds: ["community-snapshot"], sourceSupportConfidence: null, modelReportedConfidence: null, consequential: false, decision: "pending", action: "review-only", supportingSources: [], financialPreview: "No automatic return adjustment is available for an unquantified community term.", decisionPosture: "Community readiness remains project-level stewardship context, not a fund-level rating.", reasoning: "Benchmarks are kept separate from project evidence.", },
     { id: "agent-finding-capital", kind: "financial-relevance", title: "Capital-at-risk timing is a review topic", summary: "The agent can organize timing questions, but it cannot infer probabilities, penalties, or an IRR impact from incomplete provisions.", evidenceIds: ids(["cooling_capex", "downtime_cost"]), sourceIds: [], sourceSupportConfidence: null, modelReportedConfidence: null, consequential: false, decision: "pending", action: "review-only", supportingSources: [], financialPreview: "No probability, penalty, or IRR change is proposed.", decisionPosture: "Capital-at-risk timing stays a project underwriting question.", reasoning: "Incomplete provisions cannot create invented economics.", },
   ];
@@ -545,7 +765,7 @@ export function hydrateReviewPackage(state: DiligenceAgentState, input: AgentPro
     ? "Research incomplete: no validated sources are available, so unsupported generated content cannot become evidence."
     : readiness === "conditionally-ready"
       ? `${input.materialGapCount} material gap${input.materialGapCount === 1 ? "" : "s"} remain unresolved; stage completion is not review readiness.`
-      : "Validated evidence is sufficient to present governed proposals to a human reviewer.";
+      : "Validated evidence is sufficient to present proposals for analyst review.";
   return {
     ...state,
     ...pkg,

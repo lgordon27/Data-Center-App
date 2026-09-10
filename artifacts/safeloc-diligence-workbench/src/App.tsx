@@ -25,6 +25,7 @@ export type Screen = "brief" | "evidence" | "materiality" | "decision" | "adviso
 export type AppRoute = "analysis" | "home" | "directory" | "value-chain" | "how-it-works";
 
 const legacySectionRoutes: Record<string, string> = {
+  "analysis-agent": "analysis-agent",
   brief: "analysis-overview",
   evidence: "analysis-evidence",
   materiality: "analysis-financial",
@@ -37,6 +38,7 @@ const legacySectionRoutes: Record<string, string> = {
   "analysis-advisor": "analysis-advisor",
 };
 const analysisTabBySection: Record<string, string> = {
+  "analysis-agent": "reality",
   "analysis-overview": "market",
   "analysis-evidence": "reality",
   "analysis-financial": "transmission",

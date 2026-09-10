@@ -8,6 +8,9 @@ import {
   hydrateReviewPackage,
   startDiligenceAgent,
   reverseAgentChange,
+  resolveAgentEvidenceSource,
+  selectBulkAgentCandidates,
+  isAgentRunStale,
 } from "./diligenceAgent";
 
 test("agent stages preserve completed work after a retryable failure", () => {
@@ -170,4 +173,151 @@ test("rerunning retains active applied lineage and keeps the proposal finalized"
   assert.equal(rerun.auditEvents.length, 1);
   assert.equal(rerun.appliedChanges.length, 1);
   assert.equal(rerun.proposedFindings.find((item) => item.id === "agent-finding-grid")?.decision, "accepted");
+});
+
+test("resolves each evidence proposal to its mapped source and exact passage", () => {
+  const evidence = {
+    id: "water",
+    label: "Water",
+    value: "12",
+    classification: "Management Assertion" as const,
+    citation: "Retained citation",
+    sourceUrl: "https://example.test/fallback",
+    sources: [{
+      sourceId: "source-a",
+      title: "Context source",
+      url: "https://example.test/a",
+      excerpt: "Context excerpt",
+      classification: "source-summary" as const,
+    }, {
+      sourceId: "source-b",
+      title: "Validated source",
+      url: "https://example.test/b",
+      excerpt: "Validated excerpt",
+      classification: "validated-source" as const,
+      claimPassage: "Claim passage retained from the source.",
+    }],
+    sourceValidation: {
+      claimMappings: [{
+        sourceId: "source-b",
+        claimText: "Water use is twelve units.",
+        exactQuotation: "The facility uses twelve units of water.",
+      }],
+    },
+  };
+  assert.deepEqual(resolveAgentEvidenceSource(evidence), {
+    sourceId: "source-b",
+    sourceUrl: "https://example.test/b",
+    claim: "Water use is twelve units.",
+    passage: "The facility uses twelve units of water.",
+  });
+  const pkg = buildAgentReviewPackage({
+    projectName: "Exact project",
+    location: "Texas",
+    capacityMW: 100,
+    evidenceIds: ["water"],
+    communityUnresolvedCount: 0,
+    evidence: [{ ...evidence, sourceRelevance: "exact-project", eligibleForModel: true }],
+  });
+  const proposal = pkg.proposedFindings.find((item) => item.id === "agent-finding-water");
+  assert.equal(proposal?.sourceIdentity, "source-b");
+  assert.equal(proposal?.exactClaim, "Water use is twelve units.");
+  assert.equal(proposal?.exactPassage, "The facility uses twelve units of water.");
+});
+
+test("proposals remain isolated until an explicit decision and support every audit outcome", () => {
+  const input = {
+    projectName: "Isolated project", location: "Texas", capacityMW: 100,
+    evidenceIds: ["grid_interconnection"], communityUnresolvedCount: 0,
+    validatedSourceCount: 1,
+    evidence: [{
+      id: "grid_interconnection", label: "Grid", value: "Queue confirmed",
+      classification: "Management Assertion" as const, citation: "Filing p. 4",
+      sourceRelevance: "exact-project" as const, eligibleForModel: true,
+      sources: [{ sourceId: "grid-source", title: "Filing", excerpt: "Confirmed.", classification: "validated-source" as const, exactProject: true }],
+      sourceValidation: { claimMappings: [{ sourceId: "grid-source", claimText: "Queue confirmed", exactQuotation: "Queue confirmed.", supportStatus: "supported" }] },
+    }],
+  };
+  const preview = hydrateReviewPackage(startDiligenceAgent(createInitialDiligenceAgent()), input);
+  const pending = preview.proposedFindings.find((item) => item.id === "agent-finding-grid")!;
+  assert.equal(pending.decision, "pending");
+  assert.equal(preview.auditEvents.length, 0);
+  assert.equal(preview.appliedChanges.length, 0);
+  const outcomes = ["accepted", "overridden", "rejected", "unresolved"] as const;
+  for (const [index, outcome] of outcomes.entries()) {
+    const state = hydrateReviewPackage(startDiligenceAgent(createInitialDiligenceAgent()), input);
+    const final = applyAgentFindingDecision(state, "agent-finding-grid", outcome, outcome === "overridden" ? "Human confirmation" : undefined, outcome === "overridden" ? "User Assumption" : undefined, `2026-09-08T12:0${index}:00.000Z`);
+    assert.equal(final.auditEvents.at(-1)?.outcome, outcome);
+    assert.equal(final.proposedFindings.find((item) => item.id === "agent-finding-grid")?.decision, outcome);
+    if (outcome === "accepted") assert.equal(final.appliedChanges.length, 1);
+    else if (outcome === "overridden") assert.equal(final.appliedChanges.length, 1);
+    else assert.equal(final.appliedChanges.length, 0);
+  }
+});
+
+test("bulk candidates are pending consequential proposals, unique by evidence", () => {
+  const base = {
+    kind: "classification" as const, title: "x", summary: "x", evidenceIds: ["e"],
+    proposedClassification: "Verified Evidence" as const, sourceIds: [], sourceSupportConfidence: 1,
+    modelReportedConfidence: null, consequential: true, decision: "pending" as const,
+    action: "reclassify-evidence" as const, affectedEvidenceId: "e", supportingSources: [],
+    financialPreview: "x", decisionPosture: "x", reasoning: "x",
+  };
+  const candidates = selectBulkAgentCandidates([
+    { ...base, id: "first" },
+    { ...base, id: "duplicate", affectedEvidenceId: "e" },
+    { ...base, id: "review-only", action: "review-only", affectedEvidenceId: "r" },
+    { ...base, id: "decided", decision: "rejected", affectedEvidenceId: "d" },
+    { ...base, id: "second", affectedEvidenceId: "f" },
+  ]);
+  assert.deepEqual(candidates.map((item) => item.id), ["first", "second"]);
+});
+
+test("stale detection and deliberate stale application retain fingerprints and metadata", () => {
+  const input = {
+    projectName: "Stale project", location: "Texas", capacityMW: 100,
+    evidenceIds: ["grid_interconnection"], communityUnresolvedCount: 0,
+    validatedSourceCount: 1,
+    evidence: [{
+      id: "grid_interconnection", label: "Grid", value: "Old",
+      classification: "Management Assertion" as const, citation: "Filing",
+      sourceRelevance: "exact-project" as const, eligibleForModel: true,
+      sources: [{ sourceId: "grid", title: "Filing", excerpt: "Old", classification: "validated-source" as const, exactProject: true }],
+      sourceValidation: { claimMappings: [{ sourceId: "grid", exactQuotation: "Old", supportStatus: "supported" }] },
+    }],
+  };
+  const prepared = hydrateReviewPackage(startDiligenceAgent(createInitialDiligenceAgent()), input);
+  const finding = prepared.proposedFindings.find((item) => item.id === "agent-finding-grid")!;
+  const newer = { ...prepared, evidenceSnapshotKey: "new-evidence" };
+  assert.equal(isAgentRunStale(finding, newer), true);
+  const applied = applyAgentFindingDecision(newer, finding.id, "accepted", undefined, undefined, "2026-09-08T13:00:00.000Z");
+  assert.equal(applied.auditEvents[0]?.staleApplied, true);
+  assert.equal(applied.auditEvents[0]?.staleReason, "Evidence or project identity changed after proposal creation.");
+  assert.equal(applied.auditEvents[0]?.proposalCreatedEvidenceFingerprint, finding.proposalCreatedEvidenceFingerprint);
+  assert.equal(applied.auditEvents[0]?.appliedAgainstEvidenceFingerprint, "new-evidence");
+});
+
+test("reversal is append-only and preserves the original applied history", () => {
+  const input = {
+    projectName: "Reversible project", location: "Texas", capacityMW: 100,
+    evidenceIds: ["grid_interconnection"], communityUnresolvedCount: 0,
+    validatedSourceCount: 1,
+    evidence: [{
+      id: "grid_interconnection", label: "Grid", value: "Confirmed",
+      classification: "Management Assertion" as const, citation: "Filing",
+      sourceRelevance: "exact-project" as const,
+      sources: [{ sourceId: "grid", title: "Filing", excerpt: "Confirmed", classification: "validated-source" as const }],
+    }],
+  };
+  const accepted = applyAgentFindingDecision(
+    hydrateReviewPackage(startDiligenceAgent(createInitialDiligenceAgent()), input),
+    "agent-finding-grid", "accepted", undefined, undefined, "2026-09-08T14:00:00.000Z",
+  );
+  const originalId = accepted.appliedChanges[0].id;
+  const reversed = reverseAgentChange(accepted, originalId, "2026-09-08T14:01:00.000Z");
+  assert.equal(reversed.auditEvents.length, 2);
+  assert.equal(reversed.auditEvents[0].outcome, "accepted");
+  assert.equal(reversed.auditEvents[1].outcome, "reversed");
+  assert.equal(reversed.appliedChanges[0].id, originalId);
+  assert.equal(reversed.appliedChanges[0].reversedAt, "2026-09-08T14:01:00.000Z");
 });

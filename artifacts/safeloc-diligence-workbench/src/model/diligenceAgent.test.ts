@@ -5,12 +5,16 @@ import {
   applyAgentFindingDecision,
   buildAgentReviewPackage,
   createInitialDiligenceAgent,
+  getAgentReviewTelemetry,
+  groupAgentFindings,
   hydrateReviewPackage,
+  normalizeRestoredAgentRun,
   startDiligenceAgent,
   reverseAgentChange,
   resolveAgentEvidenceSource,
   selectBulkAgentCandidates,
   isAgentRunStale,
+  type AgentProjectInput,
 } from "./diligenceAgent";
 
 test("agent stages preserve completed work after a retryable failure", () => {
@@ -54,15 +58,19 @@ test("source-backed acceptance records an applied change and reversal without mu
       id: "grid_interconnection",
       label: "Grid interconnection",
       value: "Queue position confirmed",
-      classification: "Management Assertion" as const,
+      classification: "Verified Evidence" as const,
+      currentClassification: "Management Assertion" as const,
       citation: "ERCOT queue filing, page 4",
       sourceRelevance: "exact-project" as const,
+      eligibleForModel: true,
+      sourceValidation: { claimMappings: [{ sourceId: "ercot-filing", claimText: "Queue position confirmed", exactQuotation: "Queue position confirmed for the named project.", supportStatus: "supported" }] },
       sources: [{
         sourceId: "ercot-filing",
         title: "ERCOT queue filing",
         url: "https://example.com/ercot-filing",
         excerpt: "Queue position confirmed for the named project.",
         classification: "validated-source" as const,
+        exactProject: true,
       }],
     }],
   };
@@ -93,14 +101,18 @@ test("override preserves the AI proposal and applies only the confirmed human cl
       id: "grid_interconnection",
       label: "Grid interconnection",
       value: "Queue position confirmed",
-      classification: "Management Assertion" as const,
+      classification: "Verified Evidence" as const,
+      currentClassification: "Management Assertion" as const,
       citation: "ERCOT queue filing, page 4",
-      sourceRelevance: "related-context" as const,
+      sourceRelevance: "exact-project" as const,
+      eligibleForModel: true,
+      sourceValidation: { claimMappings: [{ sourceId: "ercot-filing", claimText: "Queue position confirmed", exactQuotation: "Queue position confirmed for the named project.", supportStatus: "supported" }] },
       sources: [{
         sourceId: "ercot-filing",
         title: "ERCOT queue filing",
-        excerpt: "The filing describes a regional queue.",
+        excerpt: "Queue position confirmed for the named project.",
         classification: "validated-source" as const,
+        exactProject: true,
       }],
     }],
   };
@@ -108,7 +120,7 @@ test("override preserves the AI proposal and applies only the confirmed human cl
   const overridden = applyAgentFindingDecision(preview, "agent-finding-grid", "overridden", "Keep as assertion", "User Assumption", "2026-09-08T12:00:00.000Z");
   const finding = overridden.proposedFindings.find((item) => item.id === "agent-finding-grid");
   assert.equal(finding?.decision, "overridden");
-  assert.equal(finding?.originalProposal?.proposedClassification, "Management Assertion");
+  assert.equal(finding?.originalProposal?.proposedClassification, "Verified Evidence");
   assert.equal(finding?.humanFinalClassification, "User Assumption");
   assert.equal(overridden.auditEvents[0]?.finalClassification, "User Assumption");
 });
@@ -161,18 +173,31 @@ test("rerunning retains active applied lineage and keeps the proposal finalized"
       id: "grid_interconnection",
       label: "Grid interconnection",
       value: "Queue position confirmed",
-      classification: "Management Assertion" as const,
+      classification: "Verified Evidence" as const,
+      currentClassification: "Missing Evidence" as const,
       citation: "ERCOT queue filing",
       sourceRelevance: "exact-project" as const,
-      sources: [{ sourceId: "ercot", title: "ERCOT filing", excerpt: "Confirmed.", classification: "validated-source" as const }],
+      eligibleForModel: true,
+      sourceValidation: { claimMappings: [{ sourceId: "ercot", claimText: "Confirmed", exactQuotation: "Confirmed.", supportStatus: "supported" }] },
+      sources: [{ sourceId: "ercot", title: "ERCOT filing", excerpt: "Confirmed.", classification: "validated-source" as const, exactProject: true }],
     }],
   };
   const prepared = hydrateReviewPackage(startDiligenceAgent(createInitialDiligenceAgent()), input);
   const accepted = applyAgentFindingDecision(prepared, "agent-finding-grid", "accepted", undefined, undefined, "2026-09-08T12:00:00.000Z");
-  const rerun = hydrateReviewPackage(startDiligenceAgent(accepted, "2026-09-08T12:01:00.000Z"), input);
+  // The rerun sees the actual accepted state, not the pre-acceptance input.
+  const acceptedInput = {
+    ...input,
+    evidence: input.evidence.map((item) => ({ ...item, currentClassification: "Verified Evidence" as const })),
+  };
+  const rerun = hydrateReviewPackage(startDiligenceAgent(accepted, "2026-09-08T12:01:00.000Z"), acceptedInput);
   assert.equal(rerun.auditEvents.length, 1);
   assert.equal(rerun.appliedChanges.length, 1);
-  assert.equal(rerun.proposedFindings.find((item) => item.id === "agent-finding-grid")?.decision, "accepted");
+  const rerunFinding = rerun.proposedFindings.find((item) => item.id === "agent-finding-grid");
+  assert.equal(rerunFinding?.decision, "accepted");
+  assert.equal(rerunFinding?.consequential, false);
+  assert.equal(rerunFinding?.action, "review-only");
+  assert.equal(rerunFinding?.group, "context");
+  assert.equal(rerunFinding?.proposedClassification, undefined);
 });
 
 test("resolves each evidence proposal to its mapped source and exact passage", () => {
@@ -232,7 +257,7 @@ test("proposals remain isolated until an explicit decision and support every aud
     validatedSourceCount: 1,
     evidence: [{
       id: "grid_interconnection", label: "Grid", value: "Queue confirmed",
-      classification: "Management Assertion" as const, citation: "Filing p. 4",
+      classification: "Verified Evidence" as const, currentClassification: "Management Assertion" as const, citation: "Filing p. 4",
       sourceRelevance: "exact-project" as const, eligibleForModel: true,
       sources: [{ sourceId: "grid-source", title: "Filing", excerpt: "Confirmed.", classification: "validated-source" as const, exactProject: true }],
       sourceValidation: { claimMappings: [{ sourceId: "grid-source", claimText: "Queue confirmed", exactQuotation: "Queue confirmed.", supportStatus: "supported" }] },
@@ -297,6 +322,180 @@ test("stale detection and deliberate stale application retain fingerprints and m
   assert.equal(applied.auditEvents[0]?.appliedAgainstEvidenceFingerprint, "new-evidence");
 });
 
+function telemetryInput(): AgentProjectInput {
+  return {
+    projectName: "Telemetry project",
+    location: "Texas",
+    capacityMW: 100,
+    evidenceIds: ["evidence_a", "evidence_b", "evidence_c"],
+    communityUnresolvedCount: 0,
+    evidence: [
+      {
+        id: "evidence_a", label: "Eligible exact record", value: "Confirmed",
+        classification: "Verified Evidence" as const, currentClassification: "Missing Evidence" as const,
+        citation: "Filing", sourceRelevance: "exact-project" as const, eligibleForModel: true,
+        sourceValidation: { claimMappings: [{ sourceId: "source-a", claimText: "Confirmed", exactQuotation: "Confirmed.", supportStatus: "supported" }] },
+        sources: [{ sourceId: "source-a", title: "Filing A", url: "https://a.test", excerpt: "Confirmed.", classification: "validated-source" as const, exactProject: true }],
+      },
+      {
+        id: "evidence_b", label: "Related context record", value: "Regional",
+        classification: "Management Assertion" as const, citation: "Regional filing",
+        sourceRelevance: "related-context" as const,
+        sources: [{ sourceId: "source-b", title: "Filing B", url: "https://b.test", excerpt: "Regional context.", classification: "source-summary" as const }],
+      },
+      {
+        id: "evidence_c", label: "Missing record", value: "Not established",
+        classification: "Missing Evidence" as const, citation: "No source retained",
+      },
+    ],
+  };
+}
+
+test("review telemetry separates new, retained, eligible, and mapped counters and reconciles with the run", () => {
+  const input = telemetryInput();
+  const telemetry = getAgentReviewTelemetry(input);
+  assert.equal(telemetry.newSourceCount, 0);
+  assert.equal(telemetry.retainedSourceCount, 2);
+  assert.equal(telemetry.eligibleValidatedSourceCount, 1);
+  assert.equal(telemetry.mappedVariableCount, 1);
+  const run = hydrateReviewPackage(startDiligenceAgent(createInitialDiligenceAgent()), input);
+  assert.equal(run.retrievedSourceCount, telemetry.newSourceCount);
+  assert.equal(run.retainedSourceCount, telemetry.retainedSourceCount);
+  assert.equal(run.eligibleValidatedSourceCount, telemetry.eligibleValidatedSourceCount);
+  assert.equal(run.mappedVariableCount, telemetry.mappedVariableCount);
+});
+
+test("findings group into actionable changes, open evidence gaps, and related context", () => {
+  const pkg = buildAgentReviewPackage(telemetryInput());
+  const groups = groupAgentFindings(pkg.proposedFindings);
+  assert.deepEqual(groups.actionable.map((finding) => finding.id), ["agent-finding-evidence_a"]);
+  assert.ok(groups.context.some((finding) => finding.id === "agent-finding-evidence_b"));
+  assert.ok(groups.gap.some((finding) => finding.id === "agent-finding-evidence_c"));
+  assert.ok(groups.gap.every((finding) => finding.gapQuestion || finding.id === "agent-finding-grid"));
+  for (const finding of [...groups.gap, ...groups.context]) {
+    assert.equal(finding.consequential, false, `${finding.id} must not be consequential`);
+    assert.equal(finding.action, "review-only", `${finding.id} must be review-only`);
+    assert.equal(finding.proposedClassification, undefined, `${finding.id} must not propose a classification`);
+  }
+});
+
+test("curated-style grid evidence with unmapped sources is review-only context, never actionable", () => {
+  const input: AgentProjectInput = {
+    projectName: "Stargate Abilene",
+    location: "Taylor County, TX",
+    capacityMW: 1200,
+    evidenceIds: ["grid_interconnection"],
+    communityUnresolvedCount: 0,
+    validatedSourceCount: 7,
+    evidence: [{
+      id: "grid_interconnection", label: "Grid Interconnection Timeline", value: "Expansion cancelled",
+      classification: "Verified Evidence" as const, citation: "Retained claim/source records",
+      sourceRelevance: "exact-project" as const,
+      sources: [{ sourceId: "claim-source-1", title: "Retained claim source", excerpt: "Statement", classification: "source-summary" as const }],
+    }],
+  };
+  const pkg = buildAgentReviewPackage(input);
+  const grid = pkg.proposedFindings.find((finding) => finding.id === "agent-finding-grid");
+  assert.equal(grid?.group, "context");
+  assert.equal(grid?.consequential, false);
+  assert.equal(grid?.action, "review-only");
+  assert.equal(grid?.proposedClassification, undefined);
+  assert.equal(grid?.affectedEvidenceId, "grid_interconnection");
+});
+
+test("actionable findings are prioritized by materiality, then confidence", () => {
+  const base = {
+    classification: "Verified Evidence" as const,
+    currentClassification: "Missing Evidence" as const,
+    citation: "Filing",
+    sourceRelevance: "exact-project" as const,
+    eligibleForModel: true,
+    sourceValidation: { claimMappings: [{ sourceId: "s", claimText: "c", exactQuotation: "q", supportStatus: "supported" }] },
+    sources: [{ sourceId: "s", title: "Filing", excerpt: "q", classification: "validated-source" as const, exactProject: true }],
+  };
+  const pkg = buildAgentReviewPackage({
+    projectName: "Priority project", location: "Texas", capacityMW: 100,
+    evidenceIds: ["low_materiality", "high_materiality", "mid_materiality"],
+    communityUnresolvedCount: 0,
+    evidence: [
+      { ...base, id: "low_materiality", label: "Low", value: "a", materialityScore: 0.1, sourceSupportConfidence: 95 },
+      { ...base, id: "high_materiality", label: "High", value: "b", materialityScore: 2.4, sourceSupportConfidence: 40 },
+      { ...base, id: "mid_materiality", label: "Mid", value: "c", materialityScore: 0.1, sourceSupportConfidence: 60 },
+    ],
+  });
+  const groups = groupAgentFindings(pkg.proposedFindings);
+  assert.deepEqual(groups.actionable.map((finding) => finding.id), [
+    "agent-finding-high_materiality",
+    "agent-finding-low_materiality",
+    "agent-finding-mid_materiality",
+  ]);
+});
+
+test("telemetry pins new-source counts to zero regardless of caller input", () => {
+  const telemetry = getAgentReviewTelemetry({ ...telemetryInput(), retrievedSourceCount: 9 });
+  assert.equal(telemetry.newSourceCount, 0);
+});
+
+test("restored runs are normalized fail-closed: zero new sources, legacy consequential proposals withdrawn", () => {
+  const input = telemetryInput();
+  const prepared = hydrateReviewPackage(startDiligenceAgent(createInitialDiligenceAgent()), input);
+  // Simulate a pre-upgrade persisted run: nonzero retrieval count and a pending
+  // consequential proposal on a record that is not eligible under the current contract.
+  const legacyRun = {
+    ...prepared,
+    retrievedSourceCount: 9,
+    proposedFindings: prepared.proposedFindings.map((finding) => finding.id === "agent-finding-evidence_b"
+      ? { ...finding, group: undefined, consequential: true, action: "reclassify-evidence" as const, proposedClassification: "Verified Evidence" as const }
+      : finding),
+  };
+  const normalized = normalizeRestoredAgentRun(legacyRun, input);
+  assert.equal(normalized.retrievedSourceCount, 0);
+  const legacy = normalized.proposedFindings.find((finding) => finding.id === "agent-finding-evidence_b");
+  assert.equal(legacy?.consequential, false);
+  assert.equal(legacy?.action, "review-only");
+  assert.equal(legacy?.proposedClassification, undefined);
+  assert.equal(legacy?.originalProposal, undefined);
+  assert.equal(legacy?.group, "context");
+  // Genuinely actionable proposals survive normalization.
+  assert.equal(normalized.proposedFindings.find((finding) => finding.id === "agent-finding-evidence_a")?.consequential, true);
+  // Applied history is preserved untouched.
+  assert.equal(normalized.appliedChanges, prepared.appliedChanges);
+});
+
+test("eligible evidence that matches the accepted state is context, not a gap, and proposes nothing", () => {
+  const input = telemetryInput();
+  const acceptedInput = {
+    ...input,
+    evidence: input.evidence.map((item) => item.id === "evidence_a" ? { ...item, currentClassification: "Verified Evidence" as const } : item),
+  };
+  const pkg = buildAgentReviewPackage(acceptedInput);
+  const finding = pkg.proposedFindings.find((item) => item.id === "agent-finding-evidence_a");
+  assert.equal(finding?.group, "context");
+  assert.equal(finding?.consequential, false);
+  assert.equal(finding?.action, "review-only");
+  assert.equal(finding?.proposedClassification, undefined);
+  assert.equal(finding?.proposedValue, undefined);
+  assert.equal(finding?.originalProposal, undefined);
+  assert.match(finding?.summary ?? "", /matches the accepted state/);
+});
+
+test("readiness language says review prepared or needs evidence, never investment-ready", () => {
+  const actionable = hydrateReviewPackage(startDiligenceAgent(createInitialDiligenceAgent()), telemetryInput());
+  assert.equal(actionable.readiness, "ready-for-human-review");
+  assert.match(actionable.readinessReason, /^Review prepared/);
+  assert.match(actionable.readinessReason, /actionable change/);
+  const withGaps = hydrateReviewPackage(startDiligenceAgent(createInitialDiligenceAgent()), { ...telemetryInput(), materialGapCount: 2 });
+  assert.equal(withGaps.readiness, "conditionally-ready");
+  assert.match(withGaps.readinessReason, /Review prepared with 2 open evidence gaps/);
+  const sourceFree = hydrateReviewPackage(startDiligenceAgent(createInitialDiligenceAgent()), {
+    projectName: "Unverified", location: "Unknown", capacityMW: 100,
+    evidenceIds: [], communityUnresolvedCount: 0, materialGapCount: 16,
+    evidence: [],
+  });
+  assert.equal(sourceFree.readiness, "not-ready");
+  assert.match(sourceFree.readinessReason, /^Needs evidence/);
+});
+
 test("reversal is append-only and preserves the original applied history", () => {
   const input = {
     projectName: "Reversible project", location: "Texas", capacityMW: 100,
@@ -304,9 +503,10 @@ test("reversal is append-only and preserves the original applied history", () =>
     validatedSourceCount: 1,
     evidence: [{
       id: "grid_interconnection", label: "Grid", value: "Confirmed",
-      classification: "Management Assertion" as const, citation: "Filing",
-      sourceRelevance: "exact-project" as const,
-      sources: [{ sourceId: "grid", title: "Filing", excerpt: "Confirmed", classification: "validated-source" as const }],
+      classification: "Verified Evidence" as const, currentClassification: "Management Assertion" as const, citation: "Filing",
+      sourceRelevance: "exact-project" as const, eligibleForModel: true,
+      sourceValidation: { claimMappings: [{ sourceId: "grid", claimText: "Confirmed", exactQuotation: "Confirmed", supportStatus: "supported" }] },
+      sources: [{ sourceId: "grid", title: "Filing", excerpt: "Confirmed", classification: "validated-source" as const, exactProject: true }],
     }],
   };
   const accepted = applyAgentFindingDecision(

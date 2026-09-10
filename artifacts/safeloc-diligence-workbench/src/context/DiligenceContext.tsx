@@ -73,7 +73,9 @@ import {
   hydrateReviewPackage,
   getAgentEvidenceSnapshotKey,
   getAgentProjectKey,
-  countValidatedAgentSources,
+  getAgentReviewTelemetry,
+  isAgentEvidenceEligible,
+  normalizeRestoredAgentRun,
   reverseAgentChange as reverseAgentChangeState,
   isAgentRunStale,
   selectBulkAgentCandidates,
@@ -646,13 +648,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       (project.kind === "custom" ? acceptedEvidence : applyEiaEvidence(acceptedEvidence, eiaData)) as EvidenceRecord,
       project.capacityMW,
     );
-    return ({
-    projectName: project.name,
-    location: project.location,
-    capacityMW: project.capacityMW,
-    evidenceIds: Object.keys(agentEvidence),
-    communityUnresolvedCount: countUnresolvedCommunityTerms(communityReview.terms),
-    evidence: Object.values(agentEvidence).map((item) => {
+    const evidenceInput = Object.values(agentEvidence).map((item) => {
       const acceptedItem = acceptedEvidence[item.id] ?? item;
       const curatedClaims = item.claimIds.flatMap((claimId) => {
         const claim = getClaimRecord(claimId);
@@ -681,6 +677,18 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
             exactProject: claim.provenance === "public evidence" || claim.provenance === "management disclosure",
             classification: "source-summary" as const,
           }));
+      // Locally resolved curated claim/source records become explicit supported passage mappings
+      // for review telemetry and passage display only; this never changes source-eligibility gates.
+      const claimMappings = item.sourceValidation?.claimMappings?.length
+        ? item.sourceValidation.claimMappings
+        : curatedClaims
+            .filter(({ claim, source }) => Boolean(claim.statement?.trim()) && Boolean(source.id))
+            .map(({ claim, source }) => ({
+              sourceId: source.id,
+              claimText: claim.statement,
+              exactQuotation: claim.statement,
+              supportStatus: "supported",
+            }));
       const proposedModelEvidence = item.eligibleForModel
         ? { ...acceptedEvidence, [item.id]: { ...item, acceptedForModel: true, researchState: "accepted" as const } }
         : acceptedEvidence;
@@ -704,7 +712,9 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         sourceSupportConfidence: item.sourceSupportConfidence,
         sourceRelevance: item.sourceRelevance ?? (curatedExactClaim ? "exact-project" : curatedClaims.length ? "related-context" : "unresolved"),
         eligibleForModel: item.eligibleForModel,
-        sourceValidation: item.sourceValidation,
+        sourceValidation: item.sourceValidation
+          ? { ...item.sourceValidation, claimMappings }
+          : (claimMappings.length ? { claimMappings } : undefined),
         rawValue: item.rawValue ?? item.value,
         rawUnit: item.rawUnit ?? item.unit,
         normalizedValue: item.normalizedValue ?? item.numericValue ?? item.qualitativeValue ?? item.value,
@@ -716,30 +726,19 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         estimatedRecommendationEffect: currentMetrics.recommendationStatus === proposedMetrics.recommendationStatus
           ? `Recommendation remains ${currentMetrics.recommendationStatus}.`
           : `Recommendation could change from ${currentMetrics.recommendationStatus} to ${proposedMetrics.recommendationStatus}.`,
+        materialityScore: irrDelta === null ? 0 : Math.abs(irrDelta),
       };
-    }),
-    retrievedSourceCount: project.researchCoverage?.retrievedSourceCount ?? Object.values(agentEvidence).reduce((count, item) => count + (item.sources?.length ?? 0), 0),
-    validatedSourceCount: project.kind === "custom"
-      ? countValidatedAgentSources({ evidence: Object.values(agentEvidence).map((item) => ({
-        id: item.id,
-        label: item.label,
-        value: item.value,
-        classification: item.classification,
-        citation: item.citation,
-        sourceUrl: item.sourceUrl,
-        sources: (item.sources ?? []).map((source) => ({
-          sourceId: source.url,
-          title: source.title,
-          url: source.url,
-          excerpt: source.excerpt,
-          classification: item.sourceValidation?.state === "financially-eligible" && source.exactProject === true
-            ? "validated-source" as const
-            : "source-summary" as const,
-        })),
-        eligibleForModel: item.eligibleForModel,
-        sourceValidation: item.sourceValidation,
-      })) })
-      : Object.values(agentEvidence).filter((item) => item.classification === "Verified Evidence").length,
+    });
+    return ({
+    projectName: project.name,
+    location: project.location,
+    capacityMW: project.capacityMW,
+    evidenceIds: Object.keys(agentEvidence),
+    communityUnresolvedCount: countUnresolvedCommunityTerms(communityReview.terms),
+    evidence: evidenceInput,
+    // Preparing a review performs no retrieval; new sources are always zero for this deterministic pass.
+    retrievedSourceCount: 0,
+    retainedSourceCount: evidenceInput.reduce((count, item) => count + (item.sources?.length ?? 0), 0),
     materialGapCount: Object.values(agentEvidence).filter((item) => ["Missing Evidence", "Model Inference", "User Assumption"].includes(item.classification)).length,
   });
   }, [communityReview.terms, eiaData, project]);
@@ -753,19 +752,18 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       const input = agentInput();
       const stageSummary = (id: DiligenceStageId) => {
         const evidence = input.evidence ?? [];
-        const sourceCount = evidence.reduce((count, item) => count + (item.sources?.length ?? 0), 0);
-        const mappedCount = evidence.filter((item) => item.sourceValidation?.claimMappings?.length).length;
+        const telemetry = getAgentReviewTelemetry(input);
         const normalizedCount = evidence.filter((item) => item.normalizedValue !== undefined).length;
         const summaries: Record<DiligenceStageId, string> = {
           identity: `Read active project identity: ${input.projectName}, ${input.location}, ${input.capacityMW} MW.`,
           planning: project.researchAudit ? `Used the retained ${project.researchAudit.categories.length}-category research plan.` : "No recorded external research plan is attached; reviewed the retained evidence record only.",
-          "source-search": `Read ${sourceCount} retained source record${sourceCount === 1 ? "" : "s"}; no new search was simulated.`,
-          "evidence-extraction": `Resolved retained claims or passages for ${mappedCount} evidence variable${mappedCount === 1 ? "" : "s"}.`,
+          "source-search": `Reviewed ${telemetry.retainedSourceCount} retained source record${telemetry.retainedSourceCount === 1 ? "" : "s"}; no new search or retrieval was performed.`,
+          "evidence-extraction": `Resolved retained claims or passages for ${telemetry.mappedVariableCount} evidence variable${telemetry.mappedVariableCount === 1 ? "" : "s"}.`,
           "community-review": `Read ${countUnresolvedCommunityTerms(communityReview.terms)} unresolved community term${countUnresolvedCommunityTerms(communityReview.terms) === 1 ? "" : "s"}.`,
           "precedent-comparison": "Kept related and comparable context separate from exact-project evidence.",
           "financial-relevance": `Mapped ${evidence.filter((item) => item.affectedModelLine && item.affectedModelLine !== "No direct modeled cash-flow line").length} evidence variables to existing model lines.`,
           "relationship-mapping": "Recorded direct, related, comparable, and not-found relationships without inferring ownership.",
-          "citation-validation": `Confirmed ${input.validatedSourceCount ?? 0} source${input.validatedSourceCount === 1 ? "" : "s"} passed the existing eligibility boundary.`,
+          "citation-validation": `Confirmed ${telemetry.eligibleValidatedSourceCount} retained source record${telemetry.eligibleValidatedSourceCount === 1 ? "" : "s"} passed every eligibility gate.`,
           "review-preparation": `Prepared proposals from ${normalizedCount} normalized evidence record${normalizedCount === 1 ? "" : "s"}; accepted state remains unchanged.`,
         };
         return summaries[id];
@@ -859,6 +857,19 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     if (stale && !allowStale) {
       logSessionAction("Agent proposal blocked because the evidence snapshot changed", finding.title);
       return false;
+    }
+    // Application boundary: even a proposal that passed validation when prepared (or was
+    // restored from older storage) is revalidated against the current evidence before any
+    // accept/override can mutate accepted state.
+    if ((decision === "accepted" || decision === "overridden") && finding.consequential && finding.affectedEvidenceId) {
+      const currentItem = (activeInput.evidence ?? []).find((item) => item.id === finding.affectedEvidenceId);
+      const currentExact = currentItem
+        ? (currentItem.sourceRelevance === "exact-project" || Boolean(currentItem.sources?.some((source) => source.exactProject === true)))
+        : false;
+      if (!currentItem || !currentExact || !isAgentEvidenceEligible(currentItem)) {
+        logSessionAction("Agent proposal blocked because the current evidence no longer passes the eligibility boundary", finding.title);
+        return false;
+      }
     }
     const decisionState = stale && allowStale
       ? { ...current, projectKey: getAgentProjectKey(activeInput), evidenceSnapshotKey: getAgentEvidenceSnapshotKey(activeInput) }
@@ -1124,8 +1135,26 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       return { ok: false, reason: 'duplicate-name' };
     }
 
+    const scenarioId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    // Scope stored lineage to this project and to the evidence/proposals captured by this scenario.
+    const scenarioProjectKey = getAgentProjectKey({ projectName: project.name, location: project.location, capacityMW: project.capacityMW });
+    const scenarioEvidenceIds = new Set(Object.keys(effectiveModelEvidence));
+    const scenarioProposalIds = new Set(
+      agentRun.auditEvents
+        .filter((event) => event.affectedEvidenceId && scenarioEvidenceIds.has(event.affectedEvidenceId))
+        .map((event) => event.proposalId),
+    );
+    const scenarioActivityEventIds = activityHistory
+      .filter((event) => (
+        event.projectKey === scenarioProjectKey &&
+        (event.evidenceId === undefined || scenarioEvidenceIds.has(event.evidenceId)) &&
+        (event.proposalId === undefined || scenarioProposalIds.has(event.proposalId)) &&
+        (event.scenarioId === undefined || event.scenarioId === scenarioId)
+      ))
+      .map((event) => event.id);
+
     const scenario: SavedScenario = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      id: scenarioId,
       name: trimmedName,
       savedAt: new Date().toISOString(),
       classifications: Object.fromEntries(
@@ -1165,7 +1194,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
           evidence: Object.fromEntries(Object.entries(effectiveModelEvidence).map(([id, item]) => [id, [item.value, item.classification, item.sourceUrl ?? null]])),
           assumptions: metrics.assumptions,
         }),
-        activityEventIds: activityHistory.map((event) => event.id),
+        activityEventIds: scenarioActivityEventIds,
       },
     };
     const nextScenarios = [...scenarios, scenario];
@@ -1203,6 +1232,14 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     return { ok: true, scenario };
   };
 
+  // Consumers always see a run normalized against the current input: restored storage can
+  // predate contract changes, so telemetry is pinned and legacy pending proposals are
+  // withdrawn fail-closed at read time (audit history and applied changes are preserved).
+  const normalizedAgentRun = useMemo(
+    () => (agentRun.runId ? normalizeRestoredAgentRun(agentRun, agentInput()) : agentRun),
+    [agentRun, agentInput],
+  );
+
   const metrics = useMemo(
     () => ({ ...calculateCashFlowModel(effectiveModelEvidence as EvidenceRecord, project.capacityMW), lastChange: state.lastChange }),
     [effectiveModelEvidence, project.capacityMW, state.lastChange],
@@ -1211,7 +1248,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   const communityUnresolvedCount = countUnresolvedCommunityTerms(communityReview.terms);
 
   return (
-    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, researchEvidence: project.kind === "custom" ? state.evidence : effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, applyEvidenceCorrection, clearLastChange, metrics, resetToDefault, loadCustomProject, project, originatingCompany, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading, communityReview, communityUnresolvedCount, reviewCommunityTerm, agentRun, runDiligenceAgent, retryDiligenceStage, reviewAgentFinding, bulkReviewAgentFindings, agentProposalsStale, reverseAgentChange, activityHistory }}>
+    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, researchEvidence: project.kind === "custom" ? state.evidence : effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, applyEvidenceCorrection, clearLastChange, metrics, resetToDefault, loadCustomProject, project, originatingCompany, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading, communityReview, communityUnresolvedCount, reviewCommunityTerm, agentRun: normalizedAgentRun, runDiligenceAgent, retryDiligenceStage, reviewAgentFinding, bulkReviewAgentFindings, agentProposalsStale, reverseAgentChange, activityHistory }}>
       {children}
     </DiligenceContext.Provider>
   );
@@ -1318,7 +1355,8 @@ function loadAgentRun(expectedProjectKey?: string): DiligenceAgentState {
       if (!stage || typeof stage !== "object" || !stageIds.has(stage.id as DiligenceStageId)) throw new Error("invalid stage");
       const definition = fallback.stages.find((item) => item.id === stage.id);
       if (!definition || !["pending", "running", "completed", "failed", "retryable"].includes(stage.status ?? "")) throw new Error("invalid stage status");
-      return { ...definition, ...stage };
+      // Keep the recorded status/timestamps but always show the current truthful label copy.
+      return { ...stage, label: definition.label, description: definition.description };
     });
     if (!["idle", "running", "partial-failure", "review-ready", "failed"].includes(candidate.status ?? "")) return fallback;
     return {
@@ -1337,6 +1375,9 @@ function loadAgentRun(expectedProjectKey?: string): DiligenceAgentState {
       readinessReason: candidate.readinessReason ?? fallback.readinessReason,
       retrievedSourceCount: typeof candidate.retrievedSourceCount === "number" ? candidate.retrievedSourceCount : 0,
       validatedSourceCount: typeof candidate.validatedSourceCount === "number" ? candidate.validatedSourceCount : 0,
+      retainedSourceCount: typeof candidate.retainedSourceCount === "number" ? candidate.retainedSourceCount : 0,
+      eligibleValidatedSourceCount: typeof candidate.eligibleValidatedSourceCount === "number" ? candidate.eligibleValidatedSourceCount : 0,
+      mappedVariableCount: typeof candidate.mappedVariableCount === "number" ? candidate.mappedVariableCount : 0,
       auditEvents: Array.isArray(candidate.auditEvents) ? candidate.auditEvents : [],
       appliedChanges: Array.isArray(candidate.appliedChanges) ? candidate.appliedChanges : [],
       projectKey: candidate.projectKey,

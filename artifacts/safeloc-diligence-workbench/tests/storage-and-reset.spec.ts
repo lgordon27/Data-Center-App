@@ -190,7 +190,10 @@ test.describe("current-session recovery and reset isolation", () => {
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/#analysis$/);
     await expect(page.getByTestId("tab-market")).toHaveAttribute("aria-selected", "true");
-    await expect.poll(() => page.evaluate((key) => window.localStorage.getItem(key), currentSessionKey)).toBeNull();
+    await expect.poll(() => page.evaluate((key) => JSON.parse(window.localStorage.getItem(key) ?? "{}"), currentSessionKey)).toMatchObject({
+      originatingCompany: "Oracle",
+      version: 2,
+    });
     await expect.poll(() => page.evaluate((key) => JSON.parse(window.localStorage.getItem(key) ?? "{}").scenarios?.[0]?.name, scenariosKey)).toBe("Keep me");
 
     await openProjectRealityEvidenceReview(page);

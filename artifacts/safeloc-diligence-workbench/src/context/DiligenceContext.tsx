@@ -53,6 +53,10 @@ import {
   type ImpactRole,
 } from "@/data/evidenceImpactRoles";
 import {
+  COMPANY_PROFILES,
+  type CompanyKey,
+} from "@/data/companyExposure";
+import {
   COMMUNITY_TERM_DEFINITIONS,
   type CommunityConclusion,
   type CommunityHumanStatus,
@@ -150,6 +154,16 @@ export type FinancialMetrics = Omit<ReturnType<typeof calculateCashFlowModel>, '
   lastChange: { from: number; to: number; delta: number } | null;
 };
 
+export type FinancialInputState = {
+  phase: "updating" | "settled";
+  basis: "live" | "cached" | "fallback" | "custom";
+  providerStatus: EiaElectricityData["status"] | "not-applicable";
+  electricityRate: number | null;
+  electricityPeriod: string | null;
+  sourceUpdatedAt: string | null;
+  calculatedAt: string | null;
+};
+
 export type ScenarioMetrics = {
   projectIRR: number | null;
   moic: number;
@@ -182,7 +196,9 @@ type DiligenceState = {
   applyEvidenceCorrection: (id: string, correction: EvidenceCorrection) => boolean;
   clearLastChange: () => void;
   metrics: FinancialMetrics;
+  financialInputState: FinancialInputState;
   resetToDefault: (originatingCompany?: string | null) => void;
+  setOriginatingCompany: (originatingCompany: CompanyKey | null) => void;
   loadCustomProject: (research: CustomResearchResponse, originatingCompany?: string | null) => void;
   project: ProjectContext;
   originatingCompany: string | null;
@@ -340,7 +356,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     name: "Stargate Abilene",
     location: "Taylor County, TX",
   }));
-  const [originatingCompany, setOriginatingCompany] = useState<string | null>(null);
+  const [originatingCompany, setOriginatingCompanyState] = useState<CompanyKey | null>(initialSession.originatingCompany);
   const [scenarios, setScenarios] = useState<SavedScenario[]>(loadScenarios);
   const curatedProjectKey = getAgentProjectKey({ projectName: "Stargate Abilene", location: "Taylor County, TX", capacityMW: DEFAULT_CAPACITY_MW });
   const [agentRun, setAgentRun] = useState<DiligenceAgentState>(() => loadAgentRun(curatedProjectKey));
@@ -362,6 +378,31 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     () => project.kind === "custom" ? state.modelEvidence : applyEiaEvidence(state.modelEvidence, eiaData),
     [state.modelEvidence, eiaData, project.kind],
   );
+
+  const financialInputState = useMemo<FinancialInputState>(() => {
+    if (project.kind === "custom") {
+      return {
+        phase: "settled",
+        basis: "custom",
+        providerStatus: "not-applicable",
+        electricityRate: null,
+        electricityPeriod: null,
+        sourceUpdatedAt: null,
+        calculatedAt: new Date().toISOString(),
+      };
+    }
+    return {
+      phase: eiaLoading ? "updating" : "settled",
+      basis: eiaData.dataOrigin === "provider"
+        ? eiaData.status === "cached" ? "cached" : "live"
+        : "fallback",
+      providerStatus: eiaData.status,
+      electricityRate: eiaData.latestPrice,
+      electricityPeriod: eiaData.latestPricePeriod ?? null,
+      sourceUpdatedAt: eiaData.sourceUpdatedAt ?? null,
+      calculatedAt: eiaLoading ? null : new Date().toISOString(),
+    };
+  }, [eiaData, eiaLoading, project.kind]);
 
   useEffect(() => {
     let active = true;
@@ -402,8 +443,9 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     if (!previous || !isClassification(classification)) return false;
     const classificationChanged = previous !== classification;
     if (!classificationChanged && reviewKind === "manual") return false;
+    const settledForFinancialCalculation = project.kind === "custom" || !eiaLoading;
 
-    const previousIrr = classificationChanged
+    const previousIrr = classificationChanged && settledForFinancialCalculation
       ? calculateCashFlowModel(
         (project.kind === "custom" ? currentState.modelEvidence : applyEiaEvidence(currentState.modelEvidence, eiaData)) as EvidenceRecord,
         project.capacityMW,
@@ -421,7 +463,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         },
       },
     };
-    const nextIrr = classificationChanged
+    const nextIrr = classificationChanged && settledForFinancialCalculation
       ? calculateCashFlowModel(
         (project.kind === "custom" ? currentState.modelEvidence : applyEiaEvidence(nextEvidence, eiaData)) as EvidenceRecord,
         project.capacityMW,
@@ -431,7 +473,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       evidence: nextEvidence,
       modelEvidence: project.kind === "custom" ? currentState.modelEvidence : nextEvidence,
       hasChangedClassification: classificationChanged ? true : currentState.hasChangedClassification,
-      lastChange: classificationChanged
+      lastChange: classificationChanged && settledForFinancialCalculation
         ? {
           from: previousIrr ?? 0,
           to: nextIrr ?? 0,
@@ -449,16 +491,30 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         nextEvidence,
         nextState.hasChangedClassification,
         nextState.modelEvidence,
+        originatingCompany,
       ));
     }
     return true;
-  }, [eiaData, project]);
+  }, [eiaData, eiaLoading, originatingCompany, project]);
 
   const clearLastChange = useCallback(() => {
     const nextState = { ...stateRef.current, lastChange: null };
     stateRef.current = nextState;
     setState(nextState);
   }, []);
+
+  const setOriginatingCompany = useCallback((company: CompanyKey | null) => {
+    setOriginatingCompanyState(company);
+    if (project.kind === "curated") {
+      const currentState = stateRef.current;
+      writeStorage(CURRENT_SESSION_STORAGE_KEY, createSessionPayload(
+        currentState.evidence,
+        currentState.hasChangedClassification,
+        currentState.modelEvidence,
+        company,
+      ));
+    }
+  }, [project.kind]);
 
   const applyEvidenceCorrection = useCallback((id: string, correction: EvidenceCorrection) => {
     if (project.kind !== "custom") return false;
@@ -761,13 +817,14 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
           persistedState.evidence,
           persistedState.hasChangedClassification,
           persistedState.modelEvidence,
+        originatingCompany,
         ));
       }
     }
     setPersistedAgentRun(authorizedRun);
     logSessionAction(`Agent proposal ${decision}`, finding.title);
     return true;
-  }, [agentInput, setPersistedAgentRun, updateClassification]);
+  }, [agentInput, originatingCompany, setPersistedAgentRun, updateClassification]);
 
   const reverseAgentChange = useCallback((auditId: string) => {
     const current = agentRunRef.current;
@@ -788,7 +845,10 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       logSessionAction("Agent reversal blocked by intervening value or source change", applied.proposalId);
       return false;
     }
-    const previousIrr = calculateCashFlowModel((project.kind === "custom" ? currentState.modelEvidence : applyEiaEvidence(currentState.evidence, eiaData)) as EvidenceRecord, project.capacityMW).projectIRR;
+    const settledForFinancialCalculation = project.kind === "custom" || !eiaLoading;
+    const previousIrr = settledForFinancialCalculation
+      ? calculateCashFlowModel((project.kind === "custom" ? currentState.modelEvidence : applyEiaEvidence(currentState.evidence, eiaData)) as EvidenceRecord, project.capacityMW).projectIRR
+      : null;
     const nextEvidence = {
       ...currentState.evidence,
       [applied.affectedEvidenceId]: {
@@ -797,12 +857,16 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         review: { kind: "manual" as const, reviewedAt: new Date().toISOString() },
       },
     };
-    const nextIrr = calculateCashFlowModel((project.kind === "custom" ? currentState.modelEvidence : applyEiaEvidence(nextEvidence, eiaData)) as EvidenceRecord, project.capacityMW).projectIRR;
+    const nextIrr = settledForFinancialCalculation
+      ? calculateCashFlowModel((project.kind === "custom" ? currentState.modelEvidence : applyEiaEvidence(nextEvidence, eiaData)) as EvidenceRecord, project.capacityMW).projectIRR
+      : null;
     const nextState = {
       evidence: nextEvidence,
       modelEvidence: project.kind === "custom" ? currentState.modelEvidence : nextEvidence,
       hasChangedClassification: true,
-      lastChange: { from: previousIrr ?? 0, to: nextIrr ?? 0, delta: (nextIrr ?? 0) - (previousIrr ?? 0) },
+      lastChange: settledForFinancialCalculation
+        ? { from: previousIrr ?? 0, to: nextIrr ?? 0, delta: (nextIrr ?? 0) - (previousIrr ?? 0) }
+        : null,
     };
     stateRef.current = nextState;
     setState(nextState);
@@ -811,14 +875,16 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         nextEvidence,
         true,
         nextState.modelEvidence,
+        originatingCompany,
       ));
     }
     setPersistedAgentRun(reverseAgentChangeState(current, auditId));
     logSessionAction("Reversed agent proposal", applied.proposalId);
     return true;
-  }, [agentInput, eiaData, project, setPersistedAgentRun]);
+  }, [agentInput, eiaData, eiaLoading, originatingCompany, project, setPersistedAgentRun]);
 
-  const resetToDefault = useCallback((company: string | null = null) => {
+  const resetToDefault = useCallback((company: string | null = "Oracle") => {
+    const nextCompany = parseOriginatingCompany(company);
     const nextState = { evidence: cloneEvidence(INITIAL_EVIDENCE), modelEvidence: cloneEvidence(INITIAL_EVIDENCE), hasChangedClassification: false, lastChange: null };
     stateRef.current = nextState;
     setState(nextState);
@@ -829,7 +895,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       description: "A public-source diligence case paired with clearly labeled synthetic acquisition economics.",
       capacityMW: DEFAULT_CAPACITY_MW,
     });
-    setOriginatingCompany(company);
+    setOriginatingCompanyState(nextCompany);
     const nextCommunityReview = createCommunityReview({
       kind: "curated",
       name: "Stargate Abilene",
@@ -837,13 +903,18 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     });
     setCommunityReview(nextCommunityReview);
     clearStorage(COMMUNITY_REVIEW_STORAGE_KEY);
-    clearStorage(CURRENT_SESSION_STORAGE_KEY);
     const nextAgentRun = createInitialDiligenceAgent();
     setAgentRun(nextAgentRun);
     agentRunRef.current = nextAgentRun;
     clearStorage(DILIGENCE_AGENT_STORAGE_KEY);
     clearDecisionHistory();
     clearSessionActions();
+    writeStorage(CURRENT_SESSION_STORAGE_KEY, createSessionPayload(
+      nextState.evidence,
+      nextState.hasChangedClassification,
+      nextState.modelEvidence,
+      nextCompany,
+    ));
   }, []);
 
   const loadCustomProject = useCallback((research: CustomResearchResponse, company: string | null = null) => {
@@ -900,7 +971,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     const nextCommunityReview = loadCommunityReview(customCommunityProject);
     setCommunityReview(nextCommunityReview);
     writeCommunityReview(nextCommunityReview, customCommunityProject);
-    setOriginatingCompany(company);
+    setOriginatingCompanyState(parseOriginatingCompany(company));
     clearStorage(CURRENT_SESSION_STORAGE_KEY);
     const nextAgentRun = createInitialDiligenceAgent();
     setAgentRun(nextAgentRun);
@@ -974,7 +1045,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   const communityUnresolvedCount = countUnresolvedCommunityTerms(communityReview.terms);
 
   return (
-    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, researchEvidence: project.kind === "custom" ? state.evidence : effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, applyEvidenceCorrection, clearLastChange, metrics, resetToDefault, loadCustomProject, project, originatingCompany, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading, communityReview, communityUnresolvedCount, reviewCommunityTerm, agentRun, runDiligenceAgent, retryDiligenceStage, reviewAgentFinding, reverseAgentChange }}>
+    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, researchEvidence: project.kind === "custom" ? state.evidence : effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, applyEvidenceCorrection, clearLastChange, metrics, financialInputState, resetToDefault, setOriginatingCompany, loadCustomProject, project, originatingCompany, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading, communityReview, communityUnresolvedCount, reviewCommunityTerm, agentRun, runDiligenceAgent, retryDiligenceStage, reviewAgentFinding, reverseAgentChange }}>
       {children}
     </DiligenceContext.Provider>
   );
@@ -1211,12 +1282,14 @@ type SessionPayload = {
   reviewMetadata: Record<string, EvidenceReview>;
   modelEvidence?: Record<string, EvidenceItem>;
   decisionHistory?: DecisionHistoryEntry[];
+  originatingCompany?: CompanyKey | null;
 };
 
 function createSessionPayload(
   evidence: Record<string, EvidenceItem>,
   hasChangedClassification: boolean,
   modelEvidence: Record<string, EvidenceItem> = evidence,
+  originatingCompany: CompanyKey | null = null,
 ): SessionPayload {
   return {
     version: SESSION_STORAGE_VERSION,
@@ -1229,7 +1302,14 @@ function createSessionPayload(
     reviewMetadata: getReviewMetadata(evidence),
     modelEvidence,
     decisionHistory: getDecisionHistory(),
+    originatingCompany,
   };
+}
+
+function parseOriginatingCompany(value: unknown): CompanyKey | null {
+  return typeof value === "string" && COMPANY_PROFILES.some((profile) => profile.key === value)
+    ? value as CompanyKey
+    : null;
 }
 
 function parseDecisionHistory(value: unknown): DecisionHistoryEntry[] {
@@ -1307,7 +1387,7 @@ function loadCurrentSession() {
   if (!raw) {
     restoreDecisionHistory([]);
     const evidence = cloneEvidence(INITIAL_EVIDENCE);
-    return { evidence, modelEvidence: evidence, hasChangedClassification: false, restored: false, migrated: false };
+    return { evidence, modelEvidence: evidence, hasChangedClassification: false, originatingCompany: null, restored: false, migrated: false };
   }
 
   try {
@@ -1318,7 +1398,7 @@ function loadCurrentSession() {
         : parsed;
     if (!classifications || typeof classifications !== 'object' || Array.isArray(classifications)) {
       const evidence = cloneEvidence(INITIAL_EVIDENCE);
-      return { evidence, modelEvidence: evidence, hasChangedClassification: false, restored: false, migrated: false };
+      return { evidence, modelEvidence: evidence, hasChangedClassification: false, originatingCompany: null, restored: false, migrated: false };
     }
 
     const entries = Object.entries(classifications);
@@ -1329,7 +1409,7 @@ function loadCurrentSession() {
       entries.some(([, value]) => !isClassification(value))
     ) {
       const evidence = cloneEvidence(INITIAL_EVIDENCE);
-      return { evidence, modelEvidence: evidence, hasChangedClassification: false, restored: false, migrated: false };
+      return { evidence, modelEvidence: evidence, hasChangedClassification: false, originatingCompany: null, restored: false, migrated: false };
     }
 
     const parsedRecord = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
@@ -1373,13 +1453,13 @@ function loadCurrentSession() {
       Object.keys(getClassificationOverrides(evidence)).length > 0,
     );
     if (migrated) {
-      writeStorage(CURRENT_SESSION_STORAGE_KEY, createSessionPayload(evidence, hasChangedClassification, modelEvidence));
+      writeStorage(CURRENT_SESSION_STORAGE_KEY, createSessionPayload(evidence, hasChangedClassification, modelEvidence, parseOriginatingCompany(parsedRecord?.originatingCompany)));
     }
-    return { evidence, modelEvidence, hasChangedClassification, restored: true, migrated };
+    return { evidence, modelEvidence, hasChangedClassification, originatingCompany: parseOriginatingCompany(parsedRecord?.originatingCompany), restored: true, migrated };
   } catch {
     restoreDecisionHistory([]);
     const evidence = cloneEvidence(INITIAL_EVIDENCE);
-    return { evidence, modelEvidence: evidence, hasChangedClassification: false, restored: false, migrated: false };
+    return { evidence, modelEvidence: evidence, hasChangedClassification: false, originatingCompany: null, restored: false, migrated: false };
   }
 }
 

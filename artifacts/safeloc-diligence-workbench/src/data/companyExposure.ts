@@ -47,6 +47,8 @@ export type CompanyProject = {
   facility?: DirectoryFacility;
 };
 
+export type CompanyRelationshipState = "Source-backed" | "Discovery match" | "Research required";
+
 export const COMPANY_PROFILES: CompanyProfile[] = [
   {
     key: "NVIDIA",
@@ -303,6 +305,17 @@ const CURATED_PROJECTS: Partial<Record<CompanyKey, CompanyProject[]>> = {
     },
   ],
 };
+
+export function startingRelationshipState(company: CompanyKey): CompanyRelationshipState {
+  if (company === "NVIDIA" || company === "Oracle") return "Source-backed";
+  return (CURATED_PROJECTS[company] ?? []).some((project) => project.kind === "curated")
+    ? "Discovery match"
+    : "Research required";
+}
+
+export function startingRelationshipProject(company: CompanyKey): CompanyProject | null {
+  return (CURATED_PROJECTS[company] ?? []).find((project) => project.kind === "curated") ?? null;
+}
 
 const COMPANY_DEFAULT_CONNECTION_TYPES: Record<CompanyKey, CompanyConnectionType> = {
   NVIDIA: "Thematic Exposure",

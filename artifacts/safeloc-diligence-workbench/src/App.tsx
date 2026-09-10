@@ -97,7 +97,7 @@ function AppShell() {
 
   useEffect(() => {
     const returnToCurated = () => {
-      diligence.resetToDefault();
+      diligence.resetToDefault("Oracle");
       go("analysis");
     };
     window.addEventListener("safeloc-return-to-curated", returnToCurated);
@@ -208,7 +208,7 @@ function AppShell() {
   };
 
   const confirmReset = () => {
-    diligence.resetToDefault();
+    diligence.resetToDefault("Oracle");
     setAnalysisEpoch((value) => value + 1);
     setPendingSection(null);
     setResetOpen(false);
@@ -352,7 +352,7 @@ function AppShell() {
                    {route === "directory" && (
                      <ErrorBoundary resetKey={route} FallbackComponent={DirectoryFailure}>
                        <Suspense fallback={<DirectoryLoading />}>
-                       <DirectoryRoute onCurated={() => { diligence.resetToDefault(); go("analysis"); }} onResearchSuccess={(research) => { diligence.loadCustomProject(research); go("analysis"); }} />
+                       <DirectoryRoute onCurated={() => { diligence.resetToDefault("Oracle"); go("analysis"); }} onResearchSuccess={(research) => { diligence.loadCustomProject(research); go("analysis"); }} />
                        </Suspense>
                      </ErrorBoundary>
                    )}
@@ -368,7 +368,7 @@ function AppShell() {
         <AlertDialogContent className="border-[#cbd8d4] bg-[#f9faf8]">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-[#122232]">Reset to Default?</AlertDialogTitle>
-            <AlertDialogDescription className="text-[#65737d]">This restores all 16 evidence classifications to the canonical starting state and clears the current session. Named scenarios are kept.</AlertDialogDescription>
+            <AlertDialogDescription className="text-[#65737d]">This restores the curated Oracle conference demonstration: Oracle, Stargate Abilene, canonical evidence classifications and assumptions, and the Market Exposure starting view. It clears the current session; named scenarios are kept.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="border-[#cbd8d4] text-[#52616b]">Cancel</AlertDialogCancel>

@@ -120,7 +120,7 @@ function NextViewButton({ label, target, onClick }: { label: string; target: Fin
 }
 
 export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
-  const { evidence, hasChangedClassification, metrics, sourceStates, project, originatingCompany } = useDiligence();
+  const { evidence, hasChangedClassification, metrics, sourceStates, project, originatingCompany, financialInputState } = useDiligence();
   const [financialView, setFinancialView] = useState<FinancialView>("overview");
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const currentIRR = metrics.projectIRR;
@@ -160,14 +160,45 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
       ? "Proceed only with explicit conditions around the unresolved evidence and modeled treatments."
       : "Resolve material evidence gaps before using the output as an investment conclusion.";
 
+  if (financialInputState.phase === "updating") {
+    return (
+      <section data-testid="financial-inputs-updating" role="status" className="rounded-xl border-2 border-[#aac6f4] bg-[#eef5ff] p-5 md:p-6">
+        <SectionKicker>Illustrative project economics</SectionKicker>
+        <h2 className="mt-2 text-[24px] font-semibold tracking-[-0.035em] text-[#122232]">Updating live inputs</h2>
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-[#52616b]">The baseline and conservative stress results are temporarily withheld while the electricity provider response settles. No interim fallback return is presented as final.</p>
+      </section>
+    );
+  }
+
+  const calculationBasis = financialInputState.basis === "fallback"
+    ? "Fallback-based calculation"
+    : financialInputState.basis === "cached"
+      ? "Cached provider-based calculation"
+      : financialInputState.basis === "live"
+        ? "Live provider-based calculation"
+        : "Custom project calculation";
+  const calculationTimestamp = financialInputState.calculatedAt
+    ? new Date(financialInputState.calculatedAt).toLocaleString()
+    : "not reported";
+
   return (
     <div data-testid="financial-transmission-model" className="min-w-0">
-      <div className="mb-4 flex flex-col justify-between gap-3 md:flex-row md:items-end">
+       <div className="mb-4 flex flex-col justify-between gap-3 md:flex-row md:items-end">
         <div><SectionKicker>Illustrative project economics</SectionKicker><h2 className="text-[24px] font-semibold tracking-[-0.035em] text-[#122232]">Start with the return conclusion.</h2><p className="mt-2 max-w-3xl text-[11px] leading-5 text-[#52616b]">Project economics are illustrative and synthetic unless reported project-level transaction data supports them.</p></div>
         <div className="flex items-center gap-2 rounded-md border border-[#9bd8c5] bg-[#e0f4ed] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#0b7a63]"><Sparkles aria-hidden="true" className="h-3.5 w-3.5" /> Derived locally</div>
       </div>
+       <div data-testid="financial-input-state" role="status" className="mb-4 rounded-lg border border-[#cbd8d4] bg-[#f9faf8] px-4 py-3 text-[11px] leading-5 text-[#52616b]">
+         <strong className="font-semibold text-[#122232]">{calculationBasis}.</strong>{" "}
+         Electricity input: {financialInputState.electricityRate === null ? "not applicable" : `$${financialInputState.electricityRate.toFixed(1)}/MWh`}
+         {financialInputState.electricityPeriod ? ` · period ${financialInputState.electricityPeriod}` : ""}
+         {` · provider status ${financialInputState.providerStatus} · calculated ${calculationTimestamp}.`}
+       </div>
       {!hasChangedClassification && <aside data-testid="materiality-classification-prompt" role="note" className="mb-4 flex items-start gap-3 rounded-lg border border-[#aac6f4] bg-[#eef5ff] px-4 py-3 text-[11px] leading-5 text-[#344550]"><Sparkles aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#255bb7]" /><p><strong className="font-semibold text-[#122232]">Change a classification</strong> to see the return, driver ranking, confidence and recommendation update.</p></aside>}
-      <div role="tablist" aria-label="Financial transmission views" className="sticky top-0 z-10 mb-4 flex gap-1 overflow-x-auto rounded-lg border border-[#d9e0e4] bg-[#f9faf8]/95 p-1.5 backdrop-blur-md">
+       <div data-testid="financial-gap-counts" className="mb-4 grid gap-2 sm:grid-cols-2">
+         <div className="rounded-lg border border-[#e3d4b6] bg-[#fffbf2] px-3 py-2 text-[11px] text-[#805000]"><strong className="font-semibold">Unresolved decision gates:</strong> {metrics.unresolvedDecisionGateCount}</div>
+         <div className="rounded-lg border border-[#f5ddd5] bg-[#fff3f4] px-3 py-2 text-[11px] text-[#7f2635]"><strong className="font-semibold">Unresolved financial drivers:</strong> {metrics.unresolvedFinancialDriverCount}</div>
+       </div>
+       <div role="tablist" aria-label="Financial transmission views" className="sticky top-0 z-10 mb-4 flex gap-1 overflow-x-auto rounded-lg border border-[#d9e0e4] bg-[#f9faf8]/95 p-1.5 backdrop-blur-md">
         {FINANCIAL_VIEWS.map((item, index) => <button key={item.id} ref={(element) => { tabRefs.current[index] = element; }} id={`financial-tab-${item.id}`} data-testid={`financial-tab-${item.id}`} type="button" role="tab" aria-selected={financialView === item.id} aria-controls={`financial-panel-${item.id}`} tabIndex={financialView === item.id ? 0 : -1} onClick={() => setFinancialView(item.id)} onKeyDown={(event) => { if (event.key === "ArrowRight") { event.preventDefault(); moveTab(item.id, "next"); } else if (event.key === "ArrowLeft") { event.preventDefault(); moveTab(item.id, "previous"); } else if (event.key === "Home") { event.preventDefault(); moveTab(item.id, "first"); } else if (event.key === "End") { event.preventDefault(); moveTab(item.id, "last"); } }} className={`min-h-10 shrink-0 rounded-md px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b9d43a] ${financialView === item.id ? "bg-[#122232] text-[#d4e86b]" : "text-[#52616b] hover:bg-white hover:text-[#122232]"}`}>{item.label}</button>)}
       </div>
       {lowConfidence && <div className="mb-4"><LowConfidenceWarning testId="warning-low-confidence-materiality" /></div>}

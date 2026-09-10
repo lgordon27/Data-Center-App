@@ -7,7 +7,7 @@ import { DiligenceLiveRegions } from "@/components/Shell";
 import { isConferenceResearchIncomplete } from "@/model/conferenceEvidence";
 
 export function FinancialTransmission({ onNavigate, onResolveEvidence }: { onNavigate: (screen: string) => void; onResolveEvidence: (id: string) => void }) {
-  const { project, evidence, metrics } = useDiligence();
+  const { project, evidence, metrics, financialInputState } = useDiligence();
   const incomplete = isConferenceResearchIncomplete(project, evidence);
   const [showStressTest, setShowStressTest] = useState(() => !incomplete);
   const [scenarioOpen, setScenarioOpen] = useState(false);
@@ -34,7 +34,7 @@ export function FinancialTransmission({ onNavigate, onResolveEvidence }: { onNav
             <button data-testid="rail-compare-scenarios" type="button" disabled={project.kind === "custom"} onClick={() => openScenario("compare")} className="inline-flex min-h-10 items-center gap-2 rounded-md border border-[#cbd8d4] px-3 text-xs disabled:opacity-40"><Scale aria-hidden="true" className="h-3 w-3" />Compare scenarios</button>
             {project.kind === "custom" && <span className="self-center text-xs text-[#60707d]">Named scenarios remain available for the curated case.</span>}
           </div>
-          <DiligenceLiveRegions metrics={metrics} />
+          <DiligenceLiveRegions metrics={metrics} financialInputState={financialInputState} />
           {scenarioOpen ? <section data-testid="conference-scenarios">
             <button type="button" onClick={() => setScenarioOpen(false)} className="mb-4 text-sm underline">Close scenario workspace</button>
             <DecisionReview onNavigate={detailNavigate} onResolve={onResolveEvidence} requestedAction={requestedAction} onRequestedActionHandled={() => setRequestedAction(null)} />

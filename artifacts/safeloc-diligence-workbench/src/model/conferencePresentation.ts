@@ -5,6 +5,10 @@ export function generateAdvisorBrief(diligence: ReturnType<typeof useDiligence>)
   const summary = getConferenceEvidenceSummary(diligence.evidence);
   const relationship = getConferenceRelationship(diligence.project, diligence.originatingCompany);
   return {
+    gapSummary: {
+      unresolvedDecisionGates: diligence.metrics.unresolvedDecisionGateCount,
+      unresolvedFinancialDrivers: diligence.metrics.unresolvedFinancialDriverCount,
+    },
     whatWeKnow: summary.facts.map((item) => `${item.label}: ${String(item.value)}`),
     whatWeDoNotKnow: summary.unresolved.map((item) => `${item.label}: project-specific supporting terms remain unresolved.`),
     whyItMatters: [

@@ -476,9 +476,27 @@ export function BottomNav(_props: { screen: Screen; onNavigate: (screen: Screen)
   return null;
 }
 
-export function DiligenceLiveRegions({ metrics }: { metrics: ReturnType<typeof useDiligence>["metrics"] }) {
+export function DiligenceLiveRegions({
+  metrics,
+  financialInputState,
+}: {
+  metrics: ReturnType<typeof useDiligence>["metrics"];
+  financialInputState: ReturnType<typeof useDiligence>["financialInputState"];
+}) {
+  if (financialInputState.phase === "updating") {
+    return (
+      <div className="sr-only" aria-label="Diligence metric updates">
+        <div data-testid="live-financial-state" aria-live="polite" aria-atomic="true">
+          Updating live inputs. Financial return results are temporarily withheld until the provider result settles.
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="sr-only" aria-label="Diligence metric updates">
+      <div data-testid="live-financial-state" aria-live="polite" aria-atomic="true">
+        Financial calculation uses {financialInputState.basis} inputs. Electricity value is {financialInputState.electricityRate === null ? "not applicable" : `$${financialInputState.electricityRate.toFixed(1)} per MWh`}; provider status is {financialInputState.providerStatus}; period is {financialInputState.electricityPeriod ?? "not reported"}; calculated at {financialInputState.calculatedAt ?? "not reported"}.
+      </div>
       <div data-testid="live-confidence" aria-live="polite" aria-atomic="true">
         Evidence confidence is now {metrics.confidenceScore} percent.
       </div>
@@ -489,7 +507,7 @@ export function DiligenceLiveRegions({ metrics }: { metrics: ReturnType<typeof u
         Recommendation status is now {metrics.recommendationStatus}.
       </div>
       <div data-testid="live-material-gaps" aria-live="polite" aria-atomic="true">
-        Material evidence gap count is now {metrics.missingMaterialCount}.
+        Unresolved decision gates: {metrics.unresolvedDecisionGateCount}. Unresolved financial drivers: {metrics.unresolvedFinancialDriverCount}.
       </div>
     </div>
   );

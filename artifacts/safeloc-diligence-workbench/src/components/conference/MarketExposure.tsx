@@ -1,12 +1,22 @@
 import { ArrowRight, Building2, ExternalLink } from "lucide-react";
 import { useDiligence } from "@/context/DiligenceContext";
-import { COMPANY_PROFILES } from "@/data/companyExposure";
+import {
+  COMPANY_PROFILES,
+  startingRelationshipProject,
+  startingRelationshipState,
+} from "@/data/companyExposure";
 import { getConferenceRelationship } from "@/model/conferenceEvidence";
 
 export function MarketExposure() {
   const { project, originatingCompany, resetToDefault } = useDiligence();
   const relationship = getConferenceRelationship(project, originatingCompany);
-  const options = COMPANY_PROFILES.filter((company) => getConferenceRelationship(project, company.key).established);
+  const options = COMPANY_PROFILES;
+  const selectedState = relationship.established
+    ? "Source-backed"
+    : relationship.company
+      ? startingRelationshipState(relationship.company.key)
+      : null;
+  const relatedProject = relationship.company ? startingRelationshipProject(relationship.company.key) : null;
   return (
     <section data-testid="conference-view-market" className="space-y-5">
       <div>
@@ -21,15 +31,28 @@ export function MarketExposure() {
             <div><p className="text-xs text-[#52616b]">Selected public company</p><h3 data-testid="market-company" className="text-xl font-semibold">{relationship.company?.displayName ?? originatingCompany ?? "No company selected"}</h3>
               {relationship.company && <p className="text-xs text-[#60707d]">{relationship.company.ticker}</p>}</div>
           </div>
-          {project.kind === "curated" && options.length > 0 && <label className="text-xs text-[#52616b]">Select a holding in this demonstration
+          {project.kind === "curated" && options.length > 0 && <label className="text-xs text-[#52616b]">Select a starting holding
             <select aria-label="Select public holding" data-testid="market-company-select" value={relationship.company?.key ?? ""} onChange={(event) => { if (event.target.value) resetToDefault(event.target.value); }}
               className="mt-1 block min-h-11 w-full rounded-md border border-[#cbd8d4] bg-[#f9faf8] px-3 text-sm text-[#122232]">
               <option value="" disabled>Choose a company</option>
-              {options.map((company) => <option key={company.key} value={company.key}>{company.displayName} ({company.ticker})</option>)}
+              {options.map((company) => <option key={company.key} value={company.key}>{company.displayName} ({company.ticker}) · {relationship.established && relationship.company?.key === company.key ? "Source-backed" : startingRelationshipState(company.key)}</option>)}
             </select>
-            <span className="mt-1 block max-w-xs text-[10px]">Loads the curated starting case; named scenarios are retained.</span>
+            <span className="mt-1 block max-w-xs text-[10px]">Loads the curated starting case; named scenarios are retained. A relationship state is not an exposure conclusion.</span>
           </label>}
         </div>
+        {project.kind === "curated" && <div data-testid="market-holding-states" className="mt-5 grid gap-2 border-t border-[#e5eae8] pt-5 sm:grid-cols-2 lg:grid-cols-3">
+          {options.map((company) => {
+            const state = relationship.established && relationship.company?.key === company.key
+              ? "Source-backed"
+              : startingRelationshipState(company.key);
+            return (
+              <button key={company.key} data-testid={`market-holding-state-${company.key.toLowerCase()}`} type="button" onClick={() => resetToDefault(company.key)} className="rounded-lg border border-[#d9e0e4] bg-[#f9faf8] p-3 text-left hover:border-[#255bb7]">
+                <span className="block text-xs font-semibold text-[#122232]">{company.displayName}</span>
+                <span className="mt-1 block text-[10px] text-[#60707d]">{state}</span>
+              </button>
+            );
+          })}
+        </div>}
         <dl className="mt-5 grid gap-4 border-t border-[#e5eae8] pt-5 sm:grid-cols-3">
           <div><dt className="text-xs text-[#60707d]">Infrastructure project</dt><dd className="mt-1 font-semibold">{project.name}</dd></div>
           <div><dt className="text-xs text-[#60707d]">Relationship type</dt><dd data-testid="market-relationship-type" className="mt-1 font-semibold">{relationship.type}</dd></div>
@@ -47,8 +70,9 @@ export function MarketExposure() {
           </div>
         </> : <div data-testid="market-no-relationship" className="mt-5 rounded-lg bg-[#f1f5f3] p-4">
           <h3 className="font-semibold">No established company–project relationship</h3>
-          <p className="mt-2 text-sm leading-6 text-[#52616b]">{relationship.reason} No exposure chain is shown.</p>
-          <a href="#home" className="mt-3 inline-block text-xs text-[#255bb7] underline">Explore companies or open the curated demonstration</a>
+           <p className="mt-2 text-sm leading-6 text-[#52616b]">{relationship.reason} No exposure chain is shown.</p>
+           {relationship.company && <p data-testid="market-relationship-state" className="mt-2 text-xs font-semibold text-[#805000]">{selectedState}: {relatedProject ? `${relatedProject.name} is related discovery context, not a reviewed Stargate relationship.` : "No reviewed Stargate relationship is established; project-level research is required."}</p>}
+           <a href="#home" className="mt-3 inline-block text-xs text-[#255bb7] underline">Explore a related project or start research on Home</a>
         </div>}
       </div>
       <p className="text-xs leading-5 text-[#60707d]">No fund is assumed. Portfolio relevance requires your actual holdings, weights and the issuer’s contractual dependence on this facility.</p>

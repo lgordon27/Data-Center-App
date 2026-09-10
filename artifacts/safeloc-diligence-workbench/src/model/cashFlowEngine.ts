@@ -258,6 +258,8 @@ export type CashFlowModel = {
   recommendationBlocked: boolean;
   recommendationStatus: RecommendationStatus;
   missingMaterialCount: number;
+  unresolvedDecisionGateCount: number;
+  unresolvedFinancialDriverCount: number;
   materialUnverifiedCount: number;
   totalDistributions: number;
   equityInvested: number;
@@ -831,9 +833,13 @@ function runModel(evidence: EvidenceRecord, capacityMW: number): CashFlowModel {
     equityInvested > 0
       ? ((schedule[3]?.netEquityCashFlow ?? 0) / equityInvested) * 100
       : 0;
-  const missingMaterialCount = Object.values(evidence).filter(
+  const unresolvedDecisionGateCount = Object.values(evidence).filter(
     (item) => isMaterialEvidenceId(item.id) && getEffectiveSupportState(item) === "unresolved",
   ).length;
+  const unresolvedFinancialDriverCount = Object.values(evidence).filter(
+    (item) => getEvidenceImpactRole(item.id) === "Financial Driver" && getEffectiveSupportState(item) === "unresolved",
+  ).length;
+  const missingMaterialCount = unresolvedDecisionGateCount;
   const materialUnverifiedCount = Object.values(evidence).filter(
     (item) =>
       isMaterialEvidenceId(item.id) &&
@@ -944,6 +950,8 @@ function runModel(evidence: EvidenceRecord, capacityMW: number): CashFlowModel {
     recommendationBlocked: recommendationStatus === "BLOCKED",
     recommendationStatus,
     missingMaterialCount,
+    unresolvedDecisionGateCount,
+    unresolvedFinancialDriverCount,
     materialUnverifiedCount,
     totalDistributions,
     equityInvested,

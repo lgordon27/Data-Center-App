@@ -621,7 +621,15 @@ test("the material evidence contract governs every recommendation transition", (
   );
   assert.equal(nonMaterialMissing.recommendationStatus, "READY FOR REVIEW");
   assert.equal(nonMaterialMissing.missingMaterialCount, 0);
+  assert.equal(nonMaterialMissing.unresolvedDecisionGateCount, 0);
+  assert.equal(nonMaterialMissing.unresolvedFinancialDriverCount, 1);
   assert.equal(nonMaterialMissing.materialUnverifiedCount, 0);
+
+  const decisionGateMissing = calculateCashFlowModel(
+    classify(allVerified(), "water_rights", "Missing Evidence"),
+  );
+  assert.equal(decisionGateMissing.unresolvedDecisionGateCount, 1);
+  assert.equal(decisionGateMissing.unresolvedFinancialDriverCount, 0);
 });
 
 test("custom project capacity scales standardized economics without changing the model contract", () => {

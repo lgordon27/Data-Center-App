@@ -9,6 +9,10 @@ export function AdvisorBrief() {
   return (
     <div data-testid="conference-view-advisor" className="space-y-4">
       <div><p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#607500]">04 / Turn evidence into a useful conversation</p><h2 className="mt-2 text-2xl font-semibold tracking-tight">Advisor Brief</h2></div>
+      <div data-testid="advisor-gap-summary" className="grid gap-2 sm:grid-cols-2">
+        <div className="rounded-lg border border-[#e3d4b6] bg-[#fffbf2] px-4 py-3 text-xs text-[#805000]"><strong className="font-semibold">Unresolved decision gates:</strong> {brief.gapSummary.unresolvedDecisionGates}</div>
+        <div className="rounded-lg border border-[#f5ddd5] bg-[#fff3f4] px-4 py-3 text-xs text-[#7f2635]"><strong className="font-semibold">Unresolved financial drivers:</strong> {brief.gapSummary.unresolvedFinancialDrivers}</div>
+      </div>
       <div className="grid md:grid-cols-2 gap-4">
         <div className="rounded-xl border border-[#d9e0e4] bg-white p-4 shadow-sm">
           <h3 className="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#122232] mb-4 flex items-center gap-2">

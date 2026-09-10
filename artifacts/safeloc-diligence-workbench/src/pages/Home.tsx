@@ -36,6 +36,7 @@ import {
   getCompanyExposureProvenance,
   profileForCompany,
   projectSummary,
+  startingRelationshipState,
   type CompanyKey,
   type CompanyProject,
 } from "@/data/companyExposure";
@@ -1031,7 +1032,7 @@ function LegacyHome({ onNavigate }: { onNavigate?: (route: HomeRoute) => void } 
                     data-testid="button-run-stargate"
                     type="button"
                     onClick={() => {
-                      resetToDefault(null);
+                      resetToDefault("Oracle");
                       window.location.hash = "analysis";
                     }}
                     className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-[#d4e86b]/70 bg-[#173247] px-4 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#d4e86b] transition-colors hover:border-[#d4e86b] hover:bg-[#203f50] focus:outline-none focus:ring-2 focus:ring-[#d4e86b] focus:ring-offset-2 focus:ring-offset-[#0a1b2a]"
@@ -1144,7 +1145,7 @@ function LegacyHome({ onNavigate }: { onNavigate?: (route: HomeRoute) => void } 
                <div className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-[#d4e86b]">Curated case</div>
                <h2 className="mt-2 text-[21px] font-semibold tracking-[-0.03em] text-white">Or dive straight into Stargate Abilene.</h2>
                <p className="mt-2 text-[11px] leading-5 text-[#b9c5c9]">OpenAI&apos;s $500B flagship. The curated deep dive.</p>
-               <button data-testid="button-analyze-stargate" type="button" onClick={() => { resetToDefault(null); window.location.hash = "analysis"; }} className="mt-5 inline-flex min-h-11 flex-wrap items-center gap-2 rounded-md bg-[#d4e86b] px-3 py-2.5 text-left font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#122232] hover:bg-[#e3f18d]">Analyze Stargate Abilene <span className="normal-case tracking-normal">OpenAI&apos;s $500B flagship. The curated analysis.</span> <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" /></button>
+               <button data-testid="button-analyze-stargate" type="button" onClick={() => { resetToDefault("Oracle"); window.location.hash = "analysis"; }} className="mt-5 inline-flex min-h-11 flex-wrap items-center gap-2 rounded-md bg-[#d4e86b] px-3 py-2.5 text-left font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#122232] hover:bg-[#e3f18d]">Analyze Stargate Abilene <span className="normal-case tracking-normal">OpenAI&apos;s $500B flagship. The curated analysis.</span> <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" /></button>
              </div>
              <div className="rounded-xl border border-white/15 bg-[#102b3b] p-5">
                <div className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-[#d4e86b]">Tertiary paths</div>
@@ -1404,7 +1405,7 @@ export function LegacyCompanyExploration({ onNavigate }: { onNavigate?: (route: 
                 <div className="flex items-center justify-between gap-3"><h3 className="text-[17px] font-semibold text-white">An infrastructure project</h3><MapPin aria-hidden="true" className="h-4 w-4 text-[#d4e86b]" /></div>
                  <p className="mt-2 max-w-xl text-[11px] leading-5 text-[#b9c5c9]">Open the curated Stargate case, analyze a different project with the existing research dialog, or browse the Texas rollout directory.</p>
                 <div className="mt-5 flex flex-wrap gap-2">
-                  <button data-testid="button-analyze-stargate" type="button" onClick={() => { resetToDefault(null); window.location.hash = "analysis"; }} className="inline-flex min-h-10 items-center gap-2 rounded-md bg-[#d4e86b] px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.08em] text-[#122232]">Analyze Stargate Abilene <ArrowRight aria-hidden="true" className="h-3 w-3" /></button>
+                  <button data-testid="button-analyze-stargate" type="button" onClick={() => { resetToDefault("Oracle"); window.location.hash = "analysis"; }} className="inline-flex min-h-10 items-center gap-2 rounded-md bg-[#d4e86b] px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.08em] text-[#122232]">Analyze Stargate Abilene <ArrowRight aria-hidden="true" className="h-3 w-3" /></button>
                   <button data-testid="button-analyze-another-project-path" type="button" onClick={openCustomProject} className="inline-flex min-h-10 items-center gap-2 rounded-md border border-white/20 px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.08em] text-[#d4e86b]">Analyze a Project <ArrowRight aria-hidden="true" className="h-3 w-3" /></button>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 border-t border-white/10 pt-4 text-[10px]">
@@ -1504,7 +1505,7 @@ export function LegacyCompanyExploration({ onNavigate }: { onNavigate?: (route: 
 }
 
 export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void } = {}) {
-  const { loadCustomProject, resetToDefault, originatingCompany } = useDiligence();
+  const { loadCustomProject, resetToDefault, setOriginatingCompany, originatingCompany } = useDiligence();
   const initialCompany = COMPANY_PROFILES.some((profile) => profile.key === originatingCompany)
     ? originatingCompany as CompanyKey
     : null;
@@ -1513,13 +1514,18 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
   const [companyResearchError, setCompanyResearchError] = useState<string | null>(null);
   const companyExposureRef = useRef<HTMLElement>(null);
 
-  const openStargate = (company: CompanyKey | null = null) => {
+  useEffect(() => {
+    setSelectedCompany(initialCompany);
+  }, [initialCompany]);
+
+  const openStargate = (company: CompanyKey | null = "Oracle") => {
     resetToDefault(company);
     window.location.hash = "analysis";
   };
   const selectCompany = (company: CompanyKey) => {
     setCompanyResearchError(null);
     setSelectedCompany(company);
+    setOriginatingCompany(company);
     trackEvent("company_lens_selected", {
       company: company.toLowerCase(),
       entry_point: "home_holdings",
@@ -1602,12 +1608,12 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
                 </div>
               </article>
             </div>
-            <details data-testid="home-explore-panel" className="group mt-8 rounded-xl border border-white/15 bg-[#0d2435]/95">
+            <details data-testid="home-explore-panel" open className="group mt-8 rounded-xl border border-white/15 bg-[#0d2435]/95">
               <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-4 px-4 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-[#d4e86b] [&::-webkit-details-marker]:hidden">
                 Explore companies and other paths
                 <ChevronDown aria-hidden="true" className="h-4 w-4 transition-transform group-open:rotate-180" />
               </summary>
-              <div className="grid gap-5 border-t border-white/10 p-4 md:grid-cols-[1.35fr_0.65fr]">
+              <div data-testid="home-stock-picker" className="grid gap-5 border-t border-white/10 p-4 md:grid-cols-[1.35fr_0.65fr]">
                 <div>
                   <h2 className="text-[17px] font-semibold text-white">Explore a supported company</h2>
                   <p className="mt-1 text-[11px] leading-5 text-[#9dafb8]">Select a company to inspect its sourced infrastructure connections.</p>
@@ -1622,6 +1628,7 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
                       >
                         <span className="font-mono text-[9px] font-bold text-[#d4e86b]">{company.ticker}</span>
                         <span className="mt-1 block truncate text-[11px] font-semibold text-white">{company.displayName}</span>
+                        <span className="mt-1 block text-[9px] text-[#b9c5c9]">{startingRelationshipState(company.key)}</span>
                       </button>
                     ))}
                   </div>

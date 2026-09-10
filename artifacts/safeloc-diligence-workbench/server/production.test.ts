@@ -38,6 +38,18 @@ async function waitForJson(url: string, child: ReturnType<typeof spawn>) {
   throw new Error(`Timed out waiting for ${url}`);
 }
 
+async function waitForResponse(url: string, child: ReturnType<typeof spawn>) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    try {
+      return await fetch(url);
+    } catch (error) {
+      if (child.exitCode !== null) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+  throw new Error(`Timed out waiting for ${url}`);
+}
+
 async function stopProcess(child: ReturnType<typeof spawn>) {
   if (child.exitCode !== null) return;
   try {
@@ -72,6 +84,16 @@ test("production entry point serves active API routes without retired endpoints"
 
   try {
     const baseUrl = `http://127.0.0.1:${port}`;
+    const root = await waitForResponse(`${baseUrl}/`, child);
+    assert.equal(root.status, 200);
+    assert.match(root.headers.get("content-type") ?? "", /text\/html/);
+    assert.match(await root.text(), /<div id="root"><\/div>/);
+
+    const clientRoute = await waitForResponse(`${baseUrl}/client-route`, child);
+    assert.equal(clientRoute.status, 200);
+    assert.match(clientRoute.headers.get("content-type") ?? "", /text\/html/);
+    assert.match(await clientRoute.text(), /<div id="root"><\/div>/);
+
     const ercot = await waitForJson(`${baseUrl}/api/ercot-queue`, child);
     assert.ok(["live", "cached", "error"].includes(String(ercot.status)));
     assert.equal(typeof ercot.diagnostics, "object");
@@ -102,6 +124,9 @@ test("production entry point serves active API routes without retired endpoints"
     assert.equal(versionHeaders.headers.get("cache-control"), "no-store");
     const aiMethod = await fetch(`${baseUrl}/api/analyze-evidence`);
     assert.equal(aiMethod.status, 405);
+    const unknownApi = await fetch(`${baseUrl}/api/does-not-exist`);
+    assert.equal(unknownApi.status, 404);
+    assert.match(unknownApi.headers.get("content-type") ?? "", /application\/json/);
     for (const retiredPath of ["/api/grid/status", "/api/grid/diagnostics", "/api/grid/query"]) {
       const retiredResponse = await fetch(`${baseUrl}${retiredPath}`);
       assert.equal(retiredResponse.status, 404, `${retiredPath} should not be exposed`);

@@ -7,7 +7,7 @@
     "dev": "tsx server/index.ts",
     "build": "PORT=${PORT:-25519} BASE_PATH=${BASE_PATH:-/} vite build --config vite.config.ts && node server/writeRelease.mjs",
     "start": "NODE_ENV=production tsx server/index.ts",
-    "serve": "NODE_ENV=production tsx server/index.ts",
+    "serve": "pnpm run start",
     "research:acceptance": "node server/researchProjectAcceptance.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "RESEARCH_CACHE_DIR=$(mktemp -d) tsx --test src/model/*.test.ts src/data/*.test.ts src/services/*.test.ts server/ercotProxy.test.mjs server/eiaProxy.test.mjs server/aiEvidenceProxy.test.mjs server/researchProjectProxy.test.mjs server/researchProjectAcceptance.test.mjs server/computeAtlasProxy.test.mjs",

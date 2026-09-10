@@ -202,9 +202,9 @@ test.describe("hash routing and browser history", () => {
     await page.goto("/#how-it-works");
     await expect(page).toHaveURL(/#how-it-works$/);
     await expect(page).toHaveTitle("SafeLoc · How It Works");
-    await expect(page.getByRole("heading", { name: /A rating tells you what was reported/i })).toBeVisible();
-    await expect(page.getByTestId("tour-sri-context")).toContainText("Responsible investors helped capitalize the AI revolution;");
-    await expect(page.getByTestId("tour-bifurcation-context")).toContainText("The market is bifurcating between projects that solved their constraints independently");
+    await expect(page.getByRole("heading", { name: /See how an infrastructure constraint could become an investment question/i })).toBeVisible();
+    await expect(page.getByTestId("tour-sri-context")).toContainText("Start with a public company");
+    await expect(page.getByTestId("tour-bifurcation-context")).toContainText("not proof of security-level or fund-level materiality");
     await expect(page.getByTestId("button-return-workbench-top")).toBeVisible();
     await expect(page.getByTestId("button-return-workbench-bottom")).toBeVisible();
 
@@ -420,16 +420,17 @@ test.describe("hash routing and browser history", () => {
     );
   });
 
-  test("shows the complete SRI origin story in the product tour", async ({ page }) => {
+  test("keeps the advisor framing concise and builder background available on request", async ({ page }) => {
     await page.goto("/#how-it-works");
 
     const context = page.getByTestId("tour-sri-context");
-    await expect(context).toContainText("Responsible investors helped capitalize the AI revolution; now its physical infrastructure is testing environmental stewardship, community impact, transparent governance, and evidence-based decision-making.");
-    await expect(context).toContainText("Texas pausing new grid connections for an energy and water audit");
+    await expect(context).toContainText("Start with a public company, inspect the project evidence");
+    await expect(page.getByText("AI helps locate and organize public evidence. Sources, assumptions and unresolved gaps remain visible and correctable.")).toBeVisible();
 
+    await page.getByTestId("tour-disclosure-builder").locator("summary").click();
     const builderStory = page.getByTestId("tour-builder-story");
     await expect(builderStory).toContainText("Built by LeAndrew Gordon, Founder and CEO of SafeLoc, a former Private Wealth Financial Advisor and Chartered SRI Counselor, for the Growth for Impact Conference.");
-    await expect(builderStory).toContainText("SafeLoc applies values-aligned evidence standards to the infrastructure layer so sustainability professionals can help steer the AI economy rather than watch from the sidelines.");
+    await expect(builderStory).toContainText("SafeLoc applies values-aligned evidence standards to the infrastructure layer");
   });
 
   test("keeps portfolio context notes readable at configured browser sizes", async ({ page }) => {
@@ -443,21 +444,12 @@ test.describe("hash routing and browser history", () => {
   test("keeps the opening and builder story readable at every browser size", async ({ page }) => {
     await page.goto("/#how-it-works");
     await expect(page.getByTestId("tour-sri-context")).toBeVisible();
-    await expect(page.getByTestId("tour-builder-story")).toBeVisible();
+    await expect(page.getByTestId("tour-builder-story")).toBeHidden();
 
     await expectTourLayoutToStayReadable(page, "#tour-context");
-    await expect(page.locator("#tour-context")).toHaveScreenshot("how-it-works-opening.png", {
-      animations: "disabled",
-      caret: "hide",
-    });
-
-    await page.getByTestId("link-tour-chapter-tour-built-by").click();
-    await expect(page.getByTestId("tour-builder-story")).toBeInViewport();
-    await expectTourLayoutToStayReadable(page, "#tour-built-by");
-    await expect(page.locator("#tour-built-by")).toHaveScreenshot("how-it-works-builder-story.png", {
-      animations: "disabled",
-      caret: "hide",
-    });
+    await page.getByTestId("tour-disclosure-builder").locator("summary").click();
+    await expect(page.getByTestId("tour-builder-story")).toBeVisible();
+    await expectTourLayoutToStayReadable(page, "#tour-methodology");
   });
 
   test("keeps reduced-motion tour jumps immediate without changing interaction", async ({ page }) => {
@@ -588,8 +580,8 @@ test.describe("hash routing and browser history", () => {
     await expect(page.getByTestId("button-navigate-decision")).toHaveAttribute("aria-current", "step");
   });
 
-  test("opens the AI chain from the header and preserves the five-step workbench", async ({ page }) => {
-    await page.goto("/#brief");
+  test("opens the AI chain from the header and returns to the four-stage workbench", async ({ page }) => {
+    await page.goto("/#analysis");
     if (await page.getByTestId("button-open-menu").isVisible()) {
       await page.getByTestId("button-open-menu").click();
       await page.getByTestId("mobile-navigate-value-chain").click();
@@ -599,19 +591,17 @@ test.describe("hash routing and browser history", () => {
 
     await expect(page).toHaveURL(/#value-chain$/);
     await expect(page).toHaveTitle("SafeLoc · The AI Chain");
-    await expect(page.getByTestId("value-chain-narrative")).toContainText("Sustainable investors helped capitalize this chain by concentrating capital in well-governed, high-performing companies like NVIDIA.");
+    await expect(page.getByTestId("value-chain-narrative")).toContainText("SafeLoc focuses on the infrastructure layer");
     await expect(page.getByTestId("value-chain-stages").locator(":scope > li")).toHaveCount(7);
     await expect(page.getByTestId("value-chain-stage-data-center-infrastructure")).toContainText("YOU ARE HERE");
     await expect(page.getByTestId("value-chain-stage-data-center-infrastructure")).toContainText("Where capital meets physical reality: power, water, land, grid, community.");
     await expect(page.getByTestId("value-chain-stage-data-center-infrastructure")).toContainText("Power · water · land · grid · community");
-    await expect(page.getByTestId("value-chain-page")).toContainText("$130 billion in projects paused in Q1 2026.");
-    await expect(page.getByTestId("value-chain-stage-data-center-infrastructure")).toContainText("This layer is bifurcating.");
-     await expect(page.getByTestId("value-chain-stage-data-center-infrastructure")).toContainText("the dated aggregate ERCOT queue shown in the provider snapshot and the Abbott moratorium");
-    await expect(page.getByTestId("value-chain-stage-data-center-infrastructure")).toContainText("Evidence quality determines which side a project lands on.");
+    await expect(page.getByTestId("value-chain-stage-data-center-infrastructure")).toContainText("SafeLoc begins its analysis at this layer.");
+    await expect(page.getByTestId("value-chain-stage-data-center-infrastructure")).toContainText("Project-level evidence does not automatically establish issuer or portfolio materiality.");
 
     await page.getByTestId("button-value-chain-return-hero").click();
-    await expect(page).toHaveURL(/#brief$/);
-    await expect(page.getByTestId("button-navigate-brief")).toHaveAttribute("aria-current", "step");
+    await expect(page).toHaveURL(/#analysis$/);
+    await expect(page.getByTestId("tab-market")).toHaveAttribute("aria-selected", "true");
   });
 
   test("renders the seven stages in order at the direct value-chain link", async ({ page }) => {
@@ -634,7 +624,7 @@ test.describe("hash routing and browser history", () => {
     await expect(page.getByTestId("value-chain-stage-hyperscaler-procurement")).toContainText("$650 billion in committed AI infrastructure spending.");
     await expect(page.getByTestId("value-chain-stage-hyperscaler-procurement")).toContainText("Microsoft · Meta · Google · Amazon");
     await expect(page.getByTestId("value-chain-stage-hyperscaler-procurement")).toContainText("Whether the physical infrastructure can absorb them is unverified.");
-    await expect(page.getByTestId("value-chain-stage-data-center-infrastructure")).toContainText("$130 billion in projects paused in Q1 2026. The evidence behind the assumptions is what this tool tests.");
+    await expect(page.getByTestId("value-chain-stage-data-center-infrastructure")).toContainText("This is where AI demand encounters power, water, grid, construction and community constraints.");
     await expect(page.getByTestId("value-chain-stage-ai-model-deployment")).toContainText("Training and inference running on the infrastructure above.");
     await expect(page.getByTestId("value-chain-stage-ai-model-deployment")).toContainText("OpenAI · Anthropic · Google DeepMind · Meta AI");
     await expect(page.getByTestId("value-chain-stage-ai-model-deployment")).toContainText("Cooling failures halt training runs.");

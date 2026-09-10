@@ -95,7 +95,7 @@ function Disclosure({ id, title, preview, children }: { id: string; title: strin
 }
 
 export function HowItWorks({ onReturn, onOpenScreen, initialSection }: HowItWorksProps) {
-  const { ercotQueue } = useDiligence();
+  const { ercotQueue, resetToDefault } = useDiligence();
 
   useEffect(() => {
     if (!initialSection) return undefined;
@@ -113,7 +113,8 @@ export function HowItWorks({ onReturn, onOpenScreen, initialSection }: HowItWork
   }, [initialSection]);
 
   const openStargate = () => {
-    window.dispatchEvent(new CustomEvent("safeloc-return-to-curated"));
+    resetToDefault("Oracle");
+    onOpenScreen("market");
   };
 
   return (
@@ -212,16 +213,19 @@ export function HowItWorks({ onReturn, onOpenScreen, initialSection }: HowItWork
               </Disclosure>
 
               <Disclosure id="sources" title="Data-source methodology" preview="Provider identity, source roles and direct access remain available for review.">
-                <p data-testid="tour-data-sources" className="text-[12px] leading-5 text-[#52616b]">{SOURCE_FALLBACK_EXPLANATION} Compute Atlas metadata is discovery context, not facility-level proof or a modeled financial input.</p>
-                <div className="mt-4 grid gap-3 md:grid-cols-3">
-                  {sourceGroups.map((group, index) => (
-                    <div key={group.title} data-testid={`tour-source-group-${index + 1}`} className="rounded-lg border border-[#d9e0e4] bg-[#f9faf8] p-4">
-                      <div className="text-[12px] font-semibold text-[#122232]">{group.title}</div>
-                      <ul className="mt-3 space-y-2 border-t border-[#e5eae8] pt-3">
-                        {group.sources.map((source) => <li key={source} className="flex items-start gap-2 text-[10px] leading-4 text-[#52616b]"><ExternalLink aria-hidden="true" className="mt-0.5 h-3 w-3 shrink-0 text-[#607500]" />{source}</li>)}
-                      </ul>
-                    </div>
-                  ))}
+                <div data-testid="tour-data-sources">
+                  <h3 className="text-[15px] font-semibold text-[#122232]">Data Sources</h3>
+                  <p className="mt-2 text-[12px] leading-5 text-[#52616b]">{SOURCE_FALLBACK_EXPLANATION} Compute Atlas metadata is discovery context, not facility-level proof or a modeled financial input.</p>
+                  <div className="mt-4 grid gap-3 md:grid-cols-3">
+                    {sourceGroups.map((group, index) => (
+                      <div key={group.title} data-testid={`tour-source-group-${index + 1}`} className="rounded-lg border border-[#d9e0e4] bg-[#f9faf8] p-4">
+                        <div className="text-[12px] font-semibold text-[#122232]">{group.title}</div>
+                        <ul className="mt-3 space-y-2 border-t border-[#e5eae8] pt-3">
+                          {group.sources.map((source) => <li key={source} className="flex items-start gap-2 text-[10px] leading-4 text-[#52616b]"><ExternalLink aria-hidden="true" className="mt-0.5 h-3 w-3 shrink-0 text-[#607500]" />{source}</li>)}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </Disclosure>
 

@@ -67,11 +67,12 @@ test("keeps evidence freshness separate from classification and model mechanics"
 
 test("documents the three source integrations and the fallback rule in How It Works", async ({ page }) => {
   await page.goto("/#how-it-works");
+  await page.getByTestId("tour-disclosure-sources").locator("summary").click();
   const register = page.getByTestId("tour-data-sources");
   await expect(register.getByRole("heading", { name: "Data Sources" })).toBeVisible();
   await expect(register).toContainText("ERCOTQueue.com");
-  await expect(register).toContainText("U.S. EIA Open Data");
-  await expect(register).toContainText("FEMA National Risk Index v1.20");
+  await expect(register).toContainText("U.S. Energy Information Administration (EIA)");
+  await expect(register).toContainText("FEMA National Risk Index");
   await expect(register).toContainText(
     "All external feeds automatically fall back to cached values during an unavailable live demonstration.",
   );

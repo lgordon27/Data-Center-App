@@ -43,10 +43,16 @@ export function ValueChain({ onWorkbench }: { onWorkbench: () => void }) {
               <li key={stage.id} data-testid={`value-chain-stage-${stage.id}`} className={`value-chain-stage ${isFocal ? "value-chain-stage-focal" : ""}`}>
                 <details
                   open={activeStage === stage.id}
-                  onToggle={(event) => setActiveStage(event.currentTarget.open ? stage.id : "")}
                   className={`value-chain-card ${isFocal ? "value-chain-card-focal" : ""}`}
                 >
-                  <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+                  <summary
+                    aria-expanded={activeStage === stage.id}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      setActiveStage((current) => current === stage.id ? "" : stage.id);
+                    }}
+                    className="cursor-pointer list-none [&::-webkit-details-marker]:hidden"
+                  >
                     <div className="flex items-start justify-between gap-2">
                       <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md font-mono text-[10px] font-bold ${accent.marker}`}>{stage.number}</span>
                       <Icon aria-hidden="true" className={`mt-1 h-4 w-4 shrink-0 ${isFocal ? "text-[#4d6200]" : accent.label}`} />
@@ -61,6 +67,7 @@ export function ValueChain({ onWorkbench }: { onWorkbench: () => void }) {
                       <>
                         <p className="text-[11px] leading-5 text-[#263416]">This is where AI demand encounters power, water, grid, construction and community constraints. SafeLoc begins its analysis at this layer.</p>
                         <p className="mt-3 text-[11px] leading-5 text-[#263416]">Project-level evidence does not automatically establish issuer or portfolio materiality.</p>
+                        <div className="mt-3">{stage.claimIds.map((claimId) => <ClaimCitation key={claimId} claimId={claimId} />)}</div>
                         <div className="mt-4 flex items-center gap-2 border-t border-[#75851e]/40 pt-4 font-mono text-[10px] font-bold uppercase tracking-[0.08em] text-[#ba2f45]"><Droplets aria-hidden="true" className="h-3.5 w-3.5" /> Power · water · land · grid · community</div>
                       </>
                     ) : (

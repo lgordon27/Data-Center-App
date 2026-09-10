@@ -31,7 +31,6 @@ import {
   clearDecisionHistory,
   clearSessionActions,
   logSessionAction,
-  recordAIDecision,
   recordManualClassificationChange,
   getDecisionHistory,
   restoreDecisionHistory,
@@ -71,24 +70,6 @@ import {
   type CommunityReviewState,
   type CommunityTermDecision,
 } from "@/model/communityAgreements";
-import {
-  advanceDiligenceStage,
-  applyAgentFindingDecision,
-  beginDiligenceStage,
-  createInitialDiligenceAgent,
-  hydrateReviewPackage,
-  getAgentEvidenceSnapshotKey,
-  getAgentProjectKey,
-  countValidatedAgentSources,
-  reverseAgentChange as reverseAgentChangeState,
-  retryDiligenceStage as retryDiligenceStageTransition,
-  startDiligenceAgent,
-  type AgentProjectInput,
-  type DiligenceAgentState,
-  type DiligenceStageId,
-  type ReviewDecision,
-} from "@/model/diligenceAgent";
-
 export type { Classification } from '@/model/cashFlowEngine';
 
 export type EvidenceItem = {
@@ -225,18 +206,13 @@ type DiligenceState = {
     humanStatus?: CommunityHumanStatus,
     reviewerNote?: string,
   ) => boolean;
-  agentRun: DiligenceAgentState;
-  runDiligenceAgent: () => Promise<void>;
-  retryDiligenceStage: (id: DiligenceStageId) => Promise<void>;
-  reviewAgentFinding: (id: string, decision: ReviewDecision, reviewerNoteOrClassification?: string, overrideNote?: string) => boolean;
-  reverseAgentChange: (auditId: string) => boolean;
 };
 
 export const CURRENT_SESSION_STORAGE_KEY = 'safeloc:diligence:current-session:v1';
 export const COMMUNITY_REVIEW_STORAGE_KEY = 'safeloc:diligence:community-review:v1';
 export const EVIDENCE_TIP_DISMISSED_STORAGE_KEY = 'safeloc:diligence:evidence-room-tip-dismissed:v1';
-export const DILIGENCE_AGENT_STORAGE_KEY = 'safeloc:diligence:agent-run:v1';
 export const CURRENT_PROVENANCE_VERSION = 2;
+const LEGACY_AGENT_RUN_STORAGE_KEY = 'safeloc:diligence:agent-run:v1';
 const INITIAL_EVIDENCE_SOURCE: Record<string, Omit<EvidenceItem, "impactRole">> = {
   electricity_cost: { id: 'electricity_cost', label: 'Electricity Cost / MWh', value: 42, numericValue: 42, unit: '$/MWh', classification: 'User Assumption', citation: 'Synthetic analyst-selected electricity-cost input (2026); public market context does not establish a Stargate contract tariff', description: 'Representative West Texas blended power rate selected for underwriting; it is a synthetic input anchored to public EIA and Oncor data, not a disclosed Stargate contract tariff.', sourceId: null, providerSourceId: 'eia', sourceRole: 'Synthetic electricity-cost assumption', claimIds: ['synthetic-transaction'] },
   water_consumption: { id: 'water_consumption', label: 'Annual Cooling Water', value: 'Not disclosed', numericValue: 23, unit: 'Facility total', classification: 'Missing Evidence', citation: 'City of Abilene water utility records (2025–2026) and Stargate/Crusoe project disclosures (2025–2026) searched; no facility-level annual total found', description: 'The dated municipal records and project disclosures searched do not establish Stargate Abilene facility-level water consumption.', sourceId: null, providerSourceId: null, sourceRole: 'Searched public records and project disclosures', claimIds: ['unresolved-water'] },
@@ -337,7 +313,10 @@ const LEGACY_PROVENANCE_DEFAULTS: Partial<Record<string, Classification>> = {
 };
 
 export function DiligenceProvider({ children }: { children: React.ReactNode }) {
-  const initialSession = useMemo(() => loadCurrentSession(), []);
+  const initialSession = useMemo(() => {
+    retireLegacyAgentRunStorage();
+    return loadCurrentSession();
+  }, []);
   const [state, setState] = useState({
     evidence: initialSession.evidence,
     modelEvidence: initialSession.modelEvidence,
@@ -365,11 +344,6 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   const selectedProjectContextRef = useRef<ProjectSelectionContext | null>(selectedProjectContext);
   selectedProjectContextRef.current = selectedProjectContext;
   const [scenarios, setScenarios] = useState<SavedScenario[]>(loadScenarios);
-  const curatedProjectKey = getAgentProjectKey({ projectName: "Stargate Abilene", location: "Taylor County, TX", capacityMW: DEFAULT_CAPACITY_MW });
-  const [agentRun, setAgentRun] = useState<DiligenceAgentState>(() => loadAgentRun(curatedProjectKey));
-  const agentRunRef = useRef(agentRun);
-  agentRunRef.current = agentRun;
-  const agentActiveRef = useRef(false);
   const [ercotQueue, setErcotQueue] = useState<ErcotQueueResult>(FALLBACK_ERCOT_RESULT);
   const [eiaData, setEiaData] = useState<EiaElectricityData>(() => createEiaFallback());
   const [eiaLoading, setEiaLoading] = useState(true);
@@ -678,242 +652,6 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     return true;
   }, [communityReview, project]);
 
-  const setPersistedAgentRun = useCallback((next: DiligenceAgentState) => {
-    agentRunRef.current = next;
-    setAgentRun(next);
-    writeStorage(DILIGENCE_AGENT_STORAGE_KEY, next);
-  }, []);
-
-  const agentInput = useCallback((): AgentProjectInput => {
-    const agentEvidence = project.kind === "custom" ? stateRef.current.modelEvidence : stateRef.current.evidence;
-    return ({
-    projectName: project.name,
-    location: project.location,
-    capacityMW: project.capacityMW,
-    evidenceIds: Object.keys(agentEvidence),
-    communityUnresolvedCount: countUnresolvedCommunityTerms(communityReview.terms),
-    evidence: Object.values(agentEvidence).map((item) => ({
-      id: item.id,
-      label: item.label,
-      value: item.value,
-      classification: item.classification,
-      citation: item.citation,
-      sourceUrl: item.sourceUrl,
-      sources: (item.sources ?? []).map((source) => ({
-        sourceId: source.url,
-        title: source.title,
-        url: source.url,
-        excerpt: source.excerpt,
-        classification: item.sourceValidation?.state === "financially-eligible" && source.exactProject === true
-          ? "validated-source" as const
-          : "source-summary" as const,
-      })),
-      sourceSupportConfidence: item.sourceSupportConfidence,
-      sourceRelevance: item.sourceRelevance,
-      eligibleForModel: item.eligibleForModel,
-      sourceValidation: item.sourceValidation,
-    })),
-    retrievedSourceCount: project.researchCoverage?.retrievedSourceCount ?? Object.values(agentEvidence).reduce((count, item) => count + (item.sources?.length ?? 0), 0),
-    validatedSourceCount: project.kind === "custom"
-      ? countValidatedAgentSources({ evidence: Object.values(agentEvidence).map((item) => ({
-        id: item.id,
-        label: item.label,
-        value: item.value,
-        classification: item.classification,
-        citation: item.citation,
-        sourceUrl: item.sourceUrl,
-        sources: (item.sources ?? []).map((source) => ({
-          sourceId: source.url,
-          title: source.title,
-          url: source.url,
-          excerpt: source.excerpt,
-          classification: item.sourceValidation?.state === "financially-eligible" && source.exactProject === true
-            ? "validated-source" as const
-            : "source-summary" as const,
-        })),
-        eligibleForModel: item.eligibleForModel,
-        sourceValidation: item.sourceValidation,
-      })) })
-      : Object.values(agentEvidence).filter((item) => item.classification === "Verified Evidence").length,
-    materialGapCount: Object.values(agentEvidence).filter((item) => ["Missing Evidence", "Model Inference", "User Assumption"].includes(item.classification)).length,
-  });
-  }, [communityReview.terms, project]);
-
-  const runDiligenceAgent = useCallback(async () => {
-    if (agentActiveRef.current) return;
-    agentActiveRef.current = true;
-    let next = startDiligenceAgent(agentRunRef.current);
-    setPersistedAgentRun(next);
-    try {
-      for (const definition of next.stages) {
-        if (definition.status === "completed") continue;
-        next = beginDiligenceStage(next, definition.id);
-        setPersistedAgentRun(next);
-        await new Promise((resolve) => window.setTimeout(resolve, 110));
-        next = advanceDiligenceStage(next, definition.id, {
-          summary: `${definition.label} completed with bounded, reviewer-visible output.`,
-        });
-        setPersistedAgentRun(next);
-      }
-      next = hydrateReviewPackage(next, agentInput());
-      setPersistedAgentRun(next);
-      logSessionAction("Diligence agent prepared review package", project.name);
-    } finally {
-      agentActiveRef.current = false;
-    }
-  }, [agentInput, project.name, setPersistedAgentRun]);
-
-  const retryDiligenceStage = useCallback(async (id: DiligenceStageId) => {
-    if (agentActiveRef.current) return;
-    const retried = retryDiligenceStageTransition(agentRunRef.current, id);
-    if (retried === agentRunRef.current) return;
-    agentActiveRef.current = true;
-    let next = retried;
-    setPersistedAgentRun(next);
-    try {
-      await new Promise((resolve) => window.setTimeout(resolve, 110));
-      next = advanceDiligenceStage(next, id, { summary: "Retry completed with bounded, reviewer-visible output." });
-      setPersistedAgentRun(next);
-      for (const stage of next.stages) {
-        if (stage.status !== "pending") continue;
-        next = beginDiligenceStage(next, stage.id);
-        setPersistedAgentRun(next);
-        await new Promise((resolve) => window.setTimeout(resolve, 110));
-        next = advanceDiligenceStage(next, stage.id, { summary: `${stage.label} completed after the retained retry.` });
-        setPersistedAgentRun(next);
-      }
-      next = hydrateReviewPackage(next, agentInput());
-      setPersistedAgentRun(next);
-    } finally {
-      agentActiveRef.current = false;
-    }
-  }, [agentInput, setPersistedAgentRun]);
-
-  const reviewAgentFinding = useCallback((id: string, decision: ReviewDecision, reviewerNoteOrClassification?: string, overrideNote?: string) => {
-    const current = agentRunRef.current;
-    const finding = current.proposedFindings.find((item) => item.id === id);
-    if (!finding) return false;
-    if (finding.decision !== "pending") return false;
-    const finalClassification = reviewerNoteOrClassification && isClassification(reviewerNoteOrClassification)
-      ? reviewerNoteOrClassification
-      : undefined;
-    const reviewerNote = finalClassification ? overrideNote : reviewerNoteOrClassification;
-    if (decision === "overridden" && !finalClassification) return false;
-    if ((decision === "accepted" || decision === "overridden") && current.readiness === "not-ready") {
-      logSessionAction("Agent proposal blocked because readiness is not established", finding.title);
-      return false;
-    }
-    const activeInput = agentInput();
-    if (
-      current.projectKey !== getAgentProjectKey(activeInput) ||
-      current.evidenceSnapshotKey !== getAgentEvidenceSnapshotKey(activeInput)
-    ) {
-      logSessionAction("Agent proposal blocked because the evidence snapshot changed", finding.title);
-      return false;
-    }
-    if ((decision === "accepted" || decision === "overridden") && finding.affectedEvidenceId && finding.currentClassification) {
-      const liveItem = stateRef.current.evidence[finding.affectedEvidenceId];
-      if (!liveItem || liveItem.classification !== finding.currentClassification) {
-        logSessionAction("Agent proposal blocked by changed evidence", finding.title);
-        return false;
-      }
-    }
-    const next = applyAgentFindingDecision(current, id, decision, reviewerNote, finalClassification);
-    if (next === current) return false;
-    let authorizedRun = next;
-    if ((decision === "accepted" || decision === "overridden") && finding.consequential && finding.affectedEvidenceId && finding.proposedClassification) {
-      const targetClassification = decision === "accepted" ? finding.proposedClassification : finalClassification;
-      if (!targetClassification || !updateClassification(finding.affectedEvidenceId, targetClassification, "ai", decision === "accepted" ? "ai-accepted" : "ai-overridden")) return false;
-      const afterEvidenceSnapshotKey = getAgentEvidenceSnapshotKey(agentInput());
-      const auditId = next.auditEvents.at(-1)?.id;
-      if (auditId) {
-        authorizedRun = {
-          ...next,
-          auditEvents: next.auditEvents.map((event) => event.id === auditId ? { ...event, afterEvidenceSnapshotKey } : event),
-          appliedChanges: next.appliedChanges.map((change) => change.id === auditId ? { ...change, afterEvidenceSnapshotKey } : change),
-        };
-      }
-      recordAIDecision(
-        finding.affectedEvidenceId,
-        finding.proposedClassification,
-        finding.reasoning,
-        decision,
-        targetClassification,
-      );
-      if (project.kind === "curated") {
-        const persistedState = stateRef.current;
-        writeStorage(CURRENT_SESSION_STORAGE_KEY, createSessionPayload(
-          persistedState.evidence,
-          persistedState.hasChangedClassification,
-          persistedState.modelEvidence,
-          originatingCompany,
-          selectedProjectContextRef.current,
-        ));
-      }
-    }
-    setPersistedAgentRun(authorizedRun);
-    logSessionAction(`Agent proposal ${decision}`, finding.title);
-    return true;
-  }, [agentInput, originatingCompany, setPersistedAgentRun, updateClassification]);
-
-  const reverseAgentChange = useCallback((auditId: string) => {
-    const current = agentRunRef.current;
-    const applied = current.appliedChanges.find((change) => change.id === auditId && !change.reversedAt);
-    if (!applied?.affectedEvidenceId || !applied.beforeClassification) return false;
-    if (applied.projectKey !== getAgentProjectKey({ projectName: project.name, location: project.location, capacityMW: project.capacityMW })) {
-      logSessionAction("Agent reversal blocked because the project changed", applied.proposalId);
-      return false;
-    }
-    const currentState = stateRef.current;
-    const currentItem = currentState.evidence[applied.affectedEvidenceId];
-    if (!currentItem) return false;
-    if (currentItem.classification !== applied.finalClassification) {
-      logSessionAction("Agent reversal blocked by intervening evidence change", applied.proposalId);
-      return false;
-    }
-    if (!applied.afterEvidenceSnapshotKey || getAgentEvidenceSnapshotKey(agentInput()) !== applied.afterEvidenceSnapshotKey) {
-      logSessionAction("Agent reversal blocked by intervening value or source change", applied.proposalId);
-      return false;
-    }
-    const settledForFinancialCalculation = project.kind === "custom" || !eiaLoading;
-    const previousIrr = settledForFinancialCalculation
-      ? calculateCashFlowModel((project.kind === "custom" ? currentState.modelEvidence : applyEiaEvidence(currentState.evidence, eiaData)) as EvidenceRecord, project.capacityMW).projectIRR
-      : null;
-    const nextEvidence = {
-      ...currentState.evidence,
-      [applied.affectedEvidenceId]: {
-        ...currentItem,
-        classification: applied.beforeClassification,
-        review: { kind: "manual" as const, reviewedAt: new Date().toISOString() },
-      },
-    };
-    const nextIrr = settledForFinancialCalculation
-      ? calculateCashFlowModel((project.kind === "custom" ? currentState.modelEvidence : applyEiaEvidence(nextEvidence, eiaData)) as EvidenceRecord, project.capacityMW).projectIRR
-      : null;
-    const nextState = {
-      evidence: nextEvidence,
-      modelEvidence: project.kind === "custom" ? currentState.modelEvidence : nextEvidence,
-      hasChangedClassification: true,
-      lastChange: settledForFinancialCalculation
-        ? { from: previousIrr ?? 0, to: nextIrr ?? 0, delta: (nextIrr ?? 0) - (previousIrr ?? 0) }
-        : null,
-    };
-    stateRef.current = nextState;
-    setState(nextState);
-    if (project.kind === "curated") {
-      writeStorage(CURRENT_SESSION_STORAGE_KEY, createSessionPayload(
-        nextEvidence,
-        true,
-        nextState.modelEvidence,
-        originatingCompany,
-        selectedProjectContextRef.current,
-      ));
-    }
-    setPersistedAgentRun(reverseAgentChangeState(current, auditId));
-    logSessionAction("Reversed agent proposal", applied.proposalId);
-    return true;
-  }, [agentInput, eiaData, eiaLoading, originatingCompany, project, setPersistedAgentRun]);
-
   const resetToDefault = useCallback((company: string | null = "Oracle") => {
     const nextCompany = parseOriginatingCompany(company);
     const nextState = { evidence: cloneEvidence(INITIAL_EVIDENCE), modelEvidence: cloneEvidence(INITIAL_EVIDENCE), hasChangedClassification: false, lastChange: null };
@@ -934,10 +672,6 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     });
     setCommunityReview(nextCommunityReview);
     clearStorage(COMMUNITY_REVIEW_STORAGE_KEY);
-    const nextAgentRun = createInitialDiligenceAgent();
-    setAgentRun(nextAgentRun);
-    agentRunRef.current = nextAgentRun;
-    clearStorage(DILIGENCE_AGENT_STORAGE_KEY);
     clearDecisionHistory();
     clearSessionActions();
     const nextSelection = nextCompany === "Oracle" || nextCompany === "NVIDIA"
@@ -1025,10 +759,6 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     setSelectedProjectContext(projectSelection);
     selectedProjectContextRef.current = projectSelection;
     clearStorage(CURRENT_SESSION_STORAGE_KEY);
-    const nextAgentRun = createInitialDiligenceAgent();
-    setAgentRun(nextAgentRun);
-    agentRunRef.current = nextAgentRun;
-    clearStorage(DILIGENCE_AGENT_STORAGE_KEY);
     clearDecisionHistory();
   }, []);
 
@@ -1097,7 +827,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   const communityUnresolvedCount = countUnresolvedCommunityTerms(communityReview.terms);
 
   return (
-    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, researchEvidence: project.kind === "custom" ? state.evidence : effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, applyEvidenceCorrection, clearLastChange, metrics, financialInputState, resetToDefault, setOriginatingCompany, setProjectSelection, loadCustomProject, project, originatingCompany, selectedProjectContext, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading, communityReview, communityUnresolvedCount, reviewCommunityTerm, agentRun, runDiligenceAgent, retryDiligenceStage, reviewAgentFinding, reverseAgentChange }}>
+    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, researchEvidence: project.kind === "custom" ? state.evidence : effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, applyEvidenceCorrection, clearLastChange, metrics, financialInputState, resetToDefault, setOriginatingCompany, setProjectSelection, loadCustomProject, project, originatingCompany, selectedProjectContext, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading, communityReview, communityUnresolvedCount, reviewCommunityTerm }}>
       {children}
     </DiligenceContext.Provider>
   );
@@ -1166,51 +896,6 @@ function loadScenarios(): SavedScenario[] {
   }
 }
 
-function loadAgentRun(expectedProjectKey?: string): DiligenceAgentState {
-  const fallback = createInitialDiligenceAgent();
-  const raw = readStorage(DILIGENCE_AGENT_STORAGE_KEY);
-  if (!raw) return fallback;
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return fallback;
-    const candidate = parsed as Partial<DiligenceAgentState>;
-    if (candidate.version !== 2 || !Array.isArray(candidate.stages)) return fallback;
-    if (typeof candidate.projectKey !== "string" || candidate.projectKey !== expectedProjectKey) return fallback;
-    const stageIds = new Set(fallback.stages.map((stage) => stage.id));
-    if (candidate.stages.length !== fallback.stages.length) return fallback;
-    const stages = candidate.stages.map((stage) => {
-      if (!stage || typeof stage !== "object" || !stageIds.has(stage.id as DiligenceStageId)) throw new Error("invalid stage");
-      const definition = fallback.stages.find((item) => item.id === stage.id);
-      if (!definition || !["pending", "running", "completed", "failed", "retryable"].includes(stage.status ?? "")) throw new Error("invalid stage status");
-      return { ...definition, ...stage };
-    });
-    if (!["idle", "running", "partial-failure", "review-ready", "failed"].includes(candidate.status ?? "")) return fallback;
-    return {
-      ...fallback,
-      ...candidate,
-      stages,
-      proposedFindings: Array.isArray(candidate.proposedFindings) ? candidate.proposedFindings : [],
-      relationships: Array.isArray(candidate.relationships) ? candidate.relationships : [],
-      lenses: Array.isArray(candidate.lenses) ? candidate.lenses : [],
-      riskAllocation: Array.isArray(candidate.riskAllocation) ? candidate.riskAllocation : [],
-      capitalAtRisk: Array.isArray(candidate.capitalAtRisk) ? candidate.capitalAtRisk : [],
-      conditionsPrecedent: Array.isArray(candidate.conditionsPrecedent) ? candidate.conditionsPrecedent : [],
-      dealProtection: Array.isArray(candidate.dealProtection) ? candidate.dealProtection : [],
-      valueAtRisk: Array.isArray(candidate.valueAtRisk) ? candidate.valueAtRisk : [],
-      readiness: candidate.readiness ?? fallback.readiness,
-      readinessReason: candidate.readinessReason ?? fallback.readinessReason,
-      retrievedSourceCount: typeof candidate.retrievedSourceCount === "number" ? candidate.retrievedSourceCount : 0,
-      validatedSourceCount: typeof candidate.validatedSourceCount === "number" ? candidate.validatedSourceCount : 0,
-      auditEvents: Array.isArray(candidate.auditEvents) ? candidate.auditEvents : [],
-      appliedChanges: Array.isArray(candidate.appliedChanges) ? candidate.appliedChanges : [],
-      projectKey: candidate.projectKey,
-      evidenceSnapshotKey: typeof candidate.evidenceSnapshotKey === "string" ? candidate.evidenceSnapshotKey : null,
-    } as DiligenceAgentState;
-  } catch {
-    return fallback;
-  }
-}
-
 function clearStorage(key: string) {
   if (typeof window === 'undefined') return;
   try {
@@ -1218,6 +903,10 @@ function clearStorage(key: string) {
   } catch {
     // Storage is optional.
   }
+}
+
+function retireLegacyAgentRunStorage() {
+  clearStorage(LEGACY_AGENT_RUN_STORAGE_KEY);
 }
 
 function writeCommunityReview(review: CommunityReviewState, project: CommunityProjectInput) {

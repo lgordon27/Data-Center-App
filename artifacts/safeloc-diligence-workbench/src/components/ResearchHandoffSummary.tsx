@@ -4,7 +4,7 @@ import type {
   ResearchCoverageStatus,
 } from "@/services/researchProjectService";
 
-export type ProposalDisposition = "pending" | "accepted" | "rejected" | "unresolved";
+export type ProposalDisposition = "pending" | "accepted" | "overridden" | "rejected" | "unresolved";
 
 type ResearchHandoffSummaryProps = {
   evidence: CustomEvidenceRecord[];
@@ -50,7 +50,10 @@ export function ResearchHandoffSummary({
   const accepted = Object.values(dispositions).filter((value) => value === "accepted").length;
   const rejected = Object.values(dispositions).filter((value) => value === "rejected").length;
   const unresolvedProposals = Object.values(dispositions).filter((value) => value === "unresolved").length;
-  const completeCategories = audit?.categories.filter((category) => category.state === "Complete").length ?? 0;
+  const overridden = Object.values(dispositions).filter((value) => value === "overridden").length;
+  const returnedAuthorities = new Set(audit?.categories.flatMap((category) => category.returnedDomains ?? []) ?? []);
+  const openedDocuments = (audit?.categories.flatMap((category) => category.openedDocuments ?? []) ?? []).filter((document) => document.opened).length;
+  const targetedAuthorities = new Set(audit?.categories.flatMap((category) => category.authorityTargets?.names ?? []) ?? []);
 
   return (
     <section data-testid="research-handoff-summary" className="mb-5 rounded-xl border border-[#b8cde0] bg-[#f6fbfe] px-4 py-4 md:px-5">
@@ -73,7 +76,7 @@ export function ResearchHandoffSummary({
         <div data-testid="research-handoff-proposals" className="rounded-lg border border-[#cbd8d4] bg-white p-3">
           <div className="font-mono text-[8px] font-bold uppercase tracking-[0.1em] text-[#52616b]">Eligible proposals</div>
           <div className="mt-2 text-[20px] font-semibold text-[#255bb7]">{Object.keys(proposals).length}</div>
-          <div className="text-[9px] text-[#60707d]">{pending} pending · {accepted} accepted · {rejected} rejected · {unresolvedProposals} unresolved</div>
+          <div className="text-[9px] text-[#60707d]">{pending} pending · {accepted} accepted · {overridden} overridden · {rejected} rejected · {unresolvedProposals} unresolved</div>
         </div>
         <div data-testid="research-handoff-gaps" className="rounded-lg border border-[#efbac3] bg-white p-3">
           <div className="font-mono text-[8px] font-bold uppercase tracking-[0.1em] text-[#8f2437]">Material gaps</div>
@@ -83,19 +86,18 @@ export function ResearchHandoffSummary({
         <div data-testid="research-handoff-context" className="rounded-lg border border-[#cbd8d4] bg-white p-3">
           <div className="font-mono text-[8px] font-bold uppercase tracking-[0.1em] text-[#52616b]">Related context</div>
           <div className="mt-2 text-[20px] font-semibold text-[#7049b7]">{relatedContext.length}</div>
-          <div className="text-[9px] text-[#60707d]">{completeCategories}/{audit?.categories.length ?? 0} categories complete</div>
+          <div className="text-[9px] text-[#60707d]">{relatedContext.length} related/comparable context records</div>
         </div>
       </div>
-      <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1fr]">
-        <div className="rounded-lg border border-[#d9e0e4] bg-white p-3 text-[9px] leading-4 text-[#52616b]">
-          <strong className="text-[#243844]">Search coverage:</strong> {coverage?.retrievedSourceCount ?? 0} retained source records across {coverage?.searchedDomains?.length ?? 0} executed domain(s).
-          {coverage?.failedDomains?.length ? <span className="ml-1 text-[#8a5200]">Unavailable: {coverage.failedDomains.join(", ")}.</span> : null}
-          {typeof coverage?.followUpCount === "number" && <span className="ml-1">Gap follow-ups: {coverage.followUpCount}/{coverage.followUpLimit ?? audit?.followUpLimit ?? "bounded"} total; max {coverage.followUpLimitPerCategory ?? audit?.followUpLimitPerCategory ?? 1} per category.</span>}
+      <details className="mt-4 rounded-lg border border-[#d9e0e4] bg-white">
+        <summary data-testid="research-handoff-details" className="cursor-pointer list-none px-3 py-2 font-mono text-[8px] font-bold uppercase tracking-[0.1em] text-[#60707d] [&::-webkit-details-marker]:hidden">Search and authority detail</summary>
+        <div className="grid gap-3 border-t border-[#e5eae8] p-3 text-[9px] leading-4 text-[#52616b] sm:grid-cols-2">
+          <p><strong className="text-[#243844]">Targeted:</strong> {targetedAuthorities.size} named authorities or authority groups. <strong className="text-[#243844]">Returned:</strong> {returnedAuthorities.size} domains.</p>
+          <p><strong className="text-[#243844]">Opened:</strong> {openedDocuments} unique document receipts. <strong className="text-[#243844]">Retained source records:</strong> {coverage?.retrievedSourceCount ?? 0}.</p>
+          <p><strong className="text-[#243844]">Queries:</strong> {audit?.categories.reduce((total, category) => total + category.executedQueries.length, 0) ?? 0} provider-observed query records. Follow-ups: {coverage?.followUpCount ?? 0}/{coverage?.followUpLimit ?? audit?.followUpLimit ?? "bounded"}.</p>
+          <p>{coverage?.failedDomains?.length ? <><strong className="text-[#8a5200]">Unavailable:</strong> {coverage.failedDomains.join(", ")}.</> : "No returned-domain access limitations were recorded."}</p>
         </div>
-        <div data-testid="research-handoff-priority" className="rounded-lg border border-[#d9e0e4] bg-white p-3 text-[9px] leading-4 text-[#52616b]">
-          <strong className="text-[#243844]">Source priority:</strong> {coverage?.sourcePriorityApplied?.join(" · ") ?? "Authoritative public records first; comparable material remains context-only."}
-        </div>
-      </div>
+      </details>
       {unresolved.length > 0 && (
         <div data-testid="research-handoff-unresolved-list" className="mt-3 rounded-lg border border-[#f1cb8b] bg-[#fff8e9] px-3 py-2 text-[9px] leading-4 text-[#6f460e]">
           <strong>Unresolved material gaps:</strong> {unresolved.slice(0, 6).map((item) => `${item.label} (${coverageLabel[item.coverageStatus ?? "searched-no-support"]})`).join(" · ")}

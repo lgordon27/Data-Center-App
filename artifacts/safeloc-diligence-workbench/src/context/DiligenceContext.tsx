@@ -44,6 +44,7 @@ import {
   type CustomResearchResponse,
   type CustomEvidenceRecord,
   type CapacityProvenance,
+  containCustomResearchEvidence,
 } from "@/services/researchProjectService";
 import type { ClaimId, PublicAccessStatus } from "@/data/claimSources";
 import {
@@ -130,9 +131,21 @@ export type EvidenceCorrection = {
   classification: Classification;
   /** Only set by acceptance of a server-parsed research proposal, never by the reviewer form. */
   researchProposal?: CustomEvidenceRecord;
+  reviewKind?: EvidenceReviewKind;
 };
 
-export type EvidenceReviewKind = "manual" | "ai-accepted" | "ai-overridden";
+export type EvidenceReviewKind = "manual" | "ai-accepted" | "ai-overridden" | "research-overridden";
+export type ResearchProposalDisposition = "pending" | "accepted" | "overridden" | "rejected" | "unresolved";
+export type ResearchProposalOverride = {
+  originalValue: string | number;
+  originalClassification: Classification;
+  originalSourceUrl: string | null;
+  originalReasoning: string;
+  replacementValue: string | number;
+  replacementClassification: Classification;
+  rationale: string;
+  reviewedAt: string;
+};
 export type FinancialMetrics = Omit<ReturnType<typeof calculateCashFlowModel>, 'lastChange'> & {
   lastChange: { from: number; to: number; delta: number } | null;
 };
@@ -161,6 +174,9 @@ export type ProjectContext = Omit<CustomResearchResponse["projectSummary"], "cap
   researchCache?: CustomResearchResponse["researchCache"];
   researchCoverage?: CustomResearchResponse["researchCoverage"];
   researchAudit?: CustomResearchResponse["researchAudit"];
+  researchProposals?: Record<string, CustomEvidenceRecord>;
+  researchProposalDispositions?: Record<string, ResearchProposalDisposition>;
+  researchProposalOverrides?: Record<string, ResearchProposalOverride>;
   eligibleEvidenceCount?: number;
   retrievedLeadCount?: number;
   quarantineReasons?: string[];
@@ -177,6 +193,16 @@ type DiligenceState = {
     reviewKind?: EvidenceReviewKind,
   ) => boolean;
   applyEvidenceCorrection: (id: string, correction: EvidenceCorrection) => boolean;
+  applyResearchProposalOverride: (
+    id: string,
+    proposal: CustomEvidenceRecord,
+    replacement: { value: string; classification: Classification; rationale: string },
+  ) => boolean;
+  persistResearchReview: (
+    proposals: Record<string, CustomEvidenceRecord>,
+    dispositions: Record<string, ResearchProposalDisposition>,
+    overrides: Record<string, ResearchProposalOverride>,
+  ) => void;
   clearLastChange: () => void;
   metrics: FinancialMetrics;
   financialInputState: FinancialInputState;
@@ -328,13 +354,15 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   const [sessionRestored, setSessionRestored] = useState(initialSession.restored);
   const [sessionMigrated] = useState(initialSession.migrated);
   const [project, setProject] = useState<ProjectContext>({
-    kind: "curated",
-    name: "Stargate Abilene",
-    location: "Taylor County, TX",
-    description: "A public-source diligence case paired with clearly labeled synthetic acquisition economics.",
-    capacityMW: DEFAULT_CAPACITY_MW,
+    ...(initialSession.project ?? {
+      kind: "curated" as const,
+      name: "Stargate Abilene",
+      location: "Taylor County, TX",
+      description: "A public-source diligence case paired with clearly labeled synthetic acquisition economics.",
+      capacityMW: DEFAULT_CAPACITY_MW,
+    }),
   });
-  const [communityReview, setCommunityReview] = useState<CommunityReviewState>(() => loadCommunityReview({
+  const [communityReview, setCommunityReview] = useState<CommunityReviewState>(() => loadCommunityReview(initialSession.project ?? {
     kind: "curated",
     name: "Stargate Abilene",
     location: "Taylor County, TX",
@@ -603,7 +631,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
               rejectionCodes: ["reviewer-submitted"],
               claimMappings: [],
             },
-        review: { kind: "ai-accepted" as const, reviewedAt: new Date().toISOString() },
+         review: { kind: correction.reviewKind ?? "ai-accepted", reviewedAt: new Date().toISOString() },
       },
     };
     const nextModelEvidence = {
@@ -626,6 +654,70 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     setState(nextState);
     return true;
   }, [project]);
+
+  const applyResearchProposalOverride = useCallback((
+    id: string,
+    proposal: CustomEvidenceRecord,
+    replacement: { value: string; classification: Classification; rationale: string },
+  ) => {
+    if (project.kind !== "custom" || proposal.id !== id || !proposal.sourceUrl || !isClassification(replacement.classification) || !replacement.rationale.trim()) return false;
+    const numericReplacement = typeof proposal.value === "number" || proposal.numericValue !== undefined
+      ? Number(replacement.value)
+      : replacement.value.trim();
+    if (typeof numericReplacement === "number" && !Number.isFinite(numericReplacement)) return false;
+    const candidate = containCustomResearchEvidence({
+      ...proposal,
+      value: numericReplacement,
+      rawValue: numericReplacement,
+      rawText: replacement.value.trim(),
+      numericValue: typeof numericReplacement === "number" ? numericReplacement : undefined,
+      classification: replacement.classification,
+      classificationReason: replacement.rationale.trim(),
+      sourceRelevanceNote: replacement.rationale.trim(),
+      description: `${proposal.description} Reviewer override: ${replacement.rationale.trim()}`,
+      acceptedForModel: true,
+    });
+    if (!candidate.eligibleForModel || candidate.sourceUrl !== proposal.sourceUrl) return false;
+    return applyEvidenceCorrection(id, {
+      value: String(candidate.value),
+      claim: candidate.description,
+      sourceUrl: candidate.sourceUrl,
+      classification: replacement.classification,
+      researchProposal: candidate,
+      reviewKind: "research-overridden",
+    });
+  }, [applyEvidenceCorrection, project]);
+
+  const persistResearchReview = useCallback((
+    proposals: Record<string, CustomEvidenceRecord>,
+    dispositions: Record<string, ResearchProposalDisposition>,
+    overrides: Record<string, ResearchProposalOverride>,
+  ) => {
+    if (project.kind !== "custom") return;
+    const currentState = stateRef.current;
+    const nextProject: ProjectContext = {
+      ...project,
+      researchProposals: proposals,
+      researchProposalDispositions: dispositions,
+      researchProposalOverrides: overrides,
+    };
+    setProject(nextProject);
+    writeStorage(CURRENT_SESSION_STORAGE_KEY, createSessionPayload(
+      currentState.evidence,
+      currentState.hasChangedClassification,
+      currentState.modelEvidence,
+      originatingCompany,
+      selectedProjectContextRef.current,
+      {
+        project: nextProject,
+        evidence: currentState.evidence,
+        modelEvidence: currentState.modelEvidence,
+        researchProposals: proposals,
+        researchProposalDispositions: dispositions,
+        researchProposalOverrides: overrides,
+      },
+    ));
+  }, [originatingCompany, project]);
 
   const reviewCommunityTerm = useCallback((
     id: CommunityTermId,
@@ -732,7 +824,13 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     const nextState = { evidence: customEvidence, modelEvidence: containedModelEvidence, hasChangedClassification: false, lastChange: null as FinancialMetrics["lastChange"] };
     stateRef.current = nextState;
     setState(nextState);
-    setProject({
+    const researchProposals = Object.fromEntries(
+      (research.proposedInputs ?? []).map((item) => [item.id, item]),
+    ) as Record<string, CustomEvidenceRecord>;
+    const researchProposalDispositions = Object.fromEntries(
+      Object.keys(researchProposals).map((id) => [id, "pending" as const]),
+    ) as Record<string, ResearchProposalDisposition>;
+    const nextProject: ProjectContext = {
       kind: "custom",
       name: research.projectSummary.name,
       location: research.projectSummary.location,
@@ -745,8 +843,12 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       researchAudit: research.researchAudit,
        eligibleEvidenceCount: research.eligibleEvidence?.length ?? 0,
        retrievedLeadCount: research.retrievedLeads?.length ?? research.evidence.filter((item) => item.researchState !== "proposed" && item.researchState !== "accepted").length,
-       quarantineReasons: research.quarantineReasons ?? [],
-    });
+      quarantineReasons: research.quarantineReasons ?? [],
+      researchProposals,
+      researchProposalDispositions,
+      researchProposalOverrides: {},
+    };
+    setProject(nextProject);
     const customCommunityProject: CommunityProjectInput = {
       kind: "custom",
       name: research.projectSummary.name,
@@ -758,8 +860,22 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     setOriginatingCompanyState(parseOriginatingCompany(company));
     setSelectedProjectContext(projectSelection);
     selectedProjectContextRef.current = projectSelection;
-    clearStorage(CURRENT_SESSION_STORAGE_KEY);
     clearDecisionHistory();
+    writeStorage(CURRENT_SESSION_STORAGE_KEY, createSessionPayload(
+      nextState.evidence,
+      nextState.hasChangedClassification,
+      nextState.modelEvidence,
+      parseOriginatingCompany(company),
+      projectSelection,
+      {
+        project: nextProject,
+        evidence: nextState.evidence,
+        modelEvidence: nextState.modelEvidence,
+        researchProposals,
+        researchProposalDispositions,
+        researchProposalOverrides: {},
+      },
+    ));
   }, []);
 
   const saveScenario = (name: string): SaveScenarioResult => {
@@ -827,7 +943,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   const communityUnresolvedCount = countUnresolvedCommunityTerms(communityReview.terms);
 
   return (
-    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, researchEvidence: project.kind === "custom" ? state.evidence : effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, applyEvidenceCorrection, clearLastChange, metrics, financialInputState, resetToDefault, setOriginatingCompany, setProjectSelection, loadCustomProject, project, originatingCompany, selectedProjectContext, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading, communityReview, communityUnresolvedCount, reviewCommunityTerm }}>
+    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, researchEvidence: project.kind === "custom" ? state.evidence : effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, applyEvidenceCorrection, applyResearchProposalOverride, persistResearchReview, clearLastChange, metrics, financialInputState, resetToDefault, setOriginatingCompany, setProjectSelection, loadCustomProject, project, originatingCompany, selectedProjectContext, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading, communityReview, communityUnresolvedCount, reviewCommunityTerm }}>
       {children}
     </DiligenceContext.Provider>
   );
@@ -1025,6 +1141,16 @@ type SessionPayload = {
   decisionHistory?: DecisionHistoryEntry[];
   originatingCompany?: CompanyKey | null;
   selectedProjectContext?: ProjectSelectionContext | null;
+  customResearch?: PersistedCustomResearch;
+};
+
+type PersistedCustomResearch = {
+  project: ProjectContext;
+  evidence: Record<string, EvidenceItem>;
+  modelEvidence: Record<string, EvidenceItem>;
+  researchProposals: Record<string, CustomEvidenceRecord>;
+  researchProposalDispositions: Record<string, ResearchProposalDisposition>;
+  researchProposalOverrides: Record<string, ResearchProposalOverride>;
 };
 
 function createSessionPayload(
@@ -1033,6 +1159,7 @@ function createSessionPayload(
   modelEvidence: Record<string, EvidenceItem> = evidence,
   originatingCompany: CompanyKey | null = null,
   selectedProjectContext: ProjectSelectionContext | null = null,
+  customResearch?: PersistedCustomResearch,
 ): SessionPayload {
   return {
     version: SESSION_STORAGE_VERSION,
@@ -1047,6 +1174,7 @@ function createSessionPayload(
     decisionHistory: getDecisionHistory(),
     originatingCompany,
     selectedProjectContext,
+    ...(customResearch ? { customResearch } : {}),
   };
 }
 
@@ -1163,23 +1291,91 @@ function applyClassificationOverrides(
   return evidence;
 }
 
+function parsePersistedCustomResearch(value: unknown): PersistedCustomResearch | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  const project = candidate.project;
+  if (!project || typeof project !== "object" || Array.isArray(project)) return null;
+  const projectRecord = project as Record<string, unknown>;
+  if (
+    projectRecord.kind !== "custom" ||
+    typeof projectRecord.name !== "string" ||
+    typeof projectRecord.location !== "string" ||
+    typeof projectRecord.description !== "string" ||
+    typeof projectRecord.capacityMW !== "number" ||
+    !Number.isFinite(projectRecord.capacityMW)
+  ) return null;
+  const parseEvidenceMap = (input: unknown, exact: boolean) => {
+    if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+    const records = input as Record<string, unknown>;
+    const ids = Object.keys(records);
+    if ((exact && ids.length !== CUSTOM_EVIDENCE_IDS.length) || ids.some((id) => !CUSTOM_EVIDENCE_IDS.includes(id as typeof CUSTOM_EVIDENCE_IDS[number]))) return null;
+    if (exact && CUSTOM_EVIDENCE_IDS.some((id) => !records[id] || typeof records[id] !== "object" || Array.isArray(records[id]))) return null;
+    return Object.fromEntries(Object.entries(records).filter(([, item]) => item && typeof item === "object" && !Array.isArray(item))) as Record<string, any>;
+  };
+  const evidence = parseEvidenceMap(candidate.evidence, true);
+  const modelEvidence = parseEvidenceMap(candidate.modelEvidence, true);
+  const researchProposals = parseEvidenceMap(candidate.researchProposals, false);
+  if (!evidence || !modelEvidence || !researchProposals) return null;
+  const dispositionValues: ResearchProposalDisposition[] = ["pending", "accepted", "overridden", "rejected", "unresolved"];
+  const dispositions = candidate.researchProposalDispositions && typeof candidate.researchProposalDispositions === "object" && !Array.isArray(candidate.researchProposalDispositions)
+    ? Object.fromEntries(Object.entries(candidate.researchProposalDispositions).filter(([id, disposition]) => CUSTOM_EVIDENCE_IDS.includes(id as typeof CUSTOM_EVIDENCE_IDS[number]) && dispositionValues.includes(disposition as ResearchProposalDisposition)))
+    : {};
+  const overrides = candidate.researchProposalOverrides && typeof candidate.researchProposalOverrides === "object" && !Array.isArray(candidate.researchProposalOverrides)
+    ? Object.fromEntries(Object.entries(candidate.researchProposalOverrides).filter(([id, override]) => {
+      if (!CUSTOM_EVIDENCE_IDS.includes(id as typeof CUSTOM_EVIDENCE_IDS[number]) || !override || typeof override !== "object" || Array.isArray(override)) return false;
+      const record = override as Record<string, unknown>;
+      return isClassification(record.originalClassification)
+        && isClassification(record.replacementClassification)
+        && typeof record.rationale === "string"
+        && typeof record.reviewedAt === "string";
+    }))
+    : {};
+  return {
+    project: projectRecord as unknown as ProjectContext,
+    evidence: evidence as Record<string, EvidenceItem>,
+    modelEvidence: modelEvidence as Record<string, EvidenceItem>,
+    researchProposals: researchProposals as Record<string, CustomEvidenceRecord>,
+    researchProposalDispositions: dispositions as Record<string, ResearchProposalDisposition>,
+    researchProposalOverrides: overrides as Record<string, ResearchProposalOverride>,
+  };
+}
+
 function loadCurrentSession() {
   const raw = readStorage(CURRENT_SESSION_STORAGE_KEY);
   if (!raw) {
     restoreDecisionHistory([]);
     const evidence = cloneEvidence(INITIAL_EVIDENCE);
-    return { evidence, modelEvidence: evidence, hasChangedClassification: false, originatingCompany: null, selectedProjectContext: null, restored: false, migrated: false };
+    return { evidence, modelEvidence: evidence, hasChangedClassification: false, originatingCompany: null, selectedProjectContext: null, customResearch: null, project: null, restored: false, migrated: false };
   }
 
   try {
     const parsed: unknown = JSON.parse(raw);
+    const parsedRecord = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null;
+    const persistedCustomResearch = parsedRecord ? parsePersistedCustomResearch(parsedRecord.customResearch) : null;
+    if (persistedCustomResearch) {
+      restoreDecisionHistory(parseDecisionHistory(parsedRecord?.decisionHistory));
+      return {
+        evidence: persistedCustomResearch.evidence,
+        modelEvidence: persistedCustomResearch.modelEvidence,
+        hasChangedClassification: true,
+        originatingCompany: parseOriginatingCompany(parsedRecord?.originatingCompany),
+        selectedProjectContext: parseProjectSelectionContext(parsedRecord?.selectedProjectContext),
+        customResearch: persistedCustomResearch,
+        project: persistedCustomResearch.project,
+        restored: true,
+        migrated: false,
+      };
+    }
     const classifications =
       parsed && typeof parsed === 'object' && 'classifications' in parsed
         ? (parsed as { classifications?: unknown }).classifications
         : parsed;
     if (!classifications || typeof classifications !== 'object' || Array.isArray(classifications)) {
       const evidence = cloneEvidence(INITIAL_EVIDENCE);
-      return { evidence, modelEvidence: evidence, hasChangedClassification: false, originatingCompany: null, selectedProjectContext: null, restored: false, migrated: false };
+      return { evidence, modelEvidence: evidence, hasChangedClassification: false, originatingCompany: null, selectedProjectContext: null, customResearch: null, project: null, restored: false, migrated: false };
     }
 
     const entries = Object.entries(classifications);
@@ -1190,12 +1386,9 @@ function loadCurrentSession() {
       entries.some(([, value]) => !isClassification(value))
     ) {
       const evidence = cloneEvidence(INITIAL_EVIDENCE);
-      return { evidence, modelEvidence: evidence, hasChangedClassification: false, originatingCompany: null, selectedProjectContext: null, restored: false, migrated: false };
+      return { evidence, modelEvidence: evidence, hasChangedClassification: false, originatingCompany: null, selectedProjectContext: null, customResearch: null, project: null, restored: false, migrated: false };
     }
 
-    const parsedRecord = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? parsed as Record<string, unknown>
-      : null;
     const storedOverrides = parsedRecord ? parseClassificationOverrides(parsedRecord.overrides) : null;
     const storedReviewMetadata = parsedRecord ? parseReviewMetadata(parsedRecord.reviewMetadata) : {};
     const storedDecisionHistory = parsedRecord ? parseDecisionHistory(parsedRecord.decisionHistory) : [];
@@ -1248,13 +1441,15 @@ function loadCurrentSession() {
       hasChangedClassification,
       originatingCompany: parseOriginatingCompany(parsedRecord?.originatingCompany),
       selectedProjectContext: parseProjectSelectionContext(parsedRecord?.selectedProjectContext),
+      customResearch: null,
+      project: null,
       restored: true,
       migrated,
     };
   } catch {
     restoreDecisionHistory([]);
     const evidence = cloneEvidence(INITIAL_EVIDENCE);
-    return { evidence, modelEvidence: evidence, hasChangedClassification: false, originatingCompany: null, selectedProjectContext: null, restored: false, migrated: false };
+    return { evidence, modelEvidence: evidence, hasChangedClassification: false, originatingCompany: null, selectedProjectContext: null, customResearch: null, project: null, restored: false, migrated: false };
   }
 }
 

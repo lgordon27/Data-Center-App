@@ -33,8 +33,8 @@ const RESEARCH_PROJECT_MAX_TOKENS = 4_000;
 const execFile = promisify(execFileCallback);
 const RESEARCH_PROJECT_TIMEOUT_MS = 90_000;
 const RESEARCH_PROJECT_MAX_TOOL_CALLS = 32;
-const RESEARCH_POLICY_VERSION = 1;
-const RESEARCH_CATEGORY_AUDIT_VERSION = 1;
+const RESEARCH_POLICY_VERSION = 2;
+const RESEARCH_CATEGORY_AUDIT_VERSION = 2;
 const RESEARCH_RUN_BUDGET = Object.freeze({
   deadlineMs: RESEARCH_PROJECT_TIMEOUT_MS,
   maxProviderRequests: 16,
@@ -64,6 +64,40 @@ const RESEARCH_CATEGORIES = Object.freeze([
   { id: "tenant-counterparty", label: "Tenant and counterparty", evidenceIds: ["customer_concentration", "downtime_cost"] },
   { id: "climate-operational-hazard", label: "Climate and operational hazard", evidenceIds: ["site_hazard_exposure", "backup_power_capacity", "water_source_resilience", "downtime_cost"] },
 ]);
+const TEXAS_CATEGORY_TARGETS = Object.freeze({
+  "project-identity": {
+    names: ["Texas project records", "project/developer disclosures", "ERCOT", "PUCT"],
+    domains: ["ercot.com", "puc.texas.gov", "sec.gov", "tx.us"],
+  },
+  grid: {
+    names: ["ERCOT", "PUCT", "Texas interconnection records"],
+    domains: ["ercot.com", "puc.texas.gov"],
+  },
+  electricity: {
+    names: ["ERCOT", "PUCT", "EIA market context", "Texas utility records"],
+    domains: ["ercot.com", "puc.texas.gov", "eia.gov", "tx.us"],
+  },
+  water: {
+    names: ["TWDB", "municipal water authorities", "county authorities"],
+    domains: ["twdb.texas.gov", "tx.us"],
+  },
+  "permitting-community": {
+    names: ["municipal agendas", "county agendas", "permits", "agreements"],
+    domains: ["tx.us"],
+  },
+  "construction-capital": {
+    names: ["SEC EDGAR", "company investor relations", "official developer disclosures"],
+    domains: ["sec.gov"],
+  },
+  "tenant-counterparty": {
+    names: ["SEC EDGAR", "company investor relations", "official project/developer disclosures"],
+    domains: ["sec.gov"],
+  },
+  "climate-operational-hazard": {
+    names: ["FEMA", "NOAA", "Texas geographic hazard records"],
+    domains: ["fema.gov", "noaa.gov", "tx.us"],
+  },
+});
 const DEFAULT_RESEARCH_CAPACITY_MW = 1_200;
 const MAX_RESEARCH_CAPACITY_MW = 10_000;
 const RESEARCH_PROJECT_REQUEST_LIMIT = 10;
@@ -457,18 +491,20 @@ function buildResearchCategoryPlan(project) {
   const plan = RESEARCH_CATEGORIES.map((category) => {
     const firstEvidenceId = category.evidenceIds[0];
     const followUpEvidenceId = category.evidenceIds[1] ?? firstEvidenceId;
-    const requestedPrimaryQuery = firstEvidenceId
-      ? buildVariableQueries(project, firstEvidenceId)[0]
-      : `"${project.name}" "${project.location}" project operator facility identity permit record`;
-    const optionalFollowUpQuery = followUpEvidenceId
-      ? buildVariableQueries(project, followUpEvidenceId)[0]
-      : `"${project.name}" "${project.location}" alternate name owner operator filing`;
+    const requestedPrimaryQuery = buildCategoryQuery(project, category, "primary", firstEvidenceId);
+    const optionalFollowUpQuery = buildCategoryQuery(project, category, "follow-up", followUpEvidenceId);
+    const authorityTargets = isTexasProject(project)
+      ? TEXAS_CATEGORY_TARGETS[category.id] ?? { names: [], domains: [] }
+      : { names: [], domains: [] };
     return {
       categoryId: category.id,
       label: category.label,
       evidenceIds: [...category.evidenceIds],
       requestedPrimaryQuery,
+      plannedPrimaryQuery: requestedPrimaryQuery,
       optionalFollowUpQuery,
+      plannedFollowUpQuery: optionalFollowUpQuery,
+      authorityTargets,
       primaryAttempt: "not-started",
       followUpAttempt: "not-started",
     };
@@ -483,8 +519,7 @@ function buildResearchCategoryPlan(project) {
 function buildCategoryFollowUpQuery(project, category, unresolvedEvidenceIds = []) {
   const fallbackId = category.evidenceIds[1] ?? category.evidenceIds[0];
   const evidenceId = unresolvedEvidenceIds.find((id) => id !== category.evidenceIds[0]) ?? fallbackId;
-  if (evidenceId) return buildVariableQueries(project, evidenceId)[0];
-  return `"${project.name}" "${project.location}" alternate name owner operator filing`;
+  return buildCategoryQuery(project, category, "follow-up", evidenceId);
 }
 
 function evaluateResearchDocumentAccess(candidate = {}) {
@@ -552,23 +587,56 @@ function evaluateResearchDocumentAccess(candidate = {}) {
   };
 }
 
+function createResearchCancellationError() {
+  const error = new Error("Project research was cancelled.");
+  error.name = "ResearchCancelledError";
+  error.researchErrorType = "cancelled";
+  return error;
+}
+
+function throwIfResearchCancelled(signal) {
+  if (signal?.aborted) throw createResearchCancellationError();
+}
+
+async function awaitWithResearchSignal(promise, signal) {
+  if (!signal) return promise;
+  throwIfResearchCancelled(signal);
+  let onAbort;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        onAbort = () => reject(createResearchCancellationError());
+        signal.addEventListener("abort", onAbort, { once: true });
+      }),
+    ]);
+  } finally {
+    if (onAbort) signal.removeEventListener("abort", onAbort);
+  }
+}
+
 async function extractTextPdfPassage(buffer, {
   maxPages = 20,
   timeoutMs = 5_000,
   maxOutputBytes = 64_000,
+  signal,
 } = {}) {
+  throwIfResearchCancelled(signal);
   if (!Buffer.from(buffer).subarray(0, 5).equals(Buffer.from("%PDF-"))) return "";
   const directory = await mkdtemp(path.join(os.tmpdir(), "safeloc-pdf-"));
   const inputPath = path.join(directory, "document.pdf");
   try {
+    throwIfResearchCancelled(signal);
     await writeFile(inputPath, buffer);
     const result = await execFile(
       "pdftotext",
       ["-f", "1", "-l", String(maxPages), "-layout", inputPath, "-"],
-      { timeout: timeoutMs, maxBuffer: maxOutputBytes },
+      { timeout: timeoutMs, maxBuffer: maxOutputBytes, signal },
     );
+    throwIfResearchCancelled(signal);
     return String(result.stdout ?? "").replace(/\s+/g, " ").trim().slice(0, 4_000);
-  } catch {
+  } catch (error) {
+    if (error?.name === "ResearchCancelledError" || signal?.aborted) throw createResearchCancellationError();
     return "";
   } finally {
     await rm(directory, { recursive: true, force: true }).catch(() => {});
@@ -583,11 +651,13 @@ async function accessResearchDocument(candidate = {}, {
   signal,
   dnsLookup = dns.lookup,
 } = {}) {
+  throwIfResearchCancelled(signal);
   const initial = evaluateResearchDocumentAccess(candidate);
   if (initial.state !== "accessible") return initial;
   let currentUrl = initial.resolvedUrl;
   const redirectChain = [];
   for (let redirect = 0; redirect <= maxRedirects; redirect += 1) {
+    throwIfResearchCancelled(signal);
     let response;
     try {
       const requestInit = {
@@ -600,6 +670,7 @@ async function accessResearchDocument(candidate = {}, {
         ? await fetchPinnedPublicUrl(currentUrl, requestInit, dnsLookup)
         : await fetchImpl(currentUrl, requestInit);
     } catch (error) {
+      if (error?.name === "ResearchCancelledError" || signal?.aborted) throw createResearchCancellationError();
       return {
         ...initial,
         state: "blocked",
@@ -609,6 +680,7 @@ async function accessResearchDocument(candidate = {}, {
         extractionLimitations: ["The destination could not be retrieved by the bounded server reader."],
       };
     }
+    throwIfResearchCancelled(signal);
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers?.get?.("location");
       const safeLocation = safePublicSourceUrl(location ? new URL(location, currentUrl).href : null);
@@ -645,25 +717,33 @@ async function accessResearchDocument(candidate = {}, {
     try {
       if (response.body?.getReader) {
         const reader = response.body.getReader();
+        const cancelReader = () => { void reader.cancel(); };
+        signal?.addEventListener("abort", cancelReader, { once: true });
         const chunks = [];
         let total = 0;
-        while (true) {
-          const part = await reader.read();
-          if (part.done) break;
-          total += part.value.byteLength;
-          if (total > maxBytes) {
-            await reader.cancel();
-            throw new Error("size-limit");
+        try {
+          while (true) {
+            throwIfResearchCancelled(signal);
+            const part = await reader.read();
+            if (part.done) break;
+            total += part.value.byteLength;
+            if (total > maxBytes) {
+              await reader.cancel();
+              throw new Error("size-limit");
+            }
+            chunks.push(Buffer.from(part.value));
           }
-          chunks.push(Buffer.from(part.value));
+        } finally {
+          signal?.removeEventListener("abort", cancelReader);
         }
         bytes = Buffer.concat(chunks, total);
       } else {
-        const buffered = await response.arrayBuffer();
+        const buffered = await awaitWithResearchSignal(response.arrayBuffer(), signal);
         if (buffered.byteLength > maxBytes) throw new Error("size-limit");
         bytes = Buffer.from(buffered);
       }
     } catch (error) {
+      if (error?.name === "ResearchCancelledError" || signal?.aborted) throw createResearchCancellationError();
       return {
         ...initial,
         state: "blocked",
@@ -676,9 +756,11 @@ async function accessResearchDocument(candidate = {}, {
     }
     const format = evaluateResearchDocumentAccess({ ...candidate, resolvedUrl: currentUrl, contentType, accessStatus: "open", redirectChain }).format;
     if (!format) return { ...initial, state: "unsupported", reason: "unsupported-source-type", resolvedUrl: currentUrl, redirectChain, contentType, extractionLimitations: ["The response content type is outside the bounded reader."] };
+    throwIfResearchCancelled(signal);
     const passage = format === "text-pdf"
-      ? await extractTextPdfPassage(bytes)
+      ? await extractTextPdfPassage(bytes, { signal })
       : Buffer.from(bytes).toString("utf8").replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ").replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 4_000);
+    throwIfResearchCancelled(signal);
     if (!passage) {
       return {
         ...initial,
@@ -749,6 +831,29 @@ function categoryStageCounts(category, sources, evidence, project = {}) {
   };
 }
 
+function categoryReturnedDomains(sources = []) {
+  return [...new Set(sources.map((source) => sourceHostname(source)).filter(Boolean))];
+}
+
+function categoryOpenedDocuments(sources = []) {
+  return sources.map((source) => {
+    const outcome = source.accessOutcome ?? {};
+    return {
+      originalUrl: source.originalUrl ?? source.url ?? null,
+      resolvedUrl: outcome.resolvedUrl ?? source.resolvedUrl ?? source.url ?? null,
+      canonicalUrl: outcome.canonicalUrl ?? source.canonicalUrl ?? source.url ?? null,
+      opened: source.documentAccessReused !== true,
+      reusedFromCanonicalUrl: source.documentAccessReused === true
+        ? outcome.canonicalUrl ?? source.canonicalUrl ?? source.url ?? null
+        : null,
+      accessState: outcome.state ?? "blocked",
+      accessOutcome: outcome.reason ?? "not-attempted",
+      retainedPassage: outcome.state === "accessible" ? outcome.passage ?? source.excerpt ?? null : null,
+      extractionLimitations: Array.isArray(outcome.extractionLimitations) ? outcome.extractionLimitations.slice(0, 8) : [],
+    };
+  });
+}
+
 function buildResearchAudit({
   project,
   coverage = {},
@@ -781,11 +886,22 @@ function buildResearchAudit({
       label: category.label,
       evidenceIds: category.evidenceIds,
       requestedPrimaryQuery: category.requestedPrimaryQuery,
+      plannedPrimaryQuery: category.plannedPrimaryQuery,
+      issuedPrimaryQuery: typeof supplied.issuedPrimaryQuery === "string" ? supplied.issuedPrimaryQuery : null,
       executedQueries,
+      providerObservedPrimaryQueries: normalizeSearchTerms(supplied.providerObservedPrimaryQueries, 8),
       optionalFollowUpQuery: supplied.optionalFollowUpQuery ?? category.optionalFollowUpQuery,
+      plannedFollowUpQuery: category.plannedFollowUpQuery,
+      issuedFollowUpQuery: typeof supplied.issuedFollowUpQuery === "string" ? supplied.issuedFollowUpQuery : null,
+      providerObservedFollowUpQueries: normalizeSearchTerms(supplied.providerObservedFollowUpQueries, 8),
       followUpExecutedQuery: typeof supplied.followUpExecutedQuery === "string" ? supplied.followUpExecutedQuery : null,
       followUpCount: Number.isInteger(supplied.followUpCount) ? Math.max(0, supplied.followUpCount) : (supplied.followUpExecutedQuery ? 1 : 0),
       followUpLimit: RESEARCH_RUN_BUDGET.maxFollowUpsPerCategory,
+      followUpTriggerEvidenceIds: Array.isArray(supplied.followUpTriggerEvidenceIds) ? supplied.followUpTriggerEvidenceIds.filter((id) => category.evidenceIds.includes(id)).slice(0, 8) : [],
+      followUpSkipReason: supplied.followUpSkipReason ?? (category.evidenceIds.length ? "no-justified-gap" : "evidence-resolved"),
+      authorityTargets: category.authorityTargets,
+      returnedDomains: Array.isArray(supplied.returnedDomains) ? supplied.returnedDomains.filter(Boolean).slice(0, 20) : categoryReturnedDomains(sources.filter((source) => source.searchDomain === category.categoryId)),
+      openedDocuments: Array.isArray(supplied.openedDocuments) ? supplied.openedDocuments.slice(0, 20) : categoryOpenedDocuments(sources.filter((source) => source.searchDomain === category.categoryId)),
       state,
       stageCounts: counts,
       rejectionCounts: counts.rejectionCounts,
@@ -849,9 +965,17 @@ async function orchestrateCategoryResearch(project, {
       throw error;
     }
     const elapsed = now() - startedAtMs;
-    if (elapsed >= budget.deadlineMs || toolCalls >= budget.maxToolCalls) {
+    if (elapsed >= budget.deadlineMs || toolCalls >= budget.maxToolCalls || providerRequests >= budget.maxProviderRequests) {
       categoryExecutions[category.categoryId] = {
-        state: "Timed out",
+        issuedPrimaryQuery: null,
+        providerObservedPrimaryQueries: [],
+        issuedFollowUpQuery: null,
+        providerObservedFollowUpQueries: [],
+        followUpTriggerEvidenceIds: [],
+        followUpSkipReason: elapsed >= budget.deadlineMs ? "deadline" : toolCalls >= budget.maxToolCalls ? "tool-call-budget" : "provider-request-budget",
+        returnedDomains: [],
+        openedDocuments: [],
+        state: elapsed >= budget.deadlineMs || toolCalls >= budget.maxToolCalls ? "Timed out" : "Not searched",
         executedQueries: [],
         unresolvedGaps: category.evidenceIds,
       };
@@ -859,8 +983,20 @@ async function orchestrateCategoryResearch(project, {
     }
     const executedQueries = [];
     let categoryCandidates = [];
+    let followUpWasRun = false;
     let state = "No eligible evidence";
     let providerFailure = null;
+    const categoryResolvedEvidenceIds = new Set();
+    const execution = {
+      issuedPrimaryQuery: category.requestedPrimaryQuery,
+      providerObservedPrimaryQueries: [],
+      issuedFollowUpQuery: null,
+      providerObservedFollowUpQueries: [],
+      followUpTriggerEvidenceIds: [],
+      followUpSkipReason: null,
+      returnedDomains: [],
+      openedDocuments: [],
+    };
     try {
       providerRequests += 1;
       const primary = await retrieveCategory({
@@ -881,21 +1017,36 @@ async function orchestrateCategoryResearch(project, {
       toolCalls = Math.min(budget.maxToolCalls, toolCalls + primaryToolCalls);
       if (primary?.categoryResult) categoryResults.push(primary.categoryResult);
       else categoryResults.push({ categoryId: category.categoryId, ...primary });
-      executedQueries.push(...(Array.isArray(primary?.observedQueries) ? primary.observedQueries : []));
+      const primaryObservedQueries = Array.isArray(primary?.observedQueries) ? primary.observedQueries : [];
+      execution.providerObservedPrimaryQueries = primaryObservedQueries;
+      executedQueries.push(...primaryObservedQueries);
       categoryCandidates = Array.isArray(primary?.candidates) ? primary.candidates.slice(0, budget.maxCandidatesPerCategory) : [];
       candidates.push(...categoryCandidates);
-      (Array.isArray(primary?.resolvedEvidenceIds) ? primary.resolvedEvidenceIds : []).forEach((id) => resolvedEvidenceIds.add(id));
+      (Array.isArray(primary?.resolvedEvidenceIds) ? primary.resolvedEvidenceIds : []).forEach((id) => {
+        resolvedEvidenceIds.add(id);
+        categoryResolvedEvidenceIds.add(id);
+      });
+      execution.returnedDomains = categoryReturnedDomains(categoryCandidates);
+      execution.openedDocuments = categoryOpenedDocuments(categoryCandidates);
+      execution.followUpTriggerEvidenceIds = Array.isArray(primary?.unresolvedEvidenceIds) ? primary.unresolvedEvidenceIds : [];
+      const globalEarlyStop = resolvedEvidenceIds.size >= RESEARCH_EVIDENCE_IDS.length;
+      const primaryCategoryResolved = primary?.categoryResolved === true
+        || (primary?.eligibleCount > 0 && primary?.gapDrivenFollowUp !== true);
       if (primary?.gapDrivenFollowUp === true
+        && !globalEarlyStop
+        && !primaryCategoryResolved
         && toolCalls < budget.maxToolCalls
         && followUps < budget.maxFollowUps
-        && (categoryExecutions[category.categoryId]?.followUpCount ?? 0) < (budget.maxFollowUpsPerCategory ?? 1)
+        && (budget.maxFollowUpsPerCategory ?? 1) > 0
         && providerRequests < budget.maxProviderRequests
         && now() - startedAtMs < budget.deadlineMs) {
         followUps += 1;
+        followUpWasRun = true;
         providerRequests += 1;
+        execution.issuedFollowUpQuery = primary?.followUpQuery ?? category.optionalFollowUpQuery;
         const followUp = await retrieveCategory({
           categoryId: category.categoryId,
-          query: primary?.followUpQuery ?? category.optionalFollowUpQuery,
+          query: execution.issuedFollowUpQuery,
           attempt: "follow-up",
           remainingMs: Math.max(0, budget.deadlineMs - (now() - startedAtMs)),
           remainingToolCalls: Math.max(0, budget.maxToolCalls - toolCalls),
@@ -911,30 +1062,56 @@ async function orchestrateCategoryResearch(project, {
         toolCalls = Math.min(budget.maxToolCalls, toolCalls + followUpToolCalls);
         if (followUp?.categoryResult) categoryResults.push(followUp.categoryResult);
         else categoryResults.push({ categoryId: category.categoryId, ...followUp });
-        executedQueries.push(...(Array.isArray(followUp?.observedQueries) ? followUp.observedQueries : []));
+        const followUpObservedQueries = Array.isArray(followUp?.observedQueries) ? followUp.observedQueries : [];
+        execution.providerObservedFollowUpQueries = followUpObservedQueries;
+        executedQueries.push(...followUpObservedQueries);
         const followUpCandidates = Array.isArray(followUp?.candidates) ? followUp.candidates.slice(0, budget.maxCandidatesPerCategory - categoryCandidates.length) : [];
         categoryCandidates = [...categoryCandidates, ...followUpCandidates];
         candidates.push(...followUpCandidates);
         categoryExecutions[category.categoryId] = {
-          followUpExecutedQuery: Array.isArray(followUp?.observedQueries) ? followUp.observedQueries[0] ?? null : null,
+          followUpExecutedQuery: followUpObservedQueries[0] ?? null,
           followUpCount: 1,
         };
-        (Array.isArray(followUp?.resolvedEvidenceIds) ? followUp.resolvedEvidenceIds : []).forEach((id) => resolvedEvidenceIds.add(id));
+        execution.returnedDomains = categoryReturnedDomains(categoryCandidates);
+        execution.openedDocuments = categoryOpenedDocuments(categoryCandidates);
+        (Array.isArray(followUp?.resolvedEvidenceIds) ? followUp.resolvedEvidenceIds : []).forEach((id) => {
+          resolvedEvidenceIds.add(id);
+          categoryResolvedEvidenceIds.add(id);
+        });
+        execution.followUpSkipReason = followUp?.categoryResolved === true ? null : "category-follow-up-limit";
+      } else {
+        execution.followUpSkipReason = globalEarlyStop
+          ? "early-stop"
+          : primaryCategoryResolved
+            ? "evidence-resolved"
+            : toolCalls >= budget.maxToolCalls || primary?.toolCallBudgetExceeded
+              ? "tool-call-budget"
+              : now() - startedAtMs >= budget.deadlineMs
+                ? "deadline"
+                : providerRequests >= budget.maxProviderRequests
+                  ? "provider-request-budget"
+                  : followUps >= budget.maxFollowUps
+                    ? "provider-request-budget"
+                    : "no-justified-gap";
       }
       state = categoryCandidates.length ? "Partial" : "No eligible evidence";
-      if (primary?.eligibleCount > 0 || categoryCandidates.some((candidate) => candidate.eligible === true)) state = "Complete";
+      if (primaryCategoryResolved || categoryResults
+        .filter((result) => result.categoryId === category.categoryId)
+        .some((result) => result.categoryResolved === true) || followUpWasRun) state = "Complete";
     } catch (error) {
       if (signal?.aborted || error?.name === "ResearchCancelledError") throw error;
       lastError = error;
       providerFailure = error?.name === "AbortError" ? null : "Category provider request failed.";
       state = error?.name === "AbortError" ? "Timed out" : "Provider failure";
+      execution.followUpSkipReason = error?.name === "AbortError" ? "deadline" : "provider-failure";
     }
     categoryExecutions[category.categoryId] = {
       ...(categoryExecutions[category.categoryId] ?? {}),
+      ...execution,
       state,
       executedQueries,
       providerFailure,
-      unresolvedGaps: state === "Complete" ? [] : category.evidenceIds,
+      unresolvedGaps: category.evidenceIds.filter((id) => !categoryResolvedEvidenceIds.has(id)),
     };
     if (resolvedEvidenceIds.size >= RESEARCH_EVIDENCE_IDS.length) break;
   }
@@ -1225,7 +1402,17 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
     const validatedUrls = [...new Set([returnedSourceUrl, citedUrl, ...returnedSourceUrls]
       .map((url) => canonicalizeSourceUrl(url))
       .filter((url) => url && sourceByUrl.has(url)))]
-      .sort((a, b) => sourcePriority(sourceByUrl.get(a)?.sourceClass) - sourcePriority(sourceByUrl.get(b)?.sourceClass))
+      .sort((a, b) => {
+        const left = sourceByUrl.get(a);
+        const right = sourceByUrl.get(b);
+        const leftPriority = isTexasProject(summary)
+          ? texasSourcePriority(left)
+          : sourcePriority(left?.sourceClass);
+        const rightPriority = isTexasProject(summary)
+          ? texasSourcePriority(right)
+          : sourcePriority(right?.sourceClass);
+        return leftPriority - rightPriority || String(a).localeCompare(String(b));
+      })
       .slice(0, 4);
     const sourceUrl = validatedUrls[0] ?? null;
     const supportingSources = validatedUrls.map((url) => {
@@ -1515,14 +1702,38 @@ function sourcePriority(sourceClass) {
   }[sourceClass] ?? 4;
 }
 
+function sourceHostname(source = {}) {
+  try {
+    return new URL(source.url ?? source.resolvedUrl ?? source.canonicalUrl).hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+function texasAuthorityMatch(source = {}) {
+  const hostname = sourceHostname(source);
+  const text = `${hostname} ${source.title ?? ""} ${source.publisher ?? ""}`.toLowerCase();
+  const matches = [];
+  if (hostname === "ercot.com" || hostname.endsWith(".ercot.com") || /\bercot\b/.test(text)) matches.push("ERCOT");
+  if (hostname === "puc.texas.gov" || hostname.endsWith(".puc.texas.gov") || /\bpuct\b|puc\.texas/.test(text)) matches.push("PUCT");
+  if (hostname === "twdb.texas.gov" || hostname.endsWith(".twdb.texas.gov") || /\btwdb\b|texas water development/.test(text)) matches.push("TWDB");
+  if (hostname === "sec.gov" || hostname.endsWith(".sec.gov")) matches.push("SEC EDGAR");
+  if (hostname === "fema.gov" || hostname.endsWith(".fema.gov") || /\bfema\b/.test(text)) matches.push("FEMA");
+  if (hostname === "noaa.gov" || hostname.endsWith(".noaa.gov") || /\bnoaa\b/.test(text)) matches.push("NOAA");
+  if (hostname === "eia.gov" || hostname.endsWith(".eia.gov") || /\beia\b/.test(text)) matches.push("EIA");
+  if (hostname.endsWith(".tx.us") || hostname === "tx.us") matches.push("Texas local authority");
+  return [...new Set(matches)];
+}
+
 function isTexasProject(project = {}) {
   return /\b(?:texas|tx)\b/i.test(`${project.location ?? ""} ${project.knownData?.location ?? ""}`);
 }
 
 function texasSourcePriority(source = {}) {
-  const text = `${source.url ?? ""} ${source.title ?? ""} ${source.publisher ?? ""}`.toLowerCase();
-  if (/\bercot\b|puc\.texas|twdb|texas water development|texas commission|fema|noaa|sec\.gov/.test(text)) return 0;
-  if (/\b(texas|tx)\b/.test(text) && (source.sourceClass === "primary-government" || source.sourceClass === "primary-utility")) return 1;
+  const authorities = texasAuthorityMatch(source);
+  if (authorities.some((authority) => ["ERCOT", "PUCT", "TWDB", "SEC EDGAR", "FEMA", "NOAA"].includes(authority))) return 0;
+  if (authorities.includes("Texas local authority")) return 1;
+  if (/\b(texas|tx)\b/i.test(`${source.title ?? ""} ${source.publisher ?? ""}`) && (source.sourceClass === "primary-government" || source.sourceClass === "primary-utility")) return 1;
   if (source.sourceClass === "primary-utility") return 2;
   if (source.sourceClass === "primary-government") return 3;
   if (source.sourceClass === "primary-company" && source.exactProject === true) return 4;
@@ -1541,7 +1752,7 @@ function prioritizeResearchSources(sources = [], project = {}) {
 
 function sourcePriorityApplied(project = {}) {
   return isTexasProject(project)
-    ? ["Texas: ERCOT, PUCT/Texas regulators, TWDB and local records", "Texas utilities and exact-project company/SEC/IR disclosures", "FEMA/NOAA/EIA context", "Related and comparable reporting remains context-only"]
+    ? ["Texas-first query targets and post-retrieval ranking: ERCOT/PUCT grid; TWDB/local water; municipal/county permits; SEC/IR/developer disclosures; FEMA/NOAA/EIA context"]
     : ["Government and regulator records", "Utilities and primary company disclosures", "Secondary reporting"];
 }
 
@@ -1566,6 +1777,38 @@ function buildVariableQueries({ name, location, knownData }, id) {
     `${projectAndLocation} ${RESEARCH_QUERY_ANGLES[id][0]}`,
     `${operatorAndProject} ${RESEARCH_QUERY_ANGLES[id][1]}`,
   ];
+}
+
+function buildCategoryQuery({ name, location, knownData }, category, attempt, evidenceId) {
+  const genericQuery = category.id === "project-identity"
+    ? `"${name}" "${location}" ${attempt === "follow-up" ? "alternate name owner operator filing" : "project operator facility identity permit record"}`
+    : buildVariableQueries({ name, location, knownData }, evidenceId ?? category.evidenceIds[0])[attempt === "follow-up" ? 1 : 0];
+  if (!isTexasProject({ name, location, knownData })) return genericQuery;
+  const projectAndLocation = `"${name}" "${location}"`;
+  const operatorAndProject = knownData?.operator
+    ? `"${knownData.operator}" "${name}"`
+    : projectAndLocation;
+  const suffix = attempt === "follow-up" ? "official record corroboration broader web fallback" : "official primary record first broader web fallback";
+  switch (category.id) {
+    case "project-identity":
+      return `${projectAndLocation} Texas project permit operator disclosure ERCOT PUCT (site:ercot.com OR site:puc.texas.gov OR site:sec.gov OR site:tx.us) ${suffix}`;
+    case "grid":
+      return `${projectAndLocation} ERCOT PUCT Texas interconnection queue transmission study (site:ercot.com OR site:puc.texas.gov) ${suffix}`;
+    case "electricity":
+      return `${projectAndLocation} ERCOT PUCT Texas utility tariff rate case EIA market context (site:ercot.com OR site:puc.texas.gov OR site:eia.gov OR site:tx.us) ${suffix}`;
+    case "water":
+      return `${projectAndLocation} TWDB municipal county water demand consumption rights permit (site:twdb.texas.gov OR site:tx.us) ${suffix}`;
+    case "permitting-community":
+      return `${projectAndLocation} Texas municipal county agenda permit public hearing agreement (site:tx.us) ${suffix}`;
+    case "construction-capital":
+      return `${operatorAndProject} SEC EDGAR investor relations official developer project disclosure (site:sec.gov) ${suffix}`;
+    case "tenant-counterparty":
+      return `${operatorAndProject} SEC EDGAR investor relations official project developer disclosure customer offtake (site:sec.gov) ${suffix}`;
+    case "climate-operational-hazard":
+      return `${projectAndLocation} FEMA NOAA Texas exact site flood wildfire drought hazard (site:fema.gov OR site:noaa.gov OR site:tx.us) ${suffix}`;
+    default:
+      return `${projectAndLocation} ${genericQuery} ${suffix}`;
+  }
 }
 
 function buildVariableQueryPlan({ name, location, knownData, focusIds }) {
@@ -1698,6 +1941,48 @@ function extractResponseOutputText(body) {
   return null;
 }
 
+function boundProviderResponseToToolBudget(body, maxToolCalls) {
+  const outputs = Array.isArray(body?.output) ? body.output : [];
+  const allowed = Math.max(0, Number.isInteger(maxToolCalls) ? maxToolCalls : RESEARCH_PROJECT_MAX_TOOL_CALLS);
+  let seen = 0;
+  let accepted = 0;
+  const boundedOutputs = outputs.filter((output) => {
+    if (output?.type !== "web_search_call") return true;
+    seen += 1;
+    if (seen > allowed) return false;
+    accepted += 1;
+    return true;
+  });
+  const actualToolCallCount = seen;
+  const toolCallBudgetExceeded = actualToolCallCount > allowed;
+  return {
+    body: toolCallBudgetExceeded ? { ...body, output: boundedOutputs } : body,
+    acceptedToolCallCount: accepted,
+    actualToolCallCount,
+    toolCallBudgetExceeded,
+  };
+}
+
+function restrictResearchToAcceptedSources(research, sources) {
+  if (!isRecord(research) || !Array.isArray(research.evidence)) return research;
+  const acceptedUrls = new Set(sources.map((source) => canonicalizeSourceUrl(source.url)).filter(Boolean));
+  return {
+    ...research,
+    evidence: research.evidence.map((item) => {
+      if (!isRecord(item)) return item;
+      const sourceUrl = canonicalizeSourceUrl(item.sourceUrl);
+      const sourceUrls = Array.isArray(item.sourceUrls)
+        ? item.sourceUrls.filter((url) => acceptedUrls.has(canonicalizeSourceUrl(url)))
+        : [];
+      return {
+        ...item,
+        sourceUrl: sourceUrl && acceptedUrls.has(sourceUrl) ? item.sourceUrl : null,
+        sourceUrls,
+      };
+    }),
+  };
+}
+
 async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, activeCategory = null) {
   const startedAt = new Date().toISOString();
   const response = await fetchImpl(OPENAI_RESPONSES_URL, {
@@ -1753,29 +2038,35 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
     parseError.name = "ResearchParseError";
     throw parseError;
   }
-  const sources = normalizeRetrievedSources(body, "web-search", project);
-  const searchTerms = extractSearchTerms(body);
-  const observedQueriesByEvidence = extractObservedQueriesByEvidence(body, project);
-  const toolCallCount = countWebSearchCalls(body);
+  const bounded = boundProviderResponseToToolBudget(body, activeCategory?.maxToolCalls ?? RESEARCH_PROJECT_MAX_TOOL_CALLS);
+  const sources = normalizeRetrievedSources(bounded.body, "web-search", project);
+  research = restrictResearchToAcceptedSources(research, sources);
+  const searchTerms = extractSearchTerms(bounded.body);
+  const observedQueriesByEvidence = extractObservedQueriesByEvidence(bounded.body, project);
   const finishedAt = new Date().toISOString();
   return {
     research,
     sources,
     coverage: {
-      searchedDomains: ["web-search"],
+      searchedDomains: [...new Set(sources.map((source) => sourceHostname(source)).filter(Boolean))],
       failedDomains: [],
       retrievedSourceCount: sources.length,
       searchTerms,
       observedQueriesByEvidence,
-      toolCallCount,
-       toolCallBudgetExceeded: toolCallCount > (activeCategory?.maxToolCalls ?? RESEARCH_PROJECT_MAX_TOOL_CALLS),
+      toolCallCount: bounded.acceptedToolCallCount,
+      observedToolCallCount: bounded.actualToolCallCount,
+      acceptedToolCallCount: bounded.acceptedToolCallCount,
+      toolCallBudgetExceeded: bounded.toolCallBudgetExceeded,
+      providerLimitations: bounded.toolCallBudgetExceeded
+        ? ["Provider returned more web-search calls than the remaining run allowance; excess calls, sources, and source-linked findings were excluded."]
+        : [],
       sourcePriorityApplied: sourcePriorityApplied(project),
       searchTermsSource: searchTerms.length ? "tool-observed" : "unavailable",
       provider: "openai",
       model: RESEARCH_PROJECT_MODEL,
       providerResponseId: typeof body.id === "string" ? body.id : null,
-       activeCategoryId: activeCategory?.categoryId ?? null,
-       executedQuery: activeCategory?.query ?? null,
+      activeCategoryId: activeCategory?.categoryId ?? null,
+      executedQuery: activeCategory?.query ?? null,
       startedAt,
       finishedAt,
     },
@@ -1950,6 +2241,7 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
   if (externalSignal?.aborted) controller.abort();
   const timeout = setTimeout(() => controller.abort(), RESEARCH_PROJECT_TIMEOUT_MS);
   const fetchedCandidatesByCategory = new Map();
+  const openedDocumentsByCanonicalUrl = new Map();
   let fetchedCandidateCount = 0;
   try {
     const orchestration = await orchestrateCategoryResearch(project, {
@@ -1972,11 +2264,18 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
         fetchedCandidateCount += boundedSources.length;
         const accessedSources = [];
         for (const source of boundedSources) {
-          const accessOutcome = await accessResearchDocument(source, { fetchImpl: documentFetchImpl, signal: controller.signal });
+          throwIfResearchCancelled(controller.signal);
+          const canonicalUrl = canonicalizeSourceUrl(source.canonicalUrl ?? source.resolvedUrl ?? source.url);
+          const previousAccess = canonicalUrl ? openedDocumentsByCanonicalUrl.get(canonicalUrl) : null;
+          const accessOutcome = previousAccess
+            ? previousAccess
+            : await accessResearchDocument(source, { fetchImpl: documentFetchImpl, signal: controller.signal });
+          if (canonicalUrl && !previousAccess) openedDocumentsByCanonicalUrl.set(canonicalUrl, accessOutcome);
           accessedSources.push({
             ...source,
             searchDomain: categoryId,
             accessOutcome,
+            ...(previousAccess ? { documentAccessReused: true } : {}),
             accessibilityState: accessOutcome.state,
             parsingState: accessOutcome.state === "accessible" ? "parsed" : "failed",
             ...(accessOutcome.passage ? { excerpt: accessOutcome.passage } : {}),
@@ -2001,8 +2300,10 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
           followUpQuery: buildCategoryFollowUpQuery(project, category, categoryResolution.unresolvedEvidenceIds),
           unresolvedEvidenceIds: categoryResolution.unresolvedEvidenceIds,
           resolvedEvidenceIds: category.evidenceIds.filter((id) => !categoryResolution.unresolvedEvidenceIds.includes(id)),
+          categoryResolved: categoryResolution.resolved,
           observedQueries,
           toolCallCount: categoryResult.coverage?.toolCallCount ?? 0,
+          toolCallBudgetExceeded: categoryResult.coverage?.toolCallBudgetExceeded === true,
           categoryResult: {
             categoryId,
             research: categoryResult.research,
@@ -2023,6 +2324,8 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
         searchedDomains: [...new Set(orchestration.categoryResults.flatMap((category) => category.coverage?.searchedDomains ?? []))],
         searchTerms: [...new Set(orchestration.categoryResults.flatMap((category) => category.coverage?.searchTerms ?? []))],
         toolCallCount: orchestration.toolCalls,
+        observedToolCallCount: orchestration.categoryResults.reduce((total, category) => total + (category.coverage?.observedToolCallCount ?? category.coverage?.toolCallCount ?? 0), 0),
+        acceptedToolCallCount: orchestration.toolCalls,
         providerRequestCount: orchestration.providerRequests,
         followUpCount: orchestration.followUps,
         followUpLimit: orchestration.followUpLimit,

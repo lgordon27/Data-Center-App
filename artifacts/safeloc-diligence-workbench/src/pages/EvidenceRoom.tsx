@@ -31,6 +31,8 @@ import {
   EVIDENCE_TIP_DISMISSED_STORAGE_KEY,
   type Classification,
   type EvidenceItem,
+  type ResearchProposalDisposition,
+  type ResearchProposalOverride,
   useDiligence
 } from "@/context/DiligenceContext";
 import { formatSourceTimestamp } from "@/data/sources";
@@ -539,6 +541,7 @@ function EvidenceRow({
   onAcceptSourceProposal,
   onRejectSourceProposal,
   onMarkSourceUnresolved,
+  onOverrideSourceProposal,
 }: {
   item: EvidenceItem;
   onChange: (id: string, value: Classification) => void;
@@ -554,6 +557,7 @@ function EvidenceRow({
   onAcceptSourceProposal: (proposal: CustomEvidenceRecord) => void;
   onRejectSourceProposal: (id: string) => void;
   onMarkSourceUnresolved: (id: string) => void;
+  onOverrideSourceProposal: (proposal: CustomEvidenceRecord, value: string, classification: Classification, rationale: string) => void;
 }) {
   const meta = classMeta[item.classification];
   const { sourceStates, project, applyEvidenceCorrection } = useDiligence();
@@ -567,6 +571,10 @@ function EvidenceRow({
   const [correctionAssessment, setCorrectionAssessment] = useState<AIEvidenceSuccess | null>(null);
   const [correctionBusy, setCorrectionBusy] = useState(false);
   const [correctionError, setCorrectionError] = useState("");
+  const [proposalOverrideOpen, setProposalOverrideOpen] = useState(false);
+  const [proposalOverrideValue, setProposalOverrideValue] = useState(sourceProposal ? String(sourceProposal.value) : "");
+  const [proposalOverrideClassification, setProposalOverrideClassification] = useState<Classification>(sourceProposal?.classification ?? "Missing Evidence");
+  const [proposalOverrideRationale, setProposalOverrideRationale] = useState("");
   const { openDrawer } = useWorkbenchDrawer();
   useEffect(() => {
     if (assessment || notice || sourceProposal) setOpen(true);
@@ -806,10 +814,23 @@ function EvidenceRow({
                          Open {sourceProposal.sourceTitle ?? "retrieved source"}<ExternalLink aria-hidden="true" className="h-3 w-3" />
                        </a>
                        <span className="mt-3 flex flex-wrap gap-2">
-                          {proposalDisposition === "pending" && <button data-testid={`button-accept-source-proposal-${item.id}`} type="button" onClick={() => onAcceptSourceProposal(sourceProposal)} className="rounded bg-[#08644f] px-3 py-2 font-mono text-[8px] font-bold uppercase text-white">Accept source and finding</button>}
+                           {proposalDisposition === "pending" && <button data-testid={`button-accept-source-proposal-${item.id}`} type="button" onClick={() => onAcceptSourceProposal(sourceProposal)} className="rounded bg-[#08644f] px-3 py-2 font-mono text-[8px] font-bold uppercase text-white">Accept source and finding</button>}
+                           {proposalDisposition === "pending" && <button data-testid={`button-override-source-proposal-${item.id}`} type="button" onClick={() => setProposalOverrideOpen((open) => !open)} className="rounded border border-[#255bb7] bg-white px-3 py-2 font-mono text-[8px] font-bold uppercase text-[#255bb7]">Override</button>}
                           {proposalDisposition === "pending" && <button data-testid={`button-reject-source-proposal-${item.id}`} type="button" onClick={() => onRejectSourceProposal(item.id)} className="rounded border border-[#9aaec0] bg-white px-3 py-2 font-mono text-[8px] font-bold uppercase text-[#52616b]">Reject</button>}
                           {proposalDisposition === "pending" && <button data-testid={`button-unresolve-source-proposal-${item.id}`} type="button" onClick={() => onMarkSourceUnresolved(item.id)} className="rounded border border-[#efabb8] bg-[#fff3f4] px-3 py-2 font-mono text-[8px] font-bold uppercase text-[#ba2f45]">Leave unresolved</button>}
                        </span>
+                        {proposalOverrideOpen && proposalDisposition === "pending" && (
+                          <span data-testid={`source-proposal-override-${item.id}`} className="mt-3 block rounded border border-[#b9d43a] bg-[#f8fbe8] p-3">
+                            <span className="block font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#607500]">Human source-proposal override</span>
+                            <span className="mt-2 grid gap-2 sm:grid-cols-2">
+                              <label className="text-[9px] text-[#52616b]">Replacement value<input data-testid={`input-source-proposal-override-value-${item.id}`} value={proposalOverrideValue} onChange={(event) => setProposalOverrideValue(event.target.value)} className="mt-1 w-full rounded border border-[#cbd8d4] bg-white px-2 py-2 text-[10px] text-[#243844]" /></label>
+                              <label className="text-[9px] text-[#52616b]">Replacement classification<select data-testid={`select-source-proposal-override-classification-${item.id}`} value={proposalOverrideClassification} onChange={(event) => setProposalOverrideClassification(event.target.value as Classification)} className="mt-1 w-full rounded border border-[#cbd8d4] bg-white px-2 py-2 text-[10px] text-[#243844]">{classifications.map((classification) => <option key={classification} value={classification}>{classification}</option>)}</select></label>
+                            </span>
+                            <label className="mt-2 block text-[9px] text-[#52616b]">Short rationale<textarea data-testid={`textarea-source-proposal-override-rationale-${item.id}`} value={proposalOverrideRationale} onChange={(event) => setProposalOverrideRationale(event.target.value)} rows={2} className="mt-1 w-full rounded border border-[#cbd8d4] bg-white px-2 py-2 text-[10px] text-[#243844]" /></label>
+                            <button data-testid={`button-submit-source-proposal-override-${item.id}`} type="button" disabled={!proposalOverrideValue.trim() || !proposalOverrideRationale.trim()} onClick={() => { onOverrideSourceProposal(sourceProposal, proposalOverrideValue, proposalOverrideClassification, proposalOverrideRationale); setProposalOverrideOpen(false); }} className="mt-2 rounded bg-[#607500] px-3 py-2 font-mono text-[8px] font-bold uppercase text-white disabled:opacity-50">Validate and apply override</button>
+                            <span className="mt-2 block text-[8px] leading-4 text-[#60707d]">The original proposal, source, classification, and reasoning remain in this review record. The replacement is rechecked against source eligibility and evidence semantics before it can enter the model.</span>
+                          </span>
+                        )}
                      </span>
                    )}
                    {(item.sources?.length ?? 0) > 0 && (
@@ -1006,7 +1027,20 @@ function EiaElectricityEvidence({
 }
 
 export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNavigate: (screen: Screen) => void; showModelConfidence?: boolean }) {
-  const { evidence, researchEvidence, updateClassification, applyEvidenceCorrection, metrics, ercotQueue, eiaData, eiaLoading, sourceStates, project } = useDiligence();
+  const {
+    evidence,
+    researchEvidence,
+    updateClassification,
+    applyEvidenceCorrection,
+    applyResearchProposalOverride,
+    persistResearchReview,
+    metrics,
+    ercotQueue,
+    eiaData,
+    eiaLoading,
+    sourceStates,
+    project,
+  } = useDiligence();
   const customProject = project.kind === "custom";
   const items = useMemo(() => Object.values(project.kind === "custom" ? (researchEvidence ?? evidence) : evidence), [evidence, project.kind, researchEvidence]);
   const counts = useMemo(() => classifications.map((classification) => ({ classification, count: items.filter((item) => item.classification === classification).length })), [items]);
@@ -1019,14 +1053,33 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
   const [sourceResearchProgress, setSourceResearchProgress] = useState<ResearchProgress | null>(null);
   const [sourceResearchError, setSourceResearchError] = useState<string | null>(null);
-  const [sourceProposals, setSourceProposals] = useState<Record<string, CustomEvidenceRecord>>({});
-  const [sourceProposalDispositions, setSourceProposalDispositions] = useState<Record<string, ProposalDisposition>>({});
+  const [sourceProposals, setSourceProposals] = useState<Record<string, CustomEvidenceRecord>>(project.researchProposals ?? {});
+  const [sourceProposalDispositions, setSourceProposalDispositions] = useState<Record<string, ProposalDisposition>>(project.researchProposalDispositions ?? {});
+  const [sourceProposalOverrides, setSourceProposalOverrides] = useState<Record<string, ResearchProposalOverride>>(project.researchProposalOverrides ?? {});
   const [sourceCacheNotice, setSourceCacheNotice] = useState<string | null>(null);
   const sourceResearchAbortRef = useRef<AbortController | null>(null);
+  const sourceResearchRunRef = useRef(0);
   const [searchCoverage, setSearchCoverage] = useState(project.researchCoverage);
   const [decisionHistory, setDecisionHistory] = useState<DecisionHistoryEntry[]>(getDecisionHistory);
   const isSourceResearchBusy = sourceResearchProgress !== null;
   const isAnalysisBusy = activeAnalysisId !== null || batchProgress !== null || isSourceResearchBusy;
+  useEffect(() => {
+    if (!customProject) return;
+    setSourceProposals(project.researchProposals ?? {});
+    setSourceProposalDispositions((project.researchProposalDispositions ?? {}) as Record<string, ProposalDisposition>);
+    setSourceProposalOverrides(project.researchProposalOverrides ?? {});
+    setSearchCoverage(project.researchCoverage);
+  }, [customProject, project.researchCoverage, project.researchProposalDispositions, project.researchProposalOverrides, project.researchProposals]);
+  const commitResearchReview = (
+    proposals: Record<string, CustomEvidenceRecord>,
+    dispositions: Record<string, ProposalDisposition>,
+    overrides: Record<string, ResearchProposalOverride>,
+  ) => {
+    setSourceProposals(proposals);
+    setSourceProposalDispositions(dispositions);
+    setSourceProposalOverrides(overrides);
+    persistResearchReview(proposals, dispositions as Record<string, ResearchProposalDisposition>, overrides);
+  };
   const [activeFilter, setActiveFilter] = useState<EvidenceFilter>("all");
   const materialGapIds = useMemo(() => new Set(getMaterialEvidenceGaps(evidence).map((gap) => gap.id)), [evidence]);
   const matchesEvidenceFilter = (item: EvidenceItem) => {
@@ -1174,8 +1227,9 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
     }
     setSourceResearchError(null);
     setSourceCacheNotice(null);
-    setSourceProposals({});
-    setSourceProposalDispositions({});
+    const runId = sourceResearchRunRef.current + 1;
+    sourceResearchRunRef.current = runId;
+    sourceResearchAbortRef.current?.abort();
     setSourceResearchProgress("researching");
     const controller = new AbortController();
     sourceResearchAbortRef.current = controller;
@@ -1193,14 +1247,18 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
         signal: controller.signal,
         onProgress: setSourceResearchProgress,
       });
+      if (sourceResearchRunRef.current !== runId) return;
       setSearchCoverage(result.researchCoverage);
       const proposals = Object.fromEntries(
         result.evidence
           .filter((item) => focusIds.includes(item.id) && Boolean(item.sourceUrl))
           .map((item) => [item.id, item]),
       );
-      setSourceProposals(proposals);
-      setSourceProposalDispositions(Object.fromEntries(Object.keys(proposals).map((id) => [id, "pending" as ProposalDisposition])));
+      const nextProposals = { ...sourceProposals, ...proposals };
+      const nextDispositions = Object.fromEntries(
+        Object.keys(nextProposals).map((id) => [id, sourceProposalDispositions[id] ?? "pending"]),
+      ) as Record<string, ProposalDisposition>;
+      commitResearchReview(nextProposals, nextDispositions, sourceProposalOverrides);
       if (result.researchCache) {
         const label = result.researchCache.state === "updated" ? "Research updated now" : `${result.researchCache.state} cached research`;
         setSourceCacheNotice(`${label}${result.researchCache.providerAvailable === false ? `; provider unavailable (${result.researchCache.errorType ?? "upstream"})` : ""}.`);
@@ -1213,8 +1271,10 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
         ? "Source research cancelled. No evidence or financial model inputs were changed."
         : error instanceof Error ? error.message : "Source research is unavailable. Try again.");
     } finally {
-      sourceResearchAbortRef.current = null;
-      setSourceResearchProgress(null);
+      if (sourceResearchRunRef.current === runId) {
+        sourceResearchAbortRef.current = null;
+        setSourceResearchProgress(null);
+      }
     }
   };
 
@@ -1237,12 +1297,40 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
     }
     logSessionAction("Focused source research, human-accepted", proposal.id);
     recordAIDecision(proposal.id, proposal.classification, proposal.description, "accepted", proposal.classification);
-    setSourceProposalDispositions((current) => ({ ...current, [proposal.id]: "accepted" }));
-    setSourceProposals((current) => {
-      const next = { ...current };
-      delete next[proposal.id];
-      return next;
-    });
+    commitResearchReview(
+      sourceProposals,
+      { ...sourceProposalDispositions, [proposal.id]: "accepted" },
+      sourceProposalOverrides,
+    );
+  };
+
+  const overrideSourceProposal = (
+    proposal: CustomEvidenceRecord,
+    value: string,
+    classification: Classification,
+    rationale: string,
+  ) => {
+    const applied = applyResearchProposalOverride(proposal.id, proposal, { value, classification, rationale });
+    if (!applied) {
+      setSourceResearchError("The override failed source or semantic validation; no model input was changed.");
+      return;
+    }
+    const override: ResearchProposalOverride = {
+      originalValue: proposal.value,
+      originalClassification: proposal.classification,
+      originalSourceUrl: proposal.sourceUrl ?? null,
+      originalReasoning: proposal.classificationReason ?? proposal.description,
+      replacementValue: value.trim(),
+      replacementClassification: classification,
+      rationale: rationale.trim(),
+      reviewedAt: new Date().toISOString(),
+    };
+    commitResearchReview(
+      sourceProposals,
+      { ...sourceProposalDispositions, [proposal.id]: "overridden" },
+      { ...sourceProposalOverrides, [proposal.id]: override },
+    );
+    logSessionAction("Focused source research, human-overridden", proposal.id);
   };
 
   const acceptAssessment = (item: EvidenceItem, assessment: AIEvidenceSuccess) => {
@@ -1271,12 +1359,12 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
   };
 
   const rejectSourceProposal = (id: string) => {
-    setSourceProposalDispositions((current) => ({ ...current, [id]: "rejected" }));
+    commitResearchReview(sourceProposals, { ...sourceProposalDispositions, [id]: "rejected" }, sourceProposalOverrides);
     logSessionAction("Focused source research, human-rejected", id);
   };
 
   const markSourceUnresolved = (id: string) => {
-    setSourceProposalDispositions((current) => ({ ...current, [id]: "unresolved" }));
+    commitResearchReview(sourceProposals, { ...sourceProposalDispositions, [id]: "unresolved" }, sourceProposalOverrides);
     logSessionAction("Focused source research, left unresolved", id);
   };
 
@@ -1305,6 +1393,7 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
       onAcceptSourceProposal={acceptSourceProposal}
       onRejectSourceProposal={rejectSourceProposal}
       onMarkSourceUnresolved={markSourceUnresolved}
+      onOverrideSourceProposal={overrideSourceProposal}
     />
   );
 

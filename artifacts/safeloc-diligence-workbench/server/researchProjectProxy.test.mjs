@@ -1346,7 +1346,7 @@ test("enforces per-category and run-wide candidate caps before document access",
     },
   });
   assert.equal(response.statusCode, 200);
-  assert.equal(documentFetches, 80);
+  assert.equal(documentFetches, 10);
 });
 
 test("retains and validates mapped sources from later categories after final containment", async () => {

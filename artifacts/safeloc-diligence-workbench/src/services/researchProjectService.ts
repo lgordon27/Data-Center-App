@@ -109,6 +109,7 @@ export type ResearchEvidenceSource = {
     pageOrSection?: string | number | null;
     extractionLimitations?: string[];
   };
+  documentAccessReused?: boolean;
 };
 export type ResearchClaimPassageMapping = {
   id: string;
@@ -159,6 +160,9 @@ export type CustomResearchResponse = {
      followUpLimit?: number;
      followUpLimitPerCategory?: number;
      sourcePriorityApplied?: string[];
+     observedToolCallCount?: number;
+     acceptedToolCallCount?: number;
+     providerLimitations?: string[];
     sourceLedgerSummary?: {
       rawOccurrenceCount: number;
       retainedCount: number;
@@ -189,11 +193,32 @@ export type ResearchCategoryAudit = {
   label: string;
   evidenceIds: string[];
   requestedPrimaryQuery: string;
+  plannedPrimaryQuery?: string | null;
+  issuedPrimaryQuery?: string | null;
   executedQueries: string[];
+  providerObservedPrimaryQueries?: string[];
   optionalFollowUpQuery?: string | null;
+  plannedFollowUpQuery?: string | null;
+  issuedFollowUpQuery?: string | null;
+  providerObservedFollowUpQueries?: string[];
   followUpExecutedQuery?: string | null;
   followUpCount: number;
   followUpLimit: number;
+  followUpTriggerEvidenceIds?: string[];
+  followUpSkipReason?: string | null;
+  authorityTargets?: { names: string[]; domains: string[] };
+  returnedDomains?: string[];
+  openedDocuments?: Array<{
+    originalUrl: string | null;
+    resolvedUrl: string | null;
+    canonicalUrl: string | null;
+    opened: boolean;
+    reusedFromCanonicalUrl: string | null;
+    accessState: "accessible" | "blocked" | "unsupported" | "not-attempted";
+    accessOutcome: string;
+    retainedPassage: string | null;
+    extractionLimitations: string[];
+  }>;
   state: ResearchCategoryState;
   stageCounts: ResearchAuditStageCounts;
   rejectionCounts: Record<string, number>;
@@ -243,6 +268,8 @@ export type ResearchAudit = {
     maxToolCalls: number;
   };
   toolCallCount: number;
+  observedToolCallCount?: number;
+  acceptedToolCallCount?: number;
   providerRequestCount: number;
   followUpCount: number;
   followUpLimit: number;
@@ -542,11 +569,35 @@ function parseResearchAudit(value: unknown): ResearchAudit | undefined {
       label: candidate.label,
       evidenceIds: Array.isArray(candidate.evidenceIds) ? candidate.evidenceIds.filter(isNonEmptyString) : [],
       requestedPrimaryQuery: isNonEmptyString(candidate.requestedPrimaryQuery) ? candidate.requestedPrimaryQuery : "Not available",
+      ...(isNonEmptyString(candidate.plannedPrimaryQuery) ? { plannedPrimaryQuery: candidate.plannedPrimaryQuery } : {}),
+      ...(isNonEmptyString(candidate.issuedPrimaryQuery) ? { issuedPrimaryQuery: candidate.issuedPrimaryQuery } : {}),
       executedQueries: parseSearchTerms(candidate.executedQueries, 9),
+      providerObservedPrimaryQueries: parseSearchTerms(candidate.providerObservedPrimaryQueries, 8),
       ...(isNonEmptyString(candidate.optionalFollowUpQuery) ? { optionalFollowUpQuery: candidate.optionalFollowUpQuery } : {}),
+      ...(isNonEmptyString(candidate.plannedFollowUpQuery) ? { plannedFollowUpQuery: candidate.plannedFollowUpQuery } : {}),
+      ...(isNonEmptyString(candidate.issuedFollowUpQuery) ? { issuedFollowUpQuery: candidate.issuedFollowUpQuery } : {}),
+      providerObservedFollowUpQueries: parseSearchTerms(candidate.providerObservedFollowUpQueries, 8),
       ...(isNonEmptyString(candidate.followUpExecutedQuery) ? { followUpExecutedQuery: candidate.followUpExecutedQuery } : {}),
       followUpCount: Number(candidate.followUpCount) || (isNonEmptyString(candidate.followUpExecutedQuery) ? 1 : 0),
       followUpLimit: Number(candidate.followUpLimit) || 1,
+      followUpTriggerEvidenceIds: Array.isArray(candidate.followUpTriggerEvidenceIds) ? candidate.followUpTriggerEvidenceIds.filter(isNonEmptyString).slice(0, 8) : [],
+      ...(isNonEmptyString(candidate.followUpSkipReason) ? { followUpSkipReason: candidate.followUpSkipReason } : {}),
+      authorityTargets: isRecord(candidate.authorityTargets) ? {
+        names: Array.isArray(candidate.authorityTargets.names) ? candidate.authorityTargets.names.filter(isNonEmptyString).slice(0, 12) : [],
+        domains: Array.isArray(candidate.authorityTargets.domains) ? candidate.authorityTargets.domains.filter(isNonEmptyString).slice(0, 12) : [],
+      } : { names: [], domains: [] },
+      returnedDomains: Array.isArray(candidate.returnedDomains) ? candidate.returnedDomains.filter(isNonEmptyString).slice(0, 20) : [],
+      openedDocuments: Array.isArray(candidate.openedDocuments) ? candidate.openedDocuments.slice(0, 20).filter((document) => isRecord(document)).map((document) => ({
+        originalUrl: isNonEmptyString(document.originalUrl) ? document.originalUrl : null,
+        resolvedUrl: isNonEmptyString(document.resolvedUrl) ? document.resolvedUrl : null,
+        canonicalUrl: isNonEmptyString(document.canonicalUrl) ? document.canonicalUrl : null,
+        opened: document.opened === true,
+        reusedFromCanonicalUrl: isNonEmptyString(document.reusedFromCanonicalUrl) ? document.reusedFromCanonicalUrl : null,
+        accessState: ["accessible", "blocked", "unsupported", "not-attempted"].includes(document.accessState as string) ? document.accessState as NonNullable<ResearchCategoryAudit["openedDocuments"]>[number]["accessState"] : "not-attempted",
+        accessOutcome: isNonEmptyString(document.accessOutcome) ? document.accessOutcome : "not-attempted",
+        retainedPassage: isNonEmptyString(document.retainedPassage) ? document.retainedPassage : null,
+        extractionLimitations: Array.isArray(document.extractionLimitations) ? document.extractionLimitations.filter(isNonEmptyString).slice(0, 8) : [],
+      })) : [],
       state,
       stageCounts: {
         normalized: Number(counts.normalized) || 0,
@@ -584,6 +635,8 @@ function parseResearchAudit(value: unknown): ResearchAudit | undefined {
       maxToolCalls: Number(budget.maxToolCalls) || 32,
     },
     toolCallCount: Number(value.toolCallCount) || 0,
+    ...(typeof value.observedToolCallCount === "number" ? { observedToolCallCount: value.observedToolCallCount } : {}),
+    ...(typeof value.acceptedToolCallCount === "number" ? { acceptedToolCallCount: value.acceptedToolCallCount } : {}),
     providerRequestCount: Number(value.providerRequestCount) || 0,
     followUpCount: Number(value.followUpCount) || 0,
     followUpLimit: Number(value.followUpLimit) || 8,
@@ -871,6 +924,11 @@ function parseResponse(value: unknown): CustomResearchResponse {
           ? { toolCallCount: value.researchCoverage.toolCallCount } : {}),
         ...(value.researchCoverage.toolCallLimit === 32 ? { toolCallLimit: 32 } : {}),
         toolCallBudgetExceeded: value.researchCoverage.toolCallBudgetExceeded === true,
+        ...(typeof value.researchCoverage.observedToolCallCount === "number" ? { observedToolCallCount: value.researchCoverage.observedToolCallCount } : {}),
+        ...(typeof value.researchCoverage.acceptedToolCallCount === "number" ? { acceptedToolCallCount: value.researchCoverage.acceptedToolCallCount } : {}),
+        ...(Array.isArray(value.researchCoverage.providerLimitations)
+          ? { providerLimitations: value.researchCoverage.providerLimitations.filter(isNonEmptyString).slice(0, 12) }
+          : {}),
         ...(typeof value.researchCoverage.followUpCount === "number" ? { followUpCount: value.researchCoverage.followUpCount } : {}),
         ...(typeof value.researchCoverage.followUpLimit === "number" ? { followUpLimit: value.researchCoverage.followUpLimit } : {}),
         ...(typeof value.researchCoverage.followUpLimitPerCategory === "number" ? { followUpLimitPerCategory: value.researchCoverage.followUpLimitPerCategory } : {}),

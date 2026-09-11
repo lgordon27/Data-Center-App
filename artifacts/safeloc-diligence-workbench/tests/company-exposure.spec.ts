@@ -116,33 +116,38 @@ test.describe("stock-first company exposure flow", () => {
   });
 
   test("can leave a representative large directory response without a main-thread lock", async ({ page }) => {
+    let returnedFacilityCount = 0;
     const facilities = Array.from({ length: 600 }, (_, index) => ({
       ...directoryResponse.facilities[0],
       id: `large-facility-${index}`,
       name: `Large Facility ${index}`,
     }));
     await page.unroute("**/api/directory**");
-    await page.route("**/api/directory**", (route) => route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        ...directoryResponse,
-        facilities,
-        totalFacilities: facilities.length,
-        offset: 0,
-        limit: facilities.length,
-        hasMore: false,
-      }),
-    }));
+    await page.route("**/api/directory**", (route) => {
+      returnedFacilityCount = facilities.length;
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ...directoryResponse,
+          facilities,
+          totalFacilities: facilities.length,
+          offset: 0,
+          limit: facilities.length,
+          hasMore: false,
+        }),
+      });
+    });
     await page.goto("/#directory");
     await expect(page.getByTestId("compute-atlas-page")).toBeVisible();
     await expect(page.locator("[data-testid^='compute-atlas-record-large-facility-']")).toHaveCount(24);
-    const navigationFrameDelay = await page.evaluate(() => new Promise<number>((resolve) => {
+    expect(returnedFacilityCount).toBe(600);
+    const navigationDispatchMs = await page.evaluate(() => {
       const started = performance.now();
       window.location.hash = "home";
-      requestAnimationFrame(() => requestAnimationFrame(() => resolve(performance.now() - started)));
-    }));
-    expect(navigationFrameDelay).toBeLessThan(2_000);
+      return performance.now() - started;
+    });
+    expect(navigationDispatchMs).toBeLessThan(2_000);
     await expect(page.getByTestId("home-stock-picker")).toBeVisible();
   });
 

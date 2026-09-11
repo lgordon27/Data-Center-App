@@ -100,6 +100,203 @@ function customResponse() {
   };
 }
 
+function acceptanceResponse() {
+  const response: any = customResponse();
+  const configureProposal = (id: string, value: number, unit: string, claim: string) => {
+    const item = response.evidence.find((candidate: { id: string }) => candidate.id === id);
+    Object.assign(item, {
+      value,
+      rawValue: value,
+      numericValue: value,
+      unit,
+      rawUnit: unit,
+      classification: "Verified Evidence",
+      coverageStatus: "supported",
+      sourceRelevance: "exact-project",
+      sourceSupportConfidence: 96,
+      sourceUrl: `https://ercot.com/project-atlas/${id}`,
+      sourceTitle: `Project Atlas ${id} filing`,
+      sourcePublisher: "ercot.com",
+      sourceAccessStatus: "open",
+      description: claim,
+      citation: `ERCOT Project Atlas filing (2026).`,
+      sources: [{
+        url: `https://ercot.com/project-atlas/${id}`,
+        canonicalUrl: `https://ercot.com/project-atlas/${id}`,
+        resolvedUrl: `https://ercot.com/project-atlas/${id}`,
+        title: `Project Atlas ${id} filing`,
+        publisher: "ercot.com",
+        accessedAt: "2026-09-10",
+        accessStatus: "open",
+        excerpt: claim,
+        claimPassage: claim,
+        sourceClass: "primary-government",
+        searchDomain: "power-grid",
+        relationship: "primary",
+        exactProject: true,
+        claimSupport: [{ evidenceId: id, value: `${value} ${unit}`, claim }],
+        facilityScope: "exact-project",
+        phaseScope: "exact-phase",
+        timePeriod: "2026",
+        sourceState: "retained",
+        accessOutcome: {
+          state: "accessible",
+          reason: "open",
+          format: "html",
+          resolvedUrl: `https://ercot.com/project-atlas/${id}`,
+          canonicalUrl: `https://ercot.com/project-atlas/${id}`,
+          passage: claim,
+          pageOrSection: "Tariff schedule",
+          extractionLimitations: [],
+        },
+      }],
+    });
+  };
+  configureProposal("electricity_cost", 48, "USD/MWh", "The Project Atlas facility electricity cost is 48 USD/MWh.");
+  configureProposal("water_escalation", 8, "%", "The Project Atlas facility water cost escalation is 8% annually.");
+  configureProposal("cooling_capex", 150, "USD millions", "Project Atlas cooling infrastructure capital cost is 150 USD millions.");
+  configureProposal("water_consumption", 23, "Mgal/year", "The Project Atlas facility consumes 23 Mgal/year of cooling water.");
+  configureProposal("grid_interconnection", 12, "months", "Project Atlas grid interconnection timeline is 12 months.");
+  const related = response.evidence.find((candidate: { id: string }) => candidate.id === "renewable_percentage");
+  Object.assign(related, {
+    sourceRelevance: "related-context",
+    coverageStatus: "partial",
+    sourceUrl: "https://example.com/comparable-grid",
+    sources: [{
+      url: "https://example.com/comparable-grid",
+      title: "Comparable Texas grid project",
+      publisher: "example.com",
+      accessedAt: "2026-09-10",
+      accessStatus: "open",
+      excerpt: "A different Texas project used a delayed interconnection.",
+      claimPassage: "A different Texas project used a delayed interconnection.",
+      sourceClass: "secondary",
+      searchDomain: "power-grid",
+      relationship: "comparable",
+      exactProject: false,
+      claimSupport: [],
+      facilityScope: "related-project",
+      phaseScope: "unknown",
+      timePeriod: "2026",
+    }],
+  });
+  response.researchCoverage = {
+    ...response.researchCoverage,
+    searchedDomains: ["ercot.com", "cityofirving.org"],
+    failedDomains: [],
+    retrievedSourceCount: 5,
+    followUpCount: 1,
+    followUpLimit: 8,
+    physicalOpenBudget: 24,
+    physicalOpensUsed: 2,
+    physicalOpensRemaining: 22,
+    physicalOpenBudgetExceeded: false,
+  };
+  response.researchAudit = {
+    version: 3,
+    policyVersion: 3,
+    provider: "openai",
+    model: "research",
+    providerResponseId: "batch-5-acceptance",
+    startedAt: "2026-09-10T12:00:00.000Z",
+    finishedAt: "2026-09-10T12:00:01.000Z",
+    elapsedMs: 1000,
+    budget: {
+      deadlineMs: 90000,
+      maxProviderRequests: 16,
+      maxFollowUps: 8,
+      maxFollowUpsPerCategory: 1,
+      maxCandidatesPerCategory: 10,
+      maxTotalCandidates: 80,
+      maxToolCalls: 32,
+      maxPhysicalDocumentOpens: 24,
+    },
+    toolCallCount: 2,
+    observedToolCallCount: 2,
+    acceptedToolCallCount: 2,
+    providerRequestCount: 2,
+    physicalOpenBudget: 24,
+    physicalOpensUsed: 2,
+    physicalOpensRemaining: 22,
+    physicalOpenBudgetExceeded: false,
+    followUpCount: 1,
+    followUpLimit: 8,
+    followUpLimitPerCategory: 1,
+    sourcePriorityApplied: ["Texas primary authorities"],
+    categoryGaps: ["backup_power_capacity"],
+    providerLimitations: [],
+    categories: [{
+      categoryId: "power-grid",
+      label: "Power and grid",
+      evidenceIds: ["electricity_cost", "grid_interconnection"],
+      requestedPrimaryQuery: "Project Atlas Texas electricity tariff",
+      primaryQueryRole: "authoritative-primary",
+      plannedPrimaryQuery: "Project Atlas site:ercot.com tariff",
+      issuedPrimaryQuery: "Project Atlas site:ercot.com tariff",
+      executedQueries: ["Project Atlas site:ercot.com tariff", "Project Atlas exact project grid filing"],
+      providerObservedPrimaryQueries: ["Project Atlas site:ercot.com tariff"],
+      optionalFollowUpQuery: "Project Atlas exact project grid filing",
+      fallbackQueryRole: "unrestricted-exact-project-fallback",
+      plannedFollowUpQuery: "Project Atlas exact project grid filing",
+      issuedFollowUpQuery: "Project Atlas exact project grid filing",
+      providerObservedFollowUpQueries: ["Project Atlas exact project grid filing"],
+      followUpExecutedQuery: "Project Atlas exact project grid filing",
+      followUpCount: 1,
+      followUpLimit: 1,
+      followUpTriggerEvidenceIds: ["grid_interconnection"],
+      followUpSkipReason: null,
+      authorityTargets: {
+        names: ["ERCOT", "City of Irving"],
+        domains: ["ercot.com"],
+        localAuthorities: [
+          { name: "City of Irving", kind: "municipality", domain: "cityofirving.org", establishmentMethod: "directory", status: "established" },
+          { name: "Dallas County", kind: "county", domain: null, establishmentMethod: "location", status: "identified-no-domain" },
+        ],
+        limitations: ["Dallas County was identified, but an official domain was not established."],
+      },
+      localAuthorities: [
+        { name: "City of Irving", kind: "municipality", domain: "cityofirving.org", establishmentMethod: "directory", status: "established" },
+        { name: "Dallas County", kind: "county", domain: null, establishmentMethod: "location", status: "identified-no-domain" },
+      ],
+      authorityLimitations: ["Dallas County was identified, but an official domain was not established."],
+      returnedDomains: ["ercot.com", "cityofirving.org"],
+      openedDocuments: [
+        {
+          originalUrl: "https://ercot.com/project-atlas?utm_source=search",
+          referringUrls: ["https://ercot.com/project-atlas?utm_source=search"],
+          resolvedUrl: "https://ercot.com/project-atlas",
+          canonicalUrl: "https://ercot.com/project-atlas",
+          opened: true,
+          reusedFromCanonicalUrl: null,
+          accessState: "accessible",
+          accessOutcome: "open",
+          retainedPassage: "Project Atlas tariff is 48 dollars per MWh.",
+          extractionLimitations: [],
+        },
+        {
+          originalUrl: "https://ercot.com/project-atlas?ref=redirect",
+          referringUrls: ["https://ercot.com/project-atlas?ref=redirect"],
+          resolvedUrl: "https://ercot.com/project-atlas",
+          canonicalUrl: "https://ercot.com/project-atlas",
+          opened: false,
+          reusedFromCanonicalUrl: "https://ercot.com/project-atlas",
+          accessState: "accessible",
+          accessOutcome: "reused",
+          retainedPassage: "Project Atlas tariff is 48 dollars per MWh.",
+          extractionLimitations: [],
+        },
+      ],
+      state: "Partial",
+      stageCounts: { normalized: 2, accessed: 2, parsed: 2, claimMapped: 1, eligible: 1, retainedCandidates: 2 },
+      rejectionCounts: { "related-context": 1 },
+      accessLimitations: [],
+      unresolvedGaps: ["grid_interconnection"],
+      providerFailure: null,
+    }],
+  };
+  return response;
+}
+
 test.describe("custom project research", () => {
   test.beforeEach(async ({ page }) => {
     await page.route("**/api/research-project", async (route) => {
@@ -227,6 +424,126 @@ test.describe("custom project research", () => {
     await page.getByTestId("button-confirm-reset-default").click();
     await expect(page).toHaveURL(/#analysis$/);
     await expect(page.getByTestId("custom-research-banner")).toHaveCount(0);
+  });
+
+  test("keeps the Batch 5 handoff concise while exposing governed audit detail on demand", async ({ page }, testInfo) => {
+    await page.unroute("**/api/research-project");
+    await page.route("**/api/research-project", (route) => route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(acceptanceResponse()),
+    }));
+    await page.goto("/");
+    await openCustomProjectDialog(page);
+    await page.getByTestId("input-custom-project-name").fill("Project Atlas");
+    await page.getByTestId("input-custom-project-location").fill("Irving, Dallas County, Texas");
+    await page.getByTestId("button-submit-custom-project").click();
+    await page.goto("/#evidence");
+
+    const handoff = page.getByTestId("research-handoff-summary");
+    await expect(handoff).toBeVisible();
+    await expect(page.getByTestId("research-handoff-details")).not.toHaveAttribute("open", "");
+    await expect(page.getByTestId("research-search-audit")).not.toHaveAttribute("open", "");
+    await expect(page.getByTestId("research-handoff-proposals")).toContainText("5");
+    await expect(page.getByTestId("research-handoff-proposals")).toContainText("5 pending · 0 accepted · 0 overridden · 0 rejected · 0 unresolved");
+    await expect(page.getByTestId("research-handoff-context")).toContainText("1 related/comparable context");
+
+    await page.getByTestId("research-handoff-details").click();
+    await expect(handoff).toContainText("2 identified · 1 official domains established");
+    await expect(handoff).toContainText("Dallas County was identified, but an official domain was not established");
+    await expect(handoff).toContainText("1 physical opens · 1 reused receipts · 2 retained passages");
+    await expect(handoff).toContainText("Physical-open budget: 2/24 used · 22 remaining");
+
+    const audit = page.getByTestId("research-search-audit");
+    await audit.locator(":scope > summary").click();
+    const category = page.getByTestId("research-category-power-grid");
+    await expect(category).toContainText("authoritative-primary");
+    await expect(category).toContainText("Project Atlas site:ercot.com tariff");
+    await expect(category).toContainText("unrestricted-exact-project-fallback");
+    await expect(category).toContainText("Project Atlas exact project grid filing");
+    await expect(category).toContainText("Returned domains: ercot.com · cityofirving.org");
+    await expect(category).toContainText("2 receipts · 1 physical opens · 2 retained passages");
+    await expect(category).toContainText("Dallas County · domain not established");
+
+    if (testInfo.project.name.includes("mobile")) {
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      const summary = page.getByTestId("summary-evidence-electricity_cost");
+      await summary.focus();
+      await expect(summary).toBeFocused();
+      await page.getByTestId("row-evidence-electricity_cost").evaluate((element) => {
+        (element as HTMLDetailsElement).open = true;
+      });
+      await expect(page.getByTestId("row-evidence-electricity_cost")).toHaveAttribute("open", "");
+      await page.getByTestId("button-override-source-proposal-electricity_cost").click();
+      await expect(page.getByTestId("input-source-proposal-override-value-electricity_cost")).toBeFocused();
+    }
+  });
+
+  test("persists every proposal disposition and keeps invalid or context-only findings out of model evidence", async ({ page }) => {
+    await page.unroute("**/api/research-project");
+    await page.route("**/api/research-project", (route) => route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(acceptanceResponse()),
+    }));
+    await page.goto("/");
+    await openCustomProjectDialog(page);
+    await page.getByTestId("input-custom-project-name").fill("Project Atlas");
+    await page.getByTestId("input-custom-project-location").fill("Irving, Dallas County, Texas");
+    await page.getByTestId("button-submit-custom-project").click();
+    await page.goto("/#evidence");
+
+    const openRow = async (id: string) => {
+      await page.getByTestId(`row-evidence-${id}`).evaluate((element) => {
+        (element as HTMLDetailsElement).open = true;
+      });
+    };
+
+    await openRow("electricity_cost");
+    await page.getByTestId("button-accept-source-proposal-electricity_cost").click();
+    await expect(page.getByTestId("proposal-disposition-electricity_cost")).toHaveText("accepted");
+
+    await openRow("water_escalation");
+    await page.getByTestId("button-override-source-proposal-water_escalation").click();
+    await page.getByTestId("input-source-proposal-override-value-water_escalation").fill("9");
+    await page.getByTestId("textarea-source-proposal-override-rationale-water_escalation").fill("The retained tariff passage supports the replacement.");
+    await page.getByTestId("button-submit-source-proposal-override-water_escalation").click();
+    await expect(page.getByTestId("proposal-disposition-water_escalation")).toHaveText("overridden");
+
+    await openRow("cooling_capex");
+    await page.getByTestId("button-override-source-proposal-cooling_capex").click();
+    await page.getByTestId("input-source-proposal-override-value-cooling_capex").fill("not-a-number");
+    await page.getByTestId("textarea-source-proposal-override-rationale-cooling_capex").fill("Invalid numeric replacement.");
+    await page.getByTestId("button-submit-source-proposal-override-cooling_capex").click();
+    await expect(page.getByText("The override failed source or semantic validation; no model input was changed.")).toBeVisible();
+    await expect(page.getByTestId("proposal-disposition-cooling_capex")).toHaveText("pending");
+
+    await openRow("water_consumption");
+    await page.getByTestId("button-unresolve-source-proposal-water_consumption").click();
+    await expect(page.getByTestId("proposal-disposition-water_consumption")).toHaveText("unresolved");
+
+    await openRow("grid_interconnection");
+    await page.getByTestId("button-reject-source-proposal-grid_interconnection").click();
+    await expect(page.getByTestId("proposal-disposition-grid_interconnection")).toHaveText("rejected");
+
+    await page.reload();
+    const persisted = await page.evaluate(() => JSON.parse(window.localStorage.getItem("safeloc:diligence:current-session:v1") ?? "{}"));
+    expect(persisted.customResearch.researchProposalDispositions).toMatchObject({
+      electricity_cost: "accepted",
+      water_escalation: "overridden",
+      cooling_capex: "pending",
+      water_consumption: "unresolved",
+      grid_interconnection: "rejected",
+    });
+    expect(persisted.customResearch.modelEvidence.electricity_cost.acceptedForModel).toBe(true);
+    expect(persisted.customResearch.modelEvidence.water_escalation.acceptedForModel).toBe(true);
+    expect(persisted.customResearch.modelEvidence.water_escalation.value).toBe(9);
+    expect(persisted.customResearch.modelEvidence.cooling_capex.acceptedForModel).toBe(false);
+    expect(persisted.customResearch.modelEvidence.water_consumption.acceptedForModel).toBe(false);
+    expect(persisted.customResearch.modelEvidence.grid_interconnection.acceptedForModel).toBe(false);
+    expect(persisted.customResearch.modelEvidence.renewable_percentage.acceptedForModel).toBe(false);
+    await page.goto("/#evidence");
+    await expect(page.getByTestId("research-handoff-proposals")).toContainText("1 pending · 1 accepted · 1 overridden · 1 rejected · 1 unresolved");
   });
 
   test("keeps reviewer source corrections behind the disclosure", async ({ page }) => {

@@ -20,3 +20,4 @@
 - [Release interface validation](release-interface-validation.md) — compare content-hash release documents and cache behavior before accepting the public SafeLoc bundle.
 - [Live research acceptance behavior](live-research-acceptance.md) — timeouts before telemetry are diagnostic provider failures, never evidence or executed-query claims.
 - [Physical document-open budget](physical-open-budget.md) — track physical fetches separately from candidate/provider limits and mark later documents not attempted at the hard ceiling.
+- [Deterministic navigation performance](deterministic-navigation-performance.md) — assert bounded input, synchronous route dispatch, and destination readiness instead of timing animation frames under parallel browser load.

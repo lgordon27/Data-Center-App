@@ -646,3 +646,22 @@ test("custom project capacity scales standardized economics without changing the
   assert.equal(calculateCashFlowModel(INITIAL_EVIDENCE, 0).assumptions.capacityMW, DEFAULT_CAPACITY_MW);
   assert.equal(calculateCashFlowModel(INITIAL_EVIDENCE, MAX_CAPACITY_MW + 1).assumptions.capacityMW, DEFAULT_CAPACITY_MW);
 });
+
+test("pre-tax equity cash-on-cash uses the actual close equity denominator", () => {
+  const model = calculateCashFlowModel(allVerified());
+  assert.equal(model.cashOnCashDenominator, model.initialInvestedEquity);
+  assert.equal(model.initialInvestedEquity, Math.abs(model.schedule[0].netEquityCashFlow));
+  assert.equal(
+    model.cashOnCash,
+    (model.annualPreTaxEquityCashFlow / model.cashOnCashDenominator) * 100,
+  );
+  assert.equal(model.assumptions.sourcesAndUses.sources.debt + model.assumptions.sourcesAndUses.sources.equity, model.assumptions.sourcesAndUses.uses.total);
+  assert.deepEqual(model.dscrMeaningfulYears, [1, 2, 3, 4, 5]);
+});
+
+test("power price and utilization sensitivity returns a complete 3 by 3 grid", () => {
+  const model = calculateCashFlowModel(allVerified());
+  assert.equal(model.returnSensitivity.length, 9);
+  assert.ok(model.returnSensitivity.some((cell) => cell.powerPriceMultiplier === 0.8 && cell.utilizationMultiplier === 1.2));
+  assert.ok(model.returnSensitivity.some((cell) => cell.powerPriceMultiplier === 1.2 && cell.utilizationMultiplier === 0.8));
+});

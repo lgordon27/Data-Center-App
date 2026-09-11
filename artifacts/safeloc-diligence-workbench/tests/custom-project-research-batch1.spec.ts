@@ -165,21 +165,20 @@ test.describe("Batch 1 custom-project research lifecycle", () => {
     await expect(page.getByTestId("custom-project-dialog")).not.toBeVisible();
   });
 
-  test("shows recovery within 46 seconds when the production research client never resolves", async ({ page }) => {
+  test("does not turn the former 45-second browser limit into a terminal timeout", async ({ page }) => {
     await page.route("**/api/research-project", () => {
-      // Intentionally unresolved: the controlled page clock must surface recovery.
+      // Intentionally unresolved: only explicit cancellation may end this request.
     });
 
     await page.goto("/#directory");
     await page.getByTestId("compute-atlas-open-gw-ranch-pecos-tx").click();
     await page.clock.install();
     await page.getByTestId("button-submit-custom-project").click();
-    await expect(page.getByTestId("custom-project-loading")).toContainText("Searching public sources, up to 45 seconds.");
+    await expect(page.getByTestId("custom-project-loading")).toContainText("Searching public sources within the research deadline.");
     await page.clock.fastForward(45_000);
-    await expect(page.getByText("Project research timed out after 45 seconds.")).toBeVisible();
-    await expect(page.getByTestId("custom-project-retry")).toBeVisible();
-    await expect(page.getByTestId("custom-project-edit")).toBeVisible();
-    await expect(page.getByTestId("custom-project-fallback")).toBeVisible();
-    await expect(page.getByTestId("custom-project-return-curated")).toBeVisible();
+    await expect(page.getByTestId("custom-project-loading")).toBeVisible();
+    await expect(page.getByText("Project research timed out after 45 seconds.")).not.toBeVisible();
+    await page.getByTestId("custom-project-cancel").click();
+    await expect(page.getByTestId("custom-project-loading")).not.toBeVisible();
   });
 });

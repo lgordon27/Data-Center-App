@@ -90,6 +90,8 @@ export function ResearchSearchAudit({
       <div className="space-y-2 border-t border-[#d9e0e4] px-4 py-3">
         <p>AI confidence is self-reported, not a verified probability. Validated source support measures captured source support separately. Neither score changes your classifications or financial assumptions.</p>
         <p>{audit ? `Governed run: ${audit.provider} · ${audit.model} · ${audit.providerRequestCount} provider requests · ${audit.budget.deadlineMs / 1000}s deadline · ${audit.budget.maxToolCalls} total tool-call limit.` : "One provider request with a 90-second deadline and up to 32 tool calls."} Requested work is not proof that a search completed.</p>
+        {audit?.runCorrelationId && <p className="font-mono text-[10px]">Run: {audit.runCorrelationId}</p>}
+        {audit?.terminalState && <p className="font-semibold">Terminal state: {audit.terminalState.replaceAll("-", " ")}.</p>}
         {coverage?.toolCallCount !== undefined && <p>Observed search tool calls: {coverage.toolCallCount}.</p>}
         {coverage?.toolCallBudgetExceeded && <p role="status" className="font-semibold text-[#a65a00]">The provider reported more tool calls than the requested limit. Treat search coverage as incomplete; retained findings still require source review.</p>}
         {audit?.providerResponseId && <p className="font-mono text-[10px]">Provider response: {audit.providerResponseId}{audit.elapsedMs !== null ? ` · elapsed ${audit.elapsedMs} ms` : ""}</p>}

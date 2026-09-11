@@ -164,6 +164,8 @@ export type CashFlowYear = {
   terminalDebtRepayment: number;
   netEquityCashFlow: number;
   cumulativeEquityCashFlow: number;
+  debtService: number;
+  dscr: number | null;
 };
 
 export type ModelLineItem = {
@@ -243,12 +245,30 @@ export type ModelAssumptions = {
   discountRate: number;
   terminalValue: number;
   terminalDebtRepayment: number;
+  initialInvestedEquity: number;
+  sourcesAndUses: {
+    sources: { debt: number; equity: number };
+    uses: { entryValue: number; coolingCapex: number; capexContingency: number; total: number };
+  };
+  terminalFormula: string;
+};
+
+export type ReturnSensitivity = {
+  powerPriceMultiplier: number;
+  utilizationMultiplier: number;
+  irr: number | null;
+  moic: number;
 };
 
 export type CashFlowModel = {
   projectIRR: number | null;
   moic: number;
   cashOnCash: number;
+  initialInvestedEquity: number;
+  cashOnCashDenominator: number;
+  annualPreTaxEquityCashFlow: number;
+  dscrMeaningfulYears: number[];
+  returnSensitivity: ReturnSensitivity[];
   payback: number | null;
   npv: number;
   confidenceScore: number;
@@ -571,7 +591,11 @@ function normalizeCapacityMW(value: unknown) {
     : DEFAULT_CAPACITY_MW;
 }
 
-function runModel(evidence: EvidenceRecord, capacityMW: number): CashFlowModel {
+function runModel(
+  evidence: EvidenceRecord,
+  capacityMW: number,
+  sensitivity: { powerPriceMultiplier?: number; utilizationMultiplier?: number } = {},
+): CashFlowModel {
   const capacityScale = capacityMW / DEFAULT_CAPACITY_MW;
   const electricityItem = evidence.electricity_cost;
   const waterConsumptionItem = evidence.water_consumption;
@@ -627,6 +651,8 @@ function runModel(evidence: EvidenceRecord, capacityMW: number): CashFlowModel {
   // Fixed synthetic transaction economics, not an effect of the Context
   // Indicator. Changing renewable provenance never changes cash flow.
   const powerCostDifferential = 0.0945;
+  const powerPriceMultiplier = sensitivity.powerPriceMultiplier ?? 1;
+  const utilizationMultiplier = sensitivity.utilizationMultiplier ?? 1;
   const gridInterconnectionMonths =
     finiteNumericValue(gridItem.numericValue, 14) + gridQuality.timelineAdder;
   const permittingMonths =
@@ -727,10 +753,12 @@ function runModel(evidence: EvidenceRecord, capacityMW: number): CashFlowModel {
     terminalDebtRepayment: 0,
     netEquityCashFlow: initialEquityCashFlow,
     cumulativeEquityCashFlow,
+    debtService: 0,
+    dscr: null,
   });
 
   for (let year = 1; year <= 5; year += 1) {
-    const calendarUtilization = UTILIZATION_RAMP[year - 1] ?? 0.92;
+    const calendarUtilization = clamp((UTILIZATION_RAMP[year - 1] ?? 0.92) * utilizationMultiplier, 0, 1);
     const monthsBeforeYear = (year - 1) * 12;
     const activeMonths = clamp(12 - Math.max(0, revenueDelayMonths - monthsBeforeYear), 0, 12);
     const operatingUtilization = calendarUtilization * (activeMonths / 12);
@@ -742,8 +770,9 @@ function runModel(evidence: EvidenceRecord, capacityMW: number): CashFlowModel {
     const electricityMwh =
       capacityMW * HOURS_PER_YEAR * operatingUtilization;
     const powerRate =
-      electricityRate *
+        electricityRate *
       (1 + powerCostDifferential) *
+        powerPriceMultiplier *
       Math.pow(1 + electricityEscalationRate, year - 1);
     const electricityOpex = (electricityMwh * powerRate) / 1_000_000;
     const waterGallons =
@@ -788,6 +817,7 @@ function runModel(evidence: EvidenceRecord, capacityMW: number): CashFlowModel {
     const terminalDebtRepayment = year === 5 ? endingDebt : 0;
     const netEquityCashFlow =
       noi - interest - principal + terminalValue - terminalDebtRepayment;
+    const debtService = interest + principal;
     cumulativeEquityCashFlow += netEquityCashFlow;
 
     schedule.push({
@@ -816,6 +846,8 @@ function runModel(evidence: EvidenceRecord, capacityMW: number): CashFlowModel {
       terminalDebtRepayment,
       netEquityCashFlow,
       cumulativeEquityCashFlow,
+      debtService,
+      dscr: debtService > 0 ? noi / debtService : null,
     });
   }
 
@@ -829,9 +861,11 @@ function runModel(evidence: EvidenceRecord, capacityMW: number): CashFlowModel {
   const equityInvested = cashFlows
     .filter((cashFlow) => cashFlow < 0)
     .reduce((total, cashFlow) => total + Math.abs(cashFlow), 0);
+  const initialInvestedEquity = Math.abs(schedule[0]?.netEquityCashFlow ?? 0);
+  const annualPreTaxEquityCashFlow = schedule[3]?.netEquityCashFlow ?? 0;
   const cashOnCash =
-    equityInvested > 0
-      ? ((schedule[3]?.netEquityCashFlow ?? 0) / equityInvested) * 100
+    initialInvestedEquity > 0
+      ? (annualPreTaxEquityCashFlow / initialInvestedEquity) * 100
       : 0;
   const unresolvedDecisionGateCount = Object.values(evidence).filter(
     (item) => isMaterialEvidenceId(item.id) && getEffectiveSupportState(item) === "unresolved",
@@ -912,6 +946,12 @@ function runModel(evidence: EvidenceRecord, capacityMW: number): CashFlowModel {
     discountRate: DISCOUNT_RATE,
     terminalValue: yearFive?.terminalValue ?? 0,
     terminalDebtRepayment: yearFive?.terminalDebtRepayment ?? 0,
+    initialInvestedEquity,
+    sourcesAndUses: {
+      sources: { debt: debtAmount, equity: initialInvestedEquity },
+      uses: { entryValue, coolingCapex, capexContingency, total: totalCapex },
+    },
+    terminalFormula: "Terminal value = max(0, Year 5 NOI × synthetic exit multiple); terminal debt repayment = Year 5 ending debt.",
   };
 
   const createLineItem = (id: string, driver: string, value: number, unit: string): ModelLineItem => {
@@ -941,6 +981,11 @@ function runModel(evidence: EvidenceRecord, capacityMW: number): CashFlowModel {
     projectIRR: projectIRR === null ? null : projectIRR * 100,
     moic: equityInvested > 0 ? totalDistributions / equityInvested : 0,
     cashOnCash,
+    initialInvestedEquity,
+    cashOnCashDenominator: initialInvestedEquity,
+    annualPreTaxEquityCashFlow,
+    dscrMeaningfulYears: schedule.filter((year) => year.year > 0 && year.dscr !== null).map((year) => year.year),
+    returnSensitivity: [],
     payback: calculatePayback(cashFlows),
     npv,
     confidenceScore,
@@ -972,6 +1017,18 @@ export function calculateCashFlowModel(evidence: EvidenceRecord, requestedCapaci
   const safeEvidence = containEvidenceForModel(evidence).evidence;
   const current = runModel(safeEvidence, capacityMW);
   const verifiedBaseline = runModel(buildVerifiedEvidence(safeEvidence), capacityMW);
+  const sensitivityGrid = [0.8, 1, 1.2];
+  current.returnSensitivity = sensitivityGrid.flatMap((powerPriceMultiplier) =>
+    sensitivityGrid.map((utilizationMultiplier) => {
+      const scenario = runModel(safeEvidence, capacityMW, { powerPriceMultiplier, utilizationMultiplier });
+      return {
+        powerPriceMultiplier,
+        utilizationMultiplier,
+        irr: scenario.projectIRR,
+        moic: scenario.moic,
+      };
+    }),
+  );
 
   const lineItems = Object.fromEntries(
     Object.entries(current.lineItems).map(([id, lineItem]) => {

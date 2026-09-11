@@ -4,6 +4,7 @@ import http from "node:http";
 import https from "node:https";
 import { Readable } from "node:stream";
 import { execFile as execFileCallback } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -33,6 +34,7 @@ const RESEARCH_PROJECT_MAX_TOKENS = 4_000;
 const execFile = promisify(execFileCallback);
 const RESEARCH_PROJECT_TIMEOUT_MS = 90_000;
 const RESEARCH_PROJECT_MAX_TOOL_CALLS = 32;
+const RESEARCH_CATEGORY_CONCURRENCY = 3;
 const RESEARCH_POLICY_VERSION = 2;
 const RESEARCH_CATEGORY_AUDIT_VERSION = 3;
 const RESEARCH_RUN_BUDGET = Object.freeze({
@@ -962,6 +964,7 @@ function buildResearchAudit({
   responseId = null,
   startedAt = null,
   finishedAt = null,
+  runCorrelationId = null,
 } = {}) {
   coverage = isRecord(coverage) ? coverage : {};
   const plan = buildResearchCategoryPlan(project);
@@ -1022,6 +1025,8 @@ function buildResearchAudit({
     provider: coverage.provider ?? "openai",
     model: coverage.model ?? RESEARCH_PROJECT_MODEL,
     providerResponseId: responseId ?? coverage.providerResponseIds?.[0] ?? null,
+    terminalState: coverage.terminalState ?? null,
+    runCorrelationId,
     providerResponseIds: Array.isArray(coverage.providerResponseIds) ? coverage.providerResponseIds.filter(Boolean).slice(0, 16) : [],
     startedAt,
     finishedAt,
@@ -1051,6 +1056,8 @@ async function orchestrateCategoryResearch(project, {
   now = () => Date.now(),
   budget = RESEARCH_RUN_BUDGET,
   signal,
+  deadlineState = { expired: false },
+  concurrent = false,
 } = {}) {
   if (typeof retrieveCategory !== "function") throw new Error("A bounded category retrieval function is required.");
   const startedAtMs = now();
@@ -1064,13 +1071,40 @@ async function orchestrateCategoryResearch(project, {
   let toolCallBudgetExceeded = false;
   let physicalOpenBudgetExceeded = false;
   const resolvedEvidenceIds = new Set();
-  for (const category of buildResearchCategoryPlan(project).categories) {
-    if (signal?.aborted) {
+  const categories = buildResearchCategoryPlan(project).categories;
+  const prefetchedPrimary = new Map();
+  if (concurrent) {
+    // Start bounded primary work up front. The map is populated by a small
+    // worker pool; the accounting reservation prevents later awaits from
+    // issuing work beyond the run-wide request ceiling.
+    let nextCategory = 0;
+    const worker = async () => {
+      while (nextCategory < categories.length) {
+        const index = nextCategory++;
+        const category = categories[index];
+        if (index >= budget.maxProviderRequests || deadlineState.expired) return;
+        const primaryPromise = retrieveCategory({
+          categoryId: category.categoryId,
+          query: category.requestedPrimaryQuery,
+          attempt: "primary",
+          remainingMs: Math.max(0, budget.deadlineMs - (now() - startedAtMs)),
+          remainingToolCalls: Math.max(1, Math.floor(budget.maxToolCalls / categories.length)),
+        });
+        prefetchedPrimary.set(category.categoryId, primaryPromise);
+        await primaryPromise.catch(() => undefined);
+      }
+    };
+    await Promise.allSettled(Array.from({ length: Math.min(RESEARCH_CATEGORY_CONCURRENCY, categories.length) }, worker));
+    providerRequests = Math.min(budget.maxProviderRequests, categories.length);
+  }
+  for (const category of categories) {
+    if (signal?.aborted && !deadlineState.expired) {
       const error = new Error("Project research was cancelled.");
       error.name = "ResearchCancelledError";
       error.researchErrorType = "cancelled";
       throw error;
     }
+    if (deadlineState.expired) break;
     const elapsed = now() - startedAtMs;
     if (physicalOpenBudgetExceeded || elapsed >= budget.deadlineMs || toolCalls >= budget.maxToolCalls || providerRequests >= budget.maxProviderRequests) {
       categoryExecutions[category.categoryId] = {
@@ -1105,14 +1139,14 @@ async function orchestrateCategoryResearch(project, {
       openedDocuments: [],
     };
     try {
-      providerRequests += 1;
-      const primary = await retrieveCategory({
+      if (!concurrent) providerRequests += 1;
+      const primary = await (prefetchedPrimary.get(category.categoryId) ?? retrieveCategory({
         categoryId: category.categoryId,
         query: category.requestedPrimaryQuery,
         attempt: "primary",
         remainingMs: Math.max(0, budget.deadlineMs - (now() - startedAtMs)),
         remainingToolCalls: Math.max(0, budget.maxToolCalls - toolCalls),
-      });
+      }));
       if (signal?.aborted) {
         const error = new Error("Project research was cancelled.");
         error.name = "ResearchCancelledError";
@@ -1212,7 +1246,7 @@ async function orchestrateCategoryResearch(project, {
         .filter((result) => result.categoryId === category.categoryId)
         .some((result) => result.categoryResolved === true) || followUpWasRun) state = "Complete";
     } catch (error) {
-      if (signal?.aborted || error?.name === "ResearchCancelledError") throw error;
+      if ((signal?.aborted && !deadlineState.expired) || (error?.name === "ResearchCancelledError" && !deadlineState.expired)) throw error;
       lastError = error;
       providerFailure = error?.name === "AbortError" ? null : "Category provider request failed.";
       state = error?.name === "AbortError" ? "Timed out" : "Provider failure";
@@ -1226,7 +1260,7 @@ async function orchestrateCategoryResearch(project, {
       providerFailure,
       unresolvedGaps: category.evidenceIds.filter((id) => !categoryResolvedEvidenceIds.has(id)),
     };
-    if (resolvedEvidenceIds.size >= RESEARCH_EVIDENCE_IDS.length) break;
+    if (resolvedEvidenceIds.size >= RESEARCH_EVIDENCE_IDS.length || deadlineState.expired) break;
   }
   const finishedAtMs = now();
   return {
@@ -2383,13 +2417,21 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
     throw error;
   }
   const controller = new AbortController();
+  const deadlineState = { expired: false };
   const externalSignal = signal;
   const abortFromRequest = () => controller.abort();
   externalSignal?.addEventListener("abort", abortFromRequest, { once: true });
   if (externalSignal?.aborted) controller.abort();
-  const timeout = setTimeout(() => controller.abort(), RESEARCH_PROJECT_TIMEOUT_MS);
+  const timeout = setTimeout(() => {
+    deadlineState.expired = true;
+    controller.abort();
+  }, RESEARCH_PROJECT_TIMEOUT_MS);
+  const runCorrelationId = randomUUID();
   const fetchedCandidatesByCategory = new Map();
+  const reservedCandidatesByCategory = new Map();
+  let reservedCandidateCount = 0;
   const openedDocumentsByCanonicalUrl = new Map();
+  let documentAccessQueue = Promise.resolve();
   let fetchedCandidateCount = 0;
   let physicalOpensUsed = 0;
   let physicalOpenBudgetExceeded = false;
@@ -2397,6 +2439,8 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
     const orchestration = await orchestrateCategoryResearch(project, {
       budget: RESEARCH_RUN_BUDGET,
       signal: controller.signal,
+      deadlineState,
+      concurrent: true,
       retrieveCategory: async ({ categoryId, query, attempt, remainingToolCalls }) => {
         const category = buildResearchCategoryPlan(project).categories.find((candidate) => candidate.categoryId === categoryId);
         const categoryResult = await researchProjectWithWebSearch(project, apiKey, fetchImpl, controller.signal, {
@@ -2407,9 +2451,14 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
           maxToolCalls: Math.max(1, Math.min(RESEARCH_PROJECT_MAX_TOOL_CALLS, remainingToolCalls ?? RESEARCH_PROJECT_MAX_TOOL_CALLS)),
         });
         const categoryFetched = fetchedCandidatesByCategory.get(categoryId) ?? 0;
-        const remainingCategory = Math.max(0, RESEARCH_RUN_BUDGET.maxCandidatesPerCategory - categoryFetched);
-        const remainingTotal = Math.max(0, RESEARCH_RUN_BUDGET.maxTotalCandidates - fetchedCandidateCount);
+        const categoryReserved = reservedCandidatesByCategory.get(categoryId) ?? 0;
+        const remainingCategory = Math.max(0, RESEARCH_RUN_BUDGET.maxCandidatesPerCategory - categoryFetched - categoryReserved);
+        const remainingTotal = Math.max(0, RESEARCH_RUN_BUDGET.maxTotalCandidates - fetchedCandidateCount - reservedCandidateCount);
+        reservedCandidatesByCategory.set(categoryId, categoryReserved + Math.max(0, remainingCategory));
+        reservedCandidateCount += Math.max(0, remainingCategory);
         const boundedSources = categoryResult.sources.slice(0, Math.min(remainingCategory, remainingTotal));
+        reservedCandidatesByCategory.set(categoryId, Math.max(0, (reservedCandidatesByCategory.get(categoryId) ?? 0) - boundedSources.length));
+        reservedCandidateCount = Math.max(0, reservedCandidateCount - boundedSources.length);
         fetchedCandidatesByCategory.set(categoryId, categoryFetched + boundedSources.length);
         fetchedCandidateCount += boundedSources.length;
         const accessedSources = [];
@@ -2445,7 +2494,12 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
               };
             } else {
               physicalOpensUsed += 1;
-              accessOutcome = await accessResearchDocument(source, { fetchImpl: documentFetchImpl, signal: controller.signal });
+              const accessTask = documentAccessQueue.then(() => accessResearchDocument(source, {
+                fetchImpl: documentFetchImpl,
+                signal: controller.signal,
+              }));
+              documentAccessQueue = accessTask.catch(() => {});
+              accessOutcome = await accessTask;
               accessOutcome = {
                 ...accessOutcome,
                 referringUrls: [originalUrl].filter(Boolean),
@@ -2534,6 +2588,8 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
         providerResponseIds: orchestration.categoryResults.map((category) => category.coverage?.providerResponseId).filter(Boolean),
         categoryExecutions: orchestration.categoryExecutions,
         providerLimitations: orchestration.categoryResults.flatMap((category) => category.coverage?.providerLimitations ?? []),
+        runCorrelationId,
+        terminalState: deadlineState.expired ? "timed-out-partial" : orchestration.categoryResults.some((category) => category.coverage?.providerLimitations?.length) ? "completed-with-gaps" : "completed",
         startedAt: orchestration.startedAt,
         finishedAt: orchestration.finishedAt,
       },
@@ -2547,7 +2603,10 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
         project.knownData,
       );
     } catch (error) {
-      console.warn("[research-project] Rejected structured research response:", error instanceof Error ? error.message : "unknown validation error");
+      console.warn(
+        `[research-project:${result?.coverage?.runCorrelationId ?? runCorrelationId}] Rejected structured research response:`,
+        error instanceof Error ? error.message : "unknown validation error",
+      );
       const structuredError = new Error("Invalid structured research response.");
       structuredError.name = "StructuredResearchError";
       structuredError.researchErrorType = "malformed-response";

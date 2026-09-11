@@ -12,7 +12,9 @@ import {
 } from "@/data/sourceValidationPolicy.mjs";
 
 export const RESEARCH_PROJECT_ENDPOINT = "/api/research-project";
-export const RESEARCH_PROJECT_TIMEOUT_MS = 45_000;
+// The server owns the single research deadline.  Keep the client request
+// budget aligned, but do not add a second browser wall-clock terminal state.
+export const RESEARCH_PROJECT_TIMEOUT_MS = 90_000;
 export const DEFAULT_RESEARCH_CAPACITY_MW = 1_200;
 export const MAX_RESEARCH_CAPACITY_MW = 10_000;
 
@@ -272,6 +274,8 @@ export type ResearchAudit = {
   provider: string;
   model: string;
   providerResponseId: string | null;
+  runCorrelationId?: string | null;
+  terminalState?: "completed" | "completed-with-gaps" | "timed-out-partial" | "cancelled" | "failed" | null;
   startedAt: string | null;
   finishedAt: string | null;
   elapsedMs: number | null;
@@ -689,6 +693,8 @@ function parseResearchAudit(value: unknown): ResearchAudit | undefined {
     provider: isNonEmptyString(value.provider) ? value.provider : "unknown",
     model: isNonEmptyString(value.model) ? value.model : "unknown",
     providerResponseId: value.providerResponseId === null || isNonEmptyString(value.providerResponseId) ? value.providerResponseId as string | null : null,
+    ...(isNonEmptyString(value.runCorrelationId) ? { runCorrelationId: value.runCorrelationId } : {}),
+    ...(typeof value.terminalState === "string" ? { terminalState: value.terminalState as ResearchAudit["terminalState"] } : {}),
     startedAt: isNonEmptyString(value.startedAt) ? value.startedAt : null,
     finishedAt: isNonEmptyString(value.finishedAt) ? value.finishedAt : null,
     elapsedMs: typeof value.elapsedMs === "number" && Number.isFinite(value.elapsedMs) ? value.elapsedMs : null,

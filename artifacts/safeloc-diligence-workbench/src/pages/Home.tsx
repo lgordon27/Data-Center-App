@@ -19,7 +19,6 @@ import {
 import { useDiligence } from "@/context/DiligenceContext";
 import {
   createDefaultAssumptionResearch,
-  RESEARCH_PROJECT_TIMEOUT_MS,
   researchProject,
   type CustomResearchResponse,
   type KnownProjectData,
@@ -110,17 +109,6 @@ export function CustomProjectForm({ onSuccess, compact = false, initialValues, o
     const generation = requestGeneration.current + 1;
     requestGeneration.current = generation;
     requestController.current = controller;
-    let wallClockTimedOut = false;
-    const wallClockTimeout = window.setTimeout(() => {
-      if (!mounted.current || requestGeneration.current !== generation) return;
-      wallClockTimedOut = true;
-      requestGeneration.current += 1;
-      controller.abort();
-      requestController.current = null;
-      setBusy(false);
-      setError("Project research timed out after 45 seconds.");
-      setFallbackAvailable(true);
-    }, RESEARCH_PROJECT_TIMEOUT_MS);
     try {
       const result = await researchProject(name.trim(), location.trim(), {
         knownData: initialValues?.knownData,
@@ -129,11 +117,10 @@ export function CustomProjectForm({ onSuccess, compact = false, initialValues, o
       });
       if (mounted.current && requestGeneration.current === generation && !controller.signal.aborted) onSuccess(result);
     } catch (requestError) {
-      if (wallClockTimedOut || controller.signal.aborted || !mounted.current || requestGeneration.current !== generation) return;
+      if (controller.signal.aborted || !mounted.current || requestGeneration.current !== generation) return;
       setError(requestError instanceof Error ? requestError.message : "Project research is unavailable. Try again.");
       setFallbackAvailable(true);
     } finally {
-      window.clearTimeout(wallClockTimeout);
       if (mounted.current && requestGeneration.current === generation) setBusy(false);
       if (requestController.current === controller) requestController.current = null;
     }
@@ -261,9 +248,9 @@ export function CustomProjectForm({ onSuccess, compact = false, initialValues, o
             ? "rounded-md border border-[#8dc8e8]/30 bg-[#0d2b3d] px-3 py-2.5 text-[10px] leading-4 text-[#b9e1f2]"
             : "rounded-md bg-[#eef5ff] px-3 py-2.5 text-[10px] text-[#255bb7]"}
         >
-          {progress === "retrying"
-            ? "A provider attempt timed out; retrying within the 45-second limit."
-            : "Searching public sources, up to 45 seconds."}
+           {progress === "retrying"
+             ? "A provider attempt timed out; retrying within the research deadline."
+             : "Searching public sources within the research deadline."}
           <button
             data-testid={compact ? "home-custom-analysis-cancel" : "custom-project-cancel"}
             type="button"
@@ -745,6 +732,7 @@ export function ComputeAtlasDirectory({ onCurated, onResearchSuccess }: { onCura
   const [facilities, setFacilities] = useState<DirectoryFacility[]>([]);
   const [totalMatching, setTotalMatching] = useState(0);
   const [researching, setResearching] = useState<Record<string, { busy: boolean; error: string | null; progress: ResearchProgress }>>({});
+  const researchGeneration = useRef<Record<string, number>>({});
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedQuery(query), 200);
@@ -827,6 +815,11 @@ export function ComputeAtlasDirectory({ onCurated, onResearchSuccess }: { onCura
       authorityDomains: facility.authorityDomains,
       companyDomains: facility.companyDomains,
     };
+    const generation = (researchGeneration.current[facility.id] ?? 0) + 1;
+    researchGeneration.current[facility.id] = generation;
+    // Directory facts are immediately useful discovery context. Show a
+    // provisional, non-model result while public-source research continues.
+    onResearchSuccess(createDefaultAssumptionResearch(facility.name, locationLabel(facility), knownData));
     setResearching((current) => ({ ...current, [facility.id]: { busy: true, error: null, progress: "researching" } }));
     try {
       const result = await researchProject(facility.name, locationLabel(facility), {
@@ -836,7 +829,7 @@ export function ComputeAtlasDirectory({ onCurated, onResearchSuccess }: { onCura
           [facility.id]: { busy: true, error: null, progress },
         })),
       });
-      onResearchSuccess(result);
+      if (researchGeneration.current[facility.id] === generation) onResearchSuccess(result);
     } catch (requestError) {
       setResearching((current) => ({
         ...current,

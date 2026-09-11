@@ -15,6 +15,7 @@ import {
   RESEARCH_PROJECT_MODEL,
   RESEARCH_PROJECT_TIMEOUT_MS,
   RESEARCH_PROJECT_RESPONSE_SCHEMA,
+  RESEARCH_RUN_BUDGET,
   RESEARCH_PROJECT_SYSTEM_PROMPT,
   RESEARCH_QUERY_ANGLES,
   buildResearchProjectPrompt,
@@ -398,6 +399,36 @@ test("stops the category schedule once all governed identifiers are resolved", a
   assert.equal(calls, 1);
   assert.equal(run.categoryResults.length, 1);
   assert.equal(run.resolvedEvidenceIds.length, RESEARCH_EVIDENCE_IDS.length);
+});
+
+test("bounds concurrent primary category retrieval and preserves category failures", async () => {
+  let active = 0;
+  let peak = 0;
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const started = [];
+  const runPromise = orchestrateCategoryResearch(
+    { name: "Atlas", location: "Texas" },
+    {
+      concurrent: true,
+      retrieveCategory: async ({ categoryId }) => {
+        active += 1;
+        peak = Math.max(peak, active);
+        started.push(categoryId);
+        if (started.length === 3) release();
+        await gate;
+        active -= 1;
+        if (categoryId === "water") throw new Error("isolated category failure");
+        return { candidates: [], observedQueries: [`observed ${categoryId}`], toolCallCount: 1 };
+      },
+    },
+  );
+  const run = await runPromise;
+  assert.equal(peak, 3);
+  assert.equal(run.providerRequests, 8);
+  assert.equal(run.categoryExecutions.water.state, "Provider failure");
+  assert.equal(Object.keys(run.categoryExecutions).length, 8);
+  assert.ok(run.toolCalls <= 32);
 });
 
 test("propagates client cancellation distinctly from the deadline timeout", async () => {
@@ -1443,7 +1474,11 @@ test("enforces per-category and run-wide candidate caps before document access",
     },
   });
   assert.equal(response.statusCode, 200);
-  assert.equal(documentFetches, 10);
+  assert.equal(
+    documentFetches,
+    RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens,
+    "concurrent categories must stop at the shared physical-document ceiling",
+  );
 });
 
 test("retains and validates mapped sources from later categories after final containment", async () => {

@@ -438,6 +438,7 @@ test.describe("custom project research", () => {
     await page.getByTestId("input-custom-project-name").fill("Project Atlas");
     await page.getByTestId("input-custom-project-location").fill("Irving, Dallas County, Texas");
     await page.getByTestId("button-submit-custom-project").click();
+    await expect(page).toHaveURL(/#analysis$/);
     await page.goto("/#evidence");
 
     const handoff = page.getByTestId("research-handoff-summary");

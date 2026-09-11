@@ -41,6 +41,7 @@ import {
   evaluateResearchDocumentAccess,
   accessResearchDocument,
   orchestrateCategoryResearch,
+  classifyResearchFailure,
 } from "./researchProjectProxy.mjs";
 import {
   classifyResearchCacheAge,
@@ -321,6 +322,69 @@ test("bounds category retrieval, allows one gap follow-up, and preserves provide
   assert.equal(run.followUps, 1);
   assert.ok(run.providerRequests <= 8 + 1);
   assert.ok(calls.includes("grid:follow-up"));
+});
+
+test("enforces one gap follow-up per category and records the limit", async () => {
+  const run = await orchestrateCategoryResearch(
+    { name: "Atlas", location: "Texas" },
+    {
+      budget: {
+        deadlineMs: 90_000,
+        maxProviderRequests: 16,
+        maxFollowUps: 8,
+        maxFollowUpsPerCategory: 1,
+        maxCandidatesPerCategory: 10,
+        maxTotalCandidates: 80,
+        maxToolCalls: 32,
+      },
+      retrieveCategory: async ({ attempt }) => ({
+        candidates: [],
+        gapDrivenFollowUp: true,
+        observedQueries: [`query-${attempt}`],
+      }),
+    },
+  );
+  assert.equal(run.followUpLimitPerCategory, 1);
+  assert.ok(run.followUps <= 8);
+  assert.ok(Object.values(run.categoryExecutions).every((execution) => (execution.followUpCount ?? 0) <= 1));
+});
+
+test("stops the category schedule once all governed identifiers are resolved", async () => {
+  let calls = 0;
+  const run = await orchestrateCategoryResearch(
+    { name: "Atlas", location: "Texas" },
+    {
+      retrieveCategory: async () => {
+        calls += 1;
+        return { candidates: [{ eligible: true }], resolvedEvidenceIds: RESEARCH_EVIDENCE_IDS };
+      },
+    },
+  );
+  assert.equal(calls, 1);
+  assert.equal(run.categoryResults.length, 1);
+  assert.equal(run.resolvedEvidenceIds.length, RESEARCH_EVIDENCE_IDS.length);
+});
+
+test("propagates client cancellation distinctly from the deadline timeout", async () => {
+  const controller = new AbortController();
+  await assert.rejects(
+    orchestrateCategoryResearch(
+      { name: "Atlas", location: "Texas" },
+      {
+        signal: controller.signal,
+        retrieveCategory: async () => {
+          controller.abort();
+          return { candidates: [] };
+        },
+      },
+    ),
+    (error) => {
+      assert.equal(error.name, "ResearchCancelledError");
+      assert.equal(classifyResearchFailure(error).type, "cancelled");
+      assert.equal(classifyResearchFailure(error).status, 499);
+      return true;
+    },
+  );
 });
 
 test("does not let blocked, source-free, or overlapping follow-ups erase an accessible claim", () => {
@@ -709,6 +773,24 @@ test("normalizes and caps sources returned by the single web-search response", (
     })) } }],
   });
   assert.equal(retrieval.length, 10);
+});
+
+test("prioritizes Texas authoritative sources while retaining comparable records", () => {
+  const retrieval = normalizeRetrievedSources({
+    output: [{
+      type: "web_search_call",
+      action: {
+        sources: [
+          { url: "https://news.example.com/atlas", title: "Market summary" },
+          { url: "https://investor.example.com/atlas", title: "Atlas company press release" },
+          { url: "https://www.ercot.com/grid/atlas", title: "ERCOT interconnection record" },
+          { url: "https://utility.example.com/atlas", title: "Texas electric utility tariff" },
+        ],
+      },
+    }],
+  }, "project-identity", { name: "Atlas", location: "Taylor County, Texas" });
+  assert.equal(retrieval[0].url, "https://www.ercot.com/grid/atlas");
+  assert.equal(retrieval.at(-1).url, "https://news.example.com/atlas");
 });
 
 test("ignores model output text as a source passage", () => {

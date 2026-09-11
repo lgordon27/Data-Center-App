@@ -155,6 +155,10 @@ export type CustomResearchResponse = {
     toolCallCount?: number;
     toolCallLimit?: number;
     toolCallBudgetExceeded?: boolean;
+     followUpCount?: number;
+     followUpLimit?: number;
+     followUpLimitPerCategory?: number;
+     sourcePriorityApplied?: string[];
     sourceLedgerSummary?: {
       rawOccurrenceCount: number;
       retainedCount: number;
@@ -188,6 +192,8 @@ export type ResearchCategoryAudit = {
   executedQueries: string[];
   optionalFollowUpQuery?: string | null;
   followUpExecutedQuery?: string | null;
+  followUpCount: number;
+  followUpLimit: number;
   state: ResearchCategoryState;
   stageCounts: ResearchAuditStageCounts;
   rejectionCounts: Record<string, number>;
@@ -231,12 +237,17 @@ export type ResearchAudit = {
     deadlineMs: number;
     maxProviderRequests: number;
     maxFollowUps: number;
+    maxFollowUpsPerCategory: number;
     maxCandidatesPerCategory: number;
     maxTotalCandidates: number;
     maxToolCalls: number;
   };
   toolCallCount: number;
   providerRequestCount: number;
+  followUpCount: number;
+  followUpLimit: number;
+  followUpLimitPerCategory: number;
+  sourcePriorityApplied: string[];
   categories: ResearchCategoryAudit[];
   categoryGaps: string[];
   providerLimitations: string[];
@@ -534,6 +545,8 @@ function parseResearchAudit(value: unknown): ResearchAudit | undefined {
       executedQueries: parseSearchTerms(candidate.executedQueries, 9),
       ...(isNonEmptyString(candidate.optionalFollowUpQuery) ? { optionalFollowUpQuery: candidate.optionalFollowUpQuery } : {}),
       ...(isNonEmptyString(candidate.followUpExecutedQuery) ? { followUpExecutedQuery: candidate.followUpExecutedQuery } : {}),
+      followUpCount: Number(candidate.followUpCount) || (isNonEmptyString(candidate.followUpExecutedQuery) ? 1 : 0),
+      followUpLimit: Number(candidate.followUpLimit) || 1,
       state,
       stageCounts: {
         normalized: Number(counts.normalized) || 0,
@@ -565,12 +578,17 @@ function parseResearchAudit(value: unknown): ResearchAudit | undefined {
       deadlineMs: Number(budget.deadlineMs) || 90_000,
       maxProviderRequests: Number(budget.maxProviderRequests) || 16,
       maxFollowUps: Number(budget.maxFollowUps) || 8,
+      maxFollowUpsPerCategory: Number(budget.maxFollowUpsPerCategory) || 1,
       maxCandidatesPerCategory: Number(budget.maxCandidatesPerCategory) || 10,
       maxTotalCandidates: Number(budget.maxTotalCandidates) || 80,
       maxToolCalls: Number(budget.maxToolCalls) || 32,
     },
     toolCallCount: Number(value.toolCallCount) || 0,
     providerRequestCount: Number(value.providerRequestCount) || 0,
+    followUpCount: Number(value.followUpCount) || 0,
+    followUpLimit: Number(value.followUpLimit) || 8,
+    followUpLimitPerCategory: Number(value.followUpLimitPerCategory) || 1,
+    sourcePriorityApplied: Array.isArray(value.sourcePriorityApplied) ? value.sourcePriorityApplied.filter(isNonEmptyString).slice(0, 8) : [],
     categories,
     categoryGaps: Array.isArray(value.categoryGaps) ? value.categoryGaps.filter(isNonEmptyString) : categories.filter((category) => category.state !== "Complete").map((category) => category.categoryId),
     providerLimitations: Array.isArray(value.providerLimitations) ? value.providerLimitations.filter(isNonEmptyString).slice(0, 12) : [],
@@ -853,6 +871,12 @@ function parseResponse(value: unknown): CustomResearchResponse {
           ? { toolCallCount: value.researchCoverage.toolCallCount } : {}),
         ...(value.researchCoverage.toolCallLimit === 32 ? { toolCallLimit: 32 } : {}),
         toolCallBudgetExceeded: value.researchCoverage.toolCallBudgetExceeded === true,
+        ...(typeof value.researchCoverage.followUpCount === "number" ? { followUpCount: value.researchCoverage.followUpCount } : {}),
+        ...(typeof value.researchCoverage.followUpLimit === "number" ? { followUpLimit: value.researchCoverage.followUpLimit } : {}),
+        ...(typeof value.researchCoverage.followUpLimitPerCategory === "number" ? { followUpLimitPerCategory: value.researchCoverage.followUpLimitPerCategory } : {}),
+        ...(Array.isArray(value.researchCoverage.sourcePriorityApplied)
+          ? { sourcePriorityApplied: value.researchCoverage.sourcePriorityApplied.filter(isNonEmptyString).slice(0, 8) }
+          : {}),
          ...(isRecord(value.researchCoverage.sourceLedgerSummary) ? {
            sourceLedgerSummary: {
              rawOccurrenceCount: Number(value.researchCoverage.sourceLedgerSummary.rawOccurrenceCount) || 0,

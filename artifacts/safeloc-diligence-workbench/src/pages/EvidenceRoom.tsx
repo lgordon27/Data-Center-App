@@ -58,6 +58,7 @@ import type {
 } from "@/components/Shell";
 import { ClaimCitation } from "@/components/ClaimCitation";
 import { ResearchSearchAudit } from "@/components/ResearchSearchAudit";
+import { ResearchHandoffSummary, type ProposalDisposition } from "@/components/ResearchHandoffSummary";
 import { formatClaimDate, getClaimSources, type ClaimSourceRecord } from "@/data/claimSources";
 import {
   checkResearchStatus,
@@ -534,8 +535,10 @@ function EvidenceRow({
   analysisBusy,
   analysisDisabled,
   sourceProposal,
+  proposalDisposition,
   onAcceptSourceProposal,
   onRejectSourceProposal,
+  onMarkSourceUnresolved,
 }: {
   item: EvidenceItem;
   onChange: (id: string, value: Classification) => void;
@@ -547,8 +550,10 @@ function EvidenceRow({
   analysisBusy: boolean;
   analysisDisabled: boolean;
   sourceProposal?: CustomEvidenceRecord;
+  proposalDisposition?: ProposalDisposition;
   onAcceptSourceProposal: (proposal: CustomEvidenceRecord) => void;
   onRejectSourceProposal: (id: string) => void;
+  onMarkSourceUnresolved: (id: string) => void;
 }) {
   const meta = classMeta[item.classification];
   const { sourceStates, project, applyEvidenceCorrection } = useDiligence();
@@ -783,7 +788,10 @@ function EvidenceRow({
                    </details>
                    {sourceProposal?.sourceUrl && (
                      <span data-testid={`source-research-proposal-${item.id}`} className="mt-3 block rounded-lg border border-[#8dc8e8] bg-[#eef8fc] p-3">
-                       <span className="font-mono text-[8px] font-bold uppercase tracking-[0.1em] text-[#255bb7]">New source found · review required</span>
+                        <span className="flex flex-wrap items-center justify-between gap-2 font-mono text-[8px] font-bold uppercase tracking-[0.1em] text-[#255bb7]">
+                          <span>New source found · review required</span>
+                          {proposalDisposition && <span data-testid={`proposal-disposition-${item.id}`} className="rounded-full bg-white px-2 py-1 text-[#52616b]">{proposalDisposition}</span>}
+                        </span>
                        <span className="mt-2 block text-[10px] font-semibold text-[#243844]">{sourceProposal.value} · {sourceProposal.unit}</span>
                        <span className="mt-1 block text-[9px] leading-4 text-[#52616b]">{sourceProposal.description}</span>
                         <span className="mt-2 flex flex-wrap gap-1.5">
@@ -798,8 +806,9 @@ function EvidenceRow({
                          Open {sourceProposal.sourceTitle ?? "retrieved source"}<ExternalLink aria-hidden="true" className="h-3 w-3" />
                        </a>
                        <span className="mt-3 flex flex-wrap gap-2">
-                         <button data-testid={`button-accept-source-proposal-${item.id}`} type="button" onClick={() => onAcceptSourceProposal(sourceProposal)} className="rounded bg-[#08644f] px-3 py-2 font-mono text-[8px] font-bold uppercase text-white">Accept source and finding</button>
-                         <button data-testid={`button-reject-source-proposal-${item.id}`} type="button" onClick={() => onRejectSourceProposal(item.id)} className="rounded border border-[#9aaec0] bg-white px-3 py-2 font-mono text-[8px] font-bold uppercase text-[#52616b]">Reject</button>
+                          {proposalDisposition === "pending" && <button data-testid={`button-accept-source-proposal-${item.id}`} type="button" onClick={() => onAcceptSourceProposal(sourceProposal)} className="rounded bg-[#08644f] px-3 py-2 font-mono text-[8px] font-bold uppercase text-white">Accept source and finding</button>}
+                          {proposalDisposition === "pending" && <button data-testid={`button-reject-source-proposal-${item.id}`} type="button" onClick={() => onRejectSourceProposal(item.id)} className="rounded border border-[#9aaec0] bg-white px-3 py-2 font-mono text-[8px] font-bold uppercase text-[#52616b]">Reject</button>}
+                          {proposalDisposition === "pending" && <button data-testid={`button-unresolve-source-proposal-${item.id}`} type="button" onClick={() => onMarkSourceUnresolved(item.id)} className="rounded border border-[#efabb8] bg-[#fff3f4] px-3 py-2 font-mono text-[8px] font-bold uppercase text-[#ba2f45]">Leave unresolved</button>}
                        </span>
                      </span>
                    )}
@@ -1011,7 +1020,9 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
   const [sourceResearchProgress, setSourceResearchProgress] = useState<ResearchProgress | null>(null);
   const [sourceResearchError, setSourceResearchError] = useState<string | null>(null);
   const [sourceProposals, setSourceProposals] = useState<Record<string, CustomEvidenceRecord>>({});
+  const [sourceProposalDispositions, setSourceProposalDispositions] = useState<Record<string, ProposalDisposition>>({});
   const [sourceCacheNotice, setSourceCacheNotice] = useState<string | null>(null);
+  const sourceResearchAbortRef = useRef<AbortController | null>(null);
   const [searchCoverage, setSearchCoverage] = useState(project.researchCoverage);
   const [decisionHistory, setDecisionHistory] = useState<DecisionHistoryEntry[]>(getDecisionHistory);
   const isSourceResearchBusy = sourceResearchProgress !== null;
@@ -1164,7 +1175,10 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
     setSourceResearchError(null);
     setSourceCacheNotice(null);
     setSourceProposals({});
+    setSourceProposalDispositions({});
     setSourceResearchProgress("researching");
+    const controller = new AbortController();
+    sourceResearchAbortRef.current = controller;
     try {
       const result = await researchProject(project.name, project.location, {
         focusIds,
@@ -1176,6 +1190,7 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
           citation: item.citation,
         })),
         forceRefresh,
+        signal: controller.signal,
         onProgress: setSourceResearchProgress,
       });
       setSearchCoverage(result.researchCoverage);
@@ -1185,6 +1200,7 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
           .map((item) => [item.id, item]),
       );
       setSourceProposals(proposals);
+      setSourceProposalDispositions(Object.fromEntries(Object.keys(proposals).map((id) => [id, "pending" as ProposalDisposition])));
       if (result.researchCache) {
         const label = result.researchCache.state === "updated" ? "Research updated now" : `${result.researchCache.state} cached research`;
         setSourceCacheNotice(`${label}${result.researchCache.providerAvailable === false ? `; provider unavailable (${result.researchCache.errorType ?? "upstream"})` : ""}.`);
@@ -1193,10 +1209,17 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
         setSourceResearchError("The focused searches completed, but no new project-specific source passed validation.");
       }
     } catch (error) {
-      setSourceResearchError(error instanceof Error ? error.message : "Source research is unavailable. Try again.");
+      setSourceResearchError(error instanceof Error && (error.name === "ResearchCancelledError" || error.name === "AbortError")
+        ? "Source research cancelled. No evidence or financial model inputs were changed."
+        : error instanceof Error ? error.message : "Source research is unavailable. Try again.");
     } finally {
+      sourceResearchAbortRef.current = null;
       setSourceResearchProgress(null);
     }
+  };
+
+  const cancelSourceResearch = () => {
+    sourceResearchAbortRef.current?.abort();
   };
 
   const acceptSourceProposal = (proposal: CustomEvidenceRecord) => {
@@ -1214,6 +1237,7 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
     }
     logSessionAction("Focused source research, human-accepted", proposal.id);
     recordAIDecision(proposal.id, proposal.classification, proposal.description, "accepted", proposal.classification);
+    setSourceProposalDispositions((current) => ({ ...current, [proposal.id]: "accepted" }));
     setSourceProposals((current) => {
       const next = { ...current };
       delete next[proposal.id];
@@ -1246,11 +1270,23 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
     }, 4000);
   };
 
-  const rejectSourceProposal = (id: string) => setSourceProposals((current) => {
-    const next = { ...current };
-    delete next[id];
-    return next;
-  });
+  const rejectSourceProposal = (id: string) => {
+    setSourceProposalDispositions((current) => ({ ...current, [id]: "rejected" }));
+    logSessionAction("Focused source research, human-rejected", id);
+  };
+
+  const markSourceUnresolved = (id: string) => {
+    setSourceProposalDispositions((current) => ({ ...current, [id]: "unresolved" }));
+    logSessionAction("Focused source research, left unresolved", id);
+  };
+
+  const reviewResearchFindings = () => {
+    setActiveFilter("all");
+    const firstId = Object.keys(sourceProposals).find((id) => sourceProposalDispositions[id] === "pending") ?? Object.keys(sourceProposals)[0];
+    if (firstId) {
+      window.setTimeout(() => document.getElementById(`evidence-item-${firstId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 0);
+    }
+  };
 
   const renderEvidenceRow = (item: EvidenceItem) => (
     <EvidenceRow
@@ -1265,8 +1301,10 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
       analysisBusy={activeAnalysisId === item.id}
       analysisDisabled={isAnalysisBusy}
       sourceProposal={sourceProposals[item.id]}
+      proposalDisposition={sourceProposalDispositions[item.id]}
       onAcceptSourceProposal={acceptSourceProposal}
       onRejectSourceProposal={rejectSourceProposal}
+      onMarkSourceUnresolved={markSourceUnresolved}
     />
   );
 
@@ -1307,6 +1345,16 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
                   <RefreshCw aria-hidden="true" className="h-3 w-3" /> Force provider refresh
                 </button>
               )}
+              {customProject && sourceResearchProgress && (
+                <button
+                  data-testid="button-cancel-source-research"
+                  type="button"
+                  onClick={cancelSourceResearch}
+                  className="inline-flex min-h-9 items-center justify-center gap-1 rounded-md border border-[#efabb8] bg-[#fff3f4] px-3 py-2 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#ba2f45]"
+                >
+                  <X aria-hidden="true" className="h-3 w-3" /> Cancel research
+                </button>
+              )}
               {customProject && !sourceResearchProgress
                 ? <span data-testid="custom-ai-reassessment-note" role="note" className="text-right font-mono text-[8px] uppercase tracking-[0.08em] text-[#7d898f]">Searches unresolved inputs · human acceptance required</span>
                 : batchProgress && <span data-testid="status-ai-batch" role="status" aria-live="polite" className="text-right font-mono text-[8px] uppercase tracking-[0.08em] text-[#60707d]">One item at a time · suggestions only</span>}
@@ -1314,6 +1362,16 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
           </div>
         }
       />
+      {customProject && (
+        <ResearchHandoffSummary
+          evidence={items}
+          proposals={sourceProposals}
+          dispositions={sourceProposalDispositions}
+          audit={project.researchAudit}
+          coverage={searchCoverage}
+          onReviewFindings={reviewResearchFindings}
+        />
+      )}
       {customProject && <ResearchSearchAudit coverage={searchCoverage} audit={project.researchAudit} evidence={items} />}
       {customProject && (
         <aside data-testid="custom-research-containment-status" role="status" className="mb-5 rounded-lg border-2 border-[#ba2f45] bg-[#fff3f4] px-4 py-3 text-[10px] leading-5 text-[#7f2635]">
@@ -1336,7 +1394,9 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
           <button
             data-testid="button-accept-all-source-proposals"
             type="button"
-            onClick={() => Object.values(sourceProposals).forEach(acceptSourceProposal)}
+            onClick={() => Object.entries(sourceProposals)
+              .filter(([id]) => (sourceProposalDispositions[id] ?? "pending") === "pending")
+              .forEach(([, proposal]) => acceptSourceProposal(proposal))}
             className="rounded bg-[#08644f] px-3 py-2 font-mono text-[8px] font-bold uppercase text-white"
           >
             Accept all supported findings

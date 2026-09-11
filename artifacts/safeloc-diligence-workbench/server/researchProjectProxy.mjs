@@ -39,6 +39,7 @@ const RESEARCH_RUN_BUDGET = Object.freeze({
   deadlineMs: RESEARCH_PROJECT_TIMEOUT_MS,
   maxProviderRequests: 16,
   maxFollowUps: 8,
+  maxFollowUpsPerCategory: 1,
   maxCandidatesPerCategory: 10,
   maxTotalCandidates: 80,
   maxToolCalls: RESEARCH_PROJECT_MAX_TOOL_CALLS,
@@ -765,7 +766,7 @@ function buildResearchAudit({
     const supplied = isRecord(executions[category.categoryId]) ? executions[category.categoryId] : {};
     const executedQueries = normalizeSearchTerms(
       supplied.executedQueries ?? observedQueries.filter((query) => categoryQueryMatches(category, query)),
-      RESEARCH_RUN_BUDGET.maxFollowUps + 1,
+      (RESEARCH_RUN_BUDGET.maxFollowUpsPerCategory ?? 1) + 1,
     );
     const counts = categoryStageCounts(category, sources, evidence, project);
     const explicitFailureState = ["Provider failure", "Timed out", "Not searched"].includes(supplied.state) ? supplied.state : null;
@@ -783,6 +784,8 @@ function buildResearchAudit({
       executedQueries,
       optionalFollowUpQuery: supplied.optionalFollowUpQuery ?? category.optionalFollowUpQuery,
       followUpExecutedQuery: typeof supplied.followUpExecutedQuery === "string" ? supplied.followUpExecutedQuery : null,
+      followUpCount: Number.isInteger(supplied.followUpCount) ? Math.max(0, supplied.followUpCount) : (supplied.followUpExecutedQuery ? 1 : 0),
+      followUpLimit: RESEARCH_RUN_BUDGET.maxFollowUpsPerCategory,
       state,
       stageCounts: counts,
       rejectionCounts: counts.rejectionCounts,
@@ -810,6 +813,11 @@ function buildResearchAudit({
       ? Math.min(RESEARCH_RUN_BUDGET.maxToolCalls, Math.max(0, coverage.toolCallCount))
       : 0,
     providerRequestCount: Number.isInteger(coverage.providerRequestCount) ? coverage.providerRequestCount : 0,
+    followUpCount: Number.isInteger(coverage.followUpCount)
+      ? Math.max(0, coverage.followUpCount)
+      : categories.reduce((total, category) => total + category.followUpCount, 0),
+    followUpLimit: RESEARCH_RUN_BUDGET.maxFollowUps,
+    followUpLimitPerCategory: RESEARCH_RUN_BUDGET.maxFollowUpsPerCategory,
     categories,
     categoryGaps: categories.filter((category) => category.state !== "Complete").map((category) => category.categoryId),
     providerLimitations: Array.isArray(coverage.providerLimitations) ? coverage.providerLimitations.slice(0, 12) : [],
@@ -820,6 +828,7 @@ async function orchestrateCategoryResearch(project, {
   retrieveCategory,
   now = () => Date.now(),
   budget = RESEARCH_RUN_BUDGET,
+  signal,
 } = {}) {
   if (typeof retrieveCategory !== "function") throw new Error("A bounded category retrieval function is required.");
   const startedAtMs = now();
@@ -831,7 +840,14 @@ async function orchestrateCategoryResearch(project, {
   let lastError = null;
   let toolCalls = 0;
   let toolCallBudgetExceeded = false;
+  const resolvedEvidenceIds = new Set();
   for (const category of buildResearchCategoryPlan(project).categories) {
+    if (signal?.aborted) {
+      const error = new Error("Project research was cancelled.");
+      error.name = "ResearchCancelledError";
+      error.researchErrorType = "cancelled";
+      throw error;
+    }
     const elapsed = now() - startedAtMs;
     if (elapsed >= budget.deadlineMs || toolCalls >= budget.maxToolCalls) {
       categoryExecutions[category.categoryId] = {
@@ -854,6 +870,12 @@ async function orchestrateCategoryResearch(project, {
         remainingMs: Math.max(0, budget.deadlineMs - (now() - startedAtMs)),
         remainingToolCalls: Math.max(0, budget.maxToolCalls - toolCalls),
       });
+      if (signal?.aborted) {
+        const error = new Error("Project research was cancelled.");
+        error.name = "ResearchCancelledError";
+        error.researchErrorType = "cancelled";
+        throw error;
+      }
       const primaryToolCalls = Number.isInteger(primary?.toolCallCount) ? Math.max(0, primary.toolCallCount) : 0;
       if (primaryToolCalls > budget.maxToolCalls - toolCalls) toolCallBudgetExceeded = true;
       toolCalls = Math.min(budget.maxToolCalls, toolCalls + primaryToolCalls);
@@ -862,9 +884,11 @@ async function orchestrateCategoryResearch(project, {
       executedQueries.push(...(Array.isArray(primary?.observedQueries) ? primary.observedQueries : []));
       categoryCandidates = Array.isArray(primary?.candidates) ? primary.candidates.slice(0, budget.maxCandidatesPerCategory) : [];
       candidates.push(...categoryCandidates);
+      (Array.isArray(primary?.resolvedEvidenceIds) ? primary.resolvedEvidenceIds : []).forEach((id) => resolvedEvidenceIds.add(id));
       if (primary?.gapDrivenFollowUp === true
         && toolCalls < budget.maxToolCalls
         && followUps < budget.maxFollowUps
+        && (categoryExecutions[category.categoryId]?.followUpCount ?? 0) < (budget.maxFollowUpsPerCategory ?? 1)
         && providerRequests < budget.maxProviderRequests
         && now() - startedAtMs < budget.deadlineMs) {
         followUps += 1;
@@ -876,6 +900,12 @@ async function orchestrateCategoryResearch(project, {
           remainingMs: Math.max(0, budget.deadlineMs - (now() - startedAtMs)),
           remainingToolCalls: Math.max(0, budget.maxToolCalls - toolCalls),
         });
+        if (signal?.aborted) {
+          const error = new Error("Project research was cancelled.");
+          error.name = "ResearchCancelledError";
+          error.researchErrorType = "cancelled";
+          throw error;
+        }
         const followUpToolCalls = Number.isInteger(followUp?.toolCallCount) ? Math.max(0, followUp.toolCallCount) : 0;
         if (followUpToolCalls > budget.maxToolCalls - toolCalls) toolCallBudgetExceeded = true;
         toolCalls = Math.min(budget.maxToolCalls, toolCalls + followUpToolCalls);
@@ -887,11 +917,14 @@ async function orchestrateCategoryResearch(project, {
         candidates.push(...followUpCandidates);
         categoryExecutions[category.categoryId] = {
           followUpExecutedQuery: Array.isArray(followUp?.observedQueries) ? followUp.observedQueries[0] ?? null : null,
+          followUpCount: 1,
         };
+        (Array.isArray(followUp?.resolvedEvidenceIds) ? followUp.resolvedEvidenceIds : []).forEach((id) => resolvedEvidenceIds.add(id));
       }
       state = categoryCandidates.length ? "Partial" : "No eligible evidence";
       if (primary?.eligibleCount > 0 || categoryCandidates.some((candidate) => candidate.eligible === true)) state = "Complete";
     } catch (error) {
+      if (signal?.aborted || error?.name === "ResearchCancelledError") throw error;
       lastError = error;
       providerFailure = error?.name === "AbortError" ? null : "Category provider request failed.";
       state = error?.name === "AbortError" ? "Timed out" : "Provider failure";
@@ -903,6 +936,7 @@ async function orchestrateCategoryResearch(project, {
       providerFailure,
       unresolvedGaps: state === "Complete" ? [] : category.evidenceIds,
     };
+    if (resolvedEvidenceIds.size >= RESEARCH_EVIDENCE_IDS.length) break;
   }
   const finishedAtMs = now();
   return {
@@ -914,6 +948,9 @@ async function orchestrateCategoryResearch(project, {
     toolCalls,
     toolCallBudgetExceeded,
     followUps,
+    followUpLimit: budget.maxFollowUps,
+    followUpLimitPerCategory: budget.maxFollowUpsPerCategory ?? 1,
+    resolvedEvidenceIds: [...resolvedEvidenceIds],
     candidates: candidates.slice(0, budget.maxTotalCandidates),
     categoryResults,
     lastError,
@@ -1478,6 +1515,36 @@ function sourcePriority(sourceClass) {
   }[sourceClass] ?? 4;
 }
 
+function isTexasProject(project = {}) {
+  return /\b(?:texas|tx)\b/i.test(`${project.location ?? ""} ${project.knownData?.location ?? ""}`);
+}
+
+function texasSourcePriority(source = {}) {
+  const text = `${source.url ?? ""} ${source.title ?? ""} ${source.publisher ?? ""}`.toLowerCase();
+  if (/\bercot\b|puc\.texas|twdb|texas water development|texas commission|fema|noaa|sec\.gov/.test(text)) return 0;
+  if (/\b(texas|tx)\b/.test(text) && (source.sourceClass === "primary-government" || source.sourceClass === "primary-utility")) return 1;
+  if (source.sourceClass === "primary-utility") return 2;
+  if (source.sourceClass === "primary-government") return 3;
+  if (source.sourceClass === "primary-company" && source.exactProject === true) return 4;
+  if (source.sourceClass === "primary-company") return 5;
+  return 6;
+}
+
+function prioritizeResearchSources(sources = [], project = {}) {
+  const texas = isTexasProject(project);
+  return [...sources].sort((left, right) => {
+    const leftRank = texas ? texasSourcePriority(left) : sourcePriority(left.sourceClass);
+    const rightRank = texas ? texasSourcePriority(right) : sourcePriority(right.sourceClass);
+    return leftRank - rightRank || Number(right.exactProject === true) - Number(left.exactProject === true) || String(left.url ?? "").localeCompare(String(right.url ?? ""));
+  });
+}
+
+function sourcePriorityApplied(project = {}) {
+  return isTexasProject(project)
+    ? ["Texas: ERCOT, PUCT/Texas regulators, TWDB and local records", "Texas utilities and exact-project company/SEC/IR disclosures", "FEMA/NOAA/EIA context", "Related and comparable reporting remains context-only"]
+    : ["Government and regulator records", "Utilities and primary company disclosures", "Secondary reporting"];
+}
+
 function supportsExplicitZero(id, item, sources) {
   if (item.numericValue !== 0 && item.value !== 0 && !/^(0|zero|none)$/i.test(String(item.value).trim())) return true;
   const text = [item.citation, item.description, ...sources.map((source) => source.excerpt)].join(" ").toLowerCase();
@@ -1531,7 +1598,7 @@ Governed category schedule:
 ${categoryPlan}${focusIds?.length ? ` This is a focused refresh for these unresolved variables: ${focusIds.join(", ")}. Prioritize their query angles, then still return all 16 records. Preserve unrelated existing records unless new searched evidence directly contradicts them.` : ""}${currentEvidence?.length ? `\n\nExisting evidence context:\n${JSON.stringify(currentEvidence)}` : ""}${knownDataPrompt}`;
 }
 
-function normalizeRetrievedSources(body, searchDomain = "project-identity") {
+function normalizeRetrievedSources(body, searchDomain = "project-identity", project = {}) {
   const candidates = [];
   const citedUrls = new Set();
   for (const output of Array.isArray(body?.output) ? body.output : []) {
@@ -1554,7 +1621,7 @@ function normalizeRetrievedSources(body, searchDomain = "project-identity") {
   for (const candidate of candidates) {
     if (citedUrls.has(safePublicSourceUrl(candidate.url))) candidate.claimCited = true;
   }
-  const ledger = createSourceLedger(candidates.map((source) => {
+  const prioritizedCandidates = prioritizeResearchSources(candidates.map((source) => {
     const url = safePublicSourceUrl(source.url) ?? "";
     const title = typeof source.title === "string" ? source.title.trim() : "Retrieved public source";
     return {
@@ -1570,7 +1637,8 @@ function normalizeRetrievedSources(body, searchDomain = "project-identity") {
       ...(typeof source.exactProject === "boolean" ? { exactProject: source.exactProject } : {}),
       relevanceNote: typeof source.relevanceNote === "string" ? source.relevanceNote.trim().slice(0, 500) : null,
     };
-  }), { maxRetained: RESEARCH_RUN_BUDGET.maxCandidatesPerCategory });
+  }), project);
+  const ledger = createSourceLedger(prioritizedCandidates, { maxRetained: RESEARCH_RUN_BUDGET.maxCandidatesPerCategory });
   const result = ledger.retained.map((source) => ({
     ...source,
     date: candidates.find((candidate) => safePublicSourceUrl(candidate.url) === source.originalUrl)?.date ?? null,
@@ -1685,7 +1753,7 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
     parseError.name = "ResearchParseError";
     throw parseError;
   }
-  const sources = normalizeRetrievedSources(body, "web-search");
+  const sources = normalizeRetrievedSources(body, "web-search", project);
   const searchTerms = extractSearchTerms(body);
   const observedQueriesByEvidence = extractObservedQueriesByEvidence(body, project);
   const toolCallCount = countWebSearchCalls(body);
@@ -1701,6 +1769,7 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
       observedQueriesByEvidence,
       toolCallCount,
        toolCallBudgetExceeded: toolCallCount > (activeCategory?.maxToolCalls ?? RESEARCH_PROJECT_MAX_TOOL_CALLS),
+      sourcePriorityApplied: sourcePriorityApplied(project),
       searchTermsSource: searchTerms.length ? "tool-observed" : "unavailable",
       provider: "openai",
       model: RESEARCH_PROJECT_MODEL,
@@ -1768,6 +1837,9 @@ function createResearchProjectRateLimiter({
 const defaultRateLimiter = createResearchProjectRateLimiter();
 
 function classifyResearchFailure(error) {
+  if (error?.name === "ResearchCancelledError" || error?.researchErrorType === "cancelled") {
+    return { status: 499, type: "cancelled", message: "Project research was cancelled by the requesting client." };
+  }
   if (error?.name === "AbortError") return { status: 504, type: "timeout", message: "Project research upstream request timed out after 90 seconds." };
   if (error?.name === "ResearchParseError") return { status: 502, type: "malformed-response", message: error.message };
   if (error?.name === "UpstreamRequestError") {
@@ -1856,7 +1928,7 @@ function categoryResearchIsResolved(category, research, sources, project, covera
   }
 }
 
-async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, req, documentFetchImpl = fetch }) {
+async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, req, documentFetchImpl = fetch, signal }) {
   if (!apiKey) {
     const error = new Error("Project research not configured.");
     error.name = "ConfigurationError";
@@ -1872,12 +1944,17 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
     throw error;
   }
   const controller = new AbortController();
+  const externalSignal = signal;
+  const abortFromRequest = () => controller.abort();
+  externalSignal?.addEventListener("abort", abortFromRequest, { once: true });
+  if (externalSignal?.aborted) controller.abort();
   const timeout = setTimeout(() => controller.abort(), RESEARCH_PROJECT_TIMEOUT_MS);
   const fetchedCandidatesByCategory = new Map();
   let fetchedCandidateCount = 0;
   try {
     const orchestration = await orchestrateCategoryResearch(project, {
       budget: RESEARCH_RUN_BUDGET,
+      signal: controller.signal,
       retrieveCategory: async ({ categoryId, query, attempt, remainingToolCalls }) => {
         const category = buildResearchCategoryPlan(project).categories.find((candidate) => candidate.categoryId === categoryId);
         const categoryResult = await researchProjectWithWebSearch(project, apiKey, fetchImpl, controller.signal, {
@@ -1923,6 +2000,7 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
           gapDrivenFollowUp: !categoryResolution.resolved,
           followUpQuery: buildCategoryFollowUpQuery(project, category, categoryResolution.unresolvedEvidenceIds),
           unresolvedEvidenceIds: categoryResolution.unresolvedEvidenceIds,
+          resolvedEvidenceIds: category.evidenceIds.filter((id) => !categoryResolution.unresolvedEvidenceIds.includes(id)),
           observedQueries,
           toolCallCount: categoryResult.coverage?.toolCallCount ?? 0,
           categoryResult: {
@@ -1946,6 +2024,10 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
         searchTerms: [...new Set(orchestration.categoryResults.flatMap((category) => category.coverage?.searchTerms ?? []))],
         toolCallCount: orchestration.toolCalls,
         providerRequestCount: orchestration.providerRequests,
+        followUpCount: orchestration.followUps,
+        followUpLimit: orchestration.followUpLimit,
+        followUpLimitPerCategory: orchestration.followUpLimitPerCategory,
+        sourcePriorityApplied: sourcePriorityApplied(project),
         toolCallBudgetExceeded: orchestration.toolCallBudgetExceeded,
         providerResponseIds: orchestration.categoryResults.map((category) => category.coverage?.providerResponseId).filter(Boolean),
         categoryExecutions: orchestration.categoryExecutions,
@@ -1970,10 +2052,17 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
       throw structuredError;
     }
   } catch (error) {
+    if (externalSignal?.aborted) {
+      const cancelled = new Error("Project research was cancelled.");
+      cancelled.name = "ResearchCancelledError";
+      cancelled.researchErrorType = "cancelled";
+      throw cancelled;
+    }
     if (error && !error.researchErrorType) error.researchErrorType = classifyResearchFailure(error).type;
     throw error;
   } finally {
     clearTimeout(timeout);
+    externalSignal?.removeEventListener("abort", abortFromRequest);
   }
 }
 
@@ -2031,12 +2120,23 @@ export async function handleResearchProjectRequest(
     return;
   }
 
-  const refresh = () => cache.refresh(key, () => runValidatedResearch(project, { apiKey, fetchImpl, documentFetchImpl, rateLimiter, req }));
-   if (!project.forceRefresh && containedRetained && !retainedNeedsRevalidation && retainedState === "stale") {
-    const background = refresh();
+  const requestController = new AbortController();
+  const onRequestAborted = () => requestController.abort();
+  req.once?.("aborted", onRequestAborted);
+  const refresh = (foreground = true) => cache.refresh(key, () => runValidatedResearch(project, {
+    apiKey,
+    fetchImpl,
+    documentFetchImpl,
+    rateLimiter,
+    req,
+    signal: foreground ? requestController.signal : undefined,
+  }));
+  if (!project.forceRefresh && containedRetained && !retainedNeedsRevalidation && retainedState === "stale") {
+    const background = refresh(false);
     void background.promise.catch((error) => {
       console.error("[research-project] Background refresh failed:", classifyResearchFailure(error).type);
     });
+    req.removeListener?.("aborted", onRequestAborted);
     sendJson(res, 200, withCacheMetadata(containedRetained, cacheMetadata(key, containedRetained, "stale", "running")));
     return;
   }
@@ -2044,10 +2144,12 @@ export async function handleResearchProjectRequest(
   try {
     const { promise } = refresh();
     const entry = await promise;
+    if (res.writableEnded || res.destroyed) return;
     sendJson(res, 200, withCacheMetadata(entry, cacheMetadata(key, entry, "updated")));
   } catch (error) {
     const failure = classifyResearchFailure(error);
     console.error("[research-project] Request failed:", failure.type);
+    if (res.writableEnded || res.destroyed) return;
     if (containedRetained) {
       sendJson(res, 200, withCacheMetadata(containedRetained, cacheMetadata(key, containedRetained, "stale", "failed", {
         providerAvailable: false,
@@ -2059,6 +2161,8 @@ export async function handleResearchProjectRequest(
       res.setHeader("retry-after", String(error.retryAfterSeconds));
     }
     sendJson(res, failure.status, { error: failure.message, errorType: failure.type });
+  } finally {
+    req.removeListener?.("aborted", onRequestAborted);
   }
 }
 
@@ -2109,5 +2213,7 @@ export {
   safePublicSourceUrl,
   createResearchProjectRateLimiter,
   classifyResearchFailure,
+  prioritizeResearchSources,
+  sourcePriorityApplied,
   runValidatedResearch,
 };

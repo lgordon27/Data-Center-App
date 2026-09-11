@@ -14,3 +14,17 @@ mtime_ms = 1788889148380
 storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:f36c34ed-5536-4eff-ae57-d0f347f2e42e/42ebc53f-90ac-4ded-82f3-3042f501bc15/ffc0a5b4-0a47-4fd9-b7f5-eed431061308"
 storage_version_token = "1788889156171675"
 content_type = "text/html"
+
+[[outputs]]
+id = "-mh67qAylZKdruVzoRtP1"
+uri = "file://batch-5-corrective-pass-report.md"
+type = "text"
+title = "SafeLoc Batch 5 corrective-pass report"
+description = "Standalone Markdown report covering the final commit, Texas research behavior, bounds, telemetry, Evidence Room persistence, verification totals, risks, and explicit exclusions."
+logical_id = "3a4305f9-fdcb-4776-8d95-70ed40fab057"
+content_hash = "sha256:483cdbd7185b8207c6966e75a2c835af32db86c9b3bc5cc13c2de1a928ac622d"
+size = 13236
+mtime_ms = 1789089318371
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:f36c34ed-5536-4eff-ae57-d0f347f2e42e/3a4305f9-fdcb-4776-8d95-70ed40fab057/a04f5b9d-b5c2-4594-b79e-9a0839bb5615"
+storage_version_token = "1789089323988655"
+content_type = "text/markdown"

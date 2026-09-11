@@ -349,6 +349,9 @@ test.describe("custom project research", () => {
         status: "Operating",
         sourceUrl: "https://compute-atlas.com/facilities/qts-irving-1",
         providerId: "qts-irving-1",
+        city: "Irving",
+        county: "Dallas",
+        state: "TX",
       },
     });
 

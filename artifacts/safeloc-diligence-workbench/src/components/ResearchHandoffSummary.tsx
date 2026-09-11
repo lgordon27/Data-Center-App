@@ -19,6 +19,10 @@ type ResearchHandoffSummaryProps = {
     followUpCount?: number;
     followUpLimit?: number;
     followUpLimitPerCategory?: number;
+    physicalOpenBudget?: number;
+    physicalOpensUsed?: number;
+    physicalOpensRemaining?: number;
+    physicalOpenBudgetExceeded?: boolean;
   };
   onReviewFindings: () => void;
 };
@@ -53,7 +57,12 @@ export function ResearchHandoffSummary({
   const overridden = Object.values(dispositions).filter((value) => value === "overridden").length;
   const returnedAuthorities = new Set(audit?.categories.flatMap((category) => category.returnedDomains ?? []) ?? []);
   const openedDocuments = (audit?.categories.flatMap((category) => category.openedDocuments ?? []) ?? []).filter((document) => document.opened).length;
+  const reusedDocuments = (audit?.categories.flatMap((category) => category.openedDocuments ?? []) ?? []).filter((document) => !document.opened && document.reusedFromCanonicalUrl).length;
+  const retainedPassages = (audit?.categories.flatMap((category) => category.openedDocuments ?? []) ?? []).filter((document) => Boolean(document.retainedPassage)).length;
   const targetedAuthorities = new Set(audit?.categories.flatMap((category) => category.authorityTargets?.names ?? []) ?? []);
+  const localAuthorities = audit?.categories.flatMap((category) => category.localAuthorities ?? category.authorityTargets?.localAuthorities ?? []) ?? [];
+  const authorityLimitations = [...new Set(audit?.categories.flatMap((category) => category.authorityLimitations ?? category.authorityTargets?.limitations ?? []) ?? [])];
+  const unresolvedIds = [...new Set(audit?.categories.flatMap((category) => category.unresolvedGaps ?? []) ?? [])];
 
   return (
     <section data-testid="research-handoff-summary" className="mb-5 rounded-xl border border-[#b8cde0] bg-[#f6fbfe] px-4 py-4 md:px-5">
@@ -93,9 +102,12 @@ export function ResearchHandoffSummary({
         <summary data-testid="research-handoff-details" className="cursor-pointer list-none px-3 py-2 font-mono text-[8px] font-bold uppercase tracking-[0.1em] text-[#60707d] [&::-webkit-details-marker]:hidden">Search and authority detail</summary>
         <div className="grid gap-3 border-t border-[#e5eae8] p-3 text-[9px] leading-4 text-[#52616b] sm:grid-cols-2">
           <p><strong className="text-[#243844]">Targeted:</strong> {targetedAuthorities.size} named authorities or authority groups. <strong className="text-[#243844]">Returned:</strong> {returnedAuthorities.size} domains.</p>
-          <p><strong className="text-[#243844]">Opened:</strong> {openedDocuments} unique document receipts. <strong className="text-[#243844]">Retained source records:</strong> {coverage?.retrievedSourceCount ?? 0}.</p>
-          <p><strong className="text-[#243844]">Queries:</strong> {audit?.categories.reduce((total, category) => total + category.executedQueries.length, 0) ?? 0} provider-observed query records. Follow-ups: {coverage?.followUpCount ?? 0}/{coverage?.followUpLimit ?? audit?.followUpLimit ?? "bounded"}.</p>
+           <p><strong className="text-[#243844]">Local authority discovery:</strong> {localAuthorities.length} identified · {localAuthorities.filter((authority) => authority.status === "established").length} official domains established. {authorityLimitations.length ? "Limitations recorded below." : "No authority discovery limitation recorded."}</p>
+           <p><strong className="text-[#243844]">Documents:</strong> {openedDocuments} physical opens · {reusedDocuments} reused receipts · {retainedPassages} retained passages. <strong className="text-[#243844]">Retained source records:</strong> {coverage?.retrievedSourceCount ?? 0}.</p>
+           <p><strong className="text-[#243844]">Physical-open budget:</strong> {coverage?.physicalOpensUsed ?? audit?.physicalOpensUsed ?? openedDocuments}/{coverage?.physicalOpenBudget ?? audit?.physicalOpenBudget ?? audit?.budget.maxPhysicalDocumentOpens ?? 24} used · {coverage?.physicalOpensRemaining ?? audit?.physicalOpensRemaining ?? "unknown"} remaining{coverage?.physicalOpenBudgetExceeded || audit?.physicalOpenBudgetExceeded ? " · ceiling reached" : ""}.</p>
+           <p><strong className="text-[#243844]">Queries:</strong> {audit?.categories.reduce((total, category) => total + category.executedQueries.length, 0) ?? 0} provider-observed query records. Follow-ups: {coverage?.followUpCount ?? 0}/{coverage?.followUpLimit ?? audit?.followUpLimit ?? "bounded"}. Unresolved IDs: {unresolvedIds.length ? unresolvedIds.join(", ") : "none recorded"}.</p>
           <p>{coverage?.failedDomains?.length ? <><strong className="text-[#8a5200]">Unavailable:</strong> {coverage.failedDomains.join(", ")}.</> : "No returned-domain access limitations were recorded."}</p>
+           {authorityLimitations.length > 0 && <p className="sm:col-span-2 text-[#8a5200]"><strong>Authority limitations:</strong> {authorityLimitations.join(" · ")}</p>}
         </div>
       </details>
       {unresolved.length > 0 && (

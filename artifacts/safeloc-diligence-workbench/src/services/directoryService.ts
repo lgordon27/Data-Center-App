@@ -34,6 +34,8 @@ export type DirectoryFacility = {
   canonicalProjectId?: string;
   directoryDisposition?: "canonical" | "unverified-related";
   relationshipReason?: string;
+  authorityDomains?: string[];
+  companyDomains?: string[];
 };
 
 export type DirectoryResponse = {
@@ -100,6 +102,9 @@ function parseFacility(value: unknown): DirectoryFacility {
   const status = statuses.includes(value.status as typeof statuses[number]) ? value.status as DirectoryFacility["status"] : "unknown";
   const confidence = confidences.includes(value.confidence as typeof confidences[number]) ? value.confidence as DirectoryFacility["confidence"] : "reported";
   const numberOrNull = (candidate: unknown) => typeof candidate === "number" && Number.isFinite(candidate) && candidate >= 0 ? candidate : null;
+  const domains = (candidate: unknown) => Array.isArray(candidate)
+    ? [...new Set(candidate.filter((item): item is string => typeof item === "string" && /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(item.trim())).map((item) => item.trim()))].slice(0, 8)
+    : [];
   return {
     id: value.id.trim(),
     name: value.name.trim(),
@@ -119,6 +124,8 @@ function parseFacility(value: unknown): DirectoryFacility {
     ...(typeof value.canonicalProjectId === "string" && value.canonicalProjectId.trim() ? { canonicalProjectId: value.canonicalProjectId.trim() } : {}),
     ...(["canonical", "unverified-related"].includes(String(value.directoryDisposition)) ? { directoryDisposition: value.directoryDisposition as DirectoryFacility["directoryDisposition"] } : {}),
     ...(typeof value.relationshipReason === "string" && value.relationshipReason.trim() ? { relationshipReason: value.relationshipReason.trim() } : {}),
+    ...(domains(value.authorityDomains).length ? { authorityDomains: domains(value.authorityDomains) } : {}),
+    ...(domains(value.companyDomains).length ? { companyDomains: domains(value.companyDomains) } : {}),
   };
 }
 

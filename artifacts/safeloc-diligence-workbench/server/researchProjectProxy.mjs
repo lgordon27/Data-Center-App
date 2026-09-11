@@ -34,7 +34,7 @@ const execFile = promisify(execFileCallback);
 const RESEARCH_PROJECT_TIMEOUT_MS = 90_000;
 const RESEARCH_PROJECT_MAX_TOOL_CALLS = 32;
 const RESEARCH_POLICY_VERSION = 2;
-const RESEARCH_CATEGORY_AUDIT_VERSION = 2;
+const RESEARCH_CATEGORY_AUDIT_VERSION = 3;
 const RESEARCH_RUN_BUDGET = Object.freeze({
   deadlineMs: RESEARCH_PROJECT_TIMEOUT_MS,
   maxProviderRequests: 16,
@@ -43,6 +43,7 @@ const RESEARCH_RUN_BUDGET = Object.freeze({
   maxCandidatesPerCategory: 10,
   maxTotalCandidates: 80,
   maxToolCalls: RESEARCH_PROJECT_MAX_TOOL_CALLS,
+  maxPhysicalDocumentOpens: 24,
 });
 const RESEARCH_DOCUMENT_MAX_BYTES = 1_000_000;
 const RESEARCH_DOCUMENT_MAX_REDIRECTS = 3;
@@ -67,7 +68,7 @@ const RESEARCH_CATEGORIES = Object.freeze([
 const TEXAS_CATEGORY_TARGETS = Object.freeze({
   "project-identity": {
     names: ["Texas project records", "project/developer disclosures", "ERCOT", "PUCT"],
-    domains: ["ercot.com", "puc.texas.gov", "sec.gov", "tx.us"],
+    domains: ["ercot.com", "puc.texas.gov", "sec.gov"],
   },
   grid: {
     names: ["ERCOT", "PUCT", "Texas interconnection records"],
@@ -75,15 +76,15 @@ const TEXAS_CATEGORY_TARGETS = Object.freeze({
   },
   electricity: {
     names: ["ERCOT", "PUCT", "EIA market context", "Texas utility records"],
-    domains: ["ercot.com", "puc.texas.gov", "eia.gov", "tx.us"],
+    domains: ["ercot.com", "puc.texas.gov", "eia.gov"],
   },
   water: {
     names: ["TWDB", "municipal water authorities", "county authorities"],
-    domains: ["twdb.texas.gov", "tx.us"],
+    domains: ["twdb.texas.gov"],
   },
   "permitting-community": {
     names: ["municipal agendas", "county agendas", "permits", "agreements"],
-    domains: ["tx.us"],
+    domains: [],
   },
   "construction-capital": {
     names: ["SEC EDGAR", "company investor relations", "official developer disclosures"],
@@ -95,7 +96,7 @@ const TEXAS_CATEGORY_TARGETS = Object.freeze({
   },
   "climate-operational-hazard": {
     names: ["FEMA", "NOAA", "Texas geographic hazard records"],
-    domains: ["fema.gov", "noaa.gov", "tx.us"],
+    domains: ["fema.gov", "noaa.gov"],
   },
 });
 const DEFAULT_RESEARCH_CAPACITY_MW = 1_200;
@@ -401,12 +402,37 @@ function parseResearchProjectBody(body) {
     const providerId = typeof body.knownData.providerId === "string" && body.knownData.providerId.trim()
       ? body.knownData.providerId.trim().slice(0, 160)
       : null;
+    const normalizeKnownText = (value, maxLength = 160) => typeof value === "string" && value.trim()
+      ? value.trim().slice(0, maxLength)
+      : null;
+    const city = normalizeKnownText(body.knownData.city);
+    const county = normalizeKnownText(body.knownData.county);
+    const state = normalizeKnownText(body.knownData.state, 80);
+    const waterAuthority = normalizeKnownText(body.knownData.waterAuthority);
+    const permittingAuthority = normalizeKnownText(body.knownData.permittingAuthority);
+    const authorityNames = Array.isArray(body.knownData.authorityNames)
+      ? [...new Set(body.knownData.authorityNames.map((value) => normalizeKnownText(value)).filter(Boolean))].slice(0, 8)
+      : [];
+    const authorityDomains = Array.isArray(body.knownData.authorityDomains)
+      ? [...new Set(body.knownData.authorityDomains.map((value) => normalizeKnownText(value, 120)?.replace(/^https?:\/\//, "").replace(/\/.*$/, "")).filter((value) => value && /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(value)))].slice(0, 12)
+      : [];
+    const companyDomains = Array.isArray(body.knownData.companyDomains)
+      ? [...new Set(body.knownData.companyDomains.map((value) => normalizeKnownText(value, 120)?.replace(/^https?:\/\//, "").replace(/\/.*$/, "")).filter((value) => value && /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(value)))].slice(0, 8)
+      : [];
     const normalized = {
       ...(capacity === null ? {} : { capacity }),
       ...(operator ? { operator } : {}),
       ...(status ? { status } : {}),
       ...(sourceUrl ? { sourceUrl } : {}),
       ...(providerId ? { providerId } : {}),
+      ...(city ? { city } : {}),
+      ...(county ? { county } : {}),
+      ...(state ? { state } : {}),
+      ...(waterAuthority ? { waterAuthority } : {}),
+      ...(permittingAuthority ? { permittingAuthority } : {}),
+      ...(authorityNames.length ? { authorityNames } : {}),
+      ...(authorityDomains.length ? { authorityDomains } : {}),
+      ...(companyDomains.length ? { companyDomains } : {}),
     };
     if (Object.keys(normalized).length) knownData = normalized;
   }
@@ -487,15 +513,83 @@ function researchCategoryForEvidence(id) {
   return RESEARCH_CATEGORIES.filter((category) => category.evidenceIds.includes(id)).map((category) => category.id);
 }
 
+function inferLocationAuthorityParts(project = {}) {
+  const knownData = project.knownData ?? {};
+  const location = String(project.location ?? "");
+  const county = knownData.county
+    ?? location.match(/\b([^,]+?)\s+County\b/i)?.[1]
+    ?? null;
+  const city = knownData.city
+    ?? location.match(/^\s*([^,]+?)(?:\s*,|\s+County\b)/i)?.[1]
+    ?? null;
+  const state = knownData.state
+    ?? (/\b(Texas|TX)\b/i.test(location) ? "Texas" : null);
+  return {
+    city: city?.trim() || null,
+    county: county?.trim() || null,
+    state: state?.trim() || null,
+  };
+}
+
+function buildLocalAuthorityTargets(project = {}) {
+  const knownData = project.knownData ?? {};
+  const parts = inferLocationAuthorityParts(project);
+  const targets = [];
+  const add = (name, kind, domain = null, establishmentMethod = "location-context") => {
+    if (!name) return;
+    targets.push({
+      name,
+      kind,
+      domain: domain || null,
+      establishmentMethod,
+      status: domain ? "established" : "identified-no-domain",
+    });
+  };
+  const knownDomains = Array.isArray(knownData.authorityDomains) ? knownData.authorityDomains : [];
+  const domainFor = (index) => knownDomains[index] ?? null;
+  if (knownData.permittingAuthority) add(knownData.permittingAuthority, "permitting", domainFor(0), "known-data");
+  else if (parts.city) add(`City of ${parts.city}`, "municipal", domainFor(0));
+  if (parts.county) add(`${parts.county} County`, "county", domainFor(parts.city ? 1 : 0));
+  if (knownData.waterAuthority) add(knownData.waterAuthority, "water", domainFor(knownData.permittingAuthority || parts.city ? 1 : 0), "known-data");
+  if (Array.isArray(knownData.authorityNames)) {
+    knownData.authorityNames.forEach((name, index) => add(name, "known-authority", domainFor(index), "known-data"));
+  }
+  const limitations = [];
+  if (parts.state?.toLowerCase() === "texas" && !targets.some((target) => target.domain)) {
+    limitations.push("A local authority was inferred from the known location, but no official domain was established in the supplied project context.");
+  } else if (parts.state?.toLowerCase() === "texas" && targets.some((target) => target.status === "identified-no-domain")) {
+    limitations.push("Some local authorities were identified by name, but their official domains were not established; the unrestricted fallback is required.");
+  }
+  if (!parts.city && !parts.county && !knownData.authorityNames?.length) {
+    limitations.push("City, county, or named local authority was not established from the known project context.");
+  }
+  return { targets, limitations };
+}
+
+function categoryAuthorityTargets(project, categoryId) {
+  const base = isTexasProject(project)
+    ? TEXAS_CATEGORY_TARGETS[categoryId] ?? { names: [], domains: [] }
+    : { names: [], domains: [] };
+  const local = ["water", "permitting-community"].includes(categoryId)
+    ? buildLocalAuthorityTargets(project)
+    : { targets: [], limitations: [] };
+  const localNames = local.targets.map((target) => target.name);
+  const localDomains = local.targets.map((target) => target.domain).filter(Boolean);
+  return {
+    names: [...new Set([...base.names, ...localNames])],
+    domains: [...new Set([...base.domains, ...localDomains])],
+    localAuthorities: local.targets,
+    limitations: local.limitations,
+  };
+}
+
 function buildResearchCategoryPlan(project) {
   const plan = RESEARCH_CATEGORIES.map((category) => {
     const firstEvidenceId = category.evidenceIds[0];
     const followUpEvidenceId = category.evidenceIds[1] ?? firstEvidenceId;
     const requestedPrimaryQuery = buildCategoryQuery(project, category, "primary", firstEvidenceId);
     const optionalFollowUpQuery = buildCategoryQuery(project, category, "follow-up", followUpEvidenceId);
-    const authorityTargets = isTexasProject(project)
-      ? TEXAS_CATEGORY_TARGETS[category.id] ?? { names: [], domains: [] }
-      : { names: [], domains: [] };
+    const authorityTargets = categoryAuthorityTargets(project, category.id);
     return {
       categoryId: category.id,
       label: category.label,
@@ -838,8 +932,14 @@ function categoryReturnedDomains(sources = []) {
 function categoryOpenedDocuments(sources = []) {
   return sources.map((source) => {
     const outcome = source.accessOutcome ?? {};
+    const referringUrls = [...new Set([
+      ...(Array.isArray(outcome.referringUrls) ? outcome.referringUrls : []),
+      ...(Array.isArray(source.documentReferringUrls) ? source.documentReferringUrls : []),
+      source.originalUrl ?? source.url,
+    ].filter(Boolean))];
     return {
       originalUrl: source.originalUrl ?? source.url ?? null,
+      referringUrls,
       resolvedUrl: outcome.resolvedUrl ?? source.resolvedUrl ?? source.url ?? null,
       canonicalUrl: outcome.canonicalUrl ?? source.canonicalUrl ?? source.url ?? null,
       opened: source.documentAccessReused !== true,
@@ -900,6 +1000,8 @@ function buildResearchAudit({
       followUpTriggerEvidenceIds: Array.isArray(supplied.followUpTriggerEvidenceIds) ? supplied.followUpTriggerEvidenceIds.filter((id) => category.evidenceIds.includes(id)).slice(0, 8) : [],
       followUpSkipReason: supplied.followUpSkipReason ?? (category.evidenceIds.length ? "no-justified-gap" : "evidence-resolved"),
       authorityTargets: category.authorityTargets,
+      localAuthorities: category.authorityTargets?.localAuthorities ?? [],
+      authorityLimitations: category.authorityTargets?.limitations ?? [],
       returnedDomains: Array.isArray(supplied.returnedDomains) ? supplied.returnedDomains.filter(Boolean).slice(0, 20) : categoryReturnedDomains(sources.filter((source) => source.searchDomain === category.categoryId)),
       openedDocuments: Array.isArray(supplied.openedDocuments) ? supplied.openedDocuments.slice(0, 20) : categoryOpenedDocuments(sources.filter((source) => source.searchDomain === category.categoryId)),
       state,
@@ -929,6 +1031,10 @@ function buildResearchAudit({
       ? Math.min(RESEARCH_RUN_BUDGET.maxToolCalls, Math.max(0, coverage.toolCallCount))
       : 0,
     providerRequestCount: Number.isInteger(coverage.providerRequestCount) ? coverage.providerRequestCount : 0,
+    physicalOpenBudget: RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens,
+    physicalOpensUsed: Number.isInteger(coverage.physicalOpensUsed) ? coverage.physicalOpensUsed : 0,
+    physicalOpensRemaining: Math.max(0, RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens - (Number.isInteger(coverage.physicalOpensUsed) ? coverage.physicalOpensUsed : 0)),
+    physicalOpenBudgetExceeded: coverage.physicalOpenBudgetExceeded === true,
     followUpCount: Number.isInteger(coverage.followUpCount)
       ? Math.max(0, coverage.followUpCount)
       : categories.reduce((total, category) => total + category.followUpCount, 0),
@@ -956,6 +1062,7 @@ async function orchestrateCategoryResearch(project, {
   let lastError = null;
   let toolCalls = 0;
   let toolCallBudgetExceeded = false;
+  let physicalOpenBudgetExceeded = false;
   const resolvedEvidenceIds = new Set();
   for (const category of buildResearchCategoryPlan(project).categories) {
     if (signal?.aborted) {
@@ -965,14 +1072,14 @@ async function orchestrateCategoryResearch(project, {
       throw error;
     }
     const elapsed = now() - startedAtMs;
-    if (elapsed >= budget.deadlineMs || toolCalls >= budget.maxToolCalls || providerRequests >= budget.maxProviderRequests) {
+    if (physicalOpenBudgetExceeded || elapsed >= budget.deadlineMs || toolCalls >= budget.maxToolCalls || providerRequests >= budget.maxProviderRequests) {
       categoryExecutions[category.categoryId] = {
         issuedPrimaryQuery: null,
         providerObservedPrimaryQueries: [],
         issuedFollowUpQuery: null,
         providerObservedFollowUpQueries: [],
         followUpTriggerEvidenceIds: [],
-        followUpSkipReason: elapsed >= budget.deadlineMs ? "deadline" : toolCalls >= budget.maxToolCalls ? "tool-call-budget" : "provider-request-budget",
+        followUpSkipReason: physicalOpenBudgetExceeded ? "physical-open-budget" : elapsed >= budget.deadlineMs ? "deadline" : toolCalls >= budget.maxToolCalls ? "tool-call-budget" : "provider-request-budget",
         returnedDomains: [],
         openedDocuments: [],
         state: elapsed >= budget.deadlineMs || toolCalls >= budget.maxToolCalls ? "Timed out" : "Not searched",
@@ -1028,6 +1135,8 @@ async function orchestrateCategoryResearch(project, {
       });
       execution.returnedDomains = categoryReturnedDomains(categoryCandidates);
       execution.openedDocuments = categoryOpenedDocuments(categoryCandidates);
+      execution.accessLimitations = [...new Set(categoryCandidates.flatMap((source) => source.accessOutcome?.extractionLimitations ?? []))].slice(0, 8);
+      physicalOpenBudgetExceeded ||= primary?.physicalOpenBudgetExceeded === true;
       execution.followUpTriggerEvidenceIds = Array.isArray(primary?.unresolvedEvidenceIds) ? primary.unresolvedEvidenceIds : [];
       const globalEarlyStop = resolvedEvidenceIds.size >= RESEARCH_EVIDENCE_IDS.length;
       const primaryCategoryResolved = primary?.categoryResolved === true
@@ -1039,6 +1148,7 @@ async function orchestrateCategoryResearch(project, {
         && followUps < budget.maxFollowUps
         && (budget.maxFollowUpsPerCategory ?? 1) > 0
         && providerRequests < budget.maxProviderRequests
+        && !physicalOpenBudgetExceeded
         && now() - startedAtMs < budget.deadlineMs) {
         followUps += 1;
         followUpWasRun = true;
@@ -1074,13 +1184,16 @@ async function orchestrateCategoryResearch(project, {
         };
         execution.returnedDomains = categoryReturnedDomains(categoryCandidates);
         execution.openedDocuments = categoryOpenedDocuments(categoryCandidates);
+        execution.accessLimitations = [...new Set(categoryCandidates.flatMap((source) => source.accessOutcome?.extractionLimitations ?? []))].slice(0, 8);
         (Array.isArray(followUp?.resolvedEvidenceIds) ? followUp.resolvedEvidenceIds : []).forEach((id) => {
           resolvedEvidenceIds.add(id);
           categoryResolvedEvidenceIds.add(id);
         });
         execution.followUpSkipReason = followUp?.categoryResolved === true ? null : "category-follow-up-limit";
       } else {
-        execution.followUpSkipReason = globalEarlyStop
+          execution.followUpSkipReason = physicalOpenBudgetExceeded
+            ? "physical-open-budget"
+            : globalEarlyStop
           ? "early-stop"
           : primaryCategoryResolved
             ? "evidence-resolved"
@@ -1127,6 +1240,8 @@ async function orchestrateCategoryResearch(project, {
     followUps,
     followUpLimit: budget.maxFollowUps,
     followUpLimitPerCategory: budget.maxFollowUpsPerCategory ?? 1,
+    physicalOpensUsed: Number.isInteger(budget.physicalOpensUsed) ? budget.physicalOpensUsed : 0,
+    physicalOpenBudgetExceeded,
     resolvedEvidenceIds: [...resolvedEvidenceIds],
     candidates: candidates.slice(0, budget.maxTotalCandidates),
     categoryResults,
@@ -1436,6 +1551,7 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
         sourceState: metadata?.sourceState ?? "retained",
         redirectChain: metadata?.redirectChain ?? [],
         contentType: metadata?.contentType ?? null,
+          referringUrls: Array.isArray(metadata?.referringUrls) ? metadata.referringUrls : [metadata?.originalUrl ?? resolvedUrl],
          accessOutcome: metadata?.accessOutcome ?? null,
         claimCited: metadata?.claimCited === true,
          supportedEvidenceIds: Array.isArray(metadata?.supportedEvidenceIds) ? metadata.supportedEvidenceIds : [],
@@ -1651,6 +1767,14 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
         : 0,
       toolCallLimit: RESEARCH_PROJECT_MAX_TOOL_CALLS,
       toolCallBudgetExceeded: coverage?.toolCallBudgetExceeded === true,
+      physicalOpenBudget: Number.isInteger(coverage?.physicalOpenBudget)
+        ? coverage.physicalOpenBudget
+        : RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens,
+      physicalOpensUsed: Number.isInteger(coverage?.physicalOpensUsed) ? coverage.physicalOpensUsed : 0,
+      physicalOpensRemaining: Number.isInteger(coverage?.physicalOpensRemaining)
+        ? coverage.physicalOpensRemaining
+        : RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens,
+      physicalOpenBudgetExceeded: coverage?.physicalOpenBudgetExceeded === true,
       observedQueriesByEvidence: Object.fromEntries(RESEARCH_EVIDENCE_IDS.flatMap((id) => {
         const terms = normalizeSearchTerms(coverage?.observedQueriesByEvidence?.[id]);
         return terms.length ? [[id, terms]] : [];
@@ -1788,26 +1912,50 @@ function buildCategoryQuery({ name, location, knownData }, category, attempt, ev
   const operatorAndProject = knownData?.operator
     ? `"${knownData.operator}" "${name}"`
     : projectAndLocation;
-  const suffix = attempt === "follow-up" ? "official record corroboration broader web fallback" : "official primary record first broader web fallback";
+  const authorityTargets = categoryAuthorityTargets({ name, location, knownData }, category.id);
+  const companyDomains = ["construction-capital", "tenant-counterparty"].includes(category.id)
+    ? (knownData?.companyDomains ?? [])
+    : [];
+  const queryDomains = [...new Set([...authorityTargets.domains, ...companyDomains])];
+  const primarySites = queryDomains.length
+    ? ` (${queryDomains.map((domain) => `site:${domain}`).join(" OR ")})`
+    : "";
+  const localNames = authorityTargets.localAuthorities?.map((authority) => `"${authority.name}"`).join(" ") ?? "";
+  if (attempt === "follow-up") {
+    const fallbackAngle = category.id === "construction-capital"
+      ? "SEC EDGAR investor relations official developer project disclosure"
+      : category.id === "tenant-counterparty"
+        ? "SEC EDGAR investor relations official project developer customer offtake"
+        : category.id === "water"
+          ? "municipal county water demand consumption rights permit drought"
+          : category.id === "permitting-community"
+            ? "municipal county agenda permit public hearing agreement"
+            : category.id === "grid"
+              ? "ERCOT PUCT interconnection queue transmission study exact project"
+              : category.id === "project-identity"
+                ? "project operator facility identity permit record"
+                : `${RESEARCH_QUERY_ANGLES[evidenceId ?? category.evidenceIds[0]]?.[1] ?? category.label} exact project`;
+    return `${operatorAndProject} ${localNames} Texas ${fallbackAngle}`.replace(/\s+/g, " ").trim();
+  }
   switch (category.id) {
     case "project-identity":
-      return `${projectAndLocation} Texas project permit operator disclosure ERCOT PUCT (site:ercot.com OR site:puc.texas.gov OR site:sec.gov OR site:tx.us) ${suffix}`;
+      return `${projectAndLocation} Texas project permit operator disclosure ERCOT PUCT${primarySites}`;
     case "grid":
-      return `${projectAndLocation} ERCOT PUCT Texas interconnection queue transmission study (site:ercot.com OR site:puc.texas.gov) ${suffix}`;
+      return `${projectAndLocation} ERCOT PUCT Texas interconnection queue transmission study${primarySites}`;
     case "electricity":
-      return `${projectAndLocation} ERCOT PUCT Texas utility tariff rate case EIA market context (site:ercot.com OR site:puc.texas.gov OR site:eia.gov OR site:tx.us) ${suffix}`;
+      return `${projectAndLocation} ERCOT PUCT Texas utility tariff rate case EIA market context${primarySites}`;
     case "water":
-      return `${projectAndLocation} TWDB municipal county water demand consumption rights permit (site:twdb.texas.gov OR site:tx.us) ${suffix}`;
+      return `${projectAndLocation} ${localNames} TWDB municipal county water demand consumption rights permit${primarySites}`;
     case "permitting-community":
-      return `${projectAndLocation} Texas municipal county agenda permit public hearing agreement (site:tx.us) ${suffix}`;
+      return `${projectAndLocation} ${localNames} Texas municipal county agenda permit public hearing agreement${primarySites}`;
     case "construction-capital":
-      return `${operatorAndProject} SEC EDGAR investor relations official developer project disclosure (site:sec.gov) ${suffix}`;
+      return `${operatorAndProject} SEC EDGAR investor relations official developer project disclosure${primarySites}`;
     case "tenant-counterparty":
-      return `${operatorAndProject} SEC EDGAR investor relations official project developer disclosure customer offtake (site:sec.gov) ${suffix}`;
+      return `${operatorAndProject} SEC EDGAR investor relations official project developer disclosure customer offtake${primarySites}`;
     case "climate-operational-hazard":
-      return `${projectAndLocation} FEMA NOAA Texas exact site flood wildfire drought hazard (site:fema.gov OR site:noaa.gov OR site:tx.us) ${suffix}`;
+      return `${projectAndLocation} FEMA NOAA Texas exact site flood wildfire drought hazard${primarySites}`;
     default:
-      return `${projectAndLocation} ${genericQuery} ${suffix}`;
+      return `${projectAndLocation} ${genericQuery}${primarySites}`;
   }
 }
 
@@ -2243,6 +2391,8 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
   const fetchedCandidatesByCategory = new Map();
   const openedDocumentsByCanonicalUrl = new Map();
   let fetchedCandidateCount = 0;
+  let physicalOpensUsed = 0;
+  let physicalOpenBudgetExceeded = false;
   try {
     const orchestration = await orchestrateCategoryResearch(project, {
       budget: RESEARCH_RUN_BUDGET,
@@ -2265,17 +2415,60 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
         const accessedSources = [];
         for (const source of boundedSources) {
           throwIfResearchCancelled(controller.signal);
-          const canonicalUrl = canonicalizeSourceUrl(source.canonicalUrl ?? source.resolvedUrl ?? source.url);
-          const previousAccess = canonicalUrl ? openedDocumentsByCanonicalUrl.get(canonicalUrl) : null;
-          const accessOutcome = previousAccess
-            ? previousAccess
-            : await accessResearchDocument(source, { fetchImpl: documentFetchImpl, signal: controller.signal });
-          if (canonicalUrl && !previousAccess) openedDocumentsByCanonicalUrl.set(canonicalUrl, accessOutcome);
+          const originalUrl = source.originalUrl ?? source.url ?? null;
+          const originalCanonicalUrl = canonicalizeSourceUrl(originalUrl);
+          const announcedCanonicalUrl = canonicalizeSourceUrl(source.canonicalUrl ?? source.resolvedUrl ?? source.url);
+          const previousAccess = (originalCanonicalUrl && openedDocumentsByCanonicalUrl.get(originalCanonicalUrl))
+            || (announcedCanonicalUrl && openedDocumentsByCanonicalUrl.get(announcedCanonicalUrl))
+            || null;
+          let accessOutcome;
+          if (previousAccess) {
+            accessOutcome = {
+              ...previousAccess,
+              originalUrl,
+              referringUrls: [...new Set([...(previousAccess.referringUrls ?? []), originalUrl].filter(Boolean))],
+            };
+          } else {
+            const preflight = evaluateResearchDocumentAccess(source);
+            if (preflight.state !== "accessible") {
+              accessOutcome = preflight;
+            } else if (physicalOpensUsed >= RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens) {
+              accessOutcome = {
+                ...preflight,
+                state: "not-attempted",
+                reason: "physical-open-budget",
+                originalUrl,
+                resolvedUrl: null,
+                canonicalUrl: announcedCanonicalUrl,
+                referringUrls: [originalUrl].filter(Boolean),
+                extractionLimitations: ["The hard physical document-open ceiling was reached; no additional document was fetched."],
+              };
+            } else {
+              physicalOpensUsed += 1;
+              accessOutcome = await accessResearchDocument(source, { fetchImpl: documentFetchImpl, signal: controller.signal });
+              accessOutcome = {
+                ...accessOutcome,
+                referringUrls: [originalUrl].filter(Boolean),
+                physicalOpenIndex: physicalOpensUsed,
+              };
+            }
+          }
+          if (accessOutcome.reason === "physical-open-budget") {
+            physicalOpenBudgetExceeded = true;
+          }
+          const finalCanonicalUrl = canonicalizeSourceUrl(accessOutcome.canonicalUrl ?? accessOutcome.resolvedUrl ?? announcedCanonicalUrl);
+          if (!previousAccess) {
+            if (originalCanonicalUrl) openedDocumentsByCanonicalUrl.set(originalCanonicalUrl, accessOutcome);
+            if (finalCanonicalUrl) openedDocumentsByCanonicalUrl.set(finalCanonicalUrl, accessOutcome);
+          }
           accessedSources.push({
             ...source,
             searchDomain: categoryId,
+            originalUrl,
+            ...(finalCanonicalUrl ? { canonicalUrl: finalCanonicalUrl } : {}),
             accessOutcome,
             ...(previousAccess ? { documentAccessReused: true } : {}),
+            documentReferringUrls: accessOutcome.referringUrls ?? [originalUrl].filter(Boolean),
             accessibilityState: accessOutcome.state,
             parsingState: accessOutcome.state === "accessible" ? "parsed" : "failed",
             ...(accessOutcome.passage ? { excerpt: accessOutcome.passage } : {}),
@@ -2304,6 +2497,8 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
           observedQueries,
           toolCallCount: categoryResult.coverage?.toolCallCount ?? 0,
           toolCallBudgetExceeded: categoryResult.coverage?.toolCallBudgetExceeded === true,
+          physicalOpenBudgetExceeded,
+          physicalOpensUsed,
           categoryResult: {
             categoryId,
             research: categoryResult.research,
@@ -2326,6 +2521,10 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
         toolCallCount: orchestration.toolCalls,
         observedToolCallCount: orchestration.categoryResults.reduce((total, category) => total + (category.coverage?.observedToolCallCount ?? category.coverage?.toolCallCount ?? 0), 0),
         acceptedToolCallCount: orchestration.toolCalls,
+        physicalOpenBudget: RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens,
+        physicalOpensUsed,
+        physicalOpensRemaining: Math.max(0, RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens - physicalOpensUsed),
+        physicalOpenBudgetExceeded: orchestration.physicalOpenBudgetExceeded,
         providerRequestCount: orchestration.providerRequests,
         followUpCount: orchestration.followUps,
         followUpLimit: orchestration.followUpLimit,

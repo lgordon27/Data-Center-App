@@ -155,6 +155,11 @@ export default function DirectoryRoute({
           status: statusLabel(facility.status),
           sourceUrl: facility.sourceUrl,
           providerId: facility.id,
+          city: facility.city,
+          county: facility.county,
+          state: facility.state,
+          authorityDomains: facility.authorityDomains,
+          companyDomains: facility.companyDomains,
         },
       },
     }));

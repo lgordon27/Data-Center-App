@@ -99,7 +99,7 @@ export type ResearchEvidenceSource = {
   contentType?: string | null;
   claimCited?: boolean;
   accessOutcome?: {
-    state: "accessible" | "blocked" | "unsupported";
+    state: "accessible" | "blocked" | "unsupported" | "not-attempted";
     reason: string;
     format?: string;
     resolvedUrl?: string | null;
@@ -110,6 +110,7 @@ export type ResearchEvidenceSource = {
     extractionLimitations?: string[];
   };
   documentAccessReused?: boolean;
+  referringUrls?: string[];
 };
 export type ResearchClaimPassageMapping = {
   id: string;
@@ -163,6 +164,10 @@ export type CustomResearchResponse = {
      observedToolCallCount?: number;
      acceptedToolCallCount?: number;
      providerLimitations?: string[];
+      physicalOpenBudget?: number;
+      physicalOpensUsed?: number;
+      physicalOpensRemaining?: number;
+      physicalOpenBudgetExceeded?: boolean;
     sourceLedgerSummary?: {
       rawOccurrenceCount: number;
       retainedCount: number;
@@ -188,16 +193,25 @@ export type ResearchAuditStageCounts = {
   eligible: number;
   retainedCandidates: number;
 };
+export type ResearchLocalAuthority = {
+  name: string;
+  kind: string;
+  domain: string | null;
+  establishmentMethod: string;
+  status: "established" | "identified-no-domain";
+};
 export type ResearchCategoryAudit = {
   categoryId: string;
   label: string;
   evidenceIds: string[];
   requestedPrimaryQuery: string;
+  primaryQueryRole?: "authoritative-primary";
   plannedPrimaryQuery?: string | null;
   issuedPrimaryQuery?: string | null;
   executedQueries: string[];
   providerObservedPrimaryQueries?: string[];
   optionalFollowUpQuery?: string | null;
+  fallbackQueryRole?: "unrestricted-exact-project-fallback";
   plannedFollowUpQuery?: string | null;
   issuedFollowUpQuery?: string | null;
   providerObservedFollowUpQueries?: string[];
@@ -206,10 +220,13 @@ export type ResearchCategoryAudit = {
   followUpLimit: number;
   followUpTriggerEvidenceIds?: string[];
   followUpSkipReason?: string | null;
-  authorityTargets?: { names: string[]; domains: string[] };
+  authorityTargets?: { names: string[]; domains: string[]; localAuthorities?: ResearchLocalAuthority[]; limitations?: string[] };
+  localAuthorities?: ResearchLocalAuthority[];
+  authorityLimitations?: string[];
   returnedDomains?: string[];
   openedDocuments?: Array<{
     originalUrl: string | null;
+    referringUrls?: string[];
     resolvedUrl: string | null;
     canonicalUrl: string | null;
     opened: boolean;
@@ -237,7 +254,7 @@ export type ResearchCategoryClaimAudit = {
   sourceUrl: string | null;
   resolvedUrl: string | null;
   sourceState: string | null;
-  accessState: "accessible" | "blocked" | "unsupported" | null;
+  accessState: "accessible" | "blocked" | "unsupported" | "not-attempted" | null;
   accessReason: string | null;
   retainedPassage: string | null;
   exactQuotation: string | null;
@@ -266,11 +283,16 @@ export type ResearchAudit = {
     maxCandidatesPerCategory: number;
     maxTotalCandidates: number;
     maxToolCalls: number;
+    maxPhysicalDocumentOpens: number;
   };
   toolCallCount: number;
   observedToolCallCount?: number;
   acceptedToolCallCount?: number;
   providerRequestCount: number;
+  physicalOpenBudget: number;
+  physicalOpensUsed: number;
+  physicalOpensRemaining: number;
+  physicalOpenBudgetExceeded: boolean;
   followUpCount: number;
   followUpLimit: number;
   followUpLimitPerCategory: number;
@@ -351,6 +373,14 @@ export type KnownProjectData = {
   status?: string | null;
   sourceUrl?: string | null;
   providerId?: string | null;
+  city?: string | null;
+  county?: string | null;
+  state?: string | null;
+  waterAuthority?: string | null;
+  permittingAuthority?: string | null;
+  authorityNames?: string[];
+  authorityDomains?: string[];
+  companyDomains?: string[];
 };
 export type ResearchProgress = "researching" | "retrying";
 export type ResearchProjectOptions = {
@@ -455,12 +485,29 @@ function normalizeKnownData(value: KnownProjectData | undefined): KnownProjectDa
   const status = isNonEmptyString(value.status) ? value.status.trim().slice(0, 80) : undefined;
   const sourceUrl = safePublicSourceUrl(value.sourceUrl);
   const providerId = isNonEmptyString(value.providerId) ? value.providerId.trim().slice(0, 160) : undefined;
+  const knownText = (candidate: unknown, maxLength = 160) => isNonEmptyString(candidate) ? candidate.trim().slice(0, maxLength) : undefined;
+  const city = knownText(value.city);
+  const county = knownText(value.county);
+  const state = knownText(value.state, 80);
+  const waterAuthority = knownText(value.waterAuthority);
+  const permittingAuthority = knownText(value.permittingAuthority);
+  const authorityNames = Array.isArray(value.authorityNames) ? [...new Set(value.authorityNames.map((item) => knownText(item)).filter((item): item is string => Boolean(item)))].slice(0, 8) : [];
+  const authorityDomains = Array.isArray(value.authorityDomains) ? [...new Set(value.authorityDomains.map((item) => knownText(item, 120)).filter((item): item is string => Boolean(item)))].slice(0, 12) : [];
+  const companyDomains = Array.isArray(value.companyDomains) ? [...new Set(value.companyDomains.map((item) => knownText(item, 120)).filter((item): item is string => Boolean(item)))].slice(0, 8) : [];
   const normalized = {
     ...(capacity === null ? {} : { capacity }),
     ...(operator ? { operator } : {}),
     ...(status ? { status } : {}),
     ...(sourceUrl ? { sourceUrl } : {}),
     ...(providerId ? { providerId } : {}),
+    ...(city ? { city } : {}),
+    ...(county ? { county } : {}),
+    ...(state ? { state } : {}),
+    ...(waterAuthority ? { waterAuthority } : {}),
+    ...(permittingAuthority ? { permittingAuthority } : {}),
+    ...(authorityNames.length ? { authorityNames } : {}),
+    ...(authorityDomains.length ? { authorityDomains } : {}),
+    ...(companyDomains.length ? { companyDomains } : {}),
   };
   return Object.keys(normalized).length ? normalized : undefined;
 }
@@ -476,7 +523,7 @@ function parseSource(value: unknown): ResearchEvidenceSource | null {
     ? value.relationship as ResearchEvidenceSource["relationship"]
     : "corroborating";
   const rawAccessOutcome = isRecord(value.accessOutcome) ? value.accessOutcome : null;
-  const accessOutcome = rawAccessOutcome && ["accessible", "blocked", "unsupported"].includes(String(rawAccessOutcome.state)) && isNonEmptyString(rawAccessOutcome.reason)
+  const accessOutcome = rawAccessOutcome && ["accessible", "blocked", "unsupported", "not-attempted"].includes(String(rawAccessOutcome.state)) && isNonEmptyString(rawAccessOutcome.reason)
     ? {
         state: rawAccessOutcome.state as NonNullable<ResearchEvidenceSource["accessOutcome"]>["state"],
         reason: rawAccessOutcome.reason.trim(),
@@ -517,6 +564,7 @@ function parseSource(value: unknown): ResearchEvidenceSource | null {
     ...(typeof value.contentType === "string" ? { contentType: value.contentType } : {}),
     ...(accessOutcome ? { accessOutcome } : {}),
     ...(value.claimCited === true ? { claimCited: true } : {}),
+    ...(Array.isArray(value.referringUrls) ? { referringUrls: value.referringUrls.filter(isNonEmptyString).slice(0, 12) } : {}),
   };
 }
 
@@ -571,11 +619,13 @@ function parseResearchAudit(value: unknown): ResearchAudit | undefined {
       requestedPrimaryQuery: isNonEmptyString(candidate.requestedPrimaryQuery) ? candidate.requestedPrimaryQuery : "Not available",
       ...(isNonEmptyString(candidate.plannedPrimaryQuery) ? { plannedPrimaryQuery: candidate.plannedPrimaryQuery } : {}),
       ...(isNonEmptyString(candidate.issuedPrimaryQuery) ? { issuedPrimaryQuery: candidate.issuedPrimaryQuery } : {}),
+      primaryQueryRole: "authoritative-primary",
       executedQueries: parseSearchTerms(candidate.executedQueries, 9),
       providerObservedPrimaryQueries: parseSearchTerms(candidate.providerObservedPrimaryQueries, 8),
       ...(isNonEmptyString(candidate.optionalFollowUpQuery) ? { optionalFollowUpQuery: candidate.optionalFollowUpQuery } : {}),
       ...(isNonEmptyString(candidate.plannedFollowUpQuery) ? { plannedFollowUpQuery: candidate.plannedFollowUpQuery } : {}),
       ...(isNonEmptyString(candidate.issuedFollowUpQuery) ? { issuedFollowUpQuery: candidate.issuedFollowUpQuery } : {}),
+      fallbackQueryRole: "unrestricted-exact-project-fallback",
       providerObservedFollowUpQueries: parseSearchTerms(candidate.providerObservedFollowUpQueries, 8),
       ...(isNonEmptyString(candidate.followUpExecutedQuery) ? { followUpExecutedQuery: candidate.followUpExecutedQuery } : {}),
       followUpCount: Number(candidate.followUpCount) || (isNonEmptyString(candidate.followUpExecutedQuery) ? 1 : 0),
@@ -585,10 +635,27 @@ function parseResearchAudit(value: unknown): ResearchAudit | undefined {
       authorityTargets: isRecord(candidate.authorityTargets) ? {
         names: Array.isArray(candidate.authorityTargets.names) ? candidate.authorityTargets.names.filter(isNonEmptyString).slice(0, 12) : [],
         domains: Array.isArray(candidate.authorityTargets.domains) ? candidate.authorityTargets.domains.filter(isNonEmptyString).slice(0, 12) : [],
+        localAuthorities: Array.isArray(candidate.authorityTargets.localAuthorities) ? candidate.authorityTargets.localAuthorities.filter(isRecord).map((authority) => ({
+          name: isNonEmptyString(authority.name) ? authority.name : "Unnamed authority",
+          kind: isNonEmptyString(authority.kind) ? authority.kind : "local",
+          domain: isNonEmptyString(authority.domain) ? authority.domain : null,
+          establishmentMethod: isNonEmptyString(authority.establishmentMethod) ? authority.establishmentMethod : "unknown",
+          status: authority.status === "established" ? "established" : "identified-no-domain",
+        })) : [],
+        limitations: Array.isArray(candidate.authorityTargets.limitations) ? candidate.authorityTargets.limitations.filter(isNonEmptyString).slice(0, 8) : [],
       } : { names: [], domains: [] },
+      localAuthorities: Array.isArray(candidate.localAuthorities) ? candidate.localAuthorities.filter(isRecord).map((authority) => ({
+        name: isNonEmptyString(authority.name) ? authority.name : "Unnamed authority",
+        kind: isNonEmptyString(authority.kind) ? authority.kind : "local",
+        domain: isNonEmptyString(authority.domain) ? authority.domain : null,
+        establishmentMethod: isNonEmptyString(authority.establishmentMethod) ? authority.establishmentMethod : "unknown",
+        status: authority.status === "established" ? "established" : "identified-no-domain",
+      })) : [],
+      authorityLimitations: Array.isArray(candidate.authorityLimitations) ? candidate.authorityLimitations.filter(isNonEmptyString).slice(0, 8) : [],
       returnedDomains: Array.isArray(candidate.returnedDomains) ? candidate.returnedDomains.filter(isNonEmptyString).slice(0, 20) : [],
       openedDocuments: Array.isArray(candidate.openedDocuments) ? candidate.openedDocuments.slice(0, 20).filter((document) => isRecord(document)).map((document) => ({
         originalUrl: isNonEmptyString(document.originalUrl) ? document.originalUrl : null,
+        referringUrls: Array.isArray(document.referringUrls) ? document.referringUrls.filter(isNonEmptyString).slice(0, 12) : [],
         resolvedUrl: isNonEmptyString(document.resolvedUrl) ? document.resolvedUrl : null,
         canonicalUrl: isNonEmptyString(document.canonicalUrl) ? document.canonicalUrl : null,
         opened: document.opened === true,
@@ -633,11 +700,16 @@ function parseResearchAudit(value: unknown): ResearchAudit | undefined {
       maxCandidatesPerCategory: Number(budget.maxCandidatesPerCategory) || 10,
       maxTotalCandidates: Number(budget.maxTotalCandidates) || 80,
       maxToolCalls: Number(budget.maxToolCalls) || 32,
+      maxPhysicalDocumentOpens: Number(budget.maxPhysicalDocumentOpens) || 24,
     },
     toolCallCount: Number(value.toolCallCount) || 0,
     ...(typeof value.observedToolCallCount === "number" ? { observedToolCallCount: value.observedToolCallCount } : {}),
     ...(typeof value.acceptedToolCallCount === "number" ? { acceptedToolCallCount: value.acceptedToolCallCount } : {}),
     providerRequestCount: Number(value.providerRequestCount) || 0,
+    physicalOpenBudget: Number(value.physicalOpenBudget) || Number(budget.maxPhysicalDocumentOpens) || 24,
+    physicalOpensUsed: Number(value.physicalOpensUsed) || 0,
+    physicalOpensRemaining: Number.isFinite(Number(value.physicalOpensRemaining)) ? Math.max(0, Number(value.physicalOpensRemaining)) : Number(value.physicalOpenBudget) || 24,
+    physicalOpenBudgetExceeded: value.physicalOpenBudgetExceeded === true,
     followUpCount: Number(value.followUpCount) || 0,
     followUpLimit: Number(value.followUpLimit) || 8,
     followUpLimitPerCategory: Number(value.followUpLimitPerCategory) || 1,
@@ -929,6 +1001,10 @@ function parseResponse(value: unknown): CustomResearchResponse {
         ...(Array.isArray(value.researchCoverage.providerLimitations)
           ? { providerLimitations: value.researchCoverage.providerLimitations.filter(isNonEmptyString).slice(0, 12) }
           : {}),
+         ...(typeof value.researchCoverage.physicalOpenBudget === "number" ? { physicalOpenBudget: value.researchCoverage.physicalOpenBudget } : {}),
+         ...(typeof value.researchCoverage.physicalOpensUsed === "number" ? { physicalOpensUsed: value.researchCoverage.physicalOpensUsed } : {}),
+         ...(typeof value.researchCoverage.physicalOpensRemaining === "number" ? { physicalOpensRemaining: value.researchCoverage.physicalOpensRemaining } : {}),
+         ...(typeof value.researchCoverage.physicalOpenBudgetExceeded === "boolean" ? { physicalOpenBudgetExceeded: value.researchCoverage.physicalOpenBudgetExceeded } : {}),
         ...(typeof value.researchCoverage.followUpCount === "number" ? { followUpCount: value.researchCoverage.followUpCount } : {}),
         ...(typeof value.researchCoverage.followUpLimit === "number" ? { followUpLimit: value.researchCoverage.followUpLimit } : {}),
         ...(typeof value.researchCoverage.followUpLimitPerCategory === "number" ? { followUpLimitPerCategory: value.researchCoverage.followUpLimitPerCategory } : {}),

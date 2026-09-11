@@ -821,6 +821,11 @@ export function ComputeAtlasDirectory({ onCurated, onResearchSuccess }: { onCura
       operator: facility.operator,
       status: statusLabel(facility.status),
       sourceUrl: facility.sourceUrl,
+      city: facility.city,
+      county: facility.county,
+      state: facility.state,
+      authorityDomains: facility.authorityDomains,
+      companyDomains: facility.companyDomains,
     };
     setResearching((current) => ({ ...current, [facility.id]: { busy: true, error: null, progress: "researching" } }));
     try {
@@ -1122,6 +1127,11 @@ function LegacyHome({ onNavigate }: { onNavigate?: (route: HomeRoute) => void } 
                     operator: project.operator,
                     status: project.status,
                     sourceUrl: project.facility.sourceUrl,
+                     city: project.facility.city,
+                     county: project.facility.county,
+                     state: project.facility.state,
+                     authorityDomains: project.facility.authorityDomains,
+                     companyDomains: project.facility.companyDomains,
                   },
                 })
                  .then((research) => handleResearchSuccess(research, company, project.id, project.kind))

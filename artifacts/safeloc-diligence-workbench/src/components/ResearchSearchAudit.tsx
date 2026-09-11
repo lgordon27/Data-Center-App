@@ -93,7 +93,8 @@ export function ResearchSearchAudit({
         {coverage?.toolCallCount !== undefined && <p>Observed search tool calls: {coverage.toolCallCount}.</p>}
         {coverage?.toolCallBudgetExceeded && <p role="status" className="font-semibold text-[#a65a00]">The provider reported more tool calls than the requested limit. Treat search coverage as incomplete; retained findings still require source review.</p>}
         {audit?.providerResponseId && <p className="font-mono text-[10px]">Provider response: {audit.providerResponseId}{audit.elapsedMs !== null ? ` · elapsed ${audit.elapsedMs} ms` : ""}</p>}
-        {audit?.providerLimitations.map((limitation) => <p key={limitation} className="rounded border border-[#f1cb8b] bg-[#fff8e9] px-2 py-1 text-[#6f460e]">Provider limitation: {limitation}</p>)}
+         {audit?.providerLimitations.map((limitation) => <p key={limitation} className="rounded border border-[#f1cb8b] bg-[#fff8e9] px-2 py-1 text-[#6f460e]">Provider limitation: {limitation}</p>)}
+         {audit && <p>Physical document opens: {audit.physicalOpensUsed}/{audit.physicalOpenBudget} used · {audit.physicalOpensRemaining} remaining{audit.physicalOpenBudgetExceeded ? " · hard ceiling reached; later documents were not fetched" : ""}.</p>}
         {audit && (
           <div className="overflow-x-auto rounded border border-[#d9e0e4]">
             <table className="w-full min-w-[720px] border-collapse text-left">
@@ -136,9 +137,16 @@ function CategoryAuditRow({
                     <td className="px-2 py-2 align-top"><span className={`rounded-full px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.05em] ${categoryTone(category)}`}>{category.state}</span></td>
                     <td className="px-2 py-2 align-top font-mono text-[9px] leading-4">{category.stageCounts.normalized} normalized · {category.stageCounts.accessed} accessed · {category.stageCounts.parsed} parsed · {category.stageCounts.claimMapped} mapped · {category.stageCounts.eligible} eligible</td>
                     <td className="max-w-[380px] px-2 py-2 align-top text-[9px] leading-4">
-                      <div><strong>Requested:</strong> {category.requestedPrimaryQuery}</div>
-                      <div className="mt-1"><strong>Executed:</strong> {category.executedQueries.length ? category.executedQueries.join(" · ") : "None observed"}</div>
-                      {category.followUpExecutedQuery && <div className="mt-1"><strong>Follow-up:</strong> {category.followUpExecutedQuery}</div>}
+                       <div><strong>Issued primary · {category.primaryQueryRole ?? "authoritative-primary"}:</strong> {category.issuedPrimaryQuery ?? "Not issued"}</div>
+                       <div className="mt-1"><strong>Provider-observed primary:</strong> {category.providerObservedPrimaryQueries?.length ? category.providerObservedPrimaryQueries.join(" · ") : "None observed"}</div>
+                       <div className="mt-1"><strong>Issued fallback · {category.fallbackQueryRole ?? "unrestricted-exact-project-fallback"}:</strong> {category.issuedFollowUpQuery ?? "Not issued"}</div>
+                       <div className="mt-1"><strong>Provider-observed fallback:</strong> {category.providerObservedFollowUpQueries?.length ? category.providerObservedFollowUpQueries.join(" · ") : "None observed"}</div>
+                       {category.followUpTriggerEvidenceIds?.length ? <div className="mt-1"><strong>Fallback trigger IDs:</strong> {category.followUpTriggerEvidenceIds.join(", ")}</div> : null}
+                       {category.followUpSkipReason && <div className="mt-1"><strong>Fallback skip:</strong> {category.followUpSkipReason}</div>}
+                       {category.localAuthorities?.length ? <div className="mt-1"><strong>Local authorities:</strong> {category.localAuthorities.map((authority) => `${authority.name} · ${authority.domain ?? "domain not established"}`).join(" | ")}</div> : null}
+                       {category.authorityLimitations?.length ? <div className="mt-1 text-[#8a5200]"><strong>Authority limitation:</strong> {category.authorityLimitations.join(" · ")}</div> : null}
+                       <div className="mt-1"><strong>Returned domains:</strong> {category.returnedDomains?.length ? category.returnedDomains.join(" · ") : "None returned"}</div>
+                       <div className="mt-1"><strong>Documents:</strong> {category.openedDocuments?.length ?? 0} receipts · {category.openedDocuments?.filter((document) => document.opened).length ?? 0} physical opens · {category.openedDocuments?.filter((document) => Boolean(document.retainedPassage)).length ?? 0} retained passages.</div>
                        {category.accessLimitations.length > 0 && <div className="mt-1 text-[#8a5200]"><strong>Access limitations:</strong> {category.accessLimitations.join(" · ")}</div>}
                        {category.unresolvedGaps.length > 0 && <div className="mt-1 text-[#8a5200]"><strong>Gaps:</strong> {category.unresolvedGaps.join(", ")}</div>}
                       {Object.keys(category.rejectionCounts).length > 0 && <div className="mt-1 text-[#ba2f45]"><strong>Rejected:</strong> {Object.entries(category.rejectionCounts).map(([reason, count]) => `${reason} (${count})`).join(" · ")}</div>}

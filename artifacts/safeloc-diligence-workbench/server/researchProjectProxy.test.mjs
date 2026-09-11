@@ -41,6 +41,7 @@ import {
   evaluateResearchDocumentAccess,
   accessResearchDocument,
   orchestrateCategoryResearch,
+  runValidatedResearch,
   classifyResearchFailure,
 } from "./researchProjectProxy.mjs";
 import {
@@ -234,6 +235,40 @@ test("targets the unresolved evidence item in a category follow-up", () => {
   assert.doesNotMatch(followUp, /water demand consumption gallons usage/i);
 });
 
+test("separates authoritative Texas queries from an unrestricted exact-project fallback", () => {
+  const project = {
+    name: "Project Kilby",
+    location: "Abilene, Taylor County, Texas",
+    knownData: {
+      city: "Abilene",
+      county: "Taylor",
+      state: "Texas",
+      authorityDomains: ["abilenetx.gov", "taylorcountytexas.org"],
+      companyDomains: ["microsoft.com"],
+      operator: "Microsoft",
+    },
+  };
+  const plan = buildResearchCategoryPlan(project);
+  const water = plan.categories.find((category) => category.categoryId === "water");
+  const permitting = plan.categories.find((category) => category.categoryId === "permitting-community");
+  const construction = plan.categories.find((category) => category.categoryId === "construction-capital");
+  const tenant = plan.categories.find((category) => category.categoryId === "tenant-counterparty");
+  assert.match(water.requestedPrimaryQuery, /site:abilenetx\.gov|site:taylorcountytexas\.org/);
+  assert.match(permitting.requestedPrimaryQuery, /"City of Abilene"|"Taylor County"/);
+  assert.match(construction.requestedPrimaryQuery, /site:sec\.gov/);
+  assert.match(construction.requestedPrimaryQuery, /site:microsoft\.com/);
+  assert.match(tenant.requestedPrimaryQuery, /site:sec\.gov/);
+  assert.match(tenant.requestedPrimaryQuery, /site:microsoft\.com/);
+  for (const category of [water, permitting, construction, tenant]) {
+    assert.doesNotMatch(category.optionalFollowUpQuery, /\bsite:/i);
+    assert.doesNotMatch(category.optionalFollowUpQuery, /broader web fallback/i);
+    assert.match(category.optionalFollowUpQuery, /Project Kilby/);
+  }
+  assert.equal(water.authorityTargets.localAuthorities[0].status, "established");
+  const unresolvedLocation = buildResearchCategoryPlan({ name: "Project Rainier", location: "Texas" }).categories.find((category) => category.categoryId === "water");
+  assert.ok(unresolvedLocation.authorityTargets.limitations.length > 0);
+});
+
 test("rejects unsafe, blocked, scanned, and unsupported documents explicitly", () => {
   assert.equal(evaluateResearchDocumentAccess({ url: "javascript:alert(1)" }).reason, "unsafe-url");
   assert.equal(evaluateResearchDocumentAccess({ url: "https://example.gov/report.pdf", contentType: "application/pdf", accessStatus: "open", scanned: true }).reason, "scanned-pdf");
@@ -385,6 +420,68 @@ test("propagates client cancellation distinctly from the deadline timeout", asyn
       return true;
     },
   );
+});
+
+test("stops physical document opens at the hard ceiling and records budget-limited categories", async () => {
+  let calls = 0;
+  const run = await orchestrateCategoryResearch(
+    { name: "Atlas", location: "Texas" },
+    {
+      retrieveCategory: async () => {
+        calls += 1;
+        return {
+          candidates: [],
+          gapDrivenFollowUp: true,
+          physicalOpenBudgetExceeded: true,
+        };
+      },
+    },
+  );
+  assert.equal(calls, 1);
+  assert.equal(run.physicalOpenBudgetExceeded, true);
+  assert.equal(run.categoryExecutions.grid.followUpSkipReason, "physical-open-budget");
+  assert.equal(run.categoryExecutions.electricity.followUpSkipReason, "physical-open-budget");
+});
+
+test("enforces the 24-document ceiling in a provider and document fixture", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "safeloc-research-physical-open-test-"));
+  let providerCalls = 0;
+  let documentCalls = 0;
+  const response = responseRecorder();
+  await handleResearchProjectRequest(request({
+    name: "Project Rainier",
+    location: "Taylor County, Texas",
+    forceRefresh: true,
+  }), response, {
+    apiKey: "server-secret-for-test",
+    cache: createResearchProjectCache({ directory }),
+    rateLimiter: { allow: () => ({ allowed: true }) },
+    fetchImpl: async () => {
+      const start = providerCalls * 10;
+      providerCalls += 1;
+      const sources = Array.from({ length: 10 }, (_, index) => ({
+        ...retrievedSource,
+        url: `https://fixture.example/rainier/${start + index}`,
+        title: `Project Rainier fixture document ${start + index}`,
+      }));
+      return singleCallResponse(validResearchResponse(), sources);
+    },
+    documentFetchImpl: async () => {
+      documentCalls += 1;
+      return new Response("<html><body>Project Rainier fixture passage.</body></html>", {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      });
+    },
+  });
+  const payload = response.json();
+  assert.equal(response.statusCode, 200);
+  assert.equal(documentCalls, 24);
+  assert.equal(payload.researchCoverage.physicalOpenBudget, 24);
+  assert.equal(payload.researchCoverage.physicalOpensUsed, 24);
+  assert.equal(payload.researchCoverage.physicalOpenBudgetExceeded, true);
+  assert.equal(payload.researchAudit.physicalOpenBudgetExceeded, true);
+  assert.ok(payload.researchAudit.categories.some((category) => category.followUpSkipReason === "physical-open-budget" || category.state === "Not searched"));
 });
 
 test("does not let blocked, source-free, or overlapping follow-ups erase an accessible claim", () => {
@@ -1400,7 +1497,7 @@ test("retains and validates mapped sources from later categories after final con
         phaseScope: "exact-phase",
         timePeriod: "2026",
       };
-      return singleCallResponse(research, Array.from({ length: 12 }, (_, index) => index === 0
+      return singleCallResponse(research, Array.from({ length: 2 }, (_, index) => index === 0
         ? source
         : {
           ...source,
@@ -1415,11 +1512,11 @@ test("retains and validates mapped sources from later categories after final con
   });
   const body = response.json();
   assert.equal(response.statusCode, 200);
-  assert.ok(providerCalls >= 8);
+  assert.ok(providerCalls >= 3);
   assert.ok(body.researchCoverage.sourceLedgerSummary.retainedCount > 10);
   const water = body.evidence.find((item) => item.id === "water_consumption");
   assert.equal(water.eligibleForModel, true);
-  assert.ok(body.sourceLedger?.some((source) => source.originalUrl?.includes("/water/source-")));
+  assert.ok(body.sourceLedger?.some((source) => source.originalUrl?.includes("/electricity/source-")));
 });
 
 test("returns exactly 16 normalized evidence items and safely falls back for invalid capacity", () => {

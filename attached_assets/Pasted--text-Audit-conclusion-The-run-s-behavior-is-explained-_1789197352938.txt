@@ -1,0 +1,354 @@
+```text
+## Audit conclusion
+
+The run’s behavior is explained by three separate issues:
+
+1. Ohio authority targeting is not implemented.
+2. The concurrent scheduler consumes the shared document budget before the main category loop applies its gates.
+3. Telemetry distinguishes successful access from physical fetch attempts, but the UI wording makes them look equivalent.
+
+The run ID was not present in the checked local logs or persisted workspace files, so I cannot name the exact failure reason for each individual URL. The conclusions below are exact from the reported counters and the current code paths.
+
+---
+
+## 1. Why official Amazon, Ohio, and New Albany sources were not targeted
+
+### Root cause: non-Texas research exits before authority targeting
+
+`isTexasProject()` only recognizes Texas or TX:
+
+- `server/researchProjectProxy.mjs:1991-1993`
+
+For this Ohio project, `buildCategoryQuery()` immediately returns a generic query:
+
+- `server/researchProjectProxy.mjs:2046`
+
+That bypasses:
+
+- authority-domain construction,
+- local authority names,
+- company-domain targeting,
+- state-specific query terms.
+
+The Ohio query therefore uses generic project/evidence terms rather than targeted queries such as:
+
+- `site:governor.ohio.gov`
+- `site:newalbanyohio.org`
+- Licking County official records
+- `site:aboutamazon.com`
+- JobsOhio
+
+### The configured authority map is Texas-only
+
+`TEXAS_CATEGORY_TARGETS` contains ERCOT, PUCT, TWDB, FEMA, NOAA, SEC, and related Texas targets:
+
+- `server/researchProjectProxy.mjs:70-103`
+
+For non-Texas projects, `categoryAuthorityTargets()` returns empty base targets:
+
+- `server/researchProjectProxy.mjs:593-607`
+
+The local-authority helper can infer “City of New Albany” and “Licking County,” but it does not discover their domains. It only uses domains already present in `knownData.authorityDomains`:
+
+- `server/researchProjectProxy.mjs:558-590`
+
+The Amazon directory record does not provide those domains or company domains. Its known data contains the operator and facility metadata, but not a populated Ohio authority/company-domain map.
+
+### The source classifier is not the primary cause, but it would weaken retention
+
+If an official source is returned, it is generally not categorically blocked:
+
+- `.gov` sources classify as `primary-government`.
+- Utility sources can classify as `primary-utility`.
+- Company sources classify as `primary-company` only when the hostname/title matches the current keyword rules.
+
+However:
+
+- `aboutamazon.com` does not inherently match the current primary-company rules.
+- JobsOhio similarly has no explicit trusted-domain classification.
+- `newalbanyohio.org` is only recognized as government-like if the title contains terms such as “city of.”
+
+The retention ledger keeps at most 10 unique sources per category and prioritizes claim-cited and primary sources:
+
+- `src/data/sourceValidationPolicy.mjs:309-437`
+
+So the likely sequence is:
+
+1. The provider was not given official-domain targets.
+2. It returned mostly secondary sources.
+3. Official sources were therefore absent from the returned candidate packet.
+4. Any official source that did happen to appear could still lose a per-category retention-cap decision if it was not recognized as primary or claim-cited.
+
+The eligibility layer does not normally delete an official source record. It rejects unsupported evidence proposals when there is no valid passage or claim mapping. Therefore, the absence of those domains from retained source records is primarily a discovery/query-planning problem, not an evidence eligibility rule blocking Ohio sources.
+
+---
+
+## 2. Why the physical-open budget was exhausted before the remaining categories ran
+
+The hard budget is:
+
+- 8 category primaries
+- 8 possible follow-ups
+- 24 physical document opens
+- 80 total candidates
+
+Defined at:
+
+- `server/researchProjectProxy.mjs:40-48`
+
+### Primary category concurrency is real, but completion handling is not fair
+
+The server starts a three-worker primary pool:
+
+- `RESEARCH_CATEGORY_CONCURRENCY = 3`
+- `server/researchProjectProxy.mjs:1098-1120`
+
+But each worker does more than issue a provider request. It waits for the entire category retrieval, including document fetching, before moving to the next category.
+
+At the same time, the main orchestration loop waits for all workers to finish:
+
+```js
+await Promise.allSettled(...)
+```
+
+Only after that does the normal category loop begin processing results.
+
+This creates the problematic sequence:
+
+1. Three category retrievals start.
+2. Each retrieval fetches candidate documents.
+3. Physical document access is globally serialized through `documentAccessQueue`.
+4. The first categories consume the 24-document ceiling.
+5. Workers continue issuing provider requests for later categories, but their document fetches are no longer physically attempted.
+6. Only after all workers settle does the main loop inspect `physicalOpenBudgetExceeded`.
+7. The main loop then marks later categories as `Not searched`.
+
+The gating code is:
+
+- `server/researchProjectProxy.mjs:1131-1145`
+
+When the global physical flag is set, later categories receive:
+
+```js
+followUpSkipReason: "physical-open-budget"
+state: "Not searched"
+```
+
+So “not searched” is not necessarily equivalent to “no provider request was made.” Some later provider requests may already have been issued by the worker pool, but their results are discarded or not attributed as executed category work once the main loop sees the exhausted physical budget.
+
+### There is no per-category physical-open allocation
+
+The document budget is global:
+
+- `physicalOpensUsed`
+- `physicalOpenBudgetExceeded`
+
+There is no reservation such as:
+
+- minimum opens per category,
+- one primary-document allowance per category,
+- remaining-budget allocation across unfinished categories.
+
+The first categories that reach document access can consume the shared pool. That is why Grid and Electricity can show partial results while six later categories are marked not searched.
+
+### The reported 9 provider requests and 3 observed searches are different counters
+
+The 9 provider requests most likely represent approximately:
+
+- 8 category primary Responses API requests
+- 1 follow-up or repair request
+
+The 3 observed searches are extracted only from `web_search_call` objects in provider responses:
+
+- `server/researchProjectProxy.mjs:1328-1348`
+
+A provider request can return no web-search call. Therefore:
+
+- provider requests ≠ observed web searches
+- the 9 requests did not guarantee 9 actual searches
+
+There is also an accounting defect: malformed-response repair calls are made inside `retrieveCategory()` but are not consistently added to the orchestrator’s `providerRequests` counter. In concurrent mode, the counter is initialized to the number of categories:
+
+- `server/researchProjectProxy.mjs:1119-1121`
+
+That makes provider-request telemetry potentially undercount repair attempts.
+
+---
+
+## 3. Why normalized records showed 0 accessed while physical opens were counted
+
+This is a telemetry semantics problem combined with the behavior of the bounded document reader.
+
+### “Normalized” counts candidate records
+
+`normalized` is based on the number of source candidates assigned to the category:
+
+- `server/researchProjectProxy.mjs:923-949`
+
+### “Accessed” means successful, extractable access—not attempted access
+
+The `accessed` count only includes sources where:
+
+```js
+source.accessOutcome?.state === "accessible"
+```
+
+It does not count:
+
+- blocked responses,
+- redirect failures,
+- read failures,
+- unsupported content types,
+- empty HTML,
+- scanned PDFs,
+- budget-not-attempted records.
+
+### Physical usage increments before the fetch completes
+
+The physical counter increments before `accessResearchDocument()` runs:
+
+- `server/researchProjectProxy.mjs:2754-2777`
+
+Therefore a physical open is counted when a bounded fetch is attempted, even if the result is later:
+
+- `blocked`,
+- `unsupported`,
+- `read-failure`,
+- `empty-passage`,
+- `scanned-pdf`.
+
+That makes this combination valid:
+
+- 10 normalized candidates
+- 17 physical attempts across the run
+- 0 successfully accessed documents for a category
+- 0 retained passages
+
+### Zero retained passages follows directly
+
+A retained passage is only attached when the access outcome is `accessible` and contains extracted text:
+
+- `server/researchProjectProxy.mjs:956-977`
+- `server/researchProjectProxy.mjs:2788-2799`
+
+So the reported zero passages means the physical attempts did not produce successful bounded text captures, or the relevant category records were not processed after the global budget was reached.
+
+One additional display issue exists: `categoryOpenedDocuments()` currently sets `opened: true` for any non-reused record, even if its access state is `not-attempted`. The `opened` flag should be tied to an explicit attempted state, not merely “not reused.” That can make document counts look more favorable than the actual physical-fetch result.
+
+---
+
+## 4. Is category concurrency and budget allocation actually implemented?
+
+### Category concurrency: partially implemented
+
+Yes, but only as a three-worker primary prefetch pool.
+
+Implemented:
+
+- 3 concurrent workers.
+- Primary category requests are started ahead of the main loop.
+
+Not implemented correctly:
+
+- completion-aware scheduling,
+- fair physical-document allocation,
+- global atomic provider/tool reservations,
+- processing results as soon as each category completes.
+
+The `Promise.allSettled()` barrier means the main scheduler does not control the workers while they are consuming the shared physical budget.
+
+### Budget allocation: not fully implemented
+
+The budgets exist, but allocation is incomplete:
+
+| Budget | Current behavior |
+|---|---|
+| Provider requests | Partially counted; concurrent primaries are prefilled as 8, repair calls are not reliably counted |
+| Web-search calls | Each request gets a local allowance; no atomic run-wide reservation across concurrent calls |
+| Candidates | Per-category and total caps exist |
+| Physical opens | Global hard ceiling exists, but no fair category reservation |
+| Follow-ups | Sequentially gated after category results are processed |
+| Deadline | Server-owned deadline exists |
+
+The per-primary tool allowance in the concurrent worker is a static split:
+
+```js
+Math.floor(32 / categories.length)
+```
+
+That is four tool calls per primary. It is not a shared decrementing reservation. A repair request can receive another allowance, and concurrent requests do not reserve from one shared counter before being sent.
+
+---
+
+# Smallest corrective plan
+
+## 1. Add non-Texas authority targeting
+
+Smallest safe change:
+
+- Parse state abbreviations generally, not only Texas.
+- Add an Ohio jurisdiction target map for:
+  - Governor of Ohio,
+  - City of New Albany,
+  - Licking County,
+  - JobsOhio,
+  - Amazon/About Amazon.
+- Apply authority and company domains to all state queries, not only the Texas branch.
+- Keep directory metadata as discovery context, not evidence.
+- Add explicit trusted-domain classification for known government and company domains.
+
+For this specific project, the generated primary queries should include the project/location terms plus targeted domains for Ohio and Amazon.
+
+## 2. Make physical-document allocation fair
+
+Smallest robust scheduling fix:
+
+- Do not let workers fetch unlimited documents before the main scheduler processes results.
+- Reserve a minimum physical-open allowance per category before any category can consume extra opens. With 24 opens and 8 categories, a baseline of 3 per category is a reasonable starting point.
+- After every category has had its primary opportunity, allocate remaining opens to unresolved categories.
+- Mark a category as `Partial / physical-open-budget` when its provider result was issued but documents could not be opened; reserve `Not searched` for categories whose primary was never issued.
+
+A simpler but slower first fix would be to disable primary prefetch concurrency and process category primaries sequentially with a per-category physical cap. That is safer than the current behavior, but a fair queue is preferable within the 90-second deadline.
+
+## 3. Make all budgets global and atomic
+
+Before issuing any provider or repair request:
+
+- reserve one provider-request slot,
+- reserve its web-search-call allowance,
+- record the reservation against the category and attempt type.
+
+Repay unused allowance after the response. Repairs and follow-ups must use the same reservation path.
+
+Do not set `providerRequests = categories.length` after concurrent work. Count every actual provider request, including repairs.
+
+## 4. Correct the audit terminology and counters
+
+Add separate fields:
+
+- `physicalOpenAttempts`
+- `successfulDocumentAccesses`
+- `reusedReceipts`
+- `notAttemptedDocuments`
+- `retainedPassages`
+
+Then:
+
+- define `accessed` as successful bounded document access,
+- define `opened` as physically attempted,
+- define `not-attempted` explicitly,
+- make the UI show those separately.
+
+Also change the opened-document mapping so a budget-skipped document is not marked `opened: true`.
+
+## 5. Add one Ohio regression fixture
+
+The smallest regression test should assert that an Amazon/New Albany/OH run:
+
+- generates Ohio and New Albany authority-targeted queries,
+- includes Amazon/company targets,
+- does not include Texas-only terms,
+- gives every category a primary attempt before follow-ups consume the physical budget,
+- distinguishes attempted, accessible, reused, and not-attempted documents,
+- retains an official `.gov` or known official company source when it appears in the provider response.
+```

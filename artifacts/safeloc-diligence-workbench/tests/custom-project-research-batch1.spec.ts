@@ -137,17 +137,17 @@ test.describe("Batch 1 custom-project research lifecycle", () => {
     await page.getByTestId("compute-atlas-open-gw-ranch-pecos-tx").click();
     await page.getByTestId("button-submit-custom-project").click();
     await requestStarted;
-    await expect(page.getByTestId("custom-project-loading")).toBeVisible();
-    await expect(page.getByTestId("custom-project-cancel")).toBeVisible();
-    await page.getByTestId("custom-project-cancel").click();
-    await expect(page.getByTestId("custom-project-loading")).not.toBeVisible();
+    await expect(page).toHaveURL(/#analysis$/);
+    await expect(page.getByTestId("custom-research-banner")).toContainText("RESEARCH IN PROGRESS");
+    await page.getByTestId("custom-research-cancel").click();
+    await expect(page.getByTestId("custom-research-banner")).toContainText("RESEARCH CANCELLED");
     releaseRequest();
     await requestFinished;
     await page.goto("/#home");
     await expect(page.getByTestId("custom-project-dialog")).not.toBeVisible();
   });
 
-  test("offers all timeout recovery choices after the bounded retry", async ({ page }) => {
+  test("keeps a timeout visible after handoff and offers same-project retry", async ({ page }) => {
     await page.route("**/api/research-project", (route) => route.fulfill({
       status: 504,
       contentType: "application/json",
@@ -156,11 +156,11 @@ test.describe("Batch 1 custom-project research lifecycle", () => {
     await page.goto("/#directory");
     await page.getByTestId("compute-atlas-open-gw-ranch-pecos-tx").click();
     await page.getByTestId("button-submit-custom-project").click();
-    await expect(page.getByTestId("custom-project-error")).toBeVisible();
-    await expect(page.getByTestId("custom-project-retry")).toBeVisible();
-    await expect(page.getByTestId("custom-project-edit")).toBeVisible();
-    await expect(page.getByTestId("custom-project-fallback")).toBeVisible();
-    await expect(page.getByTestId("custom-project-return-curated")).toBeVisible();
+    await expect(page).toHaveURL(/#analysis$/);
+    await expect(page.getByTestId("custom-research-banner")).toContainText("RESEARCH TIMED OUT");
+    await expect(page.getByTestId("custom-research-retry")).toBeVisible();
+    await page.getByTestId("custom-research-retry").click();
+    await expect(page.getByTestId("custom-project-dialog")).toBeVisible();
     await page.getByTestId("button-close-custom-project").click();
     await expect(page.getByTestId("custom-project-dialog")).not.toBeVisible();
   });
@@ -174,11 +174,11 @@ test.describe("Batch 1 custom-project research lifecycle", () => {
     await page.getByTestId("compute-atlas-open-gw-ranch-pecos-tx").click();
     await page.clock.install();
     await page.getByTestId("button-submit-custom-project").click();
-    await expect(page.getByTestId("custom-project-loading")).toContainText("Searching public sources within the research deadline.");
+    await expect(page).toHaveURL(/#analysis$/);
+    await expect(page.getByTestId("custom-research-banner")).toContainText("RESEARCH IN PROGRESS");
     await page.clock.fastForward(45_000);
-    await expect(page.getByTestId("custom-project-loading")).toBeVisible();
-    await expect(page.getByText("Project research timed out after 45 seconds.")).not.toBeVisible();
-    await page.getByTestId("custom-project-cancel").click();
-    await expect(page.getByTestId("custom-project-loading")).not.toBeVisible();
+    await expect(page.getByTestId("custom-research-banner")).toContainText("RESEARCH IN PROGRESS");
+    await page.getByTestId("custom-research-cancel").click();
+    await expect(page.getByTestId("custom-research-banner")).toContainText("RESEARCH CANCELLED");
   });
 });

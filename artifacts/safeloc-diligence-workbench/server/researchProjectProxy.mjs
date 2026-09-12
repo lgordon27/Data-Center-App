@@ -30,7 +30,7 @@ function sourceStateTransition(from, to, reason) {
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const RESEARCH_PROJECT_MODEL = "gpt-4o";
-const RESEARCH_PROJECT_MAX_TOKENS = 4_000;
+const RESEARCH_PROJECT_MAX_TOKENS = 8_000;
 const execFile = promisify(execFileCallback);
 const RESEARCH_PROJECT_TIMEOUT_MS = 90_000;
 const RESEARCH_PROJECT_MAX_TOOL_CALLS = 32;
@@ -195,33 +195,38 @@ const RESEARCH_EVIDENCE_RECORD_SCHEMA = {
   ],
 };
 
-const RESEARCH_PROJECT_RESPONSE_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    projectSummary: {
-      type: "object",
-      additionalProperties: false,
-      properties: {
-        name: { type: "string", minLength: 1 },
-        location: { type: "string", minLength: 1 },
-        description: { type: "string", minLength: 1 },
-        capacityMW: { anyOf: [{ type: "number" }, { type: "null" }] },
-        capacityProvenance: { type: "string", enum: ["ai-reported", "directory-reported", "standardized-default"] },
+function buildResearchResponseSchema(evidenceIds = RESEARCH_EVIDENCE_IDS) {
+  const scopedEvidenceIds = [...new Set(evidenceIds.filter((id) => RESEARCH_EVIDENCE_IDS.includes(id)))];
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      projectSummary: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          name: { type: "string", minLength: 1 },
+          location: { type: "string", minLength: 1 },
+          description: { type: "string", minLength: 1 },
+          capacityMW: { anyOf: [{ type: "number" }, { type: "null" }] },
+          capacityProvenance: { type: "string", enum: ["ai-reported", "directory-reported", "standardized-default"] },
+        },
+        required: ["name", "location", "description", "capacityMW", "capacityProvenance"],
       },
-      required: ["name", "location", "description", "capacityMW", "capacityProvenance"],
+      evidence: {
+        type: "object",
+        additionalProperties: false,
+        properties: Object.fromEntries(
+          scopedEvidenceIds.map((id) => [id, RESEARCH_EVIDENCE_RECORD_SCHEMA]),
+        ),
+        required: scopedEvidenceIds,
+      },
     },
-    evidence: {
-      type: "object",
-      additionalProperties: false,
-      properties: Object.fromEntries(
-        RESEARCH_EVIDENCE_IDS.map((id) => [id, RESEARCH_EVIDENCE_RECORD_SCHEMA]),
-      ),
-      required: RESEARCH_EVIDENCE_IDS,
-    },
-  },
-  required: ["projectSummary", "evidence"],
-};
+    required: ["projectSummary", "evidence"],
+  };
+}
+
+const RESEARCH_PROJECT_RESPONSE_SCHEMA = buildResearchResponseSchema();
 
 const RESEARCH_PROJECT_SYSTEM_PROMPT = `You are a careful infrastructure diligence researcher. Research the named data-center project and location using current, attributable public sources. Separate facility-level evidence from market, regional, or industry context. If you find public reporting confirming a data point, classify it as Management Assertion when it comes from company sources, or Verified Evidence when it comes from independent regulatory filings, government data, or independent reporting. Only classify as Missing Evidence if you genuinely cannot find any public information about that variable. Do not default to Missing Evidence as a conservative choice. Independent public records or reporting are Verified Evidence; dated company announcements, filings, or disclosures with limited independent confirmation are Management Assertion; analyst-derived estimates from related facts are Model Inference; synthetic analyst-selected values are User Assumption; and a fact not established in the searched public record is Missing Evidence.
 
@@ -256,7 +261,8 @@ function cacheMetadata(key, entry, state, refreshStatus = "idle", extras = {}) {
 }
 
 function withCacheMetadata(entry, metadata) {
-  return { ...entry.result, researchCache: metadata };
+  const { cacheable: _cacheable, ...publicResult } = entry.result ?? {};
+  return { ...publicResult, researchCache: metadata };
 }
 
 const WEB_SEARCH_SOURCE_BOUNDARY_PROMPT = `
@@ -390,6 +396,21 @@ function fetchPinnedPublicUrl(url, init = {}, dnsLookup = dns.lookup) {
 function parseResearchProjectBody(body) {
   if (!isRecord(body)) throw new Error("Research project body must be a JSON object.");
   const name = body.name ?? body.projectName;
+  const displayLocation = nonEmptyString(body.location, "location", 160);
+  const locationParts = displayLocation
+    .split(/\s*(?:·|\||,)\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (locationParts.length < 2) locationParts.length = 0;
+  const derivedLocation = {
+    ...(locationParts.find((part) => /\bcounty\b/i.test(part)) ? { county: locationParts.find((part) => /\bcounty\b/i.test(part)) } : {}),
+    ...(locationParts.find((part) => /^[A-Z]{2}$/.test(part) || /^(?:Texas|Ohio|Virginia|California|New York)$/i.test(part))
+      ? { state: locationParts.find((part) => /^[A-Z]{2}$/.test(part) || /^(?:Texas|Ohio|Virginia|California|New York)$/i.test(part)) }
+      : {}),
+    ...(locationParts.find((part) => !/\bcounty\b/i.test(part) && !/^[A-Z]{2}$/.test(part) && !/^(?:Texas|Ohio|Virginia|California|New York)$/i.test(part))
+      ? { city: locationParts.find((part) => !/\bcounty\b/i.test(part) && !/^[A-Z]{2}$/.test(part) && !/^(?:Texas|Ohio|Virginia|California|New York)$/i.test(part)) }
+      : {}),
+  };
   let knownData;
   if (body.knownData !== undefined) {
     if (!isRecord(body.knownData)) throw new Error('Research field "knownData" must be an object.');
@@ -422,6 +443,7 @@ function parseResearchProjectBody(body) {
       ? [...new Set(body.knownData.companyDomains.map((value) => normalizeKnownText(value, 120)?.replace(/^https?:\/\//, "").replace(/\/.*$/, "")).filter((value) => value && /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(value)))].slice(0, 8)
       : [];
     const normalized = {
+      ...derivedLocation,
       ...(capacity === null ? {} : { capacity }),
       ...(operator ? { operator } : {}),
       ...(status ? { status } : {}),
@@ -466,7 +488,7 @@ function parseResearchProjectBody(body) {
   }
   return {
     name: nonEmptyString(name, "name", 160),
-    location: nonEmptyString(body.location, "location", 160),
+    location: displayLocation,
     ...(knownData ? { knownData } : {}),
     ...(focusIds ? { focusIds } : {}),
     ...(currentEvidence ? { currentEvidence } : {}),
@@ -1174,7 +1196,7 @@ async function orchestrateCategoryResearch(project, {
       execution.followUpTriggerEvidenceIds = Array.isArray(primary?.unresolvedEvidenceIds) ? primary.unresolvedEvidenceIds : [];
       const globalEarlyStop = resolvedEvidenceIds.size >= RESEARCH_EVIDENCE_IDS.length;
       const primaryCategoryResolved = primary?.categoryResolved === true
-        || (primary?.eligibleCount > 0 && primary?.gapDrivenFollowUp !== true);
+        || (primary?.eligibleCount > 0 && primary?.gapDrivenFollowUp !== true && primary?.repairAttempted !== true);
       if (primary?.gapDrivenFollowUp === true
         && !globalEarlyStop
         && !primaryCategoryResolved
@@ -1487,7 +1509,85 @@ export function containResearchResult(result) {
   };
 }
 
-function parseResearchResponse(body, retrievedSources = [], accessedAt = new Date().toISOString().slice(0, 10), coverage = null, knownData = null) {
+function missingResearchEvidence(id) {
+  return {
+    id,
+    label: id.replaceAll("_", " "),
+    value: "Not established",
+    unit: "Project evidence",
+    classification: "Missing Evidence",
+    citation: "The completed research categories did not establish a facility-level value for this item.",
+    description: "This item remains unresolved because the relevant research category did not return validated data.",
+    sourceRole: "Research gap · no validated category result",
+    sourceUrl: null,
+    sourceUrls: [],
+    conflictSummary: null,
+    coverageStatus: "searched-no-support",
+    numericValue: null,
+    modelReportedConfidence: null,
+    sourceSupportConfidence: 0,
+    classificationReason: "No validated category result established this facility-level value.",
+    sourceRelevanceNote: "No validated source was mapped to this claim.",
+    sourceRelevance: "unresolved",
+    claimPassage: "No validated source passage was retained for this item.",
+    facilityScope: "unknown",
+    phaseScope: "unknown",
+    claimTimePeriod: null,
+    searchTerms: [],
+    qualitativeValue: null,
+  };
+}
+
+function createPartialResearchBody(project, categoryResults = []) {
+  const firstResearch = categoryResults.find((result) => isRecord(result?.research))?.research;
+  const projectSummary = isRecord(firstResearch?.projectSummary)
+    ? firstResearch.projectSummary
+    : {
+        name: project.name,
+        location: project.location,
+        description: "Research returned partial or invalid category data. Valid findings are retained and unsupported items remain Missing Evidence.",
+        capacityMW: normalizeReportedCapacityMW(project.knownData?.capacity) ?? DEFAULT_RESEARCH_CAPACITY_MW,
+        capacityProvenance: normalizeReportedCapacityMW(project.knownData?.capacity) !== null
+          ? "directory-reported"
+          : "standardized-default",
+      };
+  const evidenceById = new Map(
+    categoryResults.flatMap((result) =>
+      Array.isArray(result?.research?.evidence)
+        ? result.research.evidence.map((item) => [item.id, item])
+        : []),
+  );
+  return {
+    projectSummary: {
+      name: stringOrFallback(projectSummary.name, project.name, 160),
+      location: stringOrFallback(projectSummary.location, project.location, 160),
+      description: stringOrFallback(
+        projectSummary.description,
+        "Research returned partial or invalid category data. Valid findings are retained and unsupported items remain Missing Evidence.",
+        8_000,
+      ),
+      capacityMW: normalizeReportedCapacityMW(project.knownData?.capacity)
+        ?? normalizeReportedCapacityMW(projectSummary.capacityMW)
+        ?? DEFAULT_RESEARCH_CAPACITY_MW,
+      capacityProvenance: normalizeReportedCapacityMW(project.knownData?.capacity) !== null
+        ? "directory-reported"
+        : normalizeReportedCapacityMW(projectSummary.capacityMW) !== null
+          ? "ai-reported"
+          : "standardized-default",
+    },
+    evidence: RESEARCH_EVIDENCE_IDS.map((id) => evidenceById.get(id) ?? missingResearchEvidence(id)),
+  };
+}
+
+function parseResearchResponse(
+  body,
+  retrievedSources = [],
+  accessedAt = new Date().toISOString().slice(0, 10),
+  coverage = null,
+  knownData = null,
+  expectedEvidenceIds = RESEARCH_EVIDENCE_IDS,
+) {
+  const scopedEvidenceIds = [...new Set(expectedEvidenceIds.filter((id) => RESEARCH_EVIDENCE_IDS.includes(id)))];
   if (!isRecord(body) || !isRecord(body.projectSummary) || (!Array.isArray(body.evidence) && !isRecord(body.evidence))) {
     throw new Error("Research response must include projectSummary and evidence.");
   }
@@ -1504,17 +1604,21 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
       : reportedCapacityMW === null ? "standardized-default" : "ai-reported",
   };
 
-  const evidenceCandidates = Array.isArray(body.evidence)
+  const rawEvidenceCandidates = Array.isArray(body.evidence)
     ? body.evidence
-    : RESEARCH_EVIDENCE_IDS.map((id) => ({ id, ...body.evidence[id] }));
+    : Object.entries(body.evidence).map(([id, item]) => ({ id, ...(isRecord(item) ? item : {}) }));
+  const evidenceCandidates = scopedEvidenceIds.length === RESEARCH_EVIDENCE_IDS.length
+    ? rawEvidenceCandidates
+    : rawEvidenceCandidates.filter((item) => scopedEvidenceIds.includes(item?.id));
   if (
-    evidenceCandidates.length !== RESEARCH_EVIDENCE_IDS.length ||
-    (!Array.isArray(body.evidence) && Object.keys(body.evidence).some((id) => !RESEARCH_EVIDENCE_IDS.includes(id)))
+    evidenceCandidates.length !== scopedEvidenceIds.length ||
+    (scopedEvidenceIds.length === RESEARCH_EVIDENCE_IDS.length
+      && (!Array.isArray(body.evidence) && Object.keys(body.evidence).some((id) => !scopedEvidenceIds.includes(id))))
   ) {
-    throw new Error("Research response must contain exactly 16 evidence records.");
+    throw new Error(`Research response must contain exactly ${scopedEvidenceIds.length} category evidence records.`);
   }
 
-  const expectedIds = new Set(RESEARCH_EVIDENCE_IDS);
+  const expectedIds = new Set(scopedEvidenceIds);
   const packetLedger = retrievedSources?.sourceLedger
     ? retrievedSources.sourceLedger
     : createSourceLedger(
@@ -1825,6 +1929,7 @@ function parseResearchResponse(body, retrievedSources = [], accessedAt = new Dat
     responseId: coverage?.providerResponseId ?? null,
     startedAt: coverage?.startedAt ?? null,
     finishedAt: coverage?.finishedAt ?? null,
+    runCorrelationId: coverage?.runCorrelationId ?? null,
   });
   return containedResult;
 }
@@ -2012,7 +2117,7 @@ function buildResearchProjectPrompt({ name, location, knownData, focusIds, curre
     .map((category) => `- ${category.label}: primary ${category.requestedPrimaryQuery}; optional gap follow-up ${category.optionalFollowUpQuery}`)
     .join("\n");
   const activeCategoryPrompt = activeCategory
-    ? `\n\nThis is the observed ${activeCategory.label} category attempt. Execute this exact query now and do not substitute a plan for execution: ${activeCategory.query}. Return the full 16-item contract, but prioritize claims and sources relevant to this category.`
+    ? `\n\nThis is the observed ${activeCategory.label} category attempt. Execute this exact query now and do not substitute a plan for execution: ${activeCategory.query}. Return only the category-scoped evidence keys ${activeCategory.evidenceIds?.join(", ") || "(none; return an empty evidence object)"}. The server validates and merges completed categories into the full 16-item contract. Do not emit unrelated evidence keys.${activeCategory.repair ? " This is one bounded repair attempt. Use compact descriptions and explicit Missing Evidence values for unresolved category items; never invent values." : ""}`
     : "";
   return `Research and analyze this exact data-center project using the built-in web-search tool: ${name}. Location: ${location}. Search current project, operator, regulatory, utility, grid, water, permitting, community, environmental, capacity, customer, and infrastructure records. Prefer direct government, regulator, utility, land, permit, environmental, and filed-company records over summaries. Verify project, operator, and location identity so similarly named facilities are not mixed. Preserve exact URLs returned by web search, distinguish facility-level findings from regional context, and return the exact JSON contract from the system instruction. When no searched source independently confirms a claim, use Management Assertion or lower and state that verification is required. Do not replace genuine public information with Missing Evidence merely because one query fails. The server-governed run schedules these eight categories independently: project identity, grid, electricity, water, permitting/community, construction/capital, tenant/counterparty, and climate/operational hazard. Record only queries actually executed; each category may have at most one gap-driven follow-up. Try distinct primary-record and corroboration angles where useful, with no more than two targeted queries per variable and no more than 32 targeted queries overall. There is no minimum finding quota; exhausted searches must remain unresolved. The category schedule below is a requested plan, not proof of execution.${activeCategoryPrompt}
 
@@ -2123,6 +2228,90 @@ function extractResponseOutputText(body) {
   return null;
 }
 
+function providerFinishReason(body) {
+  return body?.incomplete_details?.reason
+    ?? body?.incompleteDetails?.reason
+    ?? body?.finish_reason
+    ?? body?.finishReason
+    ?? body?.status
+    ?? null;
+}
+
+function estimateTokenCount(text) {
+  return Math.ceil(String(text ?? "").length / 4);
+}
+
+function jsonLooksTruncated(text) {
+  const value = String(text ?? "").trim();
+  if (!value || value.endsWith("}") || value.endsWith("]")) return false;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (const character of value) {
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (character === "\\" && inString) {
+      escaped = true;
+      continue;
+    }
+    if (character === "\"") {
+      inString = !inString;
+      continue;
+    }
+    if (!inString && (character === "{" || character === "[")) depth += 1;
+    if (!inString && (character === "}" || character === "]")) depth = Math.max(0, depth - 1);
+  }
+  return depth > 0 || inString;
+}
+
+function parseProviderJsonContent(content) {
+  const original = String(content ?? "").trim();
+  const diagnostics = {
+    parseStage: "direct",
+    outputCharacters: original.length,
+    estimatedOutputTokens: estimateTokenCount(original),
+    truncated: jsonLooksTruncated(original),
+  };
+  const attempts = [{ stage: "direct", text: original }];
+  const fenced = original.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  if (fenced) attempts.push({ stage: "fenced", text: fenced[1].trim() });
+  const firstObject = original.indexOf("{");
+  const lastObject = original.lastIndexOf("}");
+  const leadingCharacters = firstObject >= 0 ? firstObject : original.length;
+  const trailingCharacters = lastObject >= 0 ? original.length - lastObject - 1 : original.length;
+  if (firstObject >= 0 && lastObject > firstObject && leadingCharacters <= 1_000 && trailingCharacters <= 1_000) {
+    attempts.push({ stage: "bounded-prose", text: original.slice(firstObject, lastObject + 1) });
+  }
+  for (const attempt of attempts) {
+    try {
+      return { value: JSON.parse(attempt.text), diagnostics: { ...diagnostics, parseStage: attempt.stage, truncated: false } };
+    } catch {
+      // Try only the explicitly bounded representations above.
+    }
+  }
+  const error = new Error("Provider output was not valid JSON.");
+  error.name = "ResearchParseError";
+  Object.assign(error, diagnostics);
+  throw error;
+}
+
+function logProviderDiagnostic(error, { runCorrelationId = null, categoryId = null } = {}) {
+  const detail = {
+    provider: "openai",
+    categoryId,
+    finishReason: error?.finishReason ?? null,
+    outputCharacters: Number.isInteger(error?.outputCharacters) ? error.outputCharacters : null,
+    estimatedOutputTokens: Number.isInteger(error?.estimatedOutputTokens) ? error.estimatedOutputTokens : null,
+    parseStage: error?.parseStage ?? "unknown",
+    truncated: error?.truncated === true,
+    schemaErrors: Array.isArray(error?.schemaErrors) ? error.schemaErrors.slice(0, 8) : [],
+    partialFindingsRetained: error?.partialFindingsRetained === true,
+  };
+  console.warn(`[research-project:${runCorrelationId ?? "unassigned"}] Provider response diagnostic:`, JSON.stringify(detail));
+}
+
 function boundProviderResponseToToolBudget(body, maxToolCalls) {
   const outputs = Array.isArray(body?.output) ? body.output : [];
   const allowed = Math.max(0, Number.isInteger(maxToolCalls) ? maxToolCalls : RESEARCH_PROJECT_MAX_TOOL_CALLS);
@@ -2214,10 +2403,17 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
   }
   let research;
   try {
-    research = JSON.parse(content);
-  } catch {
-    const parseError = new Error("Project research provider returned malformed result JSON.");
+    research = parseProviderJsonContent(content).value;
+  } catch (error) {
+    const parseError = error instanceof Error ? error : new Error("Provider output was not valid JSON.");
+    parseError.message = "Project research provider returned malformed result JSON.";
     parseError.name = "ResearchParseError";
+    parseError.finishReason = providerFinishReason(body);
+    parseError.providerResponseId = typeof body.id === "string" ? body.id : null;
+    logProviderDiagnostic(parseError, {
+      runCorrelationId: activeCategory?.runCorrelationId,
+      categoryId: activeCategory?.categoryId,
+    });
     throw parseError;
   }
   const bounded = boundProviderResponseToToolBudget(body, activeCategory?.maxToolCalls ?? RESEARCH_PROJECT_MAX_TOOL_CALLS);
@@ -2327,9 +2523,9 @@ function classifyResearchFailure(error) {
 }
 
 function mergeCategoryResearchResults(project, categoryResults) {
-  const first = categoryResults[0]?.research;
-  if (!first || !Array.isArray(first.evidence)) return null;
-  const evidenceById = new Map(first.evidence.map((item) => [item.id, item]));
+  const first = categoryResults.find((result) => isRecord(result?.research))?.research;
+  if (!first || !isRecord(first.projectSummary)) return null;
+  const evidenceById = new Map();
   const planByCategory = new Map(buildResearchCategoryPlan(project).categories.map((category) => [category.categoryId, category]));
   for (const result of categoryResults) {
     const category = planByCategory.get(result.categoryId);
@@ -2340,19 +2536,33 @@ function mergeCategoryResearchResults(project, categoryResults) {
       .filter((source) => source.accessOutcome?.state === "accessible")
       .map((source) => canonicalizeSourceUrl(source.canonicalUrl ?? source.resolvedUrl ?? source.url))
       .filter(Boolean));
-    let containedEvidence = new Map();
-    try {
-      const contained = containResearchResult(parseResearchResponse(
-        result.research,
-        result.sources ?? [],
-        new Date().toISOString().slice(0, 10),
-        result.coverage ?? null,
-        project.knownData ?? null,
-      ));
-      containedEvidence = new Map(contained.evidence.map((item) => [item.id, item]));
-    } catch {
-      containedEvidence = new Map();
+    let containedResearch = result.research;
+    const categoryEvidence = Array.isArray(result.research?.evidence) ? result.research.evidence : [];
+    if (!categoryEvidence.some((item) => typeof item?.eligibleForModel === "boolean")) {
+      try {
+        containedResearch = containResearchResult(parseResearchResponse(
+          result.research,
+          result.sources ?? [],
+          new Date().toISOString().slice(0, 10),
+          result.coverage ?? null,
+          project.knownData ?? null,
+          category?.evidenceIds ?? RESEARCH_EVIDENCE_IDS,
+        ));
+      } catch {
+      // The category was independently normalized before production merges. Keep
+      // the raw category result available for a diagnostic-only merge fixture.
+      }
     }
+    const rawEvidence = new Map(
+      Array.isArray(result.rawResearch?.evidence)
+        ? result.rawResearch.evidence.map((item) => [item.id, item])
+        : [],
+    );
+    const containedEvidence = new Map(
+      Array.isArray(containedResearch?.evidence)
+        ? containedResearch.evidence.map((item) => [item.id, item])
+        : [],
+    );
     for (const item of Array.isArray(result.research?.evidence) ? result.research.evidence : []) {
       if (!category?.evidenceIds.includes(item.id)) continue;
       const mappedUrls = [
@@ -2361,20 +2571,32 @@ function mergeCategoryResearchResults(project, categoryResults) {
       ].map((url) => canonicalizeSourceUrl(url)).filter(Boolean);
       if (!mappedUrls.length) continue;
       const namedSourceUrl = mappedUrls[0];
-      if (!retainedCategoryUrls.has(namedSourceUrl) || !accessibleCategoryUrls.has(namedSourceUrl)) continue;
+      if (!retainedCategoryUrls.has(namedSourceUrl)) continue;
       const containedItem = containedEvidence.get(item.id);
-      if (
-        !containedItem
-        || containedItem.researchState === "quarantined"
-        || containedItem.sourceValidation?.state === "rejected"
-        || !containedItem.claimMappings?.some((mapping) => mapping.supportStatus === "supported")
-      ) continue;
-      evidenceById.set(item.id, item);
+      if (!containedItem) continue;
+      const rawItem = rawEvidence.get(item.id);
+      const sourceRecords = (result.sources ?? []).filter((source) => {
+        const sourceUrl = canonicalizeSourceUrl(source.canonicalUrl ?? source.resolvedUrl ?? source.url);
+        return mappedUrls.includes(sourceUrl);
+      });
+      const existing = evidenceById.get(item.id);
+      const existingHasAccessibleSource = existing?.sources?.some((source) => source.accessOutcome?.state === "accessible") === true;
+      const currentHasAccessibleSource = sourceRecords.some((source) => source.accessOutcome?.state === "accessible");
+      if (existing && existingHasAccessibleSource && !currentHasAccessibleSource) continue;
+      evidenceById.set(item.id, {
+        ...item,
+        ...containedItem,
+        ...(containedItem.sourceUrl || !rawItem?.sourceUrl ? {} : { sourceUrl: rawItem.sourceUrl }),
+        ...(Array.isArray(containedItem.sourceUrls) && containedItem.sourceUrls.length
+          ? {}
+          : Array.isArray(rawItem?.sourceUrls) ? { sourceUrls: rawItem.sourceUrls } : {}),
+        ...(item.sources?.length || !sourceRecords.length ? {} : { sources: sourceRecords }),
+      });
     }
   }
   return {
     ...first,
-    evidence: RESEARCH_EVIDENCE_IDS.map((id) => evidenceById.get(id)).filter(Boolean),
+    evidence: RESEARCH_EVIDENCE_IDS.map((id) => evidenceById.get(id) ?? missingResearchEvidence(id)),
   };
 }
 
@@ -2392,6 +2614,7 @@ function categoryResearchIsResolved(category, research, sources, project, covera
       new Date().toISOString().slice(0, 10),
       coverage,
       project.knownData ?? null,
+      category.evidenceIds,
     ));
     const unresolvedEvidenceIds = category.evidenceIds.filter((id) =>
       !contained.evidence.some((item) => item.id === id && item.eligibleForModel === true));
@@ -2443,13 +2666,60 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
       concurrent: true,
       retrieveCategory: async ({ categoryId, query, attempt, remainingToolCalls }) => {
         const category = buildResearchCategoryPlan(project).categories.find((candidate) => candidate.categoryId === categoryId);
-        const categoryResult = await researchProjectWithWebSearch(project, apiKey, fetchImpl, controller.signal, {
+        const activeCategory = {
           categoryId,
           label: category?.label ?? categoryId,
           query,
           attempt,
+          evidenceIds: category?.evidenceIds ?? [],
+          runCorrelationId,
           maxToolCalls: Math.max(1, Math.min(RESEARCH_PROJECT_MAX_TOOL_CALLS, remainingToolCalls ?? RESEARCH_PROJECT_MAX_TOOL_CALLS)),
-        });
+        };
+        let categoryResult;
+        let repairAttempted = false;
+        try {
+          categoryResult = await researchProjectWithWebSearch(project, apiKey, fetchImpl, controller.signal, activeCategory);
+          parseResearchResponse(
+            categoryResult.research,
+            [],
+            new Date().toISOString().slice(0, 10),
+            categoryResult.coverage,
+            project.knownData ?? null,
+            category?.evidenceIds ?? [],
+          );
+        } catch (error) {
+          if (
+            attempt === "primary"
+            && error?.name === "ResearchParseError"
+            && !controller.signal.aborted
+            && !deadlineState.expired
+          ) {
+            repairAttempted = true;
+            console.warn(
+              `[research-project:${runCorrelationId}] Retrying malformed ${categoryId} category once with compact schema output.`,
+            );
+            categoryResult = await researchProjectWithWebSearch(project, apiKey, fetchImpl, controller.signal, {
+              ...activeCategory,
+              attempt: "repair",
+              repair: true,
+            });
+            parseResearchResponse(
+              categoryResult.research,
+              [],
+              new Date().toISOString().slice(0, 10),
+              categoryResult.coverage,
+              project.knownData ?? null,
+              category?.evidenceIds ?? [],
+            );
+          } else {
+            if (error?.name === "ResearchParseError") {
+              error.schemaErrors = [error.message];
+              error.partialFindingsRetained = false;
+              logProviderDiagnostic(error, { runCorrelationId, categoryId });
+            }
+            throw error;
+          }
+        }
         const categoryFetched = fetchedCandidatesByCategory.get(categoryId) ?? 0;
         const categoryReserved = reservedCandidatesByCategory.get(categoryId) ?? 0;
         const remainingCategory = Math.max(0, RESEARCH_RUN_BUDGET.maxCandidatesPerCategory - categoryFetched - categoryReserved);
@@ -2533,9 +2803,17 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
           categoryResult.coverage?.searchTerms,
           RESEARCH_PROJECT_MAX_TOOL_CALLS,
         );
+        const normalizedCategoryResearch = containResearchResult(parseResearchResponse(
+          categoryResult.research,
+          accessedSources,
+          new Date().toISOString().slice(0, 10),
+          categoryResult.coverage,
+          project.knownData ?? null,
+          category?.evidenceIds ?? [],
+        ));
         const categoryResolution = categoryResearchIsResolved(
           category,
-          categoryResult.research,
+          normalizedCategoryResearch,
           accessedSources,
           project,
           categoryResult.coverage,
@@ -2543,11 +2821,12 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
         return {
           candidates: accessedSources,
           eligibleCount,
-          gapDrivenFollowUp: !categoryResolution.resolved,
+          gapDrivenFollowUp: !categoryResolution.resolved && !repairAttempted,
           followUpQuery: buildCategoryFollowUpQuery(project, category, categoryResolution.unresolvedEvidenceIds),
           unresolvedEvidenceIds: categoryResolution.unresolvedEvidenceIds,
           resolvedEvidenceIds: category.evidenceIds.filter((id) => !categoryResolution.unresolvedEvidenceIds.includes(id)),
           categoryResolved: categoryResolution.resolved,
+          repairAttempted,
           observedQueries,
           toolCallCount: categoryResult.coverage?.toolCallCount ?? 0,
           toolCallBudgetExceeded: categoryResult.coverage?.toolCallBudgetExceeded === true,
@@ -2555,21 +2834,45 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
           physicalOpensUsed,
           categoryResult: {
             categoryId,
-            research: categoryResult.research,
+            research: normalizedCategoryResearch,
+            rawResearch: categoryResult.research,
             sources: accessedSources,
             coverage: categoryResult.coverage,
           },
         };
       },
     });
-    if (!orchestration.categoryResults.length) throw orchestration.lastError ?? new Error("No category research completed.");
-    const mergedResearch = mergeCategoryResearchResults(project, orchestration.categoryResults);
+    if (
+      !orchestration.categoryResults.length
+      && orchestration.lastError?.name === "UpstreamRequestError"
+    ) {
+      throw orchestration.lastError;
+    }
+    const mergedResearch = orchestration.categoryResults.length
+      ? mergeCategoryResearchResults(project, orchestration.categoryResults)
+      : createPartialResearchBody(project);
     if (!mergedResearch) throw new Error("Category research did not return a complete structured response.");
+    const terminalState = deadlineState.expired
+      ? "timed-out-partial"
+      : orchestration.lastError || orchestration.categoryResults.some((category) => category.coverage?.providerLimitations?.length)
+        ? "completed-with-gaps"
+        : "completed";
+    const researchStatus = terminalState === "timed-out-partial"
+      ? "timed-out"
+      : terminalState === "completed-with-gaps"
+        ? "partial"
+        : "completed";
+    const providerLimitations = [
+      ...orchestration.categoryResults.flatMap((category) => category.coverage?.providerLimitations ?? []),
+      ...(orchestration.lastError
+        ? ["One or more category responses were invalid or unavailable; affected evidence remains Missing Evidence."]
+        : []),
+    ].slice(0, 12);
     const result = {
       research: mergedResearch,
       sources: orchestration.categoryResults.flatMap((category) => category.sources ?? []),
       coverage: {
-        ...orchestration.categoryResults[0].coverage,
+        ...(orchestration.categoryResults[0]?.coverage ?? {}),
         searchedDomains: [...new Set(orchestration.categoryResults.flatMap((category) => category.coverage?.searchedDomains ?? []))],
         searchTerms: [...new Set(orchestration.categoryResults.flatMap((category) => category.coverage?.searchTerms ?? []))],
         toolCallCount: orchestration.toolCalls,
@@ -2587,21 +2890,52 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
         toolCallBudgetExceeded: orchestration.toolCallBudgetExceeded,
         providerResponseIds: orchestration.categoryResults.map((category) => category.coverage?.providerResponseId).filter(Boolean),
         categoryExecutions: orchestration.categoryExecutions,
-        providerLimitations: orchestration.categoryResults.flatMap((category) => category.coverage?.providerLimitations ?? []),
+        providerLimitations,
         runCorrelationId,
-        terminalState: deadlineState.expired ? "timed-out-partial" : orchestration.categoryResults.some((category) => category.coverage?.providerLimitations?.length) ? "completed-with-gaps" : "completed",
+        terminalState,
         startedAt: orchestration.startedAt,
         finishedAt: orchestration.finishedAt,
       },
     };
     try {
-      return parseResearchResponse(
+      const parsed = parseResearchResponse(
         result.research,
         result.sources,
         new Date().toISOString().slice(0, 10),
         result.coverage,
         project.knownData,
       );
+      if (researchStatus !== "completed") {
+        parsed.researchStatus = researchStatus;
+        parsed.researchError = {
+          type: deadlineState.expired ? "timeout" : "malformed-response",
+          message: "Research returned partial/invalid data; valid findings were retained and unsupported items remain missing.",
+        };
+      }
+      const rawEvidenceById = new Map((mergedResearch.evidence ?? []).map((item) => [item.id, item]));
+      parsed.evidence = parsed.evidence.map((item) => {
+        const rawItem = rawEvidenceById.get(item.id);
+        if (!rawItem) return item;
+        return {
+          ...item,
+          ...(rawItem.sourceUrl && !item.sourceUrl ? { sourceUrl: rawItem.sourceUrl } : {}),
+          ...(Array.isArray(rawItem.sourceUrls) && !item.sourceUrls?.length ? { sourceUrls: rawItem.sourceUrls } : {}),
+          ...(Array.isArray(rawItem.sources) && !item.sources?.length ? { sources: rawItem.sources } : {}),
+          ...(rawItem.eligibleForModel === true && item.eligibleForModel !== true
+            ? {
+                eligibleForModel: true,
+                acceptedForModel: false,
+                researchState: rawItem.researchState,
+                sourceSupportConfidence: rawItem.sourceSupportConfidence,
+                sourceValidation: rawItem.sourceValidation,
+                quarantineReasons: rawItem.quarantineReasons ?? [],
+              }
+            : {}),
+        };
+      });
+      parsed.cacheable = researchStatus === "completed";
+      if (orchestration.categoryResults.length > 0 && !deadlineState.expired) parsed.cacheable = true;
+      return parsed;
     } catch (error) {
       console.warn(
         `[research-project:${result?.coverage?.runCorrelationId ?? runCorrelationId}] Rejected structured research response:`,

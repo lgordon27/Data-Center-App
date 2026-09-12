@@ -171,6 +171,8 @@ export type ScenarioMetrics = {
 export type ProjectContext = Omit<CustomResearchResponse["projectSummary"], "capacityProvenance"> & {
   capacityProvenance?: CapacityProvenance;
   researchMode?: CustomResearchResponse["researchMode"];
+  researchStatus?: CustomResearchResponse["researchStatus"];
+  researchError?: CustomResearchResponse["researchError"];
   researchCache?: CustomResearchResponse["researchCache"];
   researchCoverage?: CustomResearchResponse["researchCoverage"];
   researchAudit?: CustomResearchResponse["researchAudit"];
@@ -797,7 +799,22 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     const researchById = new Map(research.evidence.map((item) => [item.id, item]));
     const customEvidence = Object.fromEntries(
       CUSTOM_EVIDENCE_IDS.map((id) => {
-        const item = researchById.get(id);
+        const item = researchById.get(id) ?? {
+          ...INITIAL_EVIDENCE[id],
+          value: "Not established",
+          classification: "Missing Evidence" as const,
+          citation: "No validated category result established this facility-level value.",
+          description: "This item remains unresolved because the relevant research category did not return validated data.",
+          sourceUrl: undefined,
+          sourceRole: "Research gap · no validated category result",
+          searchCoverage: [],
+          failedSearchDomains: [],
+          sources: [],
+          sourceSupportConfidence: 0,
+          eligibleForModel: false,
+          acceptedForModel: false,
+          researchState: "retrieved-lead" as const,
+        };
         return [id, {
           ...item,
           id,
@@ -838,6 +855,8 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       capacityMW: research.projectSummary.capacityMW,
       capacityProvenance: research.projectSummary.capacityProvenance,
        researchMode: research.researchMode ?? "research-incomplete",
+       researchStatus: research.researchStatus,
+       researchError: research.researchError,
       researchCache: research.researchCache,
       researchCoverage: research.researchCoverage,
       researchAudit: research.researchAudit,

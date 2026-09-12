@@ -1884,9 +1884,12 @@ test("rejects an incomplete provider response without leaking provider details",
       return singleCallResponse(incomplete);
     },
   });
-  assert.equal(response.statusCode, 502);
-  assert.deepEqual(response.json(), { error: "Project research returned an invalid 16-item response.", errorType: "malformed-response" });
-  assert.doesNotMatch(response.body, /server-secret-for-test|provider/i);
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.json().researchStatus, "partial");
+  assert.equal(response.json().researchError.type, "malformed-response");
+  assert.equal(response.json().evidence.length, 16);
+  assert.ok(response.json().evidence.some((item) => item.classification === "Missing Evidence"));
+  assert.doesNotMatch(response.body, /server-secret-for-test/i);
 });
 
 test("returns specific safe quota, authentication, parse, and timeout errors", async () => {
@@ -1921,8 +1924,10 @@ test("returns specific safe quota, authentication, parse, and timeout errors", a
     rateLimiter,
     fetchImpl: async () => new Response("not json", { status: 200 }),
   });
-  assert.equal(parseResponse.statusCode, 502);
-  assert.match(parseResponse.body, /invalid JSON/i);
+  assert.equal(parseResponse.statusCode, 200);
+  assert.equal(parseResponse.json().researchStatus, "partial");
+  assert.equal(parseResponse.json().researchError.type, "malformed-response");
+  assert.equal(parseResponse.json().evidence.length, 16);
 
   const timeoutResponse = responseRecorder();
   await handleResearchProjectRequest(request({ name: "Project Atlas", location: "Texas" }), timeoutResponse, {
@@ -1935,5 +1940,8 @@ test("returns specific safe quota, authentication, parse, and timeout errors", a
       throw error;
     },
   });
-  assert.equal(timeoutResponse.statusCode, 504);
+  assert.equal(timeoutResponse.statusCode, 200);
+  assert.equal(timeoutResponse.json().researchStatus, "partial");
+  assert.equal(timeoutResponse.json().researchError.type, "malformed-response");
+  assert.equal(timeoutResponse.json().evidence.length, 16);
 });

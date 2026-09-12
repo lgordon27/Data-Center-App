@@ -113,7 +113,17 @@ export function createResearchProjectCache({
     const promise = Promise.resolve()
       .then(runner)
       .then(async (result) => {
-        const entry = await write(key, result);
+        const entry = result?.cacheable === false
+          ? {
+              key,
+              storedAt: null,
+              needsRevalidation: false,
+              validationPolicyVersion: null,
+              researchPolicyVersion: null,
+              modelVersion: null,
+              result,
+            }
+          : await write(key, result);
         statuses.set(key, {
           refreshStatus: "completed",
           startedAt,

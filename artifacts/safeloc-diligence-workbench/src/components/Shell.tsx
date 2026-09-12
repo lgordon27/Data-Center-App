@@ -268,6 +268,9 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
   const [customProjectPrefill, setCustomProjectPrefill] = useState<{ name: string; location: string; knownData?: KnownProjectData } | null>(null);
   const [customProjectSelection, setCustomProjectSelection] = useState<{ company: CompanyKey | null; selection: ProjectSelectionContext | null } | null>(null);
   const dialogReturnFocus = useRef<HTMLElement | null>(null);
+  const activeResearchRequestKey = useRef<string | null>(null);
+  const activeResearchCancel = useRef<(() => void) | null>(null);
+  const activeResearchSelection = useRef<{ company: CompanyKey | null; selection: ProjectSelectionContext | null } | null>(null);
   const previousRoute = useRef(route);
   const isHome = route === "home";
   const openCustomProject = (event?: Event) => {
@@ -374,7 +377,7 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
             </button>
           )}
            {!isHome && sessionRestored && <span role="status" data-testid="text-session-restored" className="absolute right-4 top-full z-20 rounded border border-[#b9d43a]/40 bg-[#122232] px-2.5 py-1.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-[#d4e86b] shadow-md md:right-8">{sessionMigrated ? "Session updated to audited defaults" : "Session restored"}</span>}
-           <button data-testid="button-reset-default" type="button" onClick={onReset} className="rounded border border-[#60717f] px-2.5 py-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.08em] text-[#d4e86b] transition-colors hover:border-[#d4e86b] hover:bg-white/10">Reset</button>
+           <button data-testid="button-reset-default" type="button" onClick={() => { activeResearchRequestKey.current = null; activeResearchCancel.current = null; onReset(); }} className="rounded border border-[#60717f] px-2.5 py-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.08em] text-[#d4e86b] transition-colors hover:border-[#d4e86b] hover:bg-white/10">Reset</button>
         </div>
       </div>
     </header>
@@ -386,8 +389,19 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
         closeCustomProject();
         window.dispatchEvent(new Event("safeloc-return-to-curated"));
       }}
-      onSuccess={(research) => {
-        loadCustomProject(research, customProjectSelection?.company, customProjectSelection?.selection);
+      onStart={(provisional, requestKey, cancel) => {
+        activeResearchRequestKey.current = requestKey;
+        activeResearchCancel.current = cancel;
+        const selection = customProjectSelection;
+        activeResearchSelection.current = selection;
+        loadCustomProject(provisional, selection?.company);
+        closeCustomProject();
+        window.location.hash = "analysis";
+      }}
+      onSuccess={(research, requestKey) => {
+        if (activeResearchRequestKey.current !== requestKey) return;
+        activeResearchCancel.current = null;
+        loadCustomProject(research, activeResearchSelection.current?.company, activeResearchSelection.current?.selection);
         trackEvent("research_handoff_completed", {
           company: customProjectSelection?.company?.toLowerCase() ?? "none",
           project_id: "custom_project",
@@ -398,8 +412,26 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
         closeCustomProject();
         window.location.hash = "analysis";
       }}
+      onResearchError={(provisional, requestError, requestKey) => {
+        if (activeResearchRequestKey.current !== requestKey) return;
+        activeResearchCancel.current = null;
+        const timedOut = requestError instanceof Error && requestError.name === "ResearchTimeoutError";
+        const cancelled = requestError instanceof Error && requestError.name === "ResearchCancelledError";
+        loadCustomProject({
+          ...provisional,
+          researchStatus: cancelled ? "cancelled" : timedOut ? "timed-out" : "failed",
+          researchError: {
+            type: cancelled ? "cancelled" : timedOut ? "timeout" : "upstream",
+            message: cancelled
+              ? "Research was cancelled. The submitted project remains open with Missing Evidence; retry the same project when ready."
+              : timedOut
+              ? "The 90-second research deadline was reached. Valid findings were retained where available; retry the same project to continue."
+              : "The research provider did not return a usable result. The project is still open with Missing Evidence; retry the same project.",
+          },
+        }, activeResearchSelection.current?.company, activeResearchSelection.current?.selection);
+      }}
     />
-    <CustomResearchBanner />
+    <CustomResearchBanner onCancel={() => activeResearchCancel.current?.()} />
     </>
   );
 }
@@ -458,16 +490,74 @@ export function ShellAside({ screen, metrics, onNavigate, onReset }: { screen: S
   );
 }
 
-export function CustomResearchBanner() {
+export function CustomResearchBanner({ onCancel }: { onCancel?: () => void }) {
   const { project } = useDiligence();
   if (project.kind !== "custom") return null;
   const isDefaultAssumptions = project.researchMode === "default-assumptions";
   const isPartialResearch = project.researchMode === "partial-public-source";
   const isResearchIncomplete = project.researchMode === "research-incomplete";
+  const isResearching = project.researchStatus === "researching";
+  const isTimedOut = project.researchStatus === "timed-out";
+  const isFailed = project.researchStatus === "failed";
+  const isCancelled = project.researchStatus === "cancelled";
+  const canRetry = isTimedOut || isFailed || isCancelled || isResearchIncomplete;
   return (
     <aside data-testid="custom-research-banner" role="note" className="mb-5 flex items-start gap-3 rounded-lg border-2 border-[#f1cb8b] bg-[#fff8e9] px-4 py-3 text-[#6f460e]">
       <TriangleAlert aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
-      <p className="text-[11px] leading-5"><strong className="font-semibold">{isDefaultAssumptions ? "Default assumptions · AI research unavailable" : isResearchIncomplete ? "RESEARCH INCOMPLETE · no eligible sources" : isPartialResearch ? "Partial public-source research" : "Custom research · not yet accepted into the model"}: {project.name}.</strong> {isDefaultAssumptions ? "All modeled evidence remains Missing Evidence. Directory facts provide identity context only and do not count as SafeLoc evidence." : isResearchIncomplete ? "Generated content is retained only under Unverified leads. It cannot become a model input until a source-backed proposal passes containment and a reviewer explicitly accepts it." : isPartialResearch ? "Credible public-source passages are retained, while unsupported categories remain Missing Evidence. Financial outputs remain synthetic and no return conclusion is presented." : "Research findings are proposals only. Loading, reviewing, refreshing, and caching them cannot change accepted economics; only explicit acceptance of an eligible proposal can do so."} Financial outputs remain synthetic assumptions scaled to the displayed capacity.</p>
+      <div className="min-w-0 flex-1 text-[11px] leading-5">
+        <strong className="font-semibold">
+          {isResearching
+            ? "RESEARCH IN PROGRESS"
+            : isTimedOut
+              ? "RESEARCH TIMED OUT"
+             : isFailed
+                ? "RESEARCH PROVIDER FAILURE"
+                : isCancelled
+                  ? "RESEARCH CANCELLED"
+                : isDefaultAssumptions
+                  ? "Default assumptions · AI research unavailable"
+                  : isResearchIncomplete
+                    ? "RESEARCH INCOMPLETE · no eligible sources"
+                    : isPartialResearch
+                      ? "Partial public-source research"
+                      : "Custom research · not yet accepted into the model"}: {project.name}.
+        </strong>{" "}
+        {isResearching
+          ? "The submitted project is open now while bounded public-source research continues. Current evidence is not accepted into the model."
+             : isTimedOut
+            ? project.researchError?.message ?? "The 90-second research deadline was reached. Valid findings remain visible and unresolved items stay Missing Evidence."
+            : isFailed
+              ? project.researchError?.message ?? "The provider did not return a usable result. Valid findings remain visible and unresolved items stay Missing Evidence."
+                : isCancelled
+                  ? project.researchError?.message ?? "Research was cancelled. The submitted project remains open with Missing Evidence."
+              : isDefaultAssumptions
+                ? "All modeled evidence remains Missing Evidence. Directory facts provide identity context only and do not count as SafeLoc evidence."
+                : isResearchIncomplete
+                  ? "Generated content is retained only under Unverified leads. It cannot become a model input until a source-backed proposal passes containment and a reviewer explicitly accepts it."
+                  : isPartialResearch
+                    ? "Credible public-source passages are retained, while unsupported categories remain Missing Evidence. Financial outputs remain synthetic and no return conclusion is presented."
+                    : "Research findings are proposals only. Loading, reviewing, refreshing, and caching them cannot change accepted economics; only explicit acceptance of an eligible proposal can do so."} Financial outputs remain synthetic assumptions scaled to the displayed capacity.
+          {isResearching && onCancel && (
+            <button
+              type="button"
+              data-testid="custom-research-cancel"
+              className="ml-3 mt-2 inline-flex items-center gap-1 rounded border border-[#9c6c20] px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-[0.08em] hover:bg-[#f7e5bc]"
+              onClick={onCancel}
+            >
+              Cancel research
+            </button>
+          )}
+          {canRetry && !isResearching && (
+          <button
+            type="button"
+              data-testid="custom-research-retry"
+            className="ml-3 mt-2 inline-flex items-center gap-1 rounded border border-[#9c6c20] px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-[0.08em] hover:bg-[#f7e5bc]"
+            onClick={() => window.dispatchEvent(new CustomEvent("safeloc-open-custom-project", { detail: { name: project.name, location: project.location } }))}
+          >
+            Retry same project
+          </button>
+        )}
+      </div>
     </aside>
   );
 }

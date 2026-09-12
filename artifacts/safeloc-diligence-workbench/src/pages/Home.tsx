@@ -19,6 +19,7 @@ import {
 import { useDiligence } from "@/context/DiligenceContext";
 import {
   createDefaultAssumptionResearch,
+  createProvisionalResearch,
   researchProject,
   type CustomResearchResponse,
   type KnownProjectData,
@@ -55,7 +56,9 @@ const homeEntryPoints = [
 ] as const;
 
 type CustomProjectFormProps = {
-  onSuccess: (research: CustomResearchResponse) => void;
+  onStart?: (research: CustomResearchResponse, requestKey: string, cancel: () => void) => void;
+  onSuccess: (research: CustomResearchResponse, requestKey: string) => void;
+  onResearchError?: (research: CustomResearchResponse, error: unknown, requestKey: string) => void;
   compact?: boolean;
   onReturnToCurated?: () => void;
   initialValues?: {
@@ -70,7 +73,7 @@ type CustomProjectFormProps = {
  * Research validation, loading, errors, and the service call therefore remain
  * one shared flow while the home can make analysis the primary entry point.
  */
-export function CustomProjectForm({ onSuccess, compact = false, initialValues, onReturnToCurated }: CustomProjectFormProps) {
+export function CustomProjectForm({ onStart, onSuccess, onResearchError, compact = false, initialValues, onReturnToCurated }: CustomProjectFormProps) {
   const [name, setName] = useState(initialValues?.name ?? "");
   const [location, setLocation] = useState(initialValues?.location ?? "");
   const [busy, setBusy] = useState(false);
@@ -78,8 +81,10 @@ export function CustomProjectForm({ onSuccess, compact = false, initialValues, o
   const [progress, setProgress] = useState<ResearchProgress>("researching");
   const [fallbackAvailable, setFallbackAvailable] = useState(false);
   const requestController = useRef<AbortController | null>(null);
+  const cancelRequested = useRef(false);
   const requestGeneration = useRef(0);
   const mounted = useRef(true);
+  const handedOff = useRef(false);
 
   useEffect(() => {
     if (!initialValues) return;
@@ -92,7 +97,7 @@ export function CustomProjectForm({ onSuccess, compact = false, initialValues, o
   useEffect(() => () => {
     mounted.current = false;
     requestGeneration.current += 1;
-    requestController.current?.abort();
+    if (!handedOff.current) requestController.current?.abort();
   }, []);
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -107,17 +112,40 @@ export function CustomProjectForm({ onSuccess, compact = false, initialValues, o
     setProgress("researching");
     const controller = new AbortController();
     const generation = requestGeneration.current + 1;
+    const requestKey = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const provisional = createProvisionalResearch(name.trim(), location.trim(), initialValues?.knownData);
     requestGeneration.current = generation;
     requestController.current = controller;
+    cancelRequested.current = false;
+    handedOff.current = Boolean(onStart);
+    onStart?.(provisional, requestKey, () => {
+      cancelRequested.current = true;
+      controller.abort();
+    });
     try {
       const result = await researchProject(name.trim(), location.trim(), {
         knownData: initialValues?.knownData,
         onProgress: setProgress,
         signal: controller.signal,
       });
-      if (mounted.current && requestGeneration.current === generation && !controller.signal.aborted) onSuccess(result);
+      if (!controller.signal.aborted && (handedOff.current || requestGeneration.current === generation)) {
+        onSuccess(result, requestKey);
+      }
     } catch (requestError) {
-      if (controller.signal.aborted || !mounted.current || requestGeneration.current !== generation) return;
+      if (controller.signal.aborted) {
+        if (cancelRequested.current && handedOff.current) {
+          const cancelled = new Error("Project research was cancelled.");
+          cancelled.name = "ResearchCancelledError";
+          onResearchError?.(provisional, cancelled, requestKey);
+        }
+        return;
+      }
+      if (handedOff.current) {
+        onResearchError?.(provisional, requestError, requestKey);
+        return;
+      }
+      if (requestGeneration.current !== generation) return;
+      if (!mounted.current) return;
       setError(requestError instanceof Error ? requestError.message : "Project research is unavailable. Try again.");
       setFallbackAvailable(true);
     } finally {
@@ -220,7 +248,7 @@ export function CustomProjectForm({ onSuccess, compact = false, initialValues, o
               <button
                 data-testid={compact ? "home-custom-analysis-fallback" : "custom-project-fallback"}
                 type="button"
-                onClick={() => onSuccess(createDefaultAssumptionResearch(name, location, initialValues?.knownData))}
+                onClick={() => onSuccess(createDefaultAssumptionResearch(name, location, initialValues?.knownData), "fallback")}
                 className="min-h-10 rounded-md border border-current px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.08em]"
               >
                 Continue with synthetic assumptions
@@ -268,13 +296,17 @@ export function CustomProjectForm({ onSuccess, compact = false, initialValues, o
 export function CustomProjectDialog({
   open,
   onClose,
+  onStart,
   onSuccess,
+  onResearchError,
   initialValues,
   onReturnToCurated,
 }: {
   open: boolean;
   onClose: () => void;
-  onSuccess: (research: CustomResearchResponse) => void;
+  onStart?: (research: CustomResearchResponse, requestKey: string, cancel: () => void) => void;
+  onSuccess: (research: CustomResearchResponse, requestKey: string) => void;
+  onResearchError?: (research: CustomResearchResponse, error: unknown, requestKey: string) => void;
   initialValues?: CustomProjectFormProps["initialValues"];
   onReturnToCurated?: () => void;
 }) {
@@ -306,7 +338,14 @@ export function CustomProjectDialog({
           </div>
           <button data-testid="button-close-custom-project" type="button" onClick={onClose} autoFocus className="rounded-md px-2 py-1 text-xl leading-none text-[#52616b] hover:bg-[#e7ecef]" aria-label="Close custom project form">×</button>
         </div>
-        <CustomProjectForm key={`${initialValues?.name ?? "custom"}:${initialValues?.location ?? ""}`} onSuccess={onSuccess} initialValues={initialValues} onReturnToCurated={onReturnToCurated} />
+        <CustomProjectForm
+          key={`${initialValues?.name ?? "custom"}:${initialValues?.location ?? ""}`}
+          onStart={onStart}
+          onSuccess={onSuccess}
+          onResearchError={onResearchError}
+          initialValues={initialValues}
+          onReturnToCurated={onReturnToCurated}
+        />
         <p className="mt-4 border-t border-[#e5eae8] pt-4 text-[10px] leading-4 text-[#7d898f]">
           The active custom result is session-only and is not saved locally. The curated Stargate case remains available through Reset to Default.
         </p>

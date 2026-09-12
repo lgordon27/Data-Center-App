@@ -146,6 +146,11 @@ export type CustomResearchResponse = {
     capacityProvenance: CapacityProvenance;
   };
   researchMode?: ResearchMode;
+  researchStatus?: "researching" | "completed" | "partial" | "timed-out" | "failed" | "cancelled";
+  researchError?: {
+    type: "timeout" | "malformed-response" | "upstream" | "cancelled";
+    message: string;
+  };
   researchCache?: ResearchCacheMetadata;
   semanticPolicyVersion?: number;
   sourceValidationPolicyVersion?: number;
@@ -514,6 +519,23 @@ function normalizeKnownData(value: KnownProjectData | undefined): KnownProjectDa
     ...(companyDomains.length ? { companyDomains } : {}),
   };
   return Object.keys(normalized).length ? normalized : undefined;
+}
+
+export function deriveLocationContext(location: string): Pick<KnownProjectData, "city" | "county" | "state"> {
+  const parts = location
+    .split(/\s*(?:·|\||,)\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length < 2) return {};
+  const isState = (part: string) => /^[A-Z]{2}$/.test(part) || /^(?:Texas|Ohio|Virginia|California|New York)$/i.test(part);
+  const county = parts.find((part) => /\bcounty\b/i.test(part));
+  const state = parts.find(isState);
+  const city = parts.find((part) => part !== county && part !== state && !/\bcounty\b/i.test(part));
+  return {
+    ...(city ? { city } : {}),
+    ...(county ? { county } : {}),
+    ...(state ? { state } : {}),
+  };
 }
 
 function parseSource(value: unknown): ResearchEvidenceSource | null {
@@ -975,6 +997,19 @@ function parseResponse(value: unknown): CustomResearchResponse {
         ? summary.capacityProvenance === "directory-reported" ? "directory-reported" : "ai-reported"
         : "standardized-default",
     },
+    ...(value.researchStatus === "researching" || value.researchStatus === "completed" || value.researchStatus === "partial" || value.researchStatus === "timed-out" || value.researchStatus === "failed" || value.researchStatus === "cancelled"
+      ? { researchStatus: value.researchStatus }
+      : {}),
+    ...(isRecord(value.researchError) && isNonEmptyString(value.researchError.message)
+      ? {
+        researchError: {
+          type: value.researchError.type === "timeout" || value.researchError.type === "cancelled" || value.researchError.type === "upstream"
+            ? value.researchError.type
+            : "malformed-response",
+          message: value.researchError.message.trim().slice(0, 500),
+        },
+      }
+      : {}),
     researchMode: value.researchMode === "default-assumptions"
       ? "default-assumptions"
       : eligibleEvidence.length > 0 || (Array.isArray(value.sourceLedger) && value.sourceLedger.length > 0) || Boolean(value.researchCache)
@@ -1094,6 +1129,63 @@ export function createDefaultAssumptionResearch(
   };
 }
 
+export function createProvisionalResearch(
+  name: string,
+  location: string,
+  knownData?: KnownProjectData,
+): CustomResearchResponse {
+  const normalizedKnownData = normalizeKnownData({
+    ...deriveLocationContext(location),
+    ...knownData,
+  });
+  const capacityMW = normalizeReportedCapacityMW(normalizedKnownData?.capacity) ?? DEFAULT_RESEARCH_CAPACITY_MW;
+  return {
+    projectSummary: {
+      name: name.trim(),
+      location: location.trim(),
+      description: "Research is running for this submitted project. No synthetic economics have been applied; unresolved items remain Missing Evidence until validated findings arrive.",
+      capacityMW,
+      capacityProvenance: normalizedKnownData?.capacity ? "directory-reported" : "standardized-default",
+    },
+    researchMode: "research-incomplete",
+    researchStatus: "researching",
+    researchCoverage: {
+      searchedDomains: [],
+      failedDomains: [],
+      retrievedSourceCount: 0,
+      searchTerms: [],
+      searchTermsSource: "unavailable",
+    },
+    retrievedLeads: [],
+    eligibleEvidence: [],
+    proposedInputs: [],
+    acceptedModelInputs: [],
+    quarantineReasons: ["Research is still running; no findings have been accepted into the model."],
+    evidence: CUSTOM_EVIDENCE_IDS.map((id) => ({
+      id,
+      label: DEFAULT_EVIDENCE_DEFINITIONS[id].label,
+      value: "Not established",
+      unit: DEFAULT_EVIDENCE_DEFINITIONS[id].unit,
+      classification: "Missing Evidence",
+      citation: "Research is running; no validated project-specific source has been retained yet.",
+      description: "This item remains unresolved until a category result passes source validation.",
+      sourceRole: "Research in progress · no validated category result",
+      coverageStatus: "searched-no-support",
+      searchCoverage: [],
+      failedSearchDomains: [],
+      sourceSupportConfidence: 0,
+      classificationReason: "Research has not returned a validated finding for this item.",
+      sourceRelevanceNote: "No validated source was mapped to this claim.",
+      searchTerms: [],
+      searchTermsSource: "unavailable",
+      researchState: "retrieved-lead",
+      eligibleForModel: false,
+      acceptedForModel: false,
+      quarantineReasons: ["Research is still running."],
+    })),
+  };
+}
+
 class ResearchTimeoutError extends Error {
   constructor(message = "Project research timed out. Try again or use the curated case.") {
     super(message);
@@ -1180,7 +1272,10 @@ export async function researchProject(
 ): Promise<CustomResearchResponse> {
   const fetchImpl = typeof optionsOrFetch === "function" ? optionsOrFetch : fetch;
   const options = typeof optionsOrFetch === "function" ? legacyOptions : optionsOrFetch;
-  const knownData = normalizeKnownData(options.knownData);
+  const knownData = normalizeKnownData({
+    ...deriveLocationContext(location),
+    ...options.knownData,
+  });
   const focusIds = options.focusIds?.filter((id) => CUSTOM_EVIDENCE_IDS.includes(id as (typeof CUSTOM_EVIDENCE_IDS)[number]));
   for (let attempt = 0; attempt < 2; attempt += 1) {
     if (options.signal?.aborted) throw new ResearchCancelledError();

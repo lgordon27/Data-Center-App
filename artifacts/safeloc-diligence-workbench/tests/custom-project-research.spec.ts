@@ -751,7 +751,7 @@ test.describe("custom project research", () => {
     await expect(page.getByTestId("coverage-status-grid_interconnection")).toHaveText("partial");
   });
 
-  test("offers a clearly labeled default-assumptions case after the timeout retry fails", async ({ page }) => {
+  test("keeps provider timeout state visible after immediate handoff", async ({ page }) => {
     let calls = 0;
     await page.unroute("**/api/research-project");
     await page.route("**/api/research-project", async (route) => {
@@ -769,14 +769,14 @@ test.describe("custom project research", () => {
     await page.getByTestId("input-custom-project-name").fill("Project Timeout");
     await page.getByTestId("input-custom-project-location").fill("Cook County, Illinois");
     await page.getByTestId("button-submit-custom-project").click();
-    await expect(page.getByTestId("custom-project-loading")).toContainText("Searching public sources");
-    await expect(page.getByTestId("custom-project-fallback")).toBeVisible();
-    expect(calls).toBe(2);
-    await page.getByTestId("custom-project-fallback").click();
-
     await expect(page).toHaveURL(/#analysis$/);
-    await expect(page.getByTestId("custom-research-banner")).toContainText("Default assumptions");
-    await expect(page.getByTestId("custom-research-banner")).toContainText("All modeled evidence remains Missing Evidence");
+    await expect(page.getByTestId("custom-research-banner")).toContainText("RESEARCH TIMED OUT");
+    await expect(page.getByTestId("custom-research-retry")).toBeVisible();
+    expect(calls).toBe(2);
+    await page.getByTestId("custom-research-retry").click();
+    await expect(page.getByTestId("custom-project-dialog")).toBeVisible();
+    await page.getByTestId("button-close-custom-project").click();
+    await expect(page.getByTestId("custom-project-dialog")).not.toBeVisible();
     await page.goto("/#evidence");
     await expect(page.getByTestId("text-evidence-count")).toContainText("16 / 16");
     await expect(page.locator('[data-testid^="select-classification-"]')).toHaveCount(16);
@@ -805,13 +805,12 @@ test.describe("custom project research", () => {
     await page.getByTestId("button-submit-custom-project").click();
     await expect(page).toHaveURL(/#analysis$/);
 
-    const events = await page.evaluate(() => {
+    const events = await expect.poll(() => page.evaluate(() => {
       const analyticsWindow = window as typeof window & {
         __safelocAnalytics?: Array<{ name: string; data?: Record<string, string | number | boolean> }>;
       };
       return analyticsWindow.__safelocAnalytics ?? [];
-    });
-    expect(events).toEqual([
+    })).toEqual([
       {
         name: "research_handoff_completed",
         data: {

@@ -21,3 +21,4 @@
 - [Live research acceptance behavior](live-research-acceptance.md) — timeouts before telemetry are diagnostic provider failures, never evidence or executed-query claims.
 - [Physical document-open budget](physical-open-budget.md) — track physical fetches separately from candidate/provider limits and mark later documents not attempted at the hard ceiling.
 - [Deterministic navigation performance](deterministic-navigation-performance.md) — assert bounded input, synchronous route dispatch, and destination readiness instead of timing animation frames under parallel browser load.
+- [Preview route registration](preview-route-registration.md) — smoke-test managed artifact paths separately from the local server so proxy-only route failures surface before preview launch.

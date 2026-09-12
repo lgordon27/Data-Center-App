@@ -27,6 +27,12 @@ const directoryResponse = {
       lastUpdated: null,
     },
   ],
+  totalAvailable: 1,
+  totalMatching: 1,
+  offset: 0,
+  limit: 100,
+  nextOffset: null,
+  hasMore: false,
 };
 
 test.describe("stock-first company exposure flow", () => {
@@ -34,35 +40,27 @@ test.describe("stock-first company exposure flow", () => {
     await page.route("**/api/directory**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(directoryResponse) }));
   });
 
-  test("does not fetch Compute Atlas while Home and holdings context render", async ({ page }) => {
+  test("defers the selected-company directory match until a holding is opened", async ({ page }) => {
     const directoryRequests: string[] = [];
-    const directoryChunks: string[] = [];
     page.on("request", (request) => {
       if (request.url().includes("/api/directory")) directoryRequests.push(request.url());
-      if (
-        request.resourceType() === "script" &&
-        /DirectoryRoute|directoryService/.test(request.url())
-      ) directoryChunks.push(request.url());
     });
     await page.goto("/#home");
     await expect(page.getByTestId("home-stock-picker")).toBeVisible();
+    expect(directoryRequests).toHaveLength(0);
     await page.getByTestId("company-card-microsoft").click();
     await expect(page.getByTestId("company-exposure-view")).toBeVisible();
-    expect(directoryRequests).toHaveLength(0);
-    expect(directoryChunks).toHaveLength(0);
+    await expect.poll(() => directoryRequests.length).toBe(1);
+    expect(directoryRequests[0]).toContain("company=Microsoft");
     await page.goto("/#directory");
     await expect(page.getByTestId("compute-atlas-page")).toBeVisible();
-    await expect.poll(() => directoryRequests.length).toBeGreaterThan(0);
-    await expect.poll(() => directoryChunks.some((url) => url.includes("DirectoryRoute"))).toBe(true);
-    await expect.poll(() => directoryChunks.some((url) => url.includes("directoryService"))).toBe(true);
+    await expect.poll(() => directoryRequests.length).toBeGreaterThan(1);
   });
 
   test("opens alternate-project actions within the interaction budget without directory work", async ({ page }) => {
     const directoryRequests: string[] = [];
-    const directoryChunks: string[] = [];
     page.on("request", (request) => {
       if (request.url().includes("/api/directory")) directoryRequests.push(request.url());
-      if (request.resourceType() === "script" && /DirectoryRoute|directoryService/.test(request.url())) directoryChunks.push(request.url());
     });
     await page.goto("/#home");
     const elapsed = await page.getByTestId("button-analyze-another-project").evaluate((button) => new Promise<number>((resolve) => {
@@ -73,15 +71,15 @@ test.describe("stock-first company exposure flow", () => {
     expect(elapsed).toBeLessThan(2_000);
     await expect(page.getByTestId("custom-project-dialog")).toBeVisible();
     expect(directoryRequests).toHaveLength(0);
-    expect(directoryChunks).toHaveLength(0);
     await page.getByTestId("button-close-custom-project").click();
     await page.getByTestId("company-card-microsoft").click();
+    await expect.poll(() => directoryRequests.length).toBe(1);
+    expect(directoryRequests[0]).toContain("company=Microsoft");
     await page.getByTestId("company-project-open-project-kilby").click();
     await expect(page.getByTestId("custom-project-dialog")).toBeVisible();
     await expect(page.getByTestId("input-custom-project-name")).toHaveValue("Project Kilby");
     await expect(page.getByTestId("input-custom-project-location")).toHaveValue("Public location not disclosed");
-    expect(directoryRequests).toHaveLength(0);
-    expect(directoryChunks).toHaveLength(0);
+    expect(directoryRequests).toHaveLength(1);
   });
 
   test("contains directory render failures inside the route and keeps Home usable", async ({ page }) => {
@@ -162,8 +160,10 @@ test.describe("stock-first company exposure flow", () => {
     await expect(page.getByTestId("company-project-list")).toContainText("Project Kilby");
     await expect(page.getByTestId("company-project-connection-project-kilby")).toHaveText("Developer/Operator");
     await expect(page.getByTestId("company-project-list")).toContainText("Project Rainier");
-    await expect(page.getByTestId("company-summary-tier1")).toContainText("1");
-    await expect(page.getByTestId("company-summary-tier2")).toContainText("1");
+    await expect(page.getByTestId("company-summary-source-backed")).toContainText("0");
+    await expect(page.getByTestId("company-summary-discovery")).toContainText("1");
+    await expect(page.getByTestId("company-project-evidence-project-kilby")).toHaveText("Research required");
+    await expect(page.getByTestId("company-project-evidence-project-rainier-microsoft-wi")).toHaveText("Discovery match");
     await page.getByTestId("company-project-open-project-kilby").click();
     await expect(page.getByTestId("custom-project-dialog")).toBeVisible();
     await expect(page.getByTestId("input-custom-project-name")).toHaveValue("Project Kilby");
@@ -219,7 +219,7 @@ test.describe("stock-first company exposure flow", () => {
       ["microsoft", "Developer/Operator"],
       ["meta", "Developer/Operator"],
       ["google", "Developer/Operator"],
-      ["oracle", "Direct Contractual"],
+      ["oracle", "Sourced Indirect Role"],
       ["amazon", "Developer/Operator"],
     ] as const;
 

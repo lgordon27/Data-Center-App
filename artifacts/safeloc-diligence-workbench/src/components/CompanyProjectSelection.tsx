@@ -38,7 +38,7 @@ export function CompanyProjectSelection({ company, projects, researchingProjectI
               <div className="min-w-0">
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
                   <h3 className="min-w-0 break-words text-[15px] font-semibold tracking-[-0.02em] text-[#122232]">{project.name}</h3>
-                  <span data-testid={`company-project-tier-${project.id}`} className="rounded-full border border-[#e6cf70] bg-[#fff6c7] px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#8a6400]">
+                  <span data-testid={`company-project-tier-${project.id}`} className={`rounded-full border px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.08em] ${project.relationshipBasis === "source-backed" ? "border-[#9bd8c5] bg-[#e0f4ed] text-[#0b624f]" : project.relationshipBasis === "operator-derived" ? "border-[#8dc8e8] bg-[#e5f5fb] text-[#164c67]" : "border-[#e6cf70] bg-[#fff6c7] text-[#8a6400]"}`}>
                     {project.tierLabel}
                   </span>
                 </div>

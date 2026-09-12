@@ -37,6 +37,7 @@ import {
   containResearchResult,
   buildResearchAudit,
   buildResearchCategoryPlan,
+  buildProjectIdentityContext,
   mergeCategoryResearchResults,
   buildCategoryFollowUpQuery,
   evaluateResearchDocumentAccess,
@@ -268,6 +269,100 @@ test("separates authoritative Texas queries from an unrestricted exact-project f
   assert.equal(water.authorityTargets.localAuthorities[0].status, "established");
   const unresolvedLocation = buildResearchCategoryPlan({ name: "Project Rainier", location: "Texas" }).categories.find((category) => category.categoryId === "water");
   assert.ok(unresolvedLocation.authorityTargets.limitations.length > 0);
+});
+
+test("routes Arizona and Ohio through state authorities without borrowing ERCOT evidence", () => {
+  for (const [location, domains] of [
+    ["Phoenix, Arizona", ["azcc.gov", "azwater.gov", "azdeq.gov"]],
+    ["Columbus, Ohio", ["puco.ohio.gov", "ohiodnr.gov", "epa.ohio.gov"]],
+  ]) {
+    const plan = buildResearchCategoryPlan({
+      name: "Project Atlas",
+      location,
+      knownData: { operator: "Atlas Compute", companyDomains: ["atlas.example"] },
+    });
+    const water = plan.categories.find((category) => category.categoryId === "water");
+    assert.ok(domains.every((domain) => water.requestedPrimaryQuery.includes(`site:${domain}`)));
+    assert.match(water.requestedPrimaryQuery, /official government regulator utility record/i);
+    assert.doesNotMatch(water.requestedPrimaryQuery, /ERCOT/i);
+    assert.match(plan.categories.find((category) => category.categoryId === "construction-capital").requestedPrimaryQuery, /site:atlas\.example/);
+  }
+});
+
+test("quarantines ERCOT records when the project is in Arizona or Ohio", () => {
+  const body = validResearchResponse();
+  const item = body.evidence.find((candidate) => candidate.id === "grid_interconnection");
+  item.sourceUrl = "https://www.ercot.com/gridinfo/atlas";
+  item.sourceUrls = [item.sourceUrl];
+  item.coverageStatus = "supported";
+  item.value = "365 days";
+  item.numericValue = 365;
+  item.claimPassage = "Project Atlas interconnection study is 365 days.";
+  const parsed = parseResearchResponse(
+    { ...body, projectSummary: { ...body.projectSummary, location: "Phoenix, Arizona" } },
+    [{
+      url: item.sourceUrl,
+      title: "ERCOT interconnection record",
+      excerpt: item.claimPassage,
+      sourceClass: "primary-government",
+      exactProject: true,
+      facilityScope: "exact-project",
+      phaseScope: "exact-phase",
+      timePeriod: "2026",
+    }],
+  );
+  const grid = parsed.evidence.find((candidate) => candidate.id === "grid_interconnection");
+  assert.notEqual(grid.sourceRelevance, "exact-project");
+  assert.equal(grid.eligibleForModel, false);
+});
+
+test("retains identity aliases and surfaces campus-versus-region ambiguity before claims", () => {
+  const identity = buildProjectIdentityContext({
+    name: "Atlas",
+    location: "Phoenix metro region, Arizona",
+    knownData: { aliases: ["Atlas Campus"], operator: "Atlas Compute" },
+  });
+  assert.deepEqual(identity.aliases, ["Atlas Campus", "Atlas Compute"]);
+  assert.ok(identity.ambiguities.some((message) => /campus-versus-region/i.test(message)));
+  const identityCategory = buildResearchCategoryPlan({
+    name: "Atlas",
+    location: "Phoenix metro region, Arizona",
+    knownData: { aliases: ["Atlas Campus"], operator: "Atlas Compute" },
+  }).categories.find((category) => category.categoryId === "project-identity");
+  assert.ok(identityCategory.authorityTargets.limitations.some((message) => /campus-versus-region/i.test(message)));
+});
+
+test("reserves primary opportunities before consuming shared follow-up requests", async () => {
+  const attempts = [];
+  const run = await orchestrateCategoryResearch(
+    { name: "Atlas", location: "Arizona" },
+    {
+      concurrent: false,
+      budget: {
+        ...RESEARCH_RUN_BUDGET,
+        maxProviderRequests: 8,
+        maxFollowUps: 8,
+      },
+      retrieveCategory: async ({ categoryId, attempt }) => {
+        attempts.push(`${categoryId}:${attempt}`);
+        return { candidates: [], gapDrivenFollowUp: true, observedQueries: [`${categoryId} ${attempt}`] };
+      },
+    },
+  );
+  assert.equal(attempts.length, 8);
+  assert.ok(attempts.every((attempt) => attempt.endsWith(":primary")));
+  assert.equal(run.followUps, 0);
+  assert.equal(run.providerRequests, 8);
+});
+
+test("does not mark an empty primary or empty follow-up as successful", async () => {
+  const run = await orchestrateCategoryResearch(
+    { name: "Atlas", location: "Arizona" },
+    {
+      retrieveCategory: async () => ({ candidates: [], gapDrivenFollowUp: true }),
+    },
+  );
+  assert.ok(Object.values(run.categoryExecutions).every((execution) => execution.state !== "Complete"));
 });
 
 test("rejects unsafe, blocked, scanned, and unsupported documents explicitly", () => {

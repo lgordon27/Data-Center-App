@@ -43,8 +43,13 @@ export type DirectoryResponse = {
   sourceMetadata: DirectorySourceMetadata;
   diagnostics?: Record<string, unknown>;
   totalFacilities?: number;
+  /** Total normalized records in the provider catalog before filters. */
+  totalAvailable?: number;
+  /** Total records after the current filters, before this page is sliced. */
+  totalMatching?: number;
   offset?: number;
   limit?: number;
+  nextOffset?: number | null;
   hasMore?: boolean;
 };
 
@@ -66,6 +71,30 @@ export type DirectoryStatsResponse = {
   sourceMetadata: DirectorySourceMetadata;
   diagnostics?: Record<string, unknown>;
 };
+
+/**
+ * The provider id is the stable identity. When an upstream row has no id,
+ * derive one from the campus identity rather than its page position. This
+ * keeps page merges deterministic while retaining distinct campuses with
+ * different ids or locations.
+ */
+export function directoryFacilityKey(facility: Pick<DirectoryFacility, "id" | "name" | "operator" | "city" | "county" | "state">): string {
+  const supplied = facility.id.trim().toLowerCase();
+  if (supplied && !/^facility-\d+$/.test(supplied)) return `id:${supplied}`;
+  return `campus:${[facility.name, facility.operator, facility.city, facility.county, facility.state]
+    .map((part) => part.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""))
+    .filter(Boolean)
+    .join(":")}`;
+}
+
+export function mergeDirectoryFacilities(current: DirectoryFacility[], incoming: DirectoryFacility[]): DirectoryFacility[] {
+  const merged = new Map<string, DirectoryFacility>();
+  for (const facility of [...current, ...incoming]) {
+    const key = directoryFacilityKey(facility);
+    if (!merged.has(key)) merged.set(key, facility);
+  }
+  return [...merged.values()];
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -192,13 +221,17 @@ export function directoryFreshness(source: DirectorySourceMetadata | undefined, 
 export function parseDirectoryResponse(value: unknown): DirectoryResponse {
   if (!isRecord(value) || !Array.isArray(value.facilities)) throw new Error("Directory returned an incomplete response.");
   const nonNegativeInteger = (candidate: unknown) => typeof candidate === "number" && Number.isInteger(candidate) && candidate >= 0 ? candidate : undefined;
+  const nonNegativeIntegerOrNull = (candidate: unknown) => candidate === null ? null : nonNegativeInteger(candidate);
   return {
     facilities: value.facilities.map(parseFacility),
     sourceMetadata: parseSource(value.sourceMetadata),
     diagnostics: isRecord(value.diagnostics) ? value.diagnostics : undefined,
     ...(nonNegativeInteger(value.totalFacilities) !== undefined ? { totalFacilities: nonNegativeInteger(value.totalFacilities) } : {}),
+    ...(nonNegativeInteger(value.totalAvailable) !== undefined ? { totalAvailable: nonNegativeInteger(value.totalAvailable) } : {}),
+    ...(nonNegativeInteger(value.totalMatching) !== undefined ? { totalMatching: nonNegativeInteger(value.totalMatching) } : {}),
     ...(nonNegativeInteger(value.offset) !== undefined ? { offset: nonNegativeInteger(value.offset) } : {}),
     ...(nonNegativeInteger(value.limit) !== undefined ? { limit: nonNegativeInteger(value.limit) } : {}),
+    ...(nonNegativeIntegerOrNull(value.nextOffset) !== undefined ? { nextOffset: nonNegativeIntegerOrNull(value.nextOffset) } : {}),
     ...(typeof value.hasMore === "boolean" ? { hasMore: value.hasMore } : {}),
   };
 }

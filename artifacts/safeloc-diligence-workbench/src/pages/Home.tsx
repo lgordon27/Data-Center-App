@@ -26,6 +26,9 @@ import {
   type ResearchProgress,
 } from "@/services/researchProjectService";
 import {
+  fetchDirectory,
+  fetchDirectoryStats,
+  mergeDirectoryFacilities,
   type DirectoryFacility,
   type DirectoryResponse,
   type DirectoryStatsResponse,
@@ -407,12 +410,10 @@ const ETF_CONTEXT: Record<string, string[]> = {
 };
 
 async function requestDirectory(query: Parameters<typeof import("@/services/directoryService")["fetchDirectory"]>[0]) {
-  const { fetchDirectory } = await import("@/services/directoryService");
   return fetchDirectory(query);
 }
 
 async function requestDirectoryStats() {
-  const { fetchDirectoryStats } = await import("@/services/directoryService");
   return fetchDirectoryStats();
 }
 
@@ -503,7 +504,8 @@ function CompanyProjectCard({
   onSelect: () => void;
   researching: boolean;
 }) {
-  const isTierOne = project.tier === 1;
+  const sourceBacked = project.relationshipBasis === "source-backed";
+  const operatorDiscovery = project.relationshipBasis === "operator-derived";
   const isStargateShortcut = project.kind === "curated" && project.name.trim().toLowerCase() === "stargate abilene";
   const unsupportedCuratedProject = project.kind === "curated" && !isStargateShortcut;
   return (
@@ -512,7 +514,7 @@ function CompanyProjectCard({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-[15px] font-semibold tracking-[-0.02em] text-[#122232]">{project.name}</h3>
-            <span data-testid={`company-project-tier-${project.id}`} className={`rounded-full border px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.08em] ${isTierOne ? "border-[#9bd8c5] bg-[#e0f4ed] text-[#0b624f]" : "border-[#e6cf70] bg-[#fff6c7] text-[#8a6400]"}`}>
+            <span data-testid={`company-project-tier-${project.id}`} className={`rounded-full border px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.08em] ${sourceBacked ? "border-[#9bd8c5] bg-[#e0f4ed] text-[#0b624f]" : operatorDiscovery ? "border-[#8dc8e8] bg-[#e5f5fb] text-[#164c67]" : "border-[#e6cf70] bg-[#fff6c7] text-[#8a6400]"}`}>
               {project.tierLabel}
             </span>
              <span
@@ -567,12 +569,16 @@ function CompanyProjectCard({
 
 function CompanyExposure({
   company,
+  facilities,
+  directoryStatus = "ready",
   onBack,
   onCurated,
   onResearch,
   sectionRef,
 }: {
   company: CompanyKey;
+  facilities: DirectoryFacility[];
+  directoryStatus?: "idle" | "loading" | "ready" | "unavailable";
   onBack: () => void;
   onCurated: (project: CompanyProject, company: CompanyKey) => void;
   onResearch: (project: CompanyProject, company: CompanyKey) => void;
@@ -580,7 +586,7 @@ function CompanyExposure({
 }) {
   const profile = profileForCompany(company);
   const provenance = getCompanyExposureProvenance(company);
-  const projects = companyProjects(company, []);
+  const projects = companyProjects(company, facilities);
   const summary = projectSummary(projects);
   return (
     <section ref={sectionRef} tabIndex={-1} data-testid="company-exposure-view" aria-labelledby="company-exposure-heading" className="border-y border-[#d9e0e4] bg-[#f1f5f3] px-5 py-9 text-[#122232] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#255bb7] sm:px-8 md:py-12 xl:px-10">
@@ -602,7 +608,7 @@ function CompanyExposure({
           </p>
           </div>
           <div data-testid="company-fund-context" className="max-w-xs rounded-lg border border-[#cbb7ec] bg-[#eee7fa] p-4 text-[10px] leading-4 text-[#482873]">
-            <div className="font-mono text-[8px] font-bold uppercase tracking-[0.12em]">Held in:</div>
+            <div className="font-mono text-[8px] font-bold uppercase tracking-[0.12em]">Fund context:</div>
             <div className="mt-2 font-semibold">{profile.funds.join(", ")}</div>
             <div className="mt-2 border-t border-[#cbb7ec]/60 pt-2 font-mono text-[8px] uppercase tracking-[0.08em]">Mapped context: {profile.marketFunds.join(", ")}</div>
           </div>
@@ -610,16 +616,18 @@ function CompanyExposure({
         <div className="mt-6 grid gap-3 sm:grid-cols-4">
           <div data-testid="company-summary-project-count" className="rounded-lg bg-[#122232] p-4 text-white"><div className="font-mono text-[8px] uppercase tracking-[0.12em] text-[#a4b4bd]">Connected projects</div><div className="mt-2 font-mono text-[25px] font-bold text-[#d4e86b]">{summary.count}</div></div>
           <div data-testid="company-summary-capacity" className="rounded-lg bg-[#d4e86b] p-4 text-[#1c2a16]"><div className="font-mono text-[8px] uppercase tracking-[0.12em] opacity-65">Disclosed capacity</div><div className="mt-2 font-mono text-[25px] font-bold">{formatCapacityGW(summary.capacityMW)}</div></div>
-          <div data-testid="company-summary-tier1" className="rounded-lg border border-[#9bd8c5] bg-[#e0f4ed] p-4 text-[#0b624f]"><div className="font-mono text-[8px] uppercase tracking-[0.12em]">Tier 1 / proceeding</div><div className="mt-2 font-mono text-[25px] font-bold">{summary.tier1}</div></div>
-          <div data-testid="company-summary-tier2" className="rounded-lg border border-[#e6cf70] bg-[#fff6c7] p-4 text-[#8a6400]"><div className="font-mono text-[8px] uppercase tracking-[0.12em]">Tier 2 / review</div><div className="mt-2 font-mono text-[25px] font-bold">{summary.tier2}</div></div>
+          <div data-testid="company-summary-source-backed" className="rounded-lg border border-[#9bd8c5] bg-[#e0f4ed] p-4 text-[#0b624f]"><div className="font-mono text-[8px] uppercase tracking-[0.12em]">Source-backed</div><div className="mt-2 font-mono text-[25px] font-bold">{projects.filter((project) => project.relationshipBasis === "source-backed").length}</div></div>
+          <div data-testid="company-summary-discovery" className="rounded-lg border border-[#8dc8e8] bg-[#e5f5fb] p-4 text-[#164c67]"><div className="font-mono text-[8px] uppercase tracking-[0.12em]">Operator discovery</div><div className="mt-2 font-mono text-[25px] font-bold">{projects.filter((project) => project.relationshipBasis === "operator-derived").length}</div></div>
         </div>
         <p data-testid="company-summary-sentence" className="mt-4 text-[11px] leading-5 text-[#52616b]">
-          {profile.displayName} is connected to <strong>{summary.count} projects</strong> totaling <strong>{formatCapacityGW(summary.capacityMW)}</strong> in disclosed capacity. <strong>{summary.tier1}</strong> are Tier 1 (proceeding) and <strong>{summary.tier2}</strong> are Tier 2 (at risk of delay or requiring review). {summary.undisclosedCapacity > 0 ? `${summary.undisclosedCapacity} project has undisclosed capacity.` : ""}
+          {profile.displayName} has <strong>{summary.count} directory or curated records</strong> totaling <strong>{formatCapacityGW(summary.capacityMW)}</strong> in disclosed provider capacity. These records separate source-backed context from operator-derived discovery; they do not establish ownership, tenancy, materiality, or a delay classification. {summary.undisclosedCapacity > 0 ? `${summary.undisclosedCapacity} record has undisclosed capacity.` : ""}
         </p>
         <div className="mt-6 flex items-end justify-between gap-3">
           <div><div className="font-mono text-[9px] font-bold uppercase tracking-[0.16em] text-[#607500]">Connected project trail</div><h3 className="mt-1 text-[20px] font-semibold tracking-[-0.03em]">Pick one to inspect the evidence path.</h3></div>
           <span className="hidden font-mono text-[8px] uppercase tracking-[0.1em] text-[#71808a] sm:block">Public context only</span>
         </div>
+        {directoryStatus === "loading" && <p role="status" className="mt-3 text-[10px] text-[#71808a]">Loading current directory matches; curated context remains available.</p>}
+        {directoryStatus === "unavailable" && <p role="status" className="mt-3 text-[10px] text-[#8a6400]">Directory matches are unavailable. Showing only reviewed fallback records; browse the directory or retry later.</p>}
         <CompanyProjectSelection
           company={company}
           projects={projects}
@@ -770,6 +778,7 @@ export function ComputeAtlasDirectory({ onCurated, onResearchSuccess }: { onCura
   const [companyFilter, setCompanyFilter] = useState<string | null>(null);
   const [facilities, setFacilities] = useState<DirectoryFacility[]>([]);
   const [totalMatching, setTotalMatching] = useState(0);
+  const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [researching, setResearching] = useState<Record<string, { busy: boolean; error: string | null; progress: ResearchProgress }>>({});
   const researchGeneration = useRef<Record<string, number>>({});
 
@@ -793,7 +802,8 @@ export function ComputeAtlasDirectory({ onCurated, onResearchSuccess }: { onCura
         if (!active) return;
         setDirectory(records);
         setFacilities(records.facilities.slice(0, DIRECTORY_PAGE_SIZE));
-        setTotalMatching(records.totalFacilities ?? records.facilities.length);
+        setTotalMatching(records.totalMatching ?? records.totalFacilities ?? records.facilities.length);
+        setNextOffset(records.nextOffset ?? (records.hasMore ? (records.offset ?? 0) + records.facilities.length : null));
       })
       .catch((requestError) => {
         if (active) setError(requestError instanceof Error ? requestError.message : "The directory is unavailable. Try again.");
@@ -819,7 +829,7 @@ export function ComputeAtlasDirectory({ onCurated, onResearchSuccess }: { onCura
   const connectedCount = companyFilter ? facilities.length : 0;
   const contextFunds = companyFilter ? [...new Set(facilities.flatMap((facility) => facility.connectedFunds).concat(ETF_CONTEXT[companyFilter] ?? []))] : [];
   const visibleFacilities = facilities;
-  const total = statsResponse?.stats.totalFacilities ?? directory?.totalFacilities ?? totalMatching;
+  const total = directory?.totalAvailable ?? statsResponse?.stats.totalFacilities ?? totalMatching;
   const freshness = directoryFreshness(directory?.sourceMetadata);
 
   const handleLoadMore = async () => {
@@ -827,14 +837,15 @@ export function ComputeAtlasDirectory({ onCurated, onResearchSuccess }: { onCura
     try {
       const records = await requestDirectory({
         limit: DIRECTORY_PAGE_SIZE,
-        offset: facilities.length,
+        offset: nextOffset ?? facilities.length,
         search: debouncedQuery.trim() || undefined,
         state: stateFilter === "All" ? undefined : stateFilter === "Other" ? "OTHER" : stateFilter,
         company: companyFilter ?? undefined,
       });
       setDirectory(records);
-      setFacilities((current) => [...current, ...records.facilities.slice(0, DIRECTORY_PAGE_SIZE)]);
-      setTotalMatching(records.totalFacilities ?? totalMatching);
+      setFacilities((current) => mergeDirectoryFacilities(current, records.facilities));
+      setTotalMatching(records.totalMatching ?? records.totalFacilities ?? totalMatching);
+      setNextOffset(records.nextOffset ?? (records.hasMore ? (nextOffset ?? facilities.length) + records.facilities.length : null));
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "The directory is unavailable. Try again.");
     } finally {
@@ -950,7 +961,7 @@ export function ComputeAtlasDirectory({ onCurated, onResearchSuccess }: { onCura
                 />
               ))}
             </div>
-            {visibleFacilities.length < totalMatching && (
+            {nextOffset !== null && visibleFacilities.length < totalMatching && (
               <button
                 data-testid="compute-atlas-load-more"
                 type="button"
@@ -1279,7 +1290,24 @@ export function LegacyCompanyExploration({ onNavigate }: { onNavigate?: (route: 
   const [selectedCompany, setSelectedCompany] = useState<CompanyKey | null>(initialCompany);
   const [companyResearchingId, setCompanyResearchingId] = useState<string | null>(null);
   const [companyResearchError, setCompanyResearchError] = useState<string | null>(null);
+  const [homeDirectoryFacilities, setHomeDirectoryFacilities] = useState<DirectoryFacility[]>([]);
   const companyExposureRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (!selectedCompany) {
+      setHomeDirectoryFacilities([]);
+      return;
+    }
+    let active = true;
+    void requestDirectory({ limit: 100, offset: 0, company: selectedCompany })
+      .then((response) => {
+        if (active) setHomeDirectoryFacilities(mergeDirectoryFacilities([], response.facilities));
+      })
+      .catch(() => {
+        // Curated records remain available when the directory is unavailable.
+      });
+    return () => { active = false; };
+  }, [selectedCompany]);
 
   const focusCompanyExposure = () => {
     window.setTimeout(() => {
@@ -1451,6 +1479,7 @@ export function LegacyCompanyExploration({ onNavigate }: { onNavigate?: (route: 
         {selectedCompany && (
           <CompanyExposure
             company={selectedCompany}
+              facilities={homeDirectoryFacilities}
             sectionRef={companyExposureRef}
             onBack={() => setSelectedCompany(null)}
             onCurated={(project, company) => {
@@ -1541,7 +1570,34 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
     ? originatingCompany as CompanyKey
     : null;
   const [selectedCompany, setSelectedCompany] = useState<CompanyKey | null>(initialCompany);
+  const [homeDirectoryFacilities, setHomeDirectoryFacilities] = useState<DirectoryFacility[]>([]);
+  const [homeDirectoryStatus, setHomeDirectoryStatus] = useState<"idle" | "loading" | "ready" | "unavailable">("idle");
   const companyExposureRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (!selectedCompany) {
+      setHomeDirectoryFacilities([]);
+      setHomeDirectoryStatus("idle");
+      return;
+    }
+    let active = true;
+    setHomeDirectoryFacilities([]);
+    setHomeDirectoryStatus("loading");
+    void requestDirectory({
+      limit: 100,
+      offset: 0,
+      company: selectedCompany,
+    })
+      .then((response) => {
+        if (!active) return;
+        setHomeDirectoryFacilities(mergeDirectoryFacilities([], response.facilities));
+        setHomeDirectoryStatus("ready");
+      })
+      .catch(() => {
+        if (active) setHomeDirectoryStatus("unavailable");
+      });
+    return () => { active = false; };
+  }, [selectedCompany]);
 
   useEffect(() => {
     setSelectedCompany(initialCompany);
@@ -1668,6 +1724,8 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
         {selectedCompany && (
           <CompanyExposure
             company={selectedCompany}
+            facilities={homeDirectoryFacilities}
+            directoryStatus={homeDirectoryStatus}
             sectionRef={companyExposureRef}
             onBack={() => setSelectedCompany(null)}
             onCurated={(project, company) => {

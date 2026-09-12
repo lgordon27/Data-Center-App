@@ -5,16 +5,28 @@ const COMPUTE_ATLAS_ATTRIBUTION_URL = "https://compute-atlas.com";
 const DIRECTORY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const DIRECTORY_REQUEST_TIMEOUT_MS = 8_000;
 
-const OPERATOR_MAPPINGS = [
+/**
+ * Names used by provider records are not a legal-entity or ownership
+ * assertion. They are reviewed aliases used only to make directory discovery
+ * searchable. Keep the alias list explicit so an operator match can be
+ * audited, and do not infer a relationship merely because a record is
+ * AI-labelled.
+ */
+const CORPORATE_ALIASES = [
   { match: "nvidia", company: "NVIDIA", funds: ["QQQ", "SMH"] },
   { match: "microsoft", company: "Microsoft", funds: ["QQQ", "XLK"] },
+  { match: "azure", company: "Microsoft", funds: ["QQQ", "XLK"] },
   { match: "meta", company: "Meta", funds: ["QQQ", "XLC"] },
+  { match: "facebook", company: "Meta", funds: ["QQQ", "XLC"] },
   { match: "google", company: "Google", funds: ["QQQ", "XLK"] },
+  { match: "alphabet", company: "Google", funds: ["QQQ", "XLK"] },
   { match: "amazon", company: "Amazon", funds: ["QQQ", "XLY"] },
+  { match: "aws", company: "Amazon", funds: ["QQQ", "XLY"] },
   { match: "oracle", company: "Oracle", funds: ["QQQ", "XLK"] },
   { match: "openai", company: "OpenAI", funds: ["Private company"] },
   { match: "crusoe", company: "Crusoe", funds: ["Private company"] },
 ];
+const OPERATOR_MAPPINGS = CORPORATE_ALIASES;
 
 // A small, reviewed context set keeps the directory useful during an upstream
 // outage. These are directory records, not Stargate evidence or modeled inputs.
@@ -147,7 +159,10 @@ function normalizeLocation(value) {
 
 function mapOperatorExposure(operator) {
   const text = String(operator ?? "").toLowerCase();
-  const matches = OPERATOR_MAPPINGS.filter((mapping) => text.includes(mapping.match));
+  const matches = OPERATOR_MAPPINGS.filter((mapping) => {
+    const alias = mapping.match.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(^|[^a-z])${alias}([^a-z]|$)`, "i").test(text);
+  });
   return {
     companies: [...new Set(matches.map((mapping) => mapping.company))],
     funds: [...new Set(matches.flatMap((mapping) => mapping.funds))],
@@ -192,13 +207,12 @@ function resolveDirectoryIdentity({ id, name, operator, city, county, state }) {
 
 function normalizeFacility(raw, index = 0) {
   if (!isRecord(raw)) return null;
-  const id = typeof raw.id === "string" && raw.id.trim()
-    ? raw.id.trim()
-    : `facility-${index + 1}`;
+  const suppliedId = typeof raw.id === "string" && raw.id.trim() ? raw.id.trim() : "";
   const name = typeof raw.name === "string" && raw.name.trim() ? raw.name.trim() : null;
   if (!name) return null;
   const operator = typeof raw.operator === "string" && raw.operator.trim() ? raw.operator.trim() : "Undisclosed operator";
   const location = normalizeLocation(raw.location ?? raw.address);
+  const id = suppliedId || facilityIdentity({ name, operator, city: location.city, county: location.county, state: location.state, index });
   const capacityMW = selectAvailableCapacityMW(raw.capacityMw ?? raw.capacityMW ?? raw.capacity);
   const exposure = mapOperatorExposure(operator);
   const identity = resolveDirectoryIdentity({ id, name, operator, city: location.city, county: location.county, state: location.state });
@@ -226,6 +240,18 @@ function normalizeFacility(raw, index = 0) {
   };
 }
 
+function facilityIdentity({ name, operator, city, county, state, index = 0 }) {
+  const parts = [name, operator, city, county, state]
+    .map((value) => String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""))
+    .filter(Boolean);
+  return parts.length ? `facility-${parts.join("-")}` : `facility-${index + 1}`;
+}
+
+function stableFacilityKey(facility) {
+  return String(facility?.id ?? "").trim().toLowerCase() ||
+    facilityIdentity(facility ?? {});
+}
+
 function sortFacilities(facilities) {
   return [...facilities].sort((a, b) =>
     a.state.localeCompare(b.state) ||
@@ -237,7 +263,7 @@ function sortFacilities(facilities) {
 function parseFacilitiesPayload(payload) {
   const records = Array.isArray(payload) ? payload : isRecord(payload) ? payload.facilities : null;
   if (!Array.isArray(records)) throw new Error("Compute Atlas facilities response did not contain a facilities array.");
-  const facilities = records.map(normalizeFacility).filter(Boolean);
+  const facilities = [...new Map(records.map(normalizeFacility).filter(Boolean).map((facility) => [stableFacilityKey(facility), facility])).values()];
   if (facilities.length === 0) throw new Error("Compute Atlas facilities response did not contain usable records.");
   return sortFacilities(facilities);
 }
@@ -254,7 +280,9 @@ function aggregateStats(facilities, upstreamStats = null) {
   const capacityTotal = (key) => facilities.reduce((total, facility) => total + (facility.capacityMW ?? 0), 0);
   const upstreamStates = isRecord(upstreamStats?.states) ? upstreamStats.states : null;
   return {
-    totalFacilities: isFinitePositiveNumber(upstreamStats?.count) ? upstreamStats.count : facilities.length,
+    // Totals describe the normalized records actually available to this
+    // workbench, not an upstream count that may include unusable rows.
+    totalFacilities: facilities.length,
     stateCounts: upstreamStates ?? countBy(facilities, "state"),
     statusCounts: countBy(facilities, "status"),
     capacityTotalsMW: {
@@ -404,18 +432,23 @@ function pageDirectoryResponse(response, requestUrl) {
     const matchesCompany = !company || facility.connectedCompanies.includes(company);
     return matchesState && matchesSearch && matchesCompany;
   });
-  const texasFirst = !state && !query && !company
-    ? [...matches.filter((facility) => facility.state === "TX"), ...matches.filter((facility) => facility.state !== "TX")]
+  const priorityStates = ["TX", "AZ"];
+  const prioritized = !state && !query && !company
+    ? priorityStates.flatMap((priorityState) => matches.filter((facility) => facility.state === priorityState))
+      .concat(matches.filter((facility) => !priorityStates.includes(facility.state)))
     : matches;
-  const facilities = texasFirst.slice(offset, offset + limit);
+  const facilities = prioritized.slice(offset, offset + limit);
   return {
     ...response,
     facilities,
-    totalFacilities: texasFirst.length,
+    totalAvailable: response.facilities.length,
+    totalMatching: prioritized.length,
+    totalFacilities: prioritized.length,
     offset,
     limit,
-    hasMore: offset + facilities.length < texasFirst.length,
-    diagnostics: { ...response.diagnostics, pagination: { offset, limit, totalFacilities: texasFirst.length, texasFirst: !state && !query && !company } },
+    nextOffset: offset + facilities.length < prioritized.length ? offset + facilities.length : null,
+    hasMore: offset + facilities.length < prioritized.length,
+    diagnostics: { ...response.diagnostics, pagination: { offset, limit, totalAvailable: response.facilities.length, totalMatching: prioritized.length, texasFirst: !state && !query && !company, priorityStates } },
   };
 }
 
@@ -448,6 +481,7 @@ export {
   DIRECTORY_REQUEST_TIMEOUT_MS,
   EMBEDDED_SNAPSHOT,
   OPERATOR_MAPPINGS,
+  CORPORATE_ALIASES,
   aggregateStats,
   mapOperatorExposure,
   normalizeConfidence,
@@ -459,4 +493,5 @@ export {
   safePublicSourceUrl,
   selectAvailableCapacityMW,
   sortFacilities,
+  stableFacilityKey,
 };

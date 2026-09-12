@@ -7,6 +7,7 @@ import { handleAnalyzeEvidenceRequest } from "./aiEvidenceProxy.mjs";
 import { handleResearchProjectRequest } from "./researchProjectProxy.mjs";
 import { handleDirectoryRequest, handleDirectoryStatsRequest } from "./computeAtlasProxy.mjs";
 import { handleReleaseDocumentRequest, handleVersionRequest } from "./version.mjs";
+import { handleProjectResearchRegistryRequest } from "./projectResearchRegistry.mjs";
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
 const artifactDir = path.resolve(serverDir, "..");
@@ -48,6 +49,12 @@ export async function createApp(): Promise<Express> {
   app.disable("x-powered-by");
   app.use(express.json());
   app.get("/api/version", handleVersionRequest);
+  app.get("/api/project-research", async (request: Request, response: Response) => {
+    await handleProjectResearchRegistryRequest(request, response);
+  });
+  app.get("/api/project-research/:id", async (request: Request, response: Response) => {
+    await handleProjectResearchRegistryRequest(request, response);
+  });
   app.get("/release.json", handleReleaseDocumentRequest);
   app.all("/api/analyze-evidence", async (request: Request, response: Response) => {
     await handleAnalyzeEvidenceRequest(request, response);

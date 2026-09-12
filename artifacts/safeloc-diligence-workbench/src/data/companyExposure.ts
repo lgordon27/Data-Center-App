@@ -9,6 +9,7 @@ export const COMPANY_CONNECTION_TYPES = [
   "Developer/Operator",
   "Customer Dependency",
   "Direct Contractual",
+  "Sourced Indirect Role",
 ] as const;
 
 export type CompanyConnectionType = typeof COMPANY_CONNECTION_TYPES[number];
@@ -38,11 +39,12 @@ export type CompanyProject = {
   location: string;
   capacityMW: number | null;
   status: string;
-  tier: 1 | 2;
+  tier: 1 | 2 | null;
   tierLabel: string;
   connectionType: CompanyConnectionType;
   description: string;
   kind: "curated" | "directory";
+  relationshipBasis: "source-backed" | "operator-derived" | "sourced-indirect" | "unresolved";
   claimIds?: ClaimId[];
   facility?: DirectoryFacility;
 };
@@ -70,7 +72,7 @@ export const COMPANY_PROFILES: CompanyProfile[] = [
     ticker: "NVDA",
     displayName: "NVIDIA",
     headline: "Largest contributor to S&P 500 earnings growth",
-    detail: "20%+ of iShares ESG Advanced MSCI USA ETF",
+    detail: "Included in reviewed public-market context; fund weights change over time.",
     funds: ["iShares ESG Advanced MSCI USA ETF", "MSCI KLD 400 Social Index"],
     marketFunds: ["QQQ", "SMH"],
     accent: "lime",
@@ -80,8 +82,8 @@ export const COMPANY_PROFILES: CompanyProfile[] = [
     key: "Microsoft",
     ticker: "MSFT",
     displayName: "Microsoft",
-    headline: "Partially hedged: Tier 1 and Tier 2 projects",
-    detail: "Project Kilby (behind-the-meter) + grid-dependent projects",
+    headline: "Public-market context with project links requiring verification",
+    detail: "Project Kilby and directory matches are shown with their evidence basis.",
     funds: ["iShares ESG Advanced MSCI USA ETF", "MSCI KLD 400 Social Index"],
     marketFunds: ["QQQ", "XLK"],
     accent: "blue",
@@ -92,7 +94,7 @@ export const COMPANY_PROFILES: CompanyProfile[] = [
     ticker: "META",
     displayName: "Meta",
     headline: "Grid-dependent Texas projects",
-    detail: "More exposed to Tier 2 delays",
+    detail: "Directory matches require project-level verification.",
     funds: ["iShares ESG Advanced MSCI USA ETF", "MSCI KLD 400 Social Index"],
     marketFunds: ["QQQ", "XLC"],
     accent: "coral",
@@ -102,8 +104,8 @@ export const COMPANY_PROFILES: CompanyProfile[] = [
     key: "Google",
     ticker: "GOOGL",
     displayName: "Google (Alphabet)",
-    headline: "$40B+ Texas investment dependent on grid",
-    detail: "Subject to Abbott's audit",
+    headline: "Texas project context subject to public-system review",
+    detail: "Abbott audit context does not establish a facility or issuer relationship.",
     funds: ["iShares ESG Advanced MSCI USA ETF", "MSCI KLD 400 Social Index"],
     marketFunds: ["QQQ", "XLK"],
     accent: "violet",
@@ -113,8 +115,8 @@ export const COMPANY_PROFILES: CompanyProfile[] = [
     key: "Oracle",
     ticker: "ORCL",
     displayName: "Oracle",
-    headline: "15-year Stargate lease for 450,000+ GPUs",
-    detail: "Directly tied to Stargate's evidence profile",
+    headline: "Public reporting links Oracle and Stargate capacity",
+    detail: "The available claim is relationship context, not a lease or holding-weight proof.",
     funds: ["iShares ESG Advanced MSCI USA ETF", "MSCI KLD 400 Social Index"],
     marketFunds: ["QQQ", "XLK"],
     accent: "sky",
@@ -153,11 +155,12 @@ const CURATED_PROJECTS: Partial<Record<CompanyKey, CompanyProject[]>> = {
       location: "Taylor County, TX",
       capacityMW: 1200,
       status: "Under construction",
-      tier: 2,
-      tierLabel: "Tier 2 · at risk of delay",
+      tier: null,
+      tierLabel: "Source-backed context · review evidence",
       connectionType: "Supplier Relationship",
       description: "Reported NVIDIA GPU deployment connects the chip supplier to a grid-dependent Stargate buildout.",
       kind: "curated",
+      relationshipBasis: "source-backed",
       claimIds: ["stargate-oracle-gpus", "stargate-campus"],
     },
   ],
@@ -169,42 +172,13 @@ const CURATED_PROJECTS: Partial<Record<CompanyKey, CompanyProject[]>> = {
       location: "Public location not disclosed",
       capacityMW: null,
       status: "Proceeding",
-      tier: 1,
-      tierLabel: "Tier 1 · proceeding",
+      tier: null,
+      tierLabel: "Unresolved role · citation required",
       connectionType: "Developer/Operator",
-      description: "Public market context describes behind-the-meter generation that bypasses the grid.",
+      description: "Project Kilby appears in current market context, but no attached citation establishes its generation, tenancy, or operating status.",
       kind: "curated",
+      relationshipBasis: "unresolved",
       claimIds: [],
-    },
-    {
-      id: "project-rainier-microsoft-wi",
-      name: "Project Rainier",
-      operator: "Microsoft",
-      location: "Mount Pleasant · Racine County · WI",
-      capacityMW: 315,
-      status: "Construction",
-      tier: 2,
-      tierLabel: "Tier 2 · review required",
-      connectionType: "Customer Dependency",
-      description: "Bundled Compute Atlas discovery context matched by operator/company name; power, water, and ownership relationships require project-level verification.",
-      kind: "directory",
-      facility: {
-        id: "project-rainier-microsoft-wi",
-        name: "Project Rainier",
-        operator: "Microsoft",
-        city: "Mount Pleasant",
-        county: "Racine",
-        state: "WI",
-        capacityMW: 315,
-        availableCapacityMW: 315,
-        status: "construction",
-        confidence: "reported",
-        aiClassification: "ai_training",
-        sourceUrl: "https://www.compute-atlas.com/facilities/project-rainier-microsoft-wi",
-        connectedCompanies: ["Microsoft"],
-        connectedFunds: ["QQQ", "XLK"],
-        lastUpdated: null,
-      },
     },
   ],
   Oracle: [
@@ -215,11 +189,12 @@ const CURATED_PROJECTS: Partial<Record<CompanyKey, CompanyProject[]>> = {
       location: "Taylor County, TX",
       capacityMW: 1200,
       status: "Under construction",
-      tier: 2,
-      tierLabel: "Tier 2 · at risk of delay",
-      connectionType: "Direct Contractual",
-      description: "Oracle's reported lease and customer relationship are reviewed alongside Stargate's public evidence profile.",
+      tier: null,
+      tierLabel: "Source-backed context · review evidence",
+      connectionType: "Sourced Indirect Role",
+      description: "Public reporting links Oracle and Stargate capacity; no lease, tenancy, ownership, or materiality conclusion is made.",
       kind: "curated",
+      relationshipBasis: "source-backed",
       claimIds: ["stargate-oracle-gpus", "stargate-campus"],
     },
   ],
@@ -231,11 +206,12 @@ const CURATED_PROJECTS: Partial<Record<CompanyKey, CompanyProject[]>> = {
       location: "El Paso · El Paso County · TX",
       capacityMW: null,
       status: "Status not reported",
-      tier: 2,
-      tierLabel: "Tier 2 · review required",
+      tier: null,
+      tierLabel: "Operator-derived discovery · review required",
       connectionType: "Developer/Operator",
       description: "Compute Atlas discovery context matched by operator/company name; project-level power, water, ownership, and capacity evidence require verification.",
       kind: "directory",
+      relationshipBasis: "operator-derived",
       facility: {
         id: "meta-el-paso-tx",
         name: "Meta El Paso project",
@@ -263,11 +239,12 @@ const CURATED_PROJECTS: Partial<Record<CompanyKey, CompanyProject[]>> = {
       location: "Goodnight · TX",
       capacityMW: null,
       status: "Status not reported",
-      tier: 2,
-      tierLabel: "Tier 2 · review required",
+      tier: null,
+      tierLabel: "Operator-derived discovery · review required",
       connectionType: "Developer/Operator",
       description: "Compute Atlas discovery context matched by operator/company name; project-level power, water, ownership, and capacity evidence require verification.",
       kind: "directory",
+      relationshipBasis: "operator-derived",
       facility: {
         id: "google-goodnight-tx",
         name: "Google Goodnight project",
@@ -295,11 +272,12 @@ const CURATED_PROJECTS: Partial<Record<CompanyKey, CompanyProject[]>> = {
       location: "New Albany · Licking County · OH",
       capacityMW: 300,
       status: "Operating",
-      tier: 2,
-      tierLabel: "Tier 2 · review required",
+      tier: null,
+      tierLabel: "Operator-derived discovery · review required",
       connectionType: "Developer/Operator",
       description: "Bundled Compute Atlas discovery context matched by operator/company name; power, water, and ownership relationships require project-level verification.",
       kind: "directory",
+      relationshipBasis: "operator-derived",
       facility: {
         id: "amazon-data-center-ohio-oh",
         name: "Amazon Central Ohio Campus",
@@ -333,9 +311,8 @@ export function startingRelationshipProject(company: CompanyKey): CompanyProject
 }
 
 export function projectRelationshipState(company: CompanyKey, project: CompanyProject): CompanyRelationshipState {
-  const name = normalizedProjectName(project.name);
-  if ((company === "NVIDIA" || company === "Oracle") && name === "stargate abilene") return "Source-backed";
-  if (company === "Microsoft" && name === "project kilby") return "Discovery match";
+  if (project.relationshipBasis === "source-backed") return "Source-backed";
+  if (project.relationshipBasis === "operator-derived") return "Discovery match";
   return "Research required";
 }
 
@@ -378,7 +355,7 @@ export function connectionTypeForCompanyProject(company: CompanyKey, projectName
   const name = normalizedProjectName(projectName);
   if (company === "NVIDIA" && name === "stargate abilene") return "Supplier Relationship";
   if (company === "Microsoft" && name === "project kilby") return "Developer/Operator";
-  if (company === "Oracle" && name === "stargate abilene") return "Direct Contractual";
+   if ((company === "NVIDIA" || company === "Oracle") && name === "stargate abilene") return "Sourced Indirect Role";
   return COMPANY_DEFAULT_CONNECTION_TYPES[company];
 }
 
@@ -411,11 +388,12 @@ export function companyProjects(company: CompanyKey, facilities: DirectoryFacili
         cancelled: "Cancelled",
         unknown: "Status not reported",
       }[facility.status],
-      tier: 2,
-      tierLabel: "Tier 2 · review required",
+       tier: null,
+       tierLabel: "Operator-derived discovery · review required",
        connectionType: connectionTypeForCompanyProject(company, facility.name),
       description: "Compute Atlas discovery metadata matched by operator/company name; power, water, and ownership relationships require project-level verification.",
       kind: "directory",
+       relationshipBasis: "operator-derived",
       facility,
     }));
   return [...curated, ...directoryProjects];

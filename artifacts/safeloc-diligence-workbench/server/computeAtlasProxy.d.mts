@@ -29,6 +29,11 @@ export type DirectoryFacility = {
 
 export declare const DIRECTORY_CACHE_TTL_MS: number;
 export declare const EMBEDDED_SNAPSHOT: DirectoryFacility[];
+export declare const CORPORATE_ALIASES: readonly {
+  match: string;
+  company: string;
+  funds: readonly string[];
+}[];
 export declare function handleDirectoryRequest(req: unknown, res: unknown, options?: unknown): Promise<void>;
 export declare function handleDirectoryStatsRequest(req: unknown, res: unknown, options?: unknown): Promise<void>;
 export declare function getDirectory(options?: unknown): Promise<unknown>;

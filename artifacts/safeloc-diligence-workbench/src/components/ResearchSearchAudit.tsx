@@ -137,7 +137,9 @@ function CategoryAuditRow({
     <tr data-testid={`research-category-${category.categoryId}`}>
                     <th scope="row" className="whitespace-nowrap px-2 py-2 align-top font-semibold text-[#243844]">{category.label}</th>
                     <td className="px-2 py-2 align-top"><span className={`rounded-full px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.05em] ${categoryTone(category)}`}>{category.state}</span></td>
-                    <td className="px-2 py-2 align-top font-mono text-[9px] leading-4">{category.stageCounts.normalized} normalized · {category.stageCounts.accessed} accessed · {category.stageCounts.parsed} parsed · {category.stageCounts.claimMapped} mapped · {category.stageCounts.eligible} eligible</td>
+                    <td className="px-2 py-2 align-top font-mono text-[9px] leading-4">
+                      {category.stageCounts.candidates ?? category.stageCounts.normalized} candidates · {category.stageCounts.attemptedRetrievals ?? category.stageCounts.accessed} attempted · {category.stageCounts.successfulAccesses ?? category.stageCounts.accessed} accessed · {category.stageCounts.retainedPassages ?? category.stageCounts.parsed} passages · {category.stageCounts.reusedReceipts ?? 0} reused · {category.stageCounts.notAttempted ?? 0} not attempted · {category.stageCounts.claimMapped} mapped · {category.stageCounts.eligible} eligible
+                    </td>
                     <td className="max-w-[380px] px-2 py-2 align-top text-[9px] leading-4">
                        <div><strong>Issued primary · {category.primaryQueryRole ?? "authoritative-primary"}:</strong> {category.issuedPrimaryQuery ?? "Not issued"}</div>
                        <div className="mt-1"><strong>Provider-observed primary:</strong> {category.providerObservedPrimaryQueries?.length ? category.providerObservedPrimaryQueries.join(" · ") : "None observed"}</div>

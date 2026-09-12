@@ -4,6 +4,7 @@ import {
   directoryFreshness,
   fetchDirectory,
   fetchDirectoryStats,
+  mergeDirectoryFacilities,
   type DirectoryFacility,
   type DirectoryResponse,
   type DirectoryStatsResponse,
@@ -106,12 +107,13 @@ export default function DirectoryRoute({
   const [stats, setStats] = useState<DirectoryStatsResponse | null>(null);
   const [facilities, setFacilities] = useState<DirectoryFacility[]>([]);
   const [totalMatching, setTotalMatching] = useState(0);
+  const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [stateFilter, setStateFilter] = useState<(typeof STATES)[number]>("TX");
+  const [stateFilter, setStateFilter] = useState<(typeof STATES)[number]>("All");
   const [companyFilter, setCompanyFilter] = useState<string | null>(null);
 
   useEffect(() => {
@@ -130,8 +132,9 @@ export default function DirectoryRoute({
     }).then((response) => {
       if (!active) return;
       setDirectory(response);
-      setFacilities(response.facilities.slice(0, PAGE_SIZE));
-      setTotalMatching(response.totalFacilities ?? response.facilities.length);
+       setFacilities(response.facilities.slice(0, PAGE_SIZE));
+       setTotalMatching(response.totalMatching ?? response.totalFacilities ?? response.facilities.length);
+       setNextOffset(response.nextOffset ?? (response.hasMore ? (response.offset ?? 0) + response.facilities.length : null));
     }).catch((reason) => {
       if (active) setError(reason instanceof Error ? reason.message : "The directory is unavailable.");
     }).finally(() => { if (active) setLoading(false); });
@@ -169,19 +172,20 @@ export default function DirectoryRoute({
     setLoadingMore(true);
     try {
       const response = await fetchDirectory({
-        limit: PAGE_SIZE, offset: facilities.length, search: debouncedQuery.trim() || undefined,
+        limit: PAGE_SIZE, offset: nextOffset ?? facilities.length, search: debouncedQuery.trim() || undefined,
         state: stateFilter === "All" ? undefined : stateFilter === "Other" ? "OTHER" : stateFilter,
         company: companyFilter ?? undefined,
       });
       setDirectory(response);
-      setFacilities((current) => [...current, ...response.facilities.slice(0, PAGE_SIZE)]);
-      setTotalMatching(response.totalFacilities ?? totalMatching);
+      setFacilities((current) => mergeDirectoryFacilities(current, response.facilities));
+      setTotalMatching(response.totalMatching ?? response.totalFacilities ?? totalMatching);
+      setNextOffset(response.nextOffset ?? (response.hasMore ? (nextOffset ?? facilities.length) + response.facilities.length : null));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "The directory is unavailable.");
     } finally { setLoadingMore(false); }
   };
 
-  const total = stats?.stats.totalFacilities ?? directory?.totalFacilities ?? totalMatching;
+  const total = directory?.totalAvailable ?? stats?.stats.totalFacilities ?? totalMatching;
   const freshness = directoryFreshness(directory?.sourceMetadata);
   const contextFunds = companyFilter ? [...new Set(facilities.flatMap((facility) => facility.connectedFunds).concat(ETF_CONTEXT[companyFilter] ?? []))] : [];
   return (
@@ -204,7 +208,7 @@ export default function DirectoryRoute({
           {freshness.caution && <div data-testid="compute-atlas-retained-warning" role="alert" className="mt-4 flex gap-2 rounded border border-[#f1cb8b] p-3 text-[11px] text-[#ffe0a9]"><TriangleAlert aria-hidden="true" className="h-4 w-4" />Retained directory data is nearing its refresh window.</div>}
           {companyFilter && <p className="mt-2 text-[10px] text-[#8299a5]">ETF context: {contextFunds.join(", ") || "No mapped fund context"}. This is market exposure context, not facility evidence.</p>}
            <div data-testid="compute-atlas-results" className="mt-4 space-y-2">{facilities.length === 0 ? <div data-testid="compute-atlas-empty" className="rounded border border-white/15 p-8 text-center text-[#b9c5c9]">No facilities match these filters.</div> : facilities.map((facility) => <DirectoryRecord key={facility.id} facility={facility} onCurated={onCurated} onResearch={() => research(facility)} />)}</div>
-          {facilities.length < totalMatching && <button data-testid="compute-atlas-load-more" type="button" disabled={loadingMore} onClick={() => void loadMore()} className="mt-4 min-h-11 w-full rounded border border-white/20 text-[#b9e1f2]">{loadingMore ? "Loading more facilities…" : `Show next ${Math.min(PAGE_SIZE, totalMatching - facilities.length)} facilities`}</button>}
+           {nextOffset !== null && facilities.length < totalMatching && <button data-testid="compute-atlas-load-more" type="button" disabled={loadingMore} onClick={() => void loadMore()} className="mt-4 min-h-11 w-full rounded border border-white/20 text-[#b9e1f2]">{loadingMore ? "Loading more facilities…" : `Show next ${Math.min(PAGE_SIZE, totalMatching - facilities.length)} facilities`}</button>}
           <div data-testid="compute-atlas-attribution" className="mt-6 border-t border-white/10 pt-4 text-[10px] text-[#8299a5]">Directory metadata by <a href="https://compute-atlas.com" target="_blank" rel="noreferrer" className="underline">Compute Atlas</a>, CC BY 4.0. {sourceLabel(directory)} is shown explicitly.</div>
         </>}
       </div>

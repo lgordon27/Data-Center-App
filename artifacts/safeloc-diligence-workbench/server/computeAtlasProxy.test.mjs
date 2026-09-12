@@ -6,6 +6,7 @@ import {
   DIRECTORY_CACHE_TTL_MS,
   EMBEDDED_SNAPSHOT,
   aggregateStats,
+  CORPORATE_ALIASES,
   clearDirectoryCache,
   handleDirectoryRequest,
   getDirectory,
@@ -74,6 +75,18 @@ test("normalizes statuses, nested capacity, location, AI classification, and saf
   assert.equal(selectAvailableCapacityMW({ available: 80, operational: 120 }), 80);
   assert.equal(selectAvailableCapacityMW({ planned: "unknown" }), null);
   assert.deepEqual(mapOperatorExposure("Google / Amazon"), { companies: ["Google", "Amazon"], funds: ["QQQ", "XLK", "XLY"] });
+});
+
+test("documents reviewed corporate aliases without treating AI classification as an NVIDIA match", () => {
+  assert.ok(CORPORATE_ALIASES.some((alias) => alias.match === "aws" && alias.company === "Amazon"));
+  assert.ok(CORPORATE_ALIASES.some((alias) => alias.match === "facebook" && alias.company === "Meta"));
+  const nonNvidia = normalizeFacility(facility({
+    id: "operator-only",
+    name: "Independent AI Campus",
+    operator: "Independent Colocation",
+    aiClassification: "ai_training",
+  }));
+  assert.deepEqual(nonNvidia.connectedCompanies, []);
 });
 
 test("keeps Lancium directory identity explicitly unverified without merging it", () => {
@@ -212,11 +225,12 @@ test("paginates directory responses at the server boundary", async () => {
   assert.equal(page.hasMore, false);
 });
 
-test("puts Texas entry points first only for the unfiltered directory", async () => {
+test("puts Texas then Arizona entry points first without excluding other states", async () => {
   clearDirectoryCache();
   const records = [
     facility({ id: "az-facility", name: "Arizona Facility", location: { city: "Mesa", county: "Maricopa", state: "AZ" } }),
     facility({ id: "tx-facility", name: "Texas Facility", location: { city: "Abilene", county: "Taylor", state: "TX" } }),
+    facility({ id: "va-facility", name: "Virginia Facility", location: { city: "Ashburn", county: "Loudoun", state: "VA" } }),
   ];
   const response = { statusCode: 0, body: "", setHeader() {}, end(body) { this.body = body; } };
   await handleDirectoryRequest(
@@ -225,6 +239,27 @@ test("puts Texas entry points first only for the unfiltered directory", async ()
     { fetchImpl: upstreamFetch({ records }), now: () => 5_000_000 },
   );
   const page = JSON.parse(response.body);
-  assert.deepEqual(page.facilities.map((item) => item.id), ["tx-facility", "az-facility"]);
+  assert.deepEqual(page.facilities.map((item) => item.id), ["tx-facility", "az-facility", "va-facility"]);
   assert.equal(page.diagnostics.pagination.texasFirst, true);
+  assert.equal(page.totalAvailable, 3);
+  assert.equal(page.totalMatching, 3);
+});
+
+test("deduplicates repeated provider ids while retaining distinct campus identities", async () => {
+  clearDirectoryCache();
+  const records = [
+    facility({ id: "same-campus", name: "Same Campus", location: { city: "Austin", county: "Travis", state: "TX" } }),
+    facility({ id: "same-campus", name: "Same Campus", location: { city: "Austin", county: "Travis", state: "TX" } }),
+    facility({ id: "other-campus", name: "Same Campus", location: { city: "Dallas", county: "Dallas", state: "TX" } }),
+  ];
+  const response = { statusCode: 0, body: "", setHeader() {}, end(body) { this.body = body; } };
+  await handleDirectoryRequest(
+    { method: "GET", url: "/api/directory?limit=24" },
+    response,
+    { fetchImpl: upstreamFetch({ records }), now: () => 6_000_000 },
+  );
+  const page = JSON.parse(response.body);
+  assert.deepEqual(page.facilities.map((item) => item.id), ["same-campus", "other-campus"]);
+  assert.equal(page.totalAvailable, 2);
+  assert.equal(page.totalMatching, 2);
 });

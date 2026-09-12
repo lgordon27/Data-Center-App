@@ -24,16 +24,18 @@ const facility = (overrides: Partial<DirectoryFacility> = {}): DirectoryFacility
 
 test("company profiles preserve the six supplied stock lenses", () => {
   assert.deepEqual(COMPANY_PROFILES.map((profile) => profile.key), ["NVIDIA", "Microsoft", "Meta", "Google", "Oracle", "Amazon"]);
-  assert.match(COMPANY_PROFILES.find((profile) => profile.key === "Oracle")?.headline ?? "", /15-year Stargate lease/);
+  assert.match(COMPANY_PROFILES.find((profile) => profile.key === "Oracle")?.headline ?? "", /Public reporting links/);
   assert.match(COMPANY_PROFILES.find((profile) => profile.key === "Google")?.detail ?? "", /Abbott/);
 });
 
 test("company projects combine reviewed context with operator-matched directory metadata", () => {
   const projects = companyProjects("Microsoft", [facility()]);
   assert.equal(projects.length, 2);
-  assert.equal(projects[0].tier, 1);
+  assert.equal(projects[0].tier, null);
+  assert.equal(projects[0].relationshipBasis, "unresolved");
   assert.equal(projects[0].connectionType, "Developer/Operator");
-  assert.equal(projects[1].tier, 2);
+  assert.equal(projects[1].tier, null);
+  assert.equal(projects[1].relationshipBasis, "operator-derived");
   assert.equal(projects[1].connectionType, "Customer Dependency");
   assert.equal(projects[1].capacityMW, 315);
 });
@@ -45,13 +47,14 @@ test("connection types cover every company lens and preserve reviewed exceptions
     "Developer/Operator",
     "Customer Dependency",
     "Direct Contractual",
+    "Sourced Indirect Role",
   ]);
 
   assert.equal(connectionTypeForCompanyProject("NVIDIA", "Stargate Abilene"), "Supplier Relationship");
   assert.equal(connectionTypeForCompanyProject("NVIDIA", "Project Rainier"), "Thematic Exposure");
   assert.equal(connectionTypeForCompanyProject("Microsoft", "Project Kilby"), "Developer/Operator");
   assert.equal(connectionTypeForCompanyProject("Microsoft", "Project Rainier"), "Customer Dependency");
-  assert.equal(connectionTypeForCompanyProject("Oracle", "Stargate Abilene"), "Direct Contractual");
+  assert.equal(connectionTypeForCompanyProject("Oracle", "Stargate Abilene"), "Sourced Indirect Role");
   assert.equal(connectionTypeForCompanyProject("Meta", "Project Volcano"), "Developer/Operator");
   assert.equal(connectionTypeForCompanyProject("Google", "Google New Albany Campus"), "Developer/Operator");
   assert.equal(connectionTypeForCompanyProject("Amazon", "Amazon Central Ohio Campus"), "Developer/Operator");
@@ -76,7 +79,7 @@ test("project summary keeps undisclosed capacity out of disclosed totals", () =>
   const summary = projectSummary(companyProjects("Microsoft", [facility()]));
   assert.equal(summary.count, 2);
   assert.equal(summary.capacityMW, 315);
-  assert.equal(summary.tier1, 1);
-  assert.equal(summary.tier2, 1);
+  assert.equal(summary.tier1, 0);
+  assert.equal(summary.tier2, 0);
   assert.equal(summary.undisclosedCapacity, 1);
 });

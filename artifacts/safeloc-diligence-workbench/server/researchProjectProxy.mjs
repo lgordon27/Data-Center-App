@@ -23,6 +23,7 @@ import {
   evaluateResearchEvidenceEligibility,
   isSourceProjectSpecific,
 } from "../src/data/sourceValidationPolicy.mjs";
+import { defaultProjectResearchRegistry } from "./projectResearchRegistry.mjs";
 
 function sourceStateTransition(from, to, reason) {
   return { from, to, reason };
@@ -100,6 +101,27 @@ const TEXAS_CATEGORY_TARGETS = Object.freeze({
     names: ["FEMA", "NOAA", "Texas geographic hazard records"],
     domains: ["fema.gov", "noaa.gov"],
   },
+});
+const STATE_ROUTING_TARGETS = Object.freeze({
+  Arizona: {
+    names: ["Arizona Corporation Commission", "Arizona Department of Water Resources", "Arizona Department of Environmental Quality", "Arizona utility and water-authority records"],
+    domains: ["azcc.gov", "azwater.gov", "azdeq.gov"],
+  },
+  Ohio: {
+    names: ["Public Utilities Commission of Ohio", "Ohio Department of Natural Resources", "Ohio Environmental Protection Agency", "Ohio utility and water-authority records"],
+    domains: ["puco.ohio.gov", "ohiodnr.gov", "epa.ohio.gov"],
+  },
+});
+const US_STATE_NAMES = Object.freeze({
+  AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California", CO: "Colorado",
+  CT: "Connecticut", DE: "Delaware", FL: "Florida", GA: "Georgia", HI: "Hawaii", ID: "Idaho",
+  IL: "Illinois", IN: "Indiana", IA: "Iowa", KS: "Kansas", KY: "Kentucky", LA: "Louisiana",
+  ME: "Maine", MD: "Maryland", MA: "Massachusetts", MI: "Michigan", MN: "Minnesota", MS: "Mississippi",
+  MO: "Missouri", MT: "Montana", NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey",
+  NM: "New Mexico", NY: "New York", NC: "North Carolina", ND: "North Dakota", OH: "Ohio", OK: "Oklahoma",
+  OR: "Oregon", PA: "Pennsylvania", RI: "Rhode Island", SC: "South Carolina", SD: "South Dakota",
+  TN: "Tennessee", TX: "Texas", UT: "Utah", VT: "Vermont", VA: "Virginia", WA: "Washington",
+  WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
 });
 const DEFAULT_RESEARCH_CAPACITY_MW = 1_200;
 const MAX_RESEARCH_CAPACITY_MW = 10_000;
@@ -442,6 +464,9 @@ function parseResearchProjectBody(body) {
     const companyDomains = Array.isArray(body.knownData.companyDomains)
       ? [...new Set(body.knownData.companyDomains.map((value) => normalizeKnownText(value, 120)?.replace(/^https?:\/\//, "").replace(/\/.*$/, "")).filter((value) => value && /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(value)))].slice(0, 8)
       : [];
+    const aliases = Array.isArray(body.knownData.aliases)
+      ? [...new Set(body.knownData.aliases.map((value) => normalizeKnownText(value, 160)).filter(Boolean))].slice(0, 12)
+      : [];
     const normalized = {
       ...derivedLocation,
       ...(capacity === null ? {} : { capacity }),
@@ -457,6 +482,7 @@ function parseResearchProjectBody(body) {
       ...(authorityNames.length ? { authorityNames } : {}),
       ...(authorityDomains.length ? { authorityDomains } : {}),
       ...(companyDomains.length ? { companyDomains } : {}),
+      ...(aliases.length ? { aliases } : {}),
     };
     if (Object.keys(normalized).length) knownData = normalized;
   }
@@ -546,12 +572,49 @@ function inferLocationAuthorityParts(project = {}) {
   const city = knownData.city
     ?? location.match(/^\s*([^,]+?)(?:\s*,|\s+County\b)/i)?.[1]
     ?? null;
-  const state = knownData.state
-    ?? (/\b(Texas|TX)\b/i.test(location) ? "Texas" : null);
+  const stateMatch = Object.entries(US_STATE_NAMES).find(([abbreviation, name]) =>
+    new RegExp(`\\b(?:${abbreviation}|${name})\\b`, "i").test(location));
+  const knownState = typeof knownData.state === "string" ? knownData.state.trim() : "";
+  const normalizedKnownState = (US_STATE_NAMES[knownState.toUpperCase()] ?? knownState) || null;
+  const state = normalizedKnownState
+    ?? (stateMatch ? US_STATE_NAMES[stateMatch[0]] ?? stateMatch[0] : null);
   return {
     city: city?.trim() || null,
     county: county?.trim() || null,
     state: state?.trim() || null,
+  };
+}
+
+function buildProjectIdentityContext(project = {}) {
+  const knownData = project.knownData ?? {};
+  const parts = inferLocationAuthorityParts(project);
+  const aliases = [...new Set([
+    ...(Array.isArray(knownData.aliases) ? knownData.aliases : []),
+    ...(knownData.operator && knownData.operator !== project.name ? [knownData.operator] : []),
+  ].filter(Boolean))].slice(0, 12);
+  const locationText = String(project.location ?? "");
+  const ambiguities = [];
+  if (/\bcampus\b/i.test(locationText)) {
+    ambiguities.push("Campus-versus-region ambiguity: the supplied wording identifies a campus but not a uniquely resolved facility within it.");
+  } else if (/\b(region|metro|metropolitan|area|corridor|valley|site)\b/i.test(locationText)
+      && !parts.city && !parts.county) {
+    ambiguities.push("Campus-versus-region ambiguity: the supplied location does not establish a city, county, or exact facility site.");
+  } else if (/\b(region|metro|metropolitan|area|corridor|valley|site)\b/i.test(locationText)) {
+    ambiguities.push("Campus-versus-region ambiguity: regional wording is present; do not treat regional records as exact-campus evidence.");
+  }
+  if (!knownData.operator && aliases.length === 0) {
+    ambiguities.push("Operator identity is not established in the supplied project context; similarly named facilities require disambiguation.");
+  }
+  return {
+    requestedName: String(project.name ?? "").trim(),
+    aliases,
+    operator: knownData.operator ?? null,
+    location: locationText,
+    city: parts.city,
+    county: parts.county,
+    state: parts.state,
+    ambiguities,
+    resolutionRequired: true,
   };
 }
 
@@ -591,9 +654,18 @@ function buildLocalAuthorityTargets(project = {}) {
 }
 
 function categoryAuthorityTargets(project, categoryId) {
+  const parts = inferLocationAuthorityParts(project);
+  const stateTargets = STATE_ROUTING_TARGETS[parts.state] ?? { names: [], domains: [] };
   const base = isTexasProject(project)
     ? TEXAS_CATEGORY_TARGETS[categoryId] ?? { names: [], domains: [] }
-    : { names: [], domains: [] };
+    : {
+        names: ["project-identity", "grid", "electricity", "water", "permitting-community", "climate-operational-hazard"].includes(categoryId)
+          ? stateTargets.names
+          : [],
+        domains: ["grid", "electricity", "water", "project-identity", "permitting-community", "climate-operational-hazard"].includes(categoryId)
+          ? stateTargets.domains
+          : [],
+      };
   const local = ["water", "permitting-community"].includes(categoryId)
     ? buildLocalAuthorityTargets(project)
     : { targets: [], limitations: [] };
@@ -603,11 +675,17 @@ function categoryAuthorityTargets(project, categoryId) {
     names: [...new Set([...base.names, ...localNames])],
     domains: [...new Set([...base.domains, ...localDomains])],
     localAuthorities: local.targets,
-    limitations: local.limitations,
+    limitations: [
+      ...local.limitations,
+      ...(buildProjectIdentityContext(project).ambiguities.length && categoryId === "project-identity"
+        ? buildProjectIdentityContext(project).ambiguities
+        : []),
+    ],
   };
 }
 
 function buildResearchCategoryPlan(project) {
+  const identityContext = buildProjectIdentityContext(project);
   const plan = RESEARCH_CATEGORIES.map((category) => {
     const firstEvidenceId = category.evidenceIds[0];
     const followUpEvidenceId = category.evidenceIds[1] ?? firstEvidenceId;
@@ -625,12 +703,14 @@ function buildResearchCategoryPlan(project) {
       authorityTargets,
       primaryAttempt: "not-started",
       followUpAttempt: "not-started",
+      identityContext,
     };
   });
   return {
     version: RESEARCH_CATEGORY_AUDIT_VERSION,
     categories: plan,
     budget: { ...RESEARCH_RUN_BUDGET },
+    identityContext,
   };
 }
 
@@ -933,6 +1013,7 @@ function categoryStageCounts(category, sources, evidence, project = {}) {
       source.accessOutcome?.state === "accessible"
       && (source.exactProject === true || isSourceProjectSpecific(source, project)));
   const rejectionReasons = categoryEvidence.flatMap((item) => item.quarantineReasons ?? []);
+  const openedDocuments = categoryOpenedDocuments(sourceCandidates);
   return {
     normalized: sourceCandidates.length,
     accessed: sourceCandidates.filter((source) => source.accessOutcome?.state === "accessible").length,
@@ -941,6 +1022,12 @@ function categoryStageCounts(category, sources, evidence, project = {}) {
     eligible: eligible.length,
     retainedCandidates: sourceCandidates.filter((source) =>
       ["retained", "redirected", "claim-supported", "project-specific", "evidence-mapped"].includes(source.sourceState)).length,
+    candidates: sourceCandidates.length,
+    attemptedRetrievals: openedDocuments.filter((document) => document.attempted === true).length,
+    successfulAccesses: openedDocuments.filter((document) => document.accessState === "accessible").length,
+    retainedPassages: openedDocuments.filter((document) => Boolean(document.retainedPassage)).length,
+    reusedReceipts: openedDocuments.filter((document) => document.reusedReceipt === true).length,
+    notAttempted: openedDocuments.filter((document) => document.accessState === "not-attempted").length,
     allEvidenceEligible,
     rejectionCounts: Object.fromEntries([...new Set(rejectionReasons)].map((reason) => [
       reason,
@@ -967,6 +1054,8 @@ function categoryOpenedDocuments(sources = []) {
       resolvedUrl: outcome.resolvedUrl ?? source.resolvedUrl ?? source.url ?? null,
       canonicalUrl: outcome.canonicalUrl ?? source.canonicalUrl ?? source.url ?? null,
       opened: source.documentAccessReused !== true,
+      attempted: source.documentAccessReused !== true && outcome.state !== "not-attempted",
+      reusedReceipt: source.documentAccessReused === true,
       reusedFromCanonicalUrl: source.documentAccessReused === true
         ? outcome.canonicalUrl ?? source.canonicalUrl ?? source.url ?? null
         : null,
@@ -1025,6 +1114,8 @@ function buildResearchAudit({
       followUpTriggerEvidenceIds: Array.isArray(supplied.followUpTriggerEvidenceIds) ? supplied.followUpTriggerEvidenceIds.filter((id) => category.evidenceIds.includes(id)).slice(0, 8) : [],
       followUpSkipReason: supplied.followUpSkipReason ?? (category.evidenceIds.length ? "no-justified-gap" : "evidence-resolved"),
       authorityTargets: category.authorityTargets,
+      identityContext: category.identityContext,
+      identityAmbiguities: category.identityContext?.ambiguities ?? [],
       localAuthorities: category.authorityTargets?.localAuthorities ?? [],
       authorityLimitations: category.authorityTargets?.limitations ?? [],
       returnedDomains: Array.isArray(supplied.returnedDomains) ? supplied.returnedDomains.filter(Boolean).slice(0, 20) : categoryReturnedDomains(sources.filter((source) => source.searchDomain === category.categoryId)),
@@ -1095,6 +1186,8 @@ async function orchestrateCategoryResearch(project, {
   const resolvedEvidenceIds = new Set();
   const categories = buildResearchCategoryPlan(project).categories;
   const prefetchedPrimary = new Map();
+  const primaryRequestCosts = new Map();
+  const primaryErrors = new Map();
   if (concurrent) {
     // Start bounded primary work up front. The map is populated by a small
     // worker pool; the accounting reservation prevents later awaits from
@@ -1113,13 +1206,21 @@ async function orchestrateCategoryResearch(project, {
           remainingToolCalls: Math.max(1, Math.floor(budget.maxToolCalls / categories.length)),
         });
         prefetchedPrimary.set(category.categoryId, primaryPromise);
-        await primaryPromise.catch(() => undefined);
+        await primaryPromise
+          .then((result) => primaryRequestCosts.set(category.categoryId, Number.isInteger(result?.providerRequestCount) ? Math.max(1, result.providerRequestCount) : 1))
+          .catch((error) => {
+            primaryErrors.set(category.categoryId, error);
+            primaryRequestCosts.set(category.categoryId, Number.isInteger(error?.providerRequestCount) ? Math.max(1, error.providerRequestCount) : 1);
+          });
       }
     };
     await Promise.allSettled(Array.from({ length: Math.min(RESEARCH_CATEGORY_CONCURRENCY, categories.length) }, worker));
-    providerRequests = Math.min(budget.maxProviderRequests, categories.length);
+    providerRequests = Math.min(
+      budget.maxProviderRequests,
+      [...primaryRequestCosts.values()].reduce((total, count) => total + count, 0),
+    );
   }
-  for (const category of categories) {
+  for (const [categoryIndex, category] of categories.entries()) {
     if (signal?.aborted && !deadlineState.expired) {
       const error = new Error("Project research was cancelled.");
       error.name = "ResearchCancelledError";
@@ -1129,6 +1230,7 @@ async function orchestrateCategoryResearch(project, {
     if (deadlineState.expired) break;
     const elapsed = now() - startedAtMs;
     if (physicalOpenBudgetExceeded || elapsed >= budget.deadlineMs || toolCalls >= budget.maxToolCalls || providerRequests >= budget.maxProviderRequests) {
+      const prefetchedError = primaryErrors.get(category.categoryId);
       categoryExecutions[category.categoryId] = {
         issuedPrimaryQuery: null,
         providerObservedPrimaryQueries: [],
@@ -1138,9 +1240,12 @@ async function orchestrateCategoryResearch(project, {
         followUpSkipReason: physicalOpenBudgetExceeded ? "physical-open-budget" : elapsed >= budget.deadlineMs ? "deadline" : toolCalls >= budget.maxToolCalls ? "tool-call-budget" : "provider-request-budget",
         returnedDomains: [],
         openedDocuments: [],
-        state: elapsed >= budget.deadlineMs || toolCalls >= budget.maxToolCalls ? "Timed out" : "Not searched",
+        state: prefetchedError
+          ? prefetchedError.name === "AbortError" ? "Timed out" : "Provider failure"
+          : elapsed >= budget.deadlineMs || toolCalls >= budget.maxToolCalls ? "Timed out" : "Not searched",
         executedQueries: [],
         unresolvedGaps: category.evidenceIds,
+        providerFailure: prefetchedError && prefetchedError.name !== "AbortError" ? "Category provider request failed." : null,
       };
       continue;
     }
@@ -1161,7 +1266,7 @@ async function orchestrateCategoryResearch(project, {
       openedDocuments: [],
     };
     try {
-      if (!concurrent) providerRequests += 1;
+       if (!concurrent) providerRequests += 1;
       const primary = await (prefetchedPrimary.get(category.categoryId) ?? retrieveCategory({
         categoryId: category.categoryId,
         query: category.requestedPrimaryQuery,
@@ -1169,6 +1274,10 @@ async function orchestrateCategoryResearch(project, {
         remainingMs: Math.max(0, budget.deadlineMs - (now() - startedAtMs)),
         remainingToolCalls: Math.max(0, budget.maxToolCalls - toolCalls),
       }));
+       const primaryRequestCost = Number.isInteger(primary?.providerRequestCount)
+         ? Math.max(1, primary.providerRequestCount)
+         : 1;
+       if (!concurrent) providerRequests = Math.min(budget.maxProviderRequests, providerRequests + primaryRequestCost - 1);
       if (signal?.aborted) {
         const error = new Error("Project research was cancelled.");
         error.name = "ResearchCancelledError";
@@ -1195,8 +1304,12 @@ async function orchestrateCategoryResearch(project, {
       physicalOpenBudgetExceeded ||= primary?.physicalOpenBudgetExceeded === true;
       execution.followUpTriggerEvidenceIds = Array.isArray(primary?.unresolvedEvidenceIds) ? primary.unresolvedEvidenceIds : [];
       const globalEarlyStop = resolvedEvidenceIds.size >= RESEARCH_EVIDENCE_IDS.length;
-      const primaryCategoryResolved = primary?.categoryResolved === true
-        || (primary?.eligibleCount > 0 && primary?.gapDrivenFollowUp !== true && primary?.repairAttempted !== true);
+       // A returned candidate or a zero-evidence response is not success. Only
+       // the validated category resolver may close a category.
+       const primaryCategoryResolved = primary?.categoryResolved === true;
+       // Preserve one primary opportunity for every remaining category before
+       // spending shared request slots on a gap repair/follow-up.
+       const remainingPrimaryOpportunity = categories.length - categoryIndex - 1;
       if (primary?.gapDrivenFollowUp === true
         && !globalEarlyStop
         && !primaryCategoryResolved
@@ -1204,11 +1317,12 @@ async function orchestrateCategoryResearch(project, {
         && followUps < budget.maxFollowUps
         && (budget.maxFollowUpsPerCategory ?? 1) > 0
         && providerRequests < budget.maxProviderRequests
+         && providerRequests + 1 + remainingPrimaryOpportunity <= budget.maxProviderRequests
         && !physicalOpenBudgetExceeded
         && now() - startedAtMs < budget.deadlineMs) {
         followUps += 1;
         followUpWasRun = true;
-        providerRequests += 1;
+         providerRequests += 1;
         execution.issuedFollowUpQuery = primary?.followUpQuery ?? category.optionalFollowUpQuery;
         const followUp = await retrieveCategory({
           categoryId: category.categoryId,
@@ -1217,6 +1331,10 @@ async function orchestrateCategoryResearch(project, {
           remainingMs: Math.max(0, budget.deadlineMs - (now() - startedAtMs)),
           remainingToolCalls: Math.max(0, budget.maxToolCalls - toolCalls),
         });
+         const followUpRequestCost = Number.isInteger(followUp?.providerRequestCount)
+           ? Math.max(1, followUp.providerRequestCount)
+           : 1;
+         providerRequests = Math.min(budget.maxProviderRequests, providerRequests + followUpRequestCost - 1);
         if (signal?.aborted) {
           const error = new Error("Project research was cancelled.");
           error.name = "ResearchCancelledError";
@@ -1264,11 +1382,21 @@ async function orchestrateCategoryResearch(project, {
                     : "no-justified-gap";
       }
       state = categoryCandidates.length ? "Partial" : "No eligible evidence";
-      if (primaryCategoryResolved || categoryResults
+       if (primaryCategoryResolved || categoryResults
         .filter((result) => result.categoryId === category.categoryId)
         .some((result) => result.categoryResolved === true) || followUpWasRun) state = "Complete";
+       if (followUpWasRun) {
+         const followUpResult = categoryResults.filter((result) => result.categoryId === category.categoryId).at(-1);
+         const hasSuccessfulCandidate = categoryCandidates.some((candidate) => candidate?.eligible === true);
+         state = followUpResult?.categoryResolved === true || hasSuccessfulCandidate
+           ? "Complete"
+           : categoryCandidates.length ? "Partial" : "No eligible evidence";
+       }
     } catch (error) {
       if ((signal?.aborted && !deadlineState.expired) || (error?.name === "ResearchCancelledError" && !deadlineState.expired)) throw error;
+      if (!concurrent && Number.isInteger(error?.providerRequestCount)) {
+        providerRequests = Math.min(budget.maxProviderRequests, providerRequests + Math.max(0, error.providerRequestCount - 1));
+      }
       lastError = error;
       providerFailure = error?.name === "AbortError" ? null : "Category provider request failed.";
       state = error?.name === "AbortError" ? "Timed out" : "Provider failure";
@@ -1670,7 +1798,8 @@ function parseResearchResponse(
     const sourceUrl = validatedUrls[0] ?? null;
     const supportingSources = validatedUrls.map((url) => {
       const metadata = sourceByUrl.get(url);
-      const exactProject = isExactProjectSource(metadata, summary, item.sourceRelevance);
+      const jurisdictionExcluded = isJurisdictionallyExcludedSource(metadata, summary);
+      const exactProject = !jurisdictionExcluded && isExactProjectSource(metadata, summary, item.sourceRelevance);
       const resolvedUrl = canonicalizeSourceUrl(metadata?.resolvedUrl ?? metadata?.url ?? url) ?? url;
       return {
         url: resolvedUrl,
@@ -1686,6 +1815,10 @@ function parseResearchResponse(
         sourceClass: metadata?.sourceClass ?? classifySource(url, metadata?.title),
         searchDomain: metadata?.searchDomain ?? "project-identity",
         exactProject,
+         ...(jurisdictionExcluded ? {
+           jurisdictionExcluded: true,
+           relevanceNote: "ERCOT is not a project-evidence authority for a non-Texas project.",
+         } : {}),
         sourceState: metadata?.sourceState ?? "retained",
         redirectChain: metadata?.redirectChain ?? [],
         contentType: metadata?.contentType ?? null,
@@ -1698,8 +1831,10 @@ function parseResearchResponse(
          facilityScope: item.facilityScope ?? metadata?.facilityScope ?? "unknown",
          phaseScope: item.phaseScope ?? metadata?.phaseScope ?? "unknown",
          timePeriod: item.claimTimePeriod ?? metadata?.timePeriod ?? null,
-        relevanceNote: stringOrFallback(
-          metadata?.relevanceNote ?? item.sourceRelevanceNote,
+         relevanceNote: stringOrFallback(
+           jurisdictionExcluded
+             ? "ERCOT is not a project-evidence authority for a non-Texas project."
+             : metadata?.relevanceNote ?? item.sourceRelevanceNote,
           exactProject
             ? "This retrieved source is mapped to the claim and contains exact-project context."
             : "This retrieved source is mapped to the claim but may provide related context rather than facility-level proof.",
@@ -1889,6 +2024,11 @@ function parseResearchResponse(
     sourceLedger: auditedSourceLedger,
     sourceValidationPolicyVersion: SOURCE_VALIDATION_POLICY_VERSION,
     researchCoverage: {
+      identityContext: buildProjectIdentityContext({
+        name: summaryFields.name,
+        location: summaryFields.location,
+        knownData,
+      }),
       searchedDomains: Array.isArray(coverage?.searchedDomains) ? coverage.searchedDomains : [],
       failedDomains: Array.isArray(coverage?.failedDomains) ? coverage.failedDomains : [],
       retrievedSourceCount: retrievedSources.length,
@@ -1973,6 +2113,17 @@ function sourceHostname(source = {}) {
   }
 }
 
+function isErcotSource(source = {}) {
+  const hostname = sourceHostname(source);
+  return hostname === "ercot.com"
+    || hostname.endsWith(".ercot.com")
+    || /\bercot\b/i.test(`${source.title ?? ""} ${source.publisher ?? ""}`);
+}
+
+function isJurisdictionallyExcludedSource(source = {}, project = {}) {
+  return !isTexasProject(project) && isErcotSource(source);
+}
+
 function texasAuthorityMatch(source = {}) {
   const hostname = sourceHostname(source);
   const text = `${hostname} ${source.title ?? ""} ${source.publisher ?? ""}`.toLowerCase();
@@ -1989,7 +2140,8 @@ function texasAuthorityMatch(source = {}) {
 }
 
 function isTexasProject(project = {}) {
-  return /\b(?:texas|tx)\b/i.test(`${project.location ?? ""} ${project.knownData?.location ?? ""}`);
+  return inferLocationAuthorityParts(project).state?.toLowerCase() === "texas"
+    || /\b(?:texas|tx)\b/i.test(`${project.location ?? ""} ${project.knownData?.location ?? ""}`);
 }
 
 function texasSourcePriority(source = {}) {
@@ -2014,9 +2166,17 @@ function prioritizeResearchSources(sources = [], project = {}) {
 }
 
 function sourcePriorityApplied(project = {}) {
-  return isTexasProject(project)
-    ? ["Texas-first query targets and post-retrieval ranking: ERCOT/PUCT grid; TWDB/local water; municipal/county permits; SEC/IR/developer disclosures; FEMA/NOAA/EIA context"]
-    : ["Government and regulator records", "Utilities and primary company disclosures", "Secondary reporting"];
+  const state = inferLocationAuthorityParts(project).state;
+  if (state === "Texas") {
+    return ["Texas-first query targets and post-retrieval ranking: ERCOT/PUCT grid; TWDB/local water; municipal/county permits; SEC/IR/developer disclosures; FEMA/NOAA/EIA context"];
+  }
+  if (state === "Arizona") {
+    return ["Arizona-first routing: ACC utility/regulator records; ADWR water records; ADEQ environmental records; local utility and government records; official operator disclosures"];
+  }
+  if (state === "Ohio") {
+    return ["Ohio-first routing: PUCO utility/regulator records; ODNR water records; Ohio EPA records; local utility and government records; official operator disclosures"];
+  }
+  return ["State and local government/regulator records", "Utilities and official corporate disclosures", "Secondary reporting"];
 }
 
 function supportsExplicitZero(id, item, sources) {
@@ -2046,17 +2206,34 @@ function buildCategoryQuery({ name, location, knownData }, category, attempt, ev
   const genericQuery = category.id === "project-identity"
     ? `"${name}" "${location}" ${attempt === "follow-up" ? "alternate name owner operator filing" : "project operator facility identity permit record"}`
     : buildVariableQueries({ name, location, knownData }, evidenceId ?? category.evidenceIds[0])[attempt === "follow-up" ? 1 : 0];
-  if (!isTexasProject({ name, location, knownData })) return genericQuery;
+  const project = { name, location, knownData };
+  const identity = buildProjectIdentityContext(project);
+  const state = identity.state;
+  const routing = categoryAuthorityTargets(project, category.id);
+  const companyDomains = knownData?.companyDomains ?? [];
+  const primarySites = [...new Set([
+    ...routing.domains,
+    ...companyDomains,
+  ])].length
+    ? ` (${[...new Set([...routing.domains, ...companyDomains])].map((domain) => `site:${domain}`).join(" OR ")})`
+    : "";
+  const identityTerms = [
+    ...identity.aliases.map((alias) => `"${alias}"`),
+    identity.operator ? `"${identity.operator}"` : "",
+  ].filter(Boolean).join(" ");
+  if (!isTexasProject(project)) {
+    const stateNames = routing.names.join(" ");
+    const stateLabel = state || "state";
+    const base = `${genericQuery} ${stateLabel} ${stateNames} ${identityTerms} ${primarySites}`;
+    return `${base} ${attempt === "follow-up" ? "exact project official record identity disambiguation" : "official government regulator utility record"}`.replace(/\s+/g, " ").trim();
+  }
   const projectAndLocation = `"${name}" "${location}"`;
   const operatorAndProject = knownData?.operator
     ? `"${knownData.operator}" "${name}"`
     : projectAndLocation;
   const authorityTargets = categoryAuthorityTargets({ name, location, knownData }, category.id);
-  const companyDomains = ["construction-capital", "tenant-counterparty"].includes(category.id)
-    ? (knownData?.companyDomains ?? [])
-    : [];
-  const queryDomains = [...new Set([...authorityTargets.domains, ...companyDomains])];
-  const primarySites = queryDomains.length
+  const queryDomains = [...new Set([...authorityTargets.domains, ...(companyDomains ?? [])])];
+  const txPrimarySites = queryDomains.length
     ? ` (${queryDomains.map((domain) => `site:${domain}`).join(" OR ")})`
     : "";
   const localNames = authorityTargets.localAuthorities?.map((authority) => `"${authority.name}"`).join(" ") ?? "";
@@ -2078,23 +2255,23 @@ function buildCategoryQuery({ name, location, knownData }, category, attempt, ev
   }
   switch (category.id) {
     case "project-identity":
-      return `${projectAndLocation} Texas project permit operator disclosure ERCOT PUCT${primarySites}`;
+      return `${projectAndLocation} Texas project permit operator disclosure ERCOT PUCT${txPrimarySites} ${identityTerms}`;
     case "grid":
-      return `${projectAndLocation} ERCOT PUCT Texas interconnection queue transmission study${primarySites}`;
+      return `${projectAndLocation} ERCOT PUCT Texas interconnection queue transmission study${txPrimarySites} ${identityTerms}`;
     case "electricity":
-      return `${projectAndLocation} ERCOT PUCT Texas utility tariff rate case EIA market context${primarySites}`;
+      return `${projectAndLocation} ERCOT PUCT Texas utility tariff rate case EIA market context${txPrimarySites} ${identityTerms}`;
     case "water":
-      return `${projectAndLocation} ${localNames} TWDB municipal county water demand consumption rights permit${primarySites}`;
+      return `${projectAndLocation} ${localNames} TWDB municipal county water demand consumption rights permit${txPrimarySites} ${identityTerms}`;
     case "permitting-community":
-      return `${projectAndLocation} ${localNames} Texas municipal county agenda permit public hearing agreement${primarySites}`;
+      return `${projectAndLocation} ${localNames} Texas municipal county agenda permit public hearing agreement${txPrimarySites} ${identityTerms}`;
     case "construction-capital":
-      return `${operatorAndProject} SEC EDGAR investor relations official developer project disclosure${primarySites}`;
+      return `${operatorAndProject} SEC EDGAR investor relations official developer project disclosure${txPrimarySites} ${identityTerms}`;
     case "tenant-counterparty":
-      return `${operatorAndProject} SEC EDGAR investor relations official project developer disclosure customer offtake${primarySites}`;
+      return `${operatorAndProject} SEC EDGAR investor relations official project developer disclosure customer offtake${txPrimarySites} ${identityTerms}`;
     case "climate-operational-hazard":
-      return `${projectAndLocation} FEMA NOAA Texas exact site flood wildfire drought hazard${primarySites}`;
+      return `${projectAndLocation} FEMA NOAA Texas exact site flood wildfire drought hazard${txPrimarySites} ${identityTerms}`;
     default:
-      return `${projectAndLocation} ${genericQuery}${primarySites}`;
+      return `${projectAndLocation} ${genericQuery}${txPrimarySites} ${identityTerms}`;
   }
 }
 
@@ -2116,10 +2293,11 @@ function buildResearchProjectPrompt({ name, location, knownData, focusIds, curre
   const categoryPlan = buildResearchCategoryPlan({ name, location, knownData }).categories
     .map((category) => `- ${category.label}: primary ${category.requestedPrimaryQuery}; optional gap follow-up ${category.optionalFollowUpQuery}`)
     .join("\n");
+  const identityContext = buildProjectIdentityContext({ name, location, knownData });
   const activeCategoryPrompt = activeCategory
     ? `\n\nThis is the observed ${activeCategory.label} category attempt. Execute this exact query now and do not substitute a plan for execution: ${activeCategory.query}. Return only the category-scoped evidence keys ${activeCategory.evidenceIds?.join(", ") || "(none; return an empty evidence object)"}. The server validates and merges completed categories into the full 16-item contract. Do not emit unrelated evidence keys.${activeCategory.repair ? " This is one bounded repair attempt. Use compact descriptions and explicit Missing Evidence values for unresolved category items; never invent values." : ""}`
     : "";
-  return `Research and analyze this exact data-center project using the built-in web-search tool: ${name}. Location: ${location}. Search current project, operator, regulatory, utility, grid, water, permitting, community, environmental, capacity, customer, and infrastructure records. Prefer direct government, regulator, utility, land, permit, environmental, and filed-company records over summaries. Verify project, operator, and location identity so similarly named facilities are not mixed. Preserve exact URLs returned by web search, distinguish facility-level findings from regional context, and return the exact JSON contract from the system instruction. When no searched source independently confirms a claim, use Management Assertion or lower and state that verification is required. Do not replace genuine public information with Missing Evidence merely because one query fails. The server-governed run schedules these eight categories independently: project identity, grid, electricity, water, permitting/community, construction/capital, tenant/counterparty, and climate/operational hazard. Record only queries actually executed; each category may have at most one gap-driven follow-up. Try distinct primary-record and corroboration angles where useful, with no more than two targeted queries per variable and no more than 32 targeted queries overall. There is no minimum finding quota; exhausted searches must remain unresolved. The category schedule below is a requested plan, not proof of execution.${activeCategoryPrompt}
+  return `Research and analyze this exact data-center project using the built-in web-search tool: ${name}. Location: ${location}. Resolve identity first using the requested name, aliases, operator, city/county/state, and exact facility or campus references before making any exact-project claim. Treat a campus, metro, region, corridor, or county record as context unless the passage identifies the exact facility; surface campus-versus-region ambiguity instead of silently merging records. Identity context: ${JSON.stringify(identityContext)}. Search current project, operator, regulatory, utility, grid, water, permitting, community, environmental, capacity, customer, and infrastructure records. Prefer direct government, regulator, utility, land, permit, environmental, and filed-company records over summaries. Verify project, operator, and location identity so similarly named facilities are not mixed. Preserve exact URLs returned by web search, distinguish facility-level findings from regional context, and return the exact JSON contract from the system instruction. When no searched source independently confirms a claim, use Management Assertion or lower and state that verification is required. Do not replace genuine public information with Missing Evidence merely because one query fails. The server-governed run schedules these eight categories independently: project identity, grid, electricity, water, permitting/community, construction/capital, tenant/counterparty, and climate/operational hazard. Record only queries actually executed; each category may have at most one gap-driven follow-up. Try distinct primary-record and corroboration angles where useful, with no more than two targeted queries per variable and no more than 32 targeted queries overall. There is no minimum finding quota; exhausted searches must remain unresolved. The category schedule below is a requested plan, not proof of execution.${activeCategoryPrompt}
 
 Bounded variable query plan:
 ${queryPlan}
@@ -2165,7 +2343,16 @@ function normalizeRetrievedSources(body, searchDomain = "project-identity", proj
       sourceClass: url ? classifySource(url, title) : "secondary-reporting",
       searchDomain,
       ...(typeof source.exactProject === "boolean" ? { exactProject: source.exactProject } : {}),
-      relevanceNote: typeof source.relevanceNote === "string" ? source.relevanceNote.trim().slice(0, 500) : null,
+      ...(isJurisdictionallyExcludedSource({ url, title }, project)
+        ? {
+            exactProject: false,
+            jurisdictionExcluded: true,
+            relevanceNote: "ERCOT is not a project-evidence authority for a non-Texas project.",
+          }
+        : {}),
+      relevanceNote: isJurisdictionallyExcludedSource({ url, title }, project)
+        ? "ERCOT is not a project-evidence authority for a non-Texas project."
+        : typeof source.relevanceNote === "string" ? source.relevanceNote.trim().slice(0, 500) : null,
     };
   }), project);
   const ledger = createSourceLedger(prioritizedCandidates, { maxRetained: RESEARCH_RUN_BUDGET.maxCandidatesPerCategory });
@@ -2410,6 +2597,7 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
     parseError.name = "ResearchParseError";
     parseError.finishReason = providerFinishReason(body);
     parseError.providerResponseId = typeof body.id === "string" ? body.id : null;
+    parseError.toolCallCount = countWebSearchCalls(body);
     logProviderDiagnostic(parseError, {
       runCorrelationId: activeCategory?.runCorrelationId,
       categoryId: activeCategory?.categoryId,
@@ -2677,8 +2865,24 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
         };
         let categoryResult;
         let repairAttempted = false;
+        let providerRequestCount = 0;
+        let observedToolCallCount = 0;
+        const requestCategory = async (options) => {
+          providerRequestCount += 1;
+          try {
+            const result = await researchProjectWithWebSearch(project, apiKey, fetchImpl, controller.signal, options);
+            observedToolCallCount += Number.isInteger(result.coverage?.toolCallCount) ? result.coverage.toolCallCount : 0;
+            return result;
+          } catch (error) {
+            observedToolCallCount += Number.isInteger(error?.toolCallCount) ? error.toolCallCount : 0;
+            error.providerRequestCount = providerRequestCount;
+            throw error;
+          }
+        };
         try {
-          categoryResult = await researchProjectWithWebSearch(project, apiKey, fetchImpl, controller.signal, activeCategory);
+          categoryResult = await requestCategory(activeCategory);
+          categoryResult.requestCount = providerRequestCount;
+          categoryResult.coverage.toolCallCount = observedToolCallCount;
           parseResearchResponse(
             categoryResult.research,
             [],
@@ -2693,16 +2897,20 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
             && error?.name === "ResearchParseError"
             && !controller.signal.aborted
             && !deadlineState.expired
+            && observedToolCallCount < (activeCategory.maxToolCalls ?? RESEARCH_PROJECT_MAX_TOOL_CALLS)
           ) {
             repairAttempted = true;
             console.warn(
               `[research-project:${runCorrelationId}] Retrying malformed ${categoryId} category once with compact schema output.`,
             );
-            categoryResult = await researchProjectWithWebSearch(project, apiKey, fetchImpl, controller.signal, {
+             categoryResult = await requestCategory({
               ...activeCategory,
               attempt: "repair",
               repair: true,
+              maxToolCalls: Math.max(0, (activeCategory.maxToolCalls ?? RESEARCH_PROJECT_MAX_TOOL_CALLS) - observedToolCallCount),
             });
+            categoryResult.requestCount = providerRequestCount;
+            categoryResult.coverage.toolCallCount = observedToolCallCount;
             parseResearchResponse(
               categoryResult.research,
               [],
@@ -2829,6 +3037,7 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
           repairAttempted,
           observedQueries,
           toolCallCount: categoryResult.coverage?.toolCallCount ?? 0,
+           providerRequestCount,
           toolCallBudgetExceeded: categoryResult.coverage?.toolCallBudgetExceeded === true,
           physicalOpenBudgetExceeded,
           physicalOpensUsed,
@@ -2852,9 +3061,12 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
       ? mergeCategoryResearchResults(project, orchestration.categoryResults)
       : createPartialResearchBody(project);
     if (!mergedResearch) throw new Error("Category research did not return a complete structured response.");
+    const categoryFailureObserved = orchestration.lastError
+      || Object.values(orchestration.categoryExecutions).some((execution) =>
+        ["Provider failure", "Timed out"].includes(execution?.state));
     const terminalState = deadlineState.expired
       ? "timed-out-partial"
-      : orchestration.lastError || orchestration.categoryResults.some((category) => category.coverage?.providerLimitations?.length)
+      : categoryFailureObserved || orchestration.categoryResults.some((category) => category.coverage?.providerLimitations?.length)
         ? "completed-with-gaps"
         : "completed";
     const researchStatus = terminalState === "timed-out-partial"
@@ -2864,7 +3076,7 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
         : "completed";
     const providerLimitations = [
       ...orchestration.categoryResults.flatMap((category) => category.coverage?.providerLimitations ?? []),
-      ...(orchestration.lastError
+       ...(categoryFailureObserved
         ? ["One or more category responses were invalid or unavailable; affected evidence remains Missing Evidence."]
         : []),
     ].slice(0, 12);
@@ -2970,6 +3182,7 @@ export async function handleResearchProjectRequest(
     documentFetchImpl = fetch,
     rateLimiter = defaultRateLimiter,
     cache = defaultResearchProjectCache,
+    registry = defaultProjectResearchRegistry,
   } = {},
 ) {
   if (req.method === "GET") {
@@ -3025,6 +3238,15 @@ export async function handleResearchProjectRequest(
     rateLimiter,
     req,
     signal: foreground ? requestController.signal : undefined,
+  }).then(async (result) => {
+    // Registry retention is deliberately best-effort: a local persistence
+    // problem must never turn a valid research response into a provider error.
+    await registry.retain(project, result, {
+      runId: result?.researchAudit?.runCorrelationId ?? result?.researchCoverage?.runCorrelationId ?? null,
+    }).catch((error) => {
+      console.warn("[research-project] Registry retention failed:", error instanceof Error ? error.message : "unknown error");
+    });
+    return result;
   }));
   if (!project.forceRefresh && containedRetained && !retainedNeedsRevalidation && retainedState === "stale") {
     const background = refresh(false);
@@ -3080,6 +3302,7 @@ export {
   RESEARCH_QUERY_ANGLES,
   buildResearchAudit,
   buildResearchCategoryPlan,
+  buildProjectIdentityContext,
   mergeCategoryResearchResults,
   buildCategoryFollowUpQuery,
   buildResearchProjectPrompt,

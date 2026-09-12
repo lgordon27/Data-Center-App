@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { DIRECTORY_CACHE_WARNING_MS, directoryFreshness, fetchDirectory, formatDirectoryAge, parseDirectoryResponse, parseDirectoryStatsResponse } from "./directoryService";
+import { DIRECTORY_CACHE_WARNING_MS, directoryFreshness, fetchDirectory, formatDirectoryAge, mergeDirectoryFacilities, parseDirectoryResponse, parseDirectoryStatsResponse } from "./directoryService";
 
 const sourceMetadata = {
   provider: "Compute Atlas",
@@ -73,4 +73,25 @@ test("formats provider and retained ages without conflating embedded snapshots",
     label: "Embedded snapshot · 2026-08-31",
     caution: false,
   });
+});
+
+test("keeps truthful catalog totals and merges pages by stable campus identity", () => {
+  const first = { ...record, id: "campus-a", city: "Austin" };
+  const duplicate = { ...record, id: "campus-a", city: "Austin", capacityMW: 120 };
+  const secondCampus = { ...record, id: "campus-b", city: "Dallas" };
+  const parsed = parseDirectoryResponse({
+    facilities: [first],
+    totalAvailable: 2,
+    totalMatching: 2,
+    offset: 0,
+    limit: 1,
+    nextOffset: 1,
+    hasMore: true,
+    sourceMetadata,
+  });
+  assert.equal(parsed.totalAvailable, 2);
+  assert.equal(parsed.totalMatching, 2);
+  const incoming = parseDirectoryResponse({ facilities: [duplicate, secondCampus], sourceMetadata }).facilities;
+  assert.deepEqual(mergeDirectoryFacilities(parsed.facilities, incoming).map((facility) => facility.id), ["campus-a", "campus-b"]);
+  assert.equal(mergeDirectoryFacilities(parsed.facilities, incoming)[0].capacityMW, 100);
 });

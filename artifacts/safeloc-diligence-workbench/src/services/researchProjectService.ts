@@ -156,6 +156,7 @@ export type CustomResearchResponse = {
   sourceValidationPolicyVersion?: number;
   sourceLedger?: Array<Record<string, unknown>>;
   researchCoverage?: {
+    identityContext?: ResearchCategoryAudit["identityContext"];
     searchedDomains: string[];
     failedDomains: string[];
     retrievedSourceCount: number;
@@ -199,6 +200,12 @@ export type ResearchAuditStageCounts = {
   claimMapped: number;
   eligible: number;
   retainedCandidates: number;
+  candidates?: number;
+  attemptedRetrievals?: number;
+  successfulAccesses?: number;
+  retainedPassages?: number;
+  reusedReceipts?: number;
+  notAttempted?: number;
 };
 export type ResearchLocalAuthority = {
   name: string;
@@ -228,6 +235,18 @@ export type ResearchCategoryAudit = {
   followUpTriggerEvidenceIds?: string[];
   followUpSkipReason?: string | null;
   authorityTargets?: { names: string[]; domains: string[]; localAuthorities?: ResearchLocalAuthority[]; limitations?: string[] };
+  identityContext?: {
+    requestedName: string;
+    aliases: string[];
+    operator: string | null;
+    location: string;
+    city: string | null;
+    county: string | null;
+    state: string | null;
+    ambiguities: string[];
+    resolutionRequired: boolean;
+  };
+  identityAmbiguities?: string[];
   localAuthorities?: ResearchLocalAuthority[];
   authorityLimitations?: string[];
   returnedDomains?: string[];
@@ -237,6 +256,8 @@ export type ResearchCategoryAudit = {
     resolvedUrl: string | null;
     canonicalUrl: string | null;
     opened: boolean;
+    attempted?: boolean;
+    reusedReceipt?: boolean;
     reusedFromCanonicalUrl: string | null;
     accessState: "accessible" | "blocked" | "unsupported" | "not-attempted";
     accessOutcome: string;
@@ -390,6 +411,7 @@ export type KnownProjectData = {
   authorityNames?: string[];
   authorityDomains?: string[];
   companyDomains?: string[];
+  aliases?: string[];
 };
 export type ResearchProgress = "researching" | "retrying";
 export type ResearchProjectOptions = {
@@ -503,6 +525,7 @@ function normalizeKnownData(value: KnownProjectData | undefined): KnownProjectDa
   const authorityNames = Array.isArray(value.authorityNames) ? [...new Set(value.authorityNames.map((item) => knownText(item)).filter((item): item is string => Boolean(item)))].slice(0, 8) : [];
   const authorityDomains = Array.isArray(value.authorityDomains) ? [...new Set(value.authorityDomains.map((item) => knownText(item, 120)).filter((item): item is string => Boolean(item)))].slice(0, 12) : [];
   const companyDomains = Array.isArray(value.companyDomains) ? [...new Set(value.companyDomains.map((item) => knownText(item, 120)).filter((item): item is string => Boolean(item)))].slice(0, 8) : [];
+  const aliases = Array.isArray(value.aliases) ? [...new Set(value.aliases.map((item) => knownText(item)).filter((item): item is string => Boolean(item)))].slice(0, 12) : [];
   const normalized = {
     ...(capacity === null ? {} : { capacity }),
     ...(operator ? { operator } : {}),
@@ -517,6 +540,7 @@ function normalizeKnownData(value: KnownProjectData | undefined): KnownProjectDa
     ...(authorityNames.length ? { authorityNames } : {}),
     ...(authorityDomains.length ? { authorityDomains } : {}),
     ...(companyDomains.length ? { companyDomains } : {}),
+    ...(aliases.length ? { aliases } : {}),
   };
   return Object.keys(normalized).length ? normalized : undefined;
 }
@@ -678,6 +702,20 @@ function parseResearchAudit(value: unknown): ResearchAudit | undefined {
         status: authority.status === "established" ? "established" : "identified-no-domain",
       })) : [],
       authorityLimitations: Array.isArray(candidate.authorityLimitations) ? candidate.authorityLimitations.filter(isNonEmptyString).slice(0, 8) : [],
+      ...(isRecord(candidate.identityContext) ? {
+        identityContext: {
+          requestedName: isNonEmptyString(candidate.identityContext.requestedName) ? candidate.identityContext.requestedName : "",
+          aliases: Array.isArray(candidate.identityContext.aliases) ? candidate.identityContext.aliases.filter(isNonEmptyString).slice(0, 12) : [],
+          operator: isNonEmptyString(candidate.identityContext.operator) ? candidate.identityContext.operator : null,
+          location: isNonEmptyString(candidate.identityContext.location) ? candidate.identityContext.location : "",
+          city: isNonEmptyString(candidate.identityContext.city) ? candidate.identityContext.city : null,
+          county: isNonEmptyString(candidate.identityContext.county) ? candidate.identityContext.county : null,
+          state: isNonEmptyString(candidate.identityContext.state) ? candidate.identityContext.state : null,
+          ambiguities: Array.isArray(candidate.identityContext.ambiguities) ? candidate.identityContext.ambiguities.filter(isNonEmptyString).slice(0, 8) : [],
+          resolutionRequired: candidate.identityContext.resolutionRequired !== false,
+        },
+      } : {}),
+      identityAmbiguities: Array.isArray(candidate.identityAmbiguities) ? candidate.identityAmbiguities.filter(isNonEmptyString).slice(0, 8) : [],
       returnedDomains: Array.isArray(candidate.returnedDomains) ? candidate.returnedDomains.filter(isNonEmptyString).slice(0, 20) : [],
       openedDocuments: Array.isArray(candidate.openedDocuments) ? candidate.openedDocuments.slice(0, 20).filter((document) => isRecord(document)).map((document) => ({
         originalUrl: isNonEmptyString(document.originalUrl) ? document.originalUrl : null,
@@ -685,6 +723,8 @@ function parseResearchAudit(value: unknown): ResearchAudit | undefined {
         resolvedUrl: isNonEmptyString(document.resolvedUrl) ? document.resolvedUrl : null,
         canonicalUrl: isNonEmptyString(document.canonicalUrl) ? document.canonicalUrl : null,
         opened: document.opened === true,
+         attempted: document.attempted === true,
+         reusedReceipt: document.reusedReceipt === true,
         reusedFromCanonicalUrl: isNonEmptyString(document.reusedFromCanonicalUrl) ? document.reusedFromCanonicalUrl : null,
         accessState: ["accessible", "blocked", "unsupported", "not-attempted"].includes(document.accessState as string) ? document.accessState as NonNullable<ResearchCategoryAudit["openedDocuments"]>[number]["accessState"] : "not-attempted",
         accessOutcome: isNonEmptyString(document.accessOutcome) ? document.accessOutcome : "not-attempted",
@@ -699,6 +739,12 @@ function parseResearchAudit(value: unknown): ResearchAudit | undefined {
         claimMapped: Number(counts.claimMapped) || 0,
         eligible: Number(counts.eligible) || 0,
         retainedCandidates: Number(counts.retainedCandidates) || 0,
+         ...(Number.isFinite(Number(counts.candidates)) ? { candidates: Number(counts.candidates) } : {}),
+         ...(Number.isFinite(Number(counts.attemptedRetrievals)) ? { attemptedRetrievals: Number(counts.attemptedRetrievals) } : {}),
+         ...(Number.isFinite(Number(counts.successfulAccesses)) ? { successfulAccesses: Number(counts.successfulAccesses) } : {}),
+         ...(Number.isFinite(Number(counts.retainedPassages)) ? { retainedPassages: Number(counts.retainedPassages) } : {}),
+         ...(Number.isFinite(Number(counts.reusedReceipts)) ? { reusedReceipts: Number(counts.reusedReceipts) } : {}),
+         ...(Number.isFinite(Number(counts.notAttempted)) ? { notAttempted: Number(counts.notAttempted) } : {}),
       },
       rejectionCounts: isRecord(candidate.rejectionCounts)
         ? Object.fromEntries(Object.entries(candidate.rejectionCounts).map(([key, count]) => [key, Number(count) || 0]))
@@ -745,6 +791,21 @@ function parseResearchAudit(value: unknown): ResearchAudit | undefined {
     categories,
     categoryGaps: Array.isArray(value.categoryGaps) ? value.categoryGaps.filter(isNonEmptyString) : categories.filter((category) => category.state !== "Complete").map((category) => category.categoryId),
     providerLimitations: Array.isArray(value.providerLimitations) ? value.providerLimitations.filter(isNonEmptyString).slice(0, 12) : [],
+  };
+}
+
+function parseIdentityContext(value: unknown): ResearchCategoryAudit["identityContext"] | undefined {
+  if (!isRecord(value)) return undefined;
+  return {
+    requestedName: isNonEmptyString(value.requestedName) ? value.requestedName : "",
+    aliases: Array.isArray(value.aliases) ? value.aliases.filter(isNonEmptyString).slice(0, 12) : [],
+    operator: isNonEmptyString(value.operator) ? value.operator : null,
+    location: isNonEmptyString(value.location) ? value.location : "",
+    city: isNonEmptyString(value.city) ? value.city : null,
+    county: isNonEmptyString(value.county) ? value.county : null,
+    state: isNonEmptyString(value.state) ? value.state : null,
+    ambiguities: Array.isArray(value.ambiguities) ? value.ambiguities.filter(isNonEmptyString).slice(0, 8) : [],
+    resolutionRequired: value.resolutionRequired !== false,
   };
 }
 
@@ -1026,6 +1087,7 @@ function parseResponse(value: unknown): CustomResearchResponse {
      ...(parseResearchAudit(value.researchAudit) ? { researchAudit: parseResearchAudit(value.researchAudit) } : {}),
     ...(isRecord(value.researchCoverage) ? {
       researchCoverage: {
+         ...(parseIdentityContext(value.researchCoverage.identityContext) ? { identityContext: parseIdentityContext(value.researchCoverage.identityContext) } : {}),
         searchedDomains: Array.isArray(value.researchCoverage.searchedDomains) ? value.researchCoverage.searchedDomains.filter(isNonEmptyString) : [],
         failedDomains: Array.isArray(value.researchCoverage.failedDomains) ? value.researchCoverage.failedDomains.filter(isNonEmptyString) : [],
         retrievedSourceCount: typeof value.researchCoverage.retrievedSourceCount === "number" && Number.isFinite(value.researchCoverage.retrievedSourceCount)

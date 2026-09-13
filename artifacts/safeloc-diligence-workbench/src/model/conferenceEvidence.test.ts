@@ -92,7 +92,7 @@ test("company relationship requires a recognized origin and exact reviewed proje
 
   const result = getConferenceRelationship(curated, "Oracle");
   assert.equal(result.established, true);
-  assert.equal(result.type, "Direct Contractual");
+  assert.equal(result.type, "Sourced Indirect Role");
   assert.ok(result.sources.length > 0);
   assert.ok(result.sources.every((source) => source.url.startsWith("http")));
   assert.ok(result.sources.every((source) => !/ishares|msci/i.test(source.url)));

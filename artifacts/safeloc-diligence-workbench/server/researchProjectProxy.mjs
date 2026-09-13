@@ -35,7 +35,6 @@ const RESEARCH_PROJECT_MAX_TOKENS = 8_000;
 const execFile = promisify(execFileCallback);
 const RESEARCH_PROJECT_TIMEOUT_MS = 90_000;
 const RESEARCH_PROJECT_MAX_TOOL_CALLS = 32;
-const RESEARCH_CATEGORY_CONCURRENCY = 3;
 const RESEARCH_POLICY_VERSION = 2;
 const RESEARCH_CATEGORY_AUDIT_VERSION = 3;
 const RESEARCH_RUN_BUDGET = Object.freeze({
@@ -1027,7 +1026,7 @@ function categoryStageCounts(category, sources, evidence, project = {}) {
     successfulAccesses: openedDocuments.filter((document) => document.accessState === "accessible").length,
     retainedPassages: openedDocuments.filter((document) => Boolean(document.retainedPassage)).length,
     reusedReceipts: openedDocuments.filter((document) => document.reusedReceipt === true).length,
-    notAttempted: openedDocuments.filter((document) => document.accessState === "not-attempted").length,
+    notAttempted: openedDocuments.filter((document) => document.attempted !== true && document.reusedReceipt !== true).length,
     allEvidenceEligible,
     rejectionCounts: Object.fromEntries([...new Set(rejectionReasons)].map((reason) => [
       reason,
@@ -1053,8 +1052,8 @@ function categoryOpenedDocuments(sources = []) {
       referringUrls,
       resolvedUrl: outcome.resolvedUrl ?? source.resolvedUrl ?? source.url ?? null,
       canonicalUrl: outcome.canonicalUrl ?? source.canonicalUrl ?? source.url ?? null,
-      opened: source.documentAccessReused !== true,
-      attempted: source.documentAccessReused !== true && outcome.state !== "not-attempted",
+      opened: source.documentAccessReused !== true && Number.isInteger(outcome.physicalOpenIndex),
+      attempted: source.documentAccessReused !== true && Number.isInteger(outcome.physicalOpenIndex),
       reusedReceipt: source.documentAccessReused === true,
       reusedFromCanonicalUrl: source.documentAccessReused === true
         ? outcome.canonicalUrl ?? source.canonicalUrl ?? source.url ?? null
@@ -1087,12 +1086,24 @@ function buildResearchAudit({
       supplied.executedQueries ?? observedQueries.filter((query) => categoryQueryMatches(category, query)),
       (RESEARCH_RUN_BUDGET.maxFollowUpsPerCategory ?? 1) + 1,
     );
-    const counts = categoryStageCounts(category, sources, evidence, project);
-    const explicitFailureState = ["Provider failure", "Timed out", "Not searched"].includes(supplied.state) ? supplied.state : null;
+    const counts = {
+      ...categoryStageCounts(category, sources, evidence, project),
+      issuedProviderRequests: Number.isInteger(supplied.providerRequestCount) ? Math.max(0, supplied.providerRequestCount) : 0,
+      observedSearches: normalizeSearchTerms([
+        ...(Array.isArray(supplied.providerObservedPrimaryQueries) ? supplied.providerObservedPrimaryQueries : []),
+        ...(Array.isArray(supplied.providerObservedFollowUpQueries) ? supplied.providerObservedFollowUpQueries : []),
+      ], RESEARCH_PROJECT_MAX_TOOL_CALLS).length,
+    };
+    counts.successfulExtractions = counts.retainedPassages;
+    const primaryWasIssued = typeof supplied.issuedPrimaryQuery === "string";
+    const explicitFailureState = ["Provider failure", "Timed out", "Not searched"].includes(supplied.state)
+      && !(supplied.state === "Not searched" && primaryWasIssued)
+      ? supplied.state
+      : null;
     const state = explicitFailureState ?? (
       counts.allEvidenceEligible ? "Complete"
         : counts.claimMapped > 0 || counts.retainedCandidates > 0 ? "Partial"
-          : executedQueries.length ? "No eligible evidence"
+          : executedQueries.length || primaryWasIssued ? "No eligible evidence"
             : "Not searched"
     );
     return {
@@ -1130,6 +1141,8 @@ function buildResearchAudit({
            ? category.evidenceIds.filter((id) => !evidence.some((item) => item.id === id && item.eligibleForModel))
            : [category.categoryId],
       providerFailure: supplied.providerFailure ?? null,
+      providerFailureType: supplied.providerFailureType ?? null,
+      providerRequestCount: counts.issuedProviderRequests,
     };
   });
   return {
@@ -1186,39 +1199,33 @@ async function orchestrateCategoryResearch(project, {
   const resolvedEvidenceIds = new Set();
   const categories = buildResearchCategoryPlan(project).categories;
   const prefetchedPrimary = new Map();
-  const primaryRequestCosts = new Map();
-  const primaryErrors = new Map();
+  let additionalRequestsAuthorized = 0;
+  const authorizeAdditionalRequest = () => {
+    // All category primaries are a hard reservation. Repairs and follow-ups
+    // may use only the request slots left after that reservation.
+    if (categories.length + additionalRequestsAuthorized >= budget.maxProviderRequests) return false;
+    additionalRequestsAuthorized += 1;
+    return true;
+  };
   if (concurrent) {
-    // Start bounded primary work up front. The map is populated by a small
-    // worker pool; the accounting reservation prevents later awaits from
-    // issuing work beyond the run-wide request ceiling.
-    let nextCategory = 0;
-    const worker = async () => {
-      while (nextCategory < categories.length) {
-        const index = nextCategory++;
-        const category = categories[index];
-        if (index >= budget.maxProviderRequests || deadlineState.expired) return;
-        const primaryPromise = retrieveCategory({
+    // Issue every primary before awaiting any category. Provider retrieval
+    // begins synchronously, while document work occurs only after its provider
+    // response, so the 24-open ceiling cannot starve an unissued category.
+    for (const [index, category] of categories.entries()) {
+      if (index >= budget.maxProviderRequests || deadlineState.expired || signal?.aborted) break;
+      const primaryPromise = Promise.resolve(retrieveCategory({
           categoryId: category.categoryId,
           query: category.requestedPrimaryQuery,
           attempt: "primary",
           remainingMs: Math.max(0, budget.deadlineMs - (now() - startedAtMs)),
           remainingToolCalls: Math.max(1, Math.floor(budget.maxToolCalls / categories.length)),
-        });
-        prefetchedPrimary.set(category.categoryId, primaryPromise);
-        await primaryPromise
-          .then((result) => primaryRequestCosts.set(category.categoryId, Number.isInteger(result?.providerRequestCount) ? Math.max(1, result.providerRequestCount) : 1))
-          .catch((error) => {
-            primaryErrors.set(category.categoryId, error);
-            primaryRequestCosts.set(category.categoryId, Number.isInteger(error?.providerRequestCount) ? Math.max(1, error.providerRequestCount) : 1);
-          });
-      }
-    };
-    await Promise.allSettled(Array.from({ length: Math.min(RESEARCH_CATEGORY_CONCURRENCY, categories.length) }, worker));
-    providerRequests = Math.min(
-      budget.maxProviderRequests,
-      [...primaryRequestCosts.values()].reduce((total, count) => total + count, 0),
-    );
+          authorizeAdditionalProviderRequest: authorizeAdditionalRequest,
+        }));
+      // Later categories may reject before the ordered accounting pass reaches
+      // them. Attach a handler now while preserving the original rejection.
+      primaryPromise.catch(() => {});
+      prefetchedPrimary.set(category.categoryId, primaryPromise);
+    }
   }
   for (const [categoryIndex, category] of categories.entries()) {
     if (signal?.aborted && !deadlineState.expired) {
@@ -1227,10 +1234,9 @@ async function orchestrateCategoryResearch(project, {
       error.researchErrorType = "cancelled";
       throw error;
     }
-    if (deadlineState.expired) break;
     const elapsed = now() - startedAtMs;
-    if (physicalOpenBudgetExceeded || elapsed >= budget.deadlineMs || toolCalls >= budget.maxToolCalls || providerRequests >= budget.maxProviderRequests) {
-      const prefetchedError = primaryErrors.get(category.categoryId);
+    const issuedPrimary = prefetchedPrimary.has(category.categoryId);
+    if (!issuedPrimary && (physicalOpenBudgetExceeded || deadlineState.expired || elapsed >= budget.deadlineMs || toolCalls >= budget.maxToolCalls || providerRequests >= budget.maxProviderRequests)) {
       categoryExecutions[category.categoryId] = {
         issuedPrimaryQuery: null,
         providerObservedPrimaryQueries: [],
@@ -1240,18 +1246,19 @@ async function orchestrateCategoryResearch(project, {
         followUpSkipReason: physicalOpenBudgetExceeded ? "physical-open-budget" : elapsed >= budget.deadlineMs ? "deadline" : toolCalls >= budget.maxToolCalls ? "tool-call-budget" : "provider-request-budget",
         returnedDomains: [],
         openedDocuments: [],
-        state: prefetchedError
-          ? prefetchedError.name === "AbortError" ? "Timed out" : "Provider failure"
-          : elapsed >= budget.deadlineMs || toolCalls >= budget.maxToolCalls ? "Timed out" : "Not searched",
+        state: elapsed >= budget.deadlineMs || deadlineState.expired || toolCalls >= budget.maxToolCalls ? "Timed out" : "Not searched",
         executedQueries: [],
         unresolvedGaps: category.evidenceIds,
-        providerFailure: prefetchedError && prefetchedError.name !== "AbortError" ? "Category provider request failed." : null,
+        providerFailure: null,
+        providerFailureType: null,
+        providerRequestCount: 0,
       };
       continue;
     }
     const executedQueries = [];
     let categoryCandidates = [];
     let followUpWasRun = false;
+    let primaryAdditionalRequestsAuthorized = 0;
     let state = "No eligible evidence";
     let providerFailure = null;
     const categoryResolvedEvidenceIds = new Set();
@@ -1264,20 +1271,31 @@ async function orchestrateCategoryResearch(project, {
       followUpSkipReason: null,
       returnedDomains: [],
       openedDocuments: [],
+      providerRequestCount: 0,
+      providerFailureType: null,
     };
     try {
-       if (!concurrent) providerRequests += 1;
+      if (!concurrent) providerRequests += 1;
       const primary = await (prefetchedPrimary.get(category.categoryId) ?? retrieveCategory({
         categoryId: category.categoryId,
         query: category.requestedPrimaryQuery,
         attempt: "primary",
         remainingMs: Math.max(0, budget.deadlineMs - (now() - startedAtMs)),
         remainingToolCalls: Math.max(0, budget.maxToolCalls - toolCalls),
+        authorizeAdditionalProviderRequest: () => {
+          const remainingPrimaries = categories.length - categoryIndex - 1;
+          if (providerRequests + 1 + remainingPrimaries > budget.maxProviderRequests) return false;
+          providerRequests += 1;
+          primaryAdditionalRequestsAuthorized += 1;
+          return true;
+        },
       }));
        const primaryRequestCost = Number.isInteger(primary?.providerRequestCount)
          ? Math.max(1, primary.providerRequestCount)
          : 1;
-       if (!concurrent) providerRequests = Math.min(budget.maxProviderRequests, providerRequests + primaryRequestCost - 1);
+      if (concurrent) providerRequests += primaryRequestCost;
+      else providerRequests += Math.max(0, primaryRequestCost - 1 - primaryAdditionalRequestsAuthorized);
+      execution.providerRequestCount += primaryRequestCost;
       if (signal?.aborted) {
         const error = new Error("Project research was cancelled.");
         error.name = "ResearchCancelledError";
@@ -1310,19 +1328,33 @@ async function orchestrateCategoryResearch(project, {
        // Preserve one primary opportunity for every remaining category before
        // spending shared request slots on a gap repair/follow-up.
        const remainingPrimaryOpportunity = categories.length - categoryIndex - 1;
+       const additionalRequestAvailable = concurrent
+         ? categories.length + additionalRequestsAuthorized < budget.maxProviderRequests
+         : providerRequests + 1 + remainingPrimaryOpportunity <= budget.maxProviderRequests;
       if (primary?.gapDrivenFollowUp === true
         && !globalEarlyStop
         && !primaryCategoryResolved
         && toolCalls < budget.maxToolCalls
         && followUps < budget.maxFollowUps
         && (budget.maxFollowUpsPerCategory ?? 1) > 0
-        && providerRequests < budget.maxProviderRequests
-         && providerRequests + 1 + remainingPrimaryOpportunity <= budget.maxProviderRequests
+         && providerRequests < budget.maxProviderRequests
+         && additionalRequestAvailable
         && !physicalOpenBudgetExceeded
         && now() - startedAtMs < budget.deadlineMs) {
         followUps += 1;
         followUpWasRun = true;
-         providerRequests += 1;
+        if (concurrent && !authorizeAdditionalRequest()) {
+          followUps -= 1;
+          followUpWasRun = false;
+          execution.followUpSkipReason = "provider-request-budget";
+          throw Object.assign(new Error("Provider request allowance was exhausted before the follow-up could be issued."), {
+            name: "ResearchBudgetError",
+            researchErrorType: "provider-request-budget",
+            providerRequestCount: 0,
+          });
+        }
+        providerRequests += 1;
+        execution.providerRequestCount += 1;
         execution.issuedFollowUpQuery = primary?.followUpQuery ?? category.optionalFollowUpQuery;
         const followUp = await retrieveCategory({
           categoryId: category.categoryId,
@@ -1334,7 +1366,8 @@ async function orchestrateCategoryResearch(project, {
          const followUpRequestCost = Number.isInteger(followUp?.providerRequestCount)
            ? Math.max(1, followUp.providerRequestCount)
            : 1;
-         providerRequests = Math.min(budget.maxProviderRequests, providerRequests + followUpRequestCost - 1);
+        providerRequests += followUpRequestCost - 1;
+        execution.providerRequestCount += followUpRequestCost - 1;
         if (signal?.aborted) {
           const error = new Error("Project research was cancelled.");
           error.name = "ResearchCancelledError";
@@ -1394,12 +1427,26 @@ async function orchestrateCategoryResearch(project, {
        }
     } catch (error) {
       if ((signal?.aborted && !deadlineState.expired) || (error?.name === "ResearchCancelledError" && !deadlineState.expired)) throw error;
-      if (!concurrent && Number.isInteger(error?.providerRequestCount)) {
-        providerRequests = Math.min(budget.maxProviderRequests, providerRequests + Math.max(0, error.providerRequestCount - 1));
+      if (Number.isInteger(error?.providerRequestCount)) {
+        const alreadyCounted = followUpWasRun
+          ? 1
+          : concurrent ? 0 : 1 + primaryAdditionalRequestsAuthorized;
+        const cost = Math.max(1, error.providerRequestCount);
+        providerRequests += Math.max(0, cost - alreadyCounted);
+        execution.providerRequestCount += followUpWasRun ? Math.max(0, cost - 1) : cost;
+      } else if (concurrent && execution.providerRequestCount === 0) {
+        // A rejected prefetched primary still consumed one provider opportunity
+        // even when the adapter could not attach structured cost telemetry.
+        providerRequests += 1;
+        execution.providerRequestCount = 1;
       }
       lastError = error;
-      providerFailure = error?.name === "AbortError" ? null : "Category provider request failed.";
-      state = error?.name === "AbortError" ? "Timed out" : "Provider failure";
+      const failure = classifyResearchFailure(error);
+      execution.providerFailureType = failure.type === "timeout" ? "deadline" : failure.type;
+      providerFailure = failure.type === "timeout" ? null : failure.message;
+      state = categoryCandidates.length
+        ? "Partial"
+        : failure.type === "timeout" ? "Timed out" : "Provider failure";
       execution.followUpSkipReason = error?.name === "AbortError" ? "deadline" : "provider-failure";
     }
     categoryExecutions[category.categoryId] = {
@@ -1410,7 +1457,7 @@ async function orchestrateCategoryResearch(project, {
       providerFailure,
       unresolvedGaps: category.evidenceIds.filter((id) => !categoryResolvedEvidenceIds.has(id)),
     };
-    if (resolvedEvidenceIds.size >= RESEARCH_EVIDENCE_IDS.length || deadlineState.expired) break;
+    if (!concurrent && (resolvedEvidenceIds.size >= RESEARCH_EVIDENCE_IDS.length || deadlineState.expired)) break;
   }
   const finishedAtMs = now();
   return {
@@ -2396,10 +2443,10 @@ async function createUpstreamRequestError(response, stage) {
   error.name = "UpstreamRequestError";
   error.upstreamStatus = response.status;
   error.publicMessage = response.status === 429
-    ? "Project research provider quota is exhausted (upstream HTTP 429)."
+    ? "Project research provider quota is exhausted (HTTP 429); restore quota or retry later."
     : response.status === 401
-      ? "Project research provider authentication failed (upstream HTTP 401)."
-      : `Project research provider returned upstream HTTP ${response.status}.`;
+      ? "Project research provider authentication failed (HTTP 401); verify the server API credential."
+      : "Project research provider is unavailable; retry later.";
   return error;
 }
 
@@ -2697,8 +2744,11 @@ function classifyResearchFailure(error) {
   if (error?.name === "ResearchCancelledError" || error?.researchErrorType === "cancelled") {
     return { status: 499, type: "cancelled", message: "Project research was cancelled by the requesting client." };
   }
-  if (error?.name === "AbortError") return { status: 504, type: "timeout", message: "Project research upstream request timed out after 90 seconds." };
-  if (error?.name === "ResearchParseError") return { status: 502, type: "malformed-response", message: error.message };
+  if (error?.name === "ResearchBudgetError" || error?.researchErrorType === "provider-request-budget") {
+    return { status: 502, type: "provider-request-budget", message: "Project research reached its provider-request ceiling; retry only if additional research is required." };
+  }
+  if (error?.name === "AbortError") return { status: 504, type: "timeout", message: "Project research reached its 90-second deadline; valid completed findings were retained and the run can be retried." };
+  if (error?.name === "ResearchParseError") return { status: 502, type: "malformed-response", message: "Project research provider returned malformed structured data; retry the affected research." };
   if (error?.name === "UpstreamRequestError") {
     if (error.upstreamStatus === 429) return { status: 429, type: "quota-exhausted", message: error.publicMessage };
     if (error.upstreamStatus === 401) return { status: 502, type: "authentication", message: error.publicMessage };
@@ -2852,7 +2902,7 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
       signal: controller.signal,
       deadlineState,
       concurrent: true,
-      retrieveCategory: async ({ categoryId, query, attempt, remainingToolCalls }) => {
+      retrieveCategory: async ({ categoryId, query, attempt, remainingToolCalls, authorizeAdditionalProviderRequest }) => {
         const category = buildResearchCategoryPlan(project).categories.find((candidate) => candidate.categoryId === categoryId);
         const activeCategory = {
           categoryId,
@@ -2898,6 +2948,7 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
             && !controller.signal.aborted
             && !deadlineState.expired
             && observedToolCallCount < (activeCategory.maxToolCalls ?? RESEARCH_PROJECT_MAX_TOOL_CALLS)
+            && authorizeAdditionalProviderRequest?.() === true
           ) {
             repairAttempted = true;
             console.warn(

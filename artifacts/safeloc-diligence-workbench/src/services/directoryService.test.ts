@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { DIRECTORY_CACHE_WARNING_MS, directoryFreshness, fetchDirectory, formatDirectoryAge, mergeDirectoryFacilities, parseDirectoryResponse, parseDirectoryStatsResponse } from "./directoryService";
+import { DIRECTORY_CACHE_WARNING_MS, directoryFreshness, fetchAllCompanyDirectoryFacilities, fetchDirectory, formatDirectoryAge, mergeDirectoryFacilities, parseDirectoryResponse, parseDirectoryStatsResponse } from "./directoryService";
 
 const sourceMetadata = {
   provider: "Compute Atlas",
@@ -48,6 +48,43 @@ test("fetches directory through same-origin JSON and parses it", async () => {
     });
   });
   assert.equal(result.facilities[0].id, "facility-1");
+});
+
+test("loads provider-associated company records after index 100 incrementally", async () => {
+  const requests: string[] = [];
+  const firstPage = Array.from({ length: 100 }, (_, index) => ({
+    ...record,
+    id: `microsoft-${index}`,
+    name: `Microsoft Facility ${index}`,
+  }));
+  const afterIndex100 = {
+    ...record,
+    id: "microsoft-100",
+    name: "Microsoft Facility After Index 100",
+    state: "AZ",
+  };
+  const progress: number[] = [];
+  const facilities = await fetchAllCompanyDirectoryFacilities("Microsoft", (loaded) => {
+    progress.push(loaded.length);
+  }, async (input) => {
+    const url = String(input);
+    requests.push(url);
+    const secondPage = url.includes("offset=100");
+    return new Response(JSON.stringify({
+      facilities: secondPage ? [afterIndex100] : firstPage,
+      sourceMetadata,
+      totalMatching: 101,
+      offset: secondPage ? 100 : 0,
+      limit: 100,
+      nextOffset: secondPage ? null : 100,
+      hasMore: !secondPage,
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  });
+
+  assert.deepEqual(progress, [100, 101]);
+  assert.equal(requests.length, 2);
+  assert.ok(requests.every((url) => url.includes("company=Microsoft")));
+  assert.equal(facilities.at(-1)?.id, "microsoft-100");
 });
 
 test("formats provider and retained ages without conflating embedded snapshots", () => {

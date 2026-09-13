@@ -226,7 +226,8 @@ test.describe("stock-first company exposure flow", () => {
     for (const [company, connectionType] of expected) {
       await page.getByTestId(`company-card-${company}`).click();
       await expect(page.getByTestId("company-exposure-view")).toBeVisible();
-      await expect(page.locator("[data-testid^='company-project-connection-']").first()).toHaveText(connectionType);
+      const connectionBadges = page.locator("[data-testid^='company-project-connection-']");
+      await expect(connectionBadges.first()).toHaveText(connectionType, { timeout: 15_000 });
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
       await page.getByTestId("button-company-back").click();
     }

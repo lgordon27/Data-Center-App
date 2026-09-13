@@ -795,7 +795,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     ));
   }, []);
 
-  const loadCustomProject = useCallback((research: CustomResearchResponse, company: string | null = null, projectSelection: ProjectSelectionContext | null = null) => {
+  const loadCustomProject = useCallback((research: CustomResearchResponse, company: string | null = null, projectSelection?: ProjectSelectionContext | null) => {
     const researchById = new Map(research.evidence.map((item) => [item.id, item]));
     const customEvidence = Object.fromEntries(
       CUSTOM_EVIDENCE_IDS.map((id) => {
@@ -876,16 +876,21 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     const nextCommunityReview = loadCommunityReview(customCommunityProject);
     setCommunityReview(nextCommunityReview);
     writeCommunityReview(nextCommunityReview, customCommunityProject);
-    setOriginatingCompanyState(parseOriginatingCompany(company));
-    setSelectedProjectContext(projectSelection);
-    selectedProjectContextRef.current = projectSelection;
+    const parsedCompany = parseOriginatingCompany(company);
+    const retainedSelection = projectSelection === undefined &&
+      selectedProjectContextRef.current?.company === parsedCompany
+      ? selectedProjectContextRef.current
+      : projectSelection ?? null;
+    setOriginatingCompanyState(parsedCompany);
+    setSelectedProjectContext(retainedSelection);
+    selectedProjectContextRef.current = retainedSelection;
     clearDecisionHistory();
     writeStorage(CURRENT_SESSION_STORAGE_KEY, createSessionPayload(
       nextState.evidence,
       nextState.hasChangedClassification,
       nextState.modelEvidence,
-      parseOriginatingCompany(company),
-      projectSelection,
+      parsedCompany,
+      retainedSelection,
       {
         project: nextProject,
         evidence: nextState.evidence,

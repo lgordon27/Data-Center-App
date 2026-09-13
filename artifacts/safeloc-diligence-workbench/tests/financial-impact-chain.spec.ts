@@ -18,6 +18,12 @@ test.describe("Financial Impact Chain", () => {
     await expect(page.getByTestId("cash-flow-comparison-y0")).toContainText("Close / Year 0");
     await expect(page.getByTestId("cash-flow-comparison-y5")).toBeVisible();
     await expect(page.getByTestId("metric-project-irr")).toBeVisible();
+    await expect(page.getByTestId("coverage-y1")).toHaveText("Pre-op");
+    await expect(page.getByTestId("coverage-y1")).not.toHaveText("0.00x");
+    await expect(page.getByTestId("coverage-y2")).toContainText("x");
+    await expect(page.getByTestId("coverage-explanation")).toContainText("scheduled interest and principal are due before operations begin");
+    await expect(page.getByTestId("coverage-explanation")).toContainText("Terminal debt repayment is shown separately");
+    await expect(page.getByTestId("annual-schedule-y0")).toContainText("—");
 
     await page.getByRole("tab", { name: "Assumptions" }).click();
     await expect(page.getByTestId("panel-decision-context-treatment")).toContainText("Source provenance:");
@@ -72,7 +78,9 @@ test.describe("Financial Impact Chain", () => {
     const transmission = page.getByTestId("conference-view-transmission");
     await expect(transmission.getByTestId("transmission-pathway")).toHaveCount(1);
     await expect(transmission.getByTestId("transmission-pathway")).toContainText(/Real factor/i);
-    await expect(transmission.getByTestId("transmission-pathway")).toContainText(/Potential issuer implication/i);
+    await expect(transmission.getByTestId("transmission-pathway")).toContainText(/Issuer evidence boundary/i);
+    await expect(transmission.getByTestId("transmission-pathway")).toContainText(/No issuer effect is calculated or attributed without a documented relationship/i);
+    await expect(transmission.getByTestId("transmission-pathway")).toContainText(/No portfolio impact is calculated/i);
     await expect(transmission).not.toContainText(/\b(?:HIGH|MODERATE|LOW)\b/);
 
     await page.getByTestId("tab-advisor").click();

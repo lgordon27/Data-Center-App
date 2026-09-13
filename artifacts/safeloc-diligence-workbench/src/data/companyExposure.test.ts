@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { COMPANY_CONNECTION_TYPES, COMPANY_PROFILES, companyProjects, connectionTypeForCompanyProject, projectSummary } from "./companyExposure";
+import { COMPANY_CONNECTION_TYPES, COMPANY_PROFILES, companyProjects, connectionTypeForCompanyProject, projectSummary, toProjectSelectionContext } from "./companyExposure";
 import type { DirectoryFacility } from "@/services/directoryService";
 
 const facility = (overrides: Partial<DirectoryFacility> = {}): DirectoryFacility => ({
@@ -95,4 +95,29 @@ test("registered provider facilities are not repeated under alternate display na
   ]);
 
   assert.equal(projects.filter((project) => project.id === "meta-el-paso-tx").length, 1);
+});
+
+test("preserves exact Amazon campus identity without supplying a generic campus", () => {
+  const retainedNewAlbany = companyProjects("Amazon", [])[0];
+  assert.equal(retainedNewAlbany.id, "amazon-data-center-ohio-oh");
+  assert.equal(retainedNewAlbany.name, "AWS New Albany / Beech-Miller Road Campus");
+  assert.equal(retainedNewAlbany.relationshipBasis, "operator-derived");
+  const exactFacility = facility({
+    id: "amazon-exact-phoenix-az",
+    name: "AWS Exact Phoenix Facility",
+    operator: "Amazon Web Services",
+    city: "Phoenix",
+    county: "Maricopa",
+    state: "AZ",
+    connectedCompanies: ["Amazon"],
+    sourceUrl: "https://compute-atlas.com/facilities/amazon-exact-phoenix-az",
+  });
+  const project = companyProjects("Amazon", [exactFacility]).find((candidate) => candidate.id === exactFacility.id);
+  assert.ok(project);
+  const selection = toProjectSelectionContext("Amazon", project);
+  assert.equal(selection.projectId, exactFacility.id);
+  assert.equal(selection.providerId, exactFacility.id);
+  assert.equal(selection.projectName, exactFacility.name);
+  assert.equal(selection.company, "Amazon");
+  assert.match(selection.location, /Phoenix.*Maricopa County.*AZ/);
 });

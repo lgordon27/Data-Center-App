@@ -46,7 +46,7 @@ test.describe("current-session recovery and reset isolation", () => {
     await page.reload();
     const sessionRestored = page.getByTestId("text-session-restored");
     await expect(sessionRestored).toBeVisible();
-    await expect(sessionRestored).toHaveText("Session restored");
+    await expect(sessionRestored).toHaveText("Browser-local session restored");
     const sessionRestoredShownAt = Date.now();
     await openProjectRealityEvidenceReview(page);
     await expect(classification).toHaveValue("Missing Evidence");
@@ -137,7 +137,7 @@ test.describe("current-session recovery and reset isolation", () => {
     await page.reload();
     const migrationNotice = page.getByTestId("text-session-restored");
     await expect(migrationNotice).toBeVisible();
-    await expect(migrationNotice).toHaveText("Session updated to audited defaults");
+    await expect(migrationNotice).toHaveText("Browser-local session updated to audited defaults");
     await openProjectRealityEvidenceReview(page);
 
     await expect(page.getByTestId("select-classification-electricity_cost")).toHaveValue("User Assumption");

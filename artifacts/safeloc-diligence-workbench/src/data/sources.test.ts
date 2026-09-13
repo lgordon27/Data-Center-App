@@ -4,6 +4,7 @@ import {
   DEFAULT_SOURCE_STATES,
   formatElectricityCostAttribution,
   formatSourceTimestamp,
+  sourceApplicabilityText,
   sourceStateMap,
 } from "./sources";
 
@@ -77,4 +78,21 @@ test("the provider boundary automatically falls back from unavailable live data 
   assert.equal(eia.status, "cached");
   assert.equal(eia.timestamp, "2026-08-28T12:00:00.000Z");
   assert.equal(eia.dataOrigin, "provider");
+});
+
+test("provider availability never makes ERCOT applicable to an Ohio project", () => {
+  assert.match(
+    sourceApplicabilityText("ercot-queue", {
+      kind: "custom",
+      location: "New Albany, Ohio",
+    }),
+    /Not applicable to New Albany, Ohio; ERCOT availability does not make Texas queue data evidence/i,
+  );
+  assert.match(
+    sourceApplicabilityText("ercot-queue", {
+      kind: "custom",
+      location: "Taylor County, TX",
+    }),
+    /Texas regional context only; it is not facility-level evidence/i,
+  );
 });

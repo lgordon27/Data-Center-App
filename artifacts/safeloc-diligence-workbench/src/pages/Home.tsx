@@ -27,6 +27,7 @@ import {
 } from "@/services/researchProjectService";
 import {
   fetchDirectory,
+  fetchAllCompanyDirectoryFacilities,
   fetchDirectoryStats,
   mergeDirectoryFacilities,
   type DirectoryFacility,
@@ -350,7 +351,7 @@ export function CustomProjectDialog({
           onReturnToCurated={onReturnToCurated}
         />
         <p className="mt-4 border-t border-[#e5eae8] pt-4 text-[10px] leading-4 text-[#7d898f]">
-          The active custom result is session-only and is not saved locally. The curated Stargate case remains available through Reset to Default.
+          The active analysis is restored from this browser&apos;s local session. Useful completed research may also be retained in this app&apos;s local-server registry; neither store is shared across devices. The curated Stargate case remains available through Reset to Default.
         </p>
       </div>
     </div>
@@ -1097,7 +1098,7 @@ function LegacyHome({ onNavigate }: { onNavigate?: (route: HomeRoute) => void } 
                    <div className="mb-4 flex items-center gap-2 font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-[#d4e86b]">
                      <Zap aria-hidden="true" className="h-3.5 w-3.5" /> Start with the directory
                    </div>
-                   <p className="text-[11px] leading-5 text-[#c4d0d6]">Search public facility metadata first. Choose the curated Stargate case or launch session-only AI research from any other record.</p>
+                   <p className="text-[11px] leading-5 text-[#c4d0d6]">Search public facility metadata first. Choose the curated Stargate case or launch browser-local AI research from another record; useful completed research may also be retained by this app&apos;s local server.</p>
                  </div>
               </div>
 
@@ -1583,14 +1584,13 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
     let active = true;
     setHomeDirectoryFacilities([]);
     setHomeDirectoryStatus("loading");
-    void requestDirectory({
-      limit: 100,
-      offset: 0,
-      company: selectedCompany,
+    void fetchAllCompanyDirectoryFacilities(selectedCompany, (facilities) => {
+      if (!active) return;
+      setHomeDirectoryFacilities(facilities);
     })
-      .then((response) => {
+      .then((facilities) => {
         if (!active) return;
-        setHomeDirectoryFacilities(mergeDirectoryFacilities([], response.facilities));
+        setHomeDirectoryFacilities(facilities);
         setHomeDirectoryStatus("ready");
       })
       .catch(() => {

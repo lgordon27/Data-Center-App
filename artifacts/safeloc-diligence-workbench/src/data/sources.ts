@@ -144,6 +144,23 @@ export function sourceStatusLabel(source: Pick<SourceState, "status">): string {
   return source.status.charAt(0).toUpperCase() + source.status.slice(1);
 }
 
+export function sourceApplicabilityText(
+  sourceId: SourceId,
+  project: { kind: "curated" | "custom"; location: string },
+): string {
+  if (project.kind === "curated") {
+    return sourceId === "ercot-queue"
+      ? "Applicable as Texas regional context; aggregate queue data is not named-project evidence."
+      : "Applicable to the curated case as described by the data role.";
+  }
+  if (sourceId === "ercot-queue") {
+    return /(?:,\s*TX\b|\bTexas\b)/i.test(project.location)
+      ? "Available as Texas regional context only; it is not facility-level evidence."
+      : `Not applicable to ${project.location}; ERCOT availability does not make Texas queue data evidence for this project.`;
+  }
+  return "Provider availability is shown independently; this source is not applied to custom-project evidence or synthetic economics.";
+}
+
 export function formatElectricityCostAttribution(rate: number, source: SourceState): string {
   const formattedRate = `$${rate.toFixed(rate % 1 === 0 ? 0 : 1)}/MWh`;
   if (source.id === "eia" && (source.status === "live" || source.status === "cached") && source.dataOrigin === "provider" && source.timestamp) {

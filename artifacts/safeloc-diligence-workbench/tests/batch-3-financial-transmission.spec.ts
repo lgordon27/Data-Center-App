@@ -26,7 +26,7 @@ test.describe("Batch 3 Financial Transmission", () => {
     await expect(page.getByTestId("impact-chain-stress-irr")).toContainText("%");
     await expect(page.getByTestId("panel-impact-chain")).toContainText("Recommendation context");
     await expect(page.getByTestId("transmission-pathway")).toContainText("Real factor");
-    await expect(page.getByTestId("transmission-pathway")).toContainText("Potential issuer implication");
+    await expect(page.getByTestId("transmission-pathway")).toContainText("Issuer evidence boundary");
     await expect(page.getByTestId("transmission-pathway")).toHaveCount(1);
     await expect(page.getByTestId("panel-impact-chain")).not.toContainText("Baseline equity CF");
 
@@ -84,8 +84,8 @@ test.describe("Batch 3 Financial Transmission", () => {
     await expect(page.getByTestId("metric-npv")).toContainText("Value relative to 10% discount rate");
     await expect(page.getByTestId("metric-npv")).not.toContainText("value created");
     await expect(page.getByTestId("cash-flow-comparison-y0")).toContainText("Close / Year 0");
-    await expect(page.getByTestId("cash-flow-comparison-y5")).toContainText("Operations, exit proceeds and debt repayment");
-    await expect(page.locator("caption").filter({ hasText: "Five-year annual project cash-flow schedule in millions of dollars" })).toBeAttached();
+    await expect(page.getByTestId("cash-flow-comparison-y5")).toContainText("Operating NOI plus exit value, less scheduled and terminal debt repayment");
+    await expect(page.locator("caption").filter({ hasText: "Five-year annual project cash-flow schedule, displayed in USD millions" })).toBeAttached();
     await expectNoPageOverflow(page);
   });
 

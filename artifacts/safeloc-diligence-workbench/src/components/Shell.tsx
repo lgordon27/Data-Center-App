@@ -376,7 +376,7 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
               Return to Analysis
             </button>
           )}
-           {!isHome && sessionRestored && <span role="status" data-testid="text-session-restored" className="absolute right-4 top-full z-20 rounded border border-[#b9d43a]/40 bg-[#122232] px-2.5 py-1.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-[#d4e86b] shadow-md md:right-8">{sessionMigrated ? "Session updated to audited defaults" : "Session restored"}</span>}
+           {!isHome && sessionRestored && <span role="status" data-testid="text-session-restored" className="absolute right-4 top-full z-20 rounded border border-[#b9d43a]/40 bg-[#122232] px-2.5 py-1.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-[#d4e86b] shadow-md md:right-8">{sessionMigrated ? "Browser-local session updated to audited defaults" : "Browser-local session restored"}</span>}
            <button data-testid="button-reset-default" type="button" onClick={() => { activeResearchRequestKey.current = null; activeResearchCancel.current = null; onReset(); }} className="rounded border border-[#60717f] px-2.5 py-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.08em] text-[#d4e86b] transition-colors hover:border-[#d4e86b] hover:bg-white/10">Reset</button>
         </div>
       </div>
@@ -582,9 +582,13 @@ export function BottomNav(_props: { screen: Screen; onNavigate: (screen: Screen)
 export function DiligenceLiveRegions({
   metrics,
   financialInputState,
+  providerAvailability,
+  providerApplicability,
 }: {
   metrics: ReturnType<typeof useDiligence>["metrics"];
   financialInputState: ReturnType<typeof useDiligence>["financialInputState"];
+  providerAvailability: string;
+  providerApplicability: string;
 }) {
   if (financialInputState.phase === "updating") {
     return (
@@ -598,7 +602,7 @@ export function DiligenceLiveRegions({
   return (
     <div className="sr-only" aria-label="Diligence metric updates">
       <div data-testid="live-financial-state" aria-live="polite" aria-atomic="true">
-        Financial calculation uses {financialInputState.basis} inputs. Electricity value is {financialInputState.electricityRate === null ? "not applicable" : `$${financialInputState.electricityRate.toFixed(1)} per MWh`}; provider status is {financialInputState.providerStatus}; period is {financialInputState.electricityPeriod ?? "not reported"}; calculated at {financialInputState.calculatedAt ?? "not reported"}.
+        Financial calculation uses {financialInputState.basis} inputs. Electricity value is {financialInputState.electricityRate === null ? "not applicable" : `$${financialInputState.electricityRate.toFixed(1)} per MWh`}; provider availability is {providerAvailability}; project applicability is {providerApplicability}; period is {financialInputState.electricityPeriod ?? "not reported"}; calculated at {financialInputState.calculatedAt ?? "not reported"}.
       </div>
       <div data-testid="live-confidence" aria-live="polite" aria-atomic="true">
         Evidence confidence is now {metrics.confidenceScore} percent.

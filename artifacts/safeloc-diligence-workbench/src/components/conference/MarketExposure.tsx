@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { ArrowRight, Building2, ExternalLink } from "lucide-react";
 import { useDiligence } from "@/context/DiligenceContext";
 import {
@@ -9,9 +10,15 @@ import {
 } from "@/data/companyExposure";
 import { CompanyProjectSelection } from "@/components/CompanyProjectSelection";
 import { getConferenceRelationship } from "@/model/conferenceEvidence";
+import {
+  fetchAllCompanyDirectoryFacilities,
+  type DirectoryFacility,
+} from "@/services/directoryService";
 
 export function MarketExposure() {
-  const { project, originatingCompany, resetToDefault, setOriginatingCompany, setProjectSelection } = useDiligence();
+  const { project, originatingCompany, selectedProjectContext, resetToDefault, setOriginatingCompany, setProjectSelection } = useDiligence();
+  const [facilities, setFacilities] = useState<DirectoryFacility[]>([]);
+  const [directoryStatus, setDirectoryStatus] = useState<"idle" | "loading" | "ready" | "unavailable">("idle");
   const relationship = getConferenceRelationship(project, originatingCompany);
   const options = COMPANY_PROFILES;
   const selectedState = relationship.established
@@ -20,6 +27,26 @@ export function MarketExposure() {
       ? startingRelationshipState(relationship.company.key)
       : null;
   const relatedProject = relationship.company ? startingRelationshipProject(relationship.company.key) : null;
+  useEffect(() => {
+    if (!relationship.company) {
+      setFacilities([]);
+      setDirectoryStatus("idle");
+      return;
+    }
+    let active = true;
+    setFacilities([]);
+    setDirectoryStatus("loading");
+    void fetchAllCompanyDirectoryFacilities(relationship.company.key, (nextFacilities) => {
+      if (active) setFacilities(nextFacilities);
+    }).then((nextFacilities) => {
+      if (!active) return;
+      setFacilities(nextFacilities);
+      setDirectoryStatus("ready");
+    }).catch(() => {
+      if (active) setDirectoryStatus("unavailable");
+    });
+    return () => { active = false; };
+  }, [relationship.company?.key]);
   return (
     <section data-testid="conference-view-market" className="space-y-5">
       <div>
@@ -61,11 +88,18 @@ export function MarketExposure() {
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#607500]">Project selection</p>
               <h3 className="mt-1 text-lg font-semibold">Choose the project context before drawing an exposure conclusion.</h3>
-              <p className="mt-1 max-w-2xl text-xs leading-5 text-[#52616b]">Every row keeps its location, status, capacity disclosure, relationship type, and evidence state visible. Research-required rows open the shared prefilled research dialog.</p>
+               <p className="mt-1 max-w-2xl text-xs leading-5 text-[#52616b]">Search and filter the same provider-associated records shown on Home. Each action preserves the exact facility and holding; discovery matches remain distinct from sourced relationships.</p>
+               {directoryStatus === "loading" && <p role="status" className="mt-2 text-xs text-[#60707d]">Loading all provider pages…</p>}
+               {directoryStatus === "unavailable" && <p role="status" className="mt-2 text-xs text-[#805000]">Provider records are unavailable; reviewed records remain visible.</p>}
+               {selectedProjectContext?.company === relationship.company.key && (
+                 <p data-testid="market-selected-project-identity" className="mt-2 break-words text-xs font-semibold text-[#314207]">
+                   Selected facility: {selectedProjectContext.projectName} · {selectedProjectContext.location} · provider ID {selectedProjectContext.providerId ?? "not supplied"}
+                 </p>
+               )}
             </div>
             <CompanyProjectSelection
               company={relationship.company.key}
-              projects={companyProjects(relationship.company.key, [])}
+              projects={companyProjects(relationship.company.key, facilities)}
               onSelect={(selectedProject) => {
                 const selection = toProjectSelectionContext(relationship.company!.key, selectedProject);
                 if (selection.evidenceState === "Source-backed" && selectedProject.name.trim().toLowerCase() === "stargate abilene") {
@@ -110,7 +144,7 @@ export function MarketExposure() {
         </> : <div data-testid="market-no-relationship" className="mt-5 rounded-lg bg-[#f1f5f3] p-4">
           <h3 className="font-semibold">No established company–project relationship</h3>
            <p className="mt-2 text-sm leading-6 text-[#52616b]">{relationship.reason} No exposure chain is shown.</p>
-           {relationship.company && <p data-testid="market-relationship-state" className="mt-2 text-xs font-semibold text-[#805000]">{selectedState}: {relatedProject ? `${relatedProject.name} is related discovery context, not a reviewed Stargate relationship.` : "No reviewed Stargate relationship is established; project-level research is required."}</p>}
+            {relationship.company && <p data-testid="market-relationship-state" className="mt-2 text-xs font-semibold text-[#805000]">{selectedState}: {relatedProject ? `${relatedProject.name} is related discovery context, not a sourced relationship for ${project.name}.` : `No reviewed relationship to ${project.name} is established; project-level research is required.`}</p>}
            <a href="#home" className="mt-3 inline-block text-xs text-[#255bb7] underline">Explore a related project or start research on Home</a>
         </div>}
       </div>

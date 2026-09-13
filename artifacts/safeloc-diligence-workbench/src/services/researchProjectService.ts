@@ -206,6 +206,9 @@ export type ResearchAuditStageCounts = {
   retainedPassages?: number;
   reusedReceipts?: number;
   notAttempted?: number;
+  issuedProviderRequests?: number;
+  observedSearches?: number;
+  successfulExtractions?: number;
 };
 export type ResearchLocalAuthority = {
   name: string;
@@ -270,6 +273,8 @@ export type ResearchCategoryAudit = {
   accessLimitations: string[];
   unresolvedGaps: string[];
   providerFailure?: string | null;
+  providerFailureType?: "quota-exhausted" | "authentication" | "deadline" | "malformed-response" | "upstream" | "provider-request-budget" | null;
+  providerRequestCount?: number;
 };
 export type ResearchCategoryClaimAudit = {
   evidenceId: string;
@@ -745,6 +750,9 @@ function parseResearchAudit(value: unknown): ResearchAudit | undefined {
          ...(Number.isFinite(Number(counts.retainedPassages)) ? { retainedPassages: Number(counts.retainedPassages) } : {}),
          ...(Number.isFinite(Number(counts.reusedReceipts)) ? { reusedReceipts: Number(counts.reusedReceipts) } : {}),
          ...(Number.isFinite(Number(counts.notAttempted)) ? { notAttempted: Number(counts.notAttempted) } : {}),
+         ...(Number.isFinite(Number(counts.issuedProviderRequests)) ? { issuedProviderRequests: Number(counts.issuedProviderRequests) } : {}),
+         ...(Number.isFinite(Number(counts.observedSearches)) ? { observedSearches: Number(counts.observedSearches) } : {}),
+         ...(Number.isFinite(Number(counts.successfulExtractions)) ? { successfulExtractions: Number(counts.successfulExtractions) } : {}),
       },
       rejectionCounts: isRecord(candidate.rejectionCounts)
         ? Object.fromEntries(Object.entries(candidate.rejectionCounts).map(([key, count]) => [key, Number(count) || 0]))
@@ -752,6 +760,10 @@ function parseResearchAudit(value: unknown): ResearchAudit | undefined {
       accessLimitations: Array.isArray(candidate.accessLimitations) ? candidate.accessLimitations.filter(isNonEmptyString).slice(0, 8) : [],
       unresolvedGaps: Array.isArray(candidate.unresolvedGaps) ? candidate.unresolvedGaps.filter(isNonEmptyString).slice(0, 8) : [],
       ...(isNonEmptyString(candidate.providerFailure) ? { providerFailure: candidate.providerFailure } : {}),
+      ...(["quota-exhausted", "authentication", "deadline", "malformed-response", "upstream", "provider-request-budget"].includes(String(candidate.providerFailureType))
+        ? { providerFailureType: candidate.providerFailureType as NonNullable<ResearchCategoryAudit["providerFailureType"]> }
+        : {}),
+      ...(Number.isInteger(candidate.providerRequestCount) ? { providerRequestCount: Math.max(0, Number(candidate.providerRequestCount)) } : {}),
     } satisfies ResearchCategoryAudit];
   });
   const budget = isRecord(value.budget) ? value.budget : {};

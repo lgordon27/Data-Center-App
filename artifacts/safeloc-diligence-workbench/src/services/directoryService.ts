@@ -300,6 +300,39 @@ export async function fetchDirectory(fetchOrQuery: typeof fetch | DirectoryQuery
   return parseDirectoryResponse(await getJson(directoryUrl(fetchOrQuery), fetchImpl));
 }
 
+/**
+ * Loads every provider page for one company without triggering project
+ * research. The progress callback lets browsing surfaces expose records as
+ * each page arrives instead of imposing the former first-100 ceiling.
+ */
+export async function fetchAllCompanyDirectoryFacilities(
+  company: string,
+  onPage?: (facilities: DirectoryFacility[], response: DirectoryResponse) => void,
+  fetchImpl: typeof fetch = fetch,
+): Promise<DirectoryFacility[]> {
+  const pageSize = 100;
+  let offset = 0;
+  let facilities: DirectoryFacility[] = [];
+  const visitedOffsets = new Set<number>();
+
+  while (!visitedOffsets.has(offset)) {
+    visitedOffsets.add(offset);
+    const response = await fetchDirectory({ company, limit: pageSize, offset }, fetchImpl);
+    facilities = mergeDirectoryFacilities(facilities, response.facilities);
+    onPage?.(facilities, response);
+
+    if (response.facilities.length === 0) break;
+    const reportedTotal = response.totalMatching ?? response.totalFacilities;
+    const providerIndicatesMore = response.hasMore === true ||
+      (typeof reportedTotal === "number" && offset + response.facilities.length < reportedTotal);
+    const nextOffset = response.nextOffset ??
+      (providerIndicatesMore ? offset + Math.max(response.limit ?? pageSize, response.facilities.length) : null);
+    if (nextOffset === null || nextOffset <= offset) break;
+    offset = nextOffset;
+  }
+  return facilities;
+}
+
 export async function fetchDirectoryStats(fetchImpl: typeof fetch = fetch): Promise<DirectoryStatsResponse> {
   return parseDirectoryStatsResponse(await getJson(DIRECTORY_STATS_ENDPOINT, fetchImpl));
 }

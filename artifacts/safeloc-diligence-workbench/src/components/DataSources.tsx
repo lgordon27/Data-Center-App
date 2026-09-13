@@ -9,6 +9,7 @@ import {
   formatSourceTimestamp,
   sourceStatusLabel,
   SOURCE_FALLBACK_EXPLANATION,
+  sourceApplicabilityText,
   type SourceState,
 } from "@/data/sources";
 import { useDiligence } from "@/context/DiligenceContext";
@@ -52,7 +53,7 @@ export function SourceStatusBadge({ source, compact = false, testId }: { source:
   );
 }
 
-function SourceDetail({ source }: { source: SourceState }) {
+function SourceDetail({ source, applicability }: { source: SourceState; applicability: string }) {
   const Icon = sourceIcons[source.icon];
   return (
     <article data-testid={`source-detail-${source.id}`} className="rounded-lg border border-[#d9e0e4] bg-white p-3">
@@ -66,10 +67,11 @@ function SourceDetail({ source }: { source: SourceState }) {
         </div>
         <SourceStatusBadge source={source} testId={`source-detail-status-${source.id}`} />
       </div>
-      <dl className="mt-3 grid gap-1 border-t border-[#e5eae8] pt-2 text-[10px] sm:grid-cols-3">
+      <dl className="mt-3 grid gap-1 border-t border-[#e5eae8] pt-2 text-[10px] sm:grid-cols-2 lg:grid-cols-4">
         <div><dt className="font-bold uppercase tracking-[0.1em] text-[#7d898f]">Meaning</dt><dd className="mt-1 text-[#344550]">{source.statusMeaning}</dd></div>
         <div><dt className="font-bold uppercase tracking-[0.1em] text-[#7d898f]">Timestamp / version</dt><dd className="mt-1 font-mono text-[#344550]">{formatSourceTimestamp(source.timestamp)} · {source.version ?? "Not provided"}</dd></div>
         <div><dt className="font-bold uppercase tracking-[0.1em] text-[#7d898f]">Data role</dt><dd className="mt-1 text-[#344550]">{source.role}</dd></div>
+        <div><dt className="font-bold uppercase tracking-[0.1em] text-[#7d898f]">Project applicability</dt><dd data-testid={`source-applicability-${source.id}`} className="mt-1 text-[#344550]">{applicability}</dd></div>
       </dl>
       <p className="mt-2 text-[10px] leading-4 text-[#60707d]">{source.fallbackText}</p>
       {source.id === "eia" && <p data-testid="eia-persistent-attribution" className="mt-2 font-mono text-[9px] text-[#344550]">Electricity data: U.S. Energy Information Administration Open Data</p>}
@@ -78,7 +80,7 @@ function SourceDetail({ source }: { source: SourceState }) {
 }
 
 export function DataSources() {
-  const { sourceStates } = useDiligence();
+  const { sourceStates, project } = useDiligence();
   const sources = Object.values(sourceStates);
   return (
     <section data-testid="data-sources" aria-label="Data sources" className="mx-auto mt-8 max-w-[1160px] px-4 md:px-8 xl:px-12">
@@ -109,7 +111,7 @@ export function DataSources() {
           </div>
         </summary>
         <div className="border-t border-[#d9e0e4] px-4 pb-4 pt-3">
-          <div data-testid="data-sources-details" className="grid gap-2 md:grid-cols-2">{sources.map((source) => <SourceDetail key={source.id} source={source} />)}</div>
+          <div data-testid="data-sources-details" className="grid gap-2 md:grid-cols-2">{sources.map((source) => <SourceDetail key={source.id} source={source} applicability={sourceApplicabilityText(source.id, project)} />)}</div>
           <p data-testid="data-sources-fallback" className="mt-3 rounded-md border border-[#f1cb8b] bg-[#fff8e9] px-3 py-2 text-[10px] leading-4 text-[#6f460e]">
             {SOURCE_FALLBACK_EXPLANATION}
           </p>

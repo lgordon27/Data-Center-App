@@ -496,7 +496,7 @@ test("stops the category schedule once all governed identifiers are resolved", a
   assert.equal(run.resolvedEvidenceIds.length, RESEARCH_EVIDENCE_IDS.length);
 });
 
-test("bounds concurrent primary category retrieval and preserves category failures", async () => {
+test("issues every concurrent primary before awaiting category retrieval and preserves failures", async () => {
   let active = 0;
   let peak = 0;
   let release;
@@ -519,11 +519,81 @@ test("bounds concurrent primary category retrieval and preserves category failur
     },
   );
   const run = await runPromise;
-  assert.equal(peak, 3);
+  assert.equal(peak, 8);
   assert.equal(run.providerRequests, 8);
   assert.equal(run.categoryExecutions.water.state, "Provider failure");
   assert.equal(Object.keys(run.categoryExecutions).length, 8);
   assert.ok(run.toolCalls <= 32);
+});
+
+test("all primary provider opportunities precede document work", async () => {
+  const events = [];
+  let issued = 0;
+  let releaseProviders;
+  const providersIssued = new Promise((resolve) => { releaseProviders = resolve; });
+  const run = await orchestrateCategoryResearch(
+    { name: "Atlas", location: "Arizona" },
+    {
+      concurrent: true,
+      retrieveCategory: async ({ categoryId }) => {
+        events.push(`provider:${categoryId}`);
+        issued += 1;
+        if (issued === 8) releaseProviders();
+        await providersIssued;
+        events.push(`document:${categoryId}`);
+        return { candidates: [], providerRequestCount: 1 };
+      },
+    },
+  );
+  assert.equal(run.providerRequests, 8);
+  assert.equal(events.slice(0, 8).every((event) => event.startsWith("provider:")), true);
+  assert.ok(Object.values(run.categoryExecutions).every((execution) => execution.issuedPrimaryQuery));
+});
+
+test("malformed repairs consume request slots and cannot displace reserved primaries", async () => {
+  const attempts = [];
+  const run = await orchestrateCategoryResearch(
+    { name: "Atlas", location: "Ohio" },
+    {
+      concurrent: true,
+      budget: { ...RESEARCH_RUN_BUDGET, maxProviderRequests: 10 },
+      retrieveCategory: async ({ categoryId, authorizeAdditionalProviderRequest }) => {
+        attempts.push(`${categoryId}:primary`);
+        let providerRequestCount = 1;
+        if (authorizeAdditionalProviderRequest()) {
+          attempts.push(`${categoryId}:repair`);
+          providerRequestCount += 1;
+        }
+        return { candidates: [], providerRequestCount };
+      },
+    },
+  );
+  assert.equal(attempts.filter((attempt) => attempt.endsWith(":primary")).length, 8);
+  assert.equal(attempts.filter((attempt) => attempt.endsWith(":repair")).length, 2);
+  assert.equal(run.providerRequests, 10);
+  assert.ok(Object.values(run.categoryExecutions).every((execution) => execution.state !== "Not searched"));
+});
+
+test("an issued primary without an observed provider search is not labeled Not searched", () => {
+  const plan = buildResearchCategoryPlan({ name: "Atlas", location: "Arizona" });
+  const first = plan.categories[0];
+  const audit = buildResearchAudit({
+    project: { name: "Atlas", location: "Arizona" },
+    coverage: {
+      categoryExecutions: {
+        [first.categoryId]: {
+          issuedPrimaryQuery: first.requestedPrimaryQuery,
+          state: "Not searched",
+          providerRequestCount: 1,
+        },
+      },
+    },
+    sources: [],
+    evidence: [],
+  });
+  assert.equal(audit.categories[0].state, "No eligible evidence");
+  assert.equal(audit.categories[0].stageCounts.issuedProviderRequests, 1);
+  assert.equal(audit.categories[0].stageCounts.observedSearches, 0);
 });
 
 test("propagates client cancellation distinctly from the deadline timeout", async () => {

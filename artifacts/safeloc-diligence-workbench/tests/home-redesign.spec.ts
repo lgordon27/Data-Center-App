@@ -37,7 +37,8 @@ test.describe("compact conference Home", () => {
     await customTrigger.click();
     const dialog = page.getByTestId("custom-project-dialog");
     await expect(dialog).toBeVisible();
-    await expect(dialog.getByText(/session-only/i)).toBeVisible();
+    await expect(dialog.getByText(/browser's local session/i)).toBeVisible();
+    await expect(dialog.getByText(/local-server registry/i)).toBeVisible();
     await page.getByTestId("button-close-custom-project").click();
     await expect(dialog).toHaveCount(0);
     await expect(customTrigger).toBeFocused();

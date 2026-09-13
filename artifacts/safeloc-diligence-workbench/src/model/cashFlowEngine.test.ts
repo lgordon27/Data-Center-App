@@ -656,7 +656,10 @@ test("pre-tax equity cash-on-cash uses the actual close equity denominator", () 
     (model.annualPreTaxEquityCashFlow / model.cashOnCashDenominator) * 100,
   );
   assert.equal(model.assumptions.sourcesAndUses.sources.debt + model.assumptions.sourcesAndUses.sources.equity, model.assumptions.sourcesAndUses.uses.total);
-  assert.deepEqual(model.dscrMeaningfulYears, [1, 2, 3, 4, 5]);
+  assert.equal(model.schedule[1].activeMonths, 0);
+  assert.equal(model.schedule[1].debtService > 0, true);
+  assert.equal(model.schedule[1].dscr, 0);
+  assert.deepEqual(model.dscrMeaningfulYears, [2, 3, 4, 5]);
 });
 
 test("power price and utilization sensitivity returns a complete 3 by 3 grid", () => {

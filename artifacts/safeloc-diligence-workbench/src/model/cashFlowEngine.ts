@@ -984,7 +984,9 @@ function runModel(
     initialInvestedEquity,
     cashOnCashDenominator: initialInvestedEquity,
     annualPreTaxEquityCashFlow,
-    dscrMeaningfulYears: schedule.filter((year) => year.year > 0 && year.dscr !== null).map((year) => year.year),
+    dscrMeaningfulYears: schedule
+      .filter((year) => year.year > 0 && year.activeMonths > 0 && year.dscr !== null)
+      .map((year) => year.year),
     returnSensitivity: [],
     payback: calculatePayback(cashFlows),
     npv,

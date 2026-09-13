@@ -35,7 +35,7 @@ const EMBEDDED_SNAPSHOT = [
   ["project-rainier-microsoft-wi", "Project Rainier", "Microsoft", "Mount Pleasant", "Racine", "WI", 315, "construction", "reported", "ai_training", "https://www.compute-atlas.com/facilities/project-rainier-microsoft-wi"],
   ["project-volcano-meta-la", "Project Volcano", "Meta", "Richland Parish", "Richland", "LA", 1500, "planned", "reported", "ai_training", "https://www.compute-atlas.com/facilities/project-volcano-meta-la"],
   ["google-willow-rock-oh", "Google New Albany Campus", "Google", "New Albany", "Licking", "OH", 600, "construction", "confirmed", "ai_training", "https://www.compute-atlas.com/facilities/google-willow-rock-oh"],
-  ["amazon-data-center-ohio-oh", "Amazon Central Ohio Campus", "Amazon", "New Albany", "Licking", "OH", 300, "operating", "confirmed", "hyperscale", "https://www.compute-atlas.com/facilities/amazon-data-center-ohio-oh"],
+  ["amazon-data-center-ohio-oh", "AWS New Albany / Beech-Miller Road Campus", "Amazon", "New Albany", "Licking", "OH", 300, "operating", "confirmed", "hyperscale", "https://www.compute-atlas.com/facilities/amazon-data-center-ohio-oh"],
   ["oracle-aberdeen-md", "Oracle Aberdeen Cloud Region", "Oracle", "Aberdeen", "Harford", "MD", 120, "operating", "confirmed", "cloud", "https://www.compute-atlas.com/facilities/oracle-aberdeen-md"],
   ["nvidia-dgx-cloud-tx", "NVIDIA AI Factory Texas", "NVIDIA", "Austin", "Travis", "TX", 96, "planned", "rumored", "ai_training", "https://www.compute-atlas.com/facilities/nvidia-dgx-cloud-tx"],
   ["xai-colossus-memphis-tn", "Colossus", "xAI", "Memphis", "Shelby", "TN", 150, "operating", "reported", "ai_training", "https://www.compute-atlas.com/facilities/xai-colossus-memphis-tn"],

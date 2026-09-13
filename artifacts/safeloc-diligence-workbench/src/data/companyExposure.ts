@@ -365,12 +365,18 @@ export function profileForCompany(company: CompanyKey) {
 
 export function companyProjects(company: CompanyKey, facilities: DirectoryFacility[]): CompanyProject[] {
   const curated = CURATED_PROJECTS[company] ?? [];
+  const registeredFacilityIds = new Set(
+    curated
+      .map((project) => project.facility?.id ?? project.id)
+      .map((id) => id.trim().toLowerCase()),
+  );
   const seenFacilityIds = new Set<string>();
   const directoryProjects = facilities
     .filter((facility) => facility.connectedCompanies.includes(company))
     .filter((facility) => {
-      if (seenFacilityIds.has(facility.id)) return false;
-      seenFacilityIds.add(facility.id);
+      const facilityId = facility.id.trim().toLowerCase();
+      if (registeredFacilityIds.has(facilityId) || seenFacilityIds.has(facilityId)) return false;
+      seenFacilityIds.add(facilityId);
       return true;
     })
     .filter((facility) => !curated.some((project) => project.name.toLowerCase() === facility.name.toLowerCase()))

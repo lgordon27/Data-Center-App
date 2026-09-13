@@ -14,6 +14,7 @@ test("builds a diagnostic-only report with bounded live-run and retention fields
       statusCode: 200,
       payload: {
         researchAudit: {
+          runCorrelationId: "run-live-atlas",
           provider: "openai",
           model: "gpt-4o",
           providerResponseIds: ["resp_live"],
@@ -56,7 +57,7 @@ test("builds a diagnostic-only report with bounded live-run and retention fields
             title: "Grid filing",
             searchDomain: "grid",
             sourceState: "claim-supported",
-            accessOutcome: { state: "accessible" },
+            accessOutcome: { state: "accessible", passage: "The filing identifies Live Atlas and its grid interconnection." },
             claimSupportState: "supported",
             projectSpecificityState: "project-specific",
             financialEligibilityState: "eligible",
@@ -82,6 +83,8 @@ test("builds a diagnostic-only report with bounded live-run and retention fields
   assert.equal(report.diagnosticOnly, true);
   assert.equal(report.evidenceStatus, "not-evidence");
   assert.equal(report.run.provider, "openai");
+  assert.equal(report.run.status, "useful-completion");
+  assert.equal(report.run.runId, "run-live-atlas");
   assert.equal(report.run.model, "gpt-4o");
   assert.equal(report.run.elapsedWithinDeadline, true);
   assert.equal(report.run.limitsObserved.providerRequestsWithinLimit, true);
@@ -90,6 +93,7 @@ test("builds a diagnostic-only report with bounded live-run and retention fields
   assert.deepEqual(report.categoryGaps, ["water"]);
   assert.equal(report.sourceStates.bySourceState["claim-supported"], 1);
   assert.equal(report.sourceStates.byAccessOutcome.accessible, 1);
+  assert.equal(report.sourceStates.retainedPassages.length, 1);
   assert.deepEqual(report.providerLimitations, [
     "Some filings were not accessible.",
     "Bounded document access stopped at the size limit.",

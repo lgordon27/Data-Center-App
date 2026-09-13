@@ -57,6 +57,16 @@ function countBy(items, key) {
 
 function sourceDiagnostics(result) {
   const sources = Array.isArray(result?.sourceLedger) ? result.sourceLedger : [];
+  const retainedPassages = sources.flatMap((source) => {
+    const passage = source.accessOutcome?.passage ?? source.claimPassage ?? null;
+    if (source.accessOutcome?.state !== "accessible" || typeof passage !== "string" || !passage.trim()) return [];
+    return [{
+      url: source.canonicalUrl ?? source.resolvedUrl ?? source.url ?? null,
+      title: source.title ?? null,
+      searchDomain: source.searchDomain ?? null,
+      passage: passage.trim(),
+    }];
+  });
   return {
     total: sources.length,
     bySourceState: countBy(sources, "sourceState"),
@@ -77,6 +87,7 @@ function sourceDiagnostics(result) {
       projectSpecificityState: source.projectSpecificityState ?? null,
       financialEligibilityState: source.financialEligibilityState ?? null,
     })),
+    retainedPassages,
   };
 }
 
@@ -126,6 +137,14 @@ export function buildAcceptanceReport({ project, liveRun, failureRun, generatedA
   const totalCandidateCount = Object.values(categoryCandidateCounts).reduce((sum, count) => sum + count, 0);
   const failurePayload = failureRun?.payload ?? null;
   const failureCache = failurePayload?.researchCache ?? null;
+  const usefulCompletion = source.retainedPassages.length > 0 || (result?.eligibleEvidenceCount ?? 0) > 0;
+  const terminalStatus = retainedCacheResponse || liveRun.statusCode < 200 || liveRun.statusCode >= 300
+    ? "failed"
+    : ["cancelled", "timed-out", "failed"].includes(result?.researchStatus)
+      ? result.researchStatus
+      : usefulCompletion
+        ? "useful-completion"
+        : "research-incomplete";
 
   return {
     diagnosticOnly: true,
@@ -136,9 +155,9 @@ export function buildAcceptanceReport({ project, liveRun, failureRun, generatedA
       location: project.location,
     },
     run: {
-      status: liveRun.statusCode >= 200 && liveRun.statusCode < 300 && !retainedCacheResponse
-        ? "completed"
-        : "failed",
+      status: terminalStatus,
+      runId: audit?.runCorrelationId ?? null,
+      researchStatus: result?.researchStatus ?? null,
       httpStatus: liveRun.statusCode,
       provider: audit?.provider ?? "openai",
       model: audit?.model ?? RESEARCH_PROJECT_MODEL,
@@ -303,7 +322,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
         categoryGaps: report.categoryGaps,
         failureRetention: report.failureRetention,
       }, null, 2));
-      if (report.run.status !== "completed") process.exitCode = 1;
+      if (report.run.status !== "useful-completion") process.exitCode = 1;
     })
     .catch((error) => {
       console.error(error instanceof Error ? error.message : "Live research acceptance run failed.");

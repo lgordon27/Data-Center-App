@@ -83,3 +83,16 @@ test("project summary keeps undisclosed capacity out of disclosed totals", () =>
   assert.equal(summary.tier2, 0);
   assert.equal(summary.undisclosedCapacity, 1);
 });
+
+test("registered provider facilities are not repeated under alternate display names", () => {
+  const projects = companyProjects("Meta", [
+    facility({
+      id: "meta-el-paso-tx",
+      name: "Meta El Paso Data Center",
+      operator: "Meta",
+      connectedCompanies: ["Meta"],
+    }),
+  ]);
+
+  assert.equal(projects.filter((project) => project.id === "meta-el-paso-tx").length, 1);
+});

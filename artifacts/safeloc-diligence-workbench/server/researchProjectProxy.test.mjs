@@ -42,6 +42,7 @@ import {
   buildCategoryFollowUpQuery,
   evaluateResearchDocumentAccess,
   accessResearchDocument,
+  createPinnedLookup,
   orchestrateCategoryResearch,
   runValidatedResearch,
   researchProjectWithWebSearch,
@@ -404,6 +405,15 @@ test("reads bounded HTML and text PDFs while recording retrieval limitations", a
   assert.equal(pdf.format, "text-pdf");
   assert.match(pdf.passage, /Project Atlas permit record/);
   assert.match(pdf.extractionLimitations.join(" "), /Page references/);
+  const json = await accessResearchDocument({ url: "https://example.gov/atlas.json", accessStatus: "open" }, {
+    fetchImpl: async () => new Response(JSON.stringify({ project: "Project Atlas", owner: "Atlas Holdings" }), {
+      status: 200,
+      headers: { "content-type": "application/json; charset=utf-8" },
+    }),
+  });
+  assert.equal(json.state, "accessible");
+  assert.equal(json.format, "text");
+  assert.match(json.passage, /Project Atlas/);
 });
 
 test("blocks DNS rebinding before a default outbound document request", async () => {
@@ -412,6 +422,25 @@ test("blocks DNS rebinding before a default outbound document request", async ()
   });
   assert.equal(result.state, "blocked");
   assert.equal(result.reason, "private-destination");
+});
+
+test("pins both single-address and all-address Node lookup requests", async () => {
+  const lookup = createPinnedLookup({ address: "203.0.113.8", family: 4 });
+  await new Promise((resolve, reject) => {
+    lookup("example.gov", { all: false }, (error, address, family) => {
+      if (error) return reject(error);
+      assert.equal(address, "203.0.113.8");
+      assert.equal(family, 4);
+      resolve();
+    });
+  });
+  await new Promise((resolve, reject) => {
+    lookup("example.gov", { all: true }, (error, addresses) => {
+      if (error) return reject(error);
+      assert.deepEqual(addresses, [{ address: "203.0.113.8", family: 4 }]);
+      resolve();
+    });
+  });
 });
 
 test("blocks mapped IPv4-mapped IPv6 destinations and oversized streamed responses", async () => {

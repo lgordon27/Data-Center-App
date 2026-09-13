@@ -32,6 +32,8 @@ function sourceStateTransition(from, to, reason) {
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const RESEARCH_PROJECT_MODEL = "gpt-4o";
 const RESEARCH_PROJECT_MAX_TOKENS = 8_000;
+const RESEARCH_CATEGORY_MAX_TOKENS = 3_500;
+const RESEARCH_PROVIDER_MAX_CONCURRENCY = 2;
 const execFile = promisify(execFileCallback);
 const RESEARCH_PROJECT_TIMEOUT_MS = 90_000;
 const RESEARCH_PROJECT_MAX_TOOL_CALLS = 32;
@@ -251,7 +253,7 @@ const RESEARCH_PROJECT_RESPONSE_SCHEMA = buildResearchResponseSchema();
 
 const RESEARCH_PROJECT_SYSTEM_PROMPT = `You are a careful infrastructure diligence researcher. Research the named data-center project and location using current, attributable public sources. Separate facility-level evidence from market, regional, or industry context. If you find public reporting confirming a data point, classify it as Management Assertion when it comes from company sources, or Verified Evidence when it comes from independent regulatory filings, government data, or independent reporting. Only classify as Missing Evidence if you genuinely cannot find any public information about that variable. Do not default to Missing Evidence as a conservative choice. Independent public records or reporting are Verified Evidence; dated company announcements, filings, or disclosures with limited independent confirmation are Management Assertion; analyst-derived estimates from related facts are Model Inference; synthetic analyst-selected values are User Assumption; and a fact not established in the searched public record is Missing Evidence.
 
-SafeLoc models exactly 16 evidence variables: electricity_cost, water_consumption, grid_interconnection, water_escalation, community_risk, renewable_percentage, cooling_capex, electricity_escalation, carbon_compliance, permitting_timeline, customer_concentration, water_rights, site_hazard_exposure, backup_power_capacity, water_source_resilience, and downtime_cost. The evidence object is keyed by those exact identifiers. Complete every key exactly once.
+SafeLoc models exactly 16 evidence variables across a complete run: electricity_cost, water_consumption, grid_interconnection, water_escalation, community_risk, renewable_percentage, cooling_capex, electricity_escalation, carbon_compliance, permitting_timeline, customer_concentration, water_rights, site_hazard_exposure, backup_power_capacity, water_source_resilience, and downtime_cost. The evidence object is keyed by the identifiers supplied in the response schema. Complete every supplied key exactly once; never add an identifier outside that schema.
 
 The projectSummary.description must explicitly report relevant findings, when available, about electrical-equipment procurement and lead times, jurisdictional bans or moratoriums, noise ordinances and operational impacts, local electricity-rate concerns, and semiconductor and memory supply-chain constraints. It must also identify speculative or phantom grid-load requests when that context is relevant. These are contextual research areas, not additional modeled evidence inputs: do not add them to the evidence array, assign them evidence classifications, or imply that market-wide statistics prove facility-level facts.
 
@@ -386,6 +388,45 @@ async function resolvePublicAddress(url, dnsLookup = dns.lookup) {
   return addresses[0];
 }
 
+function createPinnedLookup(address) {
+  return (_hostname, options, callback) => {
+    if (options?.all === true) {
+      callback(null, [{ address: address.address, family: address.family }]);
+      return;
+    }
+    callback(null, address.address, address.family);
+  };
+}
+
+function extractBoundedDocumentPassage(bytes, contentType, format) {
+  const raw = Buffer.from(bytes).toString("utf8");
+  if (String(contentType ?? "").toLowerCase().startsWith("application/json")) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed?.features)) {
+        return JSON.stringify({
+          features: parsed.features.slice(0, 20).map((feature) => ({
+            ...(isRecord(feature?.attributes) ? { attributes: feature.attributes } : {}),
+            ...(isRecord(feature?.properties) ? { properties: feature.properties } : {}),
+          })),
+          ...(parsed.exceededTransferLimit === true ? { exceededTransferLimit: true } : {}),
+        }).slice(0, 4_000);
+      }
+      return JSON.stringify(parsed).slice(0, 4_000);
+    } catch {
+      return raw.replace(/\s+/g, " ").trim().slice(0, 4_000);
+    }
+  }
+  if (format === "text") return raw.replace(/\s+/g, " ").trim().slice(0, 4_000);
+  return raw
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 4_000);
+}
+
 function fetchPinnedPublicUrl(url, init = {}, dnsLookup = dns.lookup) {
   return resolvePublicAddress(url, dnsLookup).then((address) => new Promise((resolve, reject) => {
     const parsed = new URL(url);
@@ -396,7 +437,7 @@ function fetchPinnedPublicUrl(url, init = {}, dnsLookup = dns.lookup) {
       path: `${parsed.pathname}${parsed.search}`,
       method: init.method ?? "GET",
       headers: init.headers,
-      lookup: (_hostname, _options, callback) => callback(null, address.address, address.family),
+      lookup: createPinnedLookup(address),
       servername: parsed.hostname,
       signal: init.signal,
     }, (response) => {
@@ -758,7 +799,7 @@ function evaluateResearchDocumentAccess(candidate = {}) {
   const extension = new URL(resolvedUrl).pathname.toLowerCase();
   const format = contentType === "application/pdf" || extension.endsWith(".pdf")
     ? "text-pdf"
-    : contentType === "text/plain" || contentType === "text/csv"
+    : contentType === "text/plain" || contentType === "text/csv" || contentType === "application/json"
       ? "text"
       : contentType === "text/html" || !contentType
         ? "html"
@@ -790,6 +831,79 @@ function createResearchCancellationError() {
   error.name = "ResearchCancelledError";
   error.researchErrorType = "cancelled";
   return error;
+}
+
+function safeSourceIdentity(value) {
+  try {
+    const parsed = new URL(value);
+    return {
+      origin: parsed.origin.slice(0, 240),
+      pathname: parsed.pathname.slice(0, 500),
+    };
+  } catch {
+    return { origin: null, pathname: null };
+  }
+}
+
+function sanitizeTransportText(value, maxLength = 240) {
+  return String(value ?? "")
+    .replace(/https?:\/\/[^\s]+/gi, (url) => {
+      const identity = safeSourceIdentity(url);
+      return identity.origin ? `${identity.origin}${identity.pathname}` : "[redacted-url]";
+    })
+    .replace(/Bearer\s+\S+/gi, "Bearer [redacted]")
+    .replace(/\bsk-[A-Za-z0-9_-]+/g, "[redacted-key]")
+    .replace(/\borg-[A-Za-z0-9_-]+\b/g, "org-[redacted]")
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]")
+    .replace(/(api[_ -]?key|authorization|token)\s*[:=]\s*\S+/gi, "$1=[redacted]")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function transportErrorDetails(error) {
+  const cause = error?.cause;
+  const safeCode = (value) => typeof value === "string" && /^[A-Za-z0-9_.-]{1,80}$/.test(value)
+    ? value
+    : null;
+  return {
+    errorName: safeCode(error?.name) ?? "Error",
+    errorCode: safeCode(error?.code),
+    errorMessage: sanitizeTransportText(error?.message),
+    causeName: safeCode(cause?.name),
+    causeCode: safeCode(cause?.code),
+    causeMessage: sanitizeTransportText(cause?.message),
+  };
+}
+
+function buildTransportDiagnostic({
+  stage,
+  url,
+  startedAtMs,
+  responseReceived = false,
+  response = null,
+  redirectChain = [],
+  error = null,
+  cancelled = false,
+  timedOut = false,
+}) {
+  const identity = safeSourceIdentity(url);
+  return {
+    stage,
+    sourceOrigin: identity.origin,
+    sourcePathname: identity.pathname,
+    elapsedMs: Math.max(0, Date.now() - startedAtMs),
+    responseReceived,
+    httpStatus: Number.isInteger(response?.status) ? response.status : null,
+    contentType: response?.headers?.get?.("content-type")?.split(";")[0]?.trim()?.toLowerCase() ?? null,
+    redirectChain: redirectChain.map((item) => {
+      const redirectIdentity = safeSourceIdentity(item);
+      return redirectIdentity.origin ? `${redirectIdentity.origin}${redirectIdentity.pathname}` : null;
+    }).filter(Boolean).slice(0, RESEARCH_DOCUMENT_MAX_REDIRECTS),
+    cancelled,
+    timedOut,
+    ...(error ? transportErrorDetails(error) : {}),
+  };
 }
 
 function throwIfResearchCancelled(signal) {
@@ -849,6 +963,7 @@ async function accessResearchDocument(candidate = {}, {
   signal,
   dnsLookup = dns.lookup,
 } = {}) {
+  const documentStartedAtMs = Date.now();
   throwIfResearchCancelled(signal);
   const initial = evaluateResearchDocumentAccess(candidate);
   if (initial.state !== "accessible") return initial;
@@ -857,10 +972,11 @@ async function accessResearchDocument(candidate = {}, {
   for (let redirect = 0; redirect <= maxRedirects; redirect += 1) {
     throwIfResearchCancelled(signal);
     let response;
+    const requestStartedAtMs = Date.now();
     try {
       const requestInit = {
         method: "GET",
-        headers: { accept: "text/html, text/plain, application/pdf" },
+        headers: { accept: "text/html, text/plain, application/json, application/pdf" },
         redirect: "manual",
         signal,
       };
@@ -868,13 +984,32 @@ async function accessResearchDocument(candidate = {}, {
         ? await fetchPinnedPublicUrl(currentUrl, requestInit, dnsLookup)
         : await fetchImpl(currentUrl, requestInit);
     } catch (error) {
-      if (error?.name === "ResearchCancelledError" || signal?.aborted) throw createResearchCancellationError();
+      if (error?.name === "ResearchCancelledError" || signal?.aborted) {
+        const cancellation = createResearchCancellationError();
+        cancellation.transportDiagnostic = buildTransportDiagnostic({
+          stage: "request",
+          url: currentUrl,
+          startedAtMs: requestStartedAtMs,
+          redirectChain,
+          error,
+          cancelled: true,
+          timedOut: signal?.reason?.name === "TimeoutError",
+        });
+        throw cancellation;
+      }
       return {
         ...initial,
         state: "blocked",
         reason: error?.message === "private-destination" ? "private-destination" : "network-failure",
         resolvedUrl: currentUrl,
         redirectChain,
+        transportDiagnostic: buildTransportDiagnostic({
+          stage: error?.message === "private-destination" ? "dns-validation" : "request",
+          url: currentUrl,
+          startedAtMs: requestStartedAtMs,
+          redirectChain,
+          error,
+        }),
         extractionLimitations: ["The destination could not be retrieved by the bounded server reader."],
       };
     }
@@ -903,6 +1038,14 @@ async function accessResearchDocument(candidate = {}, {
         reason: `http-${response.status}`,
         resolvedUrl: currentUrl,
         redirectChain,
+        transportDiagnostic: buildTransportDiagnostic({
+          stage: "response",
+          url: currentUrl,
+          startedAtMs: requestStartedAtMs,
+          responseReceived: true,
+          response,
+          redirectChain,
+        }),
         extractionLimitations: [`The destination returned HTTP ${response.status}; no passage was retained.`],
       };
     }
@@ -949,6 +1092,15 @@ async function accessResearchDocument(candidate = {}, {
         resolvedUrl: currentUrl,
         redirectChain,
         contentType,
+        transportDiagnostic: buildTransportDiagnostic({
+          stage: "body-read",
+          url: currentUrl,
+          startedAtMs: requestStartedAtMs,
+          responseReceived: true,
+          response,
+          redirectChain,
+          error,
+        }),
         extractionLimitations: ["The bounded reader stopped before retaining the complete response."],
       };
     }
@@ -957,7 +1109,7 @@ async function accessResearchDocument(candidate = {}, {
     throwIfResearchCancelled(signal);
     const passage = format === "text-pdf"
       ? await extractTextPdfPassage(bytes, { signal })
-      : Buffer.from(bytes).toString("utf8").replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ").replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 4_000);
+      : extractBoundedDocumentPassage(bytes, contentType, format);
     throwIfResearchCancelled(signal);
     if (!passage) {
       return {
@@ -969,6 +1121,14 @@ async function accessResearchDocument(candidate = {}, {
         redirectChain,
         contentType,
         retrievalTime: now(),
+        transportDiagnostic: buildTransportDiagnostic({
+          stage: "extraction",
+          url: currentUrl,
+          startedAtMs: documentStartedAtMs,
+          responseReceived: true,
+          response,
+          redirectChain,
+        }),
         extractionLimitations: [format === "text-pdf" ? "PDF contained no extractable text; OCR is not performed." : "The response contained no bounded text passage."],
       };
     }
@@ -983,9 +1143,21 @@ async function accessResearchDocument(candidate = {}, {
       contentType,
       redirectChain,
       retrievalTime: now(),
+      transportDiagnostic: buildTransportDiagnostic({
+        stage: "complete",
+        url: currentUrl,
+        startedAtMs: documentStartedAtMs,
+        responseReceived: true,
+        response,
+        redirectChain,
+      }),
       passage,
       pageOrSection: null,
-      extractionLimitations: format === "text-pdf" ? ["Page references are unavailable from the bounded text extractor."] : ["HTML section references depend on the captured passage."],
+      extractionLimitations: format === "text-pdf"
+        ? ["Page references are unavailable from the bounded text extractor."]
+        : format === "html"
+          ? ["HTML section references depend on the captured passage."]
+          : ["Structured-field references depend on the captured passage."],
     };
   }
   return { ...initial, state: "blocked", reason: "redirect-limit", redirectChain, extractionLimitations: ["Redirect chain exceeded the bounded access limit."] };
@@ -2458,6 +2630,124 @@ function selectedRateLimitIndicators(headers) {
   }));
 }
 
+function parseRateLimitDurationMs(value) {
+  if (typeof value !== "string" || !value.trim()) return 0;
+  if (/^\d+(?:\.\d+)?$/.test(value.trim())) return Math.ceil(Number(value) * 1_000);
+  let total = 0;
+  for (const match of value.matchAll(/(\d+(?:\.\d+)?)\s*(ms|s|m)/gi)) {
+    const amount = Number(match[1]);
+    total += match[2].toLowerCase() === "m"
+      ? amount * 60_000
+      : match[2].toLowerCase() === "s"
+        ? amount * 1_000
+        : amount;
+  }
+  return Math.ceil(total);
+}
+
+function createResearchProviderGate({
+  limit = RESEARCH_PROVIDER_MAX_CONCURRENCY,
+  now = () => Date.now(),
+  schedule = setTimeout,
+  cancelSchedule = clearTimeout,
+} = {}) {
+  let active = 0;
+  let blockedUntil = 0;
+  let wakeTimer = null;
+  const queue = [];
+
+  const drain = () => {
+    if (wakeTimer) {
+      cancelSchedule(wakeTimer);
+      wakeTimer = null;
+    }
+    const delay = blockedUntil - now();
+    if (delay > 0) {
+      wakeTimer = schedule(() => {
+        wakeTimer = null;
+        drain();
+      }, delay);
+      return;
+    }
+    while (active < limit && queue.length) {
+      const waiter = queue.shift();
+      if (waiter.signal?.aborted) {
+        waiter.reject(createResearchCancellationError());
+        continue;
+      }
+      active += 1;
+      waiter.cleanup();
+      waiter.resolve(() => {
+        active = Math.max(0, active - 1);
+        drain();
+      });
+    }
+  };
+
+  const acquire = (signal) => new Promise((resolve, reject) => {
+    const waiter = {
+      signal,
+      resolve,
+      reject,
+      cleanup: () => {},
+    };
+    const onAbort = () => {
+      const index = queue.indexOf(waiter);
+      if (index >= 0) queue.splice(index, 1);
+      reject(createResearchCancellationError());
+    };
+    waiter.cleanup = () => signal?.removeEventListener("abort", onAbort);
+    signal?.addEventListener("abort", onAbort, { once: true });
+    queue.push(waiter);
+    drain();
+  });
+
+  const recordPressure = (error) => {
+    const diagnostic = error?.providerDiagnostic;
+    if (diagnostic?.upstreamStatus !== 429 || diagnostic?.errorCode !== "rate_limit_exceeded") return;
+    const rateLimit = diagnostic.rateLimit ?? {};
+    const delayMs = Math.max(
+      parseRateLimitDurationMs(rateLimit.retryAfter),
+      rateLimit.remainingTokens === "0" ? parseRateLimitDurationMs(rateLimit.resetTokens) : 0,
+    );
+    if (delayMs > 0) blockedUntil = Math.max(blockedUntil, now() + delayMs);
+  };
+
+  return {
+    async run(task, { signal, onStart } = {}) {
+      const release = await acquire(signal);
+      try {
+        onStart?.({ active, blockedUntil });
+        return await task();
+      } catch (error) {
+        recordPressure(error);
+        throw error;
+      } finally {
+        release();
+      }
+    },
+    snapshot() {
+      return { active, queued: queue.length, blockedUntil, limit };
+    },
+  };
+}
+
+const researchProviderGate = createResearchProviderGate();
+
+function normalizeProviderUsage(value) {
+  if (!isRecord(value)) return null;
+  const number = (candidate) => Number.isInteger(candidate) && candidate >= 0 ? candidate : null;
+  const inputTokens = number(value.input_tokens);
+  const outputTokens = number(value.output_tokens);
+  const totalTokens = number(value.total_tokens);
+  if (inputTokens === null && outputTokens === null && totalTokens === null) return null;
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens,
+  };
+}
+
 async function createUpstreamRequestError(response, stage) {
   const rawBody = await response.text();
   let detail = "";
@@ -2635,38 +2925,72 @@ function restrictResearchToAcceptedSources(research, sources) {
   };
 }
 
-async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, activeCategory = null) {
-  const startedAt = new Date().toISOString();
-  const response = await fetchImpl(OPENAI_RESPONSES_URL, {
-    method: "POST",
-    headers: {
-      accept: "application/json",
-      "content-type": "application/json",
-      authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: RESEARCH_PROJECT_MODEL,
-      tools: [{ type: "web_search_preview" }],
-      input: [
-        { role: "system", content: `${RESEARCH_PROJECT_SYSTEM_PROMPT}${WEB_SEARCH_SOURCE_BOUNDARY_PROMPT}` },
-         { role: "user", content: buildResearchProjectPrompt({ ...project, activeCategory }) },
-      ],
-      max_output_tokens: RESEARCH_PROJECT_MAX_TOKENS,
-       max_tool_calls: activeCategory?.maxToolCalls ?? RESEARCH_PROJECT_MAX_TOOL_CALLS,
-      include: ["web_search_call.action.sources"],
-      text: {
-        format: {
-          type: "json_schema",
-          name: "safeloc_research_project",
-          strict: true,
-          schema: RESEARCH_PROJECT_RESPONSE_SCHEMA,
-        },
+async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, activeCategory = null, providerGate = researchProviderGate) {
+  const queuedAtMs = Date.now();
+  let issuedAtMs = null;
+  const scopedEvidenceIds = Array.isArray(activeCategory?.evidenceIds)
+    ? activeCategory.evidenceIds.filter((id) => RESEARCH_EVIDENCE_IDS.includes(id))
+    : RESEARCH_EVIDENCE_IDS;
+  const requestedOutputTokens = activeCategory ? RESEARCH_CATEGORY_MAX_TOKENS : RESEARCH_PROJECT_MAX_TOKENS;
+  const requestBody = JSON.stringify({
+    model: RESEARCH_PROJECT_MODEL,
+    tools: [{ type: "web_search_preview" }],
+    input: [
+      { role: "system", content: `${RESEARCH_PROJECT_SYSTEM_PROMPT}${WEB_SEARCH_SOURCE_BOUNDARY_PROMPT}` },
+      { role: "user", content: buildResearchProjectPrompt({ ...project, activeCategory }) },
+    ],
+    max_output_tokens: requestedOutputTokens,
+    max_tool_calls: activeCategory?.maxToolCalls ?? RESEARCH_PROJECT_MAX_TOOL_CALLS,
+    include: ["web_search_call.action.sources"],
+    text: {
+      format: {
+        type: "json_schema",
+        name: "safeloc_research_project",
+        strict: true,
+        schema: buildResearchResponseSchema(scopedEvidenceIds),
       },
-    }),
-    signal,
+    },
   });
-
-  if (!response.ok) throw await createUpstreamRequestError(response, "Research with web search");
+  const startedAt = new Date().toISOString();
+  let response;
+  try {
+    response = await providerGate.run(async () => {
+      const upstream = await fetchImpl(OPENAI_RESPONSES_URL, {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+          authorization: `Bearer ${apiKey}`,
+        },
+        body: requestBody,
+        signal,
+      });
+      if (!upstream.ok) throw await createUpstreamRequestError(upstream, "Research with web search");
+      return upstream;
+    }, {
+      signal,
+      onStart: () => {
+        issuedAtMs = Date.now();
+      },
+    });
+  } catch (error) {
+    const finishedAtMs = Date.now();
+    error.providerAttempt = {
+      categoryId: activeCategory?.categoryId ?? null,
+      attemptType: activeCategory?.attempt ?? "primary",
+      queuedAt: new Date(queuedAtMs).toISOString(),
+      issuedAt: issuedAtMs === null ? null : new Date(issuedAtMs).toISOString(),
+      finishedAt: new Date(finishedAtMs).toISOString(),
+      queueWaitMs: issuedAtMs === null ? null : Math.max(0, issuedAtMs - queuedAtMs),
+      elapsedMs: issuedAtMs === null ? null : Math.max(0, finishedAtMs - issuedAtMs),
+      status: error?.providerDiagnostic?.upstreamStatus ?? null,
+      outcome: error?.name === "ResearchCancelledError" ? "cancelled" : "failed",
+      requestedOutputTokens,
+      requestBodyBytes: Buffer.byteLength(requestBody),
+      usage: null,
+    };
+    throw error;
+  }
   const rawText = await response.text();
   let body;
   try {
@@ -2704,6 +3028,21 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
   const searchTerms = extractSearchTerms(bounded.body);
   const observedQueriesByEvidence = extractObservedQueriesByEvidence(bounded.body, project);
   const finishedAt = new Date().toISOString();
+  const finishedAtMs = Date.now();
+  const providerAttempt = {
+    categoryId: activeCategory?.categoryId ?? null,
+    attemptType: activeCategory?.attempt ?? "primary",
+    queuedAt: new Date(queuedAtMs).toISOString(),
+    issuedAt: issuedAtMs === null ? null : new Date(issuedAtMs).toISOString(),
+    finishedAt,
+    queueWaitMs: issuedAtMs === null ? null : Math.max(0, issuedAtMs - queuedAtMs),
+    elapsedMs: issuedAtMs === null ? null : Math.max(0, finishedAtMs - issuedAtMs),
+    status: response.status,
+    outcome: "completed",
+    requestedOutputTokens,
+    requestBodyBytes: Buffer.byteLength(requestBody),
+    usage: normalizeProviderUsage(body.usage),
+  };
   return {
     research,
     sources,
@@ -2729,6 +3068,8 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
       executedQuery: activeCategory?.query ?? null,
       startedAt,
       finishedAt,
+      providerAttempt,
+      providerUsage: providerAttempt.usage,
     },
   };
 }
@@ -3442,6 +3783,7 @@ export {
   buildVariableQueries,
   buildVariableQueryPlan,
   accessResearchDocument,
+  createPinnedLookup,
   evaluateResearchDocumentAccess,
   extractResponseOutputText,
   orchestrateCategoryResearch,

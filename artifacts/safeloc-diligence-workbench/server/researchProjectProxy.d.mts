@@ -2,6 +2,8 @@ export declare const DEFAULT_RESEARCH_CAPACITY_MW: number;
 export declare const OPENAI_RESPONSES_URL: string;
 export declare const RESEARCH_EVIDENCE_IDS: string[];
 export declare const RESEARCH_PROJECT_MAX_TOKENS: number;
+export declare const RESEARCH_CATEGORY_MAX_TOKENS: number;
+export declare const RESEARCH_PROVIDER_MAX_CONCURRENCY: number;
 export declare const RESEARCH_PROJECT_MODEL: string;
 export declare const RESEARCH_PROJECT_SYSTEM_PROMPT: string;
 export declare const RESEARCH_PROJECT_TIMEOUT_MS: number;
@@ -45,6 +47,10 @@ export declare function researchProjectWithWebSearch(project: { name: string; lo
 }>;
 export declare function createResearchProjectRateLimiter(options?: { limit?: number; windowMs?: number; now?: () => number }): {
   allow(req: unknown): { allowed: boolean; retryAfterSeconds: number };
+};
+export declare function createResearchProviderGate(options?: { limit?: number }): {
+  run<T>(task: () => Promise<T>, options?: { signal?: AbortSignal; onStart?: () => void }): Promise<T>;
+  snapshot(): { active: number; queued: number; blockedUntil: number; limit: number };
 };
 export declare function handleResearchProjectRequest(
   req: unknown,

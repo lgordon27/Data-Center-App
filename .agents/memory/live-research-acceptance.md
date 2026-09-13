@@ -26,3 +26,9 @@ Classify upstream HTTP 429 responses from allowlisted provider error code/type f
 **Why:** A direct OpenAI probe and several category requests succeeded, then the provider explicitly returned `rate_limit_exceeded` with zero remaining tokens and retry/reset indicators. Treating every 429 as quota exhaustion hid this distinction.
 
 **How to apply:** Retain a bounded sanitized provider message, request ID, retry delay, and selected rate-limit headers. Redact credentials, organization identifiers, and email addresses. Stop later acceptance runs after a systemic provider failure rather than retrying the whole batch.
+
+A single category-scoped request can fit comfortably within the provider token window while still failing the evidence milestone because authoritative-domain search results are not necessarily relevant to the exact project. Provider capacity and evidence usefulness are separate acceptance gates.
+
+**Why:** A one-search AWS New Albany grid request completed with modest measured usage, but returned only official railroad-grade-crossing pages. The opened page contained no AWS or grid-interconnection support, so the governed finding correctly remained Missing Evidence.
+
+**How to apply:** Record actual provider usage separately from request bytes and output reservation. After a focused search, open at most the allowed documents and require exact-project claim support; do not rerun automatically or relax eligibility merely because the provider call succeeded.

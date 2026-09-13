@@ -11,6 +11,7 @@ import {
   OPENAI_RESPONSES_URL,
   RESEARCH_EVIDENCE_IDS,
   RESEARCH_PROJECT_MAX_TOKENS,
+  RESEARCH_CATEGORY_MAX_TOKENS,
   RESEARCH_PROJECT_MAX_TOOL_CALLS,
   RESEARCH_PROJECT_MODEL,
   RESEARCH_PROJECT_TIMEOUT_MS,
@@ -24,6 +25,7 @@ import {
   handleResearchProjectRequest,
   parseResearchResponse,
   createResearchProjectRateLimiter,
+  createResearchProviderGate,
   safePublicSourceUrl,
   normalizeCapacityMW,
   normalizeReportedCapacityMW,
@@ -441,6 +443,168 @@ test("pins both single-address and all-address Node lookup requests", async () =
       resolve();
     });
   });
+});
+
+test("preserves bounded sanitized document transport errors and cancellation state", async () => {
+  const failed = await accessResearchDocument({ url: "https://example.gov/report?token=private-value" }, {
+    fetchImpl: async () => {
+      const cause = Object.assign(new Error("connect failed for https://example.gov/report?token=private-value"), {
+        code: "ECONNREFUSED",
+      });
+      throw Object.assign(new TypeError("fetch failed authorization: Bearer sk-secret-value"), {
+        code: "ERR_FETCH_FAILED",
+        cause,
+      });
+    },
+  });
+  assert.equal(failed.reason, "network-failure");
+  assert.equal(failed.transportDiagnostic.stage, "request");
+  assert.equal(failed.transportDiagnostic.responseReceived, false);
+  assert.equal(failed.transportDiagnostic.errorCode, "ERR_FETCH_FAILED");
+  assert.equal(failed.transportDiagnostic.causeCode, "ECONNREFUSED");
+  assert.equal(failed.transportDiagnostic.sourceOrigin, "https://example.gov");
+  assert.equal(failed.transportDiagnostic.sourcePathname, "/report");
+  assert.doesNotMatch(JSON.stringify(failed.transportDiagnostic), /private-value|sk-secret-value|Bearer\s+sk-/);
+
+  const controller = new AbortController();
+  const pending = accessResearchDocument({ url: "https://example.gov/slow" }, {
+    signal: controller.signal,
+    fetchImpl: async (_url, init) => new Promise((_resolve, reject) => {
+      init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true });
+    }),
+  });
+  controller.abort(new DOMException("bounded timeout", "TimeoutError"));
+  await assert.rejects(pending, (error) => {
+    assert.equal(error.name, "ResearchCancelledError");
+    assert.equal(error.transportDiagnostic.cancelled, true);
+    assert.equal(error.transportDiagnostic.timedOut, true);
+    return true;
+  });
+});
+
+test("limits provider requests globally and records honest request telemetry", async () => {
+  const gate = createResearchProviderGate({ limit: 2 });
+  let active = 0;
+  let peak = 0;
+  const fetchImpl = async () => {
+    active += 1;
+    peak = Math.max(peak, active);
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    active -= 1;
+    const response = singleCallResponse(validResearchResponse());
+    const body = await response.json();
+    body.usage = { input_tokens: 120, output_tokens: 40, total_tokens: 160 };
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  const calls = await Promise.all(Array.from({ length: 5 }, (_, index) => researchProjectWithWebSearch(
+    { name: "Project Atlas", location: "Ohio" },
+    "server-secret-for-test",
+    fetchImpl,
+    undefined,
+    {
+      categoryId: `category-${index}`,
+      evidenceIds: ["electricity_cost"],
+      attempt: index === 4 ? "repair" : "primary",
+      maxToolCalls: 1,
+    },
+    gate,
+  )));
+  assert.equal(peak, 2);
+  assert.equal(gate.snapshot().active, 0);
+  assert.ok(calls.some((call) => call.coverage.providerAttempt.queueWaitMs > 0));
+  assert.equal(calls[4].coverage.providerAttempt.attemptType, "repair");
+  assert.equal(calls[0].coverage.providerAttempt.requestedOutputTokens, RESEARCH_CATEGORY_MAX_TOKENS);
+  assert.deepEqual(calls[0].coverage.providerUsage, {
+    inputTokens: 120,
+    outputTokens: 40,
+    totalTokens: 160,
+  });
+});
+
+test("honors provider reset pressure without retrying and cancels queued work", async () => {
+  const gate = createResearchProviderGate({ limit: 1 });
+  let calls = 0;
+  const rateLimitedFetch = async () => {
+    calls += 1;
+    return new Response(JSON.stringify({
+      error: {
+        message: "Token capacity is temporarily unavailable.",
+        type: "tokens",
+        code: "rate_limit_exceeded",
+      },
+    }), {
+      status: 429,
+      headers: {
+        "content-type": "application/json",
+        "retry-after": "0.03",
+        "x-ratelimit-remaining-tokens": "0",
+        "x-ratelimit-reset-tokens": "30ms",
+      },
+    });
+  };
+  await assert.rejects(researchProjectWithWebSearch(
+    { name: "Project Atlas", location: "Ohio" },
+    "server-secret-for-test",
+    rateLimitedFetch,
+    undefined,
+    { categoryId: "grid", evidenceIds: ["grid_interconnection"], maxToolCalls: 1 },
+    gate,
+  ), (error) => {
+    assert.equal(error.providerAttempt.outcome, "failed");
+    assert.equal(error.providerAttempt.usage, null);
+    return true;
+  });
+  const startedAt = Date.now();
+  await researchProjectWithWebSearch(
+    { name: "Project Atlas", location: "Ohio" },
+    "server-secret-for-test",
+    async () => {
+      calls += 1;
+      return singleCallResponse(validResearchResponse());
+    },
+    undefined,
+    { categoryId: "grid", evidenceIds: ["grid_interconnection"], maxToolCalls: 1 },
+    gate,
+  );
+  assert.ok(Date.now() - startedAt >= 20);
+  assert.equal(calls, 2);
+
+  const blockedGate = createResearchProviderGate({ limit: 1 });
+  await assert.rejects(researchProjectWithWebSearch(
+    { name: "Project Atlas", location: "Ohio" },
+    "server-secret-for-test",
+    async () => new Response(JSON.stringify({
+      error: { message: "Wait for reset.", type: "tokens", code: "rate_limit_exceeded" },
+    }), {
+      status: 429,
+      headers: {
+        "content-type": "application/json",
+        "retry-after": "1",
+      },
+    }),
+    undefined,
+    { categoryId: "grid", evidenceIds: ["grid_interconnection"], maxToolCalls: 1 },
+    blockedGate,
+  ));
+  const controller = new AbortController();
+  let queuedFetchCalled = false;
+  const queued = researchProjectWithWebSearch(
+    { name: "Project Atlas", location: "Ohio" },
+    "server-secret-for-test",
+    async () => {
+      queuedFetchCalled = true;
+      return singleCallResponse(validResearchResponse());
+    },
+    controller.signal,
+    { categoryId: "grid", evidenceIds: ["grid_interconnection"], maxToolCalls: 1 },
+    blockedGate,
+  );
+  controller.abort();
+  await assert.rejects(queued, { name: "ResearchCancelledError" });
+  assert.equal(queuedFetchCalled, false);
 });
 
 test("blocks mapped IPv4-mapped IPv6 destinations and oversized streamed responses", async () => {
@@ -1640,7 +1804,7 @@ test("limits paid custom research requests by client IP", async () => {
   assert.equal(allowedAgain.statusCode, 200);
 });
 
-test("uses eight bounded category web-search calls with the strict 16-item schema", async () => {
+test("uses bounded category web-search calls with scoped strict schemas", async () => {
   const response = responseRecorder();
   let requestUrl;
   let requestInit;
@@ -1681,16 +1845,15 @@ test("uses eight bounded category web-search calls with the strict 16-item schem
   assert.equal(requestUrl, OPENAI_RESPONSES_URL);
   const body = JSON.parse(requestInit.body);
   assert.equal(body.model, RESEARCH_PROJECT_MODEL);
-  assert.equal(body.max_output_tokens, RESEARCH_PROJECT_MAX_TOKENS);
+  assert.equal(body.max_output_tokens, RESEARCH_CATEGORY_MAX_TOKENS);
   assert.ok(body.max_tool_calls > 0 && body.max_tool_calls <= RESEARCH_PROJECT_MAX_TOOL_CALLS);
   assert.deepEqual(body.tools, [{ type: "web_search_preview" }]);
   assert.equal(body.text.format.type, "json_schema");
   assert.equal(body.text.format.strict, true);
-  assert.deepEqual(body.text.format.schema, RESEARCH_PROJECT_RESPONSE_SCHEMA);
-  assert.deepEqual(body.text.format.schema.properties.evidence.properties.electricity_cost.properties.modelReportedConfidence, {
-    anyOf: [{ type: "number", minimum: 0, maximum: 100 }, { type: "null" }],
-  });
-  assert.ok(body.text.format.schema.properties.evidence.properties.electricity_cost.required.includes("modelReportedConfidence"));
+  const scopedIds = Object.keys(body.text.format.schema.properties.evidence.properties);
+  assert.ok(scopedIds.length <= 4);
+  assert.ok(scopedIds.every((id) => RESEARCH_EVIDENCE_IDS.includes(id)));
+  assert.deepEqual(body.text.format.schema.properties.evidence.required, scopedIds);
   assert.equal(body.input.length, 2);
   assert.match(body.input[1].content, /Project Atlas/);
   assert.match(body.input[1].content, /Texas/);

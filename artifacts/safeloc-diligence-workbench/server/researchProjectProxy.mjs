@@ -1316,6 +1316,7 @@ function buildResearchAudit({
       providerFailure: supplied.providerFailure ?? null,
       providerFailureType: supplied.providerFailureType ?? null,
       providerRequestCount: counts.issuedProviderRequests,
+      providerAttempts: Array.isArray(supplied.providerAttempts) ? supplied.providerAttempts.slice(0, 3) : [],
     };
   });
   return {
@@ -1335,6 +1336,7 @@ function buildResearchAudit({
       ? Math.min(RESEARCH_RUN_BUDGET.maxToolCalls, Math.max(0, coverage.toolCallCount))
       : 0,
     providerRequestCount: Number.isInteger(coverage.providerRequestCount) ? coverage.providerRequestCount : 0,
+    providerAttempts: Array.isArray(coverage.providerAttempts) ? coverage.providerAttempts.slice(0, RESEARCH_RUN_BUDGET.maxProviderRequests) : [],
     physicalOpenBudget: RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens,
     physicalOpensUsed: Number.isInteger(coverage.physicalOpensUsed) ? coverage.physicalOpensUsed : 0,
     physicalOpensRemaining: Math.max(0, RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens - (Number.isInteger(coverage.physicalOpensUsed) ? coverage.physicalOpensUsed : 0)),
@@ -1446,6 +1448,7 @@ async function orchestrateCategoryResearch(project, {
       openedDocuments: [],
       providerRequestCount: 0,
       providerFailureType: null,
+      providerAttempts: [],
     };
     try {
       if (!concurrent) providerRequests += 1;
@@ -1469,6 +1472,7 @@ async function orchestrateCategoryResearch(project, {
       if (concurrent) providerRequests += primaryRequestCost;
       else providerRequests += Math.max(0, primaryRequestCost - 1 - primaryAdditionalRequestsAuthorized);
       execution.providerRequestCount += primaryRequestCost;
+      execution.providerAttempts.push(...(Array.isArray(primary?.providerAttempts) ? primary.providerAttempts : []));
       if (signal?.aborted) {
         const error = new Error("Project research was cancelled.");
         error.name = "ResearchCancelledError";
@@ -1541,6 +1545,7 @@ async function orchestrateCategoryResearch(project, {
            : 1;
         providerRequests += followUpRequestCost - 1;
         execution.providerRequestCount += followUpRequestCost - 1;
+        execution.providerAttempts.push(...(Array.isArray(followUp?.providerAttempts) ? followUp.providerAttempts : []));
         if (signal?.aborted) {
           const error = new Error("Project research was cancelled.");
           error.name = "ResearchCancelledError";
@@ -1616,6 +1621,7 @@ async function orchestrateCategoryResearch(project, {
       lastError = error;
       const failure = classifyResearchFailure(error);
       execution.providerFailureType = failure.type === "timeout" ? "deadline" : failure.type;
+      execution.providerAttempts.push(...(Array.isArray(error?.providerAttempts) ? error.providerAttempts : []));
       providerFailure = failure.type === "timeout" ? null : failure.message;
       state = categoryCandidates.length
         ? "Partial"
@@ -3335,15 +3341,19 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
         let repairAttempted = false;
         let providerRequestCount = 0;
         let observedToolCallCount = 0;
+        const providerAttempts = [];
         const requestCategory = async (options) => {
           providerRequestCount += 1;
           try {
             const result = await researchProjectWithWebSearch(project, apiKey, fetchImpl, controller.signal, options);
             observedToolCallCount += Number.isInteger(result.coverage?.toolCallCount) ? result.coverage.toolCallCount : 0;
+            if (result.coverage?.providerAttempt) providerAttempts.push(result.coverage.providerAttempt);
             return result;
           } catch (error) {
             observedToolCallCount += Number.isInteger(error?.toolCallCount) ? error.toolCallCount : 0;
+            if (error?.providerAttempt) providerAttempts.push(error.providerAttempt);
             error.providerRequestCount = providerRequestCount;
+            error.providerAttempts = [...providerAttempts];
             throw error;
           }
         };
@@ -3507,6 +3517,7 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
           observedQueries,
           toolCallCount: categoryResult.coverage?.toolCallCount ?? 0,
            providerRequestCount,
+          providerAttempts,
           toolCallBudgetExceeded: categoryResult.coverage?.toolCallBudgetExceeded === true,
           physicalOpenBudgetExceeded,
           physicalOpensUsed,
@@ -3515,7 +3526,7 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
             research: normalizedCategoryResearch,
             rawResearch: categoryResult.research,
             sources: accessedSources,
-            coverage: categoryResult.coverage,
+            coverage: { ...categoryResult.coverage, providerAttempts },
           },
         };
       },
@@ -3564,6 +3575,7 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
         physicalOpensRemaining: Math.max(0, RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens - physicalOpensUsed),
         physicalOpenBudgetExceeded: orchestration.physicalOpenBudgetExceeded,
         providerRequestCount: orchestration.providerRequests,
+        providerAttempts: Object.values(orchestration.categoryExecutions).flatMap((execution) => execution?.providerAttempts ?? []),
         followUpCount: orchestration.followUps,
         followUpLimit: orchestration.followUpLimit,
         followUpLimitPerCategory: orchestration.followUpLimitPerCategory,
@@ -3766,6 +3778,8 @@ export {
   RESEARCH_CATEGORY_STATES,
   RESEARCH_EVIDENCE_IDS,
   RESEARCH_PROJECT_MAX_TOKENS,
+  RESEARCH_CATEGORY_MAX_TOKENS,
+  RESEARCH_PROVIDER_MAX_CONCURRENCY,
   RESEARCH_PROJECT_MAX_TOOL_CALLS,
   RESEARCH_PROJECT_MODEL,
   RESEARCH_PROJECT_TIMEOUT_MS,
@@ -3805,6 +3819,7 @@ export {
   supportsExplicitZero,
   safePublicSourceUrl,
   createResearchProjectRateLimiter,
+  createResearchProviderGate,
   classifyResearchFailure,
   prioritizeResearchSources,
   sourcePriorityApplied,

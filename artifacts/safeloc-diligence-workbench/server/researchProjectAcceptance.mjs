@@ -86,6 +86,7 @@ function sourceDiagnostics(result) {
       claimSupportState: source.claimSupportState ?? null,
       projectSpecificityState: source.projectSpecificityState ?? null,
       financialEligibilityState: source.financialEligibilityState ?? null,
+      transportDiagnostic: source.accessOutcome?.transportDiagnostic ?? null,
     })),
     retainedPassages,
   };
@@ -172,6 +173,7 @@ export function buildAcceptanceReport({ project, liveRun, failureRun, generatedA
       providerDiagnostic: result?.providerDiagnostic ?? result?.researchCache?.providerDiagnostic ?? null,
       elapsedWithinDeadline: typeof elapsedMs === "number" && elapsedMs <= budget.deadlineMs,
       providerRequestCount: audit?.providerRequestCount ?? null,
+      providerAttempts: audit?.providerAttempts ?? [],
       toolCallCount: audit?.toolCallCount ?? null,
       followUpCount: categories.filter((category) => category.followUpExecutedQuery).length,
       budget,
@@ -203,6 +205,7 @@ export function buildAcceptanceReport({ project, liveRun, failureRun, generatedA
       unresolvedGaps: category.unresolvedGaps ?? [],
       accessLimitations: category.accessLimitations ?? [],
       providerFailure: category.providerFailure ?? null,
+      providerAttempts: category.providerAttempts ?? [],
       stageCounts: category.stageCounts ?? null,
     })),
     providerLimitations: [

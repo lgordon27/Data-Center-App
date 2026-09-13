@@ -217,6 +217,25 @@ export type ResearchLocalAuthority = {
   establishmentMethod: string;
   status: "established" | "identified-no-domain";
 };
+export type ResearchProviderUsage = {
+  inputTokens: number | null;
+  outputTokens: number | null;
+  totalTokens: number | null;
+};
+export type ResearchProviderAttempt = {
+  categoryId: string | null;
+  attemptType: "primary" | "repair" | "follow-up";
+  queuedAt: string | null;
+  issuedAt: string | null;
+  finishedAt: string | null;
+  queueWaitMs: number | null;
+  elapsedMs: number | null;
+  status: number | null;
+  outcome: "completed" | "failed" | "cancelled";
+  requestedOutputTokens: number;
+  requestBodyBytes: number;
+  usage: ResearchProviderUsage | null;
+};
 export type ResearchCategoryAudit = {
   categoryId: string;
   label: string;
@@ -275,6 +294,7 @@ export type ResearchCategoryAudit = {
   providerFailure?: string | null;
   providerFailureType?: "quota-exhausted" | "provider-rate-limit" | "provider-429" | "authentication" | "deadline" | "malformed-response" | "upstream" | "provider-request-budget" | null;
   providerRequestCount?: number;
+  providerAttempts?: ResearchProviderAttempt[];
 };
 export type ResearchCategoryClaimAudit = {
   evidenceId: string;
@@ -324,6 +344,7 @@ export type ResearchAudit = {
   observedToolCallCount?: number;
   acceptedToolCallCount?: number;
   providerRequestCount: number;
+  providerAttempts?: ResearchProviderAttempt[];
   physicalOpenBudget: number;
   physicalOpensUsed: number;
   physicalOpensRemaining: number;
@@ -660,6 +681,36 @@ function parseResearchCache(value: unknown): ResearchCacheMetadata | undefined {
   };
 }
 
+function parseProviderAttempts(value: unknown): ResearchProviderAttempt[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(isRecord).slice(0, 16).map((attempt) => {
+    const usage = isRecord(attempt.usage) ? attempt.usage : null;
+    const nullableNumber = (candidate: unknown) => typeof candidate === "number" && Number.isFinite(candidate) ? candidate : null;
+    return {
+      categoryId: isNonEmptyString(attempt.categoryId) ? attempt.categoryId : null,
+      attemptType: ["primary", "repair", "follow-up"].includes(String(attempt.attemptType))
+        ? attempt.attemptType as ResearchProviderAttempt["attemptType"]
+        : "primary",
+      queuedAt: isNonEmptyString(attempt.queuedAt) ? attempt.queuedAt : null,
+      issuedAt: isNonEmptyString(attempt.issuedAt) ? attempt.issuedAt : null,
+      finishedAt: isNonEmptyString(attempt.finishedAt) ? attempt.finishedAt : null,
+      queueWaitMs: nullableNumber(attempt.queueWaitMs),
+      elapsedMs: nullableNumber(attempt.elapsedMs),
+      status: nullableNumber(attempt.status),
+      outcome: ["completed", "failed", "cancelled"].includes(String(attempt.outcome))
+        ? attempt.outcome as ResearchProviderAttempt["outcome"]
+        : "failed",
+      requestedOutputTokens: Math.max(0, Number(attempt.requestedOutputTokens) || 0),
+      requestBodyBytes: Math.max(0, Number(attempt.requestBodyBytes) || 0),
+      usage: usage ? {
+        inputTokens: nullableNumber(usage.inputTokens),
+        outputTokens: nullableNumber(usage.outputTokens),
+        totalTokens: nullableNumber(usage.totalTokens),
+      } : null,
+    };
+  });
+}
+
 function parseResearchAudit(value: unknown): ResearchAudit | undefined {
   if (!isRecord(value) || !Array.isArray(value.categories)) return undefined;
   const states: ResearchCategoryState[] = ["Complete", "Partial", "No eligible evidence", "Provider failure", "Timed out", "Not searched"];
@@ -764,6 +815,7 @@ function parseResearchAudit(value: unknown): ResearchAudit | undefined {
         ? { providerFailureType: candidate.providerFailureType as NonNullable<ResearchCategoryAudit["providerFailureType"]> }
         : {}),
       ...(Number.isInteger(candidate.providerRequestCount) ? { providerRequestCount: Math.max(0, Number(candidate.providerRequestCount)) } : {}),
+      providerAttempts: parseProviderAttempts(candidate.providerAttempts),
     } satisfies ResearchCategoryAudit];
   });
   const budget = isRecord(value.budget) ? value.budget : {};
@@ -792,6 +844,7 @@ function parseResearchAudit(value: unknown): ResearchAudit | undefined {
     ...(typeof value.observedToolCallCount === "number" ? { observedToolCallCount: value.observedToolCallCount } : {}),
     ...(typeof value.acceptedToolCallCount === "number" ? { acceptedToolCallCount: value.acceptedToolCallCount } : {}),
     providerRequestCount: Number(value.providerRequestCount) || 0,
+    providerAttempts: parseProviderAttempts(value.providerAttempts),
     physicalOpenBudget: Number(value.physicalOpenBudget) || Number(budget.maxPhysicalDocumentOpens) || 24,
     physicalOpensUsed: Number(value.physicalOpensUsed) || 0,
     physicalOpensRemaining: Number.isFinite(Number(value.physicalOpensRemaining)) ? Math.max(0, Number(value.physicalOpensRemaining)) : Number(value.physicalOpenBudget) || 24,

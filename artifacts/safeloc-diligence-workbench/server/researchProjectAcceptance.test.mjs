@@ -22,6 +22,13 @@ test("builds a diagnostic-only report with bounded live-run and retention fields
           finishedAt: "2026-09-08T10:00:04.000Z",
           elapsedMs: 4_000,
           providerRequestCount: 9,
+          providerAttempts: [{
+            categoryId: "grid",
+            attemptType: "primary",
+            requestBodyBytes: 26_071,
+            requestedOutputTokens: 3_500,
+            usage: { inputTokens: 5_383, outputTokens: 412, totalTokens: 5_795 },
+          }],
           toolCallCount: 16,
           budget: { ...RESEARCH_RUN_BUDGET },
           categoryGaps: ["water"],
@@ -57,7 +64,19 @@ test("builds a diagnostic-only report with bounded live-run and retention fields
             title: "Grid filing",
             searchDomain: "grid",
             sourceState: "claim-supported",
-            accessOutcome: { state: "accessible", passage: "The filing identifies Live Atlas and its grid interconnection." },
+            accessOutcome: {
+              state: "accessible",
+              passage: "The filing identifies Live Atlas and its grid interconnection.",
+              transportDiagnostic: {
+                stage: "complete",
+                sourceOrigin: "https://example.gov",
+                sourcePathname: "/grid",
+                elapsedMs: 120,
+                responseReceived: true,
+                httpStatus: 200,
+                contentType: "text/html",
+              },
+            },
             claimSupportState: "supported",
             projectSpecificityState: "project-specific",
             financialEligibilityState: "eligible",
@@ -89,11 +108,13 @@ test("builds a diagnostic-only report with bounded live-run and retention fields
   assert.equal(report.run.elapsedWithinDeadline, true);
   assert.equal(report.run.limitsObserved.providerRequestsWithinLimit, true);
   assert.equal(report.run.limitsObserved.followUpsWithinLimit, true);
+  assert.equal(report.run.providerAttempts[0].usage.totalTokens, 5_795);
   assert.deepEqual(report.executedQueries[1].executedQueries, ["observed water query"]);
   assert.deepEqual(report.categoryGaps, ["water"]);
   assert.equal(report.sourceStates.bySourceState["claim-supported"], 1);
   assert.equal(report.sourceStates.byAccessOutcome.accessible, 1);
   assert.equal(report.sourceStates.retainedPassages.length, 1);
+  assert.equal(report.sourceStates.sources[0].transportDiagnostic.httpStatus, 200);
   assert.deepEqual(report.providerLimitations, [
     "Some filings were not accessible.",
     "Bounded document access stopped at the size limit.",

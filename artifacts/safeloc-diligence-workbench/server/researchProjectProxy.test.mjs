@@ -44,6 +44,7 @@ import {
   accessResearchDocument,
   orchestrateCategoryResearch,
   runValidatedResearch,
+  researchProjectWithWebSearch,
   classifyResearchFailure,
 } from "./researchProjectProxy.mjs";
 import {
@@ -918,7 +919,13 @@ test("keeps stale research available when a forced refresh exhausts provider quo
   await handleResearchProjectRequest(request({ ...project, forceRefresh: true }), response, {
     apiKey: "server-secret-for-test",
     cache,
-    fetchImpl: async () => new Response("private quota detail", { status: 429 }),
+    fetchImpl: async () => new Response(JSON.stringify({
+      error: {
+        message: "Billing allocation reached.",
+        type: "insufficient_quota",
+        code: "insufficient_quota",
+      },
+    }), { status: 429, headers: { "content-type": "application/json" } }),
   });
   assert.equal(response.statusCode, 200);
   assert.equal(response.json().researchCache.state, "stale");
@@ -926,6 +933,91 @@ test("keeps stale research available when a forced refresh exhausts provider quo
   assert.equal(response.json().researchCache.errorType, "quota-exhausted");
   assert.equal(response.json().evidence.length, 16);
   assert.doesNotMatch(response.body, /private quota detail/i);
+});
+
+test("classifies only an explicit provider quota code as quota exhaustion", async () => {
+  await assert.rejects(
+    researchProjectWithWebSearch(
+      { name: "Quota Atlas", location: "Texas" },
+      "server-secret-for-test",
+      async () => new Response(JSON.stringify({
+        error: {
+          message: "Billing allocation reached.",
+          type: "insufficient_quota",
+          code: "insufficient_quota",
+        },
+      }), {
+        status: 429,
+        headers: { "content-type": "application/json", "x-request-id": "req_quota_123" },
+      }),
+    ),
+    (error) => {
+      const failure = classifyResearchFailure(error);
+      assert.equal(failure.type, "quota-exhausted");
+      assert.equal(failure.providerDiagnostic.upstreamStatus, 429);
+      assert.equal(failure.providerDiagnostic.errorCode, "insufficient_quota");
+      assert.equal(failure.providerDiagnostic.errorType, "insufficient_quota");
+      assert.equal(failure.providerDiagnostic.requestId, "req_quota_123");
+      return true;
+    },
+  );
+});
+
+test("distinguishes temporary provider rate limiting and retains bounded indicators", async () => {
+  await assert.rejects(
+    researchProjectWithWebSearch(
+      { name: "Rate Atlas", location: "Arizona" },
+      "server-secret-for-test",
+      async () => new Response(JSON.stringify({
+        error: {
+          message: "Please retry later.",
+          type: "rate_limit_error",
+          code: "rate_limit_exceeded",
+        },
+      }), {
+        status: 429,
+        headers: {
+          "content-type": "application/json",
+          "retry-after": "12",
+          "x-ratelimit-remaining-requests": "0",
+          "x-ratelimit-reset-requests": "12s",
+        },
+      }),
+    ),
+    (error) => {
+      const failure = classifyResearchFailure(error);
+      assert.equal(failure.type, "provider-rate-limit");
+      assert.equal(failure.providerDiagnostic.errorCode, "rate_limit_exceeded");
+      assert.deepEqual(failure.providerDiagnostic.rateLimit, {
+        retryAfter: "12",
+        remainingRequests: "0",
+        resetRequests: "12s",
+      });
+      return true;
+    },
+  );
+});
+
+test("keeps unknown or malformed provider 429 responses distinct and redacted", async () => {
+  await assert.rejects(
+    researchProjectWithWebSearch(
+      { name: "Unknown Atlas", location: "Ohio" },
+      "server-secret-for-test",
+      async () => new Response(
+        "temporary condition for org-privateOwner user@example.com authorization: Bearer sk-secret-value token=private-token",
+        { status: 429, headers: { "x-request-id": "req_unknown_456" } },
+      ),
+    ),
+    (error) => {
+      const failure = classifyResearchFailure(error);
+      assert.equal(failure.type, "provider-429");
+      assert.equal(failure.providerDiagnostic.requestId, "req_unknown_456");
+      assert.match(failure.providerDiagnostic.message, /\[redacted\]/);
+      assert.doesNotMatch(JSON.stringify(failure), /sk-secret-value|private-token|org-privateOwner|user@example.com/);
+      assert.equal(failure.providerDiagnostic.errorCode, undefined);
+      return true;
+    },
+  );
 });
 
 test("exposes observable completion status for a background stale refresh", async () => {
@@ -2065,11 +2157,19 @@ test("returns specific safe quota, authentication, parse, and timeout errors", a
     apiKey: "server-secret-for-test",
     cache,
     rateLimiter,
-    fetchImpl: async () => new Response("provider private detail", { status: 429 }),
+    fetchImpl: async () => new Response(JSON.stringify({
+      error: {
+        message: "Billing allocation reached.",
+        type: "insufficient_quota",
+        code: "insufficient_quota",
+      },
+    }), { status: 429, headers: { "content-type": "application/json" } }),
   });
   assert.equal(providerResponse.statusCode, 429);
-  assert.match(providerResponse.body, /quota is exhausted.*429/i);
-  assert.doesNotMatch(providerResponse.body, /provider private detail/i);
+  assert.match(providerResponse.body, /insufficient quota or a billing limit/i);
+  assert.equal(providerResponse.json().errorType, "quota-exhausted");
+  assert.equal(providerResponse.json().providerDiagnostic.errorCode, "insufficient_quota");
+  assert.doesNotMatch(providerResponse.body, /server-secret-for-test/i);
 
   const authenticationResponse = responseRecorder();
   await handleResearchProjectRequest(request({ name: "Project Atlas", location: "Texas" }), authenticationResponse, {

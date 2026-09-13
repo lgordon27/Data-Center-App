@@ -169,6 +169,7 @@ export function buildAcceptanceReport({ project, liveRun, failureRun, generatedA
       failureType: result?.errorType ?? result?.researchCache?.errorType ?? (retainedCacheResponse ? "retained-cache" : null),
       failureMessage: result?.error
         ?? (retainedCacheResponse ? "Live refresh failed; the response contains retained cached research." : null),
+      providerDiagnostic: result?.providerDiagnostic ?? result?.researchCache?.providerDiagnostic ?? null,
       elapsedWithinDeadline: typeof elapsedMs === "number" && elapsedMs <= budget.deadlineMs,
       providerRequestCount: audit?.providerRequestCount ?? null,
       toolCallCount: audit?.toolCallCount ?? null,

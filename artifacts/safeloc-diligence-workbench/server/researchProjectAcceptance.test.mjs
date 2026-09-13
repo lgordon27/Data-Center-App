@@ -134,6 +134,39 @@ test("keeps provider failures diagnostic and explicit when no category audit is 
   assert.equal("evidence" in report, false);
 });
 
+test("includes only the bounded sanitized upstream diagnostic in acceptance output", () => {
+  const report = buildAcceptanceReport({
+    project: { name: "Limited Atlas", location: "Ohio" },
+    liveRun: {
+      statusCode: 429,
+      durationMs: 120,
+      payload: {
+        error: "Project research provider is temporarily rate-limited; retry after the indicated delay.",
+        errorType: "provider-rate-limit",
+        providerDiagnostic: {
+          upstreamStatus: 429,
+          errorCode: "rate_limit_exceeded",
+          errorType: "rate_limit_error",
+          message: "Please retry later.",
+          requestId: "req_limited",
+          rateLimit: { retryAfter: "8", remainingRequests: "0" },
+        },
+      },
+    },
+    failureRun: null,
+  });
+
+  assert.equal(report.run.failureType, "provider-rate-limit");
+  assert.deepEqual(report.run.providerDiagnostic, {
+    upstreamStatus: 429,
+    errorCode: "rate_limit_exceeded",
+    errorType: "rate_limit_error",
+    message: "Please retry later.",
+    requestId: "req_limited",
+    rateLimit: { retryAfter: "8", remainingRequests: "0" },
+  });
+});
+
 test("does not attribute a failed refresh with retained cache to the current live run", () => {
   const report = buildAcceptanceReport({
     project: { name: "Cached Atlas", location: "Texas" },

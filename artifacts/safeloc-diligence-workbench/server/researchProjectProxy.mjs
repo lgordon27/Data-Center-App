@@ -278,6 +278,7 @@ function cacheMetadata(key, entry, state, refreshStatus = "idle", extras = {}) {
     modelVersion: entry?.modelVersion ?? RESEARCH_PROJECT_MODEL,
     revalidated: entry?.needsRevalidation === true,
     ...(extras.errorType ? { errorType: extras.errorType } : {}),
+    ...(extras.providerDiagnostic ? { providerDiagnostic: extras.providerDiagnostic } : {}),
   };
 }
 
@@ -2421,30 +2422,76 @@ function redactUpstreamDetail(value) {
   return String(value ?? "")
     .replace(/Bearer\s+\S+/gi, "Bearer [redacted]")
     .replace(/\bsk-[A-Za-z0-9_-]+/g, "[redacted-key]")
+    .replace(/\borg-[A-Za-z0-9_-]+\b/g, "org-[redacted]")
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]")
+    .replace(/(api[_ -]?key|authorization|token)\s*[:=]\s*\S+/gi, "$1=[redacted]")
     .replace(/\s+/g, " ")
     .trim()
-    .slice(0, 500);
+    .slice(0, 240);
+}
+
+function safeDiagnosticToken(value, maxLength = 120) {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().slice(0, maxLength);
+  return normalized && /^[A-Za-z0-9_.:/ -]+$/.test(normalized) ? normalized : null;
+}
+
+function safeProviderErrorKind(value) {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase().slice(0, 80);
+  return normalized && /^[a-z0-9_.-]+$/.test(normalized) ? normalized : null;
+}
+
+function selectedRateLimitIndicators(headers) {
+  const fields = {
+    retryAfter: "retry-after",
+    limitRequests: "x-ratelimit-limit-requests",
+    remainingRequests: "x-ratelimit-remaining-requests",
+    resetRequests: "x-ratelimit-reset-requests",
+    limitTokens: "x-ratelimit-limit-tokens",
+    remainingTokens: "x-ratelimit-remaining-tokens",
+    resetTokens: "x-ratelimit-reset-tokens",
+  };
+  return Object.fromEntries(Object.entries(fields).flatMap(([key, header]) => {
+    const value = safeDiagnosticToken(headers.get(header));
+    return value ? [[key, value]] : [];
+  }));
 }
 
 async function createUpstreamRequestError(response, stage) {
   const rawBody = await response.text();
   let detail = "";
+  let providerErrorCode = null;
+  let providerErrorType = null;
   try {
     const body = JSON.parse(rawBody);
     const providerError = body?.error;
     detail = typeof providerError === "string"
       ? providerError
       : providerError?.message ?? body?.message ?? "";
+    providerErrorCode = safeProviderErrorKind(providerError?.code ?? body?.code);
+    providerErrorType = safeProviderErrorKind(providerError?.type ?? body?.type);
   } catch {
     detail = rawBody;
   }
   const suffix = redactUpstreamDetail(detail);
+  const requestId = safeDiagnosticToken(
+    response.headers.get("x-request-id") ?? response.headers.get("request-id"),
+    160,
+  );
+  const rateLimit = selectedRateLimitIndicators(response.headers);
   const error = new Error(`${stage} upstream returned HTTP ${response.status}${suffix ? `: ${suffix}` : ""}`);
   error.name = "UpstreamRequestError";
   error.upstreamStatus = response.status;
-  error.publicMessage = response.status === 429
-    ? "Project research provider quota is exhausted (HTTP 429); restore quota or retry later."
-    : response.status === 401
+  error.providerDiagnostic = {
+    upstreamStatus: response.status,
+    ...(providerErrorCode ? { errorCode: providerErrorCode } : {}),
+    ...(providerErrorType ? { errorType: providerErrorType } : {}),
+    ...(suffix ? { message: suffix } : {}),
+    ...(requestId ? { requestId } : {}),
+    ...(Object.keys(rateLimit).length ? { rateLimit } : {}),
+  };
+  error.publicMessage = response.status === 401
       ? "Project research provider authentication failed (HTTP 401); verify the server API credential."
       : "Project research provider is unavailable; retry later.";
   return error;
@@ -2750,9 +2797,39 @@ function classifyResearchFailure(error) {
   if (error?.name === "AbortError") return { status: 504, type: "timeout", message: "Project research reached its 90-second deadline; valid completed findings were retained and the run can be retried." };
   if (error?.name === "ResearchParseError") return { status: 502, type: "malformed-response", message: "Project research provider returned malformed structured data; retry the affected research." };
   if (error?.name === "UpstreamRequestError") {
-    if (error.upstreamStatus === 429) return { status: 429, type: "quota-exhausted", message: error.publicMessage };
+    if (error.upstreamStatus === 429) {
+      const diagnostic = error.providerDiagnostic ?? { upstreamStatus: 429 };
+      const kinds = [diagnostic.errorCode, diagnostic.errorType].filter(Boolean);
+      if (kinds.some((value) => ["insufficient_quota", "billing_hard_limit_reached", "quota_exceeded"].includes(value))) {
+        return {
+          status: 429,
+          type: "quota-exhausted",
+          message: "Project research provider reports insufficient quota or a billing limit; verify the OpenAI project used by this app.",
+          providerDiagnostic: diagnostic,
+        };
+      }
+      if (kinds.some((value) => ["rate_limit_exceeded", "rate_limit_error", "too_many_requests"].includes(value))) {
+        return {
+          status: 429,
+          type: "provider-rate-limit",
+          message: "Project research provider is temporarily rate-limited; retry after the indicated delay.",
+          providerDiagnostic: diagnostic,
+        };
+      }
+      return {
+        status: 429,
+        type: "provider-429",
+        message: "Project research provider returned HTTP 429 without a confirmed quota or rate-limit code; inspect the provider diagnostic.",
+        providerDiagnostic: diagnostic,
+      };
+    }
     if (error.upstreamStatus === 401) return { status: 502, type: "authentication", message: error.publicMessage };
-    return { status: 502, type: "upstream", message: error.publicMessage ?? "Project research provider request failed." };
+    return {
+      status: 502,
+      type: "upstream",
+      message: error.publicMessage ?? "Project research provider request failed.",
+      ...(error.providerDiagnostic ? { providerDiagnostic: error.providerDiagnostic } : {}),
+    };
   }
   if (error?.name === "RateLimitError") return { status: 429, type: "request-limit", message: RESEARCH_PROJECT_RATE_LIMIT_MESSAGE };
   if (error?.name === "ConfigurationError") return { status: 503, type: "not-configured", message: "Project research not configured." };
@@ -3322,13 +3399,18 @@ export async function handleResearchProjectRequest(
       sendJson(res, 200, withCacheMetadata(containedRetained, cacheMetadata(key, containedRetained, "stale", "failed", {
         providerAvailable: false,
         errorType: failure.type,
+        providerDiagnostic: failure.providerDiagnostic,
       })));
       return;
     }
     if (failure.type === "request-limit" && error?.retryAfterSeconds) {
       res.setHeader("retry-after", String(error.retryAfterSeconds));
     }
-    sendJson(res, failure.status, { error: failure.message, errorType: failure.type });
+    sendJson(res, failure.status, {
+      error: failure.message,
+      errorType: failure.type,
+      ...(failure.providerDiagnostic ? { providerDiagnostic: failure.providerDiagnostic } : {}),
+    });
   } finally {
     req.removeListener?.("aborted", onRequestAborted);
   }

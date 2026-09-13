@@ -273,7 +273,7 @@ export type ResearchCategoryAudit = {
   accessLimitations: string[];
   unresolvedGaps: string[];
   providerFailure?: string | null;
-  providerFailureType?: "quota-exhausted" | "authentication" | "deadline" | "malformed-response" | "upstream" | "provider-request-budget" | null;
+  providerFailureType?: "quota-exhausted" | "provider-rate-limit" | "provider-429" | "authentication" | "deadline" | "malformed-response" | "upstream" | "provider-request-budget" | null;
   providerRequestCount?: number;
 };
 export type ResearchCategoryClaimAudit = {
@@ -392,7 +392,7 @@ export type ResearchCacheMetadata = {
   validationPolicyVersion?: number;
   researchPolicyVersion?: number;
   modelVersion?: string;
-  errorType?: "quota-exhausted" | "authentication" | "timeout" | "malformed-response" | "request-limit" | "not-configured" | "upstream";
+  errorType?: "quota-exhausted" | "provider-rate-limit" | "provider-429" | "authentication" | "timeout" | "malformed-response" | "request-limit" | "not-configured" | "upstream";
 };
 
 export type ResearchStatusResponse = {
@@ -646,7 +646,7 @@ function parseResearchCache(value: unknown): ResearchCacheMetadata | undefined {
   const states = ["fresh", "recent", "stale", "expired", "updated"] as const;
   const refreshStatuses = ["idle", "running", "completed", "failed"] as const;
   if (!states.includes(value.state as typeof states[number]) || !refreshStatuses.includes(value.refreshStatus as typeof refreshStatuses[number])) return undefined;
-  const errorTypes = ["quota-exhausted", "authentication", "timeout", "malformed-response", "request-limit", "not-configured", "upstream"] as const;
+  const errorTypes = ["quota-exhausted", "provider-rate-limit", "provider-429", "authentication", "timeout", "malformed-response", "request-limit", "not-configured", "upstream"] as const;
   return {
     key: value.key,
     state: value.state as ResearchCacheMetadata["state"],
@@ -760,7 +760,7 @@ function parseResearchAudit(value: unknown): ResearchAudit | undefined {
       accessLimitations: Array.isArray(candidate.accessLimitations) ? candidate.accessLimitations.filter(isNonEmptyString).slice(0, 8) : [],
       unresolvedGaps: Array.isArray(candidate.unresolvedGaps) ? candidate.unresolvedGaps.filter(isNonEmptyString).slice(0, 8) : [],
       ...(isNonEmptyString(candidate.providerFailure) ? { providerFailure: candidate.providerFailure } : {}),
-      ...(["quota-exhausted", "authentication", "deadline", "malformed-response", "upstream", "provider-request-budget"].includes(String(candidate.providerFailureType))
+      ...(["quota-exhausted", "provider-rate-limit", "provider-429", "authentication", "deadline", "malformed-response", "upstream", "provider-request-budget"].includes(String(candidate.providerFailureType))
         ? { providerFailureType: candidate.providerFailureType as NonNullable<ResearchCategoryAudit["providerFailureType"]> }
         : {}),
       ...(Number.isInteger(candidate.providerRequestCount) ? { providerRequestCount: Math.max(0, Number(candidate.providerRequestCount)) } : {}),

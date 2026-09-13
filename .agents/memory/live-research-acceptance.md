@@ -20,3 +20,9 @@ Browser recovery deadlines must be enforced by UI-owned wall-clock state, indepe
 **Why:** Proxied requests can remain pending beyond fetch or server budgets, leaving users trapped in loading even when abort signals are expected to fire.
 
 **How to apply:** At the visible deadline, disregard late results, attempt cancellation, and render recovery choices immediately; verify with a genuinely unresolved browser request and elapsed real time.
+
+Classify upstream HTTP 429 responses from allowlisted provider error code/type fields, not from status alone. Keep confirmed quota/billing limits, temporary provider rate limits, unknown 429s, and the app's own request limiter distinct. A low-cost probe can succeed immediately before a full bounded run consumes the available token-per-minute allowance, so probe success establishes access but not batch capacity.
+
+**Why:** A direct OpenAI probe and several category requests succeeded, then the provider explicitly returned `rate_limit_exceeded` with zero remaining tokens and retry/reset indicators. Treating every 429 as quota exhaustion hid this distinction.
+
+**How to apply:** Retain a bounded sanitized provider message, request ID, retry delay, and selected rate-limit headers. Redact credentials, organization identifiers, and email addresses. Stop later acceptance runs after a systemic provider failure rather than retrying the whole batch.

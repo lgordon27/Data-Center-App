@@ -1,0 +1,35 @@
+Do not modify code, create a commit, start an implementation task, publish, or deploy. I want your independent architecture review of the proposed repair plan for the current SafeLoc Diligence Workbench before I authorize implementation.
+
+Live testing of the deployed build found:
+
+Stargate displays a 3.3% baseline IRR and -3.7% conservative stress IRR, with approximately $3.28M/day downtime cost and a 7.5% annual site-hazard probability. These outputs are suspicious relative to the intended demonstration, but a negative IRR alone does not prove a formula bug.
+Community agreement scoring matches all 10 current Abilene benchmark ratings, but the app uses an older 15-record snapshot, says original primary documents were not verified, and does not expose the primary Abilene agreements now present in the live benchmark.
+A live Meta Temple, Texas custom-research run took 77.4 seconds and produced 0 exact-project sources, 0 eligible proposals, and 16 material gaps. It failed to establish the City of Temple, Bell County, and official Meta domains, produced “Bell County County,” exhausted all 24 physical document opens before later categories could open documents, and returned Scribd for permitting/community.
+Fail-closed behavior worked: no custom-project financial conclusion appeared without explicit synthetic-scenario opt-in.
+Research completion state was inconsistent across sessions: one session transitioned from Research in Progress to AI-researched / Research Incomplete, while another remained stuck after reload.
+The Financial Advisor / Asset Manager / Project Investor selector is absent. We are considering two substantive outputs only: Financial Advisor and Asset Manager. Project-investor analysis would remain in Financial Transmission.
+We need at least one successful exact-project research acceptance case in Texas and one in Arizona, not merely tests showing that unsupported evidence is rejected.
+Proposed sequence:
+
+Financial engine audit and repair.
+Research planner, exact-project source discovery, and fair document-budget allocation.
+Community provenance refresh and research lifecycle/session consistency repair.
+Two distinct Financial Advisor and Asset Manager outputs, followed by full acceptance testing.
+Please inspect the current architecture and give a skeptical recommendation. For each batch, answer GO / REVISE / STOP and explain:
+
+Whether the observed problem is actually in that layer.
+Shared dependencies or sequencing conflicts.
+What should be protected from regression.
+The smallest credible scope.
+Objective acceptance gates.
+Whether any proposed feature duplicates existing behavior or restores something intentionally retired.
+Specifically determine:
+
+Whether the 3.3% / -3.7% outputs arise from the shared financial engine, Stargate-specific inputs, baseline/stress mapping, or a combination. Do not recommend forcing predetermined IRRs.
+Whether financial audit should precede research repair or whether a dependency requires the reverse.
+How exact-project identity/domain resolution and the 24-open budget should be redesigned without weakening source eligibility.
+How the banner, persisted research record, restored session, and workbench status should derive from one terminal-state contract.
+Whether the two audience outputs should share data but have genuinely different questions and conclusions.
+Whether a deterministic Texas and Arizona golden-path test can prove successful source-to-passage-to-evidence mapping without making live-network tests flaky.
+Any critical repair we omitted.
+End with your recommended final batch order and state explicitly whether you advise approving implementation as written or revising the plan first.

@@ -20,7 +20,7 @@ export function FinancialTransmission({ onNavigate, onResolveEvidence }: { onNav
       {incomplete && <div data-testid="transmission-research-incomplete" className="rounded-lg border border-[#e3d4b6] bg-[#fffbf2] p-5">
         <h3 className="font-semibold text-[#805000]">Research Incomplete</h3><p className="mt-2 text-sm leading-6 text-[#52616b]">The custom project lacks sufficient accepted, source-backed material evidence. No return conclusion is presented. You can inspect the research or explicitly explore a synthetic scenario.</p>
       </div>}
-      <p className="text-xs leading-5 text-[#60707d]">Synthetic project economics are not reported transaction terms, issuer valuation or investment advice.</p>
+      <p data-testid="transmission-return-boundary" className="text-xs leading-5 text-[#60707d]">Synthetic project economics are not reported transaction terms, issuer valuation or investment advice. Any EIA electricity overlay below is market context only—not a disclosed Stargate tariff or an issuer/portfolio return.</p>
       <div className="rounded-xl border border-[#cbd8d4] bg-white">
         <button type="button" data-testid={incomplete && !showStressTest ? "button-opt-in-scenario" : "button-illustrative-stress-test"} aria-expanded={showStressTest} aria-controls="illustrative-stress-test"
           onClick={() => { setShowStressTest(!showStressTest); setScenarioOpen(false); setRequestedAction(null); }} className="flex min-h-14 w-full items-center justify-between gap-3 p-5 text-left">

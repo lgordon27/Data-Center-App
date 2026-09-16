@@ -166,9 +166,14 @@ export type FinancialInputState = {
   phase: "updating" | "settled";
   basis: "live" | "cached" | "fallback" | "custom";
   providerStatus: EiaElectricityData["status"] | "not-applicable";
+  providerDataOrigin: EiaElectricityData["dataOrigin"] | "not-applicable";
   electricityRate: number | null;
   electricityPeriod: string | null;
   sourceUpdatedAt: string | null;
+  syntheticElectricityRate: number | null;
+  syntheticBaselineIRR: number | null;
+  providerOverlayIRR: number | null;
+  providerOverlayDeltaIRR: number | null;
   calculatedAt: string | null;
 };
 
@@ -403,14 +408,23 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   );
 
   const financialInputState = useMemo<FinancialInputState>(() => {
+    const syntheticModel = calculateCashFlowModel(state.modelEvidence as EvidenceRecord, project.capacityMW);
+    const providerOverlayModel = project.kind === "curated" && eiaData.dataOrigin === "provider"
+      ? calculateCashFlowModel(effectiveModelEvidence as EvidenceRecord, project.capacityMW)
+      : null;
     if (project.kind === "custom") {
       return {
         phase: "settled",
         basis: "custom",
         providerStatus: "not-applicable",
+        providerDataOrigin: "not-applicable",
         electricityRate: null,
         electricityPeriod: null,
         sourceUpdatedAt: null,
+        syntheticElectricityRate: syntheticModel.assumptions.electricityRate,
+        syntheticBaselineIRR: syntheticModel.projectIRR,
+        providerOverlayIRR: null,
+        providerOverlayDeltaIRR: null,
         calculatedAt: new Date().toISOString(),
       };
     }
@@ -420,12 +434,19 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         ? eiaData.status === "cached" ? "cached" : "live"
         : "fallback",
       providerStatus: eiaData.status,
+      providerDataOrigin: eiaData.dataOrigin,
       electricityRate: eiaData.latestPrice,
       electricityPeriod: eiaData.latestPricePeriod ?? null,
       sourceUpdatedAt: eiaData.sourceUpdatedAt ?? null,
+      syntheticElectricityRate: syntheticModel.assumptions.electricityRate,
+      syntheticBaselineIRR: syntheticModel.projectIRR,
+      providerOverlayIRR: providerOverlayModel?.projectIRR ?? null,
+      providerOverlayDeltaIRR: providerOverlayModel?.projectIRR === null || providerOverlayModel?.projectIRR === undefined || syntheticModel.projectIRR === null
+        ? null
+        : providerOverlayModel.projectIRR - syntheticModel.projectIRR,
       calculatedAt: eiaLoading ? null : new Date().toISOString(),
     };
-  }, [eiaData, eiaLoading, project.kind]);
+  }, [eiaData, eiaLoading, effectiveModelEvidence, project.capacityMW, project.kind, state.modelEvidence]);
 
   useEffect(() => {
     let active = true;

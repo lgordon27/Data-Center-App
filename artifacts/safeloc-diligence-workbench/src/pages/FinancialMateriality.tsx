@@ -47,6 +47,80 @@ function formatCoverage(year: { activeMonths: number; debtService: number; dscr:
   return year.dscr === null || !Number.isFinite(year.dscr) ? "—" : `${year.dscr.toFixed(2)}x`;
 }
 
+function ProviderOverlayComparison({
+  financialInputState,
+  projectKind,
+  currentIRR,
+}: {
+  financialInputState: ReturnType<typeof useDiligence>["financialInputState"];
+  projectKind: "curated" | "custom";
+  currentIRR: number | null;
+}) {
+  const isCustom = projectKind === "custom";
+  const hasProviderOverlay = !isCustom && financialInputState.providerDataOrigin === "provider";
+  const originLabel = financialInputState.basis === "live"
+    ? "U.S. EIA Open Data · live provider response"
+    : financialInputState.basis === "cached"
+      ? "U.S. EIA Open Data · cached provider response"
+      : isCustom
+        ? "Not applicable to custom project"
+        : "Embedded case baseline · no provider response";
+  return (
+    <section data-testid="provider-overlay-comparison" className="mb-4 rounded-xl border border-[#aac6f4] bg-[#eef5ff] p-4 md:p-5">
+      <div className="flex flex-col justify-between gap-2 md:flex-row md:items-start">
+        <div>
+          <SectionKicker>Provider overlay audit</SectionKicker>
+          <h3 className="mt-1 text-[17px] font-semibold text-[#122232]">
+            {isCustom ? "Market context is not applied to this custom project" : "Synthetic baseline → electricity market overlay"}
+          </h3>
+        </div>
+        <span className="inline-flex w-fit rounded-full border border-[#aac6f4] bg-white px-2.5 py-1 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#255bb7]">
+          {hasProviderOverlay ? `${financialInputState.basis} overlay` : isCustom ? "custom project" : "no provider overlay"}
+        </span>
+      </div>
+      <p className="mt-2 max-w-3xl text-[11px] leading-5 text-[#344550]">
+        {isCustom
+          ? "The EIA electricity series remains separate market context; it does not replace custom-project research or change this synthetic scenario."
+          : "The EIA rate is a statewide market-context input used to sensitivity-test the synthetic case. It is not a disclosed Stargate tariff, issuer return or portfolio return."}
+      </p>
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+        <div data-testid="provider-overlay-rate" className="rounded-lg border border-[#d9e5f5] bg-white p-3">
+          <div className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#60707d]">{hasProviderOverlay ? "Provider rate" : "Synthetic rate"}</div>
+          <div className="mt-1 font-mono text-lg font-bold text-[#122232]">
+            {isCustom ? "Not applicable" : `$${(hasProviderOverlay ? financialInputState.electricityRate ?? financialInputState.syntheticElectricityRate ?? 0 : financialInputState.syntheticElectricityRate ?? financialInputState.electricityRate ?? 0).toFixed(1)}/MWh`}
+          </div>
+        </div>
+        <div data-testid="provider-overlay-origin" className="rounded-lg border border-[#d9e5f5] bg-white p-3">
+          <div className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#60707d]">Origin</div>
+          <div className="mt-1 text-[11px] font-semibold leading-4 text-[#122232]">{originLabel}</div>
+        </div>
+        <div data-testid="provider-overlay-period" className="rounded-lg border border-[#d9e5f5] bg-white p-3">
+          <div className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#60707d]">Provider period</div>
+          <div className="mt-1 font-mono text-[12px] font-bold text-[#122232]">{isCustom || !hasProviderOverlay ? "Not reported" : financialInputState.electricityPeriod ?? "Not reported"}</div>
+        </div>
+        <div data-testid="provider-overlay-baseline-irr" className="rounded-lg border border-[#d9e5f5] bg-white p-3">
+          <div className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#60707d]">Synthetic baseline IRR</div>
+          <div className="mt-1 font-mono text-lg font-bold text-[#122232]">{formatIRR(financialInputState.syntheticBaselineIRR)}</div>
+        </div>
+        <div data-testid="provider-overlay-delta" className="rounded-lg border border-[#d9e5f5] bg-white p-3">
+          <div className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#60707d]">Return delta from overlay</div>
+          <div className="mt-1 font-mono text-lg font-bold text-[#255bb7]">
+            {hasProviderOverlay ? formatPercentagePoints(financialInputState.providerOverlayDeltaIRR, { signed: true }) : "Not calculated"}
+          </div>
+          {hasProviderOverlay && <div className="mt-1 text-[9px] text-[#60707d]">Overlay result: {formatIRR(financialInputState.providerOverlayIRR ?? currentIRR)}</div>}
+        </div>
+      </div>
+      <p className="mt-3 text-[10px] leading-4 text-[#52616b]">
+        {financialInputState.sourceUpdatedAt && hasProviderOverlay
+          ? `Provider dataset freshness: ${new Date(financialInputState.sourceUpdatedAt).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" })}.`
+          : isCustom
+            ? "Custom-project calculations retain their own research and assumptions; no EIA overlay is applied."
+            : "The embedded $42/MWh case baseline remains distinct from any future provider response."}
+      </p>
+    </section>
+  );
+}
+
 function EvidenceTraceButton({ inputId, testId, context, tone = "light" }: { inputId: string; testId: string; context: TraceContext; tone?: "light" | "dark" }) {
   const { evidence, metrics } = useDiligence();
   const { openDrawer } = useWorkbenchDrawer();
@@ -206,6 +280,7 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
          {financialInputState.electricityPeriod ? ` · period ${financialInputState.electricityPeriod}` : ""}
          {` · provider availability: ${providerAvailability} · project applicability: ${providerApplicability} · calculated ${calculationTimestamp}.`}
        </div>
+      <ProviderOverlayComparison financialInputState={financialInputState} projectKind={project.kind} currentIRR={currentIRR} />
       {!hasChangedClassification && <aside data-testid="materiality-classification-prompt" role="note" className="mb-4 flex items-start gap-3 rounded-lg border border-[#aac6f4] bg-[#eef5ff] px-4 py-3 text-[11px] leading-5 text-[#344550]"><Sparkles aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#255bb7]" /><p><strong className="font-semibold text-[#122232]">Change a classification</strong> to see the return, driver ranking, confidence and recommendation update.</p></aside>}
        <div data-testid="financial-gap-counts" className="mb-4 grid gap-2 sm:grid-cols-2">
          <div className="rounded-lg border border-[#e3d4b6] bg-[#fffbf2] px-3 py-2 text-[11px] text-[#805000]"><strong className="font-semibold">Unresolved decision gates:</strong> {metrics.unresolvedDecisionGateCount}</div>

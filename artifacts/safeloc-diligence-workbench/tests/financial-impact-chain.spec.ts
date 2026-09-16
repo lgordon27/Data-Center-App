@@ -8,6 +8,9 @@ test.describe("Financial Impact Chain", () => {
     const stressTest = page.getByRole("button", { name: /Illustrative Project Stress Test/i });
     await expect(stressTest).toHaveAttribute("aria-expanded", "true");
     await expect(page.getByTestId("panel-impact-chain")).toBeVisible();
+    await expect(page.getByTestId("provider-overlay-comparison")).toBeVisible();
+    await expect(page.getByTestId("provider-overlay-comparison")).toContainText(/Synthetic baseline/i);
+    await expect(page.getByTestId("provider-overlay-comparison")).toContainText(/not a disclosed Stargate tariff/i);
     await expect(page.getByTestId("impact-chain-baseline-irr")).toContainText("%");
     await expect(page.getByTestId("impact-chain-stress-irr")).toContainText("%");
     await expect(page.getByTestId("impact-chain-evidence-gap")).toContainText("difference");

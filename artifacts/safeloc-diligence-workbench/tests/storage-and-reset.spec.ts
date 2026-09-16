@@ -4,6 +4,26 @@ const currentSessionKey = "safeloc:diligence:current-session:v1";
 const scenariosKey = "safeloc:diligence:scenarios:v1";
 const evidenceTipDismissedKey = "safeloc:diligence:evidence-room-tip-dismissed:v1";
 
+type ReturnCapture = {
+  classifications: Record<string, string>;
+  modelInputs: { fingerprint: string };
+  release: { fingerprint: string };
+  providerProvenance: {
+    eia: { status: string };
+    ercotQueue: { status: string };
+  };
+};
+
+async function captureReturnState(page: import("@playwright/test").Page): Promise<ReturnCapture> {
+  return page.evaluate(async () => {
+    const capture = (window as Window & {
+      __safelocCaptureReturnDiscrepancyState?: () => Promise<ReturnCapture>;
+    }).__safelocCaptureReturnDiscrepancyState;
+    if (!capture) throw new Error("Return discrepancy capture hook is unavailable.");
+    return capture();
+  });
+}
+
 async function openProjectRealityEvidenceReview(page: import("@playwright/test").Page) {
   await page.getByTestId("tab-reality").click();
   const evidenceReview = page.getByRole("button", { name: /Detailed Evidence Record/i });
@@ -23,6 +43,16 @@ test.describe("current-session recovery and reset isolation", () => {
   test.skip(({ viewport }) => viewport?.width !== 1440, "Storage behavior only needs one browser viewport.");
 
   test.beforeEach(async ({ page }) => {
+    await page.route("**/api/eia/electricity", (route) => route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ diagnostics: { error: "deterministic embedded fallback" } }),
+    }));
+    await page.route("**/api/ercot-queue", (route) => route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ diagnostics: { error: "deterministic embedded fallback" } }),
+    }));
     await page.goto("/");
     await page.evaluate(() => window.localStorage.clear());
     await page.goto("/#analysis");
@@ -204,5 +234,30 @@ test.describe("current-session recovery and reset isolation", () => {
     await expect(page.getByTestId("review-marker-electricity_cost")).toHaveCount(0);
     await openFinancialTransmission(page);
     await expect(page.getByTestId("materiality-classification-prompt")).toBeVisible();
+  });
+
+  test("captures a sanitized state that is identical after reset and immediate reload", async ({ page }) => {
+    await expect(page.getByTestId("eia-loading")).toHaveCount(0);
+    const initial = await captureReturnState(page);
+    expect(Object.keys(initial.classifications)).toHaveLength(16);
+    expect(initial.modelInputs.fingerprint).toMatch(/^fnv1a-[0-9a-f]+$/);
+    expect(initial.release.fingerprint).toMatch(/^fnv1a-[0-9a-f]+$/);
+    expect(initial.providerProvenance.eia.status).toBe("fallback");
+    expect(initial.providerProvenance.ercotQueue.status).toBe("embedded");
+
+    await openProjectRealityEvidenceReview(page);
+    await page.getByTestId("select-classification-electricity_cost").selectOption("Missing Evidence");
+    await page.getByTestId("button-reset-default").click();
+    await page.getByTestId("button-confirm-reset-default").click();
+    await expect(page).toHaveURL(/#analysis$/);
+
+    const afterReset = await captureReturnState(page);
+    await page.reload();
+    await expect(page.getByTestId("eia-loading")).toHaveCount(0);
+    const afterReload = await captureReturnState(page);
+
+    expect(afterReload).toEqual(afterReset);
+    expect(afterReload.modelInputs.fingerprint).toBe(afterReset.modelInputs.fingerprint);
+    expect(JSON.stringify(afterReload)).not.toMatch(/EIA_API_KEY|authorization|cookie|"priceHistory"\s*:|"responsePreview"\s*:/i);
   });
 });

@@ -1,5 +1,19 @@
 import { expect, test } from "@playwright/test";
 
+async function captureReturnState(page: import("@playwright/test").Page) {
+  return page.evaluate(async () => {
+    const capture = (window as Window & {
+      __safelocCaptureReturnDiscrepancyState?: () => Promise<{
+        classifications: Record<string, string>;
+        providerProvenance: { eia: { status: string; dataOrigin: string } };
+        modelInputs: { fingerprint: string };
+      }>;
+    }).__safelocCaptureReturnDiscrepancyState;
+    if (!capture) throw new Error("Return discrepancy capture hook is unavailable.");
+    return capture();
+  });
+}
+
 function monthSeries() {
   return Array.from({ length: 25 }, (_, index) => {
     const date = new Date(Date.UTC(2024, 7 + index, 1));
@@ -50,6 +64,10 @@ test.describe("EIA electricity evidence", () => {
     await expect(page.getByTestId("eia-price-history").locator("svg")).toHaveAttribute("aria-label", /24 months/);
     await expect(page.getByTestId("eia-generation-mix")).toContainText("Statewide generation mix is market context only");
     await expect(page.getByTestId("eia-mix-wind")).toHaveText("24.0%");
+    const capture = await captureReturnState(page);
+    expect(capture.providerProvenance.eia).toMatchObject({ status: "live", dataOrigin: "provider" });
+    expect(Object.keys(capture.classifications)).toHaveLength(16);
+    expect(capture.modelInputs.fingerprint).toMatch(/^fnv1a-/);
 
     const classification = page.getByTestId("select-classification-electricity_cost");
     await classification.selectOption("User Assumption");
@@ -87,6 +105,9 @@ test.describe("EIA electricity evidence", () => {
     await page.getByTestId("financial-tab-assumptions").click();
     await expect(page.getByTestId("model-electricity-attribution")).toContainText("cached");
     await expect(page.getByTestId("model-electricity-attribution")).toContainText("$56.8/MWh");
+    const capture = await captureReturnState(page);
+    expect(capture.providerProvenance.eia).toMatchObject({ status: "cached", dataOrigin: "provider" });
+    expect(Object.keys(capture.classifications)).toHaveLength(16);
   });
 
   test("keeps the hardcoded model usable when EIA and cache are unavailable", async ({ page }) => {
@@ -109,5 +130,8 @@ test.describe("EIA electricity evidence", () => {
     if (await fallbackScenario.count()) await fallbackScenario.click();
     await page.getByTestId("financial-tab-assumptions").click();
     await expect(page.getByTestId("model-electricity-attribution")).toHaveText("Electricity cost: $44.1/MWh (embedded estimate)");
+    const capture = await captureReturnState(page);
+    expect(capture.providerProvenance.eia).toMatchObject({ status: "fallback", dataOrigin: "embedded" });
+    expect(Object.keys(capture.classifications)).toHaveLength(16);
   });
 });

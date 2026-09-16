@@ -71,7 +71,19 @@ import {
   type CommunityReviewState,
   type CommunityTermDecision,
 } from "@/model/communityAgreements";
+import {
+  createSanitizedReturnDiscrepancyRecord,
+  getReturnCaptureStorageSnapshot,
+  type ReturnCaptureReleaseIdentity,
+  type SanitizedReturnDiscrepancyRecord,
+} from "@/diagnostics/returnDiscrepancyCapture";
 export type { Classification } from '@/model/cashFlowEngine';
+
+declare global {
+  interface Window {
+    __safelocCaptureReturnDiscrepancyState?: () => Promise<SanitizedReturnDiscrepancyRecord>;
+  }
+}
 
 export type EvidenceItem = {
   id: string;
@@ -963,6 +975,84 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     () => ({ ...calculateCashFlowModel(effectiveModelEvidence as EvidenceRecord, project.capacityMW), lastChange: state.lastChange }),
     [effectiveModelEvidence, project.capacityMW, state.lastChange],
   );
+
+  useEffect(() => {
+    if (!import.meta.env.DEV || typeof window === "undefined") return undefined;
+
+    const capture = async () => {
+      let releaseIdentity: ReturnCaptureReleaseIdentity | null = null;
+      try {
+        const response = await fetch(`${import.meta.env.BASE_URL}api/version`, {
+          headers: { accept: "application/json" },
+        });
+        if (response.ok) {
+          const candidate: unknown = await response.json();
+          if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
+            const value = candidate as Record<string, unknown>;
+            releaseIdentity = {
+              applicationVersion: typeof value.applicationVersion === "string" ? value.applicationVersion : null,
+              releaseId: typeof value.releaseId === "string" ? value.releaseId : null,
+              commitSha: typeof value.commitSha === "string" ? value.commitSha : null,
+              deploymentId: typeof value.deploymentId === "string" ? value.deploymentId : null,
+              buildTimestamp: typeof value.buildTimestamp === "string" ? value.buildTimestamp : null,
+            };
+          }
+        }
+      } catch {
+        // Capture remains useful when the optional release endpoint is unavailable.
+      }
+
+      return createSanitizedReturnDiscrepancyRecord({
+        project: {
+          kind: project.kind,
+          name: project.name,
+          location: project.location,
+          capacityMW: project.capacityMW,
+          description: project.description,
+        },
+        originatingCompany,
+        selectedProjectContext,
+        scenarioClassifications: Object.fromEntries(
+          Object.entries(effectiveEvidence).map(([id, item]) => [id, item.classification]),
+        ),
+        savedScenarioCount: scenarios.length,
+        evidence: effectiveEvidence,
+        modelEvidence: effectiveModelEvidence,
+        metrics,
+        financialInputState: {
+          basis: financialInputState.basis,
+          providerStatus: financialInputState.providerStatus,
+          electricityRate: financialInputState.electricityRate,
+          electricityPeriod: financialInputState.electricityPeriod,
+          sourceUpdatedAt: financialInputState.sourceUpdatedAt,
+        },
+        sourceStates,
+        eiaData,
+        ercotQueue,
+        storage: getReturnCaptureStorageSnapshot(),
+        releaseIdentity,
+      });
+    };
+
+    window.__safelocCaptureReturnDiscrepancyState = capture;
+    return () => {
+      if (window.__safelocCaptureReturnDiscrepancyState === capture) {
+        delete window.__safelocCaptureReturnDiscrepancyState;
+      }
+    };
+  }, [
+    eiaData,
+    effectiveEvidence,
+    effectiveModelEvidence,
+    ercotQueue,
+    financialInputState,
+    metrics,
+    originatingCompany,
+    project,
+    scenarios.length,
+    selectedProjectContext,
+    sourceStates,
+  ]);
 
   const communityUnresolvedCount = countUnresolvedCommunityTerms(communityReview.terms);
 

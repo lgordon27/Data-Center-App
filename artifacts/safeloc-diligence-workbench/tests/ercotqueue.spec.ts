@@ -1,5 +1,19 @@
 import { expect, test } from "@playwright/test";
 
+async function captureReturnState(page: import("@playwright/test").Page) {
+  return page.evaluate(async () => {
+    const capture = (window as Window & {
+      __safelocCaptureReturnDiscrepancyState?: () => Promise<{
+        classifications: Record<string, string>;
+        providerProvenance: { ercotQueue: { status: string; providerStatus: string } };
+        modelInputs: { fingerprint: string };
+      }>;
+    }).__safelocCaptureReturnDiscrepancyState;
+    if (!capture) throw new Error("Return discrepancy capture hook is unavailable.");
+    return capture();
+  });
+}
+
 const ercotEnvelope = {
   status: "live",
   fetchedAt: "2026-08-30T12:00:00.000Z",
@@ -47,6 +61,9 @@ const ercotEnvelope = {
 test.describe("ERCOTQueue governed source flow", () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => localStorage.clear());
+    await page.route("**/api/eia/electricity", async (route) => {
+      await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ diagnostics: { error: "deterministic embedded fallback" } }) });
+    });
     await page.route("**/api/ercot-queue", async (route) => {
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(ercotEnvelope) });
     });
@@ -65,6 +82,9 @@ test.describe("ERCOTQueue governed source flow", () => {
     await page.getByTestId("button-suggest-verified-grid").click();
     await expect(classification).toHaveValue("Verified Evidence");
     await expect(page.getByTestId("toast-reclassification")).toBeVisible();
+    const capture = await captureReturnState(page);
+    expect(capture.providerProvenance.ercotQueue).toMatchObject({ status: "live", providerStatus: "live" });
+    expect(Object.keys(capture.classifications)).toHaveLength(16);
   });
 
   test("shows exactly three source cards and ERCOT/EIA-only diagnostics", async ({ page }) => {
@@ -77,5 +97,36 @@ test.describe("ERCOTQueue governed source flow", () => {
     await page.getByTestId("ercot-console-toggle").click();
     await expect(page.getByTestId("ercot-developer-console")).toContainText("/api/ercot-queue");
     await expect(page.getByTestId("eia-console-diagnostics")).toContainText("/api/eia/electricity");
+  });
+
+  test("captures cached and embedded ERCOT provenance without provider payloads", async ({ page }) => {
+    await page.unroute("**/api/ercot-queue");
+    await page.route("**/api/ercot-queue", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ...ercotEnvelope,
+          status: "cached",
+          diagnostics: { ...ercotEnvelope.diagnostics, cache: "hit" },
+        }),
+      });
+    });
+    await page.goto("/#evidence");
+    const cachedCapture = await captureReturnState(page);
+    expect(cachedCapture.providerProvenance.ercotQueue).toMatchObject({ status: "cached", providerStatus: "cached" });
+
+    await page.unroute("**/api/ercot-queue");
+    await page.route("**/api/ercot-queue", async (route) => {
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ diagnostics: { error: "deterministic embedded fallback" } }),
+      });
+    });
+    await page.reload();
+    const fallbackCapture = await captureReturnState(page);
+    expect(fallbackCapture.providerProvenance.ercotQueue).toMatchObject({ status: "embedded", providerStatus: "embedded" });
+    expect(JSON.stringify(fallbackCapture)).not.toMatch(/status_raw|codHistory|responsePreview|authorization|cookie/i);
   });
 });

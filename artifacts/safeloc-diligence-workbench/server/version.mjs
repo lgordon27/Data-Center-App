@@ -13,6 +13,10 @@ function gitValue(args) {
   }
 }
 
+function normalizeCommitSha(value) {
+  return value?.trim().toLowerCase() || null;
+}
+
 function readBuiltIdentity() {
   try {
     return JSON.parse(readFileSync(path.join(serverDir, "..", "dist", "public", "release.json"), "utf8"));
@@ -24,11 +28,16 @@ function readBuiltIdentity() {
 const isProduction = process.env.NODE_ENV === "production";
 const builtIdentity = isProduction ? readBuiltIdentity() : null;
 const applicationVersion = builtIdentity?.applicationVersion || process.env.npm_package_version || "0.0.0";
+const sourceCommitSha = builtIdentity?.sourceCommitSha ?? gitValue(["rev-parse", "HEAD"]);
 const commitSha = builtIdentity?.commitSha
   || process.env.COMMIT_SHA
   || process.env.GIT_COMMIT_SHA
   || process.env.REPLIT_GIT_COMMIT_SHA
-  || gitValue(["rev-parse", "HEAD"]);
+  || sourceCommitSha;
+const commitShaMatchesSource = builtIdentity?.commitShaMatchesSource
+  ?? (commitSha && sourceCommitSha
+    ? normalizeCommitSha(commitSha) === normalizeCommitSha(sourceCommitSha)
+    : null);
 const releaseId = builtIdentity?.releaseId
   || process.env.RELEASE_ID
   || process.env.REPLIT_DEPLOYMENT_ID
@@ -50,6 +59,13 @@ export const releaseIdentity = Object.freeze({
   applicationVersion,
   releaseId,
   commitSha,
+  sourceCommitSha,
+  commitShaSource: builtIdentity?.commitShaSource
+    || (process.env.COMMIT_SHA ? "COMMIT_SHA"
+      : process.env.GIT_COMMIT_SHA ? "GIT_COMMIT_SHA"
+        : process.env.REPLIT_GIT_COMMIT_SHA ? "REPLIT_GIT_COMMIT_SHA"
+          : sourceCommitSha ? "git" : "unavailable"),
+  commitShaMatchesSource,
   deploymentId: builtIdentity?.deploymentId ?? null,
   buildTimestamp,
 });

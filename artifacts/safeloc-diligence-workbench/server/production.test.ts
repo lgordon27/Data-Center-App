@@ -1,7 +1,8 @@
 import { strict as assert } from "node:assert";
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { once } from "node:events";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 
@@ -87,6 +88,39 @@ async function run(command: string, args: string[], env: NodeJS.ProcessEnv = {})
   if (result !== 0) {
     throw new Error(`${command} ${args.join(" ")} failed with code ${result}\n${Buffer.concat(chunks).toString()}`);
   }
+}
+
+async function runExpectingFailure(command: string, args: string[], env: NodeJS.ProcessEnv = {}) {
+  const child = spawn(command, args, {
+    cwd: packageRoot,
+    env: { ...process.env, ...env },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const chunks: Buffer[] = [];
+  child.stdout.on("data", (chunk: Buffer) => chunks.push(chunk));
+  child.stderr.on("data", (chunk: Buffer) => chunks.push(chunk));
+  const [code] = await once(child, "close");
+  return { code, output: Buffer.concat(chunks).toString() };
+}
+
+function bundleDigest(directory: string) {
+  const files: Array<[string, Buffer]> = [];
+  const visit = (current: string, relative = "") => {
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const absolute = path.join(current, entry.name);
+      const entryRelative = path.join(relative, entry.name);
+      if (entry.isDirectory()) visit(absolute, entryRelative);
+      else if (entry.name !== "release.json") files.push([entryRelative, readFileSync(absolute)]);
+    }
+  };
+  visit(directory);
+  const hash = createHash("sha256");
+  for (const [relative, content] of files.sort(([left], [right]) => left.localeCompare(right))) {
+    hash.update(relative);
+    hash.update("\0");
+    hash.update(content);
+  }
+  return hash.digest("hex").slice(0, 16);
 }
 
 async function waitForJson(url: string, child: ReturnType<typeof spawn>) {
@@ -188,6 +222,15 @@ test("managed artifact development workflow serves SPA routes and keeps the vers
   }
 });
 
+test("release builds reject a configured commit SHA that does not match Git HEAD", async () => {
+  const mismatch = "0".repeat(40);
+  const result = await runExpectingFailure("node", ["server/writeRelease.mjs"], { COMMIT_SHA: mismatch });
+  assert.notEqual(result.code, 0);
+  assert.match(result.output, /Release identity mismatch/);
+  assert.match(result.output, new RegExp(`COMMIT_SHA="${mismatch}"`));
+  assert.match(result.output, /Refusing to write/);
+});
+
 test("production entry point serves active API routes without retired endpoints", async () => {
   const port = 4700 + (process.pid % 500);
   await run("pnpm", ["run", "build"], { PORT: String(port), BASE_PATH: "/" });
@@ -230,6 +273,9 @@ test("production entry point serves active API routes without retired endpoints"
     assert.equal(typeof version.releaseId, "string");
     assert.equal(typeof version.buildTimestamp, "string");
     assert.ok(version.commitSha || version.releaseId, "release identity must include a commit SHA or release ID");
+    assert.equal(typeof version.sourceCommitSha, "string");
+    assert.equal(typeof version.commitShaSource, "string");
+    assert.equal(version.commitShaMatchesSource, true, "production release metadata must be verified against Git HEAD");
     assert.deepEqual(versionAgain, version, "release identity must be immutable for the process lifetime");
     const releaseDocument = await waitForJson(`${baseUrl}/release.json`, child);
     const generatedReleaseDocument = JSON.parse(readFileSync(path.join(packageRoot, "dist/public/release.json"), "utf8"));
@@ -238,6 +284,13 @@ test("production entry point serves active API routes without retired endpoints"
     assert.deepEqual(releaseDocument, version, "the public build release document must match the API identity");
     const versionHeaders = await fetch(`${baseUrl}/api/version`);
     assert.equal(versionHeaders.headers.get("cache-control"), "no-store");
+    const releaseHeaders = await fetch(`${baseUrl}/release.json`);
+    assert.equal(releaseHeaders.headers.get("cache-control"), "no-store");
+    assert.equal(
+      version.releaseId,
+      `bundle-${bundleDigest(path.join(packageRoot, "dist/public"))}`,
+      "release ID must identify the generated public bundle digest",
+    );
     const aiMethod = await fetch(`${baseUrl}/api/analyze-evidence`);
     assert.equal(aiMethod.status, 405);
     const unknownApi = await fetch(`${baseUrl}/api/does-not-exist`);

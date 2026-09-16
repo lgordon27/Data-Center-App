@@ -25,6 +25,9 @@ type ReleaseIdentity = {
   applicationVersion?: string;
   releaseId?: string;
   commitSha?: string | null;
+  sourceCommitSha?: string | null;
+  commitShaSource?: string;
+  commitShaMatchesSource?: boolean | null;
   buildTimestamp?: string;
 };
 

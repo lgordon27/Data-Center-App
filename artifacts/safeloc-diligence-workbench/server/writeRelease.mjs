@@ -17,6 +17,10 @@ function gitValue(args) {
   }
 }
 
+function normalizeCommitSha(value) {
+  return value?.trim().toLowerCase() || null;
+}
+
 function bundleDigest(directory) {
   const files = [];
   const visit = (current, relative = "") => {
@@ -37,10 +41,24 @@ function bundleDigest(directory) {
   return hash.digest("hex").slice(0, 16);
 }
 
-const commitSha = process.env.COMMIT_SHA
-  || process.env.GIT_COMMIT_SHA
-  || process.env.REPLIT_GIT_COMMIT_SHA
-  || gitValue(["rev-parse", "HEAD"]);
+const configuredCommit = [
+  ["COMMIT_SHA", process.env.COMMIT_SHA],
+  ["GIT_COMMIT_SHA", process.env.GIT_COMMIT_SHA],
+  ["REPLIT_GIT_COMMIT_SHA", process.env.REPLIT_GIT_COMMIT_SHA],
+].find(([, value]) => normalizeCommitSha(value));
+const sourceCommitSha = gitValue(["rev-parse", "HEAD"]);
+const commitSha = configuredCommit?.[1]?.trim() || sourceCommitSha;
+const commitShaMatchesSource = commitSha && sourceCommitSha
+  ? normalizeCommitSha(commitSha) === normalizeCommitSha(sourceCommitSha)
+  : null;
+
+if (configuredCommit && sourceCommitSha && !commitShaMatchesSource) {
+  throw new Error(
+    `Release identity mismatch: ${configuredCommit[0]}="${configuredCommit[1]}" does not match Git HEAD "${sourceCommitSha}". ` +
+      "Refusing to write dist/public/release.json with an unverified source revision.",
+  );
+}
+
 const deploymentId = process.env.RELEASE_ID || process.env.REPLIT_DEPLOYMENT_ID || null;
 const buildTimestamp = process.env.BUILD_TIMESTAMP
   || process.env.REPLIT_BUILD_TIMESTAMP
@@ -54,6 +72,9 @@ writeFileSync(
     applicationVersion: process.env.npm_package_version || packageJson.version || "0.0.0",
     releaseId,
     commitSha,
+    sourceCommitSha,
+    commitShaSource: configuredCommit?.[0] || (sourceCommitSha ? "git" : "unavailable"),
+    commitShaMatchesSource,
     deploymentId,
     buildTimestamp,
   })}\n`,

@@ -2,6 +2,9 @@ export declare const releaseIdentity: {
   applicationVersion: string;
   releaseId: string;
   commitSha: string | null;
+  sourceCommitSha: string | null;
+  commitShaSource: string;
+  commitShaMatchesSource: boolean | null;
   deploymentId: string | null;
   buildTimestamp: string;
 };

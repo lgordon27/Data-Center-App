@@ -5,6 +5,9 @@ import { INITIAL_EVIDENCE } from "@/context/DiligenceContext";
 import {
   calculateCashFlowModel,
   calculateIRR,
+  calculateMOIC,
+  calculateNPV,
+  calculatePayback,
   containEvidenceForModel,
   type EvidenceRecord,
 } from "./cashFlowEngine";
@@ -361,6 +364,11 @@ test("independent Stargate baseline and stress fixtures reconcile full schedules
   });
   assert.equal("unleveredIRR" in stress, false, "the model does not claim or display an unlevered return");
   assert.equal(calculateIRR([-100, -25, -10]), null, "production IRR is explicit when no sign change exists");
+  assert.equal(calculateIRR([-100, 230, -132]), null, "production IRR is explicit when roots are ambiguous");
+  assert.equal(calculateIRR([-100, -25, 250]) !== null, true, "negative interim contributions remain eligible with one root");
+  assert.equal(calculateMOIC([-100, -25, 250]), 2);
+  assert.equal(calculatePayback([-100, -25, 250]), 1.5);
+  assert.ok(calculateNPV([-100, -25, 250], 0.1) > 0);
 });
 
 test("independent fixture proves each climate treatment enters exactly once", () => {

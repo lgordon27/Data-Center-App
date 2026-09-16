@@ -4,6 +4,10 @@ import test from "node:test";
 import { INITIAL_EVIDENCE } from "@/context/DiligenceContext";
 import {
   calculateCashFlowModel,
+  calculateIRR,
+  calculateMOIC,
+  calculateNPV,
+  calculatePayback,
   containEvidenceForModel,
   CLIMATE_QUALITY_MULTIPLIERS,
   DEFAULT_CAPACITY_MW,
@@ -79,6 +83,34 @@ test("the canonical evidence contract has 16 items and a 16-item confidence deno
   assert.equal(model.assumptions.downtimeCostPerDay, 2_850_000);
   assert.equal(model.assumptions.capacityMW, 1_200);
   assert.equal(model.assumptions.entryValue, 4_800);
+});
+
+test("return metrics reject ambiguous IRRs while keeping NPV, MOIC, and payback explicit", () => {
+  const multipleRoots = [-100, 230, -132];
+  assert.equal(calculateIRR(multipleRoots), null, "10% and 20% are both valid roots, so IRR is not meaningful");
+  assert.ok(Math.abs(calculateNPV(multipleRoots, 0.1)) < 0.000001);
+  assert.ok(Math.abs(calculateNPV(multipleRoots, 0.2)) < 0.000001);
+  assert.equal(calculateMOIC(multipleRoots), 230 / 232);
+  assert.ok(Math.abs((calculatePayback(multipleRoots) ?? 0) - (100 / 230)) < 0.000001);
+
+  const noRoot = [-100, 50, -10];
+  assert.equal(calculateIRR(noRoot), null, "multiple sign changes do not bracket a unique economic root");
+  assert.ok(calculateNPV(noRoot, 0.1) < 0);
+  assert.equal(calculateMOIC(noRoot), 50 / 110);
+  assert.equal(calculatePayback(noRoot), null);
+
+  const negativeInterim = [-100, -25, 250];
+  const negativeInterimIRR = calculateIRR(negativeInterim);
+  assert.notEqual(negativeInterimIRR, null, "a negative interim contribution is valid with one sign change");
+  assert.ok(Math.abs(calculateNPV(negativeInterim, negativeInterimIRR!)) < 0.000001);
+  assert.equal(calculateMOIC(negativeInterim), 2);
+  assert.equal(calculatePayback(negativeInterim), 1.5);
+
+  const noSignChange = [-100, -25, -10];
+  assert.equal(calculateIRR(noSignChange), null);
+  assert.ok(calculateNPV(noSignChange, 0.1) < 0);
+  assert.equal(calculateMOIC(noSignChange), 0);
+  assert.equal(calculatePayback(noSignChange), null);
 });
 
 test("custom research boundary quarantines incompatible units and source-free proposals", () => {

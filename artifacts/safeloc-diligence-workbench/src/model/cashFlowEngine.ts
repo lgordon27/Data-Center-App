@@ -483,67 +483,103 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
-function calculateNPV(cashFlows: number[], rate: number) {
+/**
+ * NPV is still meaningful for any finite cash-flow sequence, including
+ * sequences with no IRR or more than one IRR. It is always reported at the
+ * model's explicit discount rate rather than being suppressed with IRR.
+ */
+export function calculateNPV(cashFlows: number[], rate: number) {
   return cashFlows.reduce((total, cashFlow, index) => total + cashFlow / Math.pow(1 + rate, index), 0);
 }
 
+/**
+ * Return IRR only when the cash flows have one economically unique root.
+ *
+ * A sequence with exactly one sign change has exactly one positive root in
+ * discount-factor space (Descartes' rule of signs). Multiple sign changes
+ * can produce multiple valid IRRs or no valid IRR, so both cases deliberately
+ * return null instead of exposing whichever root a numerical iteration finds.
+ * Negative interim cash flows are valid when they do not introduce another
+ * sign change. The caller displays null as "N/M".
+ */
 export function calculateIRR(cashFlows: number[]) {
-  const hasPositive = cashFlows.some((cashFlow) => cashFlow > 0);
-  const hasNegative = cashFlows.some((cashFlow) => cashFlow < 0);
-  if (!hasPositive || !hasNegative) return null;
+  if (cashFlows.some((cashFlow) => !Number.isFinite(cashFlow))) return null;
 
-  const npvAt = (rate: number) => calculateNPV(cashFlows, rate);
-  const derivativeAt = (rate: number) =>
-    cashFlows.reduce((total, cashFlow, index) => {
-      if (index === 0) return total;
-      return total - (index * cashFlow) / Math.pow(1 + rate, index + 1);
-    }, 0);
+  const nonZeroCashFlows = cashFlows.filter((cashFlow) => cashFlow !== 0);
+  if (nonZeroCashFlows.length < 2) return null;
 
-  let rate = 0.15;
-  for (let iteration = 0; iteration < 100; iteration += 1) {
-    const npv = npvAt(rate);
-    if (Math.abs(npv) < 0.000001) return rate;
-
-    const derivative = derivativeAt(rate);
-    if (!Number.isFinite(derivative) || Math.abs(derivative) < 0.0000001) break;
-
-    const nextRate = rate - npv / derivative;
-    if (!Number.isFinite(nextRate) || nextRate <= -0.9999 || nextRate > 100) break;
-    rate = nextRate;
+  let signChanges = 0;
+  for (let index = 1; index < nonZeroCashFlows.length; index += 1) {
+    if (Math.sign(nonZeroCashFlows[index]) !== Math.sign(nonZeroCashFlows[index - 1])) {
+      signChanges += 1;
+    }
   }
+  if (signChanges !== 1) return null;
 
-  let lower = -0.99;
+  // NPV(rate) = Σ cashFlow[t] / (1 + rate)^t. Solving in x = 1 / (1 + rate)
+  // gives a polynomial on x > 0, where exactly one sign change guarantees
+  // one positive root and makes bracketing deterministic.
+  const npvAtDiscountFactor = (discountFactor: number) =>
+    cashFlows.reduce((total, cashFlow, index) => total + cashFlow * discountFactor ** index, 0);
+  const lower = 0;
+  const lowerNPV = nonZeroCashFlows[0];
   let upper = 1;
-  let lowerNPV = npvAt(lower);
-  let upperNPV = npvAt(upper);
+  let upperNPV = npvAtDiscountFactor(upper);
 
-  while (lowerNPV * upperNPV > 0 && upper < 100) {
+  for (let expansion = 0; expansion < 1024 && lowerNPV * upperNPV > 0; expansion += 1) {
     upper *= 2;
-    upperNPV = npvAt(upper);
+    upperNPV = npvAtDiscountFactor(upper);
+    if (!Number.isFinite(upperNPV)) return null;
   }
+  if (!Number.isFinite(upperNPV) || lowerNPV * upperNPV > 0) return null;
 
-  if (!Number.isFinite(lowerNPV) || !Number.isFinite(upperNPV) || lowerNPV * upperNPV > 0) {
-    return null;
-  }
+  let bracketLower = lower;
+  let bracketUpper = upper;
+  let bracketLowerNPV = lowerNPV;
+  let bracketUpperNPV = upperNPV;
+  for (let iteration = 0; iteration < 200; iteration += 1) {
+    const midpoint = (bracketLower + bracketUpper) / 2;
+    const midpointNPV = npvAtDiscountFactor(midpoint);
+    if (!Number.isFinite(midpointNPV)) return null;
+    if (Math.abs(midpointNPV) < 0.000000001) {
+      return 1 / midpoint - 1;
+    }
 
-  for (let iteration = 0; iteration < 120; iteration += 1) {
-    const midpoint = (lower + upper) / 2;
-    const midpointNPV = npvAt(midpoint);
-    if (Math.abs(midpointNPV) < 0.000001) return midpoint;
-
-    if (lowerNPV * midpointNPV <= 0) {
-      upper = midpoint;
-      upperNPV = midpointNPV;
+    if (bracketLowerNPV * midpointNPV <= 0) {
+      bracketUpper = midpoint;
+      bracketUpperNPV = midpointNPV;
     } else {
-      lower = midpoint;
-      lowerNPV = midpointNPV;
+      bracketLower = midpoint;
+      bracketLowerNPV = midpointNPV;
     }
   }
 
-  return (lower + upper) / 2;
+  const discountFactor = (bracketLower + bracketUpper) / 2;
+  return discountFactor > 0 ? 1 / discountFactor - 1 : null;
 }
 
-function calculatePayback(cashFlows: number[]) {
+/**
+ * MOIC counts every positive equity distribution against every negative equity
+ * contribution, including negative interim cash flows. With no distributions
+ * it is explicitly 0 rather than an undefined ratio.
+ */
+export function calculateMOIC(cashFlows: number[]) {
+  const totalDistributions = cashFlows
+    .slice(1)
+    .filter((cashFlow) => cashFlow > 0)
+    .reduce((total, cashFlow) => total + cashFlow, 0);
+  const equityInvested = cashFlows
+    .filter((cashFlow) => cashFlow < 0)
+    .reduce((total, cashFlow) => total + Math.abs(cashFlow), 0);
+  return equityInvested > 0 ? totalDistributions / equityInvested : 0;
+}
+
+/**
+ * Payback is the first point cumulative equity cash flow reaches zero. A
+ * negative interim flow delays recovery; if recovery never occurs the caller
+ * displays null as "Not reached".
+ */
+export function calculatePayback(cashFlows: number[]) {
   let cumulative = 0;
 
   for (let index = 0; index < cashFlows.length; index += 1) {
@@ -978,7 +1014,7 @@ function runModel(
 
   return {
     projectIRR: projectIRR === null ? null : projectIRR * 100,
-    moic: equityInvested > 0 ? totalDistributions / equityInvested : 0,
+    moic: calculateMOIC(cashFlows),
     cashOnCash,
     initialInvestedEquity,
     cashOnCashDenominator: initialInvestedEquity,

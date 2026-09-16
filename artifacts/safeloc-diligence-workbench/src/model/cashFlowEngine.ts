@@ -85,23 +85,22 @@ export function containEvidenceForModel(evidence: EvidenceRecord): ModelBoundary
       }).reasons);
     }
     if (customInput) {
-      const policyValidated = item.semanticValidationStatus === "valid" &&
-        item.normalization?.policyVersion === EVIDENCE_SEMANTIC_POLICY_VERSION;
-      if (!policyValidated) {
-        const rawValue = item.rawValue ?? item.value;
-        semanticNormalization = normalizeEvidenceRecord({
-          id,
-          value: rawValue,
-          unit: item.rawUnit ?? item.unit,
-          numericValue: item.rawValue === undefined ? item.numericValue : rawValue,
-          qualitativeValue: item.qualitativeValue,
-          description: item.description,
-          citation: item.citation,
-          sourceContext: item.rawText,
-          explicitZero: rawValue === 0 && Boolean(item.sourceUrl),
-        });
-        reasons.push(...semanticNormalization.quarantineReasons);
+      if (item.researchState !== "accepted") {
+        reasons.push("Custom research is not in the accepted state.");
       }
+      const rawValue = item.rawValue ?? item.value;
+      semanticNormalization = normalizeEvidenceRecord({
+        id,
+        value: rawValue,
+        unit: item.rawUnit ?? item.unit,
+        numericValue: item.rawValue === undefined ? item.numericValue : rawValue,
+        qualitativeValue: item.qualitativeValue,
+        description: item.description,
+        citation: item.citation,
+        sourceContext: item.rawText,
+        explicitZero: rawValue === 0 && Boolean(item.sourceUrl),
+      });
+      reasons.push(...semanticNormalization.quarantineReasons);
       if (!getEvidenceSemanticDefinition(id)?.modelDestination) {
         reasons.push("This evidence variable is context-only or a decision gate and cannot enter cash-flow calculations.");
       }
@@ -488,7 +487,7 @@ function calculateNPV(cashFlows: number[], rate: number) {
   return cashFlows.reduce((total, cashFlow, index) => total + cashFlow / Math.pow(1 + rate, index), 0);
 }
 
-function calculateIRR(cashFlows: number[]) {
+export function calculateIRR(cashFlows: number[]) {
   const hasPositive = cashFlows.some((cashFlow) => cashFlow > 0);
   const hasNegative = cashFlows.some((cashFlow) => cashFlow < 0);
   if (!hasPositive || !hasNegative) return null;

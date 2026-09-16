@@ -1,0 +1,336 @@
+BATCH 1 CORRECTIVE VERIFICATION: PRODUCTION-STATE RECONCILIATION AND MAINTAINER TRACEABILITY
+
+Continue from Batch 1 commit `ecbc9c0`.
+
+Keep this as an isolated corrective change set. Do not merge other batches, publish, deploy, rewrite Git history or modify unrelated product areas.
+
+PHASE 0: INDEPENDENT ASSESSMENT
+
+Before making changes, inspect the Batch 1 commit, its parent, the deployed commit identity and the production build process.
+
+Give a concise GO / REVISE / STOP opinion.
+
+If the discrepancy can be explained without changing code, document it and add the necessary regression coverage.
+
+If a defect is demonstrated, add a failing test before applying the smallest repair.
+
+Do not change formulas or assumptions to force a preferred IRR.
+
+ISSUE TO RESOLVE
+
+Live hands-on testing of the deployed application returned:
+
+* Baseline IRR: 3.3%
+* Conservative stress IRR: -3.7%
+* Difference: -7.0 percentage points
+
+The live version endpoint identified that deployment as:
+
+* Commit: `0dfc94940b69bbc84ef751c4fd6ed285b431cc5d`
+* Release: `bundle-11952d35215a0cb9`
+* Build timestamp: `2026-09-14T22:52:14.099Z`
+
+Batch 1 reported that:
+
+* The current audited baseline IRR is 13.343%.
+* The current audited stress IRR is 9.087%.
+* The difference is -4.256 percentage points.
+* No financial formula change was necessary.
+* The 3.3% / -3.7% pair could not be reproduced from the current source or 26 local engine revisions.
+
+That is not yet sufficient closure. Determine exactly why the deployed application showed a different financial state.
+
+REQUIRED SOURCE AND HISTORY VERIFICATION
+
+Establish and report:
+
+1. The full parent SHA of `ecbc9c0`.
+2. Whether `0dfc94940b69bbc84ef751c4fd6ed285b431cc5d` is an ancestor of `ecbc9c0`.
+3. Every financial, scenario, evidence, storage, build-generation or configuration commit between `0dfc949` and `ecbc9c0`.
+4. Whether the deployed release’s JavaScript and CSS asset identities correspond to a clean build of `0dfc949`.
+5. Whether `/api/version`, `/release.json` and the actual served asset bundle all represent the same source state.
+6. Whether generated files, ignored files, environment configuration or runtime provider values can affect the financial output without changing the reported commit SHA.
+7. Whether a service worker, CDN cache, Replit deployment cache or browser cache can serve an older financial bundle under newer version metadata.
+
+Use temporary worktrees or other non-destructive Git inspection. Do not reset or rewrite the active branch.
+
+REQUIRED PRODUCTION REPRODUCTION MATRIX
+
+Build and test at least these states:
+
+A. Exact deployed commit `0dfc949`, clean production build, empty storage.
+
+B. Exact deployed commit `0dfc949`, production build with representative legacy Stargate session and scenario storage.
+
+C. Batch 1 commit `ecbc9c0`, clean production build, empty storage.
+
+D. Batch 1 commit `ecbc9c0`, production build with legacy Stargate session and scenario storage.
+
+E. Batch 1 commit `ecbc9c0`, reset-to-default action after legacy state restoration.
+
+F. Batch 1 commit `ecbc9c0`, live EIA/ERCOT success.
+
+G. Batch 1 commit `ecbc9c0`, cached provider data.
+
+H. Batch 1 commit `ecbc9c0`, provider fallback data.
+
+For every state, record:
+
+* Baseline IRR.
+* Stress IRR.
+* Difference.
+* NPV.
+* MOIC.
+* Payback.
+* Electricity rate and provenance.
+* All 16 evidence classifications.
+* Active scenario.
+* Whether synthetic economics are activated.
+* Model input fingerprint.
+* Storage schema version.
+* Application version.
+* Commit SHA.
+* Release ID.
+* Asset bundle identity.
+
+PERSISTENCE AND RESTORATION CHECKS
+
+Determine whether 3.3% / -3.7% can be produced by:
+
+* Legacy localStorage.
+* Session restoration.
+* Saved scenario restoration.
+* Evidence reclassification persistence.
+* A stale custom-project result.
+* A selected company or project mismatch.
+* A stale synthetic-scenario opt-in.
+* Provider-loaded electricity values.
+* Duplicate multiplier application after restoration.
+* Reset failing to restore the curated baseline.
+
+Reset must reliably restore the audited default Stargate state.
+
+Reloading the reset state must preserve the same audited result.
+
+A stored state from another project must never alter Stargate.
+
+PROVIDER-STATE CHECKS
+
+Prove whether EIA, ERCOT, FEMA or another provider can alter:
+
+* Curated transaction assumptions.
+* Baseline cash flows.
+* Stress cash flows.
+* Evidence classifications.
+* Scenario multipliers.
+
+If provider data is allowed to affect the model, the exact provider value, as-of date, source state and affected model line must be recorded.
+
+If provider data is contextual only, prove that it cannot alter the financial output.
+
+REPAIR RULE
+
+If the discrepancy is caused by persistence, restoration, provider loading, build identity or cache behavior:
+
+1. Add a failing regression first.
+2. Apply the smallest repair.
+3. Preserve legitimate user scenarios.
+4. Prevent stale or cross-project state from contaminating the curated case.
+5. Ensure Reset restores the audited curated defaults.
+6. Preserve explicit synthetic-scenario opt-in.
+7. Do not weaken evidence eligibility.
+
+If the discrepancy cannot be reproduced:
+
+* Do not invent a cause.
+* Do not change formulas.
+* Record every tested hypothesis.
+* Add diagnostics sufficient to identify the exact state if it occurs again.
+* Classify the issue as unresolved rather than fixed.
+
+MAINTAINER TRACEABILITY REQUIREMENT
+
+All financial work, model inputs and source-dependent treatments must be completely traceable for the maintainer without adding noise to the general public interface.
+
+Implement a maintainer-facing traceability package in the repository.
+
+Do not add a prominent public page, public administrator panel or fake private interface without authentication.
+
+Provide a deterministic maintainer command or test utility that generates:
+
+1. A machine-readable JSON audit report.
+2. A human-readable Markdown audit report.
+
+The reports must include:
+
+* Application version.
+* Commit SHA.
+* Release ID.
+* Build timestamp.
+* Model schema version.
+* Storage schema version.
+* Project identity and stable project ID.
+* Scenario identity.
+* Run or calculation timestamp.
+* Deterministic input fingerprint.
+* Baseline cash-flow series.
+* Stress cash-flow series.
+* IRR, NPV, MOIC and payback.
+* Debt and terminal-value treatment.
+* Every input value and unit.
+* Original value.
+* Normalized value.
+* Classification.
+* Accepted state.
+* Evidence or synthetic origin.
+* Treatment multiplier.
+* Modeled value.
+* Model line affected.
+* Baseline-to-stress effect.
+* Source title.
+* Source URL.
+* Source authority/domain.
+* Retrieval date.
+* Source as-of date.
+* Exact retained passage when available.
+* Content or receipt hash when available.
+* Claim-to-passage mapping.
+* Eligibility decision.
+* Rejection reason when ineligible.
+* Human acceptance or override state.
+* Provider provenance.
+* Freshness state.
+* Known limitations.
+
+SYNTHETIC ASSUMPTION TRACEABILITY
+
+Every synthetic assumption must explicitly identify:
+
+* `sourceType: synthetic_assumption`
+* Assumption name.
+* Value and unit.
+* Rationale.
+* Scenario.
+* Last review date, if available.
+* Whether it is part of baseline, stress or both.
+* Model line affected.
+
+Synthetic assumptions must never appear to have a documentary source.
+
+SOURCE TRACEABILITY CONTRACT FOR LATER BATCHES
+
+Define a reusable maintainer provenance contract that later research and community batches can populate.
+
+It should support:
+
+* Public primary documents.
+* Company disclosures.
+* Government records.
+* Provider data.
+* Benchmark datasets.
+* Exact quotations.
+* Paraphrases.
+* Analyst conclusions.
+* Related/context-only sources.
+* Synthetic assumptions.
+* Missing evidence.
+
+Do not rebuild the research or community systems in this task. Define the traceability contract and populate it only for the financial paths already within Batch 1.
+
+PRIVACY AND SECURITY
+
+The maintainer reports must not contain:
+
+* API keys.
+* Authorization headers.
+* Cookies.
+* User credentials.
+* Provider secrets.
+* Private environment variables.
+* Full raw provider payloads containing unnecessary metadata.
+
+All output must be sanitized and deterministic.
+
+PUBLIC UI
+
+Do not clutter the normal user experience.
+
+The public UI may retain concise trace links already present, but the full audit package belongs in:
+
+* Repository-generated audit artifacts.
+* Maintainer commands.
+* Automated-test output.
+* Development tooling.
+
+Do not expose a public “admin” route without real authentication.
+
+TASK #193 AND #194
+
+Report the exact title, description and rationale for proposed Tasks #193 and #194.
+
+Do not start or implement them automatically.
+
+Explain whether either task is still necessary after this corrective pass.
+
+PROTECTED AREAS
+
+Do not modify:
+
+* Research query planning.
+* Research document-budget allocation.
+* Community benchmark scoring.
+* Audience/persona outputs.
+* Company/project relationship logic.
+* Directory ingestion.
+* AI Chain or How It Works.
+* CAM or retired Diligence Agent architecture.
+* Deployment configuration, except read-only verification of build identity.
+
+The Batch 1 accepted-state containment repair must remain intact.
+
+Do not allow later parallel work to overwrite it.
+
+ACCEPTANCE GATES
+
+This corrective pass is complete only when:
+
+1. The exact relationship among `0dfc949`, `ecbc9c0` and the deployed bundle is documented.
+2. Clean production outputs are recorded for both commits.
+3. Legacy storage restoration is tested.
+4. Reset deterministically restores the audited defaults.
+5. Provider live/cached/fallback states are tested.
+6. The served bundle identity agrees with version metadata, or the mismatch is identified.
+7. Any demonstrated defect has a failing regression and minimal repair.
+8. No unproven financial formula change is made.
+9. JSON and Markdown maintainer audit reports are generated deterministically.
+10. Every financial input is traceable to accepted evidence or a clearly labeled synthetic assumption.
+11. No secrets appear in audit artifacts.
+12. Typecheck passes.
+13. Unit/server tests pass.
+14. Independent financial fixtures pass.
+15. Production build passes.
+16. Production-entry contract passes.
+17. Desktop and mobile financial/persistence tests pass.
+18. No unrelated tests are weakened, removed or skipped.
+19. Working tree is clean.
+
+DELIVERY
+
+Return:
+
+* Architecture-gate recommendation.
+* Full starting and final SHA.
+* Parent/ancestor analysis.
+* Root cause of the deployed discrepancy, or explicit unresolved status.
+* Complete production reproduction matrix.
+* Any repairs made.
+* Before/after outputs.
+* Provider-state results.
+* Persistence/reset results.
+* Maintainer audit command.
+* Generated audit artifact locations.
+* Traceability schema summary.
+* Task #193 and #194 details.
+* Complete test totals.
+* Remaining limitations.
+* Confirmation that nothing was published or deployed.

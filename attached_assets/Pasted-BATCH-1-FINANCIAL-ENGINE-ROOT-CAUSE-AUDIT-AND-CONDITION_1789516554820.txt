@@ -1,0 +1,169 @@
+BATCH 1: FINANCIAL ENGINE ROOT-CAUSE AUDIT AND CONDITIONAL REPAIR
+
+Start from the current clean shared baseline. Create an isolated change set for this batch. Do not merge, publish, deploy, rewrite Git history, or modify unrelated product areas.
+
+PHASE 0: INDEPENDENT ARCHITECTURE GATE
+
+Before modifying anything, inspect the current financial engine, Stargate case inputs, baseline/current scenario mapping, evidence-classification treatments, cash-flow construction, debt treatment, terminal value, and displayed metric calculations.
+
+Give a concise GO / REVISE / STOP assessment.
+
+If you recommend STOP or identify a material scope problem, do not implement. Return the problem and proposed revised scope.
+
+If you recommend GO, proceed with the audit and conditional repair below.
+
+OBJECTIVE
+
+Determine whether the deployed Stargate outputs are caused by:
+
+1. A shared financial-engine defect.
+2. Stargate-specific synthetic assumptions.
+3. Incorrect baseline-versus-current/stress mapping.
+4. Duplicate application of evidence multipliers.
+5. Incorrect cash-flow timing.
+6. Incorrect terminal value or debt repayment treatment.
+7. A combination of these factors.
+8. Mechanically correct but economically unattractive synthetic assumptions.
+
+Do not force the model to reproduce any predetermined IRR. A 15.6%, 10.3%, 3.3%, or negative IRR is not itself the acceptance criterion.
+
+CURRENT OBSERVED OUTPUTS
+
+The deployed Stargate case currently shows:
+
+* Baseline return: 3.3%
+* Conservative stress return: -3.7%
+* Difference: -7.0 percentage points
+* Estimated Downtime Cost: approximately $3.28M/day
+* Downtime baseline: approximately $2.85M/day
+* Site Hazard Exposure Profile: 7.5% annual probability
+* Synthetic hazard baseline: 5%
+* Recommendation: BLOCKED
+
+The existing values appear mechanically consistent with classification multipliers, but the overall return remains unvalidated.
+
+REQUIRED AUDIT
+
+Build independent contract fixtures that do not simply call the same production calculation helper and repeat its result.
+
+Validate:
+
+1. Baseline-only annual cash flows.
+2. Current/stress annual cash flows.
+3. Baseline-to-current deltas.
+4. Levered IRR.
+5. Unlevered IRR, if the product claims or displays it.
+6. NPV at the displayed discount rate.
+7. MOIC.
+8. Payback calculation.
+9. Initial equity contribution.
+10. Debt draw and repayment.
+11. Interest calculation and timing.
+12. Operating revenue and expense timing.
+13. Terminal value calculation.
+14. Terminal-year operating cash flow.
+15. Whether debt repayment is subtracted exactly once.
+16. Whether terminal value is added exactly once.
+17. Hazard probability treatment.
+18. Expected downtime-day treatment.
+19. Downtime cost-per-day treatment.
+20. Whether evidence multipliers are applied exactly once.
+21. One-time versus recurring driver effects.
+22. IRR behavior when cash flows do not contain a valid sign change.
+23. Consistency among IRR, NPV and MOIC for the same cash-flow series.
+24. Evidence containment: pending, rejected, unresolved, context-only or unaccepted inputs must not affect the model.
+25. Unit consistency for percentages, dollars, $M, MW, $/MWh, days and annual escalation.
+
+REQUIRED TRACE
+
+Produce a concise financial audit report that explains:
+
+* Exact synthetic transaction assumptions.
+* Exact accepted evidence inputs.
+* Exact classification or scenario multipliers.
+* Baseline cash-flow series.
+* Current/stress cash-flow series.
+* Terminal value.
+* Debt repayment.
+* Independently recalculated IRR, NPV and MOIC.
+* Every driver contributing to the 7.0-point IRR difference.
+* Whether the 3.3% and -3.7% outputs are mathematically correct under the configured assumptions.
+
+CONDITIONAL REPAIR RULE
+
+Change production formulas only when an independent failing contract test demonstrates a defect.
+
+If the engine is mathematically correct:
+
+* Do not manipulate assumptions merely to produce more attractive returns.
+* Preserve the current outputs.
+* Improve traceability, labels or documentation only where necessary.
+* Explain which synthetic inputs make the project unattractive.
+
+If the engine is incorrect:
+
+* Add the failing test first.
+* Apply the smallest repair.
+* Prove the repaired output using the independent fixture.
+* Identify whether the repair affects every project or only Stargate.
+
+PRESENTATION REQUIREMENTS
+
+The UI must continue to state that:
+
+* Transaction economics are synthetic.
+* Project returns are not issuer returns.
+* Project returns are not portfolio returns.
+* Synthetic assumptions are separate from accepted evidence.
+* The conservative scenario is not a prediction.
+
+PROTECTED AREAS
+
+Do not modify:
+
+* Research planning or provider integrations.
+* Research lifecycle or storage.
+* Community-agreement data.
+* Holding/project relationship logic.
+* Financial Advisor or Asset Manager outputs.
+* AI Chain or How It Works.
+* Directory behavior.
+* CAM or any retired Diligence Agent architecture.
+* Deployment configuration.
+
+Do not revive any removed analyst-agent, CAM, authorization, quorum or lineage workflow.
+
+ACCEPTANCE GATES
+
+The batch passes only if:
+
+1. Independent fixtures reconcile every displayed financial metric.
+2. Baseline and stress cash flows are separately visible and testable.
+3. Every displayed driver has a traceable model line.
+4. Classification multipliers are applied exactly once.
+5. Debt and terminal value are treated exactly once.
+6. Unaccepted evidence cannot alter returns.
+7. Invalid IRR cases are handled explicitly.
+8. The current Stargate result is explained rather than cosmetically changed.
+9. Existing curated and custom-project safeguards remain intact.
+10. Typecheck passes.
+11. Unit/server tests pass.
+12. Production build passes.
+13. Relevant desktop and mobile financial tests pass.
+14. No unrelated tests are weakened, removed or skipped.
+15. Working tree is clean.
+
+DELIVERY
+
+Return:
+
+* Architecture-gate recommendation.
+* Root-cause conclusion.
+* Whether any shared formula changed.
+* Before/after metrics, if a demonstrated repair was required.
+* Independent fixture results.
+* Changed files.
+* Test totals.
+* Remaining limitations.
+* Final commit SHA.
+* Confirmation that nothing was published or deployed.

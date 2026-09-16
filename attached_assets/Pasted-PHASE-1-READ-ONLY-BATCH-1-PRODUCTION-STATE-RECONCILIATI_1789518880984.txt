@@ -1,0 +1,247 @@
+PHASE 1: READ-ONLY BATCH 1 PRODUCTION-STATE RECONCILIATION
+
+This is a verification task only.
+
+Do not modify source code, tests, documentation, attached files, configuration or Git history.
+
+Do not create a commit, merge a branch, publish, deploy, start Tasks #193 or #194, or implement the permanent maintainer traceability package.
+
+Use temporary worktrees or another non-destructive method. Leave the active working tree exactly as you found it.
+
+OBJECTIVE
+
+Determine why live testing of the deployed SafeLoc application showed:
+
+* Baseline IRR: 3.3%
+* Conservative stress IRR: -3.7%
+* Difference: -7.0 percentage points
+
+while Batch 1 reports these audited outputs:
+
+* Baseline IRR: 13.343%
+* Conservative stress IRR: 9.087%
+* Difference: -4.256 percentage points
+
+The live deployment reported:
+
+* Commit SHA: `0dfc94940b69bbc84ef751c4fd6ed285b431cc5d`
+* Release ID: `bundle-11952d35215a0cb9`
+* Build timestamp: `2026-09-14T22:52:14.099Z`
+
+The Batch 1 audit commit is:
+
+* `ecbc9c0278d53fdbea5b5d29304a64406ed66921`
+
+Its reported parent is:
+
+* `be5c908e72c1e790687167c62ad5c6c03d40932f`
+
+PHASE 0: READ-ONLY GATE
+
+Before running the matrix, confirm:
+
+1. Both commits exist locally.
+2. `0dfc949` is an ancestor of `ecbc9c0`.
+3. Temporary worktrees can be used without changing the active branch.
+4. The current working tree is clean except for any explicitly identified user attachments.
+5. No implementation or merge is necessary to perform this verification.
+
+If any condition fails, stop and report the blocker without changing anything.
+
+PART 1: COMMIT AND BUILD-IDENTITY RECONCILIATION
+
+For exact commit `0dfc949` and exact commit `ecbc9c0`, build production artifacts independently and record:
+
+* Full source commit SHA.
+* Application version.
+* `/api/version` output.
+* `/release.json` output.
+* Release ID.
+* Build timestamp.
+* JavaScript asset names and hashes.
+* CSS asset names and hashes.
+* Generated-file identities.
+* Relevant build-time environment identity values.
+* Whether the built assets and version documents point to the same source state.
+
+Determine whether the build process allows `COMMIT_SHA`, `RELEASE_ID` or build timestamp values to identify a different source state from the code actually being bundled.
+
+Do not expose secrets or private environment-variable values. Report only sanitized identity metadata.
+
+PART 2: PRODUCTION REPRODUCTION MATRIX
+
+Run these deterministic cases for both `0dfc949` and `ecbc9c0`.
+
+A. Clean production build with empty browser storage.
+
+B. Production build with representative legacy Stargate session storage.
+
+C. Production build with a saved scenario restored.
+
+D. Production build after Reset to Default.
+
+E. Reload immediately after Reset to Default.
+
+F. Production build with deterministic live-success EIA/ERCOT fixtures.
+
+G. Production build with deterministic cached-provider fixtures.
+
+H. Production build with deterministic fallback-provider fixtures.
+
+I. Production build with a stored custom project followed by navigation back to Stargate.
+
+J. Production build with a stored evidence reclassification followed by reset.
+
+Do not use uncontrolled live-network responses as an acceptance gate. Live calls may be recorded separately as diagnostics.
+
+For every matrix case, record:
+
+* Project ID and project name.
+* Originating holding.
+* Active scenario.
+* Whether synthetic economics are active.
+* Storage schema version.
+* Research/session state restored.
+* All 16 evidence classifications.
+* Electricity rate and provenance.
+* Hazard probability.
+* Downtime cost per day.
+* Baseline annual cash-flow series.
+* Stress annual cash-flow series.
+* Baseline IRR.
+* Stress IRR.
+* IRR difference.
+* NPV.
+* MOIC.
+* Payback.
+* Debt repayment.
+* Terminal value.
+* Model-input fingerprint.
+* Commit SHA.
+* Release ID.
+* Asset-bundle identity.
+
+PART 3: DISCREPANCY HYPOTHESES
+
+Test whether 3.3% / -3.7% can be produced by:
+
+* Legacy localStorage.
+* Session restoration.
+* Saved scenarios.
+* Evidence-classification persistence.
+* Custom-project state contaminating Stargate.
+* Selected-company or selected-project mismatch.
+* Synthetic-scenario state.
+* EIA or ERCOT overlays.
+* Provider cached/fallback values.
+* Duplicate multiplier application after restoration.
+* Reset not restoring curated defaults.
+* A stale JavaScript bundle.
+* CDN or browser cache behavior.
+* Version metadata generated from a different source state.
+* Ignored or generated files not represented by the reported commit.
+* Build-time environment values.
+* A different data fixture used by the deployed bundle.
+
+For every hypothesis, report:
+
+* Tested or not tested.
+* Reproduced or not reproduced.
+* Evidence.
+* Exact resulting financial metrics.
+* Remaining uncertainty.
+
+PART 4: MINIMUM DIAGNOSTIC TRACE
+
+Do not build the permanent traceability product in this phase.
+
+For this reconciliation only, produce a sanitized read-only diagnostic report containing:
+
+* Commit and bundle identity.
+* Storage-state fingerprint.
+* Model-input fingerprint.
+* Scenario.
+* Project identity.
+* Provider state.
+* All financial inputs and units.
+* Baseline and stress cash flows.
+* IRR, NPV, MOIC and payback.
+* Evidence classifications.
+* Synthetic assumptions.
+* Treatment multipliers.
+* Provider overlay values.
+* Tested hypothesis.
+* Result.
+
+The diagnostic may be generated outside the tracked working tree or in a temporary location. Do not commit it.
+
+Do not include:
+
+* API keys.
+* Cookies.
+* Authorization headers.
+* Credentials.
+* Secrets.
+* Unnecessary raw provider payloads.
+
+PART 5: RESET CONTRACT
+
+Verify that Reset to Default:
+
+1. Restores the curated Oracle/Stargate case.
+2. Restores the intended 16 evidence classifications.
+3. Restores the audited financial assumptions.
+4. Clears incompatible custom-project state.
+5. Clears incompatible scenario state.
+6. Preserves only data explicitly intended to survive reset.
+7. Produces the same financial outputs before and after reload.
+8. Produces the same model-input fingerprint before and after reload.
+
+PART 6: BATCH 1 MERGE RECOMMENDATION
+
+Return one of:
+
+* `GO TO MERGE`
+* `CONDITIONAL REPAIR REQUIRED`
+* `STOP`
+
+Use `GO TO MERGE` only if:
+
+* The audited outputs are reproducible in a clean production build.
+* Reset and reload are deterministic.
+* No cross-project or legacy state contaminates Stargate.
+* Bundle identity agrees with version metadata.
+* Provider fixtures cannot silently produce unexplained returns.
+* The 3.3% / -3.7% discrepancy is either explained or clearly isolated as a historical deployment artifact with sufficient diagnostic protection.
+
+Use `CONDITIONAL REPAIR REQUIRED` if a reproducible defect is found. Identify:
+
+* The responsible layer.
+* The smallest repair.
+* The exact failing regression that should be added.
+* Whether the repair belongs in Batch 1 or a later batch.
+
+Do not implement the repair during this read-only phase.
+
+Use `STOP` if repository, build or state integrity cannot be established safely.
+
+REQUIRED FINAL RESPONSE
+
+Report:
+
+1. Phase 0 result.
+2. Exact commit ancestry.
+3. Production-build identity comparison.
+4. Full reproduction matrix.
+5. Whether 3.3% / -3.7% was reproduced.
+6. Root cause, if established.
+7. Every hypothesis tested.
+8. Reset/reload results.
+9. Provider-fixture results.
+10. Diagnostic trace location.
+11. Remaining uncertainties.
+12. Recommended disposition of Batch 1.
+13. Whether Task #193 should be completed before merge.
+14. Confirmation that no files, commits, branches, deployments or publications were changed.
+
+Do not reply with a progress statement alone. Complete the read-only reconciliation and return the substantive results in the same task.

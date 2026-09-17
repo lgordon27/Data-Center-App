@@ -1,0 +1,156 @@
+The prior response incorrectly treated the Batch 2 reconciliation as satisfying this task.
+
+Do not stop merely because commit `f858f16e2294304506f02cddc3e412e72876165a` is present. That commit documented and preserved the failures. It did not resolve them.
+
+Your own verification confirms that the required acceptance outcomes remain broken:
+
+- Texas exact-project SEC access still returns HTTP 403.
+- Arizona Wintersburg still produces zero candidate URLs.
+- Arizona Iron Mountain still produces zero candidate URLs.
+- No live Texas or Arizona run reaches:
+  official source → accessible document → retained passage → eligible visible finding.
+
+This task is a corrective implementation beyond `f858f16e`, not a request to reapply or verify that commit.
+
+PHASE 1: REQUIREMENT-BY-REQUIREMENT CODE GAP AUDIT
+
+For each requirement below, identify:
+
+- Existing file and function, if implemented
+- Existing test proving it
+- Whether the behavior works in the tracked live reports
+- Status: COMPLETE / PARTIAL / MISSING
+
+Requirements:
+
+1. OpenAI request explicitly includes:
+   `include: ["web_search_call.action.sources"]`
+
+2. Candidate parsing handles:
+   - `web_search_call.action.sources`
+   - output `url_citation` annotations
+   - existing provider-structured source arrays
+   - deduplication across those channels
+
+3. A deterministic regression fixture reproduces an Arizona response where:
+   - web search executes
+   - citation/source URLs exist in at least one provider response channel
+   - the old parser returns zero candidates
+   - the corrected parser retains the URLs
+
+4. A bounded official-domain discovery path runs when provider search returns zero URLs.
+
+5. Texas and Arizona discovery can use official:
+   - company/operator domains
+   - city domains
+   - county domains
+   - regulator domains
+   - utility domains
+   - economic-development domains
+   - official structured APIs, feeds, indexes or sitemaps
+
+6. A dedicated public, read-only SEC connector exists using:
+   - `company_tickers.json`
+   - `data.sec.gov/submissions/CIK##########.json`
+   - SEC archive document paths
+   - declared `SEC_USER_AGENT`
+   - maximum two requests per second
+   - caching and conditional retrieval
+   - no EDGAR filing/submission tokens
+
+7. The document layer has explicit bounded adapters for:
+   - HTML
+   - text-bearing PDF
+   - scanned-PDF OCR fallback
+   - JSON
+   - ArcGIS feature JSON
+   - XML
+   - redirects
+   - JavaScript shells exposing an underlying safe document URL
+
+8. Source scheduling prioritizes accessible exact-project official evidence before contextual or secondary sources.
+
+9. A blocked SEC source cannot starve other source families or categories.
+
+10. Maintainer telemetry identifies:
+    - provider source channel
+    - original and final URL
+    - access and extraction result
+    - retained passage
+    - eligibility or rejection boundary
+
+Do not answer COMPLETE based only on the existence of generic candidate parsing, generic fetch logic, telemetry, deterministic mock research or the `f858f16e` reconciliation. Cite the exact implementation and exact test for every COMPLETE result.
+
+PHASE 2: IMPLEMENT THE PROVEN GAPS
+
+After the audit, implement every PARTIAL or MISSING requirement necessary to fix the confirmed Texas and Arizona acquisition failures.
+
+At minimum, the implementation must:
+
+- Explicitly request all OpenAI search source metadata.
+- Parse every supported source channel.
+- Add the Arizona zero-candidate regression fixture.
+- Add deterministic official-domain fallback discovery.
+- Add the public read-only SEC connector.
+- Add the missing bounded document adapters.
+- Preserve all existing SSRF, DNS, redirect, size, timeout and physical-open protections.
+- Preserve the 90-second deadline and 24-open ceiling.
+- Preserve fail-closed evidence eligibility.
+- Keep all findings model-neutral until reviewer acceptance.
+
+Do not use Filer API Tokens or User API Tokens. The account-based EDGAR submission API is not appropriate for SafeLoc research.
+
+PHASE 3: LIVE ACCEPTANCE
+
+Run:
+
+- One Texas exact-project case
+- One Arizona exact-project case
+
+Choose well-documented projects with accessible official sources. Do not force SEC filings when an official company, municipal, regulator or utility source is stronger and accessible.
+
+Each case must produce:
+
+official exact-project URL
+→ bounded successful access
+→ exact retained passage
+→ governed evidence mapping
+→ eligible proposal
+→ visible Evidence Room finding
+→ no financial change before explicit acceptance
+
+If this chain is not achieved, report `LIVE ACCEPTANCE BLOCKED` and identify the exact remaining boundary. Do not call Batch 2 complete.
+
+PHASE 4: VALIDATION AND DELIVERY
+
+Run:
+
+- Full unit/server suite
+- Focused candidate-parser tests
+- SEC connector tests
+- Official-domain discovery tests
+- Document-reader tests
+- Receipt and budget tests
+- Typecheck
+- Production build and contract
+- Full desktop/mobile Playwright suites
+- Visual and console checks
+- `git diff --check`
+- Secret scan
+
+Create one isolated corrective commit beyond `f858f16e`.
+
+Report:
+
+- Gap-audit table
+- Root causes
+- Files changed
+- Tests added
+- Live Texas result
+- Live Arizona result
+- Test totals
+- Commit SHA and parent
+- Clean-tree status
+- No deployment/publication confirmation
+
+The attached task text file must remain untracked and must not be included in the commit.

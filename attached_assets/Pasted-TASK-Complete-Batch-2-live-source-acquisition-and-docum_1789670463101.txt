@@ -1,0 +1,391 @@
+TASK: Complete Batch 2 live source acquisition and document access repair
+
+PURPOSE
+
+SafeLoc’s research governance, budgeting, caching, lifecycle handling and fail-closed eligibility are largely complete. The remaining blocker is source acquisition:
+
+- Arizona searches can complete without returning candidate URLs.
+- Texas research can discover SEC documents but fail to retrieve usable passages.
+- Web search remains too important as the only discovery path.
+- Accessible authoritative sources are not consistently prioritized.
+- No live Texas or Arizona run has yet completed the full chain:
+
+Official exact-project source
+→ accessible document
+→ retained passage
+→ normalized governed variable
+→ eligible reviewer proposal
+→ visible Evidence Room finding
+
+The financial model must remain unchanged until the reviewer explicitly accepts an eligible proposal.
+
+Use the current clean main branch. Before editing, verify that the Batch 2 reconciliation commit `f858f16e2294304506f02cddc3e412e72876165a` and the subsequently applied Task #220 and #221 commits are ancestors of HEAD.
+
+Do not deploy or publish.
+
+PHASE 0: ARCHITECTURE GATE
+
+First perform a read-only audit of:
+
+- The OpenAI Responses API request and returned response shapes
+- Every location where source URLs can appear
+- Candidate normalization
+- Official-domain discovery
+- Direct document acquisition
+- SEC access behavior
+- Physical-open accounting
+- Category scheduling
+- Passage extraction
+- Evidence normalization and eligibility
+- Cached/live research handoff
+- UI provenance presentation
+
+Return one decision:
+
+- GO: the plan below fits the current architecture.
+- REVISE: identify the specific changes needed before implementation.
+- STOP: identify a blocking incompatibility.
+
+If REVISE or STOP, do not implement anything.
+
+If GO, proceed with the implementation below in the same task.
+
+IMPLEMENTATION REQUIREMENTS
+
+1. CAPTURE EVERY PROVIDER SOURCE CHANNEL
+
+Update the OpenAI Responses API request to explicitly request:
+
+`include: ["web_search_call.action.sources"]`
+
+Parse and normalize candidate URLs from every supported location, including:
+
+- `web_search_call.action.sources`
+- `url_citation` annotations on output text
+- Provider-structured source arrays
+- Existing `action.sources`
+- Existing retained candidate structures
+
+Do not assume every successful web search returns `action.sources`.
+
+Deduplicate candidates by normalized final identity while retaining:
+
+- Original URL
+- Referring URL
+- Provider canonical URL
+- Search query
+- Category
+- Source channel
+- Citation title
+- Provider response/request identifier
+
+Add sanitized diagnostic telemetry showing:
+
+- Which source channel supplied each candidate
+- Search calls with no returned URLs
+- URLs rejected during normalization and the reason
+- Candidate counts before and after normalization
+
+Never retain prompts, credentials, bearer tokens or unrestricted provider payloads.
+
+Add deterministic fixtures for:
+
+- Sources returned through `action.sources`
+- Sources returned only through `url_citation` annotations
+- Both channels returning the same source
+- A search call returning no source URLs
+- Malformed and unsafe source URLs
+
+2. ADD DETERMINISTIC OFFICIAL-SOURCE DISCOVERY
+
+Web search must not be the only source-discovery mechanism.
+
+Add bounded, server-side official-source discovery for Texas and Arizona using project identity and directory context:
+
+- Company/operator official domains
+- City official domain
+- County official domain
+- State regulator domains
+- Utility domains
+- Economic-development authority domains
+- Known official structured-data endpoints
+- Official sitemaps, feeds or document indexes when available
+
+These targets produce candidate documents only. They are not evidence and must not create claims or accepted relationships.
+
+Record for each authority:
+
+- Authority name
+- Jurisdiction
+- Domain established or domain unknown
+- How the domain was established
+- Discovery timestamp
+- URLs attempted
+- Access outcome
+
+Do not scrape general search-engine result pages.
+
+Do not hardcode project facts. A bounded registry of verified official domains and API endpoints is permitted, but it must be clearly separated from evidence.
+
+3. IMPLEMENT A READ-ONLY SEC CONNECTOR
+
+Do not use the account-based EDGAR filing/submission API.
+
+Do not request, store or use Filer API Tokens or User API Tokens.
+
+Use the public read-only SEC interfaces:
+
+- `https://www.sec.gov/files/company_tickers.json`
+- `https://data.sec.gov/submissions/CIK##########.json`
+- `https://data.sec.gov/api/xbrl/companyfacts/CIK##########.json`
+- Official SEC archive filing-document paths
+
+All SEC requests must:
+
+- Run server-side
+- Use a declared `User-Agent` from `SEC_USER_AGENT`
+- Include a product identity and contact address
+- Use conservative throttling of no more than two requests per second
+- Cache responses
+- Respect `Retry-After`, ETag, Last-Modified and Cache-Control when present
+- Avoid repeated retrieval of the same filing
+- Preserve CIK, accession number, form, filing date, primary document and retrieval timestamp
+- Remain below the SEC’s published fair-access limit
+
+The connector should:
+
+1. Resolve company/ticker to CIK.
+2. Retrieve submissions metadata.
+3. Filter filings using project/company identity, filing type, date and relevant terms.
+4. Construct the official archive-document URL.
+5. Pass the document through the bounded document reader.
+6. Retain an exact passage only when identity and semantic support are established.
+7. Pass the result through the existing evidence-eligibility boundary.
+
+SEC metadata is discovery context, not evidence by itself.
+
+A blocked or irrelevant SEC filing must not consume the entire category or run budget.
+
+4. ADD RESILIENT BOUNDED DOCUMENT READERS
+
+Support explicit adapters for:
+
+- HTML
+- Text-bearing PDF
+- Bounded OCR fallback for scanned PDFs, only when safe and within limits
+- JSON
+- ArcGIS feature-service JSON
+- XML where required by an official source
+- Redirected documents
+- JavaScript shell pages when they expose a safe underlying document URL
+
+Each receipt must record:
+
+- Requested URL
+- Final URL
+- Canonical identity
+- HTTP status
+- Content type
+- Content length
+- Redirect history
+- Access attempt timestamp
+- Extraction method
+- Extraction outcome
+- Failure reason
+- Content hash
+- Exact retained passage
+- Referring categories and URLs
+
+Preserve all existing outbound-request protections:
+
+- Private-network blocking
+- DNS validation and pinning
+- Redirect revalidation
+- MIME validation
+- Response-size limits
+- Timeouts
+- Cancellation
+- Physical-open ceiling
+- Canonical receipt reuse
+
+Do not introduce unrestricted headless browsing or arbitrary script execution.
+
+A failed, blocked or unsupported document must count exactly once against the physical-open budget and must be reusable as a failed receipt across categories.
+
+5. PRIORITIZE ACCESSIBLE PRIMARY EVIDENCE
+
+Within each category, use this ordering:
+
+1. Exact-project official HTML or structured API record
+2. Exact-project official PDF
+3. Company/operator announcement or SEC filing
+4. Utility or regulator filing
+5. City/county planning, incentive or public-meeting record
+6. Authoritative contextual source
+7. Secondary reporting
+
+Do not let one blocked source family starve the remaining categories.
+
+Preserve:
+
+- Eight governed categories
+- Fair primary opportunity for every category
+- Existing 90-second research deadline
+- Existing 24 physical-open ceiling
+- Canonical receipt reuse
+- Early stopping
+- At most one gap-driven follow-up per category
+- Existing fail-closed eligibility rules
+
+If a provider search was issued but its documents could not be opened, label the category Partial rather than Not searched.
+
+6. REPAIR THE ARIZONA ZERO-URL PATH
+
+Use the tracked Arizona reports to reproduce:
+
+- Search executed
+- Provider request completed
+- Zero candidate URLs
+- Zero physical opens
+
+Add a failing regression fixture from a sanitized provider response representing this condition.
+
+Confirm whether the cause is:
+
+- Missing `include: ["web_search_call.action.sources"]`
+- Parser incompatibility with the current Responses API shape
+- URLs present only in citation annotations
+- Provider genuinely returning no source URLs
+- Candidate normalization rejecting all URLs
+
+Apply the smallest proven repair.
+
+When a provider genuinely returns no URLs, run the bounded official-domain discovery path instead. Do not invent URLs or claims.
+
+7. REVIEWER AND MAINTAINER TRACEABILITY
+
+The normal user interface must remain concise.
+
+Behind progressive disclosure, expose:
+
+- Source-discovery channel
+- Exact query or official connector used
+- Candidate URL and final URL
+- Access and extraction outcome
+- Retained exact passage
+- Normalized value and unit
+- Governed evidence identifier
+- Eligibility decision
+- Rejection reason
+- Run ID and provider request ID
+- Live versus cached/historical status
+- Physical-open usage and remaining capacity
+
+For maintainers, preserve enough sanitized information to reproduce a run without exposing secrets or unrestricted model payloads.
+
+8. MODEL SAFETY
+
+Do not change:
+
+- Financial formulas
+- Scenario hierarchy
+- Evidence classifications
+- Treatment multipliers
+- Recommendation rules
+- Community-agreement logic
+- Accepted project evidence
+- Saved scenario schemas except for a backward-compatible provenance addition if strictly necessary
+
+No discovered source, extracted value or proposal may change the financial model unless:
+
+1. The source passes all eligibility rules.
+2. The proposal is visible to the reviewer.
+3. The reviewer explicitly accepts or validly overrides it.
+
+LIVE ACCEPTANCE GATE
+
+Run bounded live acceptance against:
+
+- One well-documented Texas data-center project
+- One well-documented Arizona data-center project
+
+Choose projects with accessible official company, municipal, utility or regulator records. Do not force an SEC document when a stronger accessible official source exists.
+
+For each state, success requires at least one complete chain:
+
+Official exact-project URL
+→ successful bounded access
+→ exact retained passage
+→ compatible governed value/unit or classification
+→ eligible proposal
+→ visible Evidence Room finding
+→ model remains unchanged before acceptance
+
+The report must include:
+
+- Project and directory ID
+- Run ID
+- Exact source URL
+- Source authority
+- Exact retained passage
+- Evidence identifier
+- Normalized value and unit
+- Eligibility result
+- Visible UI location
+- Before-acceptance model state
+- After explicit test acceptance model state
+- Provider, search, candidate and physical-open counts
+- Timing
+- Cache status
+- Any unresolved categories
+
+Do not weaken identity, passage, date, facility-scope, semantic-unit or reviewer-acceptance rules to pass the live gate.
+
+If either state remains blocked:
+
+- Report `LIVE ACCEPTANCE BLOCKED`
+- Identify the exact boundary and source
+- Do not describe Batch 2 as complete
+- Do not hide the blocked result behind passing deterministic tests
+
+VALIDATION
+
+Run:
+
+- Typecheck
+- Full unit/server suite
+- Focused research proxy and connector tests
+- SEC connector tests using deterministic fixtures
+- Candidate-source parsing tests
+- Document-reader tests
+- Receipt/accounting tests
+- Cache/session restoration tests
+- Production build
+- Production endpoint contract
+- Full desktop Playwright suite
+- Full mobile Playwright suite
+- Visual checks at 1440×900 and 390×844
+- Browser and server log review
+- `git diff --check`
+- Secret scanning of tracked diagnostics
+
+No retries, sleeps or weakened timing thresholds may be added merely to make tests pass.
+
+DELIVERY
+
+Create one isolated commit only after verification.
+
+Report:
+
+- Architecture-gate decision
+- Root causes proven
+- Files changed
+- Exact implementation
+- Live Texas result
+- Live Arizona result
+- Test totals
+- Intentional skips
+- Remaining failures
+- Commit SHA and parent
+- Clean-tree status
+- Confirmation that nothing was deployed or published

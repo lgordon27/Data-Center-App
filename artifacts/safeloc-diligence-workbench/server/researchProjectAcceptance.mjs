@@ -113,6 +113,31 @@ function isFailedRetainedCacheResponse(payload) {
     && payload?.researchCache?.state === "stale";
 }
 
+function buildRetainedBudgetDiagnostics(result) {
+  const audit = result?.researchAudit;
+  const coverage = result?.researchCoverage;
+  if (!audit && !coverage) return null;
+  const categories = Array.isArray(audit?.categories) ? audit.categories : [];
+  return {
+    telemetryStatus: "historical-retained",
+    physicalOpenBudget: audit?.physicalOpenBudget ?? coverage?.physicalOpenBudget ?? null,
+    physicalOpensUsed: audit?.physicalOpensUsed ?? coverage?.physicalOpensUsed ?? null,
+    physicalOpensRemaining: audit?.physicalOpensRemaining ?? coverage?.physicalOpensRemaining ?? null,
+    physicalOpenBudgetExceeded: audit?.physicalOpenBudgetExceeded
+      ?? coverage?.physicalOpenBudgetExceeded
+      ?? false,
+    categories: categories.map((category) => ({
+      categoryId: category.categoryId,
+      label: category.label,
+      state: category.state,
+      followUpSkipReason: category.followUpSkipReason ?? null,
+      accessLimitations: category.accessLimitations ?? [],
+      unresolvedGaps: category.unresolvedGaps ?? [],
+      stageCounts: category.stageCounts ?? null,
+    })),
+  };
+}
+
 function buildVisibleFindingTrace(result) {
   const evidence = Array.isArray(result?.evidence) ? result.evidence : [];
   const categoryByEvidenceId = new Map(
@@ -230,6 +255,12 @@ export function buildAcceptanceReport({ project, liveRun, failureRun, generatedA
   const totalCandidateCount = Object.values(categoryCandidateCounts).reduce((sum, count) => sum + count, 0);
   const failurePayload = failureRun?.payload ?? null;
   const failureCache = failurePayload?.researchCache ?? null;
+  const retainedBudgetDiagnostics = retainedCacheResponse
+    ? buildRetainedBudgetDiagnostics(result)
+    : null;
+  const failureRetainedBudgetDiagnostics = isFailedRetainedCacheResponse(failurePayload)
+    ? buildRetainedBudgetDiagnostics(failurePayload)
+    : null;
   const usefulCompletion = source.retainedPassages.length > 0 || (result?.eligibleEvidenceCount ?? 0) > 0;
   const visibleFindingTrace = buildVisibleFindingTrace(result);
   const terminalStatus = retainedCacheResponse || liveRun.statusCode < 200 || liveRun.statusCode >= 300
@@ -260,6 +291,7 @@ export function buildAcceptanceReport({ project, liveRun, failureRun, generatedA
     },
     run: {
       status: terminalStatus,
+      telemetryStatus: retainedCacheResponse ? "historical-retained" : "current-live",
       runId: audit?.runCorrelationId ?? null,
       researchStatus: result?.researchStatus ?? null,
       httpStatus: liveRun.statusCode,
@@ -320,6 +352,7 @@ export function buildAcceptanceReport({ project, liveRun, failureRun, generatedA
     ].filter((value, index, values) => values.indexOf(value) === index),
     retainedHistoricalRun: retainedHistoricalAudit
       ? {
+        ...retainedBudgetDiagnostics,
         provider: retainedHistoricalAudit.provider ?? "openai",
         model: retainedHistoricalAudit.model ?? RESEARCH_PROJECT_MODEL,
         providerResponseIds: retainedHistoricalAudit.providerResponseIds ?? [],
@@ -340,6 +373,7 @@ export function buildAcceptanceReport({ project, liveRun, failureRun, generatedA
         retainedResult: Array.isArray(failurePayload?.evidence),
         retainedResultMode: failurePayload?.researchMode ?? null,
         retainedCategoryGaps: failurePayload?.researchAudit?.categoryGaps ?? categoryGaps,
+        retainedBudgetDiagnostics: failureRetainedBudgetDiagnostics,
         labeledStaleOrPartial: failureCache?.state === "stale"
           || failurePayload?.researchMode === "research-incomplete"
           || (failurePayload?.researchAudit?.categoryGaps ?? categoryGaps).length > 0,

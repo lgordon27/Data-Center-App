@@ -1087,6 +1087,58 @@ test("serves fresh cached research without another provider call", async () => {
   assert.equal(providerCalls, 15);
 });
 
+test("retains physical-open diagnostics through a cached handoff", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "safeloc-research-cache-budget-handoff-"));
+  const cache = createResearchProjectCache({ directory });
+  const project = { name: "Budget Atlas", location: "Texas" };
+  const cached = containResearchResult({
+    ...validResearchResponse(),
+    researchCoverage: {
+      searchedDomains: [],
+      failedDomains: [],
+      retrievedSourceCount: 3,
+      searchTerms: [],
+      searchTermsSource: "unavailable",
+      physicalOpenBudget: RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens,
+      physicalOpensUsed: RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens,
+      physicalOpensRemaining: 0,
+      physicalOpenBudgetExceeded: true,
+    },
+    researchAudit: {
+      provider: "openai",
+      model: "gpt-4o",
+      physicalOpenBudget: RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens,
+      physicalOpensUsed: RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens,
+      physicalOpensRemaining: 0,
+      physicalOpenBudgetExceeded: true,
+      categories: [{
+        categoryId: "water",
+        label: "Water",
+        state: "Not searched",
+        followUpSkipReason: "physical-open-budget",
+        accessLimitations: ["The physical document-open ceiling was reached."],
+        unresolvedGaps: ["water_rights"],
+        stageCounts: { notAttempted: 3 },
+      }],
+    },
+  });
+  await cache.write(cache.keyFor(project), cached);
+  cache.clearMemory();
+
+  const response = responseRecorder();
+  await handleResearchProjectRequest(request(project), response, { cache, apiKey: "unused" });
+  const payload = response.json();
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(payload.researchCache.state, "fresh");
+  assert.equal(payload.researchCoverage.physicalOpensUsed, RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens);
+  assert.equal(payload.researchCoverage.physicalOpensRemaining, 0);
+  assert.equal(payload.researchCoverage.physicalOpenBudgetExceeded, true);
+  assert.equal(payload.researchAudit.physicalOpenBudgetExceeded, true);
+  assert.equal(payload.researchAudit.categories[0].followUpSkipReason, "physical-open-budget");
+  assert.equal(payload.researchAudit.categories[0].stageCounts.notAttempted, 3);
+});
+
 test("recontains a cached result instead of trusting prior acceptance", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "safeloc-research-cache-policy-"));
   const cache = createResearchProjectCache({ directory });

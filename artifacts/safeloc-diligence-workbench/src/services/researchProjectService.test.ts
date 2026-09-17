@@ -475,6 +475,56 @@ test("preserves cache freshness metadata and sends explicit force refresh", asyn
   });
 });
 
+test("preserves retained physical-open diagnostics without treating them as fresh telemetry", () => {
+  const retained = structuredClone(response);
+  retained.researchCache = {
+    key: "c".repeat(64),
+    state: "stale",
+    storedAt: "2026-09-01T12:00:00.000Z",
+    refreshStatus: "failed",
+    providerAvailable: false,
+    errorType: "timeout",
+  };
+  retained.researchCoverage = {
+    searchedDomains: [],
+    failedDomains: [],
+    retrievedSourceCount: 3,
+    searchTerms: [],
+    searchTermsSource: "unavailable",
+    physicalOpenBudget: 24,
+    physicalOpensUsed: 24,
+    physicalOpensRemaining: 0,
+    physicalOpenBudgetExceeded: true,
+  };
+  retained.researchAudit = {
+    provider: "openai",
+    model: "gpt-4o",
+    physicalOpenBudget: 24,
+    physicalOpensUsed: 24,
+    physicalOpensRemaining: 0,
+    physicalOpenBudgetExceeded: true,
+    categories: [{
+      categoryId: "water",
+      label: "Water",
+      state: "Not searched",
+      followUpSkipReason: "physical-open-budget",
+      accessLimitations: ["The physical document-open ceiling was reached."],
+      unresolvedGaps: ["water_rights"],
+      stageCounts: { notAttempted: 3 },
+    }],
+  };
+
+  const parsed = parseResponse(retained);
+  assert.equal(parsed.researchCache?.refreshStatus, "failed");
+  assert.equal(parsed.researchCache?.providerAvailable, false);
+  assert.equal(parsed.researchAudit?.physicalOpensUsed, 24);
+  assert.equal(parsed.researchAudit?.physicalOpensRemaining, 0);
+  assert.equal(parsed.researchAudit?.physicalOpenBudgetExceeded, true);
+  assert.equal(parsed.researchAudit?.categories[0].followUpSkipReason, "physical-open-budget");
+  assert.equal(parsed.researchAudit?.categories[0].stageCounts.notAttempted, 3);
+  assert.equal(parsed.researchCoverage?.physicalOpenBudgetExceeded, true);
+});
+
 test("checks background refresh status and parses a completed result", async () => {
   const cacheKey = "b".repeat(64);
   const result = await checkResearchStatus(cacheKey, async (input) => {

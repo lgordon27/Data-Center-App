@@ -9,6 +9,12 @@ The research handoff must track physical document opens separately from returned
 
 **How to apply:** Preserve physical-open usage, remaining capacity, ceiling state, reused receipts, and budget-limited categories through the server audit, client parser, handoff summary, and search audit.
 
+Retained acceptance results must expose these diagnostics under an explicitly historical telemetry status, including the category-level reason a later document was not attempted.
+
+**Why:** A failed refresh can successfully return older cached research; showing its open-budget counters as current-run telemetry would mislead reviewers about what the provider just did.
+
+**How to apply:** Keep current-live and historical-retained audit fields separate in acceptance output and preserve both the budget counters and category skip reasons through cache and client parsing.
+
 Concurrent in-flight receipt reuse should require an explicit provider canonical or resolved identity; a plain provider URL may still represent independent physical opportunities until a receipt is complete.
 
 **Why:** Deduplicating plain URLs before any receipt exists can starve the shared physical-opportunity budget, while provider-declared canonical identity is sufficient to safely coalesce concurrent access.

@@ -88,6 +88,21 @@ test("builds a diagnostic-only report with bounded live-run and retention fields
       statusCode: 200,
       payload: {
         evidence: [{ id: "retained" }],
+        researchAudit: {
+          physicalOpenBudget: 24,
+          physicalOpensUsed: 24,
+          physicalOpensRemaining: 0,
+          physicalOpenBudgetExceeded: true,
+          categories: [{
+            categoryId: "water",
+            label: "Water",
+            state: "Not searched",
+            followUpSkipReason: "physical-open-budget",
+            accessLimitations: ["The physical document-open ceiling was reached."],
+            unresolvedGaps: ["water_rights"],
+            stageCounts: { notAttempted: 3 },
+          }],
+        },
         researchCache: {
           state: "stale",
           refreshStatus: "failed",
@@ -122,6 +137,11 @@ test("builds a diagnostic-only report with bounded live-run and retention fields
   assert.equal(report.failureRetention.cacheState, "stale");
   assert.equal(report.failureRetention.refreshStatus, "failed");
   assert.equal(report.failureRetention.retainedResult, true);
+  assert.equal(report.failureRetention.retainedBudgetDiagnostics.telemetryStatus, "historical-retained");
+  assert.equal(report.failureRetention.retainedBudgetDiagnostics.physicalOpensUsed, 24);
+  assert.equal(report.failureRetention.retainedBudgetDiagnostics.physicalOpensRemaining, 0);
+  assert.equal(report.failureRetention.retainedBudgetDiagnostics.physicalOpenBudgetExceeded, true);
+  assert.equal(report.failureRetention.retainedBudgetDiagnostics.categories[0].followUpSkipReason, "physical-open-budget");
   assert.equal(report.failureRetention.labeledStaleOrPartial, true);
   assert.equal("evidence" in report, false);
 });
@@ -359,8 +379,26 @@ test("does not attribute a failed refresh with retained cache to the current liv
           startedAt: "2026-09-07T10:00:00.000Z",
           finishedAt: "2026-09-07T10:00:04.000Z",
           elapsedMs: 4_000,
+          physicalOpenBudget: 24,
+          physicalOpensUsed: 24,
+          physicalOpensRemaining: 0,
+          physicalOpenBudgetExceeded: true,
           categoryGaps: [],
-          categories: [],
+          categories: [{
+            categoryId: "water",
+            label: "Water",
+            state: "Not searched",
+            followUpSkipReason: "physical-open-budget",
+            accessLimitations: ["The physical document-open ceiling was reached before this category was attempted."],
+            unresolvedGaps: ["water_rights"],
+            stageCounts: { notAttempted: 3 },
+          }],
+        },
+        researchCoverage: {
+          physicalOpenBudget: 24,
+          physicalOpensUsed: 24,
+          physicalOpensRemaining: 0,
+          physicalOpenBudgetExceeded: true,
         },
         sourceLedger: [{
           url: "https://example.gov/old",
@@ -380,6 +418,7 @@ test("does not attribute a failed refresh with retained cache to the current liv
   });
 
   assert.equal(report.run.status, "failed");
+  assert.equal(report.run.telemetryStatus, "historical-retained");
   assert.equal(report.run.failureType, "timeout");
   assert.equal(report.run.elapsedMs, 90_000);
   assert.equal(report.executedQueries.length, RESEARCH_CATEGORIES.length);
@@ -387,5 +426,12 @@ test("does not attribute a failed refresh with retained cache to the current liv
   assert.equal(report.sourceStates.total, 0);
   assert.equal(report.categoryGaps.length, RESEARCH_CATEGORIES.length);
   assert.equal(report.retainedHistoricalRun.providerResponseIds[0], "resp_old");
+  assert.equal(report.retainedHistoricalRun.telemetryStatus, "historical-retained");
+  assert.equal(report.retainedHistoricalRun.physicalOpenBudget, 24);
+  assert.equal(report.retainedHistoricalRun.physicalOpensUsed, 24);
+  assert.equal(report.retainedHistoricalRun.physicalOpensRemaining, 0);
+  assert.equal(report.retainedHistoricalRun.physicalOpenBudgetExceeded, true);
+  assert.equal(report.retainedHistoricalRun.categories[0].followUpSkipReason, "physical-open-budget");
+  assert.equal(report.retainedHistoricalRun.categories[0].stageCounts.notAttempted, 3);
   assert.match(report.providerLimitations.at(-1), /historical data/i);
 });

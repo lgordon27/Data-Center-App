@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { INITIAL_EVIDENCE } from "@/context/DiligenceContext";
+import { INITIAL_EVIDENCE, buildFinancialInputState } from "@/context/DiligenceContext";
 import {
   calculateCashFlowModel,
   calculateIRR,
+  calculateIRRResult,
   calculateMOIC,
   calculateNPV,
   calculatePayback,
@@ -111,6 +112,53 @@ test("return metrics reject ambiguous IRRs while keeping NPV, MOIC, and payback 
   assert.ok(calculateNPV(noSignChange, 0.1) < 0);
   assert.equal(calculateMOIC(noSignChange), 0);
   assert.equal(calculatePayback(noSignChange), null);
+});
+
+test("IRR results expose a typed mathematical reason without changing the nullable value", () => {
+  assert.deepEqual(calculateIRRResult([-100, -25, -10]), {
+    value: null,
+    status: "not-meaningful",
+    reason: "no-sign-change",
+  });
+  assert.deepEqual(calculateIRRResult([-100, 230, -132]), {
+    value: null,
+    status: "not-meaningful",
+    reason: "multiple-roots",
+  });
+  assert.deepEqual(calculateIRRResult([-100, Number.NaN, 250]), {
+    value: null,
+    status: "not-meaningful",
+    reason: "invalid-input",
+  });
+  const meaningful = calculateIRRResult([-100, -25, 250]);
+  assert.equal(meaningful.status, "meaningful");
+  assert.equal(meaningful.reason, null);
+  assert.equal(meaningful.value, calculateIRR([-100, -25, 250]));
+});
+
+test("provider overlay state keeps each displayed IRR paired with its own reason", () => {
+  const snapshot = (reason: "no-sign-change" | "multiple-roots", projectIRR: number | null) => ({
+    projectIRR,
+    projectIRRStatus: projectIRR === null ? "not-meaningful" as const : "meaningful" as const,
+    projectIRRReason: projectIRR === null ? reason : null,
+    assumptions: { electricityRate: 42 },
+  });
+  const state = buildFinancialInputState({
+    projectKind: "curated",
+    eiaLoading: false,
+    providerStatus: "live",
+    providerDataOrigin: "provider",
+    electricityRate: 55,
+    electricityPeriod: "2026-08",
+    sourceUpdatedAt: "2026-09-01T00:00:00.000Z",
+    syntheticModel: snapshot("no-sign-change", null),
+    providerOverlayModel: snapshot("multiple-roots", null),
+  });
+
+  assert.equal(state.syntheticBaselineIRR, null);
+  assert.equal(state.syntheticBaselineIRRReason, "no-sign-change");
+  assert.equal(state.providerOverlayIRR, null);
+  assert.equal(state.providerOverlayIRRReason, "multiple-roots");
 });
 
 test("custom research boundary quarantines incompatible units and source-free proposals", () => {

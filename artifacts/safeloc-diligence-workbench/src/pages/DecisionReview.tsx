@@ -61,6 +61,7 @@ import {
   formatPayback,
   formatPercentagePoints,
   formatScenarioDelta,
+  IRRReasonNote,
   classifications,
   classMeta
 } from "@/components/Shell";
@@ -202,10 +203,12 @@ export function DecisionReview({ onNavigate, onResolve, requestedAction, onReque
           <div className="flex items-start justify-between"><div><SectionKicker tone="lime" className="!text-[#d4e86b]">Conservative stress case return</SectionKicker><div className="mt-2 text-[10px] uppercase tracking-[0.17em] text-[#a4b4bd]">Conservative Stress Case project IRR</div></div><Gauge className="h-5 w-5 text-[#b9d43a]" /></div>
           {lowConfidence && <div className="mt-4"><LowConfidenceWarning testId="warning-low-confidence-decision" /></div>}
           <div className="mt-5 flex items-end justify-between gap-3">
-            <div data-testid="text-decision-irr" className="font-mono text-[64px] font-bold leading-none tracking-[-0.08em] text-[#d4e86b]">{formatIRR(metrics.projectIRR)}</div>
+           <div data-testid="text-decision-irr" className="font-mono text-[64px] font-bold leading-none tracking-[-0.08em] text-[#d4e86b]">{formatIRR(metrics.projectIRR)}</div>
             {metrics.lastChange && metrics.lastChange.from !== metrics.lastChange.to && <div className={`mb-1 flex flex-col items-end gap-1 rounded px-2 py-1 font-mono text-[10px] font-bold ${metrics.lastChange.delta < 0 ? "bg-[#f5ddd5] text-[#ba2f45]" : "bg-[#e0f4ed] text-[#0b7a63]"}`}><span className="opacity-60 line-through">{formatIRR(metrics.lastChange.from)} prior</span><span>{formatPercentagePoints(metrics.lastChange.delta, { signed: true })}</span></div>}
           </div>
-          <div className="mt-5 border-t border-white/15 pt-4 text-[11px] leading-5 text-[#afbdc4]">Underwriting Baseline: <span className="font-mono text-white">{formatIRR(metrics.baseIRR ?? null)}</span>. The Conservative Stress Case reflects evidence quality, timeline drag, and infrastructure risk.</div>
+           {metrics.projectIRRReason != null && <IRRReasonNote reason={metrics.projectIRRReason} testId="decision-current-irr-reason" tone="dark" />}
+           <div className="mt-5 border-t border-white/15 pt-4 text-[11px] leading-5 text-[#afbdc4]">Underwriting Baseline: <span className="font-mono text-white">{formatIRR(metrics.baseIRR ?? null)}</span>. The Conservative Stress Case reflects evidence quality, timeline drag, and infrastructure risk.</div>
+           {metrics.baseModel?.projectIRRReason != null && <IRRReasonNote reason={metrics.baseModel.projectIRRReason} testId="decision-baseline-irr-reason" tone="dark" />}
            <div className="mt-6 grid grid-cols-3 gap-2">
            <div className="rounded border border-white/10 bg-white/5 p-3"><div className="text-[9px] uppercase tracking-[0.1em] text-[#9dafb8]">MOIC</div><div className="mt-1 font-mono text-sm">{formatScenarioMetric(metrics.moic, "moic")}</div></div>
            <div className="rounded border border-white/10 bg-white/5 p-3"><div className="text-[9px] uppercase tracking-[0.1em] text-[#9dafb8]">NPV</div><div className="mt-1 font-mono text-sm">{formatCurrency(metrics.npv, 0)}</div></div>
@@ -401,7 +404,7 @@ function ScenarioComparison({ scenarios }: { scenarios: SavedScenario[] }) {
 
   const first = scenarios.find((scenario) => scenario.id === firstId) ?? scenarios[0];
   const second = scenarios.find((scenario) => scenario.id === secondId) ?? scenarios.find((scenario) => scenario.id !== first.id) ?? scenarios[1];
-  const rows: { label: string; key: keyof SavedScenario["metrics"]; metric: "irr" | "moic" | "npv" | "cashOnCash" | "payback" | "confidence" }[] = [
+  const rows: { label: string; key: "projectIRR" | "moic" | "npv" | "cashOnCash" | "payback" | "confidence"; metric: "irr" | "moic" | "npv" | "cashOnCash" | "payback" | "confidence" }[] = [
     { label: "Project IRR", key: "projectIRR", metric: "irr" },
     { label: "MOIC", key: "moic", metric: "moic" },
     { label: "NPV @ 10%", key: "npv", metric: "npv" },
@@ -467,7 +470,13 @@ function ScenarioComparison({ scenarios }: { scenarios: SavedScenario[] }) {
               })}
             </tbody>
           </table>
-        </div>
+           {(first.metrics.projectIRR === null || second.metrics.projectIRR === null) && (
+             <div className="mt-3 space-y-2">
+               {first.metrics.projectIRR === null && <IRRReasonNote reason={first.metrics.projectIRRReason} testId="scenario-comparison-first-irr-reason" />}
+               {second.metrics.projectIRR === null && <IRRReasonNote reason={second.metrics.projectIRRReason} testId="scenario-comparison-second-irr-reason" />}
+             </div>
+           )}
+           </div>
       )}
     </section>
   );

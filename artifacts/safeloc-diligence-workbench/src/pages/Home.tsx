@@ -50,6 +50,7 @@ import { CompanyProjectSelection } from "@/components/CompanyProjectSelection";
 import { trackEvent } from "@/services/analytics";
 import { ProviderQueueSnapshot } from "@/components/ProviderQueueSnapshot";
 import { Footer } from "@/components/Footer";
+import { IRRReasonNote, formatIRR } from "@/components/Shell";
 
 type HomeRoute = "directory" | "how-it-works" | "value-chain";
 
@@ -1343,6 +1344,7 @@ export function LegacyCompanyExploration({ onNavigate }: { onNavigate?: (route: 
   };
 
   const baselineIRR = metrics.baseIRR ?? null;
+  const baselineIRRReason = metrics.baseModel?.projectIRRReason ?? null;
   const gapExample = evidence.water_rights?.classification === "Missing Evidence"
     ? "Water rights and curtailment terms remain unestablished."
     : evidence.water_consumption?.classification === "Missing Evidence"
@@ -1425,9 +1427,15 @@ export function LegacyCompanyExploration({ onNavigate }: { onNavigate?: (route: 
                   <div className="rounded-lg border border-white/10 bg-[#0d2435] p-3"><div className="font-mono text-[8px] uppercase tracking-[0.1em] text-[#8299a5]">Material gaps</div><div data-testid="home-preview-gaps" className="mt-2 font-mono text-[20px] font-bold text-[#f5ddd5]">{metrics.missingMaterialCount}</div></div>
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2">
-                  <div className="rounded-lg border border-white/10 bg-[#0d2435] p-3"><div className="font-mono text-[8px] uppercase tracking-[0.1em] text-[#8299a5]">Baseline IRR</div><div data-testid="home-preview-baseline-irr" className="mt-2 font-mono text-[20px] font-bold text-white">{homeMetric(baselineIRR, "%")}</div></div>
-                  <div className="rounded-lg border border-[#d4e86b]/30 bg-[#173247] p-3"><div className="font-mono text-[8px] uppercase tracking-[0.1em] text-[#b9d43a]">Conservative IRR</div><div data-testid="home-preview-conservative-irr" className="mt-2 font-mono text-[20px] font-bold text-[#d4e86b]">{homeMetric(metrics.projectIRR, "%")}</div></div>
+                  <div className="rounded-lg border border-white/10 bg-[#0d2435] p-3"><div className="font-mono text-[8px] uppercase tracking-[0.1em] text-[#8299a5]">Baseline IRR</div><div data-testid="home-preview-baseline-irr" className="mt-2 font-mono text-[20px] font-bold text-white">{formatIRR(baselineIRR)}</div></div>
+                  <div className="rounded-lg border border-[#d4e86b]/30 bg-[#173247] p-3"><div className="font-mono text-[8px] uppercase tracking-[0.1em] text-[#b9d43a]">Conservative IRR</div><div data-testid="home-preview-conservative-irr" className="mt-2 font-mono text-[20px] font-bold text-[#d4e86b]">{formatIRR(metrics.projectIRR)}</div></div>
                 </div>
+                {(baselineIRRReason !== null || metrics.projectIRRReason !== null) && (
+                  <div className="mt-3 space-y-2">
+                    <IRRReasonNote reason={baselineIRRReason} testId="home-preview-baseline-irr-reason" tone="dark" />
+                    <IRRReasonNote reason={metrics.projectIRRReason} testId="home-preview-conservative-irr-reason" tone="dark" />
+                  </div>
+                )}
                 <div className="mt-4 border-t border-white/10 pt-4">
                   <div className="flex items-center justify-between gap-3"><span className="font-mono text-[8px] uppercase tracking-[0.1em] text-[#8299a5]">Evidence-quality gap</span><span data-testid="home-preview-gap-label" className="font-mono text-[9px] font-bold uppercase text-[#f1cb8b]">{metrics.missingMaterialCount > 0 ? "Open" : "None identified"}</span></div>
                   <p data-testid="home-preview-gap-example" className="mt-2 text-[11px] leading-5 text-[#dce4e7]">{gapExample}</p>

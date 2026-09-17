@@ -256,11 +256,24 @@ export type ReturnSensitivity = {
   powerPriceMultiplier: number;
   utilizationMultiplier: number;
   irr: number | null;
+  irrStatus: IRRStatus;
+  irrReason: IRRReason | null;
   moic: number;
+};
+
+export type IRRStatus = "meaningful" | "not-meaningful";
+export type IRRReason = "invalid-input" | "no-sign-change" | "multiple-roots";
+
+export type IRRResult = {
+  value: number | null;
+  status: IRRStatus;
+  reason: IRRReason | null;
 };
 
 export type CashFlowModel = {
   projectIRR: number | null;
+  projectIRRStatus: IRRStatus;
+  projectIRRReason: IRRReason | null;
   moic: number;
   cashOnCash: number;
   initialInvestedEquity: number;
@@ -503,10 +516,20 @@ export function calculateNPV(cashFlows: number[], rate: number) {
  * sign change. The caller displays null as "N/M".
  */
 export function calculateIRR(cashFlows: number[]) {
-  if (cashFlows.some((cashFlow) => !Number.isFinite(cashFlow))) return null;
+  return calculateIRRResult(cashFlows).value;
+}
+
+export function calculateIRRResult(cashFlows: number[]): IRRResult {
+  const notMeaningful = (reason: IRRReason): IRRResult => ({
+    value: null,
+    status: "not-meaningful",
+    reason,
+  });
+
+  if (cashFlows.some((cashFlow) => !Number.isFinite(cashFlow))) return notMeaningful("invalid-input");
 
   const nonZeroCashFlows = cashFlows.filter((cashFlow) => cashFlow !== 0);
-  if (nonZeroCashFlows.length < 2) return null;
+  if (nonZeroCashFlows.length < 2) return notMeaningful("no-sign-change");
 
   let signChanges = 0;
   for (let index = 1; index < nonZeroCashFlows.length; index += 1) {
@@ -514,7 +537,8 @@ export function calculateIRR(cashFlows: number[]) {
       signChanges += 1;
     }
   }
-  if (signChanges !== 1) return null;
+  if (signChanges === 0) return notMeaningful("no-sign-change");
+  if (signChanges > 1) return notMeaningful("multiple-roots");
 
   // NPV(rate) = Σ cashFlow[t] / (1 + rate)^t. Solving in x = 1 / (1 + rate)
   // gives a polynomial on x > 0, where exactly one sign change guarantees
@@ -529,9 +553,9 @@ export function calculateIRR(cashFlows: number[]) {
   for (let expansion = 0; expansion < 1024 && lowerNPV * upperNPV > 0; expansion += 1) {
     upper *= 2;
     upperNPV = npvAtDiscountFactor(upper);
-    if (!Number.isFinite(upperNPV)) return null;
+    if (!Number.isFinite(upperNPV)) return notMeaningful("invalid-input");
   }
-  if (!Number.isFinite(upperNPV) || lowerNPV * upperNPV > 0) return null;
+  if (!Number.isFinite(upperNPV) || lowerNPV * upperNPV > 0) return notMeaningful("invalid-input");
 
   let bracketLower = lower;
   let bracketUpper = upper;
@@ -540,9 +564,13 @@ export function calculateIRR(cashFlows: number[]) {
   for (let iteration = 0; iteration < 200; iteration += 1) {
     const midpoint = (bracketLower + bracketUpper) / 2;
     const midpointNPV = npvAtDiscountFactor(midpoint);
-    if (!Number.isFinite(midpointNPV)) return null;
+    if (!Number.isFinite(midpointNPV)) return notMeaningful("invalid-input");
     if (Math.abs(midpointNPV) < 0.000000001) {
-      return 1 / midpoint - 1;
+      return {
+        value: 1 / midpoint - 1,
+        status: "meaningful",
+        reason: null,
+      };
     }
 
     if (bracketLowerNPV * midpointNPV <= 0) {
@@ -555,7 +583,9 @@ export function calculateIRR(cashFlows: number[]) {
   }
 
   const discountFactor = (bracketLower + bracketUpper) / 2;
-  return discountFactor > 0 ? 1 / discountFactor - 1 : null;
+  return discountFactor > 0
+    ? { value: 1 / discountFactor - 1, status: "meaningful", reason: null }
+    : notMeaningful("invalid-input");
 }
 
 /**
@@ -887,7 +917,7 @@ function runModel(
   }
 
   const cashFlows = schedule.map((year) => year.netEquityCashFlow);
-  const projectIRR = calculateIRR(cashFlows);
+  const projectIRRResult = calculateIRRResult(cashFlows);
   const npv = calculateNPV(cashFlows, DISCOUNT_RATE);
   const totalDistributions = cashFlows
     .slice(1)
@@ -1013,7 +1043,9 @@ function runModel(
   };
 
   return {
-    projectIRR: projectIRR === null ? null : projectIRR * 100,
+    projectIRR: projectIRRResult.value === null ? null : projectIRRResult.value * 100,
+    projectIRRStatus: projectIRRResult.status,
+    projectIRRReason: projectIRRResult.reason,
     moic: calculateMOIC(cashFlows),
     cashOnCash,
     initialInvestedEquity,
@@ -1062,6 +1094,8 @@ export function calculateCashFlowModel(evidence: EvidenceRecord, requestedCapaci
         powerPriceMultiplier,
         utilizationMultiplier,
         irr: scenario.projectIRR,
+        irrStatus: scenario.projectIRRStatus,
+        irrReason: scenario.projectIRRReason,
         moic: scenario.moic,
       };
     }),

@@ -35,6 +35,7 @@ import {
   Classification,
   useDiligence
 } from "@/context/DiligenceContext";
+import type { IRRReason } from "@/model/cashFlowEngine";
 
 
 import {
@@ -79,6 +80,50 @@ export function formatCurrency(value: number, decimals = 1) {
 
 export function formatIRR(value: number | null) {
   return value === null || !Number.isFinite(value) ? "N/M" : `${value.toFixed(1)}%`;
+}
+
+export function formatIRRReasonLabel(reason: IRRReason | null | undefined) {
+  if (reason === "invalid-input") return "Invalid or incomplete cash-flow inputs";
+  if (reason === "no-sign-change") return "No sign change in the cash flows";
+  if (reason === "multiple-roots") return "Multiple possible IRR roots";
+  return "IRR reason not captured";
+}
+
+export function formatIRRReason(reason: IRRReason | null | undefined) {
+  if (reason === "invalid-input") {
+    return "The cash-flow sequence contains invalid or incomplete values, so no mathematical IRR can be calculated.";
+  }
+  if (reason === "no-sign-change") {
+    return "The cash flows never change sign, so there is no IRR root.";
+  }
+  if (reason === "multiple-roots") {
+    return "The cash flows change sign more than once, so multiple IRR roots may exist; no single IRR is reported.";
+  }
+  return "This saved scenario predates typed IRR reasoning; recalculate it to capture the mathematical reason.";
+}
+
+export function IRRReasonNote({
+  reason,
+  testId = "irr-reason-note",
+  tone = "light",
+}: {
+  reason: IRRReason | null | undefined;
+  testId?: string;
+  tone?: "light" | "dark";
+}) {
+  if (reason === null) return null;
+  const copy = formatIRRReason(reason);
+  return (
+    <p
+      data-testid={testId}
+      role="note"
+      className={tone === "dark"
+        ? "rounded-md border border-[#f5ddd5]/30 bg-[#f5ddd5]/10 px-3 py-2 text-[10px] leading-4 text-[#f5ddd5]"
+        : "rounded-md border border-[#f1cb8b] bg-[#fff8e9] px-3 py-2 text-[10px] leading-4 text-[#6f460e]"}
+    >
+      <strong>Why IRR is N/M:</strong> {copy} This is a mathematical limitation of this cash-flow sequence, not an evidence-confidence rating.
+    </p>
+  );
 }
 
 export function formatPayback(value: number | null) {
@@ -608,7 +653,7 @@ export function DiligenceLiveRegions({
         Evidence confidence is now {metrics.confidenceScore} percent.
       </div>
       <div data-testid="live-current-irr" aria-live="polite" aria-atomic="true">
-        Conservative stress case IRR is now {formatIRR(metrics.projectIRR)}.
+        Conservative stress case IRR is now {formatIRR(metrics.projectIRR)}{metrics.projectIRRReason ? ` — ${formatIRRReason(metrics.projectIRRReason)}` : ""}.
       </div>
       <div data-testid="live-recommendation" aria-live="polite" aria-atomic="true">
         Recommendation status is now {metrics.recommendationStatus}.

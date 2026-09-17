@@ -5,6 +5,8 @@ import {
   Classification,
   EvidenceRecord,
   DEFAULT_CAPACITY_MW,
+  type IRRReason,
+  type IRRStatus,
   type QualitativeEvidenceValue,
 } from '@/model/cashFlowEngine';
 import {
@@ -172,13 +174,92 @@ export type FinancialInputState = {
   sourceUpdatedAt: string | null;
   syntheticElectricityRate: number | null;
   syntheticBaselineIRR: number | null;
+  syntheticBaselineIRRStatus: IRRStatus;
+  syntheticBaselineIRRReason: IRRReason | null;
   providerOverlayIRR: number | null;
+  providerOverlayIRRStatus: IRRStatus | null;
+  providerOverlayIRRReason: IRRReason | null;
   providerOverlayDeltaIRR: number | null;
   calculatedAt: string | null;
 };
 
+type FinancialInputModelSnapshot = Pick<
+  ReturnType<typeof calculateCashFlowModel>,
+  "projectIRR" | "projectIRRStatus" | "projectIRRReason"
+> & {
+  assumptions: Pick<ReturnType<typeof calculateCashFlowModel>["assumptions"], "electricityRate">;
+};
+
+export function buildFinancialInputState({
+  projectKind,
+  eiaLoading,
+  providerStatus,
+  providerDataOrigin,
+  electricityRate,
+  electricityPeriod,
+  sourceUpdatedAt,
+  syntheticModel,
+  providerOverlayModel,
+}: {
+  projectKind: "curated" | "custom";
+  eiaLoading: boolean;
+  providerStatus: EiaElectricityData["status"] | "not-applicable";
+  providerDataOrigin: EiaElectricityData["dataOrigin"] | "not-applicable";
+  electricityRate: number | null;
+  electricityPeriod: string | null;
+  sourceUpdatedAt: string | null;
+  syntheticModel: FinancialInputModelSnapshot;
+  providerOverlayModel: FinancialInputModelSnapshot | null;
+}): FinancialInputState {
+  if (projectKind === "custom") {
+    return {
+      phase: "settled",
+      basis: "custom",
+      providerStatus: "not-applicable",
+      providerDataOrigin: "not-applicable",
+      electricityRate: null,
+      electricityPeriod: null,
+      sourceUpdatedAt: null,
+      syntheticElectricityRate: syntheticModel.assumptions.electricityRate,
+      syntheticBaselineIRR: syntheticModel.projectIRR,
+      syntheticBaselineIRRStatus: syntheticModel.projectIRRStatus,
+      syntheticBaselineIRRReason: syntheticModel.projectIRRReason,
+      providerOverlayIRR: null,
+      providerOverlayIRRStatus: null,
+      providerOverlayIRRReason: null,
+      providerOverlayDeltaIRR: null,
+      calculatedAt: new Date().toISOString(),
+    };
+  }
+
+  return {
+    phase: eiaLoading ? "updating" : "settled",
+    basis: providerDataOrigin === "provider"
+      ? providerStatus === "cached" ? "cached" : "live"
+      : "fallback",
+    providerStatus: providerStatus as EiaElectricityData["status"],
+    providerDataOrigin: providerDataOrigin as EiaElectricityData["dataOrigin"],
+    electricityRate,
+    electricityPeriod,
+    sourceUpdatedAt,
+    syntheticElectricityRate: syntheticModel.assumptions.electricityRate,
+    syntheticBaselineIRR: syntheticModel.projectIRR,
+    syntheticBaselineIRRStatus: syntheticModel.projectIRRStatus,
+    syntheticBaselineIRRReason: syntheticModel.projectIRRReason,
+    providerOverlayIRR: providerOverlayModel?.projectIRR ?? null,
+    providerOverlayIRRStatus: providerOverlayModel?.projectIRRStatus ?? null,
+    providerOverlayIRRReason: providerOverlayModel?.projectIRRReason ?? null,
+    providerOverlayDeltaIRR: providerOverlayModel?.projectIRR === null || providerOverlayModel?.projectIRR === undefined || syntheticModel.projectIRR === null
+      ? null
+      : providerOverlayModel.projectIRR - syntheticModel.projectIRR,
+    calculatedAt: eiaLoading ? null : new Date().toISOString(),
+  };
+}
+
 export type ScenarioMetrics = {
   projectIRR: number | null;
+  projectIRRStatus?: IRRStatus;
+  projectIRRReason?: IRRReason | null;
   moic: number;
   npv: number;
   cashOnCash: number;
@@ -412,40 +493,17 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     const providerOverlayModel = project.kind === "curated" && eiaData.dataOrigin === "provider"
       ? calculateCashFlowModel(effectiveModelEvidence as EvidenceRecord, project.capacityMW)
       : null;
-    if (project.kind === "custom") {
-      return {
-        phase: "settled",
-        basis: "custom",
-        providerStatus: "not-applicable",
-        providerDataOrigin: "not-applicable",
-        electricityRate: null,
-        electricityPeriod: null,
-        sourceUpdatedAt: null,
-        syntheticElectricityRate: syntheticModel.assumptions.electricityRate,
-        syntheticBaselineIRR: syntheticModel.projectIRR,
-        providerOverlayIRR: null,
-        providerOverlayDeltaIRR: null,
-        calculatedAt: new Date().toISOString(),
-      };
-    }
-    return {
-      phase: eiaLoading ? "updating" : "settled",
-      basis: eiaData.dataOrigin === "provider"
-        ? eiaData.status === "cached" ? "cached" : "live"
-        : "fallback",
+    return buildFinancialInputState({
+      projectKind: project.kind,
+      eiaLoading,
       providerStatus: eiaData.status,
       providerDataOrigin: eiaData.dataOrigin,
       electricityRate: eiaData.latestPrice,
       electricityPeriod: eiaData.latestPricePeriod ?? null,
       sourceUpdatedAt: eiaData.sourceUpdatedAt ?? null,
-      syntheticElectricityRate: syntheticModel.assumptions.electricityRate,
-      syntheticBaselineIRR: syntheticModel.projectIRR,
-      providerOverlayIRR: providerOverlayModel?.projectIRR ?? null,
-      providerOverlayDeltaIRR: providerOverlayModel?.projectIRR === null || providerOverlayModel?.projectIRR === undefined || syntheticModel.projectIRR === null
-        ? null
-        : providerOverlayModel.projectIRR - syntheticModel.projectIRR,
-      calculatedAt: eiaLoading ? null : new Date().toISOString(),
-    };
+      syntheticModel,
+      providerOverlayModel,
+    });
   }, [eiaData, eiaLoading, effectiveModelEvidence, project.capacityMW, project.kind, state.modelEvidence]);
 
   useEffect(() => {
@@ -953,6 +1011,8 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       ),
       metrics: {
         projectIRR: metrics.projectIRR,
+        projectIRRStatus: metrics.projectIRRStatus,
+        projectIRRReason: metrics.projectIRRReason,
         moic: metrics.moic,
         npv: metrics.npv,
         cashOnCash: metrics.cashOnCash,

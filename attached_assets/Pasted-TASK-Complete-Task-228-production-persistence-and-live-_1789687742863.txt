@@ -1,0 +1,181 @@
+TASK: Complete Task #228 production persistence and live acceptance
+
+Goal:
+
+Move the completed development implementation of Task #228 into the actual production persistence boundary and verify that the three canonical dossiers work end to end in the published application.
+
+This is a production-completion and acceptance task, not a new feature batch.
+
+Before changing anything, return a concise architecture gate:
+
+* GO: the current implementation and production environment support this plan.
+* REVISE: identify the precise change needed and pause.
+* STOP: identify the exact blocker and pause.
+
+If the gate is GO, continue through the task without creating separate follow-up tasks.
+
+Required starting checks:
+
+1. Report the current branch, full HEAD SHA, parent SHA, and working-tree status.
+2. Confirm the Task #228 implementation commit is present.
+3. Identify the development and production database boundaries.
+4. Confirm whether the deployed application already has a valid PostgreSQL connection.
+5. Identify the exact migration, canonical import, sanitized export, backup, and rollback commands.
+6. Confirm the canonical import/export processes are CLI or protected server-operator processes and are not publicly reachable.
+7. Inspect the current production data before migration. Do not overwrite or destroy existing production records without an explicit recovery path.
+
+Production migration and import:
+
+1. Create a sanitized backup/export before modifying production.
+2. Apply the versioned production PostgreSQL migrations.
+3. Run the protected canonical import for exactly these approved dossiers:
+    * Stargate Abilene
+    * Project Kilby, Reeves County, Texas
+    * Microsoft El Mirage datacenter campus
+4. Run the same import a second time and prove it is idempotent:
+    * No duplicate facilities
+    * No duplicate relationships
+    * No duplicate source documents or passages
+    * No duplicate claims, decisions, phases, materiality records, or scenario references
+5. Report inserted, updated, unchanged, rejected, and conflicted record counts for both import runs.
+6. Do not use repository JSON, the research cache, localStorage, or the deployment filesystem as the canonical production store.
+
+Required evidence boundaries:
+
+* Preserve Stargate’s operating core, planned campus, and proposed or cancelled expansion as separate scopes.
+* Preserve the conflicting Energy Forge One ownership descriptions from Chevron and Kilby.com as separate attributed claims. Do not silently normalize them.
+* Keep Kilby’s return target, FID date, first-power date, jobs, taxes, water plans, and similar projections classified as forward-looking issuer/project assertions.
+* Keep Microsoft El Mirage’s 254,000-square-foot and 150-acre scope tied to the dated 2019 announcement.
+* Do not describe El Mirage as currently operating, completed, expanded, or currently 254,000 square feet unless a newer exact-campus source supports that status.
+* Keep Arizona regional employment, water, renewable-energy, and community figures regional unless a source specifically attributes them to El Mirage.
+* Do not automatically convert canonical claims into accepted financial-model inputs.
+* Do not change financial formulas, scenario hierarchy, assumptions, classifications, or model treatment.
+
+Production API and security acceptance:
+
+1. Confirm the public dossier API is read-only.
+2. Test unauthenticated POST, PUT, PATCH, and DELETE attempts against dossier routes and confirm they cannot mutate canonical data.
+3. Confirm no public route exposes:
+    * Database credentials
+    * Raw provider payloads
+    * Browser-session data
+    * Operator import/export functionality
+    * Unsanitized internal records
+4. Confirm canonical URLs, publication dates, access dates, exact passages, review states, conflicts, scope, and supersession lineage survive the production round trip.
+5. Confirm API responses use stable dossier and version identifiers.
+
+Live production acceptance:
+
+After migration/import and application restart, use the actual published application in a clean browser context with localStorage and sessionStorage cleared.
+
+For each of the three dossiers:
+
+1. Load the dossier from PostgreSQL without running live research.
+2. Traverse all four stages:
+    * Market Exposure
+    * Project Reality
+    * Financial Transmission
+    * Advisor Brief
+3. Confirm the selected company, project, relationship, evidence, financial context, and brief all belong to the same dossier.
+4. Confirm switching between dossiers does not retain another dossier’s:
+    * Company
+    * Relationship
+    * Evidence
+    * Scenario
+    * Materiality state
+    * Advisor output
+5. Confirm each dossier exposes its explicit unknowns and coverage state.
+6. Confirm source expansion displays the correct canonical URL, dates, passage, scope, classification, and review state.
+7. Confirm each dossier continues to load after a production server restart and in another fresh browser session.
+
+Audience-output acceptance:
+
+Financial Advisor:
+
+* Content must be concise and client-conversation oriented.
+* Display an evidence “as of” date.
+* Use a coverage-dependent status:
+    * Client conversation brief · evidence reviewed
+    * Client conversation brief · material gaps remain
+    * Research incomplete · not conversation-ready
+* Include exactly three prioritized client questions.
+* Include monitoring considerations.
+* State that project sensitivity is not an issuer, fund, client, or portfolio return.
+* Contain no buy/sell recommendation.
+
+Asset Manager:
+
+* Must be substantively different from the Financial Advisor output, not merely relabeled.
+* Display an evidence “as of” date.
+* Include issuer-project relationship, evidence categories, project materiality, issuer materiality, portfolio materiality, financial sensitivities, engagement questions, disclosure requests, monitoring triggers, and provenance.
+* Keep project, issuer, and portfolio materiality separate.
+* Never derive portfolio materiality from project IRR.
+
+Brief persistence:
+
+* Canonical truth must consist of structured records, not generated narrative prose.
+* If rendered brief snapshots are persisted, record dossier version, template version, generation timestamp, source-record identifiers, and evidence as-of date.
+* Verify updating presentation text cannot alter canonical claims or provenance.
+
+Canonical-versus-session isolation:
+
+1. Export or hash each canonical dossier before the test.
+2. In the browser:
+    * Reclassify evidence
+    * Accept, reject, or leave a proposal unresolved
+    * Change user assumptions
+    * Save a scenario or comparison
+3. Reload and confirm the user’s recoverable working state behaves as intended.
+4. Open a separate clean browser context and confirm those experiments are absent.
+5. Export or hash the canonical dossiers again.
+6. Prove canonical claims, passages, relationships, decisions, materiality records, and accepted model inputs were unchanged.
+
+Financial differentiation check:
+
+Confirm Financial Transmission does not misleadingly present the same project-specific conclusion for all three dossiers.
+
+* Shared synthetic methodology is permitted.
+* Project-specific context, evidence availability, scenario applicability, inputs, limitations, and unresolved gaps must remain distinct.
+* Missing project inputs must remain missing or explicitly synthetic.
+* Do not invent project-specific economics to make the dossiers appear differentiated.
+
+Required automated checks:
+
+* Typecheck
+* Full unit/server suite
+* Production build
+* Database migration tests
+* Import idempotency tests
+* Read-only API mutation tests
+* Canonical/session isolation tests
+* Server-restart persistence tests
+* Fresh-browser desktop and mobile acceptance
+* Dossier-switching tests
+* Financial Advisor versus Asset Manager content-difference tests
+* git diff --check
+
+Final report:
+
+Return:
+
+* Architecture-gate result
+* Full commit SHA and parent
+* Production release/version identity
+* Production database migration version
+* Backup/export location and rollback procedure
+* First and second import counts
+* Production API verification results
+* Automated test totals
+* Desktop/mobile live acceptance results
+* Findings for each dossier and each audience
+* Any remaining blocker
+* Whether the production working tree is clean
+* Whether deployment/publication occurred
+
+Completion rule:
+
+Do not report Task #228 complete merely because migrations or tests pass.
+
+Report COMPLETE only if all three dossiers load from production PostgreSQL after restart and in a fresh browser, require no live research for the default experience, traverse all four stages, retain exact provenance and conflicts, produce substantively different Financial Advisor and Asset Manager outputs, preserve explicit unknowns, and remain unchanged by user experiments.
+
+If production database access, deployment authority, credentials, or another prerequisite is unavailable, stop and report the exact blocker and the smallest action I must take. Do not substitute the development database or claim production completion.

@@ -26,23 +26,33 @@ function readBuiltIdentity() {
 }
 
 const isProduction = process.env.NODE_ENV === "production";
-const builtIdentity = readBuiltIdentity();
+const builtIdentity = isProduction ? readBuiltIdentity() : null;
+const liveSourceCommitSha = gitValue(["rev-parse", "HEAD"]);
 const applicationVersion = builtIdentity?.applicationVersion || process.env.npm_package_version || "0.0.0";
-const sourceCommitSha = builtIdentity?.sourceCommitSha ?? gitValue(["rev-parse", "HEAD"]);
+const sourceCommitSha = builtIdentity?.sourceCommitSha ?? liveSourceCommitSha;
 const commitSha = builtIdentity?.commitSha
-  || process.env.COMMIT_SHA
-  || process.env.GIT_COMMIT_SHA
-  || process.env.REPLIT_GIT_COMMIT_SHA
+  || (isProduction && (
+    process.env.COMMIT_SHA
+    || process.env.GIT_COMMIT_SHA
+    || process.env.REPLIT_GIT_COMMIT_SHA
+  ))
   || sourceCommitSha;
 const commitShaMatchesSource = builtIdentity?.commitShaMatchesSource
   ?? (commitSha && sourceCommitSha
     ? normalizeCommitSha(commitSha) === normalizeCommitSha(sourceCommitSha)
     : null);
+const commitShaSource = builtIdentity?.commitShaSource
+  || (isProduction && process.env.COMMIT_SHA ? "COMMIT_SHA"
+    : isProduction && process.env.GIT_COMMIT_SHA ? "GIT_COMMIT_SHA"
+      : isProduction && process.env.REPLIT_GIT_COMMIT_SHA ? "REPLIT_GIT_COMMIT_SHA"
+        : sourceCommitSha ? "git" : "unavailable");
 const releaseId = builtIdentity?.releaseId
-  || process.env.RELEASE_ID
-  || process.env.REPLIT_DEPLOYMENT_ID
-  || commitSha
-  || `local-${applicationVersion}`;
+  || (isProduction && (
+    process.env.RELEASE_ID
+    || process.env.REPLIT_DEPLOYMENT_ID
+    || commitSha
+  ))
+  || (commitSha ? `dev-${commitSha}` : `local-${applicationVersion}`);
 const buildTimestamp = builtIdentity?.buildTimestamp
   || process.env.BUILD_TIMESTAMP
   || process.env.REPLIT_BUILD_TIMESTAMP
@@ -60,14 +70,11 @@ export const releaseIdentity = Object.freeze({
   releaseId,
   commitSha,
   sourceCommitSha,
-  commitShaSource: builtIdentity?.commitShaSource
-    || (process.env.COMMIT_SHA ? "COMMIT_SHA"
-      : process.env.GIT_COMMIT_SHA ? "GIT_COMMIT_SHA"
-        : process.env.REPLIT_GIT_COMMIT_SHA ? "REPLIT_GIT_COMMIT_SHA"
-          : sourceCommitSha ? "git" : "unavailable"),
+  commitShaSource,
   commitShaMatchesSource,
   deploymentId: builtIdentity?.deploymentId ?? null,
   buildTimestamp,
+  assetManifestStatus: builtIdentity ? "available" : "unavailable",
   assets: Object.freeze(Array.isArray(builtIdentity?.assets)
     ? builtIdentity.assets.map((asset) => Object.freeze({ file: asset.file, hash: asset.hash }))
     : []),

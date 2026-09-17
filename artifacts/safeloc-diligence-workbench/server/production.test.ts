@@ -1,8 +1,8 @@
 import { strict as assert } from "node:assert";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { once } from "node:events";
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 
@@ -327,6 +327,48 @@ test("managed artifact registration and preview preserve the SPA/API route contr
   }
 });
 
+test("development identity ignores a stale generated release document", async () => {
+  const releasePath = path.join(packageRoot, "dist/public/release.json");
+  const originalReleaseDocument = readFileSync(releasePath, "utf8");
+  const staleRelease = {
+    ...JSON.parse(originalReleaseDocument),
+    releaseId: "bundle-stale-production-document",
+    commitSha: "0".repeat(40),
+    sourceCommitSha: "0".repeat(40),
+    commitShaMatchesSource: true,
+    assetManifestStatus: "available",
+    assets: [{ file: "assets/stale.js", hash: `sha256-${"0".repeat(64)}` }],
+  };
+  writeFileSync(releasePath, `${JSON.stringify(staleRelease)}\n`);
+
+  const port = 4650 + (process.pid % 500);
+  const child = spawn("sh", ["-c", "pnpm run dev"], {
+    cwd: packageRoot,
+    env: { ...process.env, NODE_ENV: "development", PORT: String(port), BASE_PATH: "/" },
+    stdio: ["ignore", "pipe", "pipe"],
+    detached: true,
+  });
+
+  try {
+    const baseUrl = `http://127.0.0.1:${port}`;
+    const version = await waitForJson(`${baseUrl}/api/version`, child);
+    const releaseDocument = await waitForJson(`${baseUrl}/release.json`, child);
+    const currentCommitSha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: packageRoot, encoding: "utf8" }).trim();
+    assert.equal(version.sourceCommitSha, currentCommitSha);
+    assert.equal(version.commitSha, currentCommitSha);
+    assert.equal(version.commitShaMatchesSource, true);
+    assert.equal(version.releaseId, `dev-${currentCommitSha}`);
+    assert.equal(version.assetManifestStatus, "unavailable");
+    assert.deepEqual(version.assets, []);
+    assert.deepEqual(releaseDocument, version, "development release.json must use the live source identity");
+    assert.equal((await fetch(`${baseUrl}/api/version`)).headers.get("cache-control"), "no-store");
+    assert.equal((await fetch(`${baseUrl}/release.json`)).headers.get("cache-control"), "no-store");
+  } finally {
+    await stopProcess(child);
+    writeFileSync(releasePath, originalReleaseDocument);
+  }
+});
+
 test("release builds reject a configured commit SHA that does not match Git HEAD", async () => {
   const mismatch = "0".repeat(40);
   const result = await runExpectingFailure("node", ["server/writeRelease.mjs"], { COMMIT_SHA: mismatch });
@@ -381,6 +423,13 @@ test("production entry point serves active API routes without retired endpoints"
     assert.equal(typeof version.sourceCommitSha, "string");
     assert.equal(typeof version.commitShaSource, "string");
     assert.equal(version.commitShaMatchesSource, true, "production release metadata must be verified against Git HEAD");
+    assert.equal(version.sourceCommitSha, execFileSync("git", ["rev-parse", "HEAD"], { cwd: packageRoot, encoding: "utf8" }).trim());
+    assert.equal(version.assetManifestStatus, "available");
+    assert.ok(Array.isArray(version.assets) && version.assets.length > 0, "production release metadata must include generated assets");
+    for (const asset of version.assets as Array<{ file: string; hash: string }>) {
+      assert.match(asset.file, /^assets\/.+\.(?:js|css)$/);
+      assert.match(asset.hash, /^sha256-[0-9a-f]{64}$/);
+    }
     assert.deepEqual(versionAgain, version, "release identity must be immutable for the process lifetime");
     const releaseDocument = await waitForJson(`${baseUrl}/release.json`, child);
     const generatedReleaseDocument = JSON.parse(readFileSync(path.join(packageRoot, "dist/public/release.json"), "utf8"));

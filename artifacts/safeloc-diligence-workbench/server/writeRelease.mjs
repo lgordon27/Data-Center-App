@@ -95,6 +95,7 @@ writeFileSync(
     commitShaMatchesSource,
     deploymentId,
     buildTimestamp,
+    assetManifestStatus: "available",
     assets: assetManifest(publicDir),
   })}\n`,
 );

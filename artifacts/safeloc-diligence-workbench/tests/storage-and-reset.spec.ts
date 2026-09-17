@@ -296,14 +296,7 @@ test.describe("current-session recovery and reset isolation", () => {
       evidenceBasis: "current",
       electricityBasis: "synthetic",
     });
-    expect(record.release.identity).toMatchObject({
-      assets: expect.arrayContaining([
-        expect.objectContaining({
-          file: expect.stringMatching(/^assets\/.+\.(?:js|css)$/),
-          hash: expect.stringMatching(/^sha256-[0-9a-f]{64}$/),
-        }),
-      ]),
-    });
+    expect(record.release.identity?.assets).toEqual([]);
     expect(record.modelInputs.fingerprint).toMatch(/^fnv1a-[0-9a-f]+$/);
     expect(record.release.fingerprint).toMatch(/^fnv1a-[0-9a-f]+$/);
     expect(record.release).toHaveProperty("identity");

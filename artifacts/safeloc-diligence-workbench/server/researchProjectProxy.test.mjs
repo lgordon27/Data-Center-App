@@ -1545,6 +1545,108 @@ test("reuses provider-declared canonical receipts across concurrent categories w
     .every((document) => document.opened === true));
 });
 
+test("counts failed document receipts once before limiting later concurrent category work", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "safeloc-research-failed-receipt-budget-test-"));
+  const response = responseRecorder();
+  let documentCalls = 0;
+  const categoryLabels = [
+    ["grid", "Grid"],
+    ["electricity", "Electricity"],
+    ["water", "Water"],
+    ["permitting-community", "Permitting and community"],
+    ["construction-capital", "Construction and capital"],
+    ["tenant-counterparty", "Tenant and counterparty"],
+    ["climate-operational-hazard", "Climate and operational hazard"],
+  ];
+  const sourceForCategory = (categoryId, index) => ({
+    ...retrievedSource,
+    url: `https://receipt.fixture/${categoryId}/document-${index}${index === 1 ? "-failed" : index === 2 ? "-blocked" : ""}`,
+    title: `Project Atlas ${categoryId} receipt ${index}`,
+    excerpt: "Project Atlas fixture passage.",
+    claimPassage: "Project Atlas fixture passage.",
+    claimSupport: RESEARCH_EVIDENCE_IDS.map((evidenceId) => ({ evidenceId, values: [42] })),
+    exactProject: true,
+    accessStatus: "open",
+  });
+  const responseForCategory = (categoryId) => {
+    const sources = Array.from({ length: 10 }, (_, index) => sourceForCategory(categoryId, index));
+    const research = validResearchResponse();
+    for (const item of research.evidence) {
+      Object.assign(item, {
+        value: 42,
+        numericValue: 42,
+        classification: "Management Assertion",
+        sourceUrl: sources[0].url,
+        sourceUrls: [sources[0].url],
+        coverageStatus: "supported",
+        claimPassage: "Project Atlas fixture passage.",
+        description: "The fixture reports a project-specific value.",
+        claimTimePeriod: "2026",
+      });
+    }
+    return singleCallResponse(research, sources);
+  };
+
+  await handleResearchProjectRequest(request({
+    name: "Project Atlas",
+    location: "Taylor County, Texas",
+    forceRefresh: true,
+  }), response, {
+    apiKey: "server-secret-for-test",
+    cache: createResearchProjectCache({ directory }),
+    rateLimiter: { allow: () => ({ allowed: true }) },
+    fetchImpl: async (_url, init) => {
+      const prompt = JSON.parse(init.body).input?.[1]?.content ?? "";
+      const categoryId = categoryLabels.find(([, label]) =>
+        prompt.includes(`observed ${label} category attempt`))?.[0] ?? "project-identity";
+      return responseForCategory(categoryId);
+    },
+    documentFetchImpl: async (url) => {
+      documentCalls += 1;
+      if (url.endsWith("-failed")) throw new Error("fixture connection failed");
+      if (url.endsWith("-blocked")) {
+        return new Response("blocked", {
+          status: 403,
+          headers: { "content-type": "text/plain" },
+        });
+      }
+      return new Response("<html><body>Project Atlas fixture passage.</body></html>", {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      });
+    },
+    categoryIds: categoryLabels.map(([categoryId]) => categoryId),
+  });
+
+  const payload = response.json();
+  const documents = payload.researchAudit.categories.flatMap((category) => category.openedDocuments);
+  const physicalReceipts = documents.filter((document) =>
+    document.reusedReceipt !== true && document.attempted === true && document.opened === true);
+  const failedReceipt = documents.find((document) => document.originalUrl.endsWith("-failed"));
+  const blockedReceipt = documents.find((document) => document.originalUrl.endsWith("-blocked"));
+  const budgetLimitedDocuments = documents.filter((document) => document.accessOutcome === "physical-open-budget");
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(documentCalls, RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens);
+  assert.equal(payload.researchCoverage.physicalOpensUsed, RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens);
+  assert.equal(payload.researchCoverage.physicalOpenBudgetExceeded, true);
+  assert.equal(physicalReceipts.length, RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens);
+  assert.equal(new Set(physicalReceipts.map((document) => document.originalUrl)).size, physicalReceipts.length);
+  assert.equal(failedReceipt.opened, true);
+  assert.equal(failedReceipt.attempted, true);
+  assert.equal(failedReceipt.accessState, "blocked");
+  assert.equal(failedReceipt.accessOutcome, "network-failure");
+  assert.equal(blockedReceipt.opened, true);
+  assert.equal(blockedReceipt.attempted, true);
+  assert.equal(blockedReceipt.accessState, "blocked");
+  assert.equal(blockedReceipt.accessOutcome, "http-403");
+  assert.ok(budgetLimitedDocuments.length > 0);
+  assert.ok(budgetLimitedDocuments.every((document) =>
+    document.opened === false && document.attempted === false && document.reusedReceipt === false));
+  assert.ok(payload.researchAudit.categories.some((category) =>
+    category.followUpSkipReason === "physical-open-budget"));
+});
+
 test("retains a late primary candidate before the bounded cap and records cap discards", () => {
   const sources = normalizeRetrievedSources({
     output: [{

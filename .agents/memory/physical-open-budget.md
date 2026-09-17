@@ -14,3 +14,9 @@ Concurrent in-flight receipt reuse should require an explicit provider canonical
 **Why:** Deduplicating plain URLs before any receipt exists can starve the shared physical-opportunity budget, while provider-declared canonical identity is sufficient to safely coalesce concurrent access.
 
 **How to apply:** Mark explicit canonical identity during source normalization and use it only for pending-promise reuse; completed canonical receipts remain reusable for all normalized URLs.
+
+Open-budget regression fixtures should use evidence-bearing categories when asserting final category audit receipts; the diagnostic-only project-identity category has no modeled evidence slots and may not surface its physical receipts in the final category audit.
+
+**Why:** The physical reader can still consume opportunities for identity discovery, but the current handoff merge is evidence-oriented and does not guarantee that diagnostic-only category receipts are retained in the final audit.
+
+**How to apply:** Keep shared-ceiling tests focused on categories whose receipts must reach the handoff, and track identity-only receipt visibility as separate follow-up work rather than weakening the physical-open assertions.

@@ -1478,11 +1478,12 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
           proposals={sourceProposals}
           dispositions={sourceProposalDispositions}
           audit={project.researchAudit}
+          researchCache={project.researchCache}
           coverage={searchCoverage}
           onReviewFindings={reviewResearchFindings}
         />
       )}
-      {customProject && <ResearchSearchAudit coverage={searchCoverage} audit={project.researchAudit} evidence={items} />}
+      {customProject && <ResearchSearchAudit coverage={searchCoverage} audit={project.researchAudit} evidence={items} researchCache={project.researchCache} />}
       {customProject && (
         <aside data-testid="custom-research-containment-status" role="status" className="mb-5 rounded-lg border-2 border-[#ba2f45] bg-[#fff3f4] px-4 py-3 text-[10px] leading-5 text-[#7f2635]">
           <strong>Custom research is not yet accepted into the model.</strong> Eligible proposals: {project.eligibleEvidenceCount ?? 0} / {items.length}. Unverified leads: {project.retrievedLeadCount ?? 0}. Numeric values with incompatible or unknown units remain visible for review but are quarantined from cash flow until a validated proposal is explicitly accepted.

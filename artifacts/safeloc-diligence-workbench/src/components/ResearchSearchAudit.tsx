@@ -5,6 +5,7 @@ import {
   type ResearchCategoryClaimAudit,
   type ResearchEvidenceAuditItem,
 } from "@/services/researchProjectService";
+import { ResearchTelemetryStatus } from "@/components/ResearchHandoffSummary";
 
 function categoryTone(category: ResearchCategoryAudit) {
   if (category.state === "Complete") return "bg-[#e0f4ed] text-[#08644f]";
@@ -77,10 +78,12 @@ export function ResearchSearchAudit({
   coverage,
   audit,
   evidence = [],
+  researchCache,
 }: {
   coverage?: CustomResearchResponse["researchCoverage"];
   audit?: CustomResearchResponse["researchAudit"];
   evidence?: ResearchEvidenceAuditItem[];
+  researchCache?: CustomResearchResponse["researchCache"];
 }) {
   return (
     <details data-testid="research-search-audit" className="mb-4 rounded-lg border border-[#d9e0e4] bg-white text-[11px] text-[#52616b]">
@@ -88,6 +91,7 @@ export function ResearchSearchAudit({
         Research search audit · {audit ? `${audit.categories.length} governed categories` : coverage?.searchTermsSource === "tool-observed" ? `${coverage.searchTerms.length} observed queries` : "query telemetry unavailable"}
       </summary>
       <div className="space-y-2 border-t border-[#d9e0e4] px-4 py-3">
+        <ResearchTelemetryStatus audit={audit} coverage={coverage} researchCache={researchCache} />
         <p>AI confidence is self-reported, not a verified probability. Validated source support measures captured source support separately. Neither score changes your classifications or financial assumptions.</p>
         <p>{audit ? `Governed run: ${audit.provider} · ${audit.model} · ${audit.providerRequestCount} provider requests · ${audit.budget.deadlineMs / 1000}s deadline · ${audit.budget.maxToolCalls} total tool-call limit.` : "One provider request with a 90-second deadline and up to 32 tool calls."} Requested work is not proof that a search completed.</p>
         {audit?.runCorrelationId && <p className="font-mono text-[10px]">Run: {audit.runCorrelationId}</p>}

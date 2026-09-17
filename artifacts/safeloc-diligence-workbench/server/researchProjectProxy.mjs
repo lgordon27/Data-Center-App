@@ -1206,9 +1206,7 @@ function categoryQueryMatches(category, query) {
 }
 
 function categoryStageCounts(category, sources, evidence, project = {}) {
-  const sourceCandidates = sources.filter((source) =>
-    source.searchDomain === category.categoryId
-    || (Array.isArray(source.supportedEvidenceIds) && source.supportedEvidenceIds.some((id) => category.evidenceIds.includes(id))));
+  const sourceCandidates = sources.filter((source) => categorySourceMatches(category, source));
   const categoryEvidence = evidence.filter((item) => category.evidenceIds.includes(item.id));
   const mapped = categoryEvidence.filter((item) => (item.claimMappings ?? []).some((mapping) => mapping.supportStatus !== "context-only"));
   const eligible = categoryEvidence.filter((item) => item.eligibleForModel === true);
@@ -1218,7 +1216,7 @@ function categoryStageCounts(category, sources, evidence, project = {}) {
       source.accessOutcome?.state === "accessible"
       && (source.exactProject === true || isSourceProjectSpecific(source, project)));
   const rejectionReasons = categoryEvidence.flatMap((item) => item.quarantineReasons ?? []);
-  const openedDocuments = categoryOpenedDocuments(sourceCandidates);
+  const openedDocuments = categoryOpenedDocuments(sourceCandidates, category);
   return {
     normalized: sourceCandidates.length,
     accessed: sourceCandidates.filter((source) => source.accessOutcome?.state === "accessible").length,
@@ -1245,7 +1243,17 @@ function categoryReturnedDomains(sources = []) {
   return [...new Set(sources.map((source) => sourceHostname(source)).filter(Boolean))];
 }
 
-function categoryOpenedDocuments(sources = []) {
+function categorySourceMatches(category, source) {
+  if (!category || !source) return false;
+  if (source.searchDomain === category.categoryId) return true;
+  if (Array.isArray(source.supportedEvidenceIds)
+    && source.supportedEvidenceIds.some((id) => category.evidenceIds.includes(id))) return true;
+  if (category.categoryId !== "project-identity") return false;
+  return [source.identityRole, source.sourceRole, source.categoryRole]
+    .some((role) => typeof role === "string" && /\b(identity|project identity|facility identity)\b/i.test(role));
+}
+
+function categoryOpenedDocuments(sources = [], category = null) {
   return sources.map((source) => {
     const outcome = source.accessOutcome ?? {};
     const referringUrls = [...new Set([
@@ -1268,6 +1276,11 @@ function categoryOpenedDocuments(sources = []) {
       accessOutcome: outcome.reason ?? "not-attempted",
       retainedPassage: outcome.state === "accessible" ? outcome.passage ?? source.excerpt ?? null : null,
       extractionLimitations: Array.isArray(outcome.extractionLimitations) ? outcome.extractionLimitations.slice(0, 8) : [],
+      ...(category ? {
+        categoryId: category.categoryId,
+        categoryLabel: category.label,
+        identityRole: source.identityRole ?? source.sourceRole ?? null,
+      } : {}),
     };
   });
 }
@@ -1335,8 +1348,15 @@ function buildResearchAudit({
       identityAmbiguities: category.identityContext?.ambiguities ?? [],
       localAuthorities: category.authorityTargets?.localAuthorities ?? [],
       authorityLimitations: category.authorityTargets?.limitations ?? [],
-      returnedDomains: Array.isArray(supplied.returnedDomains) ? supplied.returnedDomains.filter(Boolean).slice(0, 20) : categoryReturnedDomains(sources.filter((source) => source.searchDomain === category.categoryId)),
-      openedDocuments: Array.isArray(supplied.openedDocuments) ? supplied.openedDocuments.slice(0, 20) : categoryOpenedDocuments(sources.filter((source) => source.searchDomain === category.categoryId)),
+      returnedDomains: Array.isArray(supplied.returnedDomains) ? supplied.returnedDomains.filter(Boolean).slice(0, 20) : categoryReturnedDomains(sources.filter((source) => categorySourceMatches(category, source))),
+      openedDocuments: Array.isArray(supplied.openedDocuments)
+        ? supplied.openedDocuments.slice(0, 20).map((document) => ({
+          ...document,
+          categoryId: document.categoryId ?? category.categoryId,
+          categoryLabel: document.categoryLabel ?? category.label,
+          identityRole: document.identityRole ?? (category.categoryId === "project-identity" ? document.sourceRole ?? null : null),
+        }))
+        : categoryOpenedDocuments(sources.filter((source) => categorySourceMatches(category, source)), category),
       state,
       stageCounts: counts,
       rejectionCounts: counts.rejectionCounts,
@@ -2610,6 +2630,20 @@ function normalizeRetrievedSources(body, searchDomain = "project-identity", proj
     const canonical = canonicalizeSourceUrl(researchSourceUrl);
     if (canonical) citedSourceIds.add(canonical);
   }
+  const actionSourceCanonicalIds = new Set(candidates.map((candidate) => canonicalizeSourceUrl(candidate.url)).filter(Boolean));
+  const structuredSourceIds = new Set(researchSourceUrls.map(canonicalizeSourceUrl).filter(Boolean));
+  for (const citedUrl of structuredSourceIds) {
+    if (actionSourceCanonicalIds.has(citedUrl)) continue;
+    candidates.push({
+      url: citedUrl,
+      title: "Provider-returned structured research source",
+      excerpt: "",
+      claimCited: true,
+      origin: "structured-research-source",
+      sourceUrlOrigin: "provider-structured-research",
+    });
+    actionSourceCanonicalIds.add(citedUrl);
+  }
   for (const candidate of candidates) {
     if (citedSourceIds.has(canonicalizeSourceUrl(candidate.url))) candidate.claimCited = true;
   }
@@ -2626,6 +2660,12 @@ function normalizeRetrievedSources(body, searchDomain = "project-identity", proj
       contentType: typeof source.content_type === "string" ? source.content_type : typeof source.contentType === "string" ? source.contentType : null,
       sourceClass: url ? classifySource(url, title) : "secondary-reporting",
       searchDomain,
+      ...(safePublicSourceUrl(source.canonicalUrl)
+        ? {
+            canonicalUrl: canonicalizeSourceUrl(source.canonicalUrl),
+            canonicalIdentityExplicit: true,
+          }
+        : {}),
       ...(typeof source.exactProject === "boolean" ? { exactProject: source.exactProject } : {}),
       ...(isJurisdictionallyExcludedSource({ url, title }, project)
         ? {
@@ -2647,6 +2687,12 @@ function normalizeRetrievedSources(body, searchDomain = "project-identity", proj
     accessStatus: source.accessStatus,
     sourceClass: source.sourceClass,
     searchDomain,
+    ...(source.canonicalIdentityExplicit === true
+      ? {
+          canonicalUrl: canonicalizeSourceUrl(source.canonicalUrl),
+          canonicalIdentityExplicit: true,
+        }
+      : {}),
     ...(typeof source.exactProject === "boolean" ? { exactProject: source.exactProject } : {}),
     relevanceNote: source.relevanceNote ?? null,
   }));

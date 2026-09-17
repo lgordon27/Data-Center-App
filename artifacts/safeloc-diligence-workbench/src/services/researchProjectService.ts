@@ -416,6 +416,21 @@ export type ResearchCacheMetadata = {
   errorType?: "quota-exhausted" | "provider-rate-limit" | "provider-429" | "authentication" | "timeout" | "malformed-response" | "request-limit" | "not-configured" | "upstream";
 };
 
+export type ResearchTelemetryMode = "current-live" | "historical-retained";
+
+/**
+ * Cache metadata describes the provenance of the audit counters, not whether
+ * the response itself was HTTP-successful. A fresh/recent cache or a failed
+ * refresh is historical telemetry; only the explicitly updated result from a
+ * live provider response is current-run telemetry.
+ */
+export function getResearchTelemetryMode(cache?: ResearchCacheMetadata): ResearchTelemetryMode {
+  if (!cache) return "current-live";
+  return cache.state === "updated" && cache.refreshStatus !== "failed" && cache.providerAvailable !== false
+    ? "current-live"
+    : "historical-retained";
+}
+
 export type ResearchStatusResponse = {
   researchCache: ResearchCacheMetadata;
   result?: CustomResearchResponse;

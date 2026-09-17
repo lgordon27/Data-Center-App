@@ -11,9 +11,27 @@ import {
   parseResponse,
   researchProject,
   RESEARCH_PROJECT_TIMEOUT_MS,
+  getResearchTelemetryMode,
   summarizeResearchAudit,
   summarizeSourceCoverage,
 } from "./researchProjectService";
+
+test("labels updated provider responses as live and retained cache responses as historical", () => {
+  assert.equal(getResearchTelemetryMode(undefined), "current-live");
+  assert.equal(getResearchTelemetryMode({
+    key: "a".repeat(64), state: "updated", storedAt: "2026-09-17T12:00:00.000Z",
+    refreshStatus: "idle", providerAvailable: true,
+  }), "current-live");
+  for (const cache of [
+    { state: "fresh" as const, refreshStatus: "idle" as const, providerAvailable: true },
+    { state: "stale" as const, refreshStatus: "failed" as const, providerAvailable: false },
+    { state: "updated" as const, refreshStatus: "failed" as const, providerAvailable: false },
+  ]) {
+    assert.equal(getResearchTelemetryMode({
+      key: "b".repeat(64), storedAt: "2026-09-17T12:00:00.000Z", ...cache,
+    }), "historical-retained");
+  }
+});
 
 const response = {
   projectSummary: { name: "Atlas", location: "Texas", description: "High-level research.", capacityMW: 600 },

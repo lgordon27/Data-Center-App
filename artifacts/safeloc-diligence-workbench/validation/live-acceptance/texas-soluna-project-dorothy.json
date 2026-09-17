@@ -1,0 +1,2426 @@
+{
+  "diagnosticOnly": true,
+  "evidenceStatus": "not-evidence",
+  "liveAcceptance": {
+    "status": "LIVE ACCEPTANCE BLOCKED",
+    "reason": "No accessible exact-project passage mapped to an eligible visible finding; retained passages and unresolved categories remain diagnostic only.",
+    "trace": []
+  },
+  "generatedAt": "2026-09-17T17:12:04.135Z",
+  "project": {
+    "name": "Soluna Project Dorothy",
+    "location": "Silverton, Briscoe County, Texas",
+    "directoryProvider": "Compute Atlas",
+    "directoryProviderId": "soluna-project-dorothy-silverton-tx",
+    "aliases": [
+      "Soluna Project Dorothy",
+      "Project Dorothy"
+    ],
+    "operator": "Soluna Holdings",
+    "status": "operating",
+    "city": "Silverton",
+    "county": "Briscoe County",
+    "state": "Texas",
+    "sourceUrl": "https://www.sec.gov/Archives/edgar/data/64463/000162828026035538/slnh-20260331.htm",
+    "authorities": {
+      "establishedDomains": [
+        "sec.gov",
+        "ercot.com",
+        "puc.texas.gov"
+      ],
+      "identifiedAuthorities": [
+        "SEC EDGAR",
+        "ERCOT",
+        "Public Utility Commission of Texas"
+      ],
+      "missingAuthorityDomains": [],
+      "companyDomains": [
+        "solunacomputing.com"
+      ]
+    }
+  },
+  "run": {
+    "status": "research-incomplete",
+    "telemetryStatus": "current-live",
+    "runId": "c4935496-4b32-44fe-aa23-cb5221b46def",
+    "researchStatus": null,
+    "httpStatus": 200,
+    "provider": "openai",
+    "model": "gpt-4o",
+    "providerResponseIds": [
+      "resp_0d783f1a364337ac006aac1f65646087d2ad1205e5ebaebb37",
+      "resp_04122efac570d9fb006aac1f709b8c87d2b76092600b500839"
+    ],
+    "startedAt": "2026-09-17T17:12:04.141Z",
+    "finishedAt": "2026-09-17T17:12:23.725Z",
+    "elapsedMs": 19584,
+    "wallClockElapsedMs": 19641,
+    "failureType": null,
+    "failureMessage": null,
+    "providerDiagnostic": null,
+    "elapsedWithinDeadline": true,
+    "providerRequestCount": 2,
+    "providerAttempts": [
+      {
+        "categoryId": "construction-capital",
+        "attemptType": "primary",
+        "queuedAt": "2026-09-17T17:12:04.163Z",
+        "issuedAt": "2026-09-17T17:12:04.169Z",
+        "finishedAt": "2026-09-17T17:12:15.417Z",
+        "queueWaitMs": 6,
+        "elapsedMs": 11248,
+        "status": 200,
+        "outcome": "completed",
+        "requestedOutputTokens": 3500,
+        "requestBodyBytes": 25400,
+        "usage": {
+          "inputTokens": 5095,
+          "outputTokens": 885,
+          "totalTokens": 5980
+        }
+      },
+      {
+        "categoryId": "construction-capital",
+        "attemptType": "follow-up",
+        "queuedAt": "2026-09-17T17:12:16.459Z",
+        "issuedAt": "2026-09-17T17:12:16.465Z",
+        "finishedAt": "2026-09-17T17:12:23.690Z",
+        "queueWaitMs": 6,
+        "elapsedMs": 7226,
+        "status": 200,
+        "outcome": "completed",
+        "requestedOutputTokens": 3500,
+        "requestBodyBytes": 25264,
+        "usage": {
+          "inputTokens": 5059,
+          "outputTokens": 941,
+          "totalTokens": 6000
+        }
+      }
+    ],
+    "toolCallCount": 2,
+    "followUpCount": 1,
+    "budget": {
+      "deadlineMs": 90000,
+      "maxProviderRequests": 16,
+      "maxFollowUps": 8,
+      "maxFollowUpsPerCategory": 1,
+      "maxCandidatesPerCategory": 10,
+      "maxTotalCandidates": 80,
+      "maxToolCalls": 32,
+      "maxPhysicalDocumentOpens": 24
+    },
+    "limitsObserved": {
+      "providerRequestsWithinLimit": true,
+      "followUpsWithinLimit": true,
+      "toolCallsWithinLimit": true,
+      "candidatesWithinTotalLimit": true,
+      "candidatesByCategory": {
+        "project-identity": 0,
+        "grid": 0,
+        "electricity": 0,
+        "water": 0,
+        "permitting-community": 0,
+        "construction-capital": 10,
+        "tenant-counterparty": 0,
+        "climate-operational-hazard": 0
+      },
+      "candidateCategoryLimit": 10
+    }
+  },
+  "requests": [
+    {
+      "categoryId": "construction-capital",
+      "attemptType": "primary",
+      "queuedAt": "2026-09-17T17:12:04.163Z",
+      "issuedAt": "2026-09-17T17:12:04.169Z",
+      "finishedAt": "2026-09-17T17:12:15.417Z",
+      "queueWaitMs": 6,
+      "elapsedMs": 11248,
+      "status": 200,
+      "outcome": "completed",
+      "requestedOutputTokens": 3500,
+      "requestBodyBytes": 25400,
+      "usage": {
+        "inputTokens": 5095,
+        "outputTokens": 885,
+        "totalTokens": 5980
+      }
+    },
+    {
+      "categoryId": "construction-capital",
+      "attemptType": "follow-up",
+      "queuedAt": "2026-09-17T17:12:16.459Z",
+      "issuedAt": "2026-09-17T17:12:16.465Z",
+      "finishedAt": "2026-09-17T17:12:23.690Z",
+      "queueWaitMs": 6,
+      "elapsedMs": 7226,
+      "status": 200,
+      "outcome": "completed",
+      "requestedOutputTokens": 3500,
+      "requestBodyBytes": 25264,
+      "usage": {
+        "inputTokens": 5059,
+        "outputTokens": 941,
+        "totalTokens": 6000
+      }
+    }
+  ],
+  "observedSearches": [
+    {
+      "categoryId": "construction-capital",
+      "query": "Soluna Holdings Soluna Project Dorothy SEC EDGAR investor relations official developer project disclosure site:sec.gov OR site:solunacomputing.com"
+    },
+    {
+      "categoryId": "construction-capital",
+      "query": "\"Soluna Holdings\" \"Soluna Project Dorothy\" Texas emergency generation redundancy capacity exact project"
+    }
+  ],
+  "returnedDomains": [
+    "www.sec.gov"
+  ],
+  "executedQueries": [
+    {
+      "categoryId": "project-identity",
+      "label": "Project identity",
+      "requestedPrimaryQuery": "\"Soluna Project Dorothy\" \"Silverton, Briscoe County, Texas\" Texas project permit operator disclosure ERCOT PUCT (site:ercot.com OR site:puc.texas.gov OR site:sec.gov OR site:solunacomputing.com) \"Soluna Project Dorothy\" \"Project Dorothy\" \"Soluna Holdings\" \"Soluna Holdings\"",
+      "executedQueries": [],
+      "followUpExecutedQuery": null,
+      "state": "Not searched"
+    },
+    {
+      "categoryId": "grid",
+      "label": "Grid",
+      "requestedPrimaryQuery": "\"Soluna Project Dorothy\" \"Silverton, Briscoe County, Texas\" ERCOT PUCT Texas interconnection queue transmission study (site:ercot.com OR site:puc.texas.gov OR site:solunacomputing.com) \"Soluna Project Dorothy\" \"Project Dorothy\" \"Soluna Holdings\" \"Soluna Holdings\"",
+      "executedQueries": [],
+      "followUpExecutedQuery": null,
+      "state": "Not searched"
+    },
+    {
+      "categoryId": "electricity",
+      "label": "Electricity",
+      "requestedPrimaryQuery": "\"Soluna Project Dorothy\" \"Silverton, Briscoe County, Texas\" ERCOT PUCT Texas utility tariff rate case EIA market context (site:ercot.com OR site:puc.texas.gov OR site:eia.gov OR site:solunacomputing.com) \"Soluna Project Dorothy\" \"Project Dorothy\" \"Soluna Holdings\" \"Soluna Holdings\"",
+      "executedQueries": [],
+      "followUpExecutedQuery": null,
+      "state": "Not searched"
+    },
+    {
+      "categoryId": "water",
+      "label": "Water",
+      "requestedPrimaryQuery": "\"Soluna Project Dorothy\" \"Silverton, Briscoe County, Texas\" \"City of Silverton\" \"Briscoe County County\" \"SEC EDGAR\" \"ERCOT\" \"Public Utility Commission of Texas\" TWDB municipal county water demand consumption rights permit (site:twdb.texas.gov OR site:sec.gov OR site:ercot.com OR site:puc.texas.gov OR site:solunacomputing.com) \"Soluna Project Dorothy\" \"Project Dorothy\" \"Soluna Holdings\" \"Soluna Holdings\"",
+      "executedQueries": [],
+      "followUpExecutedQuery": null,
+      "state": "Not searched"
+    },
+    {
+      "categoryId": "permitting-community",
+      "label": "Permitting and community",
+      "requestedPrimaryQuery": "\"Soluna Project Dorothy\" \"Silverton, Briscoe County, Texas\" \"City of Silverton\" \"Briscoe County County\" \"SEC EDGAR\" \"ERCOT\" \"Public Utility Commission of Texas\" Texas municipal county agenda permit public hearing agreement (site:sec.gov OR site:ercot.com OR site:puc.texas.gov OR site:solunacomputing.com) \"Soluna Project Dorothy\" \"Project Dorothy\" \"Soluna Holdings\" \"Soluna Holdings\"",
+      "executedQueries": [],
+      "followUpExecutedQuery": null,
+      "state": "Not searched"
+    },
+    {
+      "categoryId": "construction-capital",
+      "label": "Construction and capital",
+      "requestedPrimaryQuery": "\"Soluna Holdings\" \"Soluna Project Dorothy\" SEC EDGAR investor relations official developer project disclosure (site:sec.gov OR site:solunacomputing.com) \"Soluna Project Dorothy\" \"Project Dorothy\" \"Soluna Holdings\" \"Soluna Holdings\"",
+      "executedQueries": [
+        "Soluna Holdings Soluna Project Dorothy SEC EDGAR investor relations official developer project disclosure site:sec.gov OR site:solunacomputing.com",
+        "\"Soluna Holdings\" \"Soluna Project Dorothy\" Texas emergency generation redundancy capacity exact project"
+      ],
+      "followUpExecutedQuery": "\"Soluna Holdings\" \"Soluna Project Dorothy\" Texas emergency generation redundancy capacity exact project",
+      "state": "Partial"
+    },
+    {
+      "categoryId": "tenant-counterparty",
+      "label": "Tenant and counterparty",
+      "requestedPrimaryQuery": "\"Soluna Holdings\" \"Soluna Project Dorothy\" SEC EDGAR investor relations official project developer disclosure customer offtake (site:sec.gov OR site:solunacomputing.com) \"Soluna Project Dorothy\" \"Project Dorothy\" \"Soluna Holdings\" \"Soluna Holdings\"",
+      "executedQueries": [],
+      "followUpExecutedQuery": null,
+      "state": "Not searched"
+    },
+    {
+      "categoryId": "climate-operational-hazard",
+      "label": "Climate and operational hazard",
+      "requestedPrimaryQuery": "\"Soluna Project Dorothy\" \"Silverton, Briscoe County, Texas\" FEMA NOAA Texas exact site flood wildfire drought hazard (site:fema.gov OR site:noaa.gov OR site:solunacomputing.com) \"Soluna Project Dorothy\" \"Project Dorothy\" \"Soluna Holdings\" \"Soluna Holdings\"",
+      "executedQueries": [],
+      "followUpExecutedQuery": null,
+      "state": "Not searched"
+    }
+  ],
+  "sourceStates": {
+    "total": 10,
+    "bySourceState": {
+      "retained": 10
+    },
+    "byAccessOutcome": {
+      "blocked": 10
+    },
+    "byClaimSupportState": {
+      "unknown": 10
+    },
+    "byProjectSpecificityState": {
+      "unknown": 10
+    },
+    "returnedDomains": [
+      "www.sec.gov"
+    ],
+    "normalizedCandidates": [
+      {
+        "url": null,
+        "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315225022111/ex99-1.htm?utm_source=openai",
+        "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315225022111/ex99-1.htm?utm_source=openai",
+        "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315225022111/ex99-1.htm",
+        "title": "Retrieved public source",
+        "returnedDomain": "www.sec.gov",
+        "searchDomain": "construction-capital",
+        "categoryIds": [
+          "construction-capital"
+        ],
+        "identityRole": null,
+        "sourceState": "retained",
+        "exactProject": false,
+        "claimSupportState": "unknown",
+        "projectSpecificityState": "unknown",
+        "financialEligibilityState": "unknown",
+        "sourceType": null,
+        "referringUrls": [],
+        "accessState": "blocked",
+        "accessReason": "http-403",
+        "transportDiagnostic": {
+          "stage": "response",
+          "responseReceived": true,
+          "httpStatus": 403,
+          "contentType": "text/html",
+          "redirectChain": [],
+          "elapsedMs": 84
+        },
+        "accessOutcome": {
+          "state": "blocked",
+          "attempted": true,
+          "succeeded": false,
+          "blocked": true,
+          "failed": false,
+          "reused": false,
+          "reason": "http-403",
+          "physicalOpenIndex": 1,
+          "retrievalTime": null,
+          "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315225022111/ex99-1.htm?utm_source=openai",
+          "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315225022111/ex99-1.htm?utm_source=openai",
+          "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315225022111/ex99-1.htm",
+          "referringUrls": [
+            "https://www.sec.gov/Archives/edgar/data/64463/000149315225022111/ex99-1.htm?utm_source=openai"
+          ],
+          "transportDiagnostic": {
+            "stage": "response",
+            "responseReceived": true,
+            "httpStatus": 403,
+            "contentType": "text/html",
+            "redirectChain": [],
+            "elapsedMs": 84
+          }
+        }
+      },
+      {
+        "url": null,
+        "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226016971/ex99-1.htm?utm_source=openai",
+        "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226016971/ex99-1.htm?utm_source=openai",
+        "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226016971/ex99-1.htm",
+        "title": "Retrieved public source",
+        "returnedDomain": "www.sec.gov",
+        "searchDomain": "construction-capital",
+        "categoryIds": [
+          "construction-capital"
+        ],
+        "identityRole": null,
+        "sourceState": "retained",
+        "exactProject": false,
+        "claimSupportState": "unknown",
+        "projectSpecificityState": "unknown",
+        "financialEligibilityState": "unknown",
+        "sourceType": null,
+        "referringUrls": [],
+        "accessState": "blocked",
+        "accessReason": "http-403",
+        "transportDiagnostic": {
+          "stage": "response",
+          "responseReceived": true,
+          "httpStatus": 403,
+          "contentType": "text/html",
+          "redirectChain": [],
+          "elapsedMs": 245
+        },
+        "accessOutcome": {
+          "state": "blocked",
+          "attempted": true,
+          "succeeded": false,
+          "blocked": true,
+          "failed": false,
+          "reused": false,
+          "reason": "http-403",
+          "physicalOpenIndex": 2,
+          "retrievalTime": null,
+          "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226016971/ex99-1.htm?utm_source=openai",
+          "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226016971/ex99-1.htm?utm_source=openai",
+          "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226016971/ex99-1.htm",
+          "referringUrls": [
+            "https://www.sec.gov/Archives/edgar/data/64463/000149315226016971/ex99-1.htm?utm_source=openai"
+          ],
+          "transportDiagnostic": {
+            "stage": "response",
+            "responseReceived": true,
+            "httpStatus": 403,
+            "contentType": "text/html",
+            "redirectChain": [],
+            "elapsedMs": 245
+          }
+        }
+      },
+      {
+        "url": null,
+        "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226018192/ex99-1.htm?utm_source=openai",
+        "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226018192/ex99-1.htm?utm_source=openai",
+        "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226018192/ex99-1.htm",
+        "title": "Retrieved public source",
+        "returnedDomain": "www.sec.gov",
+        "searchDomain": "construction-capital",
+        "categoryIds": [
+          "construction-capital"
+        ],
+        "identityRole": null,
+        "sourceState": "retained",
+        "exactProject": false,
+        "claimSupportState": "unknown",
+        "projectSpecificityState": "unknown",
+        "financialEligibilityState": "unknown",
+        "sourceType": null,
+        "referringUrls": [],
+        "accessState": "blocked",
+        "accessReason": "http-403",
+        "transportDiagnostic": {
+          "stage": "response",
+          "responseReceived": true,
+          "httpStatus": 403,
+          "contentType": "text/html",
+          "redirectChain": [],
+          "elapsedMs": 121
+        },
+        "accessOutcome": {
+          "state": "blocked",
+          "attempted": true,
+          "succeeded": false,
+          "blocked": true,
+          "failed": false,
+          "reused": false,
+          "reason": "http-403",
+          "physicalOpenIndex": 3,
+          "retrievalTime": null,
+          "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226018192/ex99-1.htm?utm_source=openai",
+          "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226018192/ex99-1.htm?utm_source=openai",
+          "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226018192/ex99-1.htm",
+          "referringUrls": [
+            "https://www.sec.gov/Archives/edgar/data/64463/000149315226018192/ex99-1.htm?utm_source=openai"
+          ],
+          "transportDiagnostic": {
+            "stage": "response",
+            "responseReceived": true,
+            "httpStatus": 403,
+            "contentType": "text/html",
+            "redirectChain": [],
+            "elapsedMs": 121
+          }
+        }
+      },
+      {
+        "url": null,
+        "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226021610/ex99-1.htm?utm_source=openai",
+        "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226021610/ex99-1.htm?utm_source=openai",
+        "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226021610/ex99-1.htm",
+        "title": "Retrieved public source",
+        "returnedDomain": "www.sec.gov",
+        "searchDomain": "construction-capital",
+        "categoryIds": [
+          "construction-capital"
+        ],
+        "identityRole": null,
+        "sourceState": "retained",
+        "exactProject": false,
+        "claimSupportState": "unknown",
+        "projectSpecificityState": "unknown",
+        "financialEligibilityState": "unknown",
+        "sourceType": null,
+        "referringUrls": [],
+        "accessState": "blocked",
+        "accessReason": "http-403",
+        "transportDiagnostic": {
+          "stage": "response",
+          "responseReceived": true,
+          "httpStatus": 403,
+          "contentType": "text/html",
+          "redirectChain": [],
+          "elapsedMs": 41
+        },
+        "accessOutcome": {
+          "state": "blocked",
+          "attempted": true,
+          "succeeded": false,
+          "blocked": true,
+          "failed": false,
+          "reused": false,
+          "reason": "http-403",
+          "physicalOpenIndex": 4,
+          "retrievalTime": null,
+          "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226021610/ex99-1.htm?utm_source=openai",
+          "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226021610/ex99-1.htm?utm_source=openai",
+          "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226021610/ex99-1.htm",
+          "referringUrls": [
+            "https://www.sec.gov/Archives/edgar/data/64463/000149315226021610/ex99-1.htm?utm_source=openai"
+          ],
+          "transportDiagnostic": {
+            "stage": "response",
+            "responseReceived": true,
+            "httpStatus": 403,
+            "contentType": "text/html",
+            "redirectChain": [],
+            "elapsedMs": 41
+          }
+        }
+      },
+      {
+        "url": null,
+        "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226024511/ex99-1.htm?utm_source=openai",
+        "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226024511/ex99-1.htm?utm_source=openai",
+        "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226024511/ex99-1.htm",
+        "title": "Retrieved public source",
+        "returnedDomain": "www.sec.gov",
+        "searchDomain": "construction-capital",
+        "categoryIds": [
+          "construction-capital"
+        ],
+        "identityRole": null,
+        "sourceState": "retained",
+        "exactProject": false,
+        "claimSupportState": "unknown",
+        "projectSpecificityState": "unknown",
+        "financialEligibilityState": "unknown",
+        "sourceType": null,
+        "referringUrls": [],
+        "accessState": "blocked",
+        "accessReason": "http-403",
+        "transportDiagnostic": {
+          "stage": "response",
+          "responseReceived": true,
+          "httpStatus": 403,
+          "contentType": "text/html",
+          "redirectChain": [],
+          "elapsedMs": 41
+        },
+        "accessOutcome": {
+          "state": "blocked",
+          "attempted": true,
+          "succeeded": false,
+          "blocked": true,
+          "failed": false,
+          "reused": false,
+          "reason": "http-403",
+          "physicalOpenIndex": 5,
+          "retrievalTime": null,
+          "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226024511/ex99-1.htm?utm_source=openai",
+          "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226024511/ex99-1.htm?utm_source=openai",
+          "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226024511/ex99-1.htm",
+          "referringUrls": [
+            "https://www.sec.gov/Archives/edgar/data/64463/000149315226024511/ex99-1.htm?utm_source=openai"
+          ],
+          "transportDiagnostic": {
+            "stage": "response",
+            "responseReceived": true,
+            "httpStatus": 403,
+            "contentType": "text/html",
+            "redirectChain": [],
+            "elapsedMs": 41
+          }
+        }
+      },
+      {
+        "url": null,
+        "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226027852/ex99-1.htm?utm_source=openai",
+        "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226027852/ex99-1.htm?utm_source=openai",
+        "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226027852/ex99-1.htm",
+        "title": "Retrieved public source",
+        "returnedDomain": "www.sec.gov",
+        "searchDomain": "construction-capital",
+        "categoryIds": [
+          "construction-capital"
+        ],
+        "identityRole": null,
+        "sourceState": "retained",
+        "exactProject": false,
+        "claimSupportState": "unknown",
+        "projectSpecificityState": "unknown",
+        "financialEligibilityState": "unknown",
+        "sourceType": null,
+        "referringUrls": [],
+        "accessState": "blocked",
+        "accessReason": "http-403",
+        "transportDiagnostic": {
+          "stage": "response",
+          "responseReceived": true,
+          "httpStatus": 403,
+          "contentType": "text/html",
+          "redirectChain": [],
+          "elapsedMs": 100
+        },
+        "accessOutcome": {
+          "state": "blocked",
+          "attempted": true,
+          "succeeded": false,
+          "blocked": true,
+          "failed": false,
+          "reused": false,
+          "reason": "http-403",
+          "physicalOpenIndex": 6,
+          "retrievalTime": null,
+          "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226027852/ex99-1.htm?utm_source=openai",
+          "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226027852/ex99-1.htm?utm_source=openai",
+          "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226027852/ex99-1.htm",
+          "referringUrls": [
+            "https://www.sec.gov/Archives/edgar/data/64463/000149315226027852/ex99-1.htm?utm_source=openai"
+          ],
+          "transportDiagnostic": {
+            "stage": "response",
+            "responseReceived": true,
+            "httpStatus": 403,
+            "contentType": "text/html",
+            "redirectChain": [],
+            "elapsedMs": 100
+          }
+        }
+      },
+      {
+        "url": null,
+        "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226037734/ex99-1.htm?utm_source=openai",
+        "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226037734/ex99-1.htm?utm_source=openai",
+        "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226037734/ex99-1.htm",
+        "title": "Retrieved public source",
+        "returnedDomain": "www.sec.gov",
+        "searchDomain": "construction-capital",
+        "categoryIds": [
+          "construction-capital"
+        ],
+        "identityRole": null,
+        "sourceState": "retained",
+        "exactProject": false,
+        "claimSupportState": "unknown",
+        "projectSpecificityState": "unknown",
+        "financialEligibilityState": "unknown",
+        "sourceType": null,
+        "referringUrls": [],
+        "accessState": "blocked",
+        "accessReason": "http-403",
+        "transportDiagnostic": {
+          "stage": "response",
+          "responseReceived": true,
+          "httpStatus": 403,
+          "contentType": "text/html",
+          "redirectChain": [],
+          "elapsedMs": 32
+        },
+        "accessOutcome": {
+          "state": "blocked",
+          "attempted": true,
+          "succeeded": false,
+          "blocked": true,
+          "failed": false,
+          "reused": false,
+          "reason": "http-403",
+          "physicalOpenIndex": 7,
+          "retrievalTime": null,
+          "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226037734/ex99-1.htm?utm_source=openai",
+          "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226037734/ex99-1.htm?utm_source=openai",
+          "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226037734/ex99-1.htm",
+          "referringUrls": [
+            "https://www.sec.gov/Archives/edgar/data/64463/000149315226037734/ex99-1.htm?utm_source=openai"
+          ],
+          "transportDiagnostic": {
+            "stage": "response",
+            "responseReceived": true,
+            "httpStatus": 403,
+            "contentType": "text/html",
+            "redirectChain": [],
+            "elapsedMs": 32
+          }
+        }
+      },
+      {
+        "url": null,
+        "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226042479/ex99-1.htm?utm_source=openai",
+        "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226042479/ex99-1.htm?utm_source=openai",
+        "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226042479/ex99-1.htm",
+        "title": "Retrieved public source",
+        "returnedDomain": "www.sec.gov",
+        "searchDomain": "construction-capital",
+        "categoryIds": [
+          "construction-capital"
+        ],
+        "identityRole": null,
+        "sourceState": "retained",
+        "exactProject": false,
+        "claimSupportState": "unknown",
+        "projectSpecificityState": "unknown",
+        "financialEligibilityState": "unknown",
+        "sourceType": null,
+        "referringUrls": [],
+        "accessState": "blocked",
+        "accessReason": "http-403",
+        "transportDiagnostic": {
+          "stage": "response",
+          "responseReceived": true,
+          "httpStatus": 403,
+          "contentType": "text/html",
+          "redirectChain": [],
+          "elapsedMs": 115
+        },
+        "accessOutcome": {
+          "state": "blocked",
+          "attempted": true,
+          "succeeded": false,
+          "blocked": true,
+          "failed": false,
+          "reused": false,
+          "reason": "http-403",
+          "physicalOpenIndex": 8,
+          "retrievalTime": null,
+          "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226042479/ex99-1.htm?utm_source=openai",
+          "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226042479/ex99-1.htm?utm_source=openai",
+          "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226042479/ex99-1.htm",
+          "referringUrls": [
+            "https://www.sec.gov/Archives/edgar/data/64463/000149315226042479/ex99-1.htm?utm_source=openai"
+          ],
+          "transportDiagnostic": {
+            "stage": "response",
+            "responseReceived": true,
+            "httpStatus": 403,
+            "contentType": "text/html",
+            "redirectChain": [],
+            "elapsedMs": 115
+          }
+        }
+      },
+      {
+        "url": null,
+        "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226042479/form8-k.htm?utm_source=openai",
+        "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226042479/form8-k.htm?utm_source=openai",
+        "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226042479/form8-k.htm",
+        "title": "Retrieved public source",
+        "returnedDomain": "www.sec.gov",
+        "searchDomain": "construction-capital",
+        "categoryIds": [
+          "construction-capital"
+        ],
+        "identityRole": null,
+        "sourceState": "retained",
+        "exactProject": false,
+        "claimSupportState": "unknown",
+        "projectSpecificityState": "unknown",
+        "financialEligibilityState": "unknown",
+        "sourceType": null,
+        "referringUrls": [],
+        "accessState": "blocked",
+        "accessReason": "http-403",
+        "transportDiagnostic": {
+          "stage": "response",
+          "responseReceived": true,
+          "httpStatus": 403,
+          "contentType": "text/html",
+          "redirectChain": [],
+          "elapsedMs": 143
+        },
+        "accessOutcome": {
+          "state": "blocked",
+          "attempted": true,
+          "succeeded": false,
+          "blocked": true,
+          "failed": false,
+          "reused": false,
+          "reason": "http-403",
+          "physicalOpenIndex": 9,
+          "retrievalTime": null,
+          "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226042479/form8-k.htm?utm_source=openai",
+          "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226042479/form8-k.htm?utm_source=openai",
+          "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226042479/form8-k.htm",
+          "referringUrls": [
+            "https://www.sec.gov/Archives/edgar/data/64463/000149315226042479/form8-k.htm?utm_source=openai"
+          ],
+          "transportDiagnostic": {
+            "stage": "response",
+            "responseReceived": true,
+            "httpStatus": 403,
+            "contentType": "text/html",
+            "redirectChain": [],
+            "elapsedMs": 143
+          }
+        }
+      },
+      {
+        "url": null,
+        "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000164117225022509/ex99-1.htm?utm_source=openai",
+        "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000164117225022509/ex99-1.htm?utm_source=openai",
+        "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000164117225022509/ex99-1.htm",
+        "title": "Retrieved public source",
+        "returnedDomain": "www.sec.gov",
+        "searchDomain": "construction-capital",
+        "categoryIds": [
+          "construction-capital"
+        ],
+        "identityRole": null,
+        "sourceState": "retained",
+        "exactProject": false,
+        "claimSupportState": "unknown",
+        "projectSpecificityState": "unknown",
+        "financialEligibilityState": "unknown",
+        "sourceType": null,
+        "referringUrls": [],
+        "accessState": "blocked",
+        "accessReason": "http-403",
+        "transportDiagnostic": {
+          "stage": "response",
+          "responseReceived": true,
+          "httpStatus": 403,
+          "contentType": "text/html",
+          "redirectChain": [],
+          "elapsedMs": 80
+        },
+        "accessOutcome": {
+          "state": "blocked",
+          "attempted": true,
+          "succeeded": false,
+          "blocked": true,
+          "failed": false,
+          "reused": false,
+          "reason": "http-403",
+          "physicalOpenIndex": 10,
+          "retrievalTime": null,
+          "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000164117225022509/ex99-1.htm?utm_source=openai",
+          "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000164117225022509/ex99-1.htm?utm_source=openai",
+          "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000164117225022509/ex99-1.htm",
+          "referringUrls": [
+            "https://www.sec.gov/Archives/edgar/data/64463/000164117225022509/ex99-1.htm?utm_source=openai"
+          ],
+          "transportDiagnostic": {
+            "stage": "response",
+            "responseReceived": true,
+            "httpStatus": 403,
+            "contentType": "text/html",
+            "redirectChain": [],
+            "elapsedMs": 80
+          }
+        }
+      }
+    ],
+    "sources": [
+      {
+        "url": null,
+        "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315225022111/ex99-1.htm?utm_source=openai",
+        "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315225022111/ex99-1.htm?utm_source=openai",
+        "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315225022111/ex99-1.htm",
+        "title": "Retrieved public source",
+        "returnedDomain": "www.sec.gov",
+        "searchDomain": "construction-capital",
+        "categoryIds": [
+          "construction-capital"
+        ],
+        "identityRole": null,
+        "sourceState": "retained",
+        "exactProject": false,
+        "claimSupportState": "unknown",
+        "projectSpecificityState": "unknown",
+        "financialEligibilityState": "unknown",
+        "sourceType": null,
+        "referringUrls": [],
+        "accessState": "blocked",
+        "accessReason": "http-403",
+        "transportDiagnostic": {
+          "stage": "response",
+          "responseReceived": true,
+          "httpStatus": 403,
+          "contentType": "text/html",
+          "redirectChain": [],
+          "elapsedMs": 84
+        },
+        "accessOutcome": {
+          "state": "blocked",
+          "attempted": true,
+          "succeeded": false,
+          "blocked": true,
+          "failed": false,
+          "reused": false,
+          "reason": "http-403",
+          "physicalOpenIndex": 1,
+          "retrievalTime": null,
+          "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315225022111/ex99-1.htm?utm_source=openai",
+          "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315225022111/ex99-1.htm?utm_source=openai",
+          "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315225022111/ex99-1.htm",
+          "referringUrls": [
+            "https://www.sec.gov/Archives/edgar/data/64463/000149315225022111/ex99-1.htm?utm_source=openai"
+          ],
+          "transportDiagnostic": {
+            "stage": "response",
+            "responseReceived": true,
+            "httpStatus": 403,
+            "contentType": "text/html",
+            "redirectChain": [],
+            "elapsedMs": 84
+          }
+        }
+      },
+      {
+        "url": null,
+        "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226016971/ex99-1.htm?utm_source=openai",
+        "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226016971/ex99-1.htm?utm_source=openai",
+        "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226016971/ex99-1.htm",
+        "title": "Retrieved public source",
+        "returnedDomain": "www.sec.gov",
+        "searchDomain": "construction-capital",
+        "categoryIds": [
+          "construction-capital"
+        ],
+        "identityRole": null,
+        "sourceState": "retained",
+        "exactProject": false,
+        "claimSupportState": "unknown",
+        "projectSpecificityState": "unknown",
+        "financialEligibilityState": "unknown",
+        "sourceType": null,
+        "referringUrls": [],
+        "accessState": "blocked",
+        "accessReason": "http-403",
+        "transportDiagnostic": {
+          "stage": "response",
+          "responseReceived": true,
+          "httpStatus": 403,
+          "contentType": "text/html",
+          "redirectChain": [],
+          "elapsedMs": 245
+        },
+        "accessOutcome": {
+          "state": "blocked",
+          "attempted": true,
+          "succeeded": false,
+          "blocked": true,
+          "failed": false,
+          "reused": false,
+          "reason": "http-403",
+          "physicalOpenIndex": 2,
+          "retrievalTime": null,
+          "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226016971/ex99-1.htm?utm_source=openai",
+          "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226016971/ex99-1.htm?utm_source=openai",
+          "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226016971/ex99-1.htm",
+          "referringUrls": [
+            "https://www.sec.gov/Archives/edgar/data/64463/000149315226016971/ex99-1.htm?utm_source=openai"
+          ],
+          "transportDiagnostic": {
+            "stage": "response",
+            "responseReceived": true,
+            "httpStatus": 403,
+            "contentType": "text/html",
+            "redirectChain": [],
+            "elapsedMs": 245
+          }
+        }
+      },
+      {
+        "url": null,
+        "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226018192/ex99-1.htm?utm_source=openai",
+        "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226018192/ex99-1.htm?utm_source=openai",
+        "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226018192/ex99-1.htm",
+        "title": "Retrieved public source",
+        "returnedDomain": "www.sec.gov",
+        "searchDomain": "construction-capital",
+        "categoryIds": [
+          "construction-capital"
+        ],
+        "identityRole": null,
+        "sourceState": "retained",
+        "exactProject": false,
+        "claimSupportState": "unknown",
+        "projectSpecificityState": "unknown",
+        "financialEligibilityState": "unknown",
+        "sourceType": null,
+        "referringUrls": [],
+        "accessState": "blocked",
+        "accessReason": "http-403",
+        "transportDiagnostic": {
+          "stage": "response",
+          "responseReceived": true,
+          "httpStatus": 403,
+          "contentType": "text/html",
+          "redirectChain": [],
+          "elapsedMs": 121
+        },
+        "accessOutcome": {
+          "state": "blocked",
+          "attempted": true,
+          "succeeded": false,
+          "blocked": true,
+          "failed": false,
+          "reused": false,
+          "reason": "http-403",
+          "physicalOpenIndex": 3,
+          "retrievalTime": null,
+          "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226018192/ex99-1.htm?utm_source=openai",
+          "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226018192/ex99-1.htm?utm_source=openai",
+          "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226018192/ex99-1.htm",
+          "referringUrls": [
+            "https://www.sec.gov/Archives/edgar/data/64463/000149315226018192/ex99-1.htm?utm_source=openai"
+          ],
+          "transportDiagnostic": {
+            "stage": "response",
+            "responseReceived": true,
+            "httpStatus": 403,
+            "contentType": "text/html",
+            "redirectChain": [],
+            "elapsedMs": 121
+          }
+        }
+      },
+      {
+        "url": null,
+        "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226021610/ex99-1.htm?utm_source=openai",
+        "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226021610/ex99-1.htm?utm_source=openai",
+        "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226021610/ex99-1.htm",
+        "title": "Retrieved public source",
+        "returnedDomain": "www.sec.gov",
+        "searchDomain": "construction-capital",
+        "categoryIds": [
+          "construction-capital"
+        ],
+        "identityRole": null,
+        "sourceState": "retained",
+        "exactProject": false,
+        "claimSupportState": "unknown",
+        "projectSpecificityState": "unknown",
+        "financialEligibilityState": "unknown",
+        "sourceType": null,
+        "referringUrls": [],
+        "accessState": "blocked",
+        "accessReason": "http-403",
+        "transportDiagnostic": {
+          "stage": "response",
+          "responseReceived": true,
+          "httpStatus": 403,
+          "contentType": "text/html",
+          "redirectChain": [],
+          "elapsedMs": 41
+        },
+        "accessOutcome": {
+          "state": "blocked",
+          "attempted": true,
+          "succeeded": false,
+          "blocked": true,
+          "failed": false,
+          "reused": false,
+          "reason": "http-403",
+          "physicalOpenIndex": 4,
+          "retrievalTime": null,
+          "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226021610/ex99-1.htm?utm_source=openai",
+          "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226021610/ex99-1.htm?utm_source=openai",
+          "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226021610/ex99-1.htm",
+          "referringUrls": [
+            "https://www.sec.gov/Archives/edgar/data/64463/000149315226021610/ex99-1.htm?utm_source=openai"
+          ],
+          "transportDiagnostic": {
+            "stage": "response",
+            "responseReceived": true,
+            "httpStatus": 403,
+            "contentType": "text/html",
+            "redirectChain": [],
+            "elapsedMs": 41
+          }
+        }
+      },
+      {
+        "url": null,
+        "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226024511/ex99-1.htm?utm_source=openai",
+        "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226024511/ex99-1.htm?utm_source=openai",
+        "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226024511/ex99-1.htm",
+        "title": "Retrieved public source",
+        "returnedDomain": "www.sec.gov",
+        "searchDomain": "construction-capital",
+        "categoryIds": [
+          "construction-capital"
+        ],
+        "identityRole": null,
+        "sourceState": "retained",
+        "exactProject": false,
+        "claimSupportState": "unknown",
+        "projectSpecificityState": "unknown",
+        "financialEligibilityState": "unknown",
+        "sourceType": null,
+        "referringUrls": [],
+        "accessState": "blocked",
+        "accessReason": "http-403",
+        "transportDiagnostic": {
+          "stage": "response",
+          "responseReceived": true,
+          "httpStatus": 403,
+          "contentType": "text/html",
+          "redirectChain": [],
+          "elapsedMs": 41
+        },
+        "accessOutcome": {
+          "state": "blocked",
+          "attempted": true,
+          "succeeded": false,
+          "blocked": true,
+          "failed": false,
+          "reused": false,
+          "reason": "http-403",
+          "physicalOpenIndex": 5,
+          "retrievalTime": null,
+          "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226024511/ex99-1.htm?utm_source=openai",
+          "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226024511/ex99-1.htm?utm_source=openai",
+          "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226024511/ex99-1.htm",
+          "referringUrls": [
+            "https://www.sec.gov/Archives/edgar/data/64463/000149315226024511/ex99-1.htm?utm_source=openai"
+          ],
+          "transportDiagnostic": {
+            "stage": "response",
+            "responseReceived": true,
+            "httpStatus": 403,
+            "contentType": "text/html",
+            "redirectChain": [],
+            "elapsedMs": 41
+          }
+        }
+      },
+      {
+        "url": null,
+        "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226027852/ex99-1.htm?utm_source=openai",
+        "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226027852/ex99-1.htm?utm_source=openai",
+        "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226027852/ex99-1.htm",
+        "title": "Retrieved public source",
+        "returnedDomain": "www.sec.gov",
+        "searchDomain": "construction-capital",
+        "categoryIds": [
+          "construction-capital"
+        ],
+        "identityRole": null,
+        "sourceState": "retained",
+        "exactProject": false,
+        "claimSupportState": "unknown",
+        "projectSpecificityState": "unknown",
+        "financialEligibilityState": "unknown",
+        "sourceType": null,
+        "referringUrls": [],
+        "accessState": "blocked",
+        "accessReason": "http-403",
+        "transportDiagnostic": {
+          "stage": "response",
+          "responseReceived": true,
+          "httpStatus": 403,
+          "contentType": "text/html",
+          "redirectChain": [],
+          "elapsedMs": 100
+        },
+        "accessOutcome": {
+          "state": "blocked",
+          "attempted": true,
+          "succeeded": false,
+          "blocked": true,
+          "failed": false,
+          "reused": false,
+          "reason": "http-403",
+          "physicalOpenIndex": 6,
+          "retrievalTime": null,
+          "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226027852/ex99-1.htm?utm_source=openai",
+          "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226027852/ex99-1.htm?utm_source=openai",
+          "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226027852/ex99-1.htm",
+          "referringUrls": [
+            "https://www.sec.gov/Archives/edgar/data/64463/000149315226027852/ex99-1.htm?utm_source=openai"
+          ],
+          "transportDiagnostic": {
+            "stage": "response",
+            "responseReceived": true,
+            "httpStatus": 403,
+            "contentType": "text/html",
+            "redirectChain": [],
+            "elapsedMs": 100
+          }
+        }
+      },
+      {
+        "url": null,
+        "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226037734/ex99-1.htm?utm_source=openai",
+        "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226037734/ex99-1.htm?utm_source=openai",
+        "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226037734/ex99-1.htm",
+        "title": "Retrieved public source",
+        "returnedDomain": "www.sec.gov",
+        "searchDomain": "construction-capital",
+        "categoryIds": [
+          "construction-capital"
+        ],
+        "identityRole": null,
+        "sourceState": "retained",
+        "exactProject": false,
+        "claimSupportState": "unknown",
+        "projectSpecificityState": "unknown",
+        "financialEligibilityState": "unknown",
+        "sourceType": null,
+        "referringUrls": [],
+        "accessState": "blocked",
+        "accessReason": "http-403",
+        "transportDiagnostic": {
+          "stage": "response",
+          "responseReceived": true,
+          "httpStatus": 403,
+          "contentType": "text/html",
+          "redirectChain": [],
+          "elapsedMs": 32
+        },
+        "accessOutcome": {
+          "state": "blocked",
+          "attempted": true,
+          "succeeded": false,
+          "blocked": true,
+          "failed": false,
+          "reused": false,
+          "reason": "http-403",
+          "physicalOpenIndex": 7,
+          "retrievalTime": null,
+          "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226037734/ex99-1.htm?utm_source=openai",
+          "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226037734/ex99-1.htm?utm_source=openai",
+          "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226037734/ex99-1.htm",
+          "referringUrls": [
+            "https://www.sec.gov/Archives/edgar/data/64463/000149315226037734/ex99-1.htm?utm_source=openai"
+          ],
+          "transportDiagnostic": {
+            "stage": "response",
+            "responseReceived": true,
+            "httpStatus": 403,
+            "contentType": "text/html",
+            "redirectChain": [],
+            "elapsedMs": 32
+          }
+        }
+      },
+      {
+        "url": null,
+        "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226042479/ex99-1.htm?utm_source=openai",
+        "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226042479/ex99-1.htm?utm_source=openai",
+        "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226042479/ex99-1.htm",
+        "title": "Retrieved public source",
+        "returnedDomain": "www.sec.gov",
+        "searchDomain": "construction-capital",
+        "categoryIds": [
+          "construction-capital"
+        ],
+        "identityRole": null,
+        "sourceState": "retained",
+        "exactProject": false,
+        "claimSupportState": "unknown",
+        "projectSpecificityState": "unknown",
+        "financialEligibilityState": "unknown",
+        "sourceType": null,
+        "referringUrls": [],
+        "accessState": "blocked",
+        "accessReason": "http-403",
+        "transportDiagnostic": {
+          "stage": "response",
+          "responseReceived": true,
+          "httpStatus": 403,
+          "contentType": "text/html",
+          "redirectChain": [],
+          "elapsedMs": 115
+        },
+        "accessOutcome": {
+          "state": "blocked",
+          "attempted": true,
+          "succeeded": false,
+          "blocked": true,
+          "failed": false,
+          "reused": false,
+          "reason": "http-403",
+          "physicalOpenIndex": 8,
+          "retrievalTime": null,
+          "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226042479/ex99-1.htm?utm_source=openai",
+          "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226042479/ex99-1.htm?utm_source=openai",
+          "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226042479/ex99-1.htm",
+          "referringUrls": [
+            "https://www.sec.gov/Archives/edgar/data/64463/000149315226042479/ex99-1.htm?utm_source=openai"
+          ],
+          "transportDiagnostic": {
+            "stage": "response",
+            "responseReceived": true,
+            "httpStatus": 403,
+            "contentType": "text/html",
+            "redirectChain": [],
+            "elapsedMs": 115
+          }
+        }
+      },
+      {
+        "url": null,
+        "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226042479/form8-k.htm?utm_source=openai",
+        "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226042479/form8-k.htm?utm_source=openai",
+        "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226042479/form8-k.htm",
+        "title": "Retrieved public source",
+        "returnedDomain": "www.sec.gov",
+        "searchDomain": "construction-capital",
+        "categoryIds": [
+          "construction-capital"
+        ],
+        "identityRole": null,
+        "sourceState": "retained",
+        "exactProject": false,
+        "claimSupportState": "unknown",
+        "projectSpecificityState": "unknown",
+        "financialEligibilityState": "unknown",
+        "sourceType": null,
+        "referringUrls": [],
+        "accessState": "blocked",
+        "accessReason": "http-403",
+        "transportDiagnostic": {
+          "stage": "response",
+          "responseReceived": true,
+          "httpStatus": 403,
+          "contentType": "text/html",
+          "redirectChain": [],
+          "elapsedMs": 143
+        },
+        "accessOutcome": {
+          "state": "blocked",
+          "attempted": true,
+          "succeeded": false,
+          "blocked": true,
+          "failed": false,
+          "reused": false,
+          "reason": "http-403",
+          "physicalOpenIndex": 9,
+          "retrievalTime": null,
+          "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226042479/form8-k.htm?utm_source=openai",
+          "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226042479/form8-k.htm?utm_source=openai",
+          "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000149315226042479/form8-k.htm",
+          "referringUrls": [
+            "https://www.sec.gov/Archives/edgar/data/64463/000149315226042479/form8-k.htm?utm_source=openai"
+          ],
+          "transportDiagnostic": {
+            "stage": "response",
+            "responseReceived": true,
+            "httpStatus": 403,
+            "contentType": "text/html",
+            "redirectChain": [],
+            "elapsedMs": 143
+          }
+        }
+      },
+      {
+        "url": null,
+        "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000164117225022509/ex99-1.htm?utm_source=openai",
+        "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000164117225022509/ex99-1.htm?utm_source=openai",
+        "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000164117225022509/ex99-1.htm",
+        "title": "Retrieved public source",
+        "returnedDomain": "www.sec.gov",
+        "searchDomain": "construction-capital",
+        "categoryIds": [
+          "construction-capital"
+        ],
+        "identityRole": null,
+        "sourceState": "retained",
+        "exactProject": false,
+        "claimSupportState": "unknown",
+        "projectSpecificityState": "unknown",
+        "financialEligibilityState": "unknown",
+        "sourceType": null,
+        "referringUrls": [],
+        "accessState": "blocked",
+        "accessReason": "http-403",
+        "transportDiagnostic": {
+          "stage": "response",
+          "responseReceived": true,
+          "httpStatus": 403,
+          "contentType": "text/html",
+          "redirectChain": [],
+          "elapsedMs": 80
+        },
+        "accessOutcome": {
+          "state": "blocked",
+          "attempted": true,
+          "succeeded": false,
+          "blocked": true,
+          "failed": false,
+          "reused": false,
+          "reason": "http-403",
+          "physicalOpenIndex": 10,
+          "retrievalTime": null,
+          "originalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000164117225022509/ex99-1.htm?utm_source=openai",
+          "resolvedUrl": "https://www.sec.gov/Archives/edgar/data/64463/000164117225022509/ex99-1.htm?utm_source=openai",
+          "canonicalUrl": "https://www.sec.gov/Archives/edgar/data/64463/000164117225022509/ex99-1.htm",
+          "referringUrls": [
+            "https://www.sec.gov/Archives/edgar/data/64463/000164117225022509/ex99-1.htm?utm_source=openai"
+          ],
+          "transportDiagnostic": {
+            "stage": "response",
+            "responseReceived": true,
+            "httpStatus": 403,
+            "contentType": "text/html",
+            "redirectChain": [],
+            "elapsedMs": 80
+          }
+        }
+      }
+    ],
+    "retainedPassages": []
+  },
+  "evidenceAudit": [
+    {
+      "evidenceId": "electricity_cost",
+      "label": "electricity cost",
+      "categoryId": "grid",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "USD/MWh",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": null,
+      "phaseScope": null,
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "water_consumption",
+      "label": "water consumption",
+      "categoryId": "water",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "Mgal/year",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": null,
+      "phaseScope": null,
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "grid_interconnection",
+      "label": "grid interconnection",
+      "categoryId": "grid",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "months",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": null,
+      "phaseScope": null,
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "water_escalation",
+      "label": "water escalation",
+      "categoryId": "water",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "%",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": null,
+      "phaseScope": null,
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "community_risk",
+      "label": "community risk",
+      "categoryId": "permitting-community",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "qualitative",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": null,
+      "phaseScope": null,
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Missing or incompatible qualitative unit; a human User Assumption must supply the unit."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "renewable_percentage",
+      "label": "renewable percentage",
+      "categoryId": "grid",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "%",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": null,
+      "phaseScope": null,
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "cooling_capex",
+      "label": "cooling capex",
+      "categoryId": "construction-capital",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "USD millions",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": null,
+      "phaseScope": null,
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "electricity_escalation",
+      "label": "electricity escalation",
+      "categoryId": "grid",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "%",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": null,
+      "phaseScope": null,
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "carbon_compliance",
+      "label": "carbon compliance",
+      "categoryId": "electricity",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "USD millions/year",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": null,
+      "phaseScope": null,
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "permitting_timeline",
+      "label": "permitting timeline",
+      "categoryId": "permitting-community",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "months",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": null,
+      "phaseScope": null,
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "customer_concentration",
+      "label": "customer concentration",
+      "categoryId": "tenant-counterparty",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "%",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": null,
+      "phaseScope": null,
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "water_rights",
+      "label": "water rights",
+      "categoryId": "water",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "qualitative",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": null,
+      "phaseScope": null,
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Missing or incompatible qualitative unit; a human User Assumption must supply the unit."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "site_hazard_exposure",
+      "label": "site hazard exposure",
+      "categoryId": "climate-operational-hazard",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "qualitative",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": null,
+      "phaseScope": null,
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Missing or incompatible qualitative unit; a human User Assumption must supply the unit."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "backup_power_capacity",
+      "label": "backup power capacity",
+      "categoryId": "construction-capital",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "hours",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": null,
+      "phaseScope": null,
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "water_source_resilience",
+      "label": "water source resilience",
+      "categoryId": "water",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "qualitative",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": null,
+      "phaseScope": null,
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Missing or incompatible qualitative unit; a human User Assumption must supply the unit."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "downtime_cost",
+      "label": "downtime cost",
+      "categoryId": "construction-capital",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "USD/day",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": null,
+      "phaseScope": null,
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    }
+  ],
+  "unresolvedIdentifiers": [
+    "project-identity",
+    "grid",
+    "electricity",
+    "water",
+    "permitting-community",
+    "construction-capital",
+    "tenant-counterparty",
+    "climate-operational-hazard",
+    "grid_interconnection",
+    "electricity_cost",
+    "electricity_escalation",
+    "renewable_percentage",
+    "carbon_compliance",
+    "water_consumption",
+    "water_escalation",
+    "water_rights",
+    "water_source_resilience",
+    "community_risk",
+    "permitting_timeline",
+    "cooling_capex",
+    "backup_power_capacity",
+    "downtime_cost",
+    "customer_concentration",
+    "site_hazard_exposure"
+  ],
+  "budgetState": {
+    "telemetryStatus": "current-live",
+    "physicalOpenBudget": 24,
+    "physicalOpensUsed": 10,
+    "physicalOpensRemaining": 14,
+    "physicalOpenBudgetExceeded": false,
+    "documentsNotAttempted": [
+      {
+        "categoryId": "project-identity",
+        "count": 0,
+        "reason": "evidence-resolved"
+      },
+      {
+        "categoryId": "grid",
+        "count": 0,
+        "reason": "no-justified-gap"
+      },
+      {
+        "categoryId": "electricity",
+        "count": 0,
+        "reason": "no-justified-gap"
+      },
+      {
+        "categoryId": "water",
+        "count": 0,
+        "reason": "no-justified-gap"
+      },
+      {
+        "categoryId": "permitting-community",
+        "count": 0,
+        "reason": "no-justified-gap"
+      },
+      {
+        "categoryId": "construction-capital",
+        "count": 0,
+        "reason": "category-follow-up-limit"
+      },
+      {
+        "categoryId": "tenant-counterparty",
+        "count": 0,
+        "reason": "no-justified-gap"
+      },
+      {
+        "categoryId": "climate-operational-hazard",
+        "count": 0,
+        "reason": "no-justified-gap"
+      }
+    ]
+  },
+  "cacheState": {
+    "state": "updated",
+    "refreshStatus": "idle",
+    "providerAvailable": true,
+    "storedAt": "2026-09-17T17:12:23.761Z",
+    "keyPresent": true,
+    "telemetryStatus": "current-live"
+  },
+  "workbenchState": {
+    "status": "research-incomplete",
+    "reviewAction": "Review findings",
+    "eligibleSourceCount": 0,
+    "eligibleEvidenceCount": 0,
+    "proposalCount": 0,
+    "acceptedModelInputCount": 0,
+    "materialGaps": [
+      "project-identity",
+      "grid",
+      "electricity",
+      "water",
+      "permitting-community",
+      "construction-capital",
+      "tenant-counterparty",
+      "climate-operational-hazard",
+      "grid_interconnection",
+      "electricity_cost",
+      "electricity_escalation",
+      "renewable_percentage",
+      "carbon_compliance",
+      "water_consumption",
+      "water_escalation",
+      "water_rights",
+      "water_source_resilience",
+      "community_risk",
+      "permitting_timeline",
+      "cooling_capex",
+      "backup_power_capacity",
+      "downtime_cost",
+      "customer_concentration",
+      "site_hazard_exposure"
+    ],
+    "modelChangePendingHumanAcceptance": true
+  },
+  "sessionState": {
+    "runId": "c4935496-4b32-44fe-aa23-cb5221b46def",
+    "researchStatus": null,
+    "cacheState": "updated",
+    "telemetryStatus": "current-live",
+    "reloadRestoration": "run-scoped identity and cache metadata are retained; no model mutation is implied"
+  },
+  "categoryGaps": [
+    "project-identity",
+    "grid",
+    "electricity",
+    "water",
+    "permitting-community",
+    "construction-capital",
+    "tenant-counterparty",
+    "climate-operational-hazard"
+  ],
+  "categories": [
+    {
+      "categoryId": "project-identity",
+      "label": "Project identity",
+      "state": "Not searched",
+      "unresolvedGaps": [
+        "project-identity"
+      ],
+      "accessLimitations": [],
+      "providerFailure": null,
+      "providerAttempts": [],
+      "stageCounts": {
+        "normalized": 0,
+        "accessed": 0,
+        "parsed": 0,
+        "claimMapped": 0,
+        "eligible": 0,
+        "retainedCandidates": 0,
+        "candidates": 0,
+        "attemptedRetrievals": 0,
+        "successfulAccesses": 0,
+        "retainedPassages": 0,
+        "reusedReceipts": 0,
+        "notAttempted": 0,
+        "allEvidenceEligible": false,
+        "rejectionCounts": {},
+        "issuedProviderRequests": 0,
+        "observedSearches": 0,
+        "successfulExtractions": 0
+      }
+    },
+    {
+      "categoryId": "grid",
+      "label": "Grid",
+      "state": "Not searched",
+      "unresolvedGaps": [
+        "grid_interconnection",
+        "electricity_cost",
+        "electricity_escalation",
+        "renewable_percentage"
+      ],
+      "accessLimitations": [],
+      "providerFailure": null,
+      "providerAttempts": [],
+      "stageCounts": {
+        "normalized": 0,
+        "accessed": 0,
+        "parsed": 0,
+        "claimMapped": 0,
+        "eligible": 0,
+        "retainedCandidates": 0,
+        "candidates": 0,
+        "attemptedRetrievals": 0,
+        "successfulAccesses": 0,
+        "retainedPassages": 0,
+        "reusedReceipts": 0,
+        "notAttempted": 0,
+        "allEvidenceEligible": false,
+        "rejectionCounts": {
+          "No validated source was returned.": 4,
+          "No source matches the eligible source types for this evidence variable.": 4,
+          "An exact-project source is required for this evidence variable.": 4,
+          "Reviewer-submitted sources cannot establish research provenance.": 4,
+          "Only source-backed classifications can activate research evidence.": 4,
+          "Source support confidence is below the model-eligibility threshold.": 4,
+          "No immutable claim-to-passage mapping supports this evidence claim.": 4,
+          "Numeric value is missing; no model input can be derived.": 4
+        },
+        "issuedProviderRequests": 0,
+        "observedSearches": 0,
+        "successfulExtractions": 0
+      }
+    },
+    {
+      "categoryId": "electricity",
+      "label": "Electricity",
+      "state": "Not searched",
+      "unresolvedGaps": [
+        "electricity_cost",
+        "electricity_escalation",
+        "renewable_percentage",
+        "carbon_compliance"
+      ],
+      "accessLimitations": [],
+      "providerFailure": null,
+      "providerAttempts": [],
+      "stageCounts": {
+        "normalized": 0,
+        "accessed": 0,
+        "parsed": 0,
+        "claimMapped": 0,
+        "eligible": 0,
+        "retainedCandidates": 0,
+        "candidates": 0,
+        "attemptedRetrievals": 0,
+        "successfulAccesses": 0,
+        "retainedPassages": 0,
+        "reusedReceipts": 0,
+        "notAttempted": 0,
+        "allEvidenceEligible": false,
+        "rejectionCounts": {
+          "No validated source was returned.": 4,
+          "No source matches the eligible source types for this evidence variable.": 4,
+          "An exact-project source is required for this evidence variable.": 4,
+          "Reviewer-submitted sources cannot establish research provenance.": 4,
+          "Only source-backed classifications can activate research evidence.": 4,
+          "Source support confidence is below the model-eligibility threshold.": 4,
+          "No immutable claim-to-passage mapping supports this evidence claim.": 4,
+          "Numeric value is missing; no model input can be derived.": 4
+        },
+        "issuedProviderRequests": 0,
+        "observedSearches": 0,
+        "successfulExtractions": 0
+      }
+    },
+    {
+      "categoryId": "water",
+      "label": "Water",
+      "state": "Not searched",
+      "unresolvedGaps": [
+        "water_consumption",
+        "water_escalation",
+        "water_rights",
+        "water_source_resilience"
+      ],
+      "accessLimitations": [],
+      "providerFailure": null,
+      "providerAttempts": [],
+      "stageCounts": {
+        "normalized": 0,
+        "accessed": 0,
+        "parsed": 0,
+        "claimMapped": 0,
+        "eligible": 0,
+        "retainedCandidates": 0,
+        "candidates": 0,
+        "attemptedRetrievals": 0,
+        "successfulAccesses": 0,
+        "retainedPassages": 0,
+        "reusedReceipts": 0,
+        "notAttempted": 0,
+        "allEvidenceEligible": false,
+        "rejectionCounts": {
+          "No validated source was returned.": 4,
+          "No source matches the eligible source types for this evidence variable.": 4,
+          "An exact-project source is required for this evidence variable.": 4,
+          "Reviewer-submitted sources cannot establish research provenance.": 4,
+          "Only source-backed classifications can activate research evidence.": 4,
+          "Source support confidence is below the model-eligibility threshold.": 4,
+          "No immutable claim-to-passage mapping supports this evidence claim.": 4,
+          "Numeric value is missing; no model input can be derived.": 2,
+          "Missing or incompatible qualitative unit; a human User Assumption must supply the unit.": 2
+        },
+        "issuedProviderRequests": 0,
+        "observedSearches": 0,
+        "successfulExtractions": 0
+      }
+    },
+    {
+      "categoryId": "permitting-community",
+      "label": "Permitting and community",
+      "state": "Not searched",
+      "unresolvedGaps": [
+        "community_risk",
+        "permitting_timeline",
+        "carbon_compliance"
+      ],
+      "accessLimitations": [],
+      "providerFailure": null,
+      "providerAttempts": [],
+      "stageCounts": {
+        "normalized": 0,
+        "accessed": 0,
+        "parsed": 0,
+        "claimMapped": 0,
+        "eligible": 0,
+        "retainedCandidates": 0,
+        "candidates": 0,
+        "attemptedRetrievals": 0,
+        "successfulAccesses": 0,
+        "retainedPassages": 0,
+        "reusedReceipts": 0,
+        "notAttempted": 0,
+        "allEvidenceEligible": false,
+        "rejectionCounts": {
+          "No validated source was returned.": 3,
+          "No source matches the eligible source types for this evidence variable.": 3,
+          "Reviewer-submitted sources cannot establish research provenance.": 3,
+          "Only source-backed classifications can activate research evidence.": 3,
+          "Source support confidence is below the model-eligibility threshold.": 3,
+          "No immutable claim-to-passage mapping supports this evidence claim.": 3,
+          "Missing or incompatible qualitative unit; a human User Assumption must supply the unit.": 1,
+          "An exact-project source is required for this evidence variable.": 2,
+          "Numeric value is missing; no model input can be derived.": 2
+        },
+        "issuedProviderRequests": 0,
+        "observedSearches": 0,
+        "successfulExtractions": 0
+      }
+    },
+    {
+      "categoryId": "construction-capital",
+      "label": "Construction and capital",
+      "state": "Partial",
+      "unresolvedGaps": [
+        "cooling_capex",
+        "backup_power_capacity",
+        "downtime_cost"
+      ],
+      "accessLimitations": [
+        "The destination returned HTTP 403; no passage was retained."
+      ],
+      "providerFailure": null,
+      "providerAttempts": [
+        {
+          "categoryId": "construction-capital",
+          "attemptType": "primary",
+          "queuedAt": "2026-09-17T17:12:04.163Z",
+          "issuedAt": "2026-09-17T17:12:04.169Z",
+          "finishedAt": "2026-09-17T17:12:15.417Z",
+          "queueWaitMs": 6,
+          "elapsedMs": 11248,
+          "status": 200,
+          "outcome": "completed",
+          "requestedOutputTokens": 3500,
+          "requestBodyBytes": 25400,
+          "usage": {
+            "inputTokens": 5095,
+            "outputTokens": 885,
+            "totalTokens": 5980
+          }
+        },
+        {
+          "categoryId": "construction-capital",
+          "attemptType": "follow-up",
+          "queuedAt": "2026-09-17T17:12:16.459Z",
+          "issuedAt": "2026-09-17T17:12:16.465Z",
+          "finishedAt": "2026-09-17T17:12:23.690Z",
+          "queueWaitMs": 6,
+          "elapsedMs": 7226,
+          "status": 200,
+          "outcome": "completed",
+          "requestedOutputTokens": 3500,
+          "requestBodyBytes": 25264,
+          "usage": {
+            "inputTokens": 5059,
+            "outputTokens": 941,
+            "totalTokens": 6000
+          }
+        }
+      ],
+      "stageCounts": {
+        "normalized": 10,
+        "accessed": 0,
+        "parsed": 0,
+        "claimMapped": 0,
+        "eligible": 0,
+        "retainedCandidates": 10,
+        "candidates": 10,
+        "attemptedRetrievals": 10,
+        "successfulAccesses": 0,
+        "retainedPassages": 0,
+        "reusedReceipts": 0,
+        "notAttempted": 0,
+        "allEvidenceEligible": false,
+        "rejectionCounts": {
+          "No validated source was returned.": 3,
+          "No source matches the eligible source types for this evidence variable.": 3,
+          "An exact-project source is required for this evidence variable.": 3,
+          "Reviewer-submitted sources cannot establish research provenance.": 3,
+          "Only source-backed classifications can activate research evidence.": 3,
+          "Source support confidence is below the model-eligibility threshold.": 3,
+          "No immutable claim-to-passage mapping supports this evidence claim.": 3,
+          "Numeric value is missing; no model input can be derived.": 3
+        },
+        "issuedProviderRequests": 2,
+        "observedSearches": 2,
+        "successfulExtractions": 0
+      }
+    },
+    {
+      "categoryId": "tenant-counterparty",
+      "label": "Tenant and counterparty",
+      "state": "Not searched",
+      "unresolvedGaps": [
+        "customer_concentration",
+        "downtime_cost"
+      ],
+      "accessLimitations": [],
+      "providerFailure": null,
+      "providerAttempts": [],
+      "stageCounts": {
+        "normalized": 0,
+        "accessed": 0,
+        "parsed": 0,
+        "claimMapped": 0,
+        "eligible": 0,
+        "retainedCandidates": 0,
+        "candidates": 0,
+        "attemptedRetrievals": 0,
+        "successfulAccesses": 0,
+        "retainedPassages": 0,
+        "reusedReceipts": 0,
+        "notAttempted": 0,
+        "allEvidenceEligible": false,
+        "rejectionCounts": {
+          "No validated source was returned.": 2,
+          "No source matches the eligible source types for this evidence variable.": 2,
+          "An exact-project source is required for this evidence variable.": 2,
+          "Reviewer-submitted sources cannot establish research provenance.": 2,
+          "Only source-backed classifications can activate research evidence.": 2,
+          "Source support confidence is below the model-eligibility threshold.": 2,
+          "No immutable claim-to-passage mapping supports this evidence claim.": 2,
+          "Numeric value is missing; no model input can be derived.": 2
+        },
+        "issuedProviderRequests": 0,
+        "observedSearches": 0,
+        "successfulExtractions": 0
+      }
+    },
+    {
+      "categoryId": "climate-operational-hazard",
+      "label": "Climate and operational hazard",
+      "state": "Not searched",
+      "unresolvedGaps": [
+        "site_hazard_exposure",
+        "backup_power_capacity",
+        "water_source_resilience",
+        "downtime_cost"
+      ],
+      "accessLimitations": [],
+      "providerFailure": null,
+      "providerAttempts": [],
+      "stageCounts": {
+        "normalized": 0,
+        "accessed": 0,
+        "parsed": 0,
+        "claimMapped": 0,
+        "eligible": 0,
+        "retainedCandidates": 0,
+        "candidates": 0,
+        "attemptedRetrievals": 0,
+        "successfulAccesses": 0,
+        "retainedPassages": 0,
+        "reusedReceipts": 0,
+        "notAttempted": 0,
+        "allEvidenceEligible": false,
+        "rejectionCounts": {
+          "No validated source was returned.": 4,
+          "No source matches the eligible source types for this evidence variable.": 4,
+          "Reviewer-submitted sources cannot establish research provenance.": 4,
+          "Only source-backed classifications can activate research evidence.": 4,
+          "Source support confidence is below the model-eligibility threshold.": 4,
+          "No immutable claim-to-passage mapping supports this evidence claim.": 4,
+          "Missing or incompatible qualitative unit; a human User Assumption must supply the unit.": 2,
+          "An exact-project source is required for this evidence variable.": 3,
+          "Numeric value is missing; no model input can be derived.": 2
+        },
+        "issuedProviderRequests": 0,
+        "observedSearches": 0,
+        "successfulExtractions": 0
+      }
+    }
+  ],
+  "providerLimitations": [
+    "The destination returned HTTP 403; no passage was retained."
+  ],
+  "retainedHistoricalRun": null,
+  "failureRetention": {
+    "httpStatus": 200,
+    "cacheState": "updated",
+    "refreshStatus": "idle",
+    "providerAvailable": true,
+    "errorType": null,
+    "retainedResult": true,
+    "retainedResultMode": "research-incomplete",
+    "retainedCategoryGaps": [
+      "project-identity",
+      "grid",
+      "electricity",
+      "water",
+      "permitting-community",
+      "construction-capital",
+      "tenant-counterparty",
+      "climate-operational-hazard"
+    ],
+    "retainedBudgetDiagnostics": null,
+    "labeledStaleOrPartial": true
+  }
+}

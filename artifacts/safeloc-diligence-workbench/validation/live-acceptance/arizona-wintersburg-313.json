@@ -1,0 +1,1316 @@
+{
+  "diagnosticOnly": true,
+  "evidenceStatus": "not-evidence",
+  "liveAcceptance": {
+    "status": "LIVE ACCEPTANCE BLOCKED",
+    "reason": "No accessible exact-project passage mapped to an eligible visible finding; retained passages and unresolved categories remain diagnostic only.",
+    "trace": []
+  },
+  "generatedAt": "2026-09-17T17:11:36.181Z",
+  "project": {
+    "name": "Wintersburg 313",
+    "location": "Tonopah, Maricopa County, Arizona",
+    "directoryProvider": "Compute Atlas",
+    "directoryProviderId": "wintersburg-313-tonopah-az",
+    "aliases": [
+      "Wintersburg 313",
+      "313 Wintersburg",
+      "Wintersburg Four"
+    ],
+    "operator": "313 Wintersburg LLC and Wintersburg Four LLC",
+    "status": "planned",
+    "city": "Tonopah",
+    "county": "Maricopa County",
+    "state": "Arizona",
+    "sourceUrl": "https://www.maricopa.gov/AgendaCenter/ViewFile/Item/10316?fileID=100604",
+    "authorities": {
+      "establishedDomains": [
+        "maricopa.gov",
+        "azcc.gov"
+      ],
+      "identifiedAuthorities": [
+        "Maricopa County",
+        "Arizona Corporation Commission"
+      ],
+      "missingAuthorityDomains": [],
+      "companyDomains": []
+    }
+  },
+  "run": {
+    "status": "research-incomplete",
+    "telemetryStatus": "current-live",
+    "runId": "3274c354-8fff-4a57-8ac3-b259abbf3cbe",
+    "researchStatus": null,
+    "httpStatus": 200,
+    "provider": "openai",
+    "model": "gpt-4o",
+    "providerResponseIds": [
+      "resp_0d317ed4f37c9c6b006aac1f487ef087d29db4a8fd895391cb",
+      "resp_0a007a00d49435a7006aac1f504a7887d2a70e25ad8dfe90b0"
+    ],
+    "startedAt": "2026-09-17T17:11:36.186Z",
+    "finishedAt": "2026-09-17T17:11:52.720Z",
+    "elapsedMs": 16534,
+    "wallClockElapsedMs": 16547,
+    "failureType": null,
+    "failureMessage": null,
+    "providerDiagnostic": null,
+    "elapsedWithinDeadline": true,
+    "providerRequestCount": 2,
+    "providerAttempts": [
+      {
+        "categoryId": "permitting-community",
+        "attemptType": "primary",
+        "queuedAt": "2026-09-17T17:11:36.198Z",
+        "issuedAt": "2026-09-17T17:11:36.199Z",
+        "finishedAt": "2026-09-17T17:11:44.152Z",
+        "queueWaitMs": 1,
+        "elapsedMs": 7953,
+        "status": 200,
+        "outcome": "completed",
+        "requestedOutputTokens": 3500,
+        "requestBodyBytes": 31250,
+        "usage": {
+          "inputTokens": 6367,
+          "outputTokens": 973,
+          "totalTokens": 7340
+        }
+      },
+      {
+        "categoryId": "permitting-community",
+        "attemptType": "follow-up",
+        "queuedAt": "2026-09-17T17:11:44.173Z",
+        "issuedAt": "2026-09-17T17:11:44.175Z",
+        "finishedAt": "2026-09-17T17:11:52.713Z",
+        "queueWaitMs": 2,
+        "elapsedMs": 8538,
+        "status": 200,
+        "outcome": "completed",
+        "requestedOutputTokens": 3500,
+        "requestBodyBytes": 31189,
+        "usage": {
+          "inputTokens": 6349,
+          "outputTokens": 1305,
+          "totalTokens": 7654
+        }
+      }
+    ],
+    "toolCallCount": 2,
+    "followUpCount": 1,
+    "budget": {
+      "deadlineMs": 90000,
+      "maxProviderRequests": 16,
+      "maxFollowUps": 8,
+      "maxFollowUpsPerCategory": 1,
+      "maxCandidatesPerCategory": 10,
+      "maxTotalCandidates": 80,
+      "maxToolCalls": 32,
+      "maxPhysicalDocumentOpens": 24
+    },
+    "limitsObserved": {
+      "providerRequestsWithinLimit": true,
+      "followUpsWithinLimit": true,
+      "toolCallsWithinLimit": true,
+      "candidatesWithinTotalLimit": true,
+      "candidatesByCategory": {
+        "project-identity": 0,
+        "grid": 0,
+        "electricity": 0,
+        "water": 0,
+        "permitting-community": 0,
+        "construction-capital": 0,
+        "tenant-counterparty": 0,
+        "climate-operational-hazard": 0
+      },
+      "candidateCategoryLimit": 10
+    }
+  },
+  "requests": [
+    {
+      "categoryId": "permitting-community",
+      "attemptType": "primary",
+      "queuedAt": "2026-09-17T17:11:36.198Z",
+      "issuedAt": "2026-09-17T17:11:36.199Z",
+      "finishedAt": "2026-09-17T17:11:44.152Z",
+      "queueWaitMs": 1,
+      "elapsedMs": 7953,
+      "status": 200,
+      "outcome": "completed",
+      "requestedOutputTokens": 3500,
+      "requestBodyBytes": 31250,
+      "usage": {
+        "inputTokens": 6367,
+        "outputTokens": 973,
+        "totalTokens": 7340
+      }
+    },
+    {
+      "categoryId": "permitting-community",
+      "attemptType": "follow-up",
+      "queuedAt": "2026-09-17T17:11:44.173Z",
+      "issuedAt": "2026-09-17T17:11:44.175Z",
+      "finishedAt": "2026-09-17T17:11:52.713Z",
+      "queueWaitMs": 2,
+      "elapsedMs": 8538,
+      "status": 200,
+      "outcome": "completed",
+      "requestedOutputTokens": 3500,
+      "requestBodyBytes": 31189,
+      "usage": {
+        "inputTokens": 6349,
+        "outputTokens": 1305,
+        "totalTokens": 7654
+      }
+    }
+  ],
+  "observedSearches": [
+    {
+      "categoryId": "water",
+      "query": "\"Wintersburg 313\" \"Tonopah, Maricopa County, Arizona\" public hearing opposition complaints community Arizona Arizona Corporation Commission Arizona Department of Water Resources Arizona Department of Environmental Quality Arizona utility an"
+    },
+    {
+      "categoryId": "water",
+      "query": "313 Wintersburg LLC and Wintersburg Four LLC Wintersburg 313 planning zoning land-use hearing schedule Arizona Arizona Corporation Commission Arizona Department of Water Resources Arizona Department of Environmental Quality Arizona utility"
+    },
+    {
+      "categoryId": "permitting-community",
+      "query": "\"Wintersburg 313\" \"Tonopah, Maricopa County, Arizona\" public hearing opposition complaints community Arizona Arizona Corporation Commission Arizona Department of Water Resources Arizona Department of Environmental Quality Arizona utility an"
+    },
+    {
+      "categoryId": "permitting-community",
+      "query": "313 Wintersburg LLC and Wintersburg Four LLC Wintersburg 313 planning zoning land-use hearing schedule Arizona Arizona Corporation Commission Arizona Department of Water Resources Arizona Department of Environmental Quality Arizona utility"
+    }
+  ],
+  "returnedDomains": [],
+  "executedQueries": [
+    {
+      "categoryId": "project-identity",
+      "label": "Project identity",
+      "requestedPrimaryQuery": "\"Wintersburg 313\" \"Tonopah, Maricopa County, Arizona\" project operator facility identity permit record Arizona Arizona Corporation Commission Arizona Department of Water Resources Arizona Department of Environmental Quality Arizona utility and water-authority records \"Wintersburg 313\" \"313 Wintersburg\" \"Wintersburg Four\" \"313 Wintersburg LLC and Wintersburg Four LLC\" \"313 Wintersburg LLC and Wintersburg Four LLC\" (site:azcc.gov OR site:azwater.gov OR site:azdeq.gov) official government regulator utility record",
+      "executedQueries": [],
+      "followUpExecutedQuery": null,
+      "state": "Not searched"
+    },
+    {
+      "categoryId": "grid",
+      "label": "Grid",
+      "requestedPrimaryQuery": "\"Wintersburg 313\" \"Tonopah, Maricopa County, Arizona\" grid interconnection queue transmission study Arizona Arizona Corporation Commission Arizona Department of Water Resources Arizona Department of Environmental Quality Arizona utility and water-authority records \"Wintersburg 313\" \"313 Wintersburg\" \"Wintersburg Four\" \"313 Wintersburg LLC and Wintersburg Four LLC\" \"313 Wintersburg LLC and Wintersburg Four LLC\" (site:azcc.gov OR site:azwater.gov OR site:azdeq.gov) official government regulator utility record",
+      "executedQueries": [],
+      "followUpExecutedQuery": null,
+      "state": "Not searched"
+    },
+    {
+      "categoryId": "electricity",
+      "label": "Electricity",
+      "requestedPrimaryQuery": "\"Wintersburg 313\" \"Tonopah, Maricopa County, Arizona\" utility tariff electricity rate power price $/MWh Arizona Arizona Corporation Commission Arizona Department of Water Resources Arizona Department of Environmental Quality Arizona utility and water-authority records \"Wintersburg 313\" \"313 Wintersburg\" \"Wintersburg Four\" \"313 Wintersburg LLC and Wintersburg Four LLC\" \"313 Wintersburg LLC and Wintersburg Four LLC\" (site:azcc.gov OR site:azwater.gov OR site:azdeq.gov) official government regulator utility record",
+      "executedQueries": [],
+      "followUpExecutedQuery": null,
+      "state": "Not searched"
+    },
+    {
+      "categoryId": "water",
+      "label": "Water",
+      "requestedPrimaryQuery": "\"Wintersburg 313\" \"Tonopah, Maricopa County, Arizona\" water demand consumption gallons usage Arizona Arizona Corporation Commission Arizona Department of Water Resources Arizona Department of Environmental Quality Arizona utility and water-authority records City of Tonopah Maricopa County County Maricopa County \"Wintersburg 313\" \"313 Wintersburg\" \"Wintersburg Four\" \"313 Wintersburg LLC and Wintersburg Four LLC\" \"313 Wintersburg LLC and Wintersburg Four LLC\" (site:azcc.gov OR site:azwater.gov OR site:azdeq.gov OR site:maricopa.gov) official government regulator utility record",
+      "executedQueries": [
+        "\"Wintersburg 313\" \"Tonopah, Maricopa County, Arizona\" public hearing opposition complaints community Arizona Arizona Corporation Commission Arizona Department of Water Resources Arizona Department of Environmental Quality Arizona utility an",
+        "313 Wintersburg LLC and Wintersburg Four LLC Wintersburg 313 planning zoning land-use hearing schedule Arizona Arizona Corporation Commission Arizona Department of Water Resources Arizona Department of Environmental Quality Arizona utility"
+      ],
+      "followUpExecutedQuery": null,
+      "state": "No eligible evidence"
+    },
+    {
+      "categoryId": "permitting-community",
+      "label": "Permitting and community",
+      "requestedPrimaryQuery": "\"Wintersburg 313\" \"Tonopah, Maricopa County, Arizona\" public hearing opposition complaints community Arizona Arizona Corporation Commission Arizona Department of Water Resources Arizona Department of Environmental Quality Arizona utility and water-authority records City of Tonopah Maricopa County County Maricopa County \"Wintersburg 313\" \"313 Wintersburg\" \"Wintersburg Four\" \"313 Wintersburg LLC and Wintersburg Four LLC\" \"313 Wintersburg LLC and Wintersburg Four LLC\" (site:azcc.gov OR site:azwater.gov OR site:azdeq.gov OR site:maricopa.gov) official government regulator utility record",
+      "executedQueries": [
+        "\"Wintersburg 313\" \"Tonopah, Maricopa County, Arizona\" public hearing opposition complaints community Arizona Arizona Corporation Commission Arizona Department of Water Resources Arizona Department of Environmental Quality Arizona utility an",
+        "313 Wintersburg LLC and Wintersburg Four LLC Wintersburg 313 planning zoning land-use hearing schedule Arizona Arizona Corporation Commission Arizona Department of Water Resources Arizona Department of Environmental Quality Arizona utility"
+      ],
+      "followUpExecutedQuery": "313 Wintersburg LLC and Wintersburg Four LLC Wintersburg 313 planning zoning land-use hearing schedule Arizona Arizona Corporation Commission Arizona Department of Water Resources Arizona Department of Environmental Quality Arizona utility",
+      "state": "No eligible evidence"
+    },
+    {
+      "categoryId": "construction-capital",
+      "label": "Construction and capital",
+      "requestedPrimaryQuery": "\"Wintersburg 313\" \"Tonopah, Maricopa County, Arizona\" cooling system capital cost capex Arizona Arizona Corporation Commission Arizona Department of Water Resources Arizona Department of Environmental Quality Arizona utility and water-authority records \"Wintersburg 313\" \"313 Wintersburg\" \"Wintersburg Four\" \"313 Wintersburg LLC and Wintersburg Four LLC\" \"313 Wintersburg LLC and Wintersburg Four LLC\" (site:azcc.gov OR site:azwater.gov OR site:azdeq.gov) official government regulator utility record",
+      "executedQueries": [],
+      "followUpExecutedQuery": null,
+      "state": "Not searched"
+    },
+    {
+      "categoryId": "tenant-counterparty",
+      "label": "Tenant and counterparty",
+      "requestedPrimaryQuery": "\"Wintersburg 313\" \"Tonopah, Maricopa County, Arizona\" customer concentration revenue load share percentage Arizona Arizona Corporation Commission Arizona Department of Water Resources Arizona Department of Environmental Quality Arizona utility and water-authority records \"Wintersburg 313\" \"313 Wintersburg\" \"Wintersburg Four\" \"313 Wintersburg LLC and Wintersburg Four LLC\" \"313 Wintersburg LLC and Wintersburg Four LLC\" (site:azcc.gov OR site:azwater.gov OR site:azdeq.gov) official government regulator utility record",
+      "executedQueries": [],
+      "followUpExecutedQuery": null,
+      "state": "Not searched"
+    },
+    {
+      "categoryId": "climate-operational-hazard",
+      "label": "Climate and operational hazard",
+      "requestedPrimaryQuery": "\"Wintersburg 313\" \"Tonopah, Maricopa County, Arizona\" flood wildfire seismic hazard exact site Arizona Arizona Corporation Commission Arizona Department of Water Resources Arizona Department of Environmental Quality Arizona utility and water-authority records \"Wintersburg 313\" \"313 Wintersburg\" \"Wintersburg Four\" \"313 Wintersburg LLC and Wintersburg Four LLC\" \"313 Wintersburg LLC and Wintersburg Four LLC\" (site:azcc.gov OR site:azwater.gov OR site:azdeq.gov) official government regulator utility record",
+      "executedQueries": [],
+      "followUpExecutedQuery": null,
+      "state": "Not searched"
+    }
+  ],
+  "sourceStates": {
+    "total": 0,
+    "bySourceState": {},
+    "byAccessOutcome": {},
+    "byClaimSupportState": {},
+    "byProjectSpecificityState": {},
+    "returnedDomains": [],
+    "normalizedCandidates": [],
+    "sources": [],
+    "retainedPassages": []
+  },
+  "evidenceAudit": [
+    {
+      "evidenceId": "electricity_cost",
+      "label": "electricity cost",
+      "categoryId": "grid",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "USD/MWh",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": null,
+      "phaseScope": null,
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "water_consumption",
+      "label": "water consumption",
+      "categoryId": "water",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "Mgal/year",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": null,
+      "phaseScope": null,
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "grid_interconnection",
+      "label": "grid interconnection",
+      "categoryId": "grid",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "months",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": null,
+      "phaseScope": null,
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "water_escalation",
+      "label": "water escalation",
+      "categoryId": "water",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "%",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": null,
+      "phaseScope": null,
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "community_risk",
+      "label": "community risk",
+      "categoryId": "permitting-community",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "qualitative",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": null,
+      "phaseScope": null,
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Missing or incompatible qualitative unit; a human User Assumption must supply the unit."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "renewable_percentage",
+      "label": "renewable percentage",
+      "categoryId": "grid",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "%",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": null,
+      "phaseScope": null,
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "cooling_capex",
+      "label": "cooling capex",
+      "categoryId": "construction-capital",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "USD millions",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": null,
+      "phaseScope": null,
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "electricity_escalation",
+      "label": "electricity escalation",
+      "categoryId": "grid",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "%",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": null,
+      "phaseScope": null,
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "carbon_compliance",
+      "label": "carbon compliance",
+      "categoryId": "electricity",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "USD millions/year",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": null,
+      "phaseScope": null,
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "permitting_timeline",
+      "label": "permitting timeline",
+      "categoryId": "permitting-community",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "months",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": null,
+      "phaseScope": null,
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "customer_concentration",
+      "label": "customer concentration",
+      "categoryId": "tenant-counterparty",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "%",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": null,
+      "phaseScope": null,
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "water_rights",
+      "label": "water rights",
+      "categoryId": "water",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "qualitative",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": null,
+      "phaseScope": null,
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Missing or incompatible qualitative unit; a human User Assumption must supply the unit."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "site_hazard_exposure",
+      "label": "site hazard exposure",
+      "categoryId": "climate-operational-hazard",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "qualitative",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": null,
+      "phaseScope": null,
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Missing or incompatible qualitative unit; a human User Assumption must supply the unit."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "backup_power_capacity",
+      "label": "backup power capacity",
+      "categoryId": "construction-capital",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "hours",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": null,
+      "phaseScope": null,
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "water_source_resilience",
+      "label": "water source resilience",
+      "categoryId": "water",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "qualitative",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": null,
+      "phaseScope": null,
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Missing or incompatible qualitative unit; a human User Assumption must supply the unit."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "downtime_cost",
+      "label": "downtime cost",
+      "categoryId": "construction-capital",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "USD/day",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": null,
+      "phaseScope": null,
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    }
+  ],
+  "unresolvedIdentifiers": [
+    "project-identity",
+    "grid",
+    "electricity",
+    "water",
+    "permitting-community",
+    "construction-capital",
+    "tenant-counterparty",
+    "climate-operational-hazard",
+    "grid_interconnection",
+    "electricity_cost",
+    "electricity_escalation",
+    "renewable_percentage",
+    "carbon_compliance",
+    "water_consumption",
+    "water_escalation",
+    "water_rights",
+    "water_source_resilience",
+    "community_risk",
+    "permitting_timeline",
+    "cooling_capex",
+    "backup_power_capacity",
+    "downtime_cost",
+    "customer_concentration",
+    "site_hazard_exposure"
+  ],
+  "budgetState": {
+    "telemetryStatus": "current-live",
+    "physicalOpenBudget": 24,
+    "physicalOpensUsed": 0,
+    "physicalOpensRemaining": 24,
+    "physicalOpenBudgetExceeded": false,
+    "documentsNotAttempted": [
+      {
+        "categoryId": "project-identity",
+        "count": 0,
+        "reason": "evidence-resolved"
+      },
+      {
+        "categoryId": "grid",
+        "count": 0,
+        "reason": "no-justified-gap"
+      },
+      {
+        "categoryId": "electricity",
+        "count": 0,
+        "reason": "no-justified-gap"
+      },
+      {
+        "categoryId": "water",
+        "count": 0,
+        "reason": "no-justified-gap"
+      },
+      {
+        "categoryId": "permitting-community",
+        "count": 0,
+        "reason": "category-follow-up-limit"
+      },
+      {
+        "categoryId": "construction-capital",
+        "count": 0,
+        "reason": "no-justified-gap"
+      },
+      {
+        "categoryId": "tenant-counterparty",
+        "count": 0,
+        "reason": "no-justified-gap"
+      },
+      {
+        "categoryId": "climate-operational-hazard",
+        "count": 0,
+        "reason": "no-justified-gap"
+      }
+    ]
+  },
+  "cacheState": {
+    "state": "updated",
+    "refreshStatus": "idle",
+    "providerAvailable": true,
+    "storedAt": "2026-09-17T17:11:52.725Z",
+    "keyPresent": true,
+    "telemetryStatus": "current-live"
+  },
+  "workbenchState": {
+    "status": "research-incomplete",
+    "reviewAction": "Review findings",
+    "eligibleSourceCount": 0,
+    "eligibleEvidenceCount": 0,
+    "proposalCount": 0,
+    "acceptedModelInputCount": 0,
+    "materialGaps": [
+      "project-identity",
+      "grid",
+      "electricity",
+      "water",
+      "permitting-community",
+      "construction-capital",
+      "tenant-counterparty",
+      "climate-operational-hazard",
+      "grid_interconnection",
+      "electricity_cost",
+      "electricity_escalation",
+      "renewable_percentage",
+      "carbon_compliance",
+      "water_consumption",
+      "water_escalation",
+      "water_rights",
+      "water_source_resilience",
+      "community_risk",
+      "permitting_timeline",
+      "cooling_capex",
+      "backup_power_capacity",
+      "downtime_cost",
+      "customer_concentration",
+      "site_hazard_exposure"
+    ],
+    "modelChangePendingHumanAcceptance": true
+  },
+  "sessionState": {
+    "runId": "3274c354-8fff-4a57-8ac3-b259abbf3cbe",
+    "researchStatus": null,
+    "cacheState": "updated",
+    "telemetryStatus": "current-live",
+    "reloadRestoration": "run-scoped identity and cache metadata are retained; no model mutation is implied"
+  },
+  "categoryGaps": [
+    "project-identity",
+    "grid",
+    "electricity",
+    "water",
+    "permitting-community",
+    "construction-capital",
+    "tenant-counterparty",
+    "climate-operational-hazard"
+  ],
+  "categories": [
+    {
+      "categoryId": "project-identity",
+      "label": "Project identity",
+      "state": "Not searched",
+      "unresolvedGaps": [
+        "project-identity"
+      ],
+      "accessLimitations": [],
+      "providerFailure": null,
+      "providerAttempts": [],
+      "stageCounts": {
+        "normalized": 0,
+        "accessed": 0,
+        "parsed": 0,
+        "claimMapped": 0,
+        "eligible": 0,
+        "retainedCandidates": 0,
+        "candidates": 0,
+        "attemptedRetrievals": 0,
+        "successfulAccesses": 0,
+        "retainedPassages": 0,
+        "reusedReceipts": 0,
+        "notAttempted": 0,
+        "allEvidenceEligible": false,
+        "rejectionCounts": {},
+        "issuedProviderRequests": 0,
+        "observedSearches": 0,
+        "successfulExtractions": 0
+      }
+    },
+    {
+      "categoryId": "grid",
+      "label": "Grid",
+      "state": "Not searched",
+      "unresolvedGaps": [
+        "grid_interconnection",
+        "electricity_cost",
+        "electricity_escalation",
+        "renewable_percentage"
+      ],
+      "accessLimitations": [],
+      "providerFailure": null,
+      "providerAttempts": [],
+      "stageCounts": {
+        "normalized": 0,
+        "accessed": 0,
+        "parsed": 0,
+        "claimMapped": 0,
+        "eligible": 0,
+        "retainedCandidates": 0,
+        "candidates": 0,
+        "attemptedRetrievals": 0,
+        "successfulAccesses": 0,
+        "retainedPassages": 0,
+        "reusedReceipts": 0,
+        "notAttempted": 0,
+        "allEvidenceEligible": false,
+        "rejectionCounts": {
+          "No validated source was returned.": 4,
+          "No source matches the eligible source types for this evidence variable.": 4,
+          "An exact-project source is required for this evidence variable.": 4,
+          "Reviewer-submitted sources cannot establish research provenance.": 4,
+          "Only source-backed classifications can activate research evidence.": 4,
+          "Source support confidence is below the model-eligibility threshold.": 4,
+          "No immutable claim-to-passage mapping supports this evidence claim.": 4,
+          "Numeric value is missing; no model input can be derived.": 4
+        },
+        "issuedProviderRequests": 0,
+        "observedSearches": 0,
+        "successfulExtractions": 0
+      }
+    },
+    {
+      "categoryId": "electricity",
+      "label": "Electricity",
+      "state": "Not searched",
+      "unresolvedGaps": [
+        "electricity_cost",
+        "electricity_escalation",
+        "renewable_percentage",
+        "carbon_compliance"
+      ],
+      "accessLimitations": [],
+      "providerFailure": null,
+      "providerAttempts": [],
+      "stageCounts": {
+        "normalized": 0,
+        "accessed": 0,
+        "parsed": 0,
+        "claimMapped": 0,
+        "eligible": 0,
+        "retainedCandidates": 0,
+        "candidates": 0,
+        "attemptedRetrievals": 0,
+        "successfulAccesses": 0,
+        "retainedPassages": 0,
+        "reusedReceipts": 0,
+        "notAttempted": 0,
+        "allEvidenceEligible": false,
+        "rejectionCounts": {
+          "No validated source was returned.": 4,
+          "No source matches the eligible source types for this evidence variable.": 4,
+          "An exact-project source is required for this evidence variable.": 4,
+          "Reviewer-submitted sources cannot establish research provenance.": 4,
+          "Only source-backed classifications can activate research evidence.": 4,
+          "Source support confidence is below the model-eligibility threshold.": 4,
+          "No immutable claim-to-passage mapping supports this evidence claim.": 4,
+          "Numeric value is missing; no model input can be derived.": 4
+        },
+        "issuedProviderRequests": 0,
+        "observedSearches": 0,
+        "successfulExtractions": 0
+      }
+    },
+    {
+      "categoryId": "water",
+      "label": "Water",
+      "state": "No eligible evidence",
+      "unresolvedGaps": [
+        "water_consumption",
+        "water_escalation",
+        "water_rights",
+        "water_source_resilience"
+      ],
+      "accessLimitations": [],
+      "providerFailure": null,
+      "providerAttempts": [],
+      "stageCounts": {
+        "normalized": 0,
+        "accessed": 0,
+        "parsed": 0,
+        "claimMapped": 0,
+        "eligible": 0,
+        "retainedCandidates": 0,
+        "candidates": 0,
+        "attemptedRetrievals": 0,
+        "successfulAccesses": 0,
+        "retainedPassages": 0,
+        "reusedReceipts": 0,
+        "notAttempted": 0,
+        "allEvidenceEligible": false,
+        "rejectionCounts": {
+          "No validated source was returned.": 4,
+          "No source matches the eligible source types for this evidence variable.": 4,
+          "An exact-project source is required for this evidence variable.": 4,
+          "Reviewer-submitted sources cannot establish research provenance.": 4,
+          "Only source-backed classifications can activate research evidence.": 4,
+          "Source support confidence is below the model-eligibility threshold.": 4,
+          "No immutable claim-to-passage mapping supports this evidence claim.": 4,
+          "Numeric value is missing; no model input can be derived.": 2,
+          "Missing or incompatible qualitative unit; a human User Assumption must supply the unit.": 2
+        },
+        "issuedProviderRequests": 0,
+        "observedSearches": 0,
+        "successfulExtractions": 0
+      }
+    },
+    {
+      "categoryId": "permitting-community",
+      "label": "Permitting and community",
+      "state": "No eligible evidence",
+      "unresolvedGaps": [
+        "community_risk",
+        "permitting_timeline",
+        "carbon_compliance"
+      ],
+      "accessLimitations": [],
+      "providerFailure": null,
+      "providerAttempts": [
+        {
+          "categoryId": "permitting-community",
+          "attemptType": "primary",
+          "queuedAt": "2026-09-17T17:11:36.198Z",
+          "issuedAt": "2026-09-17T17:11:36.199Z",
+          "finishedAt": "2026-09-17T17:11:44.152Z",
+          "queueWaitMs": 1,
+          "elapsedMs": 7953,
+          "status": 200,
+          "outcome": "completed",
+          "requestedOutputTokens": 3500,
+          "requestBodyBytes": 31250,
+          "usage": {
+            "inputTokens": 6367,
+            "outputTokens": 973,
+            "totalTokens": 7340
+          }
+        },
+        {
+          "categoryId": "permitting-community",
+          "attemptType": "follow-up",
+          "queuedAt": "2026-09-17T17:11:44.173Z",
+          "issuedAt": "2026-09-17T17:11:44.175Z",
+          "finishedAt": "2026-09-17T17:11:52.713Z",
+          "queueWaitMs": 2,
+          "elapsedMs": 8538,
+          "status": 200,
+          "outcome": "completed",
+          "requestedOutputTokens": 3500,
+          "requestBodyBytes": 31189,
+          "usage": {
+            "inputTokens": 6349,
+            "outputTokens": 1305,
+            "totalTokens": 7654
+          }
+        }
+      ],
+      "stageCounts": {
+        "normalized": 0,
+        "accessed": 0,
+        "parsed": 0,
+        "claimMapped": 0,
+        "eligible": 0,
+        "retainedCandidates": 0,
+        "candidates": 0,
+        "attemptedRetrievals": 0,
+        "successfulAccesses": 0,
+        "retainedPassages": 0,
+        "reusedReceipts": 0,
+        "notAttempted": 0,
+        "allEvidenceEligible": false,
+        "rejectionCounts": {
+          "No validated source was returned.": 3,
+          "No source matches the eligible source types for this evidence variable.": 3,
+          "Reviewer-submitted sources cannot establish research provenance.": 3,
+          "Only source-backed classifications can activate research evidence.": 3,
+          "Source support confidence is below the model-eligibility threshold.": 3,
+          "No immutable claim-to-passage mapping supports this evidence claim.": 3,
+          "Missing or incompatible qualitative unit; a human User Assumption must supply the unit.": 1,
+          "An exact-project source is required for this evidence variable.": 2,
+          "Numeric value is missing; no model input can be derived.": 2
+        },
+        "issuedProviderRequests": 2,
+        "observedSearches": 2,
+        "successfulExtractions": 0
+      }
+    },
+    {
+      "categoryId": "construction-capital",
+      "label": "Construction and capital",
+      "state": "Not searched",
+      "unresolvedGaps": [
+        "cooling_capex",
+        "backup_power_capacity",
+        "downtime_cost"
+      ],
+      "accessLimitations": [],
+      "providerFailure": null,
+      "providerAttempts": [],
+      "stageCounts": {
+        "normalized": 0,
+        "accessed": 0,
+        "parsed": 0,
+        "claimMapped": 0,
+        "eligible": 0,
+        "retainedCandidates": 0,
+        "candidates": 0,
+        "attemptedRetrievals": 0,
+        "successfulAccesses": 0,
+        "retainedPassages": 0,
+        "reusedReceipts": 0,
+        "notAttempted": 0,
+        "allEvidenceEligible": false,
+        "rejectionCounts": {
+          "No validated source was returned.": 3,
+          "No source matches the eligible source types for this evidence variable.": 3,
+          "An exact-project source is required for this evidence variable.": 3,
+          "Reviewer-submitted sources cannot establish research provenance.": 3,
+          "Only source-backed classifications can activate research evidence.": 3,
+          "Source support confidence is below the model-eligibility threshold.": 3,
+          "No immutable claim-to-passage mapping supports this evidence claim.": 3,
+          "Numeric value is missing; no model input can be derived.": 3
+        },
+        "issuedProviderRequests": 0,
+        "observedSearches": 0,
+        "successfulExtractions": 0
+      }
+    },
+    {
+      "categoryId": "tenant-counterparty",
+      "label": "Tenant and counterparty",
+      "state": "Not searched",
+      "unresolvedGaps": [
+        "customer_concentration",
+        "downtime_cost"
+      ],
+      "accessLimitations": [],
+      "providerFailure": null,
+      "providerAttempts": [],
+      "stageCounts": {
+        "normalized": 0,
+        "accessed": 0,
+        "parsed": 0,
+        "claimMapped": 0,
+        "eligible": 0,
+        "retainedCandidates": 0,
+        "candidates": 0,
+        "attemptedRetrievals": 0,
+        "successfulAccesses": 0,
+        "retainedPassages": 0,
+        "reusedReceipts": 0,
+        "notAttempted": 0,
+        "allEvidenceEligible": false,
+        "rejectionCounts": {
+          "No validated source was returned.": 2,
+          "No source matches the eligible source types for this evidence variable.": 2,
+          "An exact-project source is required for this evidence variable.": 2,
+          "Reviewer-submitted sources cannot establish research provenance.": 2,
+          "Only source-backed classifications can activate research evidence.": 2,
+          "Source support confidence is below the model-eligibility threshold.": 2,
+          "No immutable claim-to-passage mapping supports this evidence claim.": 2,
+          "Numeric value is missing; no model input can be derived.": 2
+        },
+        "issuedProviderRequests": 0,
+        "observedSearches": 0,
+        "successfulExtractions": 0
+      }
+    },
+    {
+      "categoryId": "climate-operational-hazard",
+      "label": "Climate and operational hazard",
+      "state": "Not searched",
+      "unresolvedGaps": [
+        "site_hazard_exposure",
+        "backup_power_capacity",
+        "water_source_resilience",
+        "downtime_cost"
+      ],
+      "accessLimitations": [],
+      "providerFailure": null,
+      "providerAttempts": [],
+      "stageCounts": {
+        "normalized": 0,
+        "accessed": 0,
+        "parsed": 0,
+        "claimMapped": 0,
+        "eligible": 0,
+        "retainedCandidates": 0,
+        "candidates": 0,
+        "attemptedRetrievals": 0,
+        "successfulAccesses": 0,
+        "retainedPassages": 0,
+        "reusedReceipts": 0,
+        "notAttempted": 0,
+        "allEvidenceEligible": false,
+        "rejectionCounts": {
+          "No validated source was returned.": 4,
+          "No source matches the eligible source types for this evidence variable.": 4,
+          "Reviewer-submitted sources cannot establish research provenance.": 4,
+          "Only source-backed classifications can activate research evidence.": 4,
+          "Source support confidence is below the model-eligibility threshold.": 4,
+          "No immutable claim-to-passage mapping supports this evidence claim.": 4,
+          "Missing or incompatible qualitative unit; a human User Assumption must supply the unit.": 2,
+          "An exact-project source is required for this evidence variable.": 3,
+          "Numeric value is missing; no model input can be derived.": 2
+        },
+        "issuedProviderRequests": 0,
+        "observedSearches": 0,
+        "successfulExtractions": 0
+      }
+    }
+  ],
+  "providerLimitations": [],
+  "retainedHistoricalRun": null,
+  "failureRetention": {
+    "httpStatus": 200,
+    "cacheState": "updated",
+    "refreshStatus": "idle",
+    "providerAvailable": true,
+    "errorType": null,
+    "retainedResult": true,
+    "retainedResultMode": "research-incomplete",
+    "retainedCategoryGaps": [
+      "project-identity",
+      "grid",
+      "electricity",
+      "water",
+      "permitting-community",
+      "construction-capital",
+      "tenant-counterparty",
+      "climate-operational-hazard"
+    ],
+    "retainedBudgetDiagnostics": null,
+    "labeledStaleOrPartial": true
+  }
+}

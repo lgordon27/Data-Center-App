@@ -21,8 +21,8 @@ Concurrent in-flight receipt reuse should require an explicit provider canonical
 
 **How to apply:** Mark explicit canonical identity during source normalization and use it only for pending-promise reuse; completed canonical receipts remain reusable for all normalized URLs.
 
-Open-budget regression fixtures should use evidence-bearing categories when asserting final category audit receipts; the diagnostic-only project-identity category has no modeled evidence slots and may not surface its physical receipts in the final category audit.
+Identity-discovery receipts must remain visible in the final category audit even though project identity has no modeled evidence slots. Receipt visibility is audit provenance and must not depend on model eligibility.
 
-**Why:** The physical reader can still consume opportunities for identity discovery, but the current handoff merge is evidence-oriented and does not guarantee that diagnostic-only category receipts are retained in the final audit.
+**Why:** Identity reads consume physical opportunities and explain later scope decisions; dropping them makes the run ledger incomplete even when evidence correctly remains ineligible.
 
-**How to apply:** Keep shared-ceiling tests focused on categories whose receipts must reach the handoff, and track identity-only receipt visibility as separate follow-up work rather than weakening the physical-open assertions.
+**How to apply:** Match identity receipts by explicit identity role as well as category, preserve their access outcome and provenance, and never promote them into governed evidence solely because the receipt is visible.

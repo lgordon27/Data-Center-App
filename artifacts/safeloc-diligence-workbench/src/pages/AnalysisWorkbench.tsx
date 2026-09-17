@@ -7,6 +7,7 @@ import { ProjectReality } from "@/components/conference/ProjectReality";
 import { FinancialTransmission } from "@/components/conference/FinancialTransmission";
 import { AdvisorBrief } from "@/components/conference/AdvisorBrief";
 import { isConferenceResearchIncomplete } from "@/model/conferenceEvidence";
+import { ResearchTelemetryStatus } from "@/components/ResearchHandoffSummary";
 
 const VIEWS = ["market", "reality", "transmission", "advisor"] as const;
 type View = typeof VIEWS[number];
@@ -79,6 +80,16 @@ function ConferenceWorkbench({ onResolveEvidence, onReset, focusSectionId }: Pro
             </span>
           </div>
         </div>
+        {project.kind === "custom" && (
+          <div className="mt-3">
+            <ResearchTelemetryStatus
+              compact
+              audit={project.researchAudit}
+              coverage={project.researchCoverage}
+              researchCache={project.researchCache}
+            />
+          </div>
+        )}
       </div>
 
       <div id="conference-tabs" role="tablist" aria-label="Analysis views" className="mb-5 grid scroll-mt-44 grid-cols-2 gap-1 rounded-lg bg-[#e6ebe8] p-1 md:grid-cols-4">

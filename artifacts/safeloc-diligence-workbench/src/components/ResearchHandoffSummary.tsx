@@ -1,8 +1,10 @@
 import type {
   CustomEvidenceRecord,
   ResearchAudit,
+  ResearchCacheMetadata,
   ResearchCoverageStatus,
 } from "@/services/researchProjectService";
+import { getResearchTelemetryMode } from "@/services/researchProjectService";
 
 export type ProposalDisposition = "pending" | "accepted" | "overridden" | "rejected" | "unresolved";
 
@@ -14,6 +16,7 @@ type ResearchHandoffSummaryProps = {
   proposals: Record<string, CustomEvidenceRecord>;
   dispositions: Record<string, ProposalDisposition>;
   audit?: ResearchAudit;
+  researchCache?: ResearchCacheMetadata;
   coverage?: {
     searchedDomains: string[];
     failedDomains: string[];
@@ -30,6 +33,48 @@ type ResearchHandoffSummaryProps = {
   onReviewFindings: () => void;
 };
 
+export function ResearchTelemetryStatus({
+  audit,
+  coverage,
+  researchCache,
+  compact = false,
+}: {
+  audit?: ResearchAudit;
+  coverage?: ResearchHandoffSummaryProps["coverage"];
+  researchCache?: ResearchCacheMetadata;
+  compact?: boolean;
+}) {
+  const historical = getResearchTelemetryMode(researchCache) === "historical-retained";
+  const used = coverage?.physicalOpensUsed ?? audit?.physicalOpensUsed ?? 0;
+  const budget = coverage?.physicalOpenBudget ?? audit?.physicalOpenBudget ?? audit?.budget.maxPhysicalDocumentOpens ?? 24;
+  const remaining = coverage?.physicalOpensRemaining ?? audit?.physicalOpensRemaining ?? Math.max(0, budget - used);
+  const ceilingReached = coverage?.physicalOpenBudgetExceeded ?? audit?.physicalOpenBudgetExceeded ?? used >= budget;
+  const cacheDescription = historical
+    ? [
+      researchCache?.state ? `${researchCache.state} cache` : "retained cache",
+      researchCache?.refreshStatus === "failed" ? "refresh failed" : null,
+      researchCache?.providerAvailable === false ? "provider unavailable" : null,
+    ].filter(Boolean).join(" · ")
+    : "provider response";
+  return (
+    <div
+      data-testid={compact ? "research-telemetry-status-compact" : "research-telemetry-status"}
+      role="status"
+      className={`flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 rounded-md border px-3 py-2 text-[9px] leading-4 ${
+        historical ? "border-[#f1cb8b] bg-[#fff8e9] text-[#6f460e]" : "border-[#b7dfcf] bg-[#f2fbf7] text-[#08644f]"
+      }`}
+    >
+      <strong>{historical ? "Historical retained/cached research telemetry" : "Current live research telemetry"}</strong>
+      <span>{cacheDescription}</span>
+      {researchCache?.storedAt && <time dateTime={researchCache.storedAt}>saved {new Date(researchCache.storedAt).toLocaleString()}</time>}
+      <span className="font-mono">
+        Physical opens: {used}/{budget} used · {remaining} remaining{ceilingReached ? " · ceiling reached" : ""}
+      </span>
+      {historical && <span className="sr-only">These counters describe the retained historical run, not a new live search.</span>}
+    </div>
+  );
+}
+
 const coverageLabel: Record<ResearchCoverageStatus, string> = {
   supported: "supported",
   partial: "partial",
@@ -45,6 +90,7 @@ export function ResearchHandoffSummary({
   proposals,
   dispositions,
   audit,
+  researchCache,
   coverage,
   onReviewFindings,
 }: ResearchHandoffSummaryProps) {
@@ -105,6 +151,9 @@ export function ResearchHandoffSummary({
           Review findings
         </button>
       </div>
+      <div className="mt-4">
+        <ResearchTelemetryStatus audit={audit} coverage={coverage} researchCache={researchCache} />
+      </div>
       <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <div data-testid="research-handoff-exact-project" className="rounded-lg border border-[#cbd8d4] bg-white p-3">
           <div className="font-mono text-[8px] font-bold uppercase tracking-[0.1em] text-[#52616b]">Eligible sources</div>
@@ -134,9 +183,13 @@ export function ResearchHandoffSummary({
            <p><strong className="text-[#243844]">Local authority discovery:</strong> {localAuthorities.length} identified · {localAuthorities.filter((authority) => authority.status === "established").length} official domains established. {authorityLimitations.length ? "Limitations recorded below." : "No authority discovery limitation recorded."}</p>
            <p><strong className="text-[#243844]">Documents:</strong> {openedDocuments} physical opens · {reusedDocuments} reused receipts · {retainedPassages} retained passages. <strong className="text-[#243844]">Retained source records:</strong> {coverage?.retrievedSourceCount ?? 0}.</p>
            <p><strong className="text-[#243844]">Physical-open budget:</strong> {coverage?.physicalOpensUsed ?? audit?.physicalOpensUsed ?? openedDocuments}/{coverage?.physicalOpenBudget ?? audit?.physicalOpenBudget ?? audit?.budget.maxPhysicalDocumentOpens ?? 24} used · {coverage?.physicalOpensRemaining ?? audit?.physicalOpensRemaining ?? "unknown"} remaining{coverage?.physicalOpenBudgetExceeded || audit?.physicalOpenBudgetExceeded ? " · ceiling reached" : ""}.</p>
+            <p className="sm:col-span-2"><strong className="text-[#243844]">Telemetry lineage:</strong> {getResearchTelemetryMode(researchCache) === "historical-retained" ? "The counts, category skip reasons, and limitations below describe the retained historical run; they are not a new live search." : "The counts below describe the current live provider run."}</p>
            <p><strong className="text-[#243844]">Queries:</strong> {audit?.categories.reduce((total, category) => total + category.executedQueries.length, 0) ?? 0} provider-observed query records. Follow-ups: {coverage?.followUpCount ?? 0}/{coverage?.followUpLimit ?? audit?.followUpLimit ?? "bounded"}. Unresolved IDs: {unresolvedIds.length ? unresolvedIds.join(", ") : "none recorded"}.</p>
           <p>{coverage?.failedDomains?.length ? <><strong className="text-[#8a5200]">Unavailable:</strong> {coverage.failedDomains.join(", ")}.</> : "No returned-domain access limitations were recorded."}</p>
            {authorityLimitations.length > 0 && <p className="sm:col-span-2 text-[#8a5200]"><strong>Authority limitations:</strong> {authorityLimitations.join(" · ")}</p>}
+            {audit?.categories.some((category) => category.followUpSkipReason) && (
+              <p className="sm:col-span-2 text-[#8a5200]"><strong>Category skips:</strong> {audit.categories.filter((category) => category.followUpSkipReason).map((category) => `${category.label}: ${category.followUpSkipReason}`).join(" · ")}</p>
+            )}
         </div>
       </details>
       {unresolved.length > 0 && (

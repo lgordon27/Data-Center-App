@@ -1023,6 +1023,55 @@ test("marks a category complete only when every category evidence item is eligib
   assert.deepEqual(identity.unresolvedGaps, ["project-identity"]);
 });
 
+test("keeps identity-discovery receipts in the audit without making identity metadata evidence", () => {
+  const identityUrl = "https://records.example.gov/atlas/identity";
+  const audit = buildResearchAudit({
+    project: { name: "Atlas", location: "Taylor County, Texas" },
+    coverage: {
+      categoryExecutions: {
+        "project-identity": { executedQueries: ["Atlas identity filing"] },
+      },
+    },
+    sources: [{
+      url: identityUrl,
+      originalUrl: identityUrl,
+      searchDomain: "web-search",
+      sourceRole: "facility identity",
+      identityRole: "facility identity",
+      exactProject: true,
+      sourceState: "retained",
+      accessOutcome: {
+        state: "accessible",
+        reason: "retrieved",
+        physicalOpenIndex: 1,
+        passage: "Atlas identity filing names the exact facility.",
+      },
+    }],
+    evidence: [],
+  });
+  const identity = audit.categories.find((category) => category.categoryId === "project-identity");
+  assert.equal(identity.state, "Complete");
+  assert.equal(identity.openedDocuments.length, 1);
+  assert.deepEqual(identity.openedDocuments[0], {
+    originalUrl: identityUrl,
+    referringUrls: [identityUrl],
+    resolvedUrl: identityUrl,
+    canonicalUrl: identityUrl,
+    opened: true,
+    attempted: true,
+    reusedReceipt: false,
+    reusedFromCanonicalUrl: null,
+    accessState: "accessible",
+    accessOutcome: "retrieved",
+    retainedPassage: "Atlas identity filing names the exact facility.",
+    extractionLimitations: [],
+    categoryId: "project-identity",
+    categoryLabel: "Project identity",
+    identityRole: "facility identity",
+  });
+  assert.deepEqual(identity.evidenceIds, []);
+});
+
 test("uses collision-resistant normalized project cache keys and deterministic age tiers", () => {
   assert.equal(
     researchProjectCacheKey({ name: " Project Atlas ", location: "TEXAS" }),
@@ -1597,6 +1646,89 @@ test("reuses provider-declared canonical receipts across concurrent categories w
     .every((document) => document.opened === true));
 });
 
+test("reuses one failed explicit canonical receipt across categories and counts one physical open", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "safeloc-research-failed-canonical-receipt-test-"));
+  const response = responseRecorder();
+  const canonicalUrl = "https://records.fixture/project-atlas/blocked-decision?id=7";
+  let documentCalls = 0;
+  const categoryLabels = [["grid", "Grid"], ["electricity", "Electricity"]];
+  const responseForCategory = (categoryId) => {
+    const research = validResearchResponse();
+    const sourceUrl = canonicalUrl;
+    for (const item of research.evidence) {
+      Object.assign(item, {
+        value: 42,
+        numericValue: 42,
+        classification: "Management Assertion",
+        sourceUrl,
+        sourceUrls: [sourceUrl],
+        coverageStatus: "supported",
+        claimPassage: "Project Atlas fixture passage.",
+        description: "The fixture reports a project-specific value.",
+        claimTimePeriod: "2026",
+      });
+    }
+    const sources = [
+      {
+        ...retrievedSource,
+        url: `https://agency.gov/${categoryId}/atlas-decision`,
+        canonicalUrl,
+        title: "Project Atlas blocked canonical decision",
+        excerpt: "Project Atlas fixture passage.",
+        claimPassage: "Project Atlas fixture passage.",
+        exactProject: true,
+      },
+      ...Array.from({ length: 2 }, (_, index) => ({
+        ...retrievedSource,
+        url: `https://plain.fixture/${categoryId}/atlas-${index}`,
+        title: `Project Atlas ${categoryId} plain fixture ${index}`,
+        excerpt: "Project Atlas fixture passage.",
+        claimPassage: "Project Atlas fixture passage.",
+        exactProject: true,
+      })),
+    ];
+    return singleCallResponse(research, sources);
+  };
+  await handleResearchProjectRequest(request({
+    name: "Project Atlas",
+    location: "Taylor County, Texas",
+    forceRefresh: true,
+  }), response, {
+    apiKey: "server-secret-for-test",
+    cache: createResearchProjectCache({ directory }),
+    rateLimiter: { allow: () => ({ allowed: true }) },
+    fetchImpl: async (_url, init) => {
+      const prompt = JSON.parse(init.body).input?.[1]?.content ?? "";
+      const categoryId = categoryLabels.find(([, label]) =>
+        prompt.includes(`observed ${label} category attempt`))?.[0] ?? "grid";
+      return responseForCategory(categoryId);
+    },
+    documentFetchImpl: async () => {
+      documentCalls += 1;
+      return new Response("blocked", { status: 403, headers: { "content-type": "text/plain" } });
+    },
+    categoryIds: categoryLabels.map(([categoryId]) => categoryId),
+  });
+  const payload = response.json();
+  const grid = payload.researchAudit.categories.find((category) => category.categoryId === "grid");
+  const electricity = payload.researchAudit.categories.find((category) => category.categoryId === "electricity");
+  const gridReceipt = grid.openedDocuments.find((document) => document.canonicalUrl === canonicalUrl);
+  const electricityReceipt = electricity.openedDocuments.find((document) => document.canonicalUrl === canonicalUrl);
+  assert.equal(documentCalls, 7);
+  assert.equal(payload.researchCoverage.physicalOpensUsed, 7);
+  assert.equal(gridReceipt.accessState, "blocked");
+  assert.equal(gridReceipt.accessOutcome, "http-403");
+  assert.equal(gridReceipt.reusedReceipt, false);
+  assert.equal(electricityReceipt.accessState, "blocked");
+  assert.equal(electricityReceipt.accessOutcome, "http-403");
+  assert.equal(electricityReceipt.reusedReceipt, true);
+  assert.equal(electricityReceipt.opened, false);
+  assert.deepEqual(electricityReceipt.referringUrls, [
+    "https://agency.gov/grid/atlas-decision",
+    "https://agency.gov/electricity/atlas-decision",
+  ]);
+});
+
 test("counts failed document receipts once before limiting later concurrent category work", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "safeloc-research-failed-receipt-budget-test-"));
   const response = responseRecorder();
@@ -1841,6 +1973,90 @@ test("does not promote model output annotations into source passages", () => {
     }],
   }, "targeted-customer_concentration");
   assert.equal(sources.length, 0);
+});
+
+test("promotes structured research URLs into physical candidate access when action sources omit them", () => {
+  const structuredUrl = "https://records.example.gov/arizona/wintersburg-313";
+  const sources = normalizeRetrievedSources({
+    output: [{
+      type: "message",
+      content: [{
+        type: "output_text",
+        text: JSON.stringify({
+          evidence: [{
+            sourceUrl: structuredUrl,
+            sourceUrls: [structuredUrl],
+            citation: `Maricopa County record: ${structuredUrl}`,
+          }],
+        }),
+      }],
+    }],
+  }, "permitting-community", {
+    name: "Wintersburg 313",
+    location: "Tonopah, Maricopa County, Arizona",
+  }, [structuredUrl, structuredUrl]);
+  assert.equal(sources.length, 1);
+  assert.equal(sources[0].url, structuredUrl);
+  assert.equal(sources[0].origin, "structured-research-source");
+  assert.equal(sources[0].claimCited, true);
+  assert.equal(sources[0].accessOutcome ?? null, null);
+  assert.equal(sources[0].exactProject ?? null, null);
+});
+
+test("physically accesses a structured research URL before normal source evaluation", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "safeloc-structured-source-access-test-"));
+  const sourceUrl = "https://records.example.gov/arizona/wintersburg-313";
+  const research = validResearchResponse();
+  const permitting = research.evidence.find((item) => item.id === "permitting_timeline");
+  Object.assign(permitting, {
+    value: 6,
+    numericValue: 6,
+    unit: "months",
+    classification: "Management Assertion",
+    sourceUrl,
+    sourceUrls: [sourceUrl],
+    citation: `Maricopa County permit record: ${sourceUrl}`,
+    coverageStatus: "supported",
+    claimPassage: "Wintersburg 313 construction is scheduled for completion in six months.",
+    description: "The named project permit record provides a construction timeline.",
+    facilityScope: "exact-project",
+    phaseScope: "exact-phase",
+    claimTimePeriod: "2026",
+  });
+  const response = responseRecorder();
+  await handleResearchProjectRequest(request({
+    name: "Wintersburg 313",
+    location: "Tonopah, Maricopa County, Arizona",
+    forceRefresh: true,
+  }), response, {
+    apiKey: "server-secret-for-test",
+    cache: createResearchProjectCache({ directory }),
+    rateLimiter: { allow: () => ({ allowed: true }) },
+    fetchImpl: async () => new Response(JSON.stringify({
+      output: [{
+        type: "message",
+        content: [{ type: "output_text", text: JSON.stringify(research) }],
+      }],
+      usage: { input_tokens: 100, output_tokens: 100, total_tokens: 200 },
+    }), { status: 200, headers: { "content-type": "application/json" } }),
+    documentFetchImpl: async () => new Response(
+      "<html><body>Wintersburg 313 construction is scheduled for completion in six months.</body></html>",
+      { status: 200, headers: { "content-type": "text/html" } },
+    ),
+    categoryIds: ["permitting-community"],
+  });
+  const payload = response.json();
+  const source = payload.sourceLedger.find((candidate) => candidate.originalUrl === sourceUrl);
+  const category = payload.researchAudit.categories.find((candidate) => candidate.categoryId === "permitting-community");
+  assert.equal(response.statusCode, 200);
+  assert.equal(source.accessOutcome.state, "accessible");
+  assert.equal(source.accessOutcome.physicalOpenIndex, 1);
+  assert.equal(source.accessOutcome.passage, "Wintersburg 313 construction is scheduled for completion in six months.");
+  assert.equal(category.openedDocuments[0].attempted, true);
+  assert.equal(category.openedDocuments[0].accessState, "accessible");
+  const evidence = payload.evidence.find((item) => item.id === "permitting_timeline");
+  assert.equal(evidence.eligibleForModel, false);
+  assert.ok(evidence.quarantineReasons.length > 0);
 });
 
 test("extracts only tool-observed search queries and labels absent telemetry as unavailable", () => {

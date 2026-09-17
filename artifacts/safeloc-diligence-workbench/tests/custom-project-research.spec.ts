@@ -482,6 +482,8 @@ test.describe("custom project research", () => {
     const handoff = page.getByTestId("research-handoff-summary");
     await expect(handoff).toBeVisible();
     await expect(page.getByTestId("research-handoff-status")).toContainText("Final status: not recorded");
+    await expect(handoff.getByTestId("research-telemetry-status")).toContainText("Historical retained/cached research telemetry");
+    await expect(handoff.getByTestId("research-telemetry-status")).toContainText("Physical opens: 2/24 used · 22 remaining");
     await expect(page.getByTestId("research-handoff-details")).not.toHaveAttribute("open", "");
     await expect(page.getByTestId("research-search-audit")).not.toHaveAttribute("open", "");
     await expect(page.getByTestId("research-handoff-proposals")).toContainText("5");

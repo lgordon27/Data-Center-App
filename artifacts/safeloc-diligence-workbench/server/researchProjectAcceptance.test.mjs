@@ -146,6 +146,184 @@ test("builds a diagnostic-only report with bounded live-run and retention fields
   assert.equal("evidence" in report, false);
 });
 
+test("emits a bounded sanitized project, request, receipt, evidence, and handoff audit", () => {
+  const longPassage = "exact project passage ".repeat(300);
+  const report = buildAcceptanceReport({
+    project: {
+      name: "Directory Atlas",
+      location: "Maricopa County, Arizona",
+      knownData: {
+        providerId: "directory-atlas-az",
+        aliases: ["Directory Atlas", "Atlas Campus"],
+        operator: "Atlas Operator",
+        status: "planned",
+        city: "Tonopah",
+        county: "Maricopa County",
+        state: "Arizona",
+        authorityNames: ["Maricopa County", "Arizona Corporation Commission"],
+        authorityDomains: ["maricopa.gov"],
+        sourceUrl: "https://directory.example/atlas",
+      },
+    },
+    liveRun: {
+      statusCode: 200,
+      payload: {
+        researchAudit: {
+          runCorrelationId: "run-directory-atlas",
+          startedAt: "2026-09-08T10:00:00.000Z",
+          finishedAt: "2026-09-08T10:00:04.000Z",
+          elapsedMs: 4_000,
+          providerRequestCount: 2,
+          providerAttempts: [{
+            categoryId: "grid",
+            attemptType: "primary",
+            requestBodyBytes: 900,
+            requestedOutputTokens: 3_500,
+            usage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
+          }],
+          toolCallCount: 2,
+          budget: { ...RESEARCH_RUN_BUDGET },
+          searchedDomains: ["azcc.gov"],
+          categories: [
+            {
+              categoryId: "water",
+              label: "Water",
+              executedQueries: ["water observed"],
+              unresolvedGaps: ["water_rights"],
+              state: "Partial",
+              stageCounts: { retainedCandidates: 1, notAttempted: 2 },
+            },
+            {
+              categoryId: "grid",
+              label: "Grid",
+              executedQueries: ["grid observed"],
+              unresolvedGaps: [],
+              state: "Complete",
+              evidenceIds: ["grid_interconnection"],
+              stageCounts: { retainedCandidates: 1 },
+            },
+          ],
+          categoryGaps: ["water_rights"],
+        },
+        sourceLedger: [{
+          url: "https://azcc.gov/records/atlas",
+          originalUrl: "https://azcc.gov/records/atlas?ref=provider",
+          canonicalUrl: "https://azcc.gov/records/atlas",
+          title: "Atlas decision",
+          searchDomain: "grid",
+          sourceState: "claim-supported",
+          sourceRole: "primary-government",
+          identityRole: "project identity",
+          exactProject: true,
+          documentReferringUrls: ["https://provider.example/result"],
+          documentAccessReused: true,
+          claimSupportState: "supported",
+          projectSpecificityState: "project-specific",
+          financialEligibilityState: "eligible",
+          accessOutcome: {
+            state: "accessible",
+            reason: "retrieved",
+            physicalOpenIndex: 1,
+            passage: longPassage,
+            transportDiagnostic: { stage: "complete", httpStatus: 200, responseReceived: true },
+          },
+        }],
+        evidence: [{
+          id: "grid_interconnection",
+          label: "Grid interconnection",
+          rawValue: "12 months",
+          value: 12,
+          normalizedValue: 12,
+          unit: "months",
+          normalizedUnit: "months",
+          classification: "Verified Evidence",
+          claimTimePeriod: "2026",
+          eligibleForModel: true,
+          acceptedForModel: false,
+          claimMappings: [{
+            sourceId: "https://azcc.gov/records/atlas",
+            passageId: "passage-1",
+            supportStatus: "supported",
+            exactQuotation: longPassage,
+            rejectionCodes: [],
+          }],
+          quarantineReasons: [],
+          sourceValidation: { state: "financially-eligible" },
+        }],
+        proposedInputs: [{ id: "grid_interconnection" }],
+        acceptedModelInputs: [],
+      },
+    },
+    failureRun: null,
+  });
+
+  assert.deepEqual(report.project, {
+    name: "Directory Atlas",
+    location: "Maricopa County, Arizona",
+    directoryProvider: "Compute Atlas",
+    directoryProviderId: "directory-atlas-az",
+    aliases: ["Directory Atlas", "Atlas Campus"],
+    operator: "Atlas Operator",
+    status: "planned",
+    city: "Tonopah",
+    county: "Maricopa County",
+    state: "Arizona",
+    sourceUrl: "https://directory.example/atlas",
+    authorities: {
+      establishedDomains: ["maricopa.gov", "azcc.gov"],
+      identifiedAuthorities: ["Maricopa County", "Arizona Corporation Commission"],
+      missingAuthorityDomains: [],
+      companyDomains: [],
+    },
+  });
+  assert.deepEqual(report.observedSearches, [
+    { categoryId: "water", query: "water observed" },
+    { categoryId: "grid", query: "grid observed" },
+  ]);
+  assert.equal(report.requests[0].usage.totalTokens, 30);
+  assert.equal(report.returnedDomains[0], "azcc.gov");
+  assert.equal(report.sourceStates.normalizedCandidates[0].accessOutcome.reused, true);
+  assert.equal(report.sourceStates.normalizedCandidates[0].identityRole, "project identity");
+  assert.equal(report.sourceStates.retainedPassages[0].truncated, true);
+  assert.equal(report.sourceStates.retainedPassages[0].text.length, 1_500);
+  assert.equal(report.evidenceAudit[0].rawValue, "12 months");
+  assert.equal(report.evidenceAudit[0].normalizedUnit, "months");
+  assert.equal(report.evidenceAudit[0].mappings[0].supportStatus, "supported");
+  assert.equal(report.evidenceAudit[0].eligibilityDecision.eligibleForModel, true);
+  assert.deepEqual(report.budgetState.documentsNotAttempted, [{ categoryId: "water", count: 2, reason: null }]);
+  assert.equal(report.workbenchState.reviewAction, "Review findings");
+  assert.equal(report.sessionState.runId, "run-directory-atlas");
+  assert.equal("rawPayload" in report, false);
+  assert.equal("evidence" in report, false);
+});
+
+test("attributes sparse category-scoped acceptance telemetry by category ID", () => {
+  const report = buildAcceptanceReport({
+    project: { name: "Scoped Atlas", location: "Texas" },
+    liveRun: {
+      statusCode: 200,
+      payload: {
+        researchAudit: {
+          categories: [
+            { categoryId: "water", label: "Water", executedQueries: ["water query"], state: "Partial" },
+            { categoryId: "grid", label: "Grid", executedQueries: ["grid query"], state: "Complete" },
+          ],
+          categoryGaps: ["water"],
+        },
+        evidence: [],
+      },
+    },
+    failureRun: null,
+  });
+
+  assert.deepEqual(report.executedQueries.map((category) => [category.categoryId, category.executedQueries]), [
+    ["water", ["water query"]],
+    ["grid", ["grid query"]],
+  ]);
+  assert.equal(report.categories.find((category) => category.categoryId === "water").state, "Partial");
+  assert.equal(report.categories.find((category) => category.categoryId === "grid").state, "Complete");
+});
+
 test("reports LIVE ACCEPTANCE BLOCKED when no eligible source reaches a visible finding", () => {
   const report = buildAcceptanceReport({
     project: { name: "Blocked Atlas", location: "Maricopa County, Arizona" },
@@ -433,5 +611,9 @@ test("does not attribute a failed refresh with retained cache to the current liv
   assert.equal(report.retainedHistoricalRun.physicalOpenBudgetExceeded, true);
   assert.equal(report.retainedHistoricalRun.categories[0].followUpSkipReason, "physical-open-budget");
   assert.equal(report.retainedHistoricalRun.categories[0].stageCounts.notAttempted, 3);
+  assert.equal(report.cacheState.telemetryStatus, "historical-retained");
+  assert.equal(report.budgetState.telemetryStatus, "historical-retained");
+  assert.equal(report.budgetState.physicalOpensUsed, 24);
+  assert.equal(report.sessionState.telemetryStatus, "historical-retained");
   assert.match(report.providerLimitations.at(-1), /historical data/i);
 });

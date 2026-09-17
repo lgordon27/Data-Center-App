@@ -1,0 +1,69 @@
+FINAL LOGICAL CORRECTION TO TASK #228
+
+ARCHITECTURE GATE
+
+Replace:
+
+“The architecture gate is REVISE.”
+
+With:
+
+“The architecture gate is GO for a read-only Phase 0 readiness checkpoint. Production implementation remains gated on explicit approval of the exact additional Texas anchor, exact Arizona anchor, and audience-output contracts.”
+
+THREE DISTINCT ACCEPTANCE ANCHORS
+
+Task #228 requires three separate anchors:
+
+1. Stargate Abilene
+2. One additional Texas project
+3. One Arizona project
+
+Stargate Abilene is already Anchor 1. It must not be treated as the replacement for Project Kilby or counted twice.
+
+Phase 0 must:
+
+- Confirm Stargate Abilene as Anchor 1.
+- Evaluate Project Kilby and recommend one exact additional Texas project as Anchor 2.
+- Evaluate Microsoft Goodyear and recommend one exact Arizona project as Anchor 3.
+- Recommend replacements when the provisional candidates cannot satisfy exact-project eligibility.
+
+The completion standard requires three distinct project dossiers.
+
+PHASE 0 MUST REMAIN READ-ONLY
+
+During Phase 0:
+
+- Do not modify production code.
+- Do not modify tests.
+- Do not add a readiness-report feature to the application.
+- Do not render new production UI.
+- Do not provision PostgreSQL.
+- Do not create schemas or migrations.
+- Do not create seed data.
+- Do not commit anything.
+
+“Produce a readiness report” means return the report in the task response.
+
+“Freeze the rendered audience contracts” means provide the exact proposed fields, hierarchy, labels, default state, progressive-disclosure behavior, and representative output content for approval. It does not mean implement the components during Phase 0.
+
+Do not begin production implementation until the user approves:
+
+- Anchor 1: Stargate Abilene
+- Anchor 2: the recommended additional Texas project
+- Anchor 3: the recommended Arizona project
+- The Financial Advisor output contract
+- The Asset Manager output contract
+
+MICROSOFT GOODYEAR MUST REMAIN A CANDIDATE
+
+Do not state that an official City of Goodyear and Microsoft campus relationship exists before verifying it.
+
+Replace the current assumed pathway with:
+
+“Candidate pathway: Microsoft holding → proposed Microsoft Goodyear facility relationship → exact physical-campus evidence → project sensitivity → separate issuer-materiality assessment.”
+
+Phase 0 must establish the relationship through authoritative exact-project evidence or reject Microsoft Goodyear and recommend a better Arizona candidate.
+
+POST-APPROVAL
+
+After the user approves all three anchors and both audience contracts, resume this same Task #228 and proceed with PostgreSQL, the data-driven schema, seed/import, four-stage integration and complete acceptance testing.

@@ -20,6 +20,13 @@ import {
   type EvidenceRecord,
   type ReturnSensitivity,
 } from "./cashFlowEngine";
+import { sourceStateMap } from "@/data/sources";
+import { createEiaFallback } from "@/services/eiaService";
+import { FALLBACK_ERCOT_RESULT } from "@/services/ercotService";
+import {
+  createSanitizedReturnDiscrepancyRecord,
+  type ReturnCaptureInput,
+} from "@/diagnostics/returnDiscrepancyCapture";
 
 const CLASSIFICATIONS: Classification[] = [
   "Verified Evidence",
@@ -85,6 +92,170 @@ test("the canonical evidence contract has 16 items and a 16-item confidence deno
   assert.equal(model.assumptions.downtimeCostPerDay, 2_850_000);
   assert.equal(model.assumptions.capacityMW, 1_200);
   assert.equal(model.assumptions.entryValue, 4_800);
+});
+
+test("sanitized return captures preserve the replay contract without raw provider content", () => {
+  const metrics = calculateCashFlowModel(INITIAL_EVIDENCE);
+  const hostileRawPayload = {
+    data: { private: "provider-secret" },
+    responsePreview: { sourceText: "private source passage" },
+    authorization: "Bearer provider-secret",
+    cookie: "session=private-cookie",
+    priceHistory: [{ period: "2026-01", pricePerMwh: 42 }],
+  };
+  const currentSession = JSON.stringify({
+    version: 2,
+    classifications: Object.fromEntries(
+      Object.entries(INITIAL_EVIDENCE).map(([id, item]) => [id, item.classification]),
+    ),
+    modelEvidence: INITIAL_EVIDENCE,
+    hostileRawPayload,
+  });
+  const ercotQueue = {
+    ...FALLBACK_ERCOT_RESULT,
+    diagnostics: {
+      ...FALLBACK_ERCOT_RESULT.diagnostics,
+      responses: [hostileRawPayload],
+      failedResponses: [hostileRawPayload],
+      responsePreview: hostileRawPayload,
+    },
+  };
+  const input: ReturnCaptureInput = {
+    project: {
+      kind: "curated",
+      name: "Diligence test project",
+      location: "Taylor County, TX",
+      capacityMW: 1_200,
+      description: "Synthetic test project description.",
+    },
+    originatingCompany: "Oracle",
+    selectedProjectContext: null,
+    scenarioClassifications: Object.fromEntries(
+      Object.entries(INITIAL_EVIDENCE).map(([id, item]) => [id, item.classification]),
+    ),
+    savedScenarioCount: 0,
+    evidence: INITIAL_EVIDENCE,
+    modelEvidence: INITIAL_EVIDENCE,
+    metrics,
+    financialInputState: {
+      basis: "fallback",
+      providerStatus: "fallback",
+      electricityRate: 42,
+      electricityPeriod: null,
+      sourceUpdatedAt: null,
+    },
+    sourceStates: sourceStateMap(),
+    eiaData: createEiaFallback(),
+    ercotQueue,
+    storage: {
+      currentSession,
+      scenarios: JSON.stringify({ scenarios: [], hostileRawPayload }),
+      communityReview: JSON.stringify({ reviews: [], hostileRawPayload }),
+      eiaCache: JSON.stringify(hostileRawPayload),
+    },
+    releaseIdentity: {
+      applicationVersion: "test",
+      releaseId: "test-release",
+      commitSha: "test-commit",
+      deploymentId: null,
+      buildTimestamp: "2026-09-17T00:00:00.000Z",
+    },
+  };
+
+  const capture = createSanitizedReturnDiscrepancyRecord(input);
+  assert.deepEqual(Object.keys(capture).sort(), [
+    "captureSchemaVersion",
+    "cashFlows",
+    "classifications",
+    "debtAndTerminalTreatment",
+    "holding",
+    "modelInputs",
+    "project",
+    "providerProvenance",
+    "release",
+    "returns",
+    "scenario",
+    "storage",
+  ]);
+  assert.deepEqual(Object.keys(capture.project).sort(), ["capacityMW", "description", "kind", "location", "name"]);
+  assert.deepEqual(Object.keys(capture.holding).sort(), ["originatingCompany", "selectedProjectContext"]);
+  assert.deepEqual(Object.keys(capture.scenario).sort(), ["classifications", "id", "kind", "savedScenarioCount"]);
+  assert.deepEqual(Object.keys(capture.storage).sort(), ["localStorage", "schema", "sessionStorage"]);
+  assert.deepEqual(Object.keys(capture.providerProvenance).sort(), ["eia", "ercotQueue", "sources"]);
+  assert.deepEqual(Object.keys(capture.modelInputs).sort(), [
+    "assumptions",
+    "evidence",
+    "financialInputState",
+    "fingerprint",
+  ]);
+  assert.deepEqual(Object.keys(capture.returns).sort(), [
+    "baseIRR",
+    "cashOnCash",
+    "confidenceScore",
+    "equityInvested",
+    "materialUnverifiedCount",
+    "missingMaterialCount",
+    "moic",
+    "npv",
+    "payback",
+    "projectIRR",
+    "recommendationBlocked",
+    "recommendationStatus",
+    "returnSensitivity",
+    "totalDistributions",
+    "unresolvedDecisionGateCount",
+    "unresolvedFinancialDriverCount",
+  ]);
+  assert.deepEqual(Object.keys(capture.debtAndTerminalTreatment).sort(), [
+    "amortizationYears",
+    "annualPrincipalPayment",
+    "debtAmount",
+    "debtLtv",
+    "interestRate",
+    "schedule",
+    "terminalDebtRepayment",
+    "terminalFormula",
+    "terminalValue",
+  ]);
+  assert.deepEqual(Object.keys(capture.release).sort(), ["fingerprint", "identity"]);
+
+  const classificationIds = Object.keys(INITIAL_EVIDENCE).sort();
+  assert.equal(classificationIds.length, 16);
+  assert.deepEqual(Object.keys(capture.classifications).sort(), classificationIds);
+  assert.deepEqual(Object.keys(capture.scenario.classifications).sort(), classificationIds);
+  assert.deepEqual(Object.keys(capture.modelInputs.evidence).sort(), classificationIds);
+  assert.match(capture.modelInputs.fingerprint, /^fnv1a-[0-9a-f]+$/);
+
+  const forbiddenKeys = new Set([
+    "apiKey",
+    "authorization",
+    "cookie",
+    "cookies",
+    "data",
+    "failedResponses",
+    "generationHistory",
+    "payload",
+    "priceHistory",
+    "rawPayload",
+    "response",
+    "responsePreview",
+    "responses",
+    "sourceText",
+    "token",
+  ]);
+  const forbiddenKeyPaths: string[] = [];
+  const visit = (value: unknown, path: string) => {
+    if (!value || typeof value !== "object") return;
+    for (const [key, child] of Object.entries(value)) {
+      const childPath = `${path}.${key}`;
+      if (forbiddenKeys.has(key)) forbiddenKeyPaths.push(childPath);
+      visit(child, childPath);
+    }
+  };
+  visit(capture, "capture");
+  assert.deepEqual(forbiddenKeyPaths, []);
+  const serializedCapture = JSON.stringify(capture);
+  assert.doesNotMatch(serializedCapture, /provider-secret|private-cookie|private source passage|Bearer /i);
 });
 
 test("return metrics reject ambiguous IRRs while keeping NPV, MOIC, and payback explicit", () => {

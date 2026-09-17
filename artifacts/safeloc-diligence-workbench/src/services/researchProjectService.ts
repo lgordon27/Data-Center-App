@@ -97,6 +97,7 @@ export type ResearchEvidenceSource = {
   resolvedUrl?: string;
   canonicalUrl?: string;
   sourceState?: string;
+  sourceChannel?: string;
   redirectChain?: string[];
   contentType?: string | null;
   claimCited?: boolean;
@@ -110,6 +111,10 @@ export type ResearchEvidenceSource = {
     passage?: string | null;
     pageOrSection?: string | number | null;
     extractionLimitations?: string[];
+    extractionMethod?: string | null;
+    extractionOutcome?: string | null;
+    contentHash?: string | null;
+    underlyingDocumentUrl?: string | null;
   };
   documentAccessReused?: boolean;
   referringUrls?: string[];
@@ -285,6 +290,53 @@ export type ResearchCategoryAudit = {
     accessOutcome: string;
     retainedPassage: string | null;
     extractionLimitations: string[];
+    sourceChannel?: string;
+    extractionMethod?: string | null;
+    extractionOutcome?: string | null;
+    contentHash?: string | null;
+  }>;
+  discoveryAttempts?: Array<{
+    sourceChannel: string;
+    url: string | null;
+    status: string | null;
+    httpStatus: number | null;
+    contentType: string | null;
+    physicalOpenIndex: number | null;
+  }>;
+  sourceChannelTelemetry?: Array<{
+    sourceChannel: string;
+    outcome: string;
+    reason: string | null;
+  }>;
+  noReturnCounts?: {
+    total: number;
+    missingUrl: number;
+    unsafeUrl: number;
+    noPublicUrl: number;
+    byChannel: Record<string, number>;
+  };
+  authorityRecords?: Array<{
+    name: string;
+    domain: string | null;
+    jurisdiction: string;
+    establishmentMethod: string;
+    discoveredAt: string;
+    sourceChannel: string;
+    urlsAttempted: string[];
+    accessOutcomes: Array<{
+      url: string | null;
+      status: string;
+      httpStatus: number | null;
+      physicalOpenIndex: number | null;
+    }>;
+  }>;
+  secConnectorAttempts?: Array<{
+    sourceChannel: "sec-public-data";
+    sourceOrigin: string | null;
+    sourcePathname: string | null;
+    status: number | null;
+    outcome: string | null;
+    reason: string | null;
   }>;
   state: ResearchCategoryState;
   stageCounts: ResearchAuditStageCounts;
@@ -314,6 +366,9 @@ export type ResearchCategoryClaimAudit = {
   pageOrSection: string | number | null;
   extractionLimitations: string[];
   format: string | null;
+  sourceChannel: string | null;
+  extractionMethod: string | null;
+  extractionOutcome: string | null;
 };
 export type ResearchEvidenceAuditItem = Pick<
   CustomEvidenceRecord,
@@ -399,6 +454,9 @@ export function getResearchCategoryClaimAudits(
         pageOrSection: accessOutcome?.pageOrSection ?? null,
         extractionLimitations: accessOutcome?.extractionLimitations ?? [],
         format: accessOutcome?.format ?? null,
+        sourceChannel: source?.sourceChannel ?? null,
+        extractionMethod: accessOutcome?.extractionMethod ?? null,
+        extractionOutcome: accessOutcome?.extractionOutcome ?? null,
       };
     });
   });
@@ -441,6 +499,8 @@ export type ResearchMode = "ai-researched" | "partial-public-source" | "default-
 export type KnownProjectData = {
   capacity?: number | null;
   operator?: string | null;
+  ticker?: string | null;
+  companyName?: string | null;
   status?: string | null;
   sourceUrl?: string | null;
   providerId?: string | null;
@@ -452,6 +512,11 @@ export type KnownProjectData = {
   authorityNames?: string[];
   authorityDomains?: string[];
   companyDomains?: string[];
+  cityDomains?: string[];
+  countyDomains?: string[];
+  utilityDomains?: string[];
+  economicDevelopmentDomains?: string[];
+  knownOfficialEndpoints?: string[];
   aliases?: string[];
 };
 export type ResearchProgress = "researching" | "retrying";
@@ -554,6 +619,10 @@ function normalizeKnownData(value: KnownProjectData | undefined): KnownProjectDa
   if (!value) return undefined;
   const capacity = normalizeReportedCapacityMW(value.capacity);
   const operator = isNonEmptyString(value.operator) ? value.operator.trim().slice(0, 160) : undefined;
+  const ticker = isNonEmptyString(value.ticker) && /^[A-Za-z0-9.-]{1,20}$/.test(value.ticker.trim())
+    ? value.ticker.trim().toUpperCase()
+    : undefined;
+  const companyName = isNonEmptyString(value.companyName) ? value.companyName.trim().slice(0, 160) : undefined;
   const status = isNonEmptyString(value.status) ? value.status.trim().slice(0, 80) : undefined;
   const sourceUrl = safePublicSourceUrl(value.sourceUrl);
   const providerId = isNonEmptyString(value.providerId) ? value.providerId.trim().slice(0, 160) : undefined;
@@ -566,10 +635,22 @@ function normalizeKnownData(value: KnownProjectData | undefined): KnownProjectDa
   const authorityNames = Array.isArray(value.authorityNames) ? [...new Set(value.authorityNames.map((item) => knownText(item)).filter((item): item is string => Boolean(item)))].slice(0, 8) : [];
   const authorityDomains = Array.isArray(value.authorityDomains) ? [...new Set(value.authorityDomains.map((item) => knownText(item, 120)).filter((item): item is string => Boolean(item)))].slice(0, 12) : [];
   const companyDomains = Array.isArray(value.companyDomains) ? [...new Set(value.companyDomains.map((item) => knownText(item, 120)).filter((item): item is string => Boolean(item)))].slice(0, 8) : [];
+  const domainList = (items: unknown, limit = 8) => Array.isArray(items)
+    ? [...new Set(items.map((item) => knownText(item, 120)).filter((item): item is string => typeof item === "string" && /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(item)))].slice(0, limit)
+    : [];
+  const cityDomains = domainList(value.cityDomains);
+  const countyDomains = domainList(value.countyDomains);
+  const utilityDomains = domainList(value.utilityDomains);
+  const economicDevelopmentDomains = domainList(value.economicDevelopmentDomains);
+  const knownOfficialEndpoints = Array.isArray(value.knownOfficialEndpoints)
+    ? [...new Set(value.knownOfficialEndpoints.map(safePublicSourceUrl).filter((item): item is string => Boolean(item)))].slice(0, 16)
+    : [];
   const aliases = Array.isArray(value.aliases) ? [...new Set(value.aliases.map((item) => knownText(item)).filter((item): item is string => Boolean(item)))].slice(0, 12) : [];
   const normalized = {
     ...(capacity === null ? {} : { capacity }),
     ...(operator ? { operator } : {}),
+    ...(ticker ? { ticker } : {}),
+    ...(companyName ? { companyName } : {}),
     ...(status ? { status } : {}),
     ...(sourceUrl ? { sourceUrl } : {}),
     ...(providerId ? { providerId } : {}),
@@ -581,6 +662,11 @@ function normalizeKnownData(value: KnownProjectData | undefined): KnownProjectDa
     ...(authorityNames.length ? { authorityNames } : {}),
     ...(authorityDomains.length ? { authorityDomains } : {}),
     ...(companyDomains.length ? { companyDomains } : {}),
+    ...(cityDomains.length ? { cityDomains } : {}),
+    ...(countyDomains.length ? { countyDomains } : {}),
+    ...(utilityDomains.length ? { utilityDomains } : {}),
+    ...(economicDevelopmentDomains.length ? { economicDevelopmentDomains } : {}),
+    ...(knownOfficialEndpoints.length ? { knownOfficialEndpoints } : {}),
     ...(aliases.length ? { aliases } : {}),
   };
   return Object.keys(normalized).length ? normalized : undefined;
@@ -625,6 +711,10 @@ function parseSource(value: unknown): ResearchEvidenceSource | null {
         ...(isNonEmptyString(rawAccessOutcome.passage) ? { passage: rawAccessOutcome.passage.trim() } : {}),
         ...(typeof rawAccessOutcome.pageOrSection === "number" || isNonEmptyString(rawAccessOutcome.pageOrSection) ? { pageOrSection: rawAccessOutcome.pageOrSection } : {}),
         ...(Array.isArray(rawAccessOutcome.extractionLimitations) ? { extractionLimitations: rawAccessOutcome.extractionLimitations.filter(isNonEmptyString) } : {}),
+        ...(isNonEmptyString(rawAccessOutcome.extractionMethod) ? { extractionMethod: rawAccessOutcome.extractionMethod.trim() } : {}),
+        ...(isNonEmptyString(rawAccessOutcome.extractionOutcome) ? { extractionOutcome: rawAccessOutcome.extractionOutcome.trim() } : {}),
+        ...(isNonEmptyString(rawAccessOutcome.contentHash) && /^[a-f0-9]{64}$/i.test(rawAccessOutcome.contentHash) ? { contentHash: rawAccessOutcome.contentHash.toLowerCase() } : {}),
+        ...(safePublicSourceUrl(rawAccessOutcome.underlyingDocumentUrl) ? { underlyingDocumentUrl: safePublicSourceUrl(rawAccessOutcome.underlyingDocumentUrl) } : {}),
       }
     : null;
   return {
@@ -651,6 +741,7 @@ function parseSource(value: unknown): ResearchEvidenceSource | null {
     ...(value.timePeriod !== undefined ? { timePeriod: value.timePeriod } : {}),
     ...(isNonEmptyString(value.relevanceNote) ? { relevanceNote: value.relevanceNote.trim() } : {}),
     ...(isNonEmptyString(value.sourceState) ? { sourceState: value.sourceState.trim() } : {}),
+    ...(isNonEmptyString(value.sourceChannel) ? { sourceChannel: value.sourceChannel.trim().slice(0, 120) } : {}),
     ...(Array.isArray(value.redirectChain) ? { redirectChain: value.redirectChain.filter(isNonEmptyString) } : {}),
     ...(typeof value.contentType === "string" ? { contentType: value.contentType } : {}),
     ...(accessOutcome ? { accessOutcome } : {}),
@@ -789,6 +880,7 @@ function parseResearchAudit(value: unknown): ResearchAudit | undefined {
       identityAmbiguities: Array.isArray(candidate.identityAmbiguities) ? candidate.identityAmbiguities.filter(isNonEmptyString).slice(0, 8) : [],
       returnedDomains: Array.isArray(candidate.returnedDomains) ? candidate.returnedDomains.filter(isNonEmptyString).slice(0, 20) : [],
       openedDocuments: Array.isArray(candidate.openedDocuments) ? candidate.openedDocuments.slice(0, 20).filter((document) => isRecord(document)).map((document) => ({
+        sourceChannel: isNonEmptyString(document.sourceChannel) ? document.sourceChannel.slice(0, 120) : "provider",
         originalUrl: isNonEmptyString(document.originalUrl) ? document.originalUrl : null,
         referringUrls: Array.isArray(document.referringUrls) ? document.referringUrls.filter(isNonEmptyString).slice(0, 12) : [],
         resolvedUrl: isNonEmptyString(document.resolvedUrl) ? document.resolvedUrl : null,
@@ -801,6 +893,54 @@ function parseResearchAudit(value: unknown): ResearchAudit | undefined {
         accessOutcome: isNonEmptyString(document.accessOutcome) ? document.accessOutcome : "not-attempted",
         retainedPassage: isNonEmptyString(document.retainedPassage) ? document.retainedPassage : null,
         extractionLimitations: Array.isArray(document.extractionLimitations) ? document.extractionLimitations.filter(isNonEmptyString).slice(0, 8) : [],
+        extractionMethod: isNonEmptyString(document.extractionMethod) ? document.extractionMethod : null,
+        extractionOutcome: isNonEmptyString(document.extractionOutcome) ? document.extractionOutcome : null,
+        contentHash: isNonEmptyString(document.contentHash) && /^[a-f0-9]{64}$/i.test(document.contentHash) ? document.contentHash.toLowerCase() : null,
+      })) : [],
+      discoveryAttempts: Array.isArray(candidate.discoveryAttempts) ? candidate.discoveryAttempts.slice(0, 24).filter(isRecord).map((attempt) => ({
+        sourceChannel: isNonEmptyString(attempt.sourceChannel) ? attempt.sourceChannel.slice(0, 120) : "official-domain-discovery",
+        url: safePublicSourceUrl(attempt.url) ?? null,
+        status: isNonEmptyString(attempt.status) ? attempt.status.slice(0, 80) : null,
+        httpStatus: Number.isInteger(attempt.httpStatus) ? Number(attempt.httpStatus) : null,
+        contentType: isNonEmptyString(attempt.contentType) ? attempt.contentType.slice(0, 120) : null,
+        physicalOpenIndex: Number.isInteger(attempt.physicalOpenIndex) ? Number(attempt.physicalOpenIndex) : null,
+      })) : [],
+      sourceChannelTelemetry: Array.isArray(candidate.sourceChannelTelemetry) ? candidate.sourceChannelTelemetry.slice(0, 80).filter(isRecord).map((entry) => ({
+        sourceChannel: isNonEmptyString(entry.sourceChannel) ? entry.sourceChannel.slice(0, 120) : "provider",
+        outcome: isNonEmptyString(entry.outcome) ? entry.outcome.slice(0, 80) : "unknown",
+        reason: isNonEmptyString(entry.reason) ? entry.reason.slice(0, 120) : null,
+      })) : [],
+      noReturnCounts: isRecord(candidate.noReturnCounts) ? {
+        total: Math.max(0, Number(candidate.noReturnCounts.total) || 0),
+        missingUrl: Math.max(0, Number(candidate.noReturnCounts.missingUrl) || 0),
+        unsafeUrl: Math.max(0, Number(candidate.noReturnCounts.unsafeUrl) || 0),
+        noPublicUrl: Math.max(0, Number(candidate.noReturnCounts.noPublicUrl) || 0),
+        byChannel: isRecord(candidate.noReturnCounts.byChannel)
+          ? Object.fromEntries(Object.entries(candidate.noReturnCounts.byChannel).slice(0, 20).map(([channel, count]) => [channel.slice(0, 120), Math.max(0, Number(count) || 0)]))
+          : {},
+      } : { total: 0, missingUrl: 0, unsafeUrl: 0, noPublicUrl: 0, byChannel: {} },
+      authorityRecords: Array.isArray(candidate.authorityRecords) ? candidate.authorityRecords.slice(0, 24).filter(isRecord).map((authority) => ({
+        name: isNonEmptyString(authority.name) ? authority.name.slice(0, 200) : "Unknown authority",
+        domain: isNonEmptyString(authority.domain) ? authority.domain.slice(0, 160) : null,
+        jurisdiction: isNonEmptyString(authority.jurisdiction) ? authority.jurisdiction.slice(0, 160) : "unknown",
+        establishmentMethod: isNonEmptyString(authority.establishmentMethod) ? authority.establishmentMethod.slice(0, 120) : "unknown",
+        discoveredAt: isNonEmptyString(authority.discoveredAt) ? authority.discoveredAt.slice(0, 80) : "",
+        sourceChannel: isNonEmptyString(authority.sourceChannel) ? authority.sourceChannel.slice(0, 120) : "unknown",
+        urlsAttempted: Array.isArray(authority.urlsAttempted) ? authority.urlsAttempted.map(safePublicSourceUrl).filter((url): url is string => Boolean(url)).slice(0, 12) : [],
+        accessOutcomes: Array.isArray(authority.accessOutcomes) ? authority.accessOutcomes.slice(0, 12).filter(isRecord).map((outcome) => ({
+          url: safePublicSourceUrl(outcome.url) ?? null,
+          status: isNonEmptyString(outcome.status) ? outcome.status.slice(0, 80) : "unknown",
+          httpStatus: Number.isInteger(outcome.httpStatus) ? Number(outcome.httpStatus) : null,
+          physicalOpenIndex: Number.isInteger(outcome.physicalOpenIndex) ? Number(outcome.physicalOpenIndex) : null,
+        })) : [],
+      })) : [],
+      secConnectorAttempts: Array.isArray(candidate.secConnectorAttempts) ? candidate.secConnectorAttempts.slice(0, 12).filter(isRecord).map((attempt) => ({
+        sourceChannel: "sec-public-data" as const,
+        sourceOrigin: safePublicSourceUrl(attempt.sourceOrigin) ?? null,
+        sourcePathname: isNonEmptyString(attempt.sourcePathname) ? attempt.sourcePathname.slice(0, 500) : null,
+        status: Number.isInteger(attempt.status) ? Number(attempt.status) : null,
+        outcome: isNonEmptyString(attempt.outcome) ? attempt.outcome.slice(0, 80) : null,
+        reason: isNonEmptyString(attempt.reason) ? attempt.reason.slice(0, 160) : null,
       })) : [],
       state,
       stageCounts: {

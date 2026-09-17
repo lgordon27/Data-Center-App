@@ -102,6 +102,10 @@ function reportAccessOutcome(source) {
     originalUrl: reportUrl(access.originalUrl ?? source?.originalUrl),
     resolvedUrl: reportUrl(access.resolvedUrl ?? source?.resolvedUrl),
     canonicalUrl: reportUrl(access.canonicalUrl ?? source?.canonicalUrl),
+    contentHash: boundedText(access.contentHash, 80),
+    extractionMethod: boundedText(access.extractionMethod, 100),
+    extractionOutcome: boundedText(access.extractionOutcome, 100),
+    underlyingDocumentUrl: reportUrl(access.underlyingDocumentUrl),
     referringUrls: boundedList(
       access.referringUrls ?? source?.documentReferringUrls ?? source?.referringUrls,
       reportUrl,
@@ -121,6 +125,7 @@ function sourceDiagnostics(result) {
       resolvedUrl: reportUrl(source.resolvedUrl),
       canonicalUrl: reportUrl(source.canonicalUrl),
       title: boundedText(source.title, 240),
+      sourceChannel: boundedText(source.sourceChannel ?? source.origin, 120),
       returnedDomain: reportDomain(source.url ?? source.resolvedUrl ?? source.canonicalUrl),
       searchDomain: boundedText(source.searchDomain, 120),
       categoryIds: boundedList(
@@ -135,6 +140,9 @@ function sourceDiagnostics(result) {
       projectSpecificityState: boundedText(source.projectSpecificityState, 100),
       financialEligibilityState: boundedText(source.financialEligibilityState, 100),
       sourceType: boundedText(source.sourceType, 120),
+      extractionMethod: boundedText(source.extractionMethod ?? source.accessOutcome?.extractionMethod, 100),
+      extractionOutcome: boundedText(source.extractionOutcome ?? source.accessOutcome?.extractionOutcome, 100),
+      contentHash: boundedText(source.contentHash ?? source.accessOutcome?.contentHash, 80),
       referringUrls: boundedList(
         source.documentReferringUrls ?? source.referringUrls,
         reportUrl,
@@ -355,9 +363,12 @@ function reportVisibleFindingTrace(trace) {
         resolvedUrl: reportUrl(item.candidate.resolvedUrl),
         canonicalUrl: reportUrl(item.candidate.canonicalUrl),
         title: boundedText(item.candidate.title, 240),
+        sourceChannel: boundedText(item.candidate.sourceChannel ?? item.candidate.origin, 120),
         searchDomain: boundedText(item.candidate.searchDomain, 120),
         sourceState: boundedText(item.candidate.sourceState, 100),
         exactProject: item.candidate.exactProject === true,
+        extractionMethod: boundedText(item.candidate.extractionMethod ?? item.candidate.accessOutcome?.extractionMethod, 100),
+        extractionOutcome: boundedText(item.candidate.extractionOutcome ?? item.candidate.accessOutcome?.extractionOutcome, 100),
       }
       : null,
     physicalAccessReceipt: reportAccessOutcome({
@@ -514,9 +525,12 @@ function buildVisibleFindingTrace(result) {
         resolvedUrl: source.resolvedUrl ?? null,
         canonicalUrl: source.canonicalUrl ?? null,
         title: source.title ?? null,
+        sourceChannel: source.sourceChannel ?? source.origin ?? null,
         searchDomain: source.searchDomain ?? null,
         sourceState: source.sourceState ?? null,
         exactProject: source.exactProject === true,
+        extractionMethod: source.accessOutcome?.extractionMethod ?? null,
+        extractionOutcome: source.accessOutcome?.extractionOutcome ?? null,
       },
       physicalAccessReceipt: {
         state: source.accessOutcome.state,

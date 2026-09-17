@@ -388,7 +388,7 @@ test("does not mark an empty primary or empty follow-up as successful", async ()
 
 test("rejects unsafe, blocked, scanned, and unsupported documents explicitly", () => {
   assert.equal(evaluateResearchDocumentAccess({ url: "javascript:alert(1)" }).reason, "unsafe-url");
-  assert.equal(evaluateResearchDocumentAccess({ url: "https://example.gov/report.pdf", contentType: "application/pdf", accessStatus: "open", scanned: true }).reason, "scanned-pdf");
+  assert.equal(evaluateResearchDocumentAccess({ url: "https://example.gov/report.pdf", contentType: "application/pdf", accessStatus: "open", scanned: true }).state, "accessible");
   assert.equal(evaluateResearchDocumentAccess({ url: "https://example.gov/report.zip", contentType: "application/zip", accessStatus: "open" }).reason, "unsupported-source-type");
   const pdf = evaluateResearchDocumentAccess({
     url: "https://example.gov/report.pdf?utm_source=test&id=7",
@@ -413,6 +413,8 @@ test("reads bounded HTML and text PDFs while recording retrieval limitations", a
   });
   assert.equal(html.state, "accessible");
   assert.match(html.passage, /Project Atlas Permit record/);
+  assert.equal(html.extractionMethod, "html");
+  assert.match(html.contentHash, /^[a-f0-9]{64}$/);
   assert.equal(html.retrievalTime, "2026-09-08T12:00:00.000Z");
   const pdf = await accessResearchDocument({ url: "https://example.gov/atlas.pdf", accessStatus: "open" }, {
     fetchImpl: async () => new Response(compressedTextPdf("Project Atlas permit record."), {
@@ -431,8 +433,18 @@ test("reads bounded HTML and text PDFs while recording retrieval limitations", a
     }),
   });
   assert.equal(json.state, "accessible");
-  assert.equal(json.format, "text");
+  assert.equal(json.format, "json");
+  assert.equal(json.extractionMethod, "json");
   assert.match(json.passage, /Project Atlas/);
+  const xml = await accessResearchDocument({ url: "https://example.gov/atlas.xml", accessStatus: "open" }, {
+    fetchImpl: async () => new Response("<project><name>Project Atlas</name><permit>Approved</permit></project>", {
+      status: 200,
+      headers: { "content-type": "application/xml" },
+    }),
+  });
+  assert.equal(xml.state, "accessible");
+  assert.equal(xml.format, "xml");
+  assert.match(xml.passage, /Project Atlas Approved/);
 });
 
 test("blocks DNS rebinding before a default outbound document request", async () => {
@@ -664,6 +676,100 @@ test("bounds category retrieval, allows one gap follow-up, and preserves provide
   assert.equal(run.followUps, 1);
   assert.ok(run.providerRequests <= 8 + 1);
   assert.ok(calls.includes("grid:follow-up"));
+});
+
+test("counts zero-provider official discovery and candidate access under one physical-open budget", async () => {
+  const research = validResearchResponse();
+  for (const item of research.evidence) {
+    item.sourceUrl = null;
+    item.sourceUrls = [];
+    item.citation = "No supporting retrieved source was returned.";
+    item.classification = "Missing Evidence";
+    item.value = "Not disclosed";
+    item.numericValue = null;
+    item.coverageStatus = "searched-no-support";
+    item.claimPassage = "No exact public passage was retained.";
+    item.facilityScope = "unknown";
+    item.phaseScope = "unknown";
+    item.claimTimePeriod = null;
+  }
+  let documentRequests = 0;
+  const result = await runValidatedResearch({
+    name: "Wintersburg 313",
+    location: "Maricopa County, Arizona",
+    knownData: {
+      sourceUrl: "https://operator.example/projects/wintersburg-313",
+      companyDomains: ["operator.example"],
+      state: "Arizona",
+    },
+  }, {
+    apiKey: "server-secret-for-test",
+    req: request({}),
+    categoryIds: ["water"],
+    rateLimiter: { allow: () => ({ allowed: true, retryAfterSeconds: 0 }) },
+    fetchImpl: async () => singleCallResponse(research, []),
+    documentFetchImpl: async (url) => {
+      documentRequests += 1;
+      if (url === "https://operator.example/projects/wintersburg-313") {
+        return new Response("<html><body><h1>Wintersburg 313</h1><p>Official project record.</p></body></html>", {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        });
+      }
+      return new Response("Not found", { status: 404, headers: { "content-type": "text/plain" } });
+    },
+  });
+  const category = result.researchAudit.categories.find((item) => item.categoryId === "water");
+  assert.ok(category.discoveryAttempts.length > 0);
+  assert.ok(category.discoveryAttempts.every((attempt) => Number.isInteger(attempt.physicalOpenIndex)));
+  assert.ok(result.researchAudit.physicalOpensUsed >= category.discoveryAttempts.length);
+  assert.ok(result.researchAudit.physicalOpensUsed <= RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens);
+  assert.ok(documentRequests >= category.discoveryAttempts.length);
+  assert.ok(result.sourceLedger.some((entry) => entry.sourceChannel === "declared-source-url"));
+  assert.equal(category.sourceChannelTelemetry.some((entry) => entry.outcome === "no-return"), true);
+  assert.ok(category.noReturnCounts.noPublicUrl > 0);
+  assert.ok(category.authorityRecords.length > 0);
+  assert.ok(category.authorityRecords.every((authority) =>
+    authority.jurisdiction
+      && authority.establishmentMethod
+      && authority.discoveredAt
+      && Array.isArray(authority.urlsAttempted)
+      && Array.isArray(authority.accessOutcomes)));
+});
+
+test("keeps SEC connector failure diagnostic without starving category research", async () => {
+  const sourceUrl = "https://operator.example/atlas/capital-update";
+  let connectorCalls = 0;
+  const result = await runValidatedResearch({
+    name: "Project Atlas",
+    location: "Taylor County, Texas",
+    knownData: { operator: "Atlas Compute" },
+  }, {
+    apiKey: "server-secret-for-test",
+    req: request({}),
+    categoryIds: ["construction-capital"],
+    rateLimiter: { allow: () => ({ allowed: true, retryAfterSeconds: 0 }) },
+    secConnector: {
+      search: async () => {
+        connectorCalls += 1;
+        throw new Error("SEC fixture unavailable");
+      },
+    },
+    fetchImpl: async () => singleCallResponse(validResearchResponse(), [{
+      url: sourceUrl,
+      title: "Atlas capital update",
+      snippet: "Project Atlas construction capital update.",
+    }]),
+    documentFetchImpl: async () => new Response("<html><body>Project Atlas construction capital update.</body></html>", {
+      status: 200,
+      headers: { "content-type": "text/html" },
+    }),
+  });
+  const category = result.researchAudit.categories.find((item) => item.categoryId === "construction-capital");
+  assert.equal(connectorCalls, 1);
+  assert.equal(category.secConnectorAttempts[0].outcome, "failed");
+  assert.ok(result.sourceLedger.some((entry) => entry.canonicalUrl === sourceUrl));
+  assert.ok(category.stageCounts.accessed > 0);
 });
 
 test("enforces one gap follow-up per category and records the limit", async () => {
@@ -1053,6 +1159,7 @@ test("keeps identity-discovery receipts in the audit without making identity met
   assert.equal(identity.state, "Complete");
   assert.equal(identity.openedDocuments.length, 1);
   assert.deepEqual(identity.openedDocuments[0], {
+    sourceChannel: "provider",
     originalUrl: identityUrl,
     referringUrls: [identityUrl],
     resolvedUrl: identityUrl,
@@ -1063,6 +1170,9 @@ test("keeps identity-discovery receipts in the audit without making identity met
     reusedFromCanonicalUrl: null,
     accessState: "accessible",
     accessOutcome: "retrieved",
+    extractionMethod: null,
+    extractionOutcome: null,
+    contentHash: null,
     retainedPassage: "Atlas identity filing names the exact facility.",
     extractionLimitations: [],
     categoryId: "project-identity",
@@ -1371,6 +1481,11 @@ test("validates and preserves optional Compute Atlas known data", () => {
       operator: " Atlas Compute ",
       status: "Planned",
       sourceUrl: "https://example.com/directory/atlas",
+      cityDomains: ["city.example", "localhost", "city.example"],
+      countyDomains: ["county.example"],
+      utilityDomains: ["utility.example"],
+      economicDevelopmentDomains: ["invest.example"],
+      knownOfficialEndpoints: ["https://records.example/api/projects", "http://127.0.0.1/private"],
       ignored: "not allowed through",
     },
   }), {
@@ -1381,6 +1496,11 @@ test("validates and preserves optional Compute Atlas known data", () => {
       operator: "Atlas Compute",
       status: "Planned",
       sourceUrl: "https://example.com/directory/atlas",
+      cityDomains: ["city.example"],
+      countyDomains: ["county.example"],
+      utilityDomains: ["utility.example"],
+      economicDevelopmentDomains: ["invest.example"],
+      knownOfficialEndpoints: ["https://records.example/api/projects"],
     },
   });
   assert.throws(() => parseResearchProjectBody({ name: "Atlas", location: "Texas", knownData: "bad" }), /knownData/);
@@ -1471,7 +1591,44 @@ test("normalizes and caps sources returned by the single web-search response", (
   assert.equal(retrieval.length, 10);
 });
 
-test("prioritizes Texas authoritative sources while retaining comparable records", () => {
+test("retains Arizona citation-only URLs and deduplicates unsafe provider channels", () => {
+  const citationUrl = "https://www.azwater.gov/project-wintersburg/permit?id=313";
+  const retrieval = normalizeRetrievedSources({
+    sources: [
+      { url: "http://127.0.0.1/private", title: "Unsafe structured source" },
+      { title: "Missing structured URL" },
+    ],
+    output: [{
+      type: "message",
+      content: [{
+        type: "output_text",
+        text: "{}",
+        annotations: [
+          { type: "url_citation", url: citationUrl, title: "Wintersburg permit 313" },
+          { type: "url_citation", url: citationUrl, title: "Duplicate Wintersburg permit" },
+          { type: "url_citation", url: "javascript:alert(1)", title: "Unsafe citation" },
+          { type: "url_citation", title: "Missing citation URL" },
+        ],
+      }],
+    }],
+  }, "water", { name: "Wintersburg 313", location: "Maricopa County, Arizona" }, [citationUrl]);
+
+  assert.equal(retrieval.length, 1);
+  assert.equal(retrieval[0].canonicalUrl, citationUrl);
+  assert.equal(retrieval[0].claimCited, true);
+  assert.equal(retrieval[0].sourceChannel, "output-url-citation");
+  assert.ok(retrieval.sourceLedger.rejectedCount >= 4);
+  assert.ok(retrieval.sourceChannelTelemetry.some((entry) =>
+    entry.sourceChannel === "output-url-citation"
+      && entry.outcome === "rejected"
+      && entry.reason === "unsafe-url"));
+  assert.ok(retrieval.sourceChannelTelemetry.some((entry) =>
+    entry.sourceChannel === "provider-structured-sources"
+      && entry.reason === "missing-url"));
+  assert.doesNotMatch(JSON.stringify(retrieval.sourceChannelTelemetry), /127\.0\.0\.1|javascript:/);
+});
+
+test("uses the governed source-family priority while retaining comparable records", () => {
   const retrieval = normalizeRetrievedSources({
     output: [{
       type: "web_search_call",
@@ -1485,7 +1642,7 @@ test("prioritizes Texas authoritative sources while retaining comparable records
       },
     }],
   }, "project-identity", { name: "Atlas", location: "Taylor County, Texas" });
-  assert.equal(retrieval[0].url, "https://www.ercot.com/grid/atlas");
+  assert.equal(retrieval[0].url, "https://investor.example.com/atlas");
   assert.equal(retrieval.at(-1).url, "https://news.example.com/atlas");
 });
 
@@ -1972,7 +2129,9 @@ test("does not promote model output annotations into source passages", () => {
       }],
     }],
   }, "targeted-customer_concentration");
-  assert.equal(sources.length, 0);
+  assert.equal(sources.length, 1);
+  assert.equal(sources[0].sourceChannel, "output-url-citation");
+  assert.equal(sources[0].excerpt, "");
 });
 
 test("promotes structured research URLs into physical candidate access when action sources omit them", () => {

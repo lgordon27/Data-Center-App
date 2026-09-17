@@ -50,8 +50,10 @@ function CategoryClaimTrace({ claim }: { claim: ResearchCategoryClaimAudit }) {
       )}
       <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[8px] uppercase tracking-[0.05em]">
         {claim.sourceTitle && <span>{claim.sourceTitle}{claim.sourcePublisher ? ` · ${claim.sourcePublisher}` : ""}</span>}
+        {claim.sourceChannel && <span>Channel: {claim.sourceChannel}</span>}
         {claim.pageOrSection !== null && <span>Page/section: {claim.pageOrSection}</span>}
         {claim.format && <span>Format: {claim.format}</span>}
+        {claim.extractionMethod && <span>Extraction: {claim.extractionMethod} · {claim.extractionOutcome ?? "unknown"}</span>}
       </div>
       {claim.resolvedUrl && (
         <a
@@ -155,6 +157,8 @@ function CategoryAuditRow({
                        {category.authorityLimitations?.length ? <div className="mt-1 text-[#8a5200]"><strong>Authority limitation:</strong> {category.authorityLimitations.join(" · ")}</div> : null}
                        <div className="mt-1"><strong>Returned domains:</strong> {category.returnedDomains?.length ? category.returnedDomains.join(" · ") : "None returned"}</div>
                        <div className="mt-1"><strong>Documents:</strong> {category.openedDocuments?.length ?? 0} receipts · {category.openedDocuments?.filter((document) => document.opened).length ?? 0} physical opens · {category.openedDocuments?.filter((document) => Boolean(document.retainedPassage)).length ?? 0} retained passages.</div>
+                        {category.discoveryAttempts?.length ? <div className="mt-1"><strong>Official discovery:</strong> {category.discoveryAttempts.length} bounded opens · {category.discoveryAttempts.filter((attempt) => attempt.status === "parsed").length} parsed indexes.</div> : null}
+                        {category.secConnectorAttempts?.length ? <div className="mt-1"><strong>SEC connector:</strong> {category.secConnectorAttempts.map((attempt) => `${attempt.outcome ?? attempt.reason ?? "unknown"}${attempt.status ? ` (${attempt.status})` : ""}`).join(" · ")}</div> : null}
                        {category.accessLimitations.length > 0 && <div className="mt-1 text-[#8a5200]"><strong>Access limitations:</strong> {category.accessLimitations.join(" · ")}</div>}
                        {category.unresolvedGaps.length > 0 && <div className="mt-1 text-[#8a5200]"><strong>Gaps:</strong> {category.unresolvedGaps.join(", ")}</div>}
                       {Object.keys(category.rejectionCounts).length > 0 && <div className="mt-1 text-[#ba2f45]"><strong>Rejected:</strong> {Object.entries(category.rejectionCounts).map(([reason, count]) => `${reason} (${count})`).join(" · ")}</div>}

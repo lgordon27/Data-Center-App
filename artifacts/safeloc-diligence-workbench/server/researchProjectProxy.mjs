@@ -3,12 +3,7 @@ import dns from "node:dns/promises";
 import http from "node:http";
 import https from "node:https";
 import { Readable } from "node:stream";
-import { execFile as execFileCallback } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { promisify } from "node:util";
 import { isIP } from "node:net";
 import {
   EVIDENCE_SEMANTIC_POLICY_VERSION,
@@ -25,6 +20,9 @@ import {
   sourceUrlAliases,
 } from "../src/data/sourceValidationPolicy.mjs";
 import { defaultProjectResearchRegistry } from "./projectResearchRegistry.mjs";
+import { discoverOfficialSources } from "./officialSourceDiscovery.mjs";
+import { extractResearchDocument } from "./researchDocumentExtraction.mjs";
+import { createSecConnector } from "./secConnector.mjs";
 
 function sourceStateTransition(from, to, reason) {
   return { from, to, reason };
@@ -35,7 +33,6 @@ const RESEARCH_PROJECT_MODEL = "gpt-4o";
 const RESEARCH_PROJECT_MAX_TOKENS = 8_000;
 const RESEARCH_CATEGORY_MAX_TOKENS = 3_500;
 const RESEARCH_PROVIDER_MAX_CONCURRENCY = 2;
-const execFile = promisify(execFileCallback);
 const RESEARCH_PROJECT_TIMEOUT_MS = 90_000;
 const RESEARCH_PROJECT_MAX_TOOL_CALLS = 32;
 const RESEARCH_POLICY_VERSION = 2;
@@ -52,6 +49,7 @@ const RESEARCH_RUN_BUDGET = Object.freeze({
 });
 const RESEARCH_DOCUMENT_MAX_BYTES = 1_000_000;
 const RESEARCH_DOCUMENT_MAX_REDIRECTS = 3;
+const SEC_CONNECTOR_CACHE = new Map();
 const RESEARCH_CATEGORY_STATES = Object.freeze([
   "Complete",
   "Partial",
@@ -404,35 +402,6 @@ function createPinnedLookup(address) {
   };
 }
 
-function extractBoundedDocumentPassage(bytes, contentType, format) {
-  const raw = Buffer.from(bytes).toString("utf8");
-  if (String(contentType ?? "").toLowerCase().startsWith("application/json")) {
-    try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed?.features)) {
-        return JSON.stringify({
-          features: parsed.features.slice(0, 20).map((feature) => ({
-            ...(isRecord(feature?.attributes) ? { attributes: feature.attributes } : {}),
-            ...(isRecord(feature?.properties) ? { properties: feature.properties } : {}),
-          })),
-          ...(parsed.exceededTransferLimit === true ? { exceededTransferLimit: true } : {}),
-        }).slice(0, 4_000);
-      }
-      return JSON.stringify(parsed).slice(0, 4_000);
-    } catch {
-      return raw.replace(/\s+/g, " ").trim().slice(0, 4_000);
-    }
-  }
-  if (format === "text") return raw.replace(/\s+/g, " ").trim().slice(0, 4_000);
-  return raw
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 4_000);
-}
-
 function fetchPinnedPublicUrl(url, init = {}, dnsLookup = dns.lookup) {
   return resolvePublicAddress(url, dnsLookup).then((address) => new Promise((resolve, reject) => {
     const parsed = new URL(url);
@@ -487,6 +456,12 @@ function parseResearchProjectBody(body) {
     const operator = typeof body.knownData.operator === "string" && body.knownData.operator.trim()
       ? body.knownData.operator.trim().slice(0, 160)
       : null;
+    const ticker = typeof body.knownData.ticker === "string" && /^[A-Za-z0-9.-]{1,20}$/.test(body.knownData.ticker.trim())
+      ? body.knownData.ticker.trim().toUpperCase()
+      : null;
+    const companyName = typeof body.knownData.companyName === "string" && body.knownData.companyName.trim()
+      ? body.knownData.companyName.trim().slice(0, 160)
+      : null;
     const status = typeof body.knownData.status === "string" && body.knownData.status.trim()
       ? body.knownData.status.trim().slice(0, 80)
       : null;
@@ -511,6 +486,16 @@ function parseResearchProjectBody(body) {
     const companyDomains = Array.isArray(body.knownData.companyDomains)
       ? [...new Set(body.knownData.companyDomains.map((value) => normalizeKnownText(value, 120)?.replace(/^https?:\/\//, "").replace(/\/.*$/, "")).filter((value) => value && /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(value)))].slice(0, 8)
       : [];
+    const normalizeDomainArray = (value, limit = 8) => Array.isArray(value)
+      ? [...new Set(value.map((item) => normalizeKnownText(item, 120)?.replace(/^https?:\/\//, "").replace(/\/.*$/, "")).filter((item) => item && /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(item)))].slice(0, limit)
+      : [];
+    const cityDomains = normalizeDomainArray(body.knownData.cityDomains);
+    const countyDomains = normalizeDomainArray(body.knownData.countyDomains);
+    const utilityDomains = normalizeDomainArray(body.knownData.utilityDomains);
+    const economicDevelopmentDomains = normalizeDomainArray(body.knownData.economicDevelopmentDomains);
+    const knownOfficialEndpoints = Array.isArray(body.knownData.knownOfficialEndpoints)
+      ? [...new Set(body.knownData.knownOfficialEndpoints.map(safePublicSourceUrl).filter(Boolean))].slice(0, 16)
+      : [];
     const aliases = Array.isArray(body.knownData.aliases)
       ? [...new Set(body.knownData.aliases.map((value) => normalizeKnownText(value, 160)).filter(Boolean))].slice(0, 12)
       : [];
@@ -518,6 +503,8 @@ function parseResearchProjectBody(body) {
       ...derivedLocation,
       ...(capacity === null ? {} : { capacity }),
       ...(operator ? { operator } : {}),
+      ...(ticker ? { ticker } : {}),
+      ...(companyName ? { companyName } : {}),
       ...(status ? { status } : {}),
       ...(sourceUrl ? { sourceUrl } : {}),
       ...(providerId ? { providerId } : {}),
@@ -529,6 +516,11 @@ function parseResearchProjectBody(body) {
       ...(authorityNames.length ? { authorityNames } : {}),
       ...(authorityDomains.length ? { authorityDomains } : {}),
       ...(companyDomains.length ? { companyDomains } : {}),
+      ...(cityDomains.length ? { cityDomains } : {}),
+      ...(countyDomains.length ? { countyDomains } : {}),
+      ...(utilityDomains.length ? { utilityDomains } : {}),
+      ...(economicDevelopmentDomains.length ? { economicDevelopmentDomains } : {}),
+      ...(knownOfficialEndpoints.length ? { knownOfficialEndpoints } : {}),
       ...(aliases.length ? { aliases } : {}),
     };
     if (Object.keys(normalized).length) knownData = normalized;
@@ -826,22 +818,23 @@ function evaluateResearchDocumentAccess(candidate = {}) {
   if (["paywall", "registration", "blocked", "unsafe"].includes(candidate.accessStatus)) {
     return { state: "blocked", reason: String(candidate.accessStatus), originalUrl, resolvedUrl, contentType, redirectChain, extractionLimitations: ["The destination was not openly accessible; no unsupported material is treated as reviewed."] };
   }
-  if (candidate.javascriptOnly === true || candidate.blocked === true) {
-    return { state: "blocked", reason: candidate.javascriptOnly === true ? "javascript-only" : "blocked", originalUrl, resolvedUrl, contentType, redirectChain, extractionLimitations: ["The destination requires blocked or browser-only access."] };
+  if (candidate.blocked === true) {
+    return { state: "blocked", reason: "blocked", originalUrl, resolvedUrl, contentType, redirectChain, extractionLimitations: ["The destination requires blocked access."] };
   }
   const extension = new URL(resolvedUrl).pathname.toLowerCase();
   const format = contentType === "application/pdf" || extension.endsWith(".pdf")
     ? "text-pdf"
-    : contentType === "text/plain" || contentType === "text/csv" || contentType === "application/json"
+    : contentType === "application/json" || contentType?.endsWith("+json") || extension.endsWith(".json") || extension.endsWith(".geojson")
+      ? "json"
+      : contentType === "application/xml" || contentType === "text/xml" || contentType?.endsWith("+xml") || extension.endsWith(".xml")
+        ? "xml"
+        : contentType === "text/plain" || contentType === "text/csv"
       ? "text"
       : contentType === "text/html" || !contentType
         ? "html"
         : null;
   if (!format) {
-    return { state: "unsupported", reason: "unsupported-source-type", originalUrl, resolvedUrl, contentType, redirectChain, extractionLimitations: [`Content type ${contentType} is outside the bounded HTML, text, and text-PDF pipeline.`] };
-  }
-  if (format === "text-pdf" && (candidate.scanned === true || candidate.ocrRequired === true)) {
-    return { state: "unsupported", reason: "scanned-pdf", format, originalUrl, resolvedUrl, contentType, redirectChain, extractionLimitations: ["Scanned PDFs are not OCRed by the research pipeline."] };
+    return { state: "unsupported", reason: "unsupported-source-type", originalUrl, resolvedUrl, contentType, redirectChain, extractionLimitations: [`Content type ${contentType} is outside the bounded HTML, text, PDF, JSON, ArcGIS, and XML pipeline.`] };
   }
   return {
     state: "accessible",
@@ -855,7 +848,7 @@ function evaluateResearchDocumentAccess(candidate = {}) {
     retrievalTime: candidate.retrievedAt ?? null,
     passage: typeof candidate.passage === "string" ? candidate.passage.slice(0, 4_000) : null,
     pageOrSection: candidate.pageOrSection ?? candidate.page ?? candidate.section ?? null,
-    extractionLimitations: format === "html" ? ["Passage and page references depend on provider capture."] : [],
+    extractionLimitations: format === "html" ? ["Passage and section references depend on bounded extraction."] : [],
   };
 }
 
@@ -960,34 +953,6 @@ async function awaitWithResearchSignal(promise, signal) {
   }
 }
 
-async function extractTextPdfPassage(buffer, {
-  maxPages = 20,
-  timeoutMs = 5_000,
-  maxOutputBytes = 64_000,
-  signal,
-} = {}) {
-  throwIfResearchCancelled(signal);
-  if (!Buffer.from(buffer).subarray(0, 5).equals(Buffer.from("%PDF-"))) return "";
-  const directory = await mkdtemp(path.join(os.tmpdir(), "safeloc-pdf-"));
-  const inputPath = path.join(directory, "document.pdf");
-  try {
-    throwIfResearchCancelled(signal);
-    await writeFile(inputPath, buffer);
-    const result = await execFile(
-      "pdftotext",
-      ["-f", "1", "-l", String(maxPages), "-layout", inputPath, "-"],
-      { timeout: timeoutMs, maxBuffer: maxOutputBytes, signal },
-    );
-    throwIfResearchCancelled(signal);
-    return String(result.stdout ?? "").replace(/\s+/g, " ").trim().slice(0, 4_000);
-  } catch (error) {
-    if (error?.name === "ResearchCancelledError" || signal?.aborted) throw createResearchCancellationError();
-    return "";
-  } finally {
-    await rm(directory, { recursive: true, force: true }).catch(() => {});
-  }
-}
-
 async function accessResearchDocument(candidate = {}, {
   fetchImpl = fetch,
   now = () => new Date().toISOString(),
@@ -995,6 +960,7 @@ async function accessResearchDocument(candidate = {}, {
   maxRedirects = RESEARCH_DOCUMENT_MAX_REDIRECTS,
   signal,
   dnsLookup = dns.lookup,
+  ocrImpl,
 } = {}) {
   const documentStartedAtMs = Date.now();
   throwIfResearchCancelled(signal);
@@ -1009,7 +975,7 @@ async function accessResearchDocument(candidate = {}, {
     try {
       const requestInit = {
         method: "GET",
-        headers: { accept: "text/html, text/plain, application/json, application/pdf" },
+        headers: { accept: "text/html, text/plain, application/json, application/geo+json, application/xml, text/xml, application/pdf" },
         redirect: "manual",
         signal,
       };
@@ -1140,20 +1106,32 @@ async function accessResearchDocument(candidate = {}, {
     const format = evaluateResearchDocumentAccess({ ...candidate, resolvedUrl: currentUrl, contentType, accessStatus: "open", redirectChain }).format;
     if (!format) return { ...initial, state: "unsupported", reason: "unsupported-source-type", resolvedUrl: currentUrl, redirectChain, contentType, extractionLimitations: ["The response content type is outside the bounded reader."] };
     throwIfResearchCancelled(signal);
-    const passage = format === "text-pdf"
-      ? await extractTextPdfPassage(bytes, { signal })
-      : extractBoundedDocumentPassage(bytes, contentType, format);
+    const extraction = await extractResearchDocument({
+      bytes,
+      contentType,
+      sourceUrl: currentUrl,
+      format: format === "text-pdf" ? "pdf" : format,
+    }, { ocrImpl });
     throwIfResearchCancelled(signal);
+    const passage = extraction.passage;
     if (!passage) {
       return {
         ...initial,
         state: "unsupported",
-        reason: format === "text-pdf" ? "scanned-pdf" : "empty-passage",
+        reason: extraction.outcome === "underlying-document"
+          ? "underlying-document"
+          : format === "text-pdf" ? "scanned-pdf" : extraction.outcome === "malformed" ? "malformed-document" : "empty-passage",
         format,
         resolvedUrl: currentUrl,
+        canonicalUrl: canonicalizeSourceUrl(currentUrl),
         redirectChain,
         contentType,
         retrievalTime: now(),
+        contentHash: extraction.contentHash,
+        extractionMethod: extraction.extractionMethod,
+        extractionOutcome: extraction.outcome,
+        underlyingDocumentUrl: extraction.underlyingDocumentUrl,
+        candidateLinks: extraction.candidateLinks,
         transportDiagnostic: buildTransportDiagnostic({
           stage: "extraction",
           url: currentUrl,
@@ -1162,7 +1140,7 @@ async function accessResearchDocument(candidate = {}, {
           response,
           redirectChain,
         }),
-        extractionLimitations: [format === "text-pdf" ? "PDF contained no extractable text; OCR is not performed." : "The response contained no bounded text passage."],
+        extractionLimitations: extraction.limitations,
       };
     }
     return {
@@ -1176,6 +1154,10 @@ async function accessResearchDocument(candidate = {}, {
       contentType,
       redirectChain,
       retrievalTime: now(),
+      contentHash: extraction.contentHash,
+      extractionMethod: extraction.extractionMethod,
+      extractionOutcome: extraction.outcome,
+      candidateLinks: extraction.candidateLinks,
       transportDiagnostic: buildTransportDiagnostic({
         stage: "complete",
         url: currentUrl,
@@ -1186,11 +1168,14 @@ async function accessResearchDocument(candidate = {}, {
       }),
       passage,
       pageOrSection: null,
-      extractionLimitations: format === "text-pdf"
-        ? ["Page references are unavailable from the bounded text extractor."]
-        : format === "html"
-          ? ["HTML section references depend on the captured passage."]
-          : ["Structured-field references depend on the captured passage."],
+      extractionLimitations: [
+        ...extraction.limitations,
+        ...(format === "text-pdf"
+          ? ["Page references are unavailable from the bounded text extractor."]
+          : format === "html"
+            ? ["HTML section references depend on the captured passage."]
+            : ["Structured-field references depend on the captured passage."]),
+      ],
     };
   }
   return { ...initial, state: "blocked", reason: "redirect-limit", redirectChain, extractionLimitations: ["Redirect chain exceeded the bounded access limit."] };
@@ -1262,6 +1247,7 @@ function categoryOpenedDocuments(sources = [], category = null) {
       source.originalUrl ?? source.url,
     ].filter(Boolean))];
     return {
+      sourceChannel: source.sourceChannel ?? source.origin ?? "provider",
       originalUrl: source.originalUrl ?? source.url ?? null,
       referringUrls,
       resolvedUrl: outcome.resolvedUrl ?? source.resolvedUrl ?? source.url ?? null,
@@ -1274,6 +1260,9 @@ function categoryOpenedDocuments(sources = [], category = null) {
         : null,
       accessState: outcome.state ?? "blocked",
       accessOutcome: outcome.reason ?? "not-attempted",
+      extractionMethod: outcome.extractionMethod ?? null,
+      extractionOutcome: outcome.extractionOutcome ?? null,
+      contentHash: outcome.contentHash ?? null,
       retainedPassage: outcome.state === "accessible" ? outcome.passage ?? source.excerpt ?? null : null,
       extractionLimitations: Array.isArray(outcome.extractionLimitations) ? outcome.extractionLimitations.slice(0, 8) : [],
       ...(category ? {
@@ -1325,6 +1314,14 @@ function buildResearchAudit({
           : executedQueries.length || primaryWasIssued ? "No eligible evidence"
             : "Not searched"
     );
+    const sourceChannelTelemetry = Array.isArray(supplied.sourceChannelTelemetry)
+      ? supplied.sourceChannelTelemetry.slice(0, 80).map((entry) => ({
+        sourceChannel: sanitizeTransportText(entry.sourceChannel, 120) || "provider",
+        outcome: sanitizeTransportText(entry.outcome, 80) || "unknown",
+        reason: sanitizeTransportText(entry.reason, 120) || null,
+      }))
+      : [];
+    const noReturnEntries = sourceChannelTelemetry.filter((entry) => entry.outcome !== "candidate");
     return {
       categoryId: category.categoryId,
       label: category.label,
@@ -1370,6 +1367,47 @@ function buildResearchAudit({
       providerFailureType: supplied.providerFailureType ?? null,
       providerRequestCount: counts.issuedProviderRequests,
       providerAttempts: Array.isArray(supplied.providerAttempts) ? supplied.providerAttempts.slice(0, 3) : [],
+      sourceChannelTelemetry,
+      noReturnCounts: {
+        total: noReturnEntries.length,
+        missingUrl: noReturnEntries.filter((entry) => entry.reason === "missing-url").length,
+        unsafeUrl: noReturnEntries.filter((entry) => entry.reason === "unsafe-url").length,
+        noPublicUrl: noReturnEntries.filter((entry) => entry.reason === "no-public-url").length,
+        byChannel: Object.fromEntries([...new Set(noReturnEntries.map((entry) => entry.sourceChannel))]
+          .slice(0, 20)
+          .map((channel) => [channel, noReturnEntries.filter((entry) => entry.sourceChannel === channel).length])),
+      },
+      authorityRecords: Array.isArray(supplied.authorityRecords) ? supplied.authorityRecords.slice(0, 24).map((authority) => ({
+        name: sanitizeTransportText(authority.name, 200),
+        domain: typeof authority.domain === "string" ? sanitizeTransportText(authority.domain, 160) : null,
+        jurisdiction: sanitizeTransportText(authority.jurisdiction, 160),
+        establishmentMethod: sanitizeTransportText(authority.establishmentMethod, 120),
+        discoveredAt: sanitizeTransportText(authority.discoveredAt, 80),
+        sourceChannel: sanitizeTransportText(authority.sourceChannel, 120),
+        urlsAttempted: Array.isArray(authority.urlsAttempted) ? authority.urlsAttempted.map(safePublicSourceUrl).filter(Boolean).slice(0, 12) : [],
+        accessOutcomes: Array.isArray(authority.accessOutcomes) ? authority.accessOutcomes.slice(0, 12).map((outcome) => ({
+          url: safePublicSourceUrl(outcome.url),
+          status: sanitizeTransportText(outcome.status, 80),
+          httpStatus: Number.isInteger(outcome.httpStatus) ? outcome.httpStatus : null,
+          physicalOpenIndex: Number.isInteger(outcome.physicalOpenIndex) ? outcome.physicalOpenIndex : null,
+        })) : [],
+      })) : [],
+      discoveryAttempts: Array.isArray(supplied.discoveryAttempts) ? supplied.discoveryAttempts.slice(0, 24).map((attempt) => ({
+        sourceChannel: sanitizeTransportText(attempt.sourceChannel ?? "official-domain-discovery", 80),
+        url: safePublicSourceUrl(attempt.url),
+        status: sanitizeTransportText(attempt.status, 80),
+        httpStatus: Number.isInteger(attempt.httpStatus) ? attempt.httpStatus : null,
+        contentType: sanitizeTransportText(attempt.contentType, 120),
+        physicalOpenIndex: Number.isInteger(attempt.physicalOpenIndex) ? attempt.physicalOpenIndex : null,
+      })) : [],
+      secConnectorAttempts: Array.isArray(supplied.secConnectorAttempts) ? supplied.secConnectorAttempts.slice(0, 12).map((attempt) => ({
+        sourceChannel: "sec-public-data",
+        sourceOrigin: safeSourceIdentity(attempt.sourceOrigin).origin,
+        sourcePathname: sanitizeTransportText(attempt.sourcePathname, 500),
+        status: Number.isInteger(attempt.status) ? attempt.status : null,
+        outcome: sanitizeTransportText(attempt.outcome, 80),
+        reason: sanitizeTransportText(attempt.reason, 160),
+      })) : [],
     };
   });
   return {
@@ -1506,6 +1544,10 @@ async function orchestrateCategoryResearch(project, {
       providerRequestCount: 0,
       providerFailureType: null,
       providerAttempts: [],
+      discoveryAttempts: [],
+      authorityRecords: [],
+      secConnectorAttempts: [],
+      sourceChannelTelemetry: [],
     };
     try {
       if (!concurrent) providerRequests += 1;
@@ -1530,6 +1572,10 @@ async function orchestrateCategoryResearch(project, {
       else providerRequests += Math.max(0, primaryRequestCost - 1 - primaryAdditionalRequestsAuthorized);
       execution.providerRequestCount += primaryRequestCost;
       execution.providerAttempts.push(...(Array.isArray(primary?.providerAttempts) ? primary.providerAttempts : []));
+      execution.discoveryAttempts.push(...(Array.isArray(primary?.discoveryAttempts) ? primary.discoveryAttempts : []));
+      execution.authorityRecords.push(...(Array.isArray(primary?.authorityRecords) ? primary.authorityRecords : []));
+      execution.secConnectorAttempts.push(...(Array.isArray(primary?.secConnectorAttempts) ? primary.secConnectorAttempts : []));
+      execution.sourceChannelTelemetry.push(...(Array.isArray(primary?.sourceChannelTelemetry) ? primary.sourceChannelTelemetry : []));
       if (signal?.aborted) {
         const error = new Error("Project research was cancelled.");
         error.name = "ResearchCancelledError";
@@ -1603,6 +1649,10 @@ async function orchestrateCategoryResearch(project, {
         providerRequests += followUpRequestCost - 1;
         execution.providerRequestCount += followUpRequestCost - 1;
         execution.providerAttempts.push(...(Array.isArray(followUp?.providerAttempts) ? followUp.providerAttempts : []));
+        execution.discoveryAttempts.push(...(Array.isArray(followUp?.discoveryAttempts) ? followUp.discoveryAttempts : []));
+        execution.authorityRecords.push(...(Array.isArray(followUp?.authorityRecords) ? followUp.authorityRecords : []));
+        execution.secConnectorAttempts.push(...(Array.isArray(followUp?.secConnectorAttempts) ? followUp.secConnectorAttempts : []));
+        execution.sourceChannelTelemetry.push(...(Array.isArray(followUp?.sourceChannelTelemetry) ? followUp.sourceChannelTelemetry : []));
         if (signal?.aborted) {
           const error = new Error("Project research was cancelled.");
           error.name = "ResearchCancelledError";
@@ -2445,28 +2495,49 @@ function texasSourcePriority(source = {}) {
 }
 
 function prioritizeResearchSources(sources = [], project = {}) {
-  const texas = isTexasProject(project);
+  const rank = (source) => {
+    const hostname = sourceHostname(source);
+    const pathname = (() => {
+      try { return new URL(source.url ?? source.resolvedUrl ?? source.canonicalUrl).pathname.toLowerCase(); } catch { return ""; }
+    })();
+    const official = source.sourceClass !== "secondary-reporting"
+      || /(?:^|\.)(?:gov|mil)$/.test(hostname)
+      || source.sourceChannel?.includes("official")
+      || source.sourceChannel?.includes("declared-")
+      || source.sourceChannel === "sec-public-data";
+    const pdf = source.contentType === "application/pdf" || pathname.endsWith(".pdf");
+    const api = /json|xml|arcgis/i.test(`${source.contentType ?? ""} ${pathname}`);
+    const companyOrSec = source.sourceClass === "primary-company" || hostname === "sec.gov" || hostname.endsWith(".sec.gov");
+    const utilityOrRegulator = source.sourceClass === "primary-utility"
+      || /\b(utility|utilities|regulator|commission|department|authority)\b/i.test(`${source.title ?? ""} ${source.publisher ?? ""}`);
+    const cityOrCounty = /\b(city|county|municipal|borough)\b/i.test(`${hostname} ${source.title ?? ""} ${source.publisher ?? ""}`);
+    if (source.exactProject === true && official && (!pdf || api)) return 0;
+    if (source.exactProject === true && official && pdf) return 1;
+    if (companyOrSec) return 2;
+    if (utilityOrRegulator) return 3;
+    if (cityOrCounty || source.sourceClass === "primary-government") return 4;
+    if (source.exactProject !== true && official) return 5;
+    return 6;
+  };
   return [...sources].sort((left, right) => {
     return Number(right.claimCited === true) - Number(left.claimCited === true)
       || Number(right.exactProject === true) - Number(left.exactProject === true)
-      || (texas ? texasSourcePriority(left) : sourcePriority(left.sourceClass))
-        - (texas ? texasSourcePriority(right) : sourcePriority(right.sourceClass))
+      || rank(left) - rank(right)
       || String(left.url ?? "").localeCompare(String(right.url ?? ""));
   });
 }
 
 function sourcePriorityApplied(project = {}) {
-  const state = inferLocationAuthorityParts(project).state;
-  if (state === "Texas") {
-    return ["Texas-first query targets and post-retrieval ranking: ERCOT/PUCT grid; TWDB/local water; municipal/county permits; SEC/IR/developer disclosures; FEMA/NOAA/EIA context"];
-  }
-  if (state === "Arizona") {
-    return ["Arizona-first routing: ACC utility/regulator records; ADWR water records; ADEQ environmental records; local utility and government records; official operator disclosures"];
-  }
-  if (state === "Ohio") {
-    return ["Ohio-first routing: PUCO utility/regulator records; ODNR water records; Ohio EPA records; local utility and government records; official operator disclosures"];
-  }
-  return ["State and local government/regulator records", "Utilities and official corporate disclosures", "Secondary reporting"];
+  const state = inferLocationAuthorityParts(project).state ?? "State";
+  return [
+    "Exact-project official HTML or structured API",
+    "Exact-project official PDF",
+    "Company and public SEC filings",
+    "Utility and regulator records",
+    "City and county records",
+    `${state} contextual official records`,
+    "Secondary reporting",
+  ];
 }
 
 function supportsExplicitZero(id, item, sources) {
@@ -2599,6 +2670,24 @@ ${categoryPlan}${focusIds?.length ? ` This is a focused refresh for these unreso
 function normalizeRetrievedSources(body, searchDomain = "project-identity", project = {}, researchSourceUrls = []) {
   const candidates = [];
   const citedUrls = new Set();
+  const sourceChannelTelemetry = [];
+  const addProviderSources = (sources, sourceChannel, origin = sourceChannel) => {
+    for (const source of Array.isArray(sources) ? sources : []) {
+      const safeUrl = safePublicSourceUrl(source?.url);
+      sourceChannelTelemetry.push({
+        sourceChannel,
+        outcome: safeUrl ? "candidate" : "rejected",
+        reason: safeUrl ? null : (typeof source?.url === "string" && source.url.trim() ? "unsafe-url" : "missing-url"),
+      });
+      candidates.push({
+        ...(isRecord(source) ? source : {}),
+        url: safeUrl ?? "",
+        sourceChannel,
+        origin,
+      });
+    }
+  };
+  addProviderSources(body?.sources, "provider-structured-sources");
   const citedSourceIds = new Set(
     researchSourceUrls
       .map(canonicalizeSourceUrl)
@@ -2606,18 +2695,38 @@ function normalizeRetrievedSources(body, searchDomain = "project-identity", proj
   );
   for (const output of Array.isArray(body?.output) ? body.output : []) {
     if (output?.type === "web_search_call" && Array.isArray(output.action?.sources)) {
-      candidates.push(...output.action.sources.map((source) => ({
-        ...source,
-        claimCited: source.claimCited === true
-          || citedSourceIds.has(canonicalizeSourceUrl(source.url)),
-        origin: "action.sources",
-      })));
+      addProviderSources(output.action.sources, "web-search-action-sources", "action.sources");
     }
+    addProviderSources(output?.sources, "provider-output-sources");
     for (const content of Array.isArray(output?.content) ? output.content : []) {
       for (const annotation of Array.isArray(content?.annotations) ? content.annotations : []) {
         if (annotation?.type === "url_citation") {
           const citedUrl = safePublicSourceUrl(annotation.url);
-          if (citedUrl) citedUrls.add(citedUrl);
+          sourceChannelTelemetry.push({
+            sourceChannel: "output-url-citation",
+            outcome: citedUrl ? "candidate" : "rejected",
+            reason: citedUrl ? null : (typeof annotation.url === "string" && annotation.url.trim() ? "unsafe-url" : "missing-url"),
+          });
+          if (citedUrl) {
+            citedUrls.add(citedUrl);
+            candidates.push({
+              url: citedUrl,
+              title: typeof annotation.title === "string" ? annotation.title : "Provider URL citation",
+              excerpt: "",
+              claimCited: true,
+              sourceChannel: "output-url-citation",
+              origin: "url_citation",
+            });
+          } else {
+            candidates.push({
+              url: "",
+              title: "Rejected provider URL citation",
+              excerpt: "",
+              claimCited: false,
+              sourceChannel: "output-url-citation",
+              origin: "url_citation",
+            });
+          }
         }
       }
     }
@@ -2640,6 +2749,7 @@ function normalizeRetrievedSources(body, searchDomain = "project-identity", proj
       excerpt: "",
       claimCited: true,
       origin: "structured-research-source",
+      sourceChannel: "provider-structured-research",
       sourceUrlOrigin: "provider-structured-research",
     });
     actionSourceCanonicalIds.add(citedUrl);
@@ -2647,12 +2757,20 @@ function normalizeRetrievedSources(body, searchDomain = "project-identity", proj
   for (const candidate of candidates) {
     if (citedSourceIds.has(canonicalizeSourceUrl(candidate.url))) candidate.claimCited = true;
   }
+  if (!candidates.some((candidate) => safePublicSourceUrl(candidate.url))) {
+    sourceChannelTelemetry.push({
+      sourceChannel: "provider-response",
+      outcome: "no-return",
+      reason: "no-public-url",
+    });
+  }
   const prioritizedCandidates = prioritizeResearchSources(candidates.map((source) => {
     const url = safePublicSourceUrl(source.url) ?? "";
     const title = typeof source.title === "string" ? source.title.trim() : "Retrieved public source";
     return {
       ...source,
       url,
+      sourceChannel: typeof source.sourceChannel === "string" ? source.sourceChannel : source.origin ?? "provider",
       title,
       date: typeof source.published_date === "string" ? source.published_date : typeof source.date === "string" ? source.date : null,
       excerpt: typeof source.snippet === "string" ? source.snippet.trim() : typeof source.excerpt === "string" ? source.excerpt.trim() : "",
@@ -2697,6 +2815,7 @@ function normalizeRetrievedSources(body, searchDomain = "project-identity", proj
     relevanceNote: source.relevanceNote ?? null,
   }));
   result.sourceLedger = ledger;
+  result.sourceChannelTelemetry = sourceChannelTelemetry.slice(0, 80);
   return result;
 }
 
@@ -3178,6 +3297,7 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
       searchedDomains: [...new Set(sources.map((source) => sourceHostname(source)).filter(Boolean))],
       failedDomains: [],
       retrievedSourceCount: sources.length,
+      sourceChannelTelemetry: sources.sourceChannelTelemetry ?? [],
       searchTerms,
       observedQueriesByEvidence,
       toolCallCount: bounded.acceptedToolCallCount,
@@ -3407,6 +3527,8 @@ async function runValidatedResearch(project, {
   rateLimiter,
   req,
   documentFetchImpl = fetch,
+  secConnector = null,
+  ocrImpl,
   signal,
   categoryIds = null,
 }) {
@@ -3440,10 +3562,32 @@ async function runValidatedResearch(project, {
   let reservedCandidateCount = 0;
   const openedDocumentsByCanonicalUrl = new Map();
   const documentAccessPromisesByCanonicalUrl = new Map();
+  const discoveryAttemptedCategories = new Set();
+  const secAttemptedCategories = new Set();
   let documentAccessQueue = Promise.resolve();
   let fetchedCandidateCount = 0;
   let physicalOpensUsed = 0;
   let physicalOpenBudgetExceeded = false;
+  const authorizePhysicalOpen = () => {
+    if (physicalOpensUsed >= RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens) {
+      physicalOpenBudgetExceeded = true;
+      return { allowed: false, physicalOpenIndex: null };
+    }
+    physicalOpensUsed += 1;
+    return { allowed: true, physicalOpenIndex: physicalOpensUsed };
+  };
+  let activeSecConnector = secConnector;
+  if (!activeSecConnector && process.env.SEC_USER_AGENT) {
+    activeSecConnector = createSecConnector({
+      userAgent: process.env.SEC_USER_AGENT,
+      cache: SEC_CONNECTOR_CACHE,
+      fetchImpl: async (url, init) => {
+        const authorization = authorizePhysicalOpen();
+        if (!authorization.allowed) throw new Error("physical-open-budget");
+        return fetchPinnedPublicUrl(url, { ...init, signal: controller.signal });
+      },
+    });
+  }
   try {
     const orchestration = await orchestrateCategoryResearch(project, {
       budget: RESEARCH_RUN_BUDGET,
@@ -3532,6 +3676,102 @@ async function runValidatedResearch(project, {
             throw error;
           }
         }
+        const discoveryAttempts = [];
+        const authorityRecords = [];
+        const secAttempts = [];
+        const supplementalSources = [];
+        if (
+          categoryResult.sources.length === 0
+          && !discoveryAttemptedCategories.has(categoryId)
+          && !controller.signal.aborted
+        ) {
+          discoveryAttemptedCategories.add(categoryId);
+          const discovery = await discoverOfficialSources({
+            projectIdentity: project,
+            knownData: project.knownData,
+            category: categoryId,
+            signal: controller.signal,
+            maxAttempts: RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens,
+            authorizeAttempt: authorizePhysicalOpen,
+            fetchImpl: documentFetchImpl === fetch
+              ? (url, init) => fetchPinnedPublicUrl(url, init)
+              : documentFetchImpl,
+          });
+          discoveryAttempts.push(...discovery.attempts);
+          authorityRecords.push(...discovery.authorities);
+          supplementalSources.push(...discovery.candidateUrls.map((candidate) => ({
+            url: candidate.url,
+            title: `Official exact-project discovery candidate for ${project.name}`,
+            excerpt: "",
+            accessStatus: "not provided",
+            contentType: null,
+            sourceClass: classifySource(candidate.url, project.knownData?.operator ?? project.name),
+            sourceChannel: candidate.sourceChannel,
+            origin: "official-domain-discovery",
+            discoveryOnly: true,
+            exactProject: Boolean(candidate.matchedAlias),
+            relevanceNote: "Discovered through a bounded official-domain index; the document still requires access, passage retention, and claim mapping.",
+          })));
+        }
+        const secRelevant = ["project-identity", "construction-capital", "tenant-counterparty"].includes(categoryId);
+        const secIdentity = project.knownData?.ticker
+          || project.knownData?.companyName
+          || project.knownData?.operator;
+        if (
+          activeSecConnector
+          && secRelevant
+          && secIdentity
+          && !secAttemptedCategories.has(categoryId)
+          && !controller.signal.aborted
+        ) {
+          secAttemptedCategories.add(categoryId);
+          try {
+            const secResult = await activeSecConnector.search({
+              ticker: project.knownData?.ticker,
+              companyName: project.knownData?.companyName ?? project.knownData?.operator,
+              projectName: project.name,
+              terms: [project.name, ...(project.knownData?.aliases ?? [])],
+              maxCandidates: 6,
+            });
+            secAttempts.push(...(secResult.attempts ?? []));
+            supplementalSources.push(...(secResult.candidates ?? []).map((candidate) => ({
+              ...candidate,
+              url: candidate.url ?? candidate.archiveUrl,
+              title: `${candidate.form ?? "SEC"} filing for ${project.knownData?.operator ?? project.name}`,
+              excerpt: "",
+              accessStatus: "not provided",
+              contentType: "text/html",
+              sourceClass: "primary-company",
+              sourceChannel: "sec-public-data",
+              origin: "sec-public-data",
+              exactProject: false,
+              relevanceNote: "Discovered through public read-only SEC submissions metadata; exact-project status requires retained filing text.",
+            })));
+          } catch (error) {
+            secAttempts.push({
+              sourceChannel: "sec-public-data",
+              outcome: "failed",
+              reason: sanitizeTransportText(error instanceof Error ? error.message : "SEC connector failed."),
+            });
+            categoryResult.coverage.providerLimitations = [
+              ...(categoryResult.coverage.providerLimitations ?? []),
+              "The public SEC connector did not return a usable candidate; other source families continued.",
+            ];
+          }
+        }
+        if (supplementalSources.length) {
+          categoryResult.sources = prioritizeResearchSources([
+            ...categoryResult.sources,
+            ...supplementalSources,
+          ], project);
+          categoryResult.coverage.searchedDomains = [...new Set([
+            ...(categoryResult.coverage.searchedDomains ?? []),
+            ...supplementalSources.map(sourceHostname).filter(Boolean),
+          ])];
+          categoryResult.coverage.retrievedSourceCount = categoryResult.sources.length;
+        }
+        categoryResult.coverage.officialDiscoveryAttempts = discoveryAttempts;
+        categoryResult.coverage.secConnectorAttempts = secAttempts;
         const categoryFetched = fetchedCandidatesByCategory.get(categoryId) ?? 0;
         const categoryReserved = reservedCandidatesByCategory.get(categoryId) ?? 0;
         const remainingCategory = Math.max(0, RESEARCH_RUN_BUDGET.maxCandidatesPerCategory - categoryFetched - categoryReserved);
@@ -3589,6 +3829,7 @@ async function runValidatedResearch(project, {
                 .then(() => accessResearchDocument(source, {
                   fetchImpl: documentFetchImpl,
                   signal: controller.signal,
+                  ocrImpl,
                 }))
                 .then((outcome) => ({
                   ...outcome,
@@ -3602,6 +3843,34 @@ async function runValidatedResearch(project, {
               accessOutcome = {
                 ...accessOutcome,
               };
+              if (accessOutcome.underlyingDocumentUrl) {
+                const underlyingAuthorization = authorizePhysicalOpen();
+                if (underlyingAuthorization.allowed) {
+                  const underlyingOutcome = await accessResearchDocument({
+                    ...source,
+                    url: accessOutcome.underlyingDocumentUrl,
+                    originalUrl: accessOutcome.underlyingDocumentUrl,
+                    javascriptOnly: false,
+                    contentType: null,
+                  }, {
+                    fetchImpl: documentFetchImpl,
+                    signal: controller.signal,
+                    ocrImpl,
+                  });
+                  accessOutcome = {
+                    ...underlyingOutcome,
+                    originalUrl,
+                    underlyingDocumentUrl: accessOutcome.underlyingDocumentUrl,
+                    physicalOpenIndexes: [physicalOpenIndex, underlyingAuthorization.physicalOpenIndex],
+                    physicalOpenIndex: underlyingAuthorization.physicalOpenIndex,
+                    referringUrls: [originalUrl, accessOutcome.underlyingDocumentUrl].filter(Boolean),
+                    extractionLimitations: [
+                      ...(accessOutcome.extractionLimitations ?? []),
+                      ...(underlyingOutcome.extractionLimitations ?? []),
+                    ],
+                  };
+                }
+              }
             }
           }
           if (hasProviderCanonicalIdentity && announcedCanonicalUrl) {
@@ -3670,6 +3939,10 @@ async function runValidatedResearch(project, {
           toolCallCount: categoryResult.coverage?.toolCallCount ?? 0,
            providerRequestCount,
           providerAttempts,
+          discoveryAttempts,
+          authorityRecords,
+          secConnectorAttempts: secAttempts,
+          sourceChannelTelemetry: categoryResult.coverage?.sourceChannelTelemetry ?? [],
           toolCallBudgetExceeded: categoryResult.coverage?.toolCallBudgetExceeded === true,
           physicalOpenBudgetExceeded,
           physicalOpensUsed,
@@ -3678,7 +3951,7 @@ async function runValidatedResearch(project, {
             research: normalizedCategoryResearch,
             rawResearch: categoryResult.research,
             sources: accessedSources,
-            coverage: { ...categoryResult.coverage, providerAttempts },
+            coverage: { ...categoryResult.coverage, providerAttempts, officialDiscoveryAttempts: discoveryAttempts, authorityRecords, secConnectorAttempts: secAttempts },
           },
         };
       },
@@ -3813,6 +4086,8 @@ export async function handleResearchProjectRequest(
     apiKey = process.env.OPENAI_API_KEY,
     fetchImpl = fetch,
     documentFetchImpl = fetch,
+    secConnector = null,
+    ocrImpl,
     rateLimiter = defaultRateLimiter,
     cache = defaultResearchProjectCache,
     registry = defaultProjectResearchRegistry,
@@ -3869,6 +4144,8 @@ export async function handleResearchProjectRequest(
     apiKey,
     fetchImpl,
     documentFetchImpl,
+    secConnector,
+    ocrImpl,
     rateLimiter,
     req,
     categoryIds,

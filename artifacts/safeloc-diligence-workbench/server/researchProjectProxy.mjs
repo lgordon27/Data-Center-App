@@ -3512,12 +3512,21 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
               };
             }
           }
+          if (hasProviderCanonicalIdentity && announcedCanonicalUrl) {
+            accessOutcome = {
+              ...accessOutcome,
+              canonicalUrl: announcedCanonicalUrl,
+            };
+          }
           if (accessOutcome.reason === "physical-open-budget") {
             physicalOpenBudgetExceeded = true;
           }
           const finalCanonicalUrl = canonicalizeSourceUrl(accessOutcome.canonicalUrl ?? accessOutcome.resolvedUrl ?? announcedCanonicalUrl);
           if (!previousAccess) {
             if (originalCanonicalUrl) openedDocumentsByCanonicalUrl.set(originalCanonicalUrl, accessOutcome);
+            if (hasProviderCanonicalIdentity && announcedCanonicalUrl) {
+              openedDocumentsByCanonicalUrl.set(announcedCanonicalUrl, accessOutcome);
+            }
             if (finalCanonicalUrl) openedDocumentsByCanonicalUrl.set(finalCanonicalUrl, accessOutcome);
           }
           accessedSources.push({

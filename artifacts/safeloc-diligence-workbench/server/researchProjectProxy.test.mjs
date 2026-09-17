@@ -1442,6 +1442,108 @@ test("canonicalizes tracking variants without collapsing document-defining query
   assert.equal(sources.sourceLedger.ledger.find((entry) => entry.rejectionCode === "duplicate-canonical-source").duplicateOf, sources.sourceLedger.retained[0].occurrenceId);
 });
 
+test("reuses provider-declared canonical receipts across concurrent categories without starving plain URLs", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "safeloc-research-canonical-receipt-test-"));
+  const canonicalUrl = "https://records.fixture/project-atlas/decision?id=7";
+  const response = responseRecorder();
+  let providerCalls = 0;
+  let documentCalls = 0;
+  const categorySource = (categoryId, index) => {
+    const isCanonicalReceipt = index === 0 && ["grid", "electricity"].includes(categoryId);
+    const url = isCanonicalReceipt
+      ? `https://agency.gov/${categoryId}/atlas-decision`
+      : `https://plain.fixture/${categoryId}/atlas-${index}`;
+    return {
+      ...retrievedSource,
+      url,
+      ...(isCanonicalReceipt ? { canonicalUrl } : {}),
+      title: `Project Atlas ${isCanonicalReceipt ? "official commission decision" : `${categoryId} fixture ${index}`}`,
+      excerpt: "Project Atlas fixture passage.",
+      claimPassage: "Project Atlas fixture passage.",
+      claimSupport: RESEARCH_EVIDENCE_IDS.map((evidenceId) => ({ evidenceId, values: [42] })),
+      exactProject: true,
+    };
+  };
+  const responseForCategory = (categoryId) => {
+    const research = validResearchResponse();
+    for (const item of research.evidence) {
+      Object.assign(item, {
+        value: 42,
+        numericValue: 42,
+        classification: "Management Assertion",
+        sourceUrl: canonicalUrl,
+        sourceUrls: [canonicalUrl],
+        coverageStatus: "supported",
+        claimPassage: "Project Atlas fixture passage.",
+        description: "The fixture reports a project-specific value.",
+        claimTimePeriod: "2026",
+      });
+    }
+    return singleCallResponse(research, Array.from({ length: 10 }, (_, index) => categorySource(categoryId, index)));
+  };
+
+  await handleResearchProjectRequest(request({
+    name: "Project Atlas",
+    location: "Taylor County, Texas",
+    forceRefresh: true,
+  }), response, {
+    apiKey: "server-secret-for-test",
+    cache: createResearchProjectCache({ directory }),
+    rateLimiter: { allow: () => ({ allowed: true }) },
+    fetchImpl: async (_url, init) => {
+      providerCalls += 1;
+      const prompt = JSON.parse(init.body).input?.[1]?.content ?? "";
+      const categoryId = [
+        ["project-identity", "Project identity"],
+        ["grid", "Grid"],
+        ["electricity", "Electricity"],
+        ["water", "Water"],
+        ["permitting-community", "Permitting and community"],
+        ["construction-capital", "Construction and capital"],
+        ["tenant-counterparty", "Tenant and counterparty"],
+        ["climate-operational-hazard", "Climate and operational hazard"],
+      ].find(([, label]) => prompt.includes(`observed ${label} category attempt`))?.[0] ?? "project-identity";
+      return responseForCategory(categoryId);
+    },
+    documentFetchImpl: async () => {
+      documentCalls += 1;
+      await new Promise((resolve) => setTimeout(resolve, 2));
+      return new Response("<html><body>Project Atlas fixture passage.</body></html>", {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      });
+    },
+  });
+
+  const payload = response.json();
+  assert.equal(response.statusCode, 200);
+  assert.ok(providerCalls >= 8);
+  assert.equal(documentCalls, RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens);
+  assert.equal(payload.researchCoverage.physicalOpensUsed, RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens);
+  assert.equal(payload.researchCoverage.physicalOpenBudget, RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens);
+  assert.equal(payload.researchCoverage.physicalOpenBudgetExceeded, true);
+  const grid = payload.researchAudit.categories.find((category) => category.categoryId === "grid");
+  const electricity = payload.researchAudit.categories.find((category) => category.categoryId === "electricity");
+  const gridReceipt = grid.openedDocuments.find((document) => document.canonicalUrl === canonicalUrl);
+  const electricityReceipt = electricity.openedDocuments.find((document) => document.canonicalUrl === canonicalUrl);
+  assert.equal(gridReceipt.opened, true);
+  assert.equal(gridReceipt.reusedReceipt, false);
+  assert.equal(electricityReceipt.opened, false);
+  assert.equal(electricityReceipt.reusedReceipt, true);
+  assert.deepEqual(electricityReceipt.referringUrls, [
+    "https://agency.gov/grid/atlas-decision",
+    "https://agency.gov/electricity/atlas-decision",
+  ]);
+  assert.ok(electricity.openedDocuments.some((document) =>
+    document.originalUrl.startsWith("https://plain.fixture/electricity/")
+    && document.attempted === true
+    && document.opened === true));
+  assert.ok(payload.researchAudit.categories
+    .flatMap((category) => category.openedDocuments)
+    .filter((document) => document.reusedReceipt === false && document.attempted === true)
+    .every((document) => document.opened === true));
+});
+
 test("retains a late primary candidate before the bounded cap and records cap discards", () => {
   const sources = normalizeRetrievedSources({
     output: [{

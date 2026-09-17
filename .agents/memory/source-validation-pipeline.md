@@ -7,4 +7,4 @@ Provider-returned links are discovery candidates, not evidence. A source may aff
 
 **Why:** URL presence and project relevance can be accidentally conflated unless each gate is represented and enforced independently.
 
-**How to apply:** Preserve original, resolved, and canonical URLs plus duplicate lineage and rejection reasons; evaluate primary and claim-cited candidates before retention caps; keep summaries, quotations, AI interpretations, and analyst conclusions separate.
+**How to apply:** Preserve original, resolved, and canonical URLs plus duplicate lineage and rejection reasons; treat a validated provider-declared canonical URL as the shared identity for receipt reuse while keeping plain URLs as independent opportunities; evaluate primary and claim-cited candidates before retention caps; keep summaries, quotations, AI interpretations, and analyst conclusions separate.

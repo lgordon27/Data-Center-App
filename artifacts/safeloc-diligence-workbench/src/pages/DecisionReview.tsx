@@ -508,6 +508,11 @@ function SavedScenarioList({
           <div key={scenario.id} data-testid={`scenario-card-${scenario.id}`} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <div data-testid={`text-scenario-name-${scenario.id}`} className="truncate text-[12px] font-semibold text-[#122232]">{scenario.name}</div>
+              <div data-testid={`text-scenario-basis-${scenario.id}`} className="mt-1 font-mono text-[9px] uppercase tracking-[0.08em] text-[#52616b]">
+                {scenario.basis.status === "known"
+                  ? "Synthetic current-evidence primary basis"
+                  : "Legacy snapshot · primary basis not recorded"}
+              </div>
               <time dateTime={scenario.savedAt} className="mt-1 block text-[10px] text-[#7d898f]">
                 Saved {new Date(scenario.savedAt).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
               </time>

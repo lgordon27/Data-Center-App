@@ -439,7 +439,11 @@ test.describe("custom project research", () => {
     await page.getByTestId("input-custom-project-location").fill("Irving, Dallas County, Texas");
     await page.getByTestId("button-submit-custom-project").click();
     await expect(page).toHaveURL(/#analysis$/);
-    await page.goto("/#evidence");
+    await page.goto("/#analysis");
+    await page.getByTestId("tab-reality").click();
+    const evidenceReview = page.getByTestId("button-detailed-evidence");
+    if (await evidenceReview.getAttribute("aria-expanded") === "false") await evidenceReview.click();
+    await page.getByTestId("filter-evidence-all").click();
 
     const handoff = page.getByTestId("research-handoff-summary");
     await expect(handoff).toBeVisible();

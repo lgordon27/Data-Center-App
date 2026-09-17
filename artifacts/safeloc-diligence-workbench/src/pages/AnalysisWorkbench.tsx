@@ -27,7 +27,7 @@ export function AnalysisWorkbench(props: Props) {
 }
 
 function ConferenceWorkbench({ onResolveEvidence, onReset, focusSectionId }: Props) {
-  const { project, evidence, originatingCompany } = useDiligence();
+  const { project, evidence, originatingCompany, metrics, financialScenarios } = useDiligence();
   const [view, setView] = useState<View>("market");
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -66,9 +66,18 @@ function ConferenceWorkbench({ onResolveEvidence, onReset, focusSectionId }: Pro
             <h1 className="break-words text-lg font-semibold text-[#122232]">{project.name}</h1>
             <p className="break-words text-[11px] text-[#52616b]">{project.location}</p>
           </div>
-           <span data-testid="conference-research-status" className={`rounded-md px-3 py-2 text-[11px] font-semibold ${incomplete ? "bg-[#fff0d6] text-[#805000]" : "bg-[#e5eeea] text-[#365b4c]"}`}>
-             {project.researchMode === "partial-public-source" ? "Partial public-source research" : incomplete ? "Research Incomplete" : project.kind === "custom" ? "Project evidence review" : "Curated public-source demonstration"}
-          </span>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {project.kind !== "custom" && (
+              <span data-testid="conference-primary-case" className="rounded-md border border-[#aac6f4] bg-[#eef5ff] px-3 py-2 text-[11px] text-[#255bb7]">
+                <strong>Synthetic current-evidence primary:</strong>{" "}
+                {metrics.projectIRR === null ? "N/M" : `${metrics.projectIRR.toFixed(1)}% IRR`} · {metrics.recommendationStatus}
+                <span className="sr-only"> · Scenario {financialScenarios.primaryScenarioId}. Optional EIA sensitivities do not set this recommendation.</span>
+              </span>
+            )}
+            <span data-testid="conference-research-status" className={`rounded-md px-3 py-2 text-[11px] font-semibold ${incomplete ? "bg-[#fff0d6] text-[#805000]" : "bg-[#e5eeea] text-[#365b4c]"}`}>
+              {project.researchMode === "partial-public-source" ? "Partial public-source research" : incomplete ? "Research Incomplete" : project.kind === "custom" ? "Project evidence review" : "Curated public-source demonstration"}
+            </span>
+          </div>
         </div>
       </div>
 

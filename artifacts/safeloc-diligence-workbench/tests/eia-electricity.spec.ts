@@ -107,9 +107,10 @@ test.describe("EIA electricity evidence", () => {
     const liveScenario = page.getByTestId("button-opt-in-scenario");
     if (await liveScenario.count()) await liveScenario.click();
     await page.getByTestId("financial-tab-assumptions").click();
-    await expect(page.getByTestId("model-electricity-attribution")).toHaveText("Electricity cost: $44.1/MWh (embedded estimate)");
+    await expect(page.getByTestId("model-electricity-attribution")).toHaveText("Electricity cost: $42/MWh (embedded estimate)");
     await expect(page.getByTestId("scenario-synthetic-verified")).toContainText("13.3%");
-    await expect(page.getByTestId("scenario-synthetic-current")).toContainText("9.1%");
+    await expect(page.getByTestId("scenario-synthetic-current")).toContainText("10.2%");
+    await expect(page.getByTestId("scenario-synthetic-current")).toContainText("Primary recommendation");
     await expect(page.getByTestId("scenario-eia-current")).toContainText("Optional market sensitivity");
     await expect(page.getByTestId("footer-eia-attribution")).toHaveText("Electricity: U.S. Energy Information Administration Open Data");
   });

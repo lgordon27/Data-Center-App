@@ -99,8 +99,22 @@ test("keeps evidence freshness separate from classification and model mechanics"
     }
   }
 
+  const providerBefore = await page.evaluate(async () => {
+    const capture = (window as Window & {
+      __safelocCaptureReturnDiscrepancyState?: () => Promise<{ providerProvenance: { eia: unknown } }>;
+    }).__safelocCaptureReturnDiscrepancyState;
+    if (!capture) throw new Error("Return discrepancy capture hook is unavailable.");
+    return (await capture()).providerProvenance.eia;
+  });
   await page.getByTestId("select-classification-electricity_cost").selectOption("Missing Evidence");
-  await expect(page.getByTestId("evidence-source-status-electricity_cost")).toHaveText(/Live|Cached|Embedded|No validated source/);
+  const providerAfter = await page.evaluate(async () => {
+    const capture = (window as Window & {
+      __safelocCaptureReturnDiscrepancyState?: () => Promise<{ providerProvenance: { eia: unknown } }>;
+    }).__safelocCaptureReturnDiscrepancyState;
+    if (!capture) throw new Error("Return discrepancy capture hook is unavailable.");
+    return (await capture()).providerProvenance.eia;
+  });
+  expect(providerAfter).toEqual(providerBefore);
 
   await openAnalysisView(page, "transmission");
   const scenario = page.getByTestId("button-opt-in-scenario");
@@ -108,7 +122,8 @@ test("keeps evidence freshness separate from classification and model mechanics"
   await page.getByTestId("financial-tab-assumptions").click();
   await expect(page.getByTestId("model-electricity-attribution")).toContainText("Electricity cost: $");
   await expect(page.getByTestId("model-electricity-attribution")).toContainText("/MWh");
-  await expect(page.getByTestId("model-electricity-attribution")).toContainText("U.S. Energy Information Administration Open Data");
+  await expect(page.getByTestId("model-electricity-attribution")).toContainText("embedded estimate");
+  await expect(page.getByTestId("model-electricity-attribution")).not.toContainText("U.S. Energy Information Administration");
 });
 
 test("documents the three source integrations and the fallback rule in How It Works", async ({ page }) => {

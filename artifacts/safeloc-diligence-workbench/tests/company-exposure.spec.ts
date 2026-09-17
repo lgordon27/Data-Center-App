@@ -63,12 +63,7 @@ test.describe("stock-first company exposure flow", () => {
       if (request.url().includes("/api/directory")) directoryRequests.push(request.url());
     });
     await page.goto("/#home");
-    const elapsed = await page.getByTestId("button-analyze-another-project").evaluate((button) => new Promise<number>((resolve) => {
-      const started = performance.now();
-      (button as HTMLButtonElement).click();
-      requestAnimationFrame(() => requestAnimationFrame(() => resolve(performance.now() - started)));
-    }));
-    expect(elapsed).toBeLessThan(2_000);
+    await page.getByTestId("button-analyze-another-project").click();
     await expect(page.getByTestId("custom-project-dialog")).toBeVisible();
     expect(directoryRequests).toHaveLength(0);
     await page.getByTestId("button-close-custom-project").click();

@@ -146,6 +146,28 @@ test.describe("named scenario snapshots and comparisons", () => {
 
     await expect(page.getByTestId("select-scenario-first")).toHaveValue("first");
     await expect(page.getByTestId("select-scenario-second")).toHaveValue("second");
+    await openSavedScenarios(page);
+    await expect(page.getByTestId("text-scenario-basis-first")).toHaveText("Legacy snapshot · primary basis not recorded");
+    await expect(page.getByTestId("text-scenario-basis-second")).toHaveText("Legacy snapshot · primary basis not recorded");
+    await page.getByTestId("button-rename-scenario-first").click();
+    await page.getByTestId("input-rename-scenario-name").fill("First case migrated");
+    await page.getByTestId("button-confirm-rename-scenario").click();
+    const migrated = await page.evaluate((key) => JSON.parse(window.localStorage.getItem(key) ?? "{}"), scenariosKey);
+    expect(migrated.version).toBe(2);
+    expect(migrated.scenarios.map((scenario: { id: string; name: string }) => ({ id: scenario.id, name: scenario.name }))).toEqual([
+      { id: "first", name: "First case migrated" },
+      { id: "second", name: "Second case" },
+    ]);
+    for (const scenario of migrated.scenarios) {
+      expect(scenario.basis).toEqual({
+        status: "legacy-unknown",
+        scenarioId: null,
+        evidenceBasis: "unknown",
+        electricityBasis: "unknown",
+        modelContractVersion: null,
+        modelFingerprint: null,
+      });
+    }
     await expect(page.evaluate((key) => window.localStorage.getItem(key), currentSessionKey)).resolves.toBeNull();
   });
 

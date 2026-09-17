@@ -87,7 +87,7 @@ test.describe("Batch 4 corrective walkthrough coverage", () => {
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.evaluate(() => { window.location.hash = "analysis"; });
     await page.getByTestId("tab-transmission").click();
-    await expect(page.getByTestId("financial-input-state")).toContainText("synthetic current-evidence");
+    await expect(page.getByTestId("financial-input-state")).toContainText(/synthetic current-evidence/i);
     await expect(page.getByTestId("financial-input-state")).toContainText("optional EIA market sensitivity is updating");
     await expect(page.getByTestId("financial-input-state")).not.toContainText("withheld");
     await expect(page.getByTestId("impact-chain-baseline-irr")).toHaveText("13.3%");

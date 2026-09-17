@@ -130,7 +130,7 @@ test.describe("current-session recovery and reset isolation", () => {
 
     await openFinancialTransmission(page);
     await expect(page.getByTestId("materiality-classification-prompt")).toHaveCount(0);
-    await expect(page.getByTestId("live-current-irr")).toContainText("Conservative stress case IRR is now");
+    await expect(page.getByTestId("live-current-irr")).toContainText("Synthetic current-evidence primary case IRR is now");
     await page.reload();
     await openFinancialTransmission(page);
     await expect(page.getByTestId("materiality-classification-prompt")).toHaveCount(0);
@@ -299,7 +299,7 @@ test.describe("current-session recovery and reset isolation", () => {
     expect(record.release.identity).toMatchObject({
       assets: expect.arrayContaining([
         expect.objectContaining({
-          file: expect.stringMatching(/^assets\\/.+\\.(?:js|css)$/),
+          file: expect.stringMatching(/^assets\/.+\.(?:js|css)$/),
           hash: expect.stringMatching(/^sha256-[0-9a-f]{64}$/),
         }),
       ]),

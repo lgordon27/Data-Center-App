@@ -142,12 +142,16 @@ test.describe("analysis conference", () => {
   });
 
   test("delivers a one-page Advisor Brief with three manager questions and one action", async ({ page, viewport }) => {
+    await expect(page.getByTestId("conference-primary-case")).toContainText("9.1% IRR");
+    await expect(page.getByTestId("conference-primary-case")).toContainText("Synthetic current-evidence primary");
     await page.getByTestId("tab-advisor").click();
     const brief = page.getByTestId("conference-view-advisor");
     await expect(brief).toContainText("Advisor Brief");
 
     await expect(exactTestIdPrefix(brief, "advisor-manager-question-")).toHaveCount(3);
     await expect(brief.getByTestId("advisor-recommended-action")).toHaveCount(1);
+    await expect(brief.getByTestId("advisor-primary-case")).toContainText("9.1% IRR");
+    await expect(brief.getByTestId("advisor-primary-case")).toContainText("optional EIA sensitivities");
     await expect(brief).not.toContainText(/\b(?:HIGH|MODERATE|LOW)\b/);
 
     if (viewport?.width === 1440) {

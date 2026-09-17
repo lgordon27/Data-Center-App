@@ -8,6 +8,7 @@ import { handleResearchProjectRequest } from "./researchProjectProxy.mjs";
 import { handleDirectoryRequest, handleDirectoryStatsRequest } from "./computeAtlasProxy.mjs";
 import { handleReleaseDocumentRequest, handleVersionRequest } from "./version.mjs";
 import { handleProjectResearchRegistryRequest } from "./projectResearchRegistry.mjs";
+import { handleDossiersRequest, handleDossierRequest } from "./dossierApi.js";
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
 const artifactDir = path.resolve(serverDir, "..");
@@ -49,6 +50,8 @@ export async function createApp(): Promise<Express> {
   app.disable("x-powered-by");
   app.use(express.json());
   app.get("/api/version", handleVersionRequest);
+  app.get("/api/dossiers", handleDossiersRequest);
+  app.get("/api/dossiers/:slug", handleDossierRequest);
   app.get("/api/project-research", async (request: Request, response: Response) => {
     await handleProjectResearchRegistryRequest(request, response);
   });

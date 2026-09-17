@@ -8,6 +8,11 @@ import { FinancialTransmission } from "@/components/conference/FinancialTransmis
 import { AdvisorBrief } from "@/components/conference/AdvisorBrief";
 import { isConferenceResearchIncomplete } from "@/model/conferenceEvidence";
 import { ResearchTelemetryStatus } from "@/components/ResearchHandoffSummary";
+import {
+  getCanonicalDossier,
+  listCanonicalDossiers,
+  type CanonicalDossierSummary,
+} from "@/services/canonicalDossierService";
 
 const VIEWS = ["market", "reality", "transmission", "advisor"] as const;
 type View = typeof VIEWS[number];
@@ -28,9 +33,12 @@ export function AnalysisWorkbench(props: Props) {
 }
 
 function ConferenceWorkbench({ onResolveEvidence, onReset, focusSectionId }: Props) {
-  const { project, evidence, originatingCompany, metrics, financialScenarios } = useDiligence();
+  const diligence = useDiligence();
+  const { project, evidence, originatingCompany, metrics, financialScenarios } = diligence;
   const [view, setView] = useState<View>("market");
   const [evidenceOpen, setEvidenceOpen] = useState(false);
+  const [dossiers, setDossiers] = useState<CanonicalDossierSummary[]>([]);
+  const [dossierLoadState, setDossierLoadState] = useState<"idle" | "loading" | "error">("idle");
   const contentRef = useRef<HTMLDivElement>(null);
   const incomplete = isConferenceResearchIncomplete(project, evidence);
   const index = VIEWS.indexOf(view);
@@ -48,6 +56,32 @@ function ConferenceWorkbench({ onResolveEvidence, onReset, focusSectionId }: Pro
       if (focusSectionId === "analysis-evidence") setEvidenceOpen(true);
     }
   }, [focusSectionId]);
+
+  useEffect(() => {
+    let active = true;
+    void listCanonicalDossiers()
+      .then((records) => {
+        if (active) setDossiers(records);
+      })
+      .catch(() => {
+        if (active) setDossierLoadState("error");
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const selectDossier = async (slug: string) => {
+    if (!slug) return;
+    setDossierLoadState("loading");
+    try {
+      diligence.loadCanonicalDossier(await getCanonicalDossier(slug));
+      setDossierLoadState("idle");
+      setView("market");
+    } catch {
+      setDossierLoadState("error");
+    }
+  };
 
   const handleNavigate = (screen: string) => {
     if (screen === "evidence") {
@@ -88,6 +122,30 @@ function ConferenceWorkbench({ onResolveEvidence, onReset, focusSectionId }: Pro
               coverage={project.researchCoverage}
               researchCache={project.researchCache}
             />
+          </div>
+        )}
+        {dossiers.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#d9e0e4] pt-3">
+            <label htmlFor="canonical-dossier-select" className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#60707d]">
+              Canonical dossier
+            </label>
+            <select
+              id="canonical-dossier-select"
+              data-testid="canonical-dossier-select"
+              value={project.canonicalDossier?.slug ?? ""}
+              disabled={dossierLoadState === "loading"}
+              onChange={(event) => void selectDossier(event.target.value)}
+              className="min-h-9 rounded-md border border-[#cbd8d4] bg-white px-3 text-xs text-[#122232]"
+            >
+              <option value="">Select a PostgreSQL-backed dossier</option>
+              {dossiers.map((dossier) => <option key={dossier.slug} value={dossier.slug}>{dossier.name}</option>)}
+            </select>
+            {project.canonicalDossier && (
+              <span data-testid="canonical-dossier-version" className="text-[10px] text-[#60707d]">
+                v{project.canonicalDossier.version} · evidence as of {project.canonicalDossier.asOfDate ?? "unavailable"}
+              </span>
+            )}
+            {dossierLoadState === "error" && <span role="alert" className="text-[10px] text-[#ba2f45]">Canonical dossier store unavailable.</span>}
           </div>
         )}
       </div>

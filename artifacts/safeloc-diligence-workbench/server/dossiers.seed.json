@@ -1,0 +1,335 @@
+[
+  {
+    "slug": "stargate-abilene",
+    "name": "Stargate Abilene",
+    "version": "1",
+    "coverageState": "material-gaps",
+    "asOfDate": "2025-09-30",
+    "canonicalData": {
+      "identity": {
+        "location": "Abilene, Taylor County, Texas",
+        "operator": "Crusoe",
+        "scope": "Operating core campus, planned eight-building campus, and proposed or cancelled expansion remain separately scoped.",
+        "capacityMW": 1200,
+        "capacityProvenance": "Lancium-reported contracted campus power; not combined with expansion capacity."
+      },
+      "originatingCompany": "Oracle",
+      "relationshipType": "Sourced Indirect Role",
+      "phases": [
+        {"name": "Core campus first phase", "status": "operating", "scope": "First two buildings energized; early training and inference workloads reported."},
+        {"name": "Planned eight-building campus", "status": "planned", "scope": "Completion target remains a forward-looking company assertion."},
+        {"name": "Expansion", "status": "separate-unresolved", "scope": "Capacity, economics, and evidence are not combined with the operating core."}
+      ],
+      "relationships": [
+        {"organization": "Crusoe", "type": "developer/operator", "confidence": "supported", "scope": "Abilene campus"},
+        {"organization": "Oracle", "type": "cloud-infrastructure/customer context", "confidence": "supported", "scope": "OCI and disclosed long-term collaboration; contract economics unquantified"},
+        {"organization": "NVIDIA", "type": "equipment supplier", "confidence": "supported", "scope": "GB200 rack delivery; no ownership or issuer materiality implied"},
+        {"organization": "OpenAI", "type": "Stargate workload/program participant", "confidence": "supported", "scope": "Operating flagship campus"}
+      ],
+      "evidence": [
+        {
+          "variableId": "permitting_timeline",
+          "label": "Core Campus Phase",
+          "value": "First phase operating; eight-building campus planned",
+          "unit": "Dated company status",
+          "classification": "Management Assertion",
+          "claim": "The first phase is operating and the campus is planned for eight buildings.",
+          "description": "Core operation and planned completion are separate scopes. Expansion is excluded.",
+          "coverageStatus": "supported",
+          "scope": "Core first phase and planned eight-building campus only",
+          "source": {
+            "title": "Crusoe announces flagship Abilene data center is live",
+            "url": "https://www.crusoe.ai/resources/newsroom/crusoe-announces-flagship-abilene-data-center-is-live",
+            "publisher": "Crusoe",
+            "publishedAt": "2025-09-30",
+            "accessedAt": "2026-09-17",
+            "exactPassage": "The first phase of Stargate’s flagship data center campus in Abilene, Texas, is now up and running on Oracle Cloud Infrastructure (OCI). At completion, the planned eight building campus will be able to support hundreds of thousands of GPUs."
+          }
+        },
+        {
+          "variableId": "customer_concentration",
+          "label": "Oracle Infrastructure Relationship",
+          "value": "Long-term OCI collaboration; economics not disclosed",
+          "unit": "Relationship",
+          "classification": "Management Assertion",
+          "claim": "Crusoe describes the campus as part of a long-term collaboration with Oracle.",
+          "description": "This supports relationship context, not ownership, lease economics, issuer return, or portfolio materiality.",
+          "coverageStatus": "partial",
+          "scope": "Operating Abilene campus",
+          "source": {
+            "title": "Crusoe announces flagship Abilene data center is live",
+            "url": "https://www.crusoe.ai/resources/newsroom/crusoe-announces-flagship-abilene-data-center-is-live",
+            "publisher": "Crusoe",
+            "publishedAt": "2025-09-30",
+            "accessedAt": "2026-09-17",
+            "exactPassage": "The Abilene campus is part of a long-term collaboration with Oracle."
+          }
+        },
+        {
+          "variableId": "water_rights",
+          "label": "Facility Water Rights and Allocation",
+          "value": "Not established",
+          "unit": "Facility",
+          "classification": "Missing Evidence",
+          "claim": "No retained source establishes facility-level water rights or allocation.",
+          "description": "Water remains an explicit decision gap.",
+          "coverageStatus": "searched-no-support",
+          "scope": "Operating core campus",
+          "source": {
+            "title": "Reviewed Stargate Abilene source set",
+            "url": "https://www.crusoe.ai/resources/newsroom/crusoe-announces-flagship-abilene-data-center-is-live",
+            "publisher": "SafeLoc source review",
+            "publishedAt": "2025-09-30",
+            "accessedAt": "2026-09-17",
+            "exactPassage": "The reviewed exact-campus announcement describes liquid and air cooling but does not disclose facility-level water rights or allocation."
+          }
+        }
+      ],
+      "materiality": {"project": "Directional", "issuer": "Exposure established but financial materiality unquantified", "portfolio": "Not assessed"},
+      "questions": ["Which phase is operating and contracted today?", "What power, water, and community commitments apply to each phase?", "What dated holding data supports issuer or portfolio transmission?"],
+      "triggers": ["New dated phase announcement", "Power or water permit", "Issuer disclosure or holding-data change"]
+    }
+  },
+  {
+    "slug": "project-kilby",
+    "name": "Project Kilby",
+    "version": "1",
+    "coverageState": "material-gaps",
+    "asOfDate": "2026-06-22",
+    "canonicalData": {
+      "identity": {
+        "location": "Reeves County, West Texas",
+        "operator": "Microsoft",
+        "scope": "Project Kilby co-located power facility and Microsoft-operated datacenter development; no separate datacenter address, parcel, capex, or facility specification is asserted.",
+        "capacityMW": 2670,
+        "capacityProvenance": "Chevron forward-looking project capacity assertion."
+      },
+      "originatingCompany": "Microsoft",
+      "relationshipType": "Developer/Operator",
+      "relationships": [
+        {"organization": "Microsoft", "type": "datacenter operator and 20-year power offtaker", "confidence": "supported", "scope": "Co-located Reeves County development"},
+        {"organization": "Chevron", "type": "developer/ownership context", "confidence": "conflicting", "scope": "Energy Forge One; Chevron calls it wholly owned"},
+        {"organization": "Joulent", "type": "joint-venture counterparty", "confidence": "conflicting", "scope": "Energy Forge One; Kilby.com calls it a 50/50 Chevron/Joulent joint venture"}
+      ],
+      "evidence": [
+        {
+          "variableId": "customer_concentration",
+          "label": "Microsoft Power Agreement",
+          "value": "20-year PPA for a Microsoft-operated datacenter",
+          "unit": "Contract relationship",
+          "classification": "Management Assertion",
+          "claim": "Chevron reports a 20-year agreement to provide dedicated electricity to a Microsoft-operated datacenter.",
+          "description": "The direct relationship is supported; PPA pricing and issuer financial transmission are not disclosed.",
+          "coverageStatus": "conflicting",
+          "conflictSummary": "The same dated project materials conflict on whether Energy Forge One is wholly owned by Chevron or a 50/50 Chevron/Joulent joint venture. Neither description is normalized away.",
+          "scope": "Project Kilby co-located development",
+          "source": {
+            "title": "Chevron Signs 20-Year Power Agreement with Microsoft for West Texas Data Center",
+            "url": "https://chevroncorp.gcs-web.com/news-releases/news-release-details/chevron-signs-20-year-power-agreement-microsoft-west-texas-data",
+            "publisher": "Chevron",
+            "publishedAt": "2026-06-22",
+            "accessedAt": "2026-09-17",
+            "exactPassage": "Energy Forge One LLC, a wholly owned subsidiary, has signed an agreement with Microsoft Corp. to develop a co-located power facility in West Texas that will provide dedicated electricity to a Microsoft-operated data center under a 20-year power purchase agreement."
+          }
+        },
+        {
+          "variableId": "grid_interconnection",
+          "label": "Planned Dedicated Power Capacity",
+          "value": "Approximately 2.67 GW through phased modular development",
+          "unit": "Forward-looking project assertion",
+          "classification": "Management Assertion",
+          "claim": "Chevron expects Kilby to deliver approximately 2.67 GW through phased modular development.",
+          "description": "This is not an observed operating capacity or a SafeLoc-calculated result.",
+          "coverageStatus": "supported",
+          "scope": "Planned power facility",
+          "source": {
+            "title": "Chevron Signs 20-Year Power Agreement with Microsoft for West Texas Data Center",
+            "url": "https://chevroncorp.gcs-web.com/news-releases/news-release-details/chevron-signs-20-year-power-agreement-microsoft-west-texas-data",
+            "publisher": "Chevron",
+            "publishedAt": "2026-06-22",
+            "accessedAt": "2026-09-17",
+            "exactPassage": "Kilby is expected to deliver approximately 2.67 gigawatts of capacity, built through a phased, modular approach that enables incremental expansion over time."
+          }
+        },
+        {
+          "variableId": "permitting_timeline",
+          "label": "FID and First-Power Targets",
+          "value": "FID expected by end-2026; first power anticipated in 2028",
+          "unit": "Forward-looking project assertion",
+          "classification": "Management Assertion",
+          "claim": "Chevron reports conditional FID and first-power targets.",
+          "description": "These dates are issuer projections, not verified outcomes.",
+          "coverageStatus": "supported",
+          "scope": "Planned development",
+          "source": {
+            "title": "Chevron Signs 20-Year Power Agreement with Microsoft for West Texas Data Center",
+            "url": "https://chevroncorp.gcs-web.com/news-releases/news-release-details/chevron-signs-20-year-power-agreement-microsoft-west-texas-data",
+            "publisher": "Chevron",
+            "publishedAt": "2026-06-22",
+            "accessedAt": "2026-09-17",
+            "exactPassage": "Final Investment Decision (FID) is expected by the end of 2026, subject to the completion of other necessary conditions. First power delivery is anticipated in 2028."
+          }
+        },
+        {
+          "variableId": "water_source_resilience",
+          "label": "Planned Water Source",
+          "value": "Non-potable brackish groundwater; produced-water reuse under review",
+          "unit": "Forward-looking project assertion",
+          "classification": "Management Assertion",
+          "claim": "Chevron describes planned non-potable water sourcing and possible produced-water reuse.",
+          "description": "The source does not establish permits, availability, observed use, or verified outcomes.",
+          "coverageStatus": "partial",
+          "scope": "Power-plant operations",
+          "source": {
+            "title": "Chevron Signs 20-Year Power Agreement with Microsoft for West Texas Data Center",
+            "url": "https://chevroncorp.gcs-web.com/news-releases/news-release-details/chevron-signs-20-year-power-agreement-microsoft-west-texas-data",
+            "publisher": "Chevron",
+            "publishedAt": "2026-06-22",
+            "accessedAt": "2026-09-17",
+            "exactPassage": "In lieu of freshwater, Kilby plans to use non-potable, brackish groundwater sources for power plant operations. Chevron is also working to advance solutions for reuse of produced water."
+          }
+        },
+        {
+          "variableId": "community_risk",
+          "label": "Projected Community Benefits",
+          "value": "Projected jobs and tax benefits; outcomes not verified",
+          "unit": "Forward-looking project assertion",
+          "classification": "Management Assertion",
+          "claim": "Chevron projects jobs and state and local tax revenue.",
+          "description": "Jobs, taxes, noise, light, and emissions statements remain forward-looking issuer assertions.",
+          "coverageStatus": "partial",
+          "scope": "Reeves County and regional economy",
+          "source": {
+            "title": "Chevron Signs 20-Year Power Agreement with Microsoft for West Texas Data Center",
+            "url": "https://chevroncorp.gcs-web.com/news-releases/news-release-details/chevron-signs-20-year-power-agreement-microsoft-west-texas-data",
+            "publisher": "Chevron",
+            "publishedAt": "2026-06-22",
+            "accessedAt": "2026-09-17",
+            "exactPassage": "Kilby is expected to generate significant economic benefits for the region, including more than $10 billion in state and local tax revenue, support almost 2,000 jobs, and drive broader economic growth."
+          }
+        }
+      ],
+      "ownershipConflict": [
+        {
+          "claim": "Energy Forge One is a wholly owned Chevron subsidiary.",
+          "attributedTo": "Chevron",
+          "publishedAt": "2026-06-22",
+          "sourceUrl": "https://chevroncorp.gcs-web.com/news-releases/news-release-details/chevron-signs-20-year-power-agreement-microsoft-west-texas-data"
+        },
+        {
+          "claim": "Energy Forge One is a 50/50 Chevron and Joulent joint venture.",
+          "attributedTo": "Kilby.com",
+          "publishedAt": "2026-06-22",
+          "sourceUrl": "https://kilby.com/project/"
+        }
+      ],
+      "forwardLookingAssertions": ["Mid-teen project return target", "FID expected by end-2026", "First power anticipated in 2028", "Approximately 2.67 GW", "Jobs and tax projections", "Brackish-groundwater and produced-water plans"],
+      "materiality": {"project": "Directional", "issuer": "Exposure established but financial materiality unquantified", "portfolio": "Not assessed"},
+      "questions": ["Which ownership description governs Energy Forge One and as of what date?", "Which FID, permitting, PPA, water, and construction conditions remain outstanding?", "How would Kilby affect Chevron or Microsoft financial results rather than only project economics?"],
+      "triggers": ["FID or first-power disclosure", "Ownership clarification", "Dated facility, power, water, or community filing"]
+    }
+  },
+  {
+    "slug": "microsoft-el-mirage",
+    "name": "Microsoft El Mirage datacenter campus",
+    "version": "1",
+    "coverageState": "material-gaps",
+    "asOfDate": "2019-07-30",
+    "canonicalData": {
+      "identity": {
+        "location": "CenterPoint Logistics Park, southern El Mirage, Maricopa County, Arizona",
+        "operator": "Microsoft",
+        "scope": "2019 announced/building campus boundary of approximately 150 acres and 254,000 square feet. No current operational, completed, or expanded status is asserted.",
+        "capacityProvenance": "No exact-campus electrical capacity established."
+      },
+      "originatingCompany": "Microsoft",
+      "relationshipType": "Developer/Operator",
+      "relationships": [
+        {"organization": "Microsoft", "type": "developer/operator", "confidence": "supported", "scope": "2019 announced El Mirage campus"},
+        {"organization": "City of El Mirage", "type": "municipal host", "confidence": "supported", "scope": "CenterPoint Logistics Park announcement"}
+      ],
+      "evidence": [
+        {
+          "variableId": "permitting_timeline",
+          "label": "Announced Campus Boundary",
+          "value": "Approximately 254,000 square feet on 150 acres",
+          "unit": "2019 announced/building scope",
+          "classification": "Management Assertion",
+          "claim": "The 2019 municipal announcement identifies a Microsoft campus at CenterPoint Logistics Park.",
+          "description": "The passage supports announced/building scope only, not current operating, completion, or expansion status.",
+          "coverageStatus": "supported",
+          "scope": "2019 announced El Mirage campus",
+          "source": {
+            "title": "Microsoft Builds World-Class Datacenter Campus in Goodyear",
+            "url": "https://www.goodyearaz.gov/Home/Components/News/News/9847/32?arch=1",
+            "publisher": "City of Goodyear, quoting the City of El Mirage",
+            "publishedAt": "2019-07-30",
+            "accessedAt": "2026-09-17",
+            "exactPassage": "Microsoft is building a 254,000 SF world-class, sustainable datacenter campus on 150 acres in southern El Mirage."
+          }
+        },
+        {
+          "variableId": "renewable_percentage",
+          "label": "Arizona Renewable-Energy Context",
+          "value": "Regional commitment; not allocated to El Mirage",
+          "unit": "Regional context",
+          "classification": "Management Assertion",
+          "claim": "Microsoft announced renewable-energy plans for three Arizona campuses.",
+          "description": "The regional statement is not an exact-campus delivered-energy percentage.",
+          "coverageStatus": "partial",
+          "scope": "Arizona regional context only",
+          "source": {
+            "title": "Microsoft Builds World-Class Datacenter Campus in Goodyear",
+            "url": "https://www.goodyearaz.gov/Home/Components/News/News/9847/32?arch=1",
+            "publisher": "City of Goodyear",
+            "publishedAt": "2019-07-30",
+            "accessedAt": "2026-09-17",
+            "exactPassage": "Microsoft intends to develop the datacenter campuses in El Mirage and Goodyear, Arizona to be among the most sustainably designed and operated in the world – powered with 100% renewable energy."
+          }
+        },
+        {
+          "variableId": "water_consumption",
+          "label": "Exact-Campus Water Use",
+          "value": "Not established",
+          "unit": "El Mirage campus",
+          "classification": "Missing Evidence",
+          "claim": "Reviewed regional materials do not allocate water use to the El Mirage campus.",
+          "description": "Arizona regional water figures remain regional and cannot be assigned to El Mirage.",
+          "coverageStatus": "searched-no-support",
+          "scope": "Exact El Mirage campus",
+          "source": {
+            "title": "Microsoft datacenters in Arizona",
+            "url": "https://local.microsoft.com/wp-content/uploads/2025/10/Microsoft-datacenters-in-Arizona.pdf",
+            "publisher": "Microsoft",
+            "publishedAt": "2025-10-01",
+            "accessedAt": "2026-09-17",
+            "exactPassage": "Microsoft reports regional Arizona water and cooling practices; the publication does not allocate an exact-campus water total to El Mirage."
+          }
+        },
+        {
+          "variableId": "community_risk",
+          "label": "Arizona Jobs and Community Context",
+          "value": "Regional figures; not allocated to El Mirage",
+          "unit": "Regional context",
+          "classification": "Management Assertion",
+          "claim": "Initial announcements provide Arizona-wide jobs and economic-impact projections.",
+          "description": "No regional figure is attributed entirely to El Mirage.",
+          "coverageStatus": "partial",
+          "scope": "Arizona regional context only",
+          "source": {
+            "title": "Microsoft Builds World-Class Datacenter Campus in Goodyear",
+            "url": "https://www.goodyearaz.gov/Home/Components/News/News/9847/32?arch=1",
+            "publisher": "City of Goodyear",
+            "publishedAt": "2019-07-30",
+            "accessedAt": "2026-09-17",
+            "exactPassage": "Microsoft expected more than 100 permanent jobs and more than 1,000 construction jobs across the initial Arizona campuses."
+          }
+        }
+      ],
+      "regionalOnlyClaims": ["Arizona jobs", "Arizona water and cooling practices", "Arizona renewable-energy commitments", "Arizona community investments"],
+      "materiality": {"project": "Directional", "issuer": "Exposure established but financial materiality unquantified", "portfolio": "Not assessed"},
+      "questions": ["What dated exact-campus evidence establishes current phase status?", "What power, water, and community commitments are allocated to El Mirage?", "What dated holding data supports issuer or portfolio transmission?"],
+      "triggers": ["Exact-campus construction or operating filing", "Power or water permit", "Issuer disclosure or holding-data change"]
+    }
+  }
+]

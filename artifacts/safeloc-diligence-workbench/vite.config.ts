@@ -11,6 +11,7 @@ import { handleAnalyzeEvidenceRequest } from './server/aiEvidenceProxy.mjs';
 import { handleResearchProjectRequest } from './server/researchProjectProxy.mjs';
 import { handleDirectoryRequest, handleDirectoryStatsRequest } from './server/computeAtlasProxy.mjs';
 import { handleVersionRequest } from './server/version.mjs';
+import { handleDossiersRequest, handleDossierRequest } from './server/dossierApi';
 
 const rawPort = process.env.PORT;
 
@@ -134,6 +135,24 @@ function versionApiPlugin(): Plugin {
   };
 }
 
+function dossiersApiPlugin(): Plugin {
+  return {
+    name: 'safeloc-canonical-dossiers-api',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        const pathname = new URL(req.url ?? '/', 'http://127.0.0.1').pathname;
+        if (pathname === '/api/dossiers') return handleDossiersRequest(req as never, res as never);
+        const match = pathname.match(/^\/api\/dossiers\/([^/]+)$/);
+        if (match) {
+          (req as typeof req & { params?: Record<string, string> }).params = { slug: decodeURIComponent(match[1]) };
+          return handleDossierRequest(req as never, res as never);
+        }
+        next();
+      });
+    },
+  };
+}
+
 export default defineConfig({
   base: basePath,
   plugins: [
@@ -143,6 +162,7 @@ export default defineConfig({
     researchProjectApiPlugin(),
     directoryApiPlugin(),
     versionApiPlugin(),
+    dossiersApiPlugin(),
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),

@@ -1,14 +1,18 @@
 import { useDiligence } from "@/context/DiligenceContext";
-import { generateAdvisorBrief } from "@/model/conferencePresentation";
+import { generateAdvisorBrief, generateAssetManagerBrief } from "@/model/conferencePresentation";
 import { Lightbulb, Info, HelpCircle, AlertCircle, ArrowRight } from "lucide-react";
 
 export function AdvisorBrief() {
   const diligence = useDiligence();
   const brief = generateAdvisorBrief(diligence);
+  const assetManagerBrief = generateAssetManagerBrief(diligence);
 
   return (
     <div data-testid="conference-view-advisor" className="space-y-4">
-      <div><p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#607500]">04 / Turn evidence into a useful conversation</p><h2 className="mt-2 text-2xl font-semibold tracking-tight">Advisor Brief</h2></div>
+      <div><p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#607500]">04 / Turn evidence into audience outputs</p><h2 className="mt-2 text-2xl font-semibold tracking-tight">Advisor Brief</h2><p className="mt-1 text-xs text-[#52616b]">Evidence as of {brief.evidenceAsOf ? new Date(brief.evidenceAsOf).toLocaleDateString() : "date unavailable"}</p></div>
+      <div data-testid="financial-advisor-coverage" className="rounded-lg border border-[#aac6f4] bg-[#eef5ff] px-4 py-3 text-xs text-[#122232]">
+        <strong>{brief.coverageLabel}</strong> · No buy/sell recommendation. Project sensitivity is not an issuer, fund, or portfolio return.
+      </div>
       <div data-testid="advisor-gap-summary" className="grid gap-2 sm:grid-cols-2">
         <div className="rounded-lg border border-[#e3d4b6] bg-[#fffbf2] px-4 py-3 text-xs text-[#805000]"><strong className="font-semibold">Unresolved decision gates:</strong> {brief.gapSummary.unresolvedDecisionGates}</div>
         <div className="rounded-lg border border-[#f5ddd5] bg-[#fff3f4] px-4 py-3 text-xs text-[#7f2635]"><strong className="font-semibold">Unresolved financial drivers:</strong> {brief.gapSummary.unresolvedFinancialDrivers}</div>
@@ -96,6 +100,30 @@ export function AdvisorBrief() {
           </ul>
         </div>
       </div>
+
+      <section data-testid="asset-manager-brief" className="space-y-4 rounded-xl border border-[#d9e0e4] bg-[#f7f8f5] p-4 shadow-sm">
+        <div>
+          <p className="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#607500]">Asset Manager brief</p>
+          <h3 className="mt-1 text-lg font-semibold text-[#122232]">{assetManagerBrief.title} · evidence and materiality review</h3>
+          <p className="mt-1 text-xs text-[#52616b]">Evidence as of {assetManagerBrief.evidenceAsOf ? new Date(assetManagerBrief.evidenceAsOf).toLocaleDateString() : "date unavailable"} · No automatic portfolio conclusion.</p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-lg bg-white p-3 text-xs"><strong className="block text-[#122232]">Issuer / project</strong>{assetManagerBrief.relationship.type} · {assetManagerBrief.relationship.confidence}</div>
+          <div className="rounded-lg bg-white p-3 text-xs"><strong className="block text-[#122232]">Issuer materiality</strong>{assetManagerBrief.issuerMateriality}</div>
+          <div className="rounded-lg bg-white p-3 text-xs"><strong className="block text-[#122232]">Portfolio materiality</strong>{assetManagerBrief.portfolioMateriality}</div>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="rounded-lg bg-white p-3 text-xs">
+            <strong className="block mb-2 text-[#122232]">Open disclosure requests</strong>
+            <ul className="space-y-2 text-[#52616b]">{assetManagerBrief.disclosureRequests.map((item) => <li key={item}>• {item}</li>)}</ul>
+          </div>
+          <div className="rounded-lg bg-white p-3 text-xs">
+            <strong className="block mb-2 text-[#122232]">Engagement questions</strong>
+            <ol className="space-y-2 text-[#52616b]">{assetManagerBrief.engagementQuestions.map((item, index) => <li key={item}>{index + 1}. {item}</li>)}</ol>
+          </div>
+        </div>
+        <p className="text-xs text-[#52616b]"><strong>Financial boundary:</strong> {assetManagerBrief.projectMateriality.boundary}</p>
+      </section>
     </div>
   );
 }

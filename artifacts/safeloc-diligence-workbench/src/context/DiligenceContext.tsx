@@ -83,6 +83,8 @@ import {
   type ReturnCaptureReleaseIdentity,
   type SanitizedReturnDiscrepancyRecord,
 } from "@/diagnostics/returnDiscrepancyCapture";
+import type { CanonicalDossierSummary } from "@/services/canonicalDossierService";
+import { dossierToResearchResponse } from "@/services/canonicalDossierService";
 export type { Classification } from '@/model/cashFlowEngine';
 
 declare global {
@@ -290,6 +292,16 @@ export type ProjectContext = Omit<CustomResearchResponse["projectSummary"], "cap
   retrievedLeadCount?: number;
   quarantineReasons?: string[];
   kind: "curated" | "custom";
+  canonicalDossier?: {
+    slug: string;
+    version: string;
+    asOfDate: string | null;
+    coverageState: string;
+    materiality: CanonicalDossierSummary["canonicalData"]["materiality"];
+    relationships: CanonicalDossierSummary["canonicalData"]["relationships"];
+    questions: string[];
+    triggers: string[];
+  };
 };
 type DiligenceState = {
   evidence: Record<string, EvidenceItem>;
@@ -320,6 +332,7 @@ type DiligenceState = {
   setOriginatingCompany: (originatingCompany: CompanyKey | null) => void;
   setProjectSelection: (selection: ProjectSelectionContext | null) => void;
   loadCustomProject: (research: CustomResearchResponse, originatingCompany?: string | null, projectSelection?: ProjectSelectionContext | null) => void;
+  loadCanonicalDossier: (dossier: CanonicalDossierSummary) => void;
   project: ProjectContext;
   originatingCompany: string | null;
   selectedProjectContext: ProjectSelectionContext | null;
@@ -1017,6 +1030,39 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     ));
   }, []);
 
+  const loadCanonicalDossier = useCallback((dossier: CanonicalDossierSummary) => {
+    const company = parseOriginatingCompany(dossier.canonicalData.originatingCompany);
+    const research = dossierToResearchResponse(dossier);
+    const selection: ProjectSelectionContext | null = company ? {
+      company,
+      projectId: dossier.slug,
+      projectName: dossier.name,
+      operator: dossier.canonicalData.identity.operator,
+      location: dossier.canonicalData.identity.location,
+      capacityMW: dossier.canonicalData.identity.capacityMW ?? null,
+      status: "Canonical dossier",
+      relationshipType: dossier.canonicalData.relationshipType as ProjectSelectionContext["relationshipType"],
+      evidenceState: "Source-backed",
+      kind: "curated",
+      sourceUrl: dossier.canonicalData.evidence[0]?.source.url ?? null,
+      providerId: dossier.slug,
+    } : null;
+    loadCustomProject(research, company, selection);
+    setProject((current) => ({
+      ...current,
+      canonicalDossier: {
+        slug: dossier.slug,
+        version: dossier.version,
+        asOfDate: dossier.asOfDate,
+        coverageState: dossier.coverageState,
+        materiality: dossier.canonicalData.materiality,
+        relationships: dossier.canonicalData.relationships,
+        questions: dossier.canonicalData.questions,
+        triggers: dossier.canonicalData.triggers,
+      },
+    }));
+  }, [loadCustomProject]);
+
   const saveScenario = (name: string): SaveScenarioResult => {
     const trimmedName = name.trim();
     if (!trimmedName) return { ok: false, reason: 'empty-name' };
@@ -1209,7 +1255,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   const communityUnresolvedCount = countUnresolvedCommunityTerms(communityReview.terms);
 
   return (
-    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, researchEvidence: project.kind === "custom" ? state.evidence : effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, applyEvidenceCorrection, applyResearchProposalOverride, persistResearchReview, clearLastChange, metrics, financialInputState, financialScenarios, resetToDefault, setOriginatingCompany, setProjectSelection, loadCustomProject, project, originatingCompany, selectedProjectContext, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading, downloadReturnDiscrepancyRecord, communityReview, communityUnresolvedCount, reviewCommunityTerm }}>
+    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, researchEvidence: project.kind === "custom" ? state.evidence : effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, applyEvidenceCorrection, applyResearchProposalOverride, persistResearchReview, clearLastChange, metrics, financialInputState, financialScenarios, resetToDefault, setOriginatingCompany, setProjectSelection, loadCustomProject, loadCanonicalDossier, project, originatingCompany, selectedProjectContext, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading, downloadReturnDiscrepancyRecord, communityReview, communityUnresolvedCount, reviewCommunityTerm }}>
       {children}
     </DiligenceContext.Provider>
   );

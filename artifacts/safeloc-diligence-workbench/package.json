@@ -9,8 +9,10 @@
     "start": "NODE_ENV=production tsx server/index.ts",
     "serve": "NODE_ENV=production tsx server/index.ts",
     "research:acceptance": "node server/researchProjectAcceptance.mjs",
+    "dossiers:import": "node server/dossierOperator.mjs import --confirm-canonical-write",
+    "dossiers:export": "node server/dossierOperator.mjs export",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "RESEARCH_CACHE_DIR=$(mktemp -d) tsx --test src/model/*.test.ts src/data/*.test.ts src/services/*.test.ts server/ercotProxy.test.mjs server/eiaProxy.test.mjs server/aiEvidenceProxy.test.mjs server/researchProjectProxy.test.mjs server/researchDocumentExtraction.test.mjs server/officialSourceDiscovery.test.mjs server/secConnector.test.mjs server/projectResearchRegistry.test.mjs server/researchProjectAcceptance.test.mjs server/computeAtlasProxy.test.mjs",
+    "test": "RESEARCH_CACHE_DIR=$(mktemp -d) tsx --test src/model/*.test.ts src/data/*.test.ts src/services/*.test.ts server/dossierApi.test.ts server/ercotProxy.test.mjs server/eiaProxy.test.mjs server/aiEvidenceProxy.test.mjs server/researchProjectProxy.test.mjs server/researchDocumentExtraction.test.mjs server/officialSourceDiscovery.test.mjs server/secConnector.test.mjs server/projectResearchRegistry.test.mjs server/researchProjectAcceptance.test.mjs server/computeAtlasProxy.test.mjs",
     "test:production": "tsx --test server/production.test.ts",
     "test:e2e": "playwright test --config playwright.config.ts"
   },
@@ -62,6 +64,9 @@
   },
   "dependencies": {
     "@types/express": "^5.0.6",
-    "express": "^5.2.1"
+    "@types/pg": "^8.15.5",
+    "express": "^5.2.1",
+    "drizzle-orm": "^0.44.7",
+    "pg": "^8.16.3"
   }
 }

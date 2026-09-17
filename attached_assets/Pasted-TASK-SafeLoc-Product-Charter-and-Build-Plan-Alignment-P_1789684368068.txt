@@ -1,0 +1,762 @@
+TASK: SafeLoc Product Charter and Build-Plan Alignment
+
+PURPOSE
+
+Before implementing additional features, review the current SafeLoc Diligence Workbench against the complete product direction below.
+
+This is a product-alignment and architecture-planning task. Do not modify production code, tests, schemas, configuration, documentation or Git history during this task. Do not deploy or publish.
+
+We have completed numerous technical repairs, but the project has begun drifting toward becoming a generalized data-center research engine. The research infrastructure matters, but it is subordinate to the primary product goal.
+
+Read the current repository, compare it with this charter and return an evidence-based assessment of:
+
+* What already supports the product goal
+* What is partially implemented
+* What is missing
+* What is overbuilt or no longer necessary
+* What should be reused
+* What should not be expanded
+* The smallest coherent implementation sequence from the current state
+
+Do not begin building until this plan is reviewed and approved.
+
+1. PRIMARY PRODUCT GOAL
+
+SafeLoc helps financial advisors and asset managers trace a public investment holding to the physical AI infrastructure underneath it, evaluate the evidence behind that infrastructure and understand what the project-level conditions could mean for investment conversations, monitoring and engagement.
+
+The intended chain is:
+
+Holding or fund
+→ issuer
+→ issuer-project relationship
+→ physical project evidence
+→ project financial sensitivity
+→ issuer and market transmission
+→ Financial Advisor or Asset Manager output
+
+The project analysis is the evidence engine. The FA and Asset Manager outputs are the product.
+
+The app must not become primarily:
+
+* A data-center directory
+* A generic web-research agent
+* A project-finance underwriting platform
+* A community-agreement scorecard
+* An ESG ratings dashboard
+* A document summarizer
+* A CAM or authorization demonstration
+
+2. PRIMARY USERS
+
+Financial Advisors
+
+Financial Advisors need to understand:
+
+* What their clients own
+* How a holding connects to AI infrastructure
+* What physical or community constraints exist
+* Which conclusions are verified
+* What remains unknown
+* Whether issuer-level financial materiality has been established
+* How to discuss the issue with a client
+* What should be monitored or raised through fund managers
+
+The FA output should be concise, plain-language and client-ready.
+
+It should not provide automatic buy or sell recommendations.
+
+Asset Managers
+
+Asset Managers need:
+
+* Issuer-project relationship mapping
+* Exact project evidence and provenance
+* Project-level constraints
+* Cross-project patterns
+* Project financial sensitivities
+* Issuer-materiality assessment
+* Evidence gaps
+* Engagement questions
+* Disclosure requests
+* Monitoring triggers
+* A provenance appendix
+
+The Asset Manager output should be more analytical and evidence-dense than the FA output.
+
+Secondary audience
+
+Project investors, consultants and infrastructure professionals may find the project analysis useful, but they are not the primary conference or initial product audience.
+
+3. EXISTING FOUR-STAGE PRODUCT STRUCTURE
+
+Keep the existing four-stage workbench. Do not add new top-level workbench stages.
+
+Stage 1: Market Exposure
+
+This stage starts with what the investor owns.
+
+It should answer:
+
+* Which holding or fund is being examined?
+* Which infrastructure projects are connected to it?
+* What is the relationship type?
+* Is the relationship direct, indirect or thematic?
+* What evidence supports the relationship?
+* How confident is SafeLoc in the relationship?
+* Is the project potentially material to the issuer, or is materiality still unknown?
+
+Directory operator matching must not automatically become a contractual or causal relationship.
+
+Stage 2: Project Reality
+
+This stage shows the material physical and community conditions:
+
+* Power and grid interconnection
+* Electricity cost
+* Water and cooling
+* Construction and schedule
+* Permitting
+* Climate and operational resilience
+* Counterparties
+* Community agreements
+* Missing evidence
+
+Detailed source provenance should remain available through progressive disclosure.
+
+The default experience should be concise and visual.
+
+Stage 3: Financial Transmission
+
+This stage must maintain a clear distinction between:
+
+Project economics
+
+* Delay
+* CAPEX escalation
+* Power-price sensitivity
+* Downtime
+* Revenue deferral
+* Project IRR and value sensitivity
+
+Market transmission
+
+* Which issuer is exposed
+* Nature of the exposure
+* Possible earnings, CAPEX, demand, reliability or reputation channel
+* Whether the effect is quantified, directional or unknown
+* What additional evidence is needed to establish issuer materiality
+
+Project IRR must never be presented as issuer return, fund return or client portfolio return.
+
+Stage 4: Advisor Brief
+
+This stage must provide two substantively different outputs:
+
+* Financial Advisor
+* Asset Manager
+
+Changing the audience must change the content, questions, metrics, evidence depth and next actions. It cannot merely change a label.
+
+4. FINANCIAL MODEL CONTRACT
+
+Preserve the audited financial hierarchy unless a future independently proven defect requires correction.
+
+The current intended hierarchy is:
+
+* Synthetic verified benchmark: approximately 13.343% IRR
+* Synthetic current-evidence primary case: approximately 9.087% IRR
+* EIA verified sensitivity: approximately 3.3% IRR
+* EIA current-evidence sensitivity: approximately negative 3.7% IRR
+
+Requirements:
+
+* The synthetic current-evidence case is the primary project diligence case.
+* The synthetic verified case is the benchmark.
+* EIA statewide industrial pricing is a separate sensitivity.
+* EIA pricing is not a contracted Stargate tariff.
+* EIA availability must not hide the primary synthetic case.
+* Every scenario must retain its basis, assumptions, provenance and deterministic fingerprint.
+* Project scenarios must not be represented as issuer or portfolio valuation conclusions.
+
+Do not change formulas, classifications, treatment multipliers or scenario roles during the upcoming persistence work.
+
+5. CURRENT RESEARCH STATE
+
+The recent corrective source-acquisition commit is:
+
+58e4f43 Repair bounded official source acquisition
+
+Verify the exact full SHA and its current relationship to HEAD.
+
+The implementation reportedly includes:
+
+* OpenAI source-channel parsing
+* Arizona zero-URL regression coverage
+* Official-domain discovery
+* Public read-only SEC access
+* Bounded document adapters
+* Shared physical-open accounting
+* Official-source prioritization
+* Acquisition and rejection telemetry
+
+However, live acceptance remains blocked:
+
+Texas
+
+Soluna Project Dorothy research timed out at the existing 90-second deadline before returning usable provider search telemetry.
+
+Arizona
+
+The Aligned PHX-01 run acquired an accessible official Aligned page, but the page was campus-generic and failed exact-project identity and claim mapping.
+
+These results mean the technical acquisition layer has improved, but the product still cannot reliably depend on real-time research to create a complete dossier while the user waits.
+
+Do not weaken evidence eligibility to force successful research.
+
+6. CORRECT ROLE OF THE RESEARCH AGENT
+
+The research agent should not be the sole source of every project dossier.
+
+Its intended role is:
+
+* Load existing project evidence
+* Check freshness
+* Search missing or stale categories
+* Retrieve new official documents
+* Propose new or changed claims
+* Explain conflicts and limitations
+* Preserve exact source passages
+* Wait for reviewer acceptance
+* Update the persistent dossier after acceptance
+
+The agent is a bounded research, refresh and gap-filling agent.
+
+It is not an autonomous investment recommender.
+
+It must not automatically change financial inputs.
+
+7. FACILITY COVERAGE MODEL
+
+The directory and the evidence registry are different products underneath the same interface.
+
+The current Compute Atlas integration reportedly contains approximately 1,500 facilities. Verify the actual current count and source.
+
+Those records establish a project universe. They do not mean that every facility has a complete evidence dossier.
+
+Every project must have one explicit coverage state:
+
+Evidence reviewed
+
+A sufficiently sourced and reviewed dossier supports the complete four-stage workflow.
+
+Evidence available
+
+Some source-backed findings exist, but important categories remain unresolved.
+
+Discovery record
+
+Facility identity and directory context exist, but an evidence-reviewed dossier has not been established.
+
+Research underway
+
+A bounded research job is actively refreshing or building evidence.
+
+Research incomplete
+
+The run ended without enough eligible evidence. Existing accepted evidence remains available, and unsupported conclusions remain absent.
+
+A directory-only facility must never appear equally researched as a reviewed case.
+
+8. LAUNCH COVERAGE TARGET
+
+Acceptance anchors
+
+First establish three flawless end-to-end cases:
+
+* Stargate Abilene
+* One additional Texas project
+* One Arizona project
+
+These are acceptance anchors, not the entire public launch dataset.
+
+LinkedIn launch cases
+
+Expand to approximately 12–20 launch-ready dossiers.
+
+The launch set should:
+
+* Provide at least one meaningful path for all six Home holdings
+* Emphasize Texas and Arizona
+* Include both successful and constrained projects
+* Include different operators and utilities
+* Include strong power, water and community examples
+* Include at least one delayed or blocked project
+* Include at least one case with a strong public-community agreement
+* Contain credible source-backed issuer relationships
+
+Do not force unsupported projects merely to give each holding an equal count.
+
+Regional seed coverage
+
+Seed approximately 50–100 Texas and Arizona facilities with:
+
+* Canonical identity
+* Aliases
+* Address and county
+* Owner and operator candidates
+* City and county authorities
+* Utility and regulator
+* Official domains
+* Candidate issuer relationships
+* Known official source locations
+* Coverage state
+
+These are research seeds, not complete dossiers.
+
+Remaining directory
+
+The remaining directory remains publicly browsable as discovery-level coverage.
+
+Every click must produce a useful and truthful state, even when full analysis is unavailable.
+
+9. MINIMUM LAUNCH-READY DOSSIER
+
+A launch-ready project should include:
+
+* Verified canonical identity
+* Address, county and relevant project phase
+* Owner and operator
+* Source-backed issuer relationship
+* At least three authoritative sources
+* Exact retained passages
+* Publication and retrieval dates
+* Power or interconnection evidence
+* Water or cooling evidence
+* Construction or schedule evidence
+* Community or permitting evidence
+* Capacity or investment evidence
+* Counterparty evidence where applicable
+* Explicit missing evidence
+* Project financial scenario
+* Market-transmission assessment
+* Financial Advisor output
+* Asset Manager output
+
+A project does not need every field verified. It must distinguish verified evidence, assertions, model assumptions and missing evidence honestly.
+
+10. MINIMUM PERSISTENCE REQUIRED
+
+Do not design a comprehensive universal research warehouse.
+
+Design the smallest server-side persistence layer necessary to support the four-stage journey and the launch coverage described above.
+
+The required concepts are likely:
+
+* Facilities
+* External provider identifiers
+* Facility aliases and phases
+* Organizations
+* Issuer-project relationships
+* Source documents
+* Exact source passages
+* Evidence claims
+* Reviewer decisions
+* Research runs
+* Community terms
+* Materiality assessments
+* Advisor brief inputs or snapshots
+
+The architecture must preserve:
+
+* Stable internal facility identity
+* Original provider IDs
+* Exact source lineage
+* Claim versions and supersession
+* Accepted, rejected, unresolved and proposed states
+* Live versus cached research
+* Reviewer decisions
+* Financial-model eligibility
+* Backward compatibility with existing scenarios and sessions where practical
+
+Browser localStorage may continue supporting temporary interface preferences and recovery. It must not remain the authoritative evidence database.
+
+11. EVIDENCE AND MODEL BOUNDARY
+
+The intended lifecycle is:
+
+Discovered
+→ retrieved
+→ extracted
+→ proposed
+→ eligible
+→ accepted, rejected or unresolved
+→ superseded when newer evidence is accepted
+
+Only accepted, model-compatible claims may affect project financial inputs.
+
+A claim requires:
+
+* Exact facility identity
+* Eligible source authority
+* Exact retained passage or equivalent structured record
+* Applicable date and scope
+* Compatible value and unit where relevant
+* Existing evidence-variable mapping
+* Explicit reviewer acceptance
+
+Directory metadata, source discovery, company-name matching and model-generated inference are not accepted evidence by themselves.
+
+12. COMMUNITY AGREEMENTS
+
+Future Pickleball Court is a benchmark and discovery source, not SafeLoc’s product model.
+
+Its current public scorecard examines approximately 24 deals across 10 terms. Verify the current number independently before relying on it.
+
+Community evidence should remain one component of Project Reality.
+
+Track:
+
+* Community fund
+* Clawbacks
+* Decommissioning
+* Grid costs
+* Water
+* Noise
+* Jobs
+* Local contracting
+* Transparency
+* Tax incentives
+
+Every term must distinguish:
+
+* Binding agreement found and reviewed
+* Public commitment only
+* Incentive or development document
+* Agreement referenced but unavailable
+* NDA or confidentiality restriction
+* No public record located
+* Not applicable
+
+“No public agreement located” must never be represented as “no agreement exists.”
+
+Where possible, trace an aggregated claim back to the original municipal, utility or company document.
+
+13. PROJECT-TO-MARKET TRANSMISSION
+
+SafeLoc must explicitly separate:
+
+Relationship confidence
+
+Is the company actually connected to this project?
+
+Project materiality
+
+Is the physical constraint significant to the project?
+
+Issuer materiality
+
+Is this project or cross-project pattern large enough to matter to the public company?
+
+Portfolio materiality
+
+Is the issuer exposure meaningful to the fund or client portfolio?
+
+Permitted materiality states should include:
+
+* Quantified
+* Directional
+* Exposure established but financial materiality unquantified
+* Relationship unverified
+* No supported transmission established
+
+Potential transmission channels include:
+
+* CAPEX escalation
+* Revenue deferral
+* Asset utilization
+* AI capacity availability
+* Supplier demand
+* Operating margin
+* Reliability
+* Regulatory exposure
+* Community opposition
+* Reputation
+* Stranded capital
+
+Do not infer issuer materiality directly from a project-level IRR change.
+
+14. FINANCIAL ADVISOR OUTPUT
+
+The FA output should answer:
+
+* What does the client own?
+* Why is the holding connected to this infrastructure?
+* What changed or deserves attention?
+* What is verified?
+* What is uncertain?
+* Is issuer materiality established?
+* What should the advisor explain to the client?
+* What should the advisor monitor?
+* What questions should be raised with the fund manager?
+
+The output should be concise, plain-language and suitable for a client conversation.
+
+It should not recommend buying or selling.
+
+15. ASSET MANAGER OUTPUT
+
+The Asset Manager output should include:
+
+* Issuer-project relationship map
+* Project evidence
+* Project and issuer materiality
+* Cross-project patterns
+* Financial sensitivities
+* Evidence gaps
+* Engagement questions
+* Disclosure requests
+* Monitoring triggers
+* Provenance appendix
+
+This output should be analytically different from the FA output, not merely longer.
+
+16. PRODUCT DIFFERENTIATION
+
+The differentiating workflow is:
+
+Public holding
+→ physical AI infrastructure
+→ evidence quality
+→ project constraint
+→ financial transmission
+→ advisor or asset-manager decision support
+
+Existing products separately provide:
+
+* Data-center directories and market intelligence
+* Site-selection and power data
+* Community-agreement scorecards
+* ESG controversy data
+* Advisor portfolio analytics
+
+SafeLoc’s intended differentiation is the integration of physical project evidence with public-market exposure and advisor decision support.
+
+The defensible asset is not the AI model or interface alone. It is:
+
+* Reviewed facility identities
+* Source-backed issuer-project relationships
+* Exact evidence passages
+* Historical evidence changes
+* Project-to-issuer transmission assessments
+* Cross-project patterns
+* Reviewed FA and Asset Manager outputs
+
+Do not copy Future Pickleball Court’s interface, presentation or database wholesale.
+
+17. LINKEDIN PUBLIC RELEASE REQUIREMENTS
+
+The app is intended for public LinkedIn release before the GFI conference.
+
+Public release introduces requirements beyond a controlled conference demonstration:
+
+* Persistent dossiers
+* Clear coverage states
+* Research-job deduplication
+* One active job per canonical facility
+* Global provider concurrency limits
+* Per-session or per-user limits
+* Maximum research cost per job
+* Reuse of accepted evidence
+* Recoverable failures
+* No indefinite loading states
+* No empty workbenches
+* No stale holding or project state
+* No default financial conclusions for unresearched projects
+* Clear research-preview positioning
+* Clear separation of facts, assumptions and missing evidence
+
+The product may be labeled a research preview, but it must not present incomplete records as fully reviewed.
+
+18. DEVELOPMENT SCOPE FILTER
+
+Every future task should answer:
+
+* What visible user outcome changes?
+* Which of the four stages improves?
+* Does it strengthen the LinkedIn release or GFI demonstration?
+* Does a real project work, or only a fixture?
+* Does it improve an FA or Asset Manager decision?
+* Is the change required for the launch cases?
+* Is it correcting a genuine product blocker?
+* Is it merely adding telemetry, tests or abstraction?
+
+Tests, provenance and diagnostics remain necessary, but they are supporting requirements, not the product objective.
+
+Do not expand work primarily into:
+
+* Additional telemetry without a visible product outcome
+* More diagnostic-report formats
+* Generic connectors without a launch case
+* Broad nationwide deep coverage
+* CAM approval workflows
+* CRE or Trepp functionality
+* Household portfolio aggregation
+* Automated investment recommendations
+* Multi-user permissions
+* Team review workflows
+* Comprehensive coverage of all 1,500 facilities
+* Infrastructure abstractions not required by the launch journey
+
+19. PROPOSED IMPLEMENTATION ORDER
+
+Evaluate whether the following is the smallest safe sequence from the current architecture:
+
+Phase A: Define the final outputs
+
+Confirm the exact FA and Asset Manager output contracts first. These outputs determine what data must be persisted.
+
+Phase B: Minimal persistence for three acceptance anchors
+
+Implement only the persistence required for:
+
+* Stargate Abilene
+* One additional Texas project
+* One Arizona project
+
+Migrate existing accepted evidence without inventing provenance.
+
+Phase C: Complete the three acceptance anchors
+
+Make all four stages work end to end for those cases.
+
+Phase D: Expand to 12–20 launch-ready dossiers
+
+Use the proven structure rather than expanding the schema speculatively.
+
+Phase E: Seed 50–100 Texas and Arizona facilities
+
+Establish identity, relationships, authorities and official source starting points.
+
+Phase F: Public custom-project experience
+
+Ensure every directory record returns a useful coverage state and bounded research experience.
+
+Phase G: LinkedIn and conference hardening
+
+Complete responsive QA, cost controls, failure recovery, public language, launch safeguards and production verification.
+
+Do not run persistence, dossier population and audience-output implementation in parallel if they touch the same data contracts.
+
+20. REQUESTED READ-ONLY DELIVERABLE
+
+Return a structured report containing:
+
+A. Architecture gate
+
+Choose:
+
+* GO
+* REVISE
+* STOP
+
+Explain why.
+
+B. Product-alignment matrix
+
+For every major section of this charter, report:
+
+* Complete
+* Partial
+* Missing
+* Conflicting
+* Out of scope
+
+Cite exact repository files, functions and tests.
+
+C. Current user journey
+
+Describe what currently happens from:
+
+Holding selection
+→ project selection
+→ Project Reality
+→ Financial Transmission
+→ Advisor Brief
+
+Identify every point where the current implementation diverges from the intended product.
+
+D. Data and persistence audit
+
+Report:
+
+* Current server-side persistence
+* Current localStorage responsibilities
+* Current project data sources
+* Current relationship storage
+* Current evidence storage
+* Current source-passage storage
+* Current review-decision storage
+* Current scenario storage
+* Current research-run storage
+* Migration risks
+* Recommended minimal schema
+
+E. Audience-output audit
+
+Report whether the current FA and Asset Manager outputs:
+
+* Exist
+* Differ substantively
+* Use project evidence
+* Use relationship confidence
+* Use issuer materiality
+* Use portfolio materiality
+* Preserve project-versus-issuer boundaries
+
+F. Scope-drift audit
+
+Identify current code, interfaces, tests or planned work that:
+
+* No longer supports the core product
+* Is overbuilt relative to launch needs
+* Should be retained but frozen
+* Should be removed later
+* Should not receive additional investment
+
+Do not delete anything during this task.
+
+G. Revised build sequence
+
+Propose the smallest implementation sequence with:
+
+* User-visible outcome
+* Dependencies
+* Files or systems affected
+* Acceptance gate
+* Risks
+* Suggested Replit execution mode
+
+Do not create dozens of microtasks. Group work into coherent product batches.
+
+H. Recommended first implementation task
+
+Provide one complete recommended next task focused on the smallest persistence and output foundation necessary for the three acceptance-anchor cases.
+
+Do not start it.
+
+21. FINAL CONSTRAINTS
+
+* Read only
+* No production-code changes
+* No test changes
+* No schema changes
+* No configuration changes
+* No documentation commit
+* No deployment
+* No publication
+* No Git-history modification
+* Leave attached prompt files untracked
+* Report the exact HEAD and working-tree state
+* Do not claim completion based only on passing tests
+* Distinguish deterministic fixture success from live-project success
+* State uncertainty explicitly

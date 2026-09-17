@@ -1,0 +1,35 @@
+Perform a read-only completion audit of the recent applied SafeLoc Batch 1 task cluster shown as Done. Do not modify code, create tasks, commit, merge, publish, deploy, or change task status.
+
+Audit these tasks individually:
+
+#192 Audit Stargate financial engine
+#193 Catch ambiguous IRR cases before they reach reviewers
+#194 Show reviewers which provider overlays changed the project return
+#195 Reconcile Batch 1 production state
+#196 Prevent release metadata from mislabeling production bundles
+#197 Make return discrepancies reproducible from one sanitized state record
+For each task, report:
+
+Exact task title and intended acceptance criteria.
+Whether it is actually applied to the current main branch, not merely marked Done.
+Commit SHA(s) or applied merge/squash SHA containing it.
+Concrete production behavior now present.
+Tests that directly prove that behavior, with exact pass totals.
+Whether the task depends on another task that is missing, incomplete, or only proposed.
+Whether any implementation overlaps, contradicts, or supersedes another task.
+Any acceptance criterion that remains unverified.
+Status using exactly one of: COMPLETE, PARTIAL, NOT PRESENT, or UNVERIFIED.
+Then perform a cluster-level check:
+
+Report current main HEAD and working-tree status.
+Confirm whether 13.343% baseline and 9.087% conservative stress are the deterministic curated Stargate defaults.
+Confirm whether provider overlays are explicit and visibly separated from the curated baseline rather than silently replacing it.
+Confirm whether Reset removes provider/custom/scenario contamination and restores the same model-input fingerprint after reload.
+Confirm whether ambiguous/multiple-root IRR cases are prevented from reaching reviewers as an ordinary IRR.
+Confirm whether a sanitized reproducibility record includes project, scenario, all model inputs, classifications, provider state, storage/version identity, cash flows, return metrics, input fingerprint, commit, release, and asset identity without secrets.
+Confirm whether release metadata is derived from the actual built source and cannot be overridden into mislabeling a bundle.
+State whether the unexplained historical 3.3% / -3.7% observation is resolved, reproducible, or remains historically unresolved.
+Identify any newly created follow-up tasks such as #202, #204, or #205 and explain whether they are required for Batch 1 completion or optional enhancements.
+Run only existing deterministic tests needed to verify the claims. Do not use uncontrolled live-provider behavior as a pass/fail gate.
+End with one verdict: BATCH 1 COMPLETE, BATCH 1 PARTIAL, or BATCH 1 NOT COMPLETE.
+Do not respond with a plan or progress update alone. Return the substantive audit results in this response.

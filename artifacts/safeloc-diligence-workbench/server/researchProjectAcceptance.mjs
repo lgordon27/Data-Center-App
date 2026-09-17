@@ -106,6 +106,41 @@ function isFailedRetainedCacheResponse(payload) {
     && payload?.researchCache?.state === "stale";
 }
 
+function buildVisibleFindingTrace(result) {
+  const evidence = Array.isArray(result?.evidence) ? result.evidence : [];
+  return evidence.flatMap((item) => {
+    if (item?.eligibleForModel !== true) return [];
+    const sources = Array.isArray(item.sources) ? item.sources : [];
+    const mappings = Array.isArray(item.claimMappings)
+      ? item.claimMappings
+      : item.sourceValidation?.claimMappings ?? [];
+    const supportedSourceIds = new Set(
+      mappings
+        .filter((mapping) => mapping?.supportStatus === "supported" && typeof mapping.sourceId === "string")
+        .map((mapping) => mapping.sourceId),
+    );
+    const source = sources.find((candidate) =>
+      candidate?.accessOutcome?.state === "accessible"
+      && candidate.exactProject === true
+      && [candidate.canonicalUrl, candidate.resolvedUrl, candidate.url]
+        .filter((value) => typeof value === "string")
+        .some((value) => supportedSourceIds.has(value))
+      && typeof candidate.excerpt === "string"
+      && candidate.excerpt.trim(),
+    );
+    if (!source) return [];
+    return [{
+      evidenceId: item.id ?? null,
+      finding: item.value ?? item.qualitativeValue ?? null,
+      sourceUrl: source.canonicalUrl,
+      sourceTitle: source.title ?? null,
+      searchDomain: source.searchDomain ?? null,
+      passage: source.excerpt.trim(),
+      eligibility: source.financialEligibilityState ?? "eligible",
+    }];
+  });
+}
+
 export function buildAcceptanceReport({ project, liveRun, failureRun, generatedAt = new Date().toISOString() }) {
   const result = liveRun.payload;
   const retainedCacheResponse = isFailedRetainedCacheResponse(result);
@@ -139,6 +174,7 @@ export function buildAcceptanceReport({ project, liveRun, failureRun, generatedA
   const failurePayload = failureRun?.payload ?? null;
   const failureCache = failurePayload?.researchCache ?? null;
   const usefulCompletion = source.retainedPassages.length > 0 || (result?.eligibleEvidenceCount ?? 0) > 0;
+  const visibleFindingTrace = buildVisibleFindingTrace(result);
   const terminalStatus = retainedCacheResponse || liveRun.statusCode < 200 || liveRun.statusCode >= 300
     ? "failed"
     : ["cancelled", "timed-out", "failed"].includes(result?.researchStatus)
@@ -150,6 +186,16 @@ export function buildAcceptanceReport({ project, liveRun, failureRun, generatedA
   return {
     diagnosticOnly: true,
     evidenceStatus: "not-evidence",
+    liveAcceptance: visibleFindingTrace.length
+      ? {
+        status: "source-to-visible-finding",
+        trace: visibleFindingTrace,
+      }
+      : {
+        status: "LIVE ACCEPTANCE BLOCKED",
+        reason: "No accessible exact-project passage mapped to an eligible visible finding; retained passages and unresolved categories remain diagnostic only.",
+        trace: [],
+      },
     generatedAt,
     project: {
       name: project.name,

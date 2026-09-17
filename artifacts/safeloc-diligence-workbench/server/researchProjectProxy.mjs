@@ -113,6 +113,11 @@ const STATE_ROUTING_TARGETS = Object.freeze({
     domains: ["puco.ohio.gov", "ohiodnr.gov", "epa.ohio.gov"],
   },
 });
+const GENERIC_STATE_AUTHORITY_ROLES = Object.freeze([
+  ["utility regulator", "state-utility"],
+  ["environmental agency", "state-environmental"],
+  ["water authority", "state-water"],
+]);
 const US_STATE_NAMES = Object.freeze({
   AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California", CO: "Colorado",
   CT: "Connecticut", DE: "Delaware", FL: "Florida", GA: "Georgia", HI: "Hawaii", ID: "Idaho",
@@ -694,6 +699,29 @@ function buildLocalAuthorityTargets(project = {}) {
   return { targets, limitations };
 }
 
+function buildStateAuthorityTargets(project = {}) {
+  const parts = inferLocationAuthorityParts(project);
+  if (!parts.state || parts.state.toLowerCase() === "texas") {
+    return { targets: [], limitations: [] };
+  }
+  const configured = STATE_ROUTING_TARGETS[parts.state];
+  const names = configured?.names?.length
+    ? configured.names
+    : GENERIC_STATE_AUTHORITY_ROLES.map(([role]) => `${parts.state} ${role}`);
+  const domains = configured?.domains ?? [];
+  const targets = names.map((name, index) => ({
+    name,
+    kind: configured ? "state" : GENERIC_STATE_AUTHORITY_ROLES[index]?.[1] ?? "state-authority",
+    domain: domains[index] ?? null,
+    establishmentMethod: configured ? "state-routing" : "state-role-inference",
+    status: domains[index] ? "established" : "identified-no-domain",
+  }));
+  const limitations = targets.some((target) => target.status === "identified-no-domain")
+    ? [`Some ${parts.state} authority names were identified, but their official domains were not established; the unrestricted exact-project fallback is required.`]
+    : [];
+  return { targets, limitations };
+}
+
 function categoryAuthorityTargets(project, categoryId) {
   const parts = inferLocationAuthorityParts(project);
   const stateTargets = STATE_ROUTING_TARGETS[parts.state] ?? { names: [], domains: [] };
@@ -710,13 +738,17 @@ function categoryAuthorityTargets(project, categoryId) {
   const local = ["water", "permitting-community"].includes(categoryId)
     ? buildLocalAuthorityTargets(project)
     : { targets: [], limitations: [] };
-  const localNames = local.targets.map((target) => target.name);
-  const localDomains = local.targets.map((target) => target.domain).filter(Boolean);
+  const stateAuthorities = buildStateAuthorityTargets(project);
+  const authorityRecords = [...stateAuthorities.targets, ...local.targets]
+    .filter((target, index, records) => records.findIndex((candidate) => candidate.name === target.name) === index);
+  const localNames = authorityRecords.map((target) => target.name);
+  const localDomains = authorityRecords.map((target) => target.domain).filter(Boolean);
   return {
     names: [...new Set([...base.names, ...localNames])],
     domains: [...new Set([...base.domains, ...localDomains])],
-    localAuthorities: local.targets,
+    localAuthorities: authorityRecords,
     limitations: [
+      ...stateAuthorities.limitations,
       ...local.limitations,
       ...(buildProjectIdentityContext(project).ambiguities.length && categoryId === "project-identity"
         ? buildProjectIdentityContext(project).ambiguities
@@ -3316,6 +3348,7 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
   const reservedCandidatesByCategory = new Map();
   let reservedCandidateCount = 0;
   const openedDocumentsByCanonicalUrl = new Map();
+  const documentAccessPromisesByCanonicalUrl = new Map();
   let documentAccessQueue = Promise.resolve();
   let fetchedCandidateCount = 0;
   let physicalOpensUsed = 0;
@@ -3424,15 +3457,23 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
           const originalUrl = source.originalUrl ?? source.url ?? null;
           const originalCanonicalUrl = canonicalizeSourceUrl(originalUrl);
           const announcedCanonicalUrl = canonicalizeSourceUrl(source.canonicalUrl ?? source.resolvedUrl ?? source.url);
-          const previousAccess = (originalCanonicalUrl && openedDocumentsByCanonicalUrl.get(originalCanonicalUrl))
-            || (announcedCanonicalUrl && openedDocumentsByCanonicalUrl.get(announcedCanonicalUrl))
+          const hasProviderCanonicalIdentity = source.canonicalIdentityExplicit === true;
+          const previousAccess = (originalCanonicalUrl && (
+            openedDocumentsByCanonicalUrl.get(originalCanonicalUrl)
+            ?? (hasProviderCanonicalIdentity ? documentAccessPromisesByCanonicalUrl.get(originalCanonicalUrl) : null)
+          ))
+            || (announcedCanonicalUrl && (
+              openedDocumentsByCanonicalUrl.get(announcedCanonicalUrl)
+              ?? (hasProviderCanonicalIdentity ? documentAccessPromisesByCanonicalUrl.get(announcedCanonicalUrl) : null)
+            ))
             || null;
           let accessOutcome;
           if (previousAccess) {
+            const priorReceipt = await previousAccess;
             accessOutcome = {
-              ...previousAccess,
+              ...priorReceipt,
               originalUrl,
-              referringUrls: [...new Set([...(previousAccess.referringUrls ?? []), originalUrl].filter(Boolean))],
+              referringUrls: [...new Set([...(priorReceipt.referringUrls ?? []), originalUrl].filter(Boolean))],
             };
           } else {
             const preflight = evaluateResearchDocumentAccess(source);
@@ -3451,16 +3492,23 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
               };
             } else {
               physicalOpensUsed += 1;
-              const accessTask = documentAccessQueue.then(() => accessResearchDocument(source, {
-                fetchImpl: documentFetchImpl,
-                signal: controller.signal,
-              }));
+              const physicalOpenIndex = physicalOpensUsed;
+              const accessTask = documentAccessQueue
+                .then(() => accessResearchDocument(source, {
+                  fetchImpl: documentFetchImpl,
+                  signal: controller.signal,
+                }))
+                .then((outcome) => ({
+                  ...outcome,
+                  referringUrls: [originalUrl].filter(Boolean),
+                  physicalOpenIndex,
+                }));
+              if (originalCanonicalUrl) documentAccessPromisesByCanonicalUrl.set(originalCanonicalUrl, accessTask);
+              if (announcedCanonicalUrl) documentAccessPromisesByCanonicalUrl.set(announcedCanonicalUrl, accessTask);
               documentAccessQueue = accessTask.catch(() => {});
               accessOutcome = await accessTask;
               accessOutcome = {
                 ...accessOutcome,
-                referringUrls: [originalUrl].filter(Boolean),
-                physicalOpenIndex: physicalOpensUsed,
               };
             }
           }

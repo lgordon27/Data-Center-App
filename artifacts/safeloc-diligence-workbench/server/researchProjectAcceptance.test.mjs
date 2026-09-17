@@ -126,6 +126,76 @@ test("builds a diagnostic-only report with bounded live-run and retention fields
   assert.equal("evidence" in report, false);
 });
 
+test("reports LIVE ACCEPTANCE BLOCKED when no eligible source reaches a visible finding", () => {
+  const report = buildAcceptanceReport({
+    project: { name: "Blocked Atlas", location: "Maricopa County, Arizona" },
+    liveRun: {
+      statusCode: 200,
+      payload: {
+        researchStatus: "partial",
+        researchAudit: {
+          runCorrelationId: "run-blocked-atlas",
+          categories: [],
+          categoryGaps: ["grid"],
+          budget: { ...RESEARCH_RUN_BUDGET },
+        },
+        sourceLedger: [{
+          canonicalUrl: "https://example.gov/atlas",
+          accessOutcome: { state: "accessible", passage: "A retained passage." },
+          exactProject: false,
+        }],
+        evidence: [],
+      },
+    },
+    failureRun: null,
+  });
+  assert.equal(report.liveAcceptance.status, "LIVE ACCEPTANCE BLOCKED");
+  assert.deepEqual(report.liveAcceptance.trace, []);
+  assert.match(report.liveAcceptance.reason, /eligible visible finding/i);
+});
+
+test("traces the supported source mapping instead of the first attached source", () => {
+  const supportedUrl = "https://example.gov/atlas/supported";
+  const report = buildAcceptanceReport({
+    project: { name: "Mapped Atlas", location: "Texas" },
+    liveRun: {
+      statusCode: 200,
+      payload: {
+        evidence: [{
+          id: "electricity_cost",
+          value: 48,
+          eligibleForModel: true,
+          claimMappings: [
+            { sourceId: supportedUrl, supportStatus: "supported" },
+          ],
+          sources: [
+            {
+              url: "https://example.gov/atlas/unmapped",
+              canonicalUrl: "https://example.gov/atlas/unmapped",
+              title: "Unmapped exact-project record",
+              exactProject: true,
+              excerpt: "This passage is not mapped to the displayed claim.",
+              accessOutcome: { state: "accessible" },
+            },
+            {
+              url: supportedUrl,
+              canonicalUrl: supportedUrl,
+              title: "Supported exact-project record",
+              exactProject: true,
+              excerpt: "The facility electricity cost is 48 USD/MWh.",
+              accessOutcome: { state: "accessible" },
+            },
+          ],
+        }],
+      },
+    },
+    failureRun: null,
+  });
+  assert.equal(report.liveAcceptance.status, "source-to-visible-finding");
+  assert.equal(report.liveAcceptance.trace[0].sourceUrl, supportedUrl);
+  assert.equal(report.liveAcceptance.trace[0].sourceTitle, "Supported exact-project record");
+});
+
 test("keeps provider failures diagnostic and explicit when no category audit is returned", () => {
   const report = buildAcceptanceReport({
     project: { name: "Timed Atlas", location: "Texas" },

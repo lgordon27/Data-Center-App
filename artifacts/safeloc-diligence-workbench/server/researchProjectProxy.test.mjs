@@ -293,6 +293,22 @@ test("routes Arizona and Ohio through state authorities without borrowing ERCOT 
   }
 });
 
+test("keeps generic-state authority routing explicit when domains are unknown", () => {
+  const plan = buildResearchCategoryPlan({
+    name: "Project Atlas",
+    location: "Sacramento, California",
+    knownData: { operator: "Atlas Compute", companyDomains: ["atlas.example"] },
+  });
+  const water = plan.categories.find((category) => category.categoryId === "water");
+  assert.ok(water.authorityTargets.localAuthorities.some((authority) =>
+    authority.name === "California utility regulator"
+      && authority.status === "identified-no-domain"
+      && authority.domain === null,
+  ));
+  assert.match(water.authorityTargets.limitations.join(" "), /official domains were not established/i);
+  assert.doesNotMatch(water.requestedPrimaryQuery, /site:ercot\.com/i);
+});
+
 test("quarantines ERCOT records when the project is in Arizona or Ohio", () => {
   const body = validResearchResponse();
   const item = body.evidence.find((candidate) => candidate.id === "grid_interconnection");

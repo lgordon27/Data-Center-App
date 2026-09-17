@@ -1059,10 +1059,28 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
   const [sourceCacheNotice, setSourceCacheNotice] = useState<string | null>(null);
   const sourceResearchAbortRef = useRef<AbortController | null>(null);
   const sourceResearchRunRef = useRef(0);
+  const sourceResearchProjectKey = `${project.kind}:${project.name}:${project.location}`;
+  const sourceResearchProjectKeyRef = useRef(sourceResearchProjectKey);
   const [searchCoverage, setSearchCoverage] = useState(project.researchCoverage);
   const [decisionHistory, setDecisionHistory] = useState<DecisionHistoryEntry[]>(getDecisionHistory);
   const isSourceResearchBusy = sourceResearchProgress !== null;
   const isAnalysisBusy = activeAnalysisId !== null || batchProgress !== null || isSourceResearchBusy;
+  useEffect(() => {
+    if (sourceResearchProjectKeyRef.current === sourceResearchProjectKey) return undefined;
+    sourceResearchProjectKeyRef.current = sourceResearchProjectKey;
+    sourceResearchRunRef.current += 1;
+    sourceResearchAbortRef.current?.abort();
+    sourceResearchAbortRef.current = null;
+    setSourceResearchProgress(null);
+    setSourceResearchError(null);
+    setSourceCacheNotice(null);
+    return undefined;
+  }, [sourceResearchProjectKey]);
+  useEffect(() => () => {
+    sourceResearchRunRef.current += 1;
+    sourceResearchAbortRef.current?.abort();
+    sourceResearchAbortRef.current = null;
+  }, []);
   useEffect(() => {
     if (!customProject) return;
     setSourceProposals(project.researchProposals ?? {});
@@ -1453,6 +1471,9 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
       />
       {customProject && (
         <ResearchHandoffSummary
+          projectName={project.name}
+          projectLocation={project.location}
+          researchStatus={project.researchStatus ?? project.researchAudit?.terminalState ?? undefined}
           evidence={items}
           proposals={sourceProposals}
           dispositions={sourceProposalDispositions}

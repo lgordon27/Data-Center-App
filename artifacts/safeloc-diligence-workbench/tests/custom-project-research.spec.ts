@@ -120,7 +120,36 @@ function acceptanceResponse() {
       sourceAccessStatus: "open",
       description: claim,
       citation: `ERCOT Project Atlas filing (2026).`,
-      sources: [{
+      sources: [
+        ...(id === "electricity_cost" ? [{
+          url: `https://example.com/unmapped/${id}`,
+          canonicalUrl: `https://example.com/unmapped/${id}`,
+          resolvedUrl: `https://example.com/unmapped/${id}`,
+          title: `Unmapped Project Atlas ${id} context`,
+          publisher: "example.com",
+          accessedAt: "2026-09-10",
+          accessStatus: "open",
+          excerpt: "This exact-project passage is accessible but does not support the displayed electricity claim.",
+          sourceClass: "reviewer-submitted",
+          searchDomain: "power-grid",
+          relationship: "corroborating",
+          exactProject: true,
+          facilityScope: "exact-project",
+          phaseScope: "exact-phase",
+          timePeriod: "2026",
+          sourceState: "retained",
+          accessOutcome: {
+            state: "accessible",
+            reason: "open",
+            format: "html",
+            resolvedUrl: `https://example.com/unmapped/${id}`,
+            canonicalUrl: `https://example.com/unmapped/${id}`,
+            passage: "This exact-project passage is accessible but does not support the displayed electricity claim.",
+            pageOrSection: "Context",
+            extractionLimitations: [],
+          },
+        }] : []),
+        {
         url: `https://ercot.com/project-atlas/${id}`,
         canonicalUrl: `https://ercot.com/project-atlas/${id}`,
         resolvedUrl: `https://ercot.com/project-atlas/${id}`,
@@ -149,7 +178,8 @@ function acceptanceResponse() {
           pageOrSection: "Tariff schedule",
           extractionLimitations: [],
         },
-      }],
+        },
+      ],
     });
   };
   configureProposal("electricity_cost", 48, "USD/MWh", "The Project Atlas facility electricity cost is 48 USD/MWh.");
@@ -428,11 +458,15 @@ test.describe("custom project research", () => {
 
   test("keeps the Batch 5 handoff concise while exposing governed audit detail on demand", async ({ page }, testInfo) => {
     await page.unroute("**/api/research-project");
-    await page.route("**/api/research-project", (route) => route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(acceptanceResponse()),
-    }));
+    await page.route("**/api/research-project", (route) => {
+      const response = acceptanceResponse();
+      delete response.researchStatus;
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(response),
+      });
+    });
     await page.goto("/");
     await openCustomProjectDialog(page);
     await page.getByTestId("input-custom-project-name").fill("Project Atlas");
@@ -447,11 +481,13 @@ test.describe("custom project research", () => {
 
     const handoff = page.getByTestId("research-handoff-summary");
     await expect(handoff).toBeVisible();
+    await expect(page.getByTestId("research-handoff-status")).toContainText("Final status: not recorded");
     await expect(page.getByTestId("research-handoff-details")).not.toHaveAttribute("open", "");
     await expect(page.getByTestId("research-search-audit")).not.toHaveAttribute("open", "");
     await expect(page.getByTestId("research-handoff-proposals")).toContainText("5");
     await expect(page.getByTestId("research-handoff-proposals")).toContainText("5 pending · 0 accepted · 0 overridden · 0 rejected · 0 unresolved");
-    await expect(page.getByTestId("research-handoff-context")).toContainText("1 related/comparable context");
+    await expect(page.getByTestId("research-handoff-exact-project")).toContainText("5");
+    await expect(page.getByTestId("research-handoff-context")).toContainText("2 related/comparable context");
 
     await page.getByTestId("research-handoff-details").click();
     await expect(handoff).toContainText("2 identified · 1 official domains established");

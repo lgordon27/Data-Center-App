@@ -322,6 +322,7 @@ export function createSourceLedger(candidates = [], { maxRetained = 10 } = {}) {
       originalUrl: originalUrl ?? String(candidate?.url ?? ""),
       resolvedUrl,
       canonicalUrl,
+      canonicalIdentityExplicit: Boolean(candidate?.canonicalUrl || candidate?.resolvedUrl || candidate?.finalUrl),
       title: normalizeText(candidate?.title) || "Retrieved public source",
       excerpt: normalizeText(candidate?.excerpt),
       sourceClass: candidate?.sourceClass ?? "secondary-reporting",

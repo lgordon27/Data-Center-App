@@ -7,6 +7,9 @@ import type {
 export type ProposalDisposition = "pending" | "accepted" | "overridden" | "rejected" | "unresolved";
 
 type ResearchHandoffSummaryProps = {
+  projectName: string;
+  projectLocation: string;
+  researchStatus?: string;
   evidence: CustomEvidenceRecord[];
   proposals: Record<string, CustomEvidenceRecord>;
   dispositions: Record<string, ProposalDisposition>;
@@ -35,6 +38,9 @@ const coverageLabel: Record<ResearchCoverageStatus, string> = {
 };
 
 export function ResearchHandoffSummary({
+  projectName,
+  projectLocation,
+  researchStatus,
   evidence,
   proposals,
   dispositions,
@@ -42,7 +48,26 @@ export function ResearchHandoffSummary({
   coverage,
   onReviewFindings,
 }: ResearchHandoffSummaryProps) {
-  const exactProjectSources = evidence.filter((item) => item.sourceRelevance === "exact-project" && (item.sources?.length ?? 0) > 0);
+  const eligibleSourceUrls = new Set(
+    evidence.flatMap((item) => {
+      if (item.sourceValidation?.state !== "financially-eligible") return [];
+      const mappings = item.claimMappings ?? item.sourceValidation.claimMappings ?? [];
+      const supportedSourceIds = new Set(
+        mappings
+          .filter((mapping) => mapping.supportStatus === "supported" && typeof mapping.sourceId === "string")
+          .map((mapping) => mapping.sourceId),
+      );
+      return (item.sources ?? [])
+        .filter((source) =>
+          source.accessOutcome?.state === "accessible"
+          && source.exactProject === true
+          && [source.canonicalUrl, source.resolvedUrl, source.url]
+            .filter((value): value is string => typeof value === "string")
+            .some((value) => supportedSourceIds.has(value)),
+        )
+        .map((source) => source.canonicalUrl ?? source.resolvedUrl ?? source.url);
+    }),
+  );
   const relatedContext = evidence.filter((item) => item.sourceRelevance === "related-context" || item.sources?.some((source) => source.relationship !== "primary"));
   const unresolved = evidence.filter((item) =>
     item.classification === "Missing Evidence"
@@ -69,7 +94,11 @@ export function ResearchHandoffSummary({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="font-mono text-[9px] font-bold uppercase tracking-[0.15em] text-[#255bb7]">Research handoff</div>
-          <h2 className="mt-1 text-[16px] font-semibold tracking-[-0.02em] text-[#122232]">What the bounded search found</h2>
+          <h2 className="mt-1 break-words text-[16px] font-semibold tracking-[-0.02em] text-[#122232]">{projectName}</h2>
+          <p className="mt-1 break-words text-[10px] text-[#52616b]">{projectLocation}</p>
+          <p data-testid="research-handoff-status" className="mt-2 text-[10px] font-semibold text-[#243844]">
+            Final status: {researchStatus ?? "not recorded"}
+          </p>
           <p className="mt-1 max-w-3xl text-[10px] leading-4 text-[#52616b]">Exact-project evidence can be proposed here, but it stays outside the model until a reviewer accepts it. Related and comparable material is context only.</p>
         </div>
         <button data-testid="button-review-research-findings" type="button" onClick={onReviewFindings} className="inline-flex min-h-10 items-center justify-center rounded-md bg-[#122232] px-3 py-2 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#d4e86b]">
@@ -78,9 +107,9 @@ export function ResearchHandoffSummary({
       </div>
       <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <div data-testid="research-handoff-exact-project" className="rounded-lg border border-[#cbd8d4] bg-white p-3">
-          <div className="font-mono text-[8px] font-bold uppercase tracking-[0.1em] text-[#52616b]">Exact-project sources</div>
-          <div className="mt-2 text-[20px] font-semibold text-[#08644f]">{exactProjectSources.length}</div>
-          <div className="text-[9px] text-[#60707d]">Inputs with project-specific source receipts</div>
+          <div className="font-mono text-[8px] font-bold uppercase tracking-[0.1em] text-[#52616b]">Eligible sources</div>
+          <div className="mt-2 text-[20px] font-semibold text-[#08644f]">{eligibleSourceUrls.size}</div>
+          <div className="text-[9px] text-[#60707d]">Accessible exact-project sources mapped to governed evidence</div>
         </div>
         <div data-testid="research-handoff-proposals" className="rounded-lg border border-[#cbd8d4] bg-white p-3">
           <div className="font-mono text-[8px] font-bold uppercase tracking-[0.1em] text-[#52616b]">Eligible proposals</div>

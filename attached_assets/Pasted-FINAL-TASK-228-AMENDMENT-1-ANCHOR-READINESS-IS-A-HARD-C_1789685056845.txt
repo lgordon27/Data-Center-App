@@ -1,0 +1,95 @@
+FINAL TASK #228 AMENDMENT
+
+1. ANCHOR READINESS IS A HARD CHECKPOINT
+
+Before provisioning the database or implementing schemas, complete the readiness evaluation and identify the exact Texas and Arizona anchors.
+
+Return:
+
+- Candidate name
+- Canonical identity
+- Location
+- Relevant phase or campus scope
+- Issuer relationship
+- Relationship source
+- Available authoritative sources
+- Supported evidence categories
+- Community evidence
+- Materiality story
+- Important gaps
+- Recommendation
+
+Do not select a replacement merely because it is present in the current directory.
+
+Pause at this checkpoint if the recommended Texas or Arizona replacement materially changes the intended holding pathway or advisor narrative.
+
+2. DIRECTORY PRESENCE IS NOT AN ELIGIBILITY REQUIREMENT
+
+Compute Atlas and the current directory are discovery sources, not the authoritative boundary of SafeLoc’s project universe.
+
+A project absent from the directory may become a canonical SafeLoc facility when authoritative exact-project evidence establishes:
+
+- Facility or campus identity
+- Location
+- Operator or owner
+- Relevant project phase
+- Issuer relationship
+- Supporting provenance
+
+If Microsoft Goodyear can be established through authoritative sources, its absence from the current directory must not automatically disqualify it.
+
+Do not automatically prefer Aligned Phoenix merely because it appears in the directory.
+
+3. PROJECT SELECTION STANDARD
+
+Select anchors based on their ability to support the full product journey:
+
+Holding
+→ source-backed issuer relationship
+→ physical project evidence
+→ project financial sensitivity
+→ issuer-materiality assessment
+→ FA brief
+→ Asset Manager brief
+
+Do not select a project solely because it is easy to persist.
+
+4. PORTFOLIO MATERIALITY BOUNDARY
+
+Task #228 must persist the portfolio-materiality assessment state, but it must not build new portfolio aggregation or valuation functionality.
+
+Unless supported by existing dated holding data, portfolio materiality should remain:
+
+- Not assessed
+- Exposure established but materiality unquantified
+- No supported portfolio transmission established
+
+Do not derive portfolio materiality from project IRR.
+
+5. OUTPUT-FIRST SCHEMA
+
+Freeze and show the rendered FA and Asset Manager brief contracts before finalizing the database schema.
+
+The database must support those outputs. The outputs must not be designed around whatever tables are easiest to create.
+
+6. COMPLETION STANDARD
+
+Task #228 is not complete merely because:
+
+- PostgreSQL is provisioned
+- Migrations pass
+- Three rows exist
+- Tests pass
+- Fixtures render
+
+Completion requires three real named anchor dossiers that:
+
+- Load from PostgreSQL after server restart
+- Traverse all four stages
+- Retain exact provenance
+- Produce substantively different FA and Asset Manager outputs
+- Preserve explicit unknowns
+- Keep canonical data isolated from user experiments
+- Require no live research for their default experience
+
+If only Stargate meets this standard, report the task as partially complete rather than treating discovery records as completed anchors.

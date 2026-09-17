@@ -323,6 +323,7 @@ type DiligenceState = {
   ercotQueue: ErcotQueueResult;
   eiaData: EiaElectricityData;
   eiaLoading: boolean;
+  downloadReturnDiscrepancyRecord: () => Promise<boolean>;
   communityReview: CommunityReviewState;
   communityUnresolvedCount: number;
   reviewCommunityTerm: (
@@ -1057,6 +1058,25 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     [effectiveModelEvidence, project.capacityMW, state.lastChange],
   );
 
+  const downloadReturnDiscrepancyRecord = useCallback(async () => {
+    if (!import.meta.env.DEV || typeof window === "undefined") return false;
+    const capture = window.__safelocCaptureReturnDiscrepancyState;
+    if (!capture) return false;
+
+    const record = await capture();
+    const blob = new Blob([JSON.stringify(record, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "safeloc-return-discrepancy.json";
+    link.style.display = "none";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    return true;
+  }, []);
+
   useEffect(() => {
     if (!import.meta.env.DEV || typeof window === "undefined") return undefined;
 
@@ -1138,7 +1158,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   const communityUnresolvedCount = countUnresolvedCommunityTerms(communityReview.terms);
 
   return (
-    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, researchEvidence: project.kind === "custom" ? state.evidence : effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, applyEvidenceCorrection, applyResearchProposalOverride, persistResearchReview, clearLastChange, metrics, financialInputState, resetToDefault, setOriginatingCompany, setProjectSelection, loadCustomProject, project, originatingCompany, selectedProjectContext, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading, communityReview, communityUnresolvedCount, reviewCommunityTerm }}>
+    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, researchEvidence: project.kind === "custom" ? state.evidence : effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, applyEvidenceCorrection, applyResearchProposalOverride, persistResearchReview, clearLastChange, metrics, financialInputState, resetToDefault, setOriginatingCompany, setProjectSelection, loadCustomProject, project, originatingCompany, selectedProjectContext, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading, downloadReturnDiscrepancyRecord, communityReview, communityUnresolvedCount, reviewCommunityTerm }}>
       {children}
     </DiligenceContext.Provider>
   );

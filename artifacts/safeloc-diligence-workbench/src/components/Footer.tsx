@@ -1,6 +1,6 @@
 import { DataSources } from "@/components/DataSources";
 import { useEffect, useState } from "react";
-import { Code2, ChevronDown } from "lucide-react";
+import { Code2, ChevronDown, Download } from "lucide-react";
 import { useDiligence } from "@/context/DiligenceContext";
 import { formatSourceTimestamp } from "@/data/sources";
 
@@ -36,7 +36,8 @@ export function Footer() {
   const [eiaResponse, setEiaResponse] = useState<EiaDiagnosticResponse | null>(null);
   const [eiaLoading, setEiaLoading] = useState(false);
   const [releaseIdentity, setReleaseIdentity] = useState<ReleaseIdentity | null>(null);
-  const { ercotQueue } = useDiligence();
+  const [captureDownloadState, setCaptureDownloadState] = useState<"idle" | "downloading" | "unavailable">("idle");
+  const { ercotQueue, downloadReturnDiscrepancyRecord } = useDiligence();
   const route = typeof window === "undefined" ? "" : window.location.hash.replace(/^#/, "");
   const showsFemaNri = route === "analysis";
 
@@ -84,6 +85,15 @@ export function Footer() {
   const releaseTitle = releaseIdentity
     ? `Version ${releaseIdentity.applicationVersion ?? "unknown"} · commit ${releaseIdentity.commitSha ?? releaseIdentity.releaseId ?? "local"} · built ${releaseIdentity.buildTimestamp ?? "unknown"}`
     : undefined;
+  const downloadCapture = async () => {
+    setCaptureDownloadState("downloading");
+    try {
+      const downloaded = await downloadReturnDiscrepancyRecord();
+      setCaptureDownloadState(downloaded ? "idle" : "unavailable");
+    } catch {
+      setCaptureDownloadState("unavailable");
+    }
+  };
 
   return (
     <>
@@ -175,6 +185,25 @@ export function Footer() {
                  response: eiaResponse,
                }, null, 2)}</pre>
              </div>
+              {import.meta.env.DEV && (
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
+                  <div>
+                    <div className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#b9d43a]">Maintainer capture</div>
+                    <p className="mt-1 max-w-2xl text-[10px] leading-4 text-[#b8c5ca]">Download the current sanitized return reconciliation record. Raw provider responses, cookies, authorization headers, and arbitrary storage values are excluded.</p>
+                    {captureDownloadState === "unavailable" && <p data-testid="return-capture-download-unavailable" className="mt-1 text-[10px] text-[#f1cb8b]">The development capture is not available yet. Reopen the console and try again.</p>}
+                  </div>
+                  <button
+                    data-testid="button-download-return-discrepancy"
+                    type="button"
+                    disabled={captureDownloadState === "downloading"}
+                    onClick={() => { void downloadCapture(); }}
+                    className="inline-flex min-h-9 items-center gap-2 rounded border border-[#b9d43a]/60 bg-[#b9d43a]/10 px-3 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#d4e86b] hover:border-[#d4e86b] disabled:cursor-wait disabled:opacity-60"
+                  >
+                    <Download aria-hidden="true" className="h-3.5 w-3.5" />
+                    {captureDownloadState === "downloading" ? "Preparing JSON" : "Download sanitized record"}
+                  </button>
+                </div>
+              )}
           </section>
         )}
       </footer>

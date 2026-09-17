@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 
 const currentSessionKey = "safeloc:diligence:current-session:v1";
 const scenariosKey = "safeloc:diligence:scenarios:v1";
@@ -260,4 +261,26 @@ test.describe("current-session recovery and reset isolation", () => {
     expect(afterReload.modelInputs.fingerprint).toBe(afterReset.modelInputs.fingerprint);
     expect(JSON.stringify(afterReload)).not.toMatch(/EIA_API_KEY|authorization|cookie|"priceHistory"\s*:|"responsePreview"\s*:/i);
   });
+
+  test("lets maintainers download the current sanitized return discrepancy record", async ({ page }) => {
+    await page.getByTestId("ercot-console-toggle").click();
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByTestId("button-download-return-discrepancy").click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toBe("safeloc-return-discrepancy.json");
+
+    const downloadPath = await download.path();
+    if (!downloadPath) throw new Error("Sanitized return discrepancy download did not produce a local file.");
+    const record = JSON.parse(await readFile(downloadPath, "utf8")) as ReturnCapture & {
+      captureSchemaVersion: number;
+      release: { identity: unknown; fingerprint: string };
+    };
+
+    expect(record.captureSchemaVersion).toBe(1);
+    expect(record.modelInputs.fingerprint).toMatch(/^fnv1a-[0-9a-f]+$/);
+    expect(record.release.fingerprint).toMatch(/^fnv1a-[0-9a-f]+$/);
+    expect(record.release).toHaveProperty("identity");
+    expect(JSON.stringify(record)).not.toMatch(/EIA_API_KEY|authorization|cookie|responsePreview|rawProviderPayload|arbitraryStorageValue/i);
+  });
+
 });

@@ -1,0 +1,45 @@
+I approve the Phase 0 checkpoint and authorize Task #228 to resume in Build mode for PostgreSQL persistence and four-stage integration.
+
+Approved:
+
+1. Anchor 1: Stargate Abilene
+2. Anchor 2: Project Kilby, Reeves County, Texas
+3. Anchor 3: Microsoft El Mirage datacenter campus, Arizona
+4. Financial Advisor output contract
+5. Asset Manager output contract
+
+The following are binding implementation conditions:
+
+1. Stargate Abilene
+- Preserve the operating core campus, planned eight-building campus, and any proposed/cancelled expansion as separately scoped phases.
+- Do not combine expansion capacity, economics, or evidence with the operating core without explicit source support.
+
+2. Project Kilby
+- Preserve the conflict between Chevron’s description of Energy Forge One as a wholly owned subsidiary and Kilby.com’s description as a 50/50 Chevron/Joulent joint venture.
+- Store these as separate attributed claims with dates and provenance.
+- Do not silently select or normalize one ownership description.
+- Classify the mid-teen return target, FID timing, first-power date, jobs, taxes, water plans, and other projections as forward-looking issuer/project assertions—not verified outcomes or SafeLoc-calculated results.
+- Scope the dossier as the Project Kilby co-located power and Microsoft-operated datacenter development. Do not invent a separate datacenter address, parcel, capex, or facility specification.
+
+3. Microsoft El Mirage
+- Accept the Microsoft relationship, CenterPoint Logistics Park identity, southern El Mirage location, approximately 150 acres, and 254,000-square-foot announced campus boundary.
+- Do not label the campus operational, completed, expanded, or currently 254,000 square feet unless a dated exact-campus source supports that status.
+- Preserve the 2019 announcement date and distinguish proposed/building status from any newer regional operating statements.
+- Regional Arizona jobs, water, renewable-energy, or community figures must remain regional unless explicitly allocated to El Mirage.
+
+4. Audience contracts
+- Add an evidence “as of” date to both briefs.
+- Replace the fixed Financial Advisor label “Conversation-ready · review required” with a coverage-dependent label:
+  - “Client conversation brief · evidence reviewed”
+  - “Client conversation brief · material gaps remain”
+  - “Research incomplete · not conversation-ready”
+- Continue showing the no-buy/sell and project-return boundary.
+- Store structured evidence, relationships, materiality states, questions, triggers, and provenance as canonical data.
+- Do not treat generated narrative prose as canonical evidence.
+- If rendered brief snapshots are persisted, version them with dossier version, template version, generation timestamp, and source-record identifiers.
+
+Proceed with the data-driven PostgreSQL/Drizzle implementation, canonical-versus-session separation, protected operator import/export, three-anchor seeding, four-stage loading, and acceptance testing defined in Task #228.
+
+Do not redesign the schema around these three names, weaken evidence eligibility, change financial formulas, or add authentication/CAM/team workflows.
+
+Task #228 is complete only when all three approved dossiers load from PostgreSQL after restart and in a fresh browser, traverse all four stages without live research, retain exact provenance and conflicts, produce substantively different FA and Asset Manager outputs, and remain isolated from user experiments.

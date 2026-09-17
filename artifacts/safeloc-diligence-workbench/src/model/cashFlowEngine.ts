@@ -1093,7 +1093,10 @@ export function calculateCashFlowModel(evidence: EvidenceRecord, requestedCapaci
       return {
         powerPriceMultiplier,
         utilizationMultiplier,
-        irr: scenario.projectIRR,
+        // Keep an ambiguous return explicitly nullable across the model
+        // boundary. JSON serialization preserves null, while undefined would
+        // silently drop the field and invite consumers to treat it as zero.
+        irr: scenario.projectIRR ?? null,
         irrStatus: scenario.projectIRRStatus,
         irrReason: scenario.projectIRRReason,
         moic: scenario.moic,

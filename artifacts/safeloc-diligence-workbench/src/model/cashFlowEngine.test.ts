@@ -18,6 +18,7 @@ import {
   WATERFALL_RECONCILIATION_TOLERANCE,
   type Classification,
   type EvidenceRecord,
+  type ReturnSensitivity,
 } from "./cashFlowEngine";
 
 const CLASSIFICATIONS: Classification[] = [
@@ -87,25 +88,37 @@ test("the canonical evidence contract has 16 items and a 16-item confidence deno
 });
 
 test("return metrics reject ambiguous IRRs while keeping NPV, MOIC, and payback explicit", () => {
-  const multipleRoots = [-100, 230, -132];
-  assert.equal(calculateIRR(multipleRoots), null, "10% and 20% are both valid roots, so IRR is not meaningful");
-  assert.ok(Math.abs(calculateNPV(multipleRoots, 0.1)) < 0.000001);
-  assert.ok(Math.abs(calculateNPV(multipleRoots, 0.2)) < 0.000001);
-  assert.equal(calculateMOIC(multipleRoots), 230 / 232);
-  assert.ok(Math.abs((calculatePayback(multipleRoots) ?? 0) - (100 / 230)) < 0.000001);
+  const sensitivityFixtures: Array<{ cashFlows: number[]; expectedIRR: number | null }> = [
+    { cashFlows: [-100, 50, -10], expectedIRR: null },
+    { cashFlows: [-100, 230, -132], expectedIRR: null },
+    { cashFlows: [-100, -25, 250], expectedIRR: calculateIRR([-100, -25, 250]) },
+  ];
+  const sensitivityCells: ReturnSensitivity[] = sensitivityFixtures.map(({ cashFlows, expectedIRR }, index) => ({
+    powerPriceMultiplier: [0.8, 1, 1.2][index],
+    utilizationMultiplier: 1,
+    irr: expectedIRR,
+    moic: calculateMOIC(cashFlows),
+  }));
 
-  const noRoot = [-100, 50, -10];
-  assert.equal(calculateIRR(noRoot), null, "multiple sign changes do not bracket a unique economic root");
-  assert.ok(calculateNPV(noRoot, 0.1) < 0);
-  assert.equal(calculateMOIC(noRoot), 50 / 110);
-  assert.equal(calculatePayback(noRoot), null);
-
-  const negativeInterim = [-100, -25, 250];
-  const negativeInterimIRR = calculateIRR(negativeInterim);
-  assert.notEqual(negativeInterimIRR, null, "a negative interim contribution is valid with one sign change");
+  assert.equal(sensitivityCells[0].irr, null, "no-root sensitivity case must remain N/M");
+  assert.equal(sensitivityCells[1].irr, null, "multiple-root sensitivity case must remain N/M");
+  assert.notEqual(sensitivityCells[2].irr, null, "a negative interim contribution can still have one unique root");
+  assert.equal(calculateIRR(sensitivityFixtures[0].cashFlows), null, "multiple sign changes do not bracket a unique economic root");
+  assert.equal(calculateIRR(sensitivityFixtures[1].cashFlows), null, "10% and 20% are both valid roots, so IRR is not meaningful");
+  const negativeInterim = sensitivityFixtures[2].cashFlows;
+  const negativeInterimIRR = sensitivityCells[2].irr;
   assert.ok(Math.abs(calculateNPV(negativeInterim, negativeInterimIRR!)) < 0.000001);
-  assert.equal(calculateMOIC(negativeInterim), 2);
+  assert.equal(sensitivityCells[0].moic, 50 / 110);
+  assert.equal(sensitivityCells[1].moic, 230 / 232);
+  assert.equal(sensitivityCells[2].moic, 2);
+  assert.equal(calculatePayback(sensitivityFixtures[0].cashFlows), null);
+  assert.ok(Math.abs((calculatePayback(sensitivityFixtures[1].cashFlows) ?? 0) - (100 / 230)) < 0.000001);
   assert.equal(calculatePayback(negativeInterim), 1.5);
+
+  const serializedCells = JSON.parse(JSON.stringify(sensitivityCells)) as ReturnSensitivity[];
+  assert.equal(serializedCells[0].irr, null);
+  assert.equal(serializedCells[1].irr, null);
+  assert.equal(serializedCells[2].irr, negativeInterimIRR);
 
   const noSignChange = [-100, -25, -10];
   assert.equal(calculateIRR(noSignChange), null);

@@ -665,7 +665,9 @@ export function DiligenceLiveRegions({
   );
 }
 export function formatScenarioDelta(first: number | null, second: number | null, metric: "irr" | "moic" | "npv" | "cashOnCash" | "payback" | "confidence") {
-  if (first === null || second === null || !Number.isFinite(first) || !Number.isFinite(second)) return "Unavailable";
+  if (first === null || second === null || !Number.isFinite(first) || !Number.isFinite(second)) {
+    return metric === "irr" ? "N/M" : "Unavailable";
+  }
   const delta = second - first;
   const sign = delta > 0 ? "+" : "";
   if (metric === "irr") return formatPercentagePoints(delta, { signed: true });

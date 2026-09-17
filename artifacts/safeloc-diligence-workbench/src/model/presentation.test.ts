@@ -7,6 +7,7 @@ import {
   formatIRR,
   formatPayback,
   formatPercentagePoints,
+  formatScenarioMetric,
   formatScenarioDelta,
 } from "@/components/Shell";
 import { getEvidenceImpactRoleDefinition } from "@/data/evidenceImpactRoles";
@@ -19,6 +20,10 @@ test("shared financial presentation formatting avoids raw precision and signed z
   assert.equal(formatPercentagePoints(0.004), "less than 0.01 pts");
   assert.equal(formatPercentagePoints(-4.256, { signed: true }), "-4.3 pts");
   assert.equal(formatScenarioDelta(10, 10.001, "irr"), "less than 0.01 pts");
+  assert.equal(formatScenarioMetric(null, "irr"), "N/M");
+  assert.equal(formatScenarioDelta(null, 10, "irr"), "N/M");
+  assert.equal(formatScenarioDelta(10, null, "irr"), "N/M");
+  assert.equal(formatScenarioDelta(null, 10, "moic"), "Unavailable");
   assert.equal(formatCount(1, "material gap"), "1 material gap");
   assert.equal(formatCount(2, "material gap"), "2 material gaps");
 });

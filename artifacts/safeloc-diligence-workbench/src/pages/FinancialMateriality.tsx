@@ -51,21 +51,19 @@ function formatCoverage(year: { activeMonths: number; debtService: number; dscr:
 
 function ProviderOverlayComparison({
   financialInputState,
+  financialScenarios,
   projectKind,
-  currentIRR,
-  currentIRRReason,
 }: {
   financialInputState: ReturnType<typeof useDiligence>["financialInputState"];
+  financialScenarios: ReturnType<typeof useDiligence>["financialScenarios"];
   projectKind: "curated" | "custom";
-  currentIRR: number | null;
-  currentIRRReason: ReturnType<typeof useDiligence>["metrics"]["projectIRRReason"];
 }) {
   const isCustom = projectKind === "custom";
-  const hasProviderOverlay = !isCustom && financialInputState.providerDataOrigin === "provider";
-  const overlayIRR = financialInputState.providerOverlayIRR ?? currentIRR;
-  const overlayIRRReason = hasProviderOverlay
-    ? financialInputState.providerOverlayIRRReason
-    : currentIRRReason;
+  const syntheticVerified = financialScenarios.scenarios["synthetic-verified"]!;
+  const syntheticCurrent = financialScenarios.scenarios["synthetic-current"]!;
+  const eiaVerified = financialScenarios.scenarios["eia-verified"];
+  const eiaCurrent = financialScenarios.scenarios["eia-current"];
+  const hasProviderOverlay = Boolean(eiaVerified && eiaCurrent);
   const originLabel = financialInputState.basis === "live"
     ? "U.S. EIA Open Data · live provider response"
     : financialInputState.basis === "cached"
@@ -73,13 +71,19 @@ function ProviderOverlayComparison({
       : isCustom
         ? "Not applicable to custom project"
         : "Embedded case baseline · no provider response";
+  const scenarioCards = [
+    { label: "Synthetic underwriting baseline", scenario: syntheticVerified, role: "Primary benchmark" },
+    { label: "Synthetic current-evidence case", scenario: syntheticCurrent, role: "Primary recommendation" },
+    { label: "EIA verified sensitivity", scenario: eiaVerified, role: "Optional market sensitivity" },
+    { label: "EIA current-evidence sensitivity", scenario: eiaCurrent, role: "Optional market sensitivity" },
+  ];
   return (
     <section data-testid="provider-overlay-comparison" className="mb-4 rounded-xl border border-[#aac6f4] bg-[#eef5ff] p-4 md:p-5">
       <div className="flex flex-col justify-between gap-2 md:flex-row md:items-start">
         <div>
-          <SectionKicker>Provider overlay audit</SectionKicker>
+          <SectionKicker>Four-scenario financial contract</SectionKicker>
           <h3 className="mt-1 text-[17px] font-semibold text-[#122232]">
-            {isCustom ? "Market context is not applied to this custom project" : "Synthetic baseline → electricity market overlay"}
+            {isCustom ? "Market context is not applied to this custom project" : "Synthetic diligence case with optional EIA sensitivities"}
           </h3>
         </div>
         <span className="inline-flex w-fit rounded-full border border-[#aac6f4] bg-white px-2.5 py-1 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#255bb7]">
@@ -89,41 +93,49 @@ function ProviderOverlayComparison({
       <p className="mt-2 max-w-3xl text-[11px] leading-5 text-[#344550]">
         {isCustom
           ? "The EIA electricity series remains separate market context; it does not replace custom-project research or change this synthetic scenario."
-          : "The EIA rate is a statewide market-context input used to sensitivity-test the synthetic case. It is not a disclosed Stargate tariff, issuer return or portfolio return."}
+          : "The synthetic current-evidence case remains the primary recommendation basis. EIA is an optional statewide industrial-market sensitivity—not a disclosed Stargate tariff, contracted project price, issuer return or portfolio return."}
       </p>
-      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-        <div data-testid="provider-overlay-rate" className="rounded-lg border border-[#d9e5f5] bg-white p-3">
-          <div className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#60707d]">{hasProviderOverlay ? "Provider rate" : "Synthetic rate"}</div>
-          <div className="mt-1 font-mono text-lg font-bold text-[#122232]">
-            {isCustom ? "Not applicable" : `$${(hasProviderOverlay ? financialInputState.electricityRate ?? financialInputState.syntheticElectricityRate ?? 0 : financialInputState.syntheticElectricityRate ?? financialInputState.electricityRate ?? 0).toFixed(1)}/MWh`}
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        {scenarioCards.map(({ label, scenario, role }) => (
+          <div key={label} data-testid={`scenario-${scenario?.scenarioId ?? label.toLowerCase().replaceAll(" ", "-")}`} className="rounded-lg border border-[#d9e5f5] bg-white p-3">
+            <div className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#60707d]">{label}</div>
+            <div className="mt-1 font-mono text-lg font-bold text-[#122232]">
+              {scenario ? formatIRR(scenario.returns.projectIRR) : "Not available"}
+            </div>
+            <div className="mt-1 text-[9px] text-[#60707d]">{role}</div>
+            {scenario?.returns.projectIRRReason && <IRRReasonNote reason={scenario.returns.projectIRRReason} />}
           </div>
+        ))}
+      </div>
+      <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <div data-testid="provider-overlay-rate" className="rounded-lg border border-[#d9e5f5] bg-white p-3">
+          <div className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#60707d]">EIA electricity treatment</div>
+          <div className="mt-1 font-mono text-lg font-bold text-[#122232]">
+            {eiaCurrent ? `$${eiaCurrent.inputs.rawElectricityRate.toFixed(1)} → $${eiaCurrent.inputs.appliedElectricityRate.toFixed(1)}/MWh` : "Not available"}
+          </div>
+          {eiaCurrent && <p className="mt-1 text-[9px] leading-4 text-[#60707d]">Provider observation after the 5% uncertainty treatment.</p>}
         </div>
         <div data-testid="provider-overlay-origin" className="rounded-lg border border-[#d9e5f5] bg-white p-3">
           <div className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#60707d]">Origin</div>
           <div className="mt-1 text-[11px] font-semibold leading-4 text-[#122232]">{originLabel}</div>
         </div>
         <div data-testid="provider-overlay-period" className="rounded-lg border border-[#d9e5f5] bg-white p-3">
-          <div className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#60707d]">Provider period</div>
-          <div className="mt-1 font-mono text-[12px] font-bold text-[#122232]">{isCustom || !hasProviderOverlay ? "Not reported" : financialInputState.electricityPeriod ?? "Not reported"}</div>
+          <div className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#60707d]">EIA period</div>
+          <div className="mt-1 font-mono text-[12px] font-bold text-[#122232]">{eiaCurrent?.provider.period ?? "Not reported"}</div>
         </div>
         <div data-testid="provider-overlay-baseline-irr" className="rounded-lg border border-[#d9e5f5] bg-white p-3">
-          <div className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#60707d]">Synthetic baseline IRR</div>
-           <div className="mt-1 font-mono text-lg font-bold text-[#122232]">{formatIRR(financialInputState.syntheticBaselineIRR)}</div>
-        </div>
-        <div data-testid="provider-overlay-delta" className="rounded-lg border border-[#d9e5f5] bg-white p-3">
-          <div className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#60707d]">Return delta from overlay</div>
-          <div className="mt-1 font-mono text-lg font-bold text-[#255bb7]">
-            {hasProviderOverlay ? formatPercentagePoints(financialInputState.providerOverlayDeltaIRR, { signed: true }) : "Not calculated"}
+          <div className="font-mono text-[9px] uppercase tracking-[0.1em] text-[#60707d]">EIA escalation treatment</div>
+          <div className="mt-1 font-mono text-lg font-bold text-[#122232]">
+            {eiaCurrent ? `${eiaCurrent.inputs.rawElectricityEscalationPercent.toFixed(1)}% → ${eiaCurrent.inputs.appliedElectricityEscalationPercent.toFixed(1)}%` : "Not available"}
           </div>
-           {hasProviderOverlay && <div className="mt-1 text-[9px] text-[#60707d]">Overlay result: {formatIRR(overlayIRR)}</div>}
+          {eiaCurrent && <p className="mt-1 text-[9px] leading-4 text-[#60707d]">Raw EIA year-over-year change plus the model-inference adjustment.</p>}
         </div>
       </div>
-       {(financialInputState.syntheticBaselineIRRReason !== null || overlayIRRReason !== null) && (
-        <div className="mt-3 space-y-2">
-           <IRRReasonNote reason={financialInputState.syntheticBaselineIRRReason} testId="provider-overlay-baseline-irr-reason" />
-           <IRRReasonNote reason={overlayIRRReason} testId="provider-overlay-result-irr-reason" />
-        </div>
-      )}
+      <div data-testid="provider-overlay-delta" className="mt-2 text-[10px] text-[#52616b]">
+        {eiaCurrent && syntheticCurrent.returns.projectIRR !== null && eiaCurrent.returns.projectIRR !== null
+          ? `EIA current-evidence sensitivity versus the primary synthetic current-evidence case: ${formatPercentagePoints(eiaCurrent.returns.projectIRR - syntheticCurrent.returns.projectIRR, { signed: true })}.`
+          : "No EIA sensitivity delta is available."}
+      </div>
       <p className="mt-3 text-[10px] leading-4 text-[#52616b]">
         {financialInputState.sourceUpdatedAt && hasProviderOverlay
           ? `Provider dataset freshness: ${new Date(financialInputState.sourceUpdatedAt).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" })}.`
@@ -213,7 +225,7 @@ function NextViewButton({ label, target, onClick }: { label: string; target: Fin
 }
 
 export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
-  const { evidence, hasChangedClassification, metrics, sourceStates, project, originatingCompany, financialInputState } = useDiligence();
+  const { evidence, hasChangedClassification, metrics, sourceStates, project, originatingCompany, financialInputState, financialScenarios } = useDiligence();
   const [financialView, setFinancialView] = useState<FinancialView>("overview");
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const currentIRR = metrics.projectIRR;
@@ -261,23 +273,9 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
       ? "Proceed only with explicit conditions around the unresolved evidence and modeled treatments."
       : "Resolve material evidence gaps before using the output as an investment conclusion.";
 
-  if (financialInputState.phase === "updating") {
-    return (
-      <section data-testid="financial-inputs-updating" role="status" className="rounded-xl border-2 border-[#aac6f4] bg-[#eef5ff] p-5 md:p-6">
-        <SectionKicker>Illustrative project economics</SectionKicker>
-        <h2 className="mt-2 text-[24px] font-semibold tracking-[-0.035em] text-[#122232]">Updating live inputs</h2>
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-[#52616b]">The baseline and conservative stress results are temporarily withheld while the electricity provider response settles. No interim fallback return is presented as final.</p>
-      </section>
-    );
-  }
-
-  const calculationBasis = financialInputState.basis === "fallback"
-    ? "Fallback-based calculation"
-    : financialInputState.basis === "cached"
-      ? "Cached provider-based calculation"
-      : financialInputState.basis === "live"
-        ? "Live provider-based calculation"
-        : "Custom project calculation";
+  const calculationBasis = project.kind === "custom"
+    ? "Custom project calculation"
+    : "Synthetic current-evidence primary calculation";
   const calculationTimestamp = financialInputState.calculatedAt
     ? new Date(financialInputState.calculatedAt).toLocaleString()
     : "not reported";
@@ -288,7 +286,7 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
       : "bundled EIA estimate available";
   const providerApplicability = project.kind === "custom"
     ? "not applied to this custom project"
-    : "applied to the curated electricity input";
+    : "optional sensitivity only";
 
   return (
     <div data-testid="financial-transmission-model" className="min-w-0">
@@ -298,11 +296,10 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
       </div>
        <div data-testid="financial-input-state" role="status" className="mb-4 rounded-lg border border-[#cbd8d4] bg-[#f9faf8] px-4 py-3 text-[11px] leading-5 text-[#52616b]">
          <strong className="font-semibold text-[#122232]">{calculationBasis}.</strong>{" "}
-         Electricity input: {financialInputState.electricityRate === null ? "not applicable" : `$${financialInputState.electricityRate.toFixed(1)}/MWh`}
-         {financialInputState.electricityPeriod ? ` · period ${financialInputState.electricityPeriod}` : ""}
+          Primary electricity input: ${financialScenarios.scenarios["synthetic-current"]!.inputs.appliedElectricityRate.toFixed(1)}/MWh
          {` · provider availability: ${providerAvailability} · project applicability: ${providerApplicability} · calculated ${calculationTimestamp}.`}
        </div>
-       <ProviderOverlayComparison financialInputState={financialInputState} projectKind={project.kind} currentIRR={currentIRR} currentIRRReason={currentIRRReason} />
+       <ProviderOverlayComparison financialInputState={financialInputState} financialScenarios={financialScenarios} projectKind={project.kind} />
       {!hasChangedClassification && <aside data-testid="materiality-classification-prompt" role="note" className="mb-4 flex items-start gap-3 rounded-lg border border-[#aac6f4] bg-[#eef5ff] px-4 py-3 text-[11px] leading-5 text-[#344550]"><Sparkles aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#255bb7]" /><p><strong className="font-semibold text-[#122232]">Change a classification</strong> to see the return, driver ranking, confidence and recommendation update.</p></aside>}
        <div data-testid="financial-gap-counts" className="mb-4 grid gap-2 sm:grid-cols-2">
          <div className="rounded-lg border border-[#e3d4b6] bg-[#fffbf2] px-3 py-2 text-[11px] text-[#805000]"><strong className="font-semibold">Unresolved decision gates:</strong> {metrics.unresolvedDecisionGateCount}</div>
@@ -315,10 +312,10 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
       {metrics.mechanicalDisclaimer && <div data-testid="banner-mechanical-disclaimer" className="mb-4 flex items-start gap-3 rounded-xl border-2 border-[#ba2f45] bg-[#fff3f4] px-5 py-4 text-[#7f2635]"><TriangleAlert aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0" /><div><div className="font-mono text-[12px] font-bold tracking-[0.08em]">MECHANICAL OUTPUTS ONLY · 0% EVIDENCE CONFIDENCE</div><div className="mt-1 text-[11px] leading-5 text-[#96525d]">Returns are scenario mechanics, not investment-grade underwriting or a recommendation.</div></div></div>}
 
       {financialView === "overview" && <section id="financial-panel-overview" data-testid="panel-impact-chain" role="tabpanel" aria-labelledby="financial-tab-overview" tabIndex={0} className="rounded-xl border-2 border-[#122232] bg-[#122232] p-5 text-white md:p-6">
-        <div className="flex flex-col justify-between gap-3 border-b border-white/15 pb-4 md:flex-row md:items-end"><div><SectionKicker tone="lime" className="!text-[#d4e86b]">Overview</SectionKicker><h3 className="text-[22px] font-semibold tracking-[-0.035em]">Underwriting baseline → conservative stress</h3></div><span data-testid="impact-chain-evidence-gap" className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#f5ddd5]">{irrDelta === null ? "Difference unavailable" : `${formatPercentagePoints(Math.abs(irrDelta))} difference`}</span></div>
+        <div className="flex flex-col justify-between gap-3 border-b border-white/15 pb-4 md:flex-row md:items-end"><div><SectionKicker tone="lime" className="!text-[#d4e86b]">Primary synthetic case</SectionKicker><h3 className="text-[22px] font-semibold tracking-[-0.035em]">Synthetic underwriting baseline → synthetic current evidence</h3></div><span data-testid="impact-chain-evidence-gap" className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#f5ddd5]">{irrDelta === null ? "Difference unavailable" : `${formatPercentagePoints(Math.abs(irrDelta))} difference`}</span></div>
         <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
            <div className="rounded-lg border border-[#b9d43a]/40 bg-[#b9d43a]/10 p-4"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#b9d43a]">Baseline return</div><div data-testid="impact-chain-baseline-irr" className="mt-1 font-mono text-3xl font-bold text-[#d4e86b]">{formatIRR(baseIRR)}</div>{baseIRRReason && <div className="mt-2 text-[9px] leading-4 text-[#f5ddd5]">{formatIRRReasonLabel(baseIRRReason)}</div>}</div>
-           <div className="rounded-lg border border-[#f5ddd5]/40 bg-[#f5ddd5]/10 p-4"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#f5ddd5]">Conservative stress</div><div data-testid="impact-chain-stress-irr" className="mt-1 font-mono text-3xl font-bold text-[#f5ddd5]">{formatIRR(currentIRR)}</div><div data-testid="text-current-irr-materiality" className="sr-only">{formatIRR(currentIRR)}</div>{currentIRRReason && <div className="mt-2 text-[9px] leading-4 text-[#f5ddd5]">{formatIRRReasonLabel(currentIRRReason)}</div>}</div>
+           <div className="rounded-lg border border-[#f5ddd5]/40 bg-[#f5ddd5]/10 p-4"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#f5ddd5]">Current-evidence case</div><div data-testid="impact-chain-stress-irr" className="mt-1 font-mono text-3xl font-bold text-[#f5ddd5]">{formatIRR(currentIRR)}</div><div data-testid="text-current-irr-materiality" className="sr-only">{formatIRR(currentIRR)}</div>{currentIRRReason && <div className="mt-2 text-[9px] leading-4 text-[#f5ddd5]">{formatIRRReasonLabel(currentIRRReason)}</div>}</div>
           <div className="rounded-lg border border-white/10 bg-white/5 p-4"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#9dafb8]">Difference</div><div className="mt-1 font-mono text-2xl font-bold">{formatPercentagePoints(irrDelta, { signed: true })}</div></div>
           <div className="rounded-lg border border-white/10 bg-white/5 p-4"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#9dafb8]">Recommendation context</div><div className="mt-1 text-sm font-semibold text-[#d4e86b]">{metrics.recommendationStatus}</div><p className="mt-2 text-[10px] leading-4 text-[#c4d0d6]">{recommendationCopy}</p></div>
         </div>

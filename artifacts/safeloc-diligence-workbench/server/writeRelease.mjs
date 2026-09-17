@@ -41,6 +41,24 @@ function bundleDigest(directory) {
   return hash.digest("hex").slice(0, 16);
 }
 
+function assetManifest(directory) {
+  const assetsDir = path.join(directory, "assets");
+  try {
+    return readdirSync(assetsDir, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && /\.(?:js|css)$/.test(entry.name))
+      .map((entry) => {
+        const content = readFileSync(path.join(assetsDir, entry.name));
+        return {
+          file: `assets/${entry.name}`,
+          hash: `sha256-${createHash("sha256").update(content).digest("hex")}`,
+        };
+      })
+      .sort((left, right) => left.file.localeCompare(right.file));
+  } catch {
+    return [];
+  }
+}
+
 const configuredCommit = [
   ["COMMIT_SHA", process.env.COMMIT_SHA],
   ["GIT_COMMIT_SHA", process.env.GIT_COMMIT_SHA],
@@ -77,5 +95,6 @@ writeFileSync(
     commitShaMatchesSource,
     deploymentId,
     buildTimestamp,
+    assets: assetManifest(publicDir),
   })}\n`,
 );

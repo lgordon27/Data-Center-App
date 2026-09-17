@@ -25,3 +25,4 @@
 - [Pinned Node DNS lookup shape](pinned-node-dns-lookup.md) — pinned HTTPS lookups must support Node’s all-address callback shape or requests fail before transport.
 - [Sanitized return discrepancy records](sanitized-return-discrepancy-records.md) — reproducibility captures hash normalized inputs and metadata, never raw provider payloads or browser storage blobs.
 - [IRR mathematical reason states](irr-mathematical-reason-states.md) — keep N/M explanations typed and separate from evidence confidence; preserve NPV, MOIC, and payback.
+- [Financial scenario hierarchy](financial-scenario-hierarchy.md) — synthetic current evidence is the stable recommendation basis; provider data remains an optional sensitivity.

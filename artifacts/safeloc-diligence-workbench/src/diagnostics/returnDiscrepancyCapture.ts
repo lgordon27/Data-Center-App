@@ -6,15 +6,18 @@ import type {
   Classification,
   QualitativeEvidenceValue,
 } from "@/model/cashFlowEngine";
+import type { FinancialScenarioMatrix } from "@/model/financialScenarioContract";
 
-export const RETURN_DISCREPANCY_CAPTURE_SCHEMA_VERSION = 1;
+export const RETURN_DISCREPANCY_CAPTURE_SCHEMA_VERSION = 2;
 
 export type ReturnCaptureReleaseIdentity = {
   applicationVersion: string | null;
   releaseId: string | null;
   commitSha: string | null;
+  sourceCommitSha: string | null;
   deploymentId: string | null;
   buildTimestamp: string | null;
+  assets: Array<{ file: string; hash: string }>;
 };
 
 export type ReturnCaptureEvidenceItem = {
@@ -74,6 +77,7 @@ export type ReturnCaptureInput = {
   evidence: Record<string, ReturnCaptureEvidenceItem>;
   modelEvidence: Record<string, ReturnCaptureEvidenceItem>;
   metrics: CashFlowModel & { lastChange?: unknown };
+  financialScenarios: FinancialScenarioMatrix;
   financialInputState: ReturnCaptureFinancialInputState;
   sourceStates: Record<SourceId, SourceState>;
   eiaData: EiaElectricityData;
@@ -123,6 +127,7 @@ export type SanitizedReturnDiscrepancyRecord = {
     ercotQueue: SanitizedErcotState;
   };
   classifications: Record<string, Classification>;
+  financialScenarios: FinancialScenarioMatrix;
   modelInputs: {
     evidence: Record<string, SanitizedModelInput>;
     assumptions: CashFlowModel["assumptions"];
@@ -403,8 +408,10 @@ export function createSanitizedReturnDiscrepancyRecord(
       applicationVersion: releaseIdentity.applicationVersion,
       releaseId: releaseIdentity.releaseId,
       commitSha: releaseIdentity.commitSha,
+      sourceCommitSha: releaseIdentity.sourceCommitSha,
       deploymentId: releaseIdentity.deploymentId,
       buildTimestamp: releaseIdentity.buildTimestamp,
+      assets: releaseIdentity.assets,
     }
     : null;
   const sourceStates = Object.fromEntries(
@@ -484,6 +491,7 @@ export function createSanitizedReturnDiscrepancyRecord(
       },
     },
     classifications,
+    financialScenarios: input.financialScenarios,
     modelInputs: {
       evidence: modelInputs,
       assumptions: input.metrics.assumptions,

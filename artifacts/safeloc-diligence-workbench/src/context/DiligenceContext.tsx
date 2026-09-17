@@ -10,6 +10,10 @@ import {
   type QualitativeEvidenceValue,
 } from '@/model/cashFlowEngine';
 import {
+  buildFinancialScenarioMatrix,
+  type FinancialScenarioMatrix,
+} from "@/model/financialScenarioContract";
+import {
   sourceStateMap,
   type SourceId,
   type SourceState,
@@ -176,6 +180,12 @@ export type FinancialInputState = {
   syntheticBaselineIRR: number | null;
   syntheticBaselineIRRStatus: IRRStatus;
   syntheticBaselineIRRReason: IRRReason | null;
+  syntheticCurrentIRR: number | null;
+  syntheticCurrentIRRStatus: IRRStatus;
+  syntheticCurrentIRRReason: IRRReason | null;
+  providerBaselineIRR: number | null;
+  providerBaselineIRRStatus: IRRStatus | null;
+  providerBaselineIRRReason: IRRReason | null;
   providerOverlayIRR: number | null;
   providerOverlayIRRStatus: IRRStatus | null;
   providerOverlayIRRReason: IRRReason | null;
@@ -183,34 +193,21 @@ export type FinancialInputState = {
   calculatedAt: string | null;
 };
 
-type FinancialInputModelSnapshot = Pick<
-  ReturnType<typeof calculateCashFlowModel>,
-  "projectIRR" | "projectIRRStatus" | "projectIRRReason"
-> & {
-  assumptions: Pick<ReturnType<typeof calculateCashFlowModel>["assumptions"], "electricityRate">;
-};
-
 export function buildFinancialInputState({
   projectKind,
   eiaLoading,
-  providerStatus,
-  providerDataOrigin,
-  electricityRate,
-  electricityPeriod,
-  sourceUpdatedAt,
-  syntheticModel,
-  providerOverlayModel,
+  matrix,
+  eiaData,
 }: {
   projectKind: "curated" | "custom";
   eiaLoading: boolean;
-  providerStatus: EiaElectricityData["status"] | "not-applicable";
-  providerDataOrigin: EiaElectricityData["dataOrigin"] | "not-applicable";
-  electricityRate: number | null;
-  electricityPeriod: string | null;
-  sourceUpdatedAt: string | null;
-  syntheticModel: FinancialInputModelSnapshot;
-  providerOverlayModel: FinancialInputModelSnapshot | null;
+  matrix: FinancialScenarioMatrix;
+  eiaData: EiaElectricityData;
 }): FinancialInputState {
+  const syntheticBaseline = matrix.scenarios["synthetic-verified"]!;
+  const syntheticCurrent = matrix.scenarios["synthetic-current"]!;
+  const providerBaseline = matrix.scenarios["eia-verified"];
+  const providerCurrent = matrix.scenarios["eia-current"];
   if (projectKind === "custom") {
     return {
       phase: "settled",
@@ -220,10 +217,16 @@ export function buildFinancialInputState({
       electricityRate: null,
       electricityPeriod: null,
       sourceUpdatedAt: null,
-      syntheticElectricityRate: syntheticModel.assumptions.electricityRate,
-      syntheticBaselineIRR: syntheticModel.projectIRR,
-      syntheticBaselineIRRStatus: syntheticModel.projectIRRStatus,
-      syntheticBaselineIRRReason: syntheticModel.projectIRRReason,
+      syntheticElectricityRate: syntheticCurrent.inputs.appliedElectricityRate,
+      syntheticBaselineIRR: syntheticBaseline.returns.projectIRR,
+      syntheticBaselineIRRStatus: syntheticBaseline.returns.projectIRRStatus,
+      syntheticBaselineIRRReason: syntheticBaseline.returns.projectIRRReason,
+      syntheticCurrentIRR: syntheticCurrent.returns.projectIRR,
+      syntheticCurrentIRRStatus: syntheticCurrent.returns.projectIRRStatus,
+      syntheticCurrentIRRReason: syntheticCurrent.returns.projectIRRReason,
+      providerBaselineIRR: null,
+      providerBaselineIRRStatus: null,
+      providerBaselineIRRReason: null,
       providerOverlayIRR: null,
       providerOverlayIRRStatus: null,
       providerOverlayIRRReason: null,
@@ -234,24 +237,30 @@ export function buildFinancialInputState({
 
   return {
     phase: eiaLoading ? "updating" : "settled",
-    basis: providerDataOrigin === "provider"
-      ? providerStatus === "cached" ? "cached" : "live"
+    basis: eiaData.dataOrigin === "provider"
+      ? eiaData.status === "cached" ? "cached" : "live"
       : "fallback",
-    providerStatus: providerStatus as EiaElectricityData["status"],
-    providerDataOrigin: providerDataOrigin as EiaElectricityData["dataOrigin"],
-    electricityRate,
-    electricityPeriod,
-    sourceUpdatedAt,
-    syntheticElectricityRate: syntheticModel.assumptions.electricityRate,
-    syntheticBaselineIRR: syntheticModel.projectIRR,
-    syntheticBaselineIRRStatus: syntheticModel.projectIRRStatus,
-    syntheticBaselineIRRReason: syntheticModel.projectIRRReason,
-    providerOverlayIRR: providerOverlayModel?.projectIRR ?? null,
-    providerOverlayIRRStatus: providerOverlayModel?.projectIRRStatus ?? null,
-    providerOverlayIRRReason: providerOverlayModel?.projectIRRReason ?? null,
-    providerOverlayDeltaIRR: providerOverlayModel?.projectIRR === null || providerOverlayModel?.projectIRR === undefined || syntheticModel.projectIRR === null
+    providerStatus: eiaData.status,
+    providerDataOrigin: eiaData.dataOrigin,
+    electricityRate: eiaData.latestPrice,
+    electricityPeriod: eiaData.latestPricePeriod ?? null,
+    sourceUpdatedAt: eiaData.sourceUpdatedAt ?? null,
+    syntheticElectricityRate: syntheticCurrent.inputs.appliedElectricityRate,
+    syntheticBaselineIRR: syntheticBaseline.returns.projectIRR,
+    syntheticBaselineIRRStatus: syntheticBaseline.returns.projectIRRStatus,
+    syntheticBaselineIRRReason: syntheticBaseline.returns.projectIRRReason,
+    syntheticCurrentIRR: syntheticCurrent.returns.projectIRR,
+    syntheticCurrentIRRStatus: syntheticCurrent.returns.projectIRRStatus,
+    syntheticCurrentIRRReason: syntheticCurrent.returns.projectIRRReason,
+    providerBaselineIRR: providerBaseline?.returns.projectIRR ?? null,
+    providerBaselineIRRStatus: providerBaseline?.returns.projectIRRStatus ?? null,
+    providerBaselineIRRReason: providerBaseline?.returns.projectIRRReason ?? null,
+    providerOverlayIRR: providerCurrent?.returns.projectIRR ?? null,
+    providerOverlayIRRStatus: providerCurrent?.returns.projectIRRStatus ?? null,
+    providerOverlayIRRReason: providerCurrent?.returns.projectIRRReason ?? null,
+    providerOverlayDeltaIRR: providerCurrent?.returns.projectIRR === null || providerCurrent?.returns.projectIRR === undefined || syntheticCurrent.returns.projectIRR === null
       ? null
-      : providerOverlayModel.projectIRR - syntheticModel.projectIRR,
+      : providerCurrent.returns.projectIRR - syntheticCurrent.returns.projectIRR,
     calculatedAt: eiaLoading ? null : new Date().toISOString(),
   };
 }
@@ -306,6 +315,7 @@ type DiligenceState = {
   clearLastChange: () => void;
   metrics: FinancialMetrics;
   financialInputState: FinancialInputState;
+  financialScenarios: FinancialScenarioMatrix;
   resetToDefault: (originatingCompany?: string | null) => void;
   setOriginatingCompany: (originatingCompany: CompanyKey | null) => void;
   setProjectSelection: (selection: ProjectSelectionContext | null) => void;
@@ -481,31 +491,47 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     eia: eiaData.sourceMetadata,
   }), [eiaData.sourceMetadata, ercotQueue.sourceMetadata]);
   const effectiveEvidence = useMemo(
-    () => project.kind === "custom" ? state.modelEvidence : applyEiaEvidence(state.evidence, eiaData),
-    [state.evidence, state.modelEvidence, eiaData, project.kind],
+    () => project.kind === "custom" ? state.modelEvidence : state.evidence,
+    [state.evidence, state.modelEvidence, project.kind],
   );
   const effectiveModelEvidence = useMemo(
-    () => project.kind === "custom" ? state.modelEvidence : applyEiaEvidence(state.modelEvidence, eiaData),
-    [state.modelEvidence, eiaData, project.kind],
+    () => state.modelEvidence,
+    [state.modelEvidence],
+  );
+  const providerState = project.kind === "custom"
+    ? "not-applicable" as const
+    : eiaLoading
+      ? "refreshing" as const
+      : eiaData.dataOrigin === "provider"
+        ? eiaData.status === "cached" ? "cached" as const : "live" as const
+        : eiaData.error
+          ? "unavailable" as const
+          : "embedded" as const;
+  const providerModelEvidence = useMemo(
+    () => project.kind === "curated" && eiaData.dataOrigin === "provider"
+      ? applyEiaEvidence(state.modelEvidence, eiaData)
+      : null,
+    [eiaData, project.kind, state.modelEvidence],
+  );
+  const financialScenarios = useMemo(
+    () => buildFinancialScenarioMatrix({
+      syntheticEvidence: state.modelEvidence as EvidenceRecord,
+      providerEvidence: providerModelEvidence as EvidenceRecord | null,
+      eiaData,
+      providerState,
+      capacityMW: project.capacityMW,
+    }),
+    [eiaData, project.capacityMW, providerModelEvidence, providerState, state.modelEvidence],
   );
 
   const financialInputState = useMemo<FinancialInputState>(() => {
-    const syntheticModel = calculateCashFlowModel(state.modelEvidence as EvidenceRecord, project.capacityMW);
-    const providerOverlayModel = project.kind === "curated" && eiaData.dataOrigin === "provider"
-      ? calculateCashFlowModel(effectiveModelEvidence as EvidenceRecord, project.capacityMW)
-      : null;
     return buildFinancialInputState({
       projectKind: project.kind,
       eiaLoading,
-      providerStatus: eiaData.status,
-      providerDataOrigin: eiaData.dataOrigin,
-      electricityRate: eiaData.latestPrice,
-      electricityPeriod: eiaData.latestPricePeriod ?? null,
-      sourceUpdatedAt: eiaData.sourceUpdatedAt ?? null,
-      syntheticModel,
-      providerOverlayModel,
+      matrix: financialScenarios,
+      eiaData,
     });
-  }, [eiaData, eiaLoading, effectiveModelEvidence, project.capacityMW, project.kind, state.modelEvidence]);
+  }, [eiaData, eiaLoading, financialScenarios, project.kind]);
 
   useEffect(() => {
     let active = true;
@@ -546,13 +572,10 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     if (!previous || !isClassification(classification)) return false;
     const classificationChanged = previous !== classification;
     if (!classificationChanged && reviewKind === "manual") return false;
-    const settledForFinancialCalculation = project.kind === "custom" || !eiaLoading;
+    const settledForFinancialCalculation = true;
 
     const previousIrr = classificationChanged && settledForFinancialCalculation
-      ? calculateCashFlowModel(
-        (project.kind === "custom" ? currentState.modelEvidence : applyEiaEvidence(currentState.modelEvidence, eiaData)) as EvidenceRecord,
-        project.capacityMW,
-      ).projectIRR
+      ? calculateCashFlowModel(currentState.modelEvidence as EvidenceRecord, project.capacityMW).projectIRR
       : null;
     const nextEvidence = {
       ...currentState.evidence,
@@ -568,7 +591,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     };
     const nextIrr = classificationChanged && settledForFinancialCalculation
       ? calculateCashFlowModel(
-        (project.kind === "custom" ? currentState.modelEvidence : applyEiaEvidence(nextEvidence, eiaData)) as EvidenceRecord,
+        (project.kind === "custom" ? currentState.modelEvidence : nextEvidence) as EvidenceRecord,
         project.capacityMW,
       ).projectIRR
       : null;
@@ -599,7 +622,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       ));
     }
     return true;
-  }, [eiaData, eiaLoading, originatingCompany, project]);
+  }, [originatingCompany, project]);
 
   const clearLastChange = useCallback(() => {
     const nextState = { ...stateRef.current, lastChange: null };
@@ -1020,6 +1043,18 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         payback: metrics.payback,
         confidence: metrics.confidenceScore,
       },
+      basis: {
+        status: "known",
+        scenarioId: "synthetic-current",
+        evidenceBasis: "current",
+        electricityBasis: "synthetic",
+        modelContractVersion: financialScenarios.modelContractVersion,
+        modelFingerprint: financialScenarios.scenarios["synthetic-current"]!.modelFingerprint,
+        rawElectricityRate: financialScenarios.scenarios["synthetic-current"]!.inputs.rawElectricityRate,
+        appliedElectricityRate: financialScenarios.scenarios["synthetic-current"]!.inputs.appliedElectricityRate,
+        rawElectricityEscalationPercent: financialScenarios.scenarios["synthetic-current"]!.inputs.rawElectricityEscalationPercent,
+        appliedElectricityEscalationPercent: financialScenarios.scenarios["synthetic-current"]!.inputs.appliedElectricityEscalationPercent,
+      },
     };
     const nextScenarios = [...scenarios, scenario];
     setScenarios(nextScenarios);
@@ -1054,8 +1089,13 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   };
 
   const metrics = useMemo(
-    () => ({ ...calculateCashFlowModel(effectiveModelEvidence as EvidenceRecord, project.capacityMW), lastChange: state.lastChange }),
-    [effectiveModelEvidence, project.capacityMW, state.lastChange],
+    () => ({
+      ...financialScenarios.scenarios["synthetic-current"]!.model,
+      baseIRR: financialScenarios.scenarios["synthetic-verified"]!.returns.projectIRR,
+      baseModel: financialScenarios.scenarios["synthetic-verified"]!.model,
+      lastChange: state.lastChange,
+    }),
+    [financialScenarios, state.lastChange],
   );
 
   const downloadReturnDiscrepancyRecord = useCallback(async () => {
@@ -1094,8 +1134,17 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
               applicationVersion: typeof value.applicationVersion === "string" ? value.applicationVersion : null,
               releaseId: typeof value.releaseId === "string" ? value.releaseId : null,
               commitSha: typeof value.commitSha === "string" ? value.commitSha : null,
+              sourceCommitSha: typeof value.sourceCommitSha === "string" ? value.sourceCommitSha : null,
               deploymentId: typeof value.deploymentId === "string" ? value.deploymentId : null,
               buildTimestamp: typeof value.buildTimestamp === "string" ? value.buildTimestamp : null,
+              assets: Array.isArray(value.assets)
+                ? value.assets.filter((asset): asset is { file: string; hash: string } => (
+                    Boolean(asset) &&
+                    typeof asset === "object" &&
+                    typeof (asset as { file?: unknown }).file === "string" &&
+                    typeof (asset as { hash?: unknown }).hash === "string"
+                  ))
+                : [],
             };
           }
         }
@@ -1120,6 +1169,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         evidence: effectiveEvidence,
         modelEvidence: effectiveModelEvidence,
         metrics,
+        financialScenarios,
         financialInputState: {
           basis: financialInputState.basis,
           providerStatus: financialInputState.providerStatus,
@@ -1147,6 +1197,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     effectiveModelEvidence,
     ercotQueue,
     financialInputState,
+    financialScenarios,
     metrics,
     originatingCompany,
     project,
@@ -1158,7 +1209,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   const communityUnresolvedCount = countUnresolvedCommunityTerms(communityReview.terms);
 
   return (
-    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, researchEvidence: project.kind === "custom" ? state.evidence : effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, applyEvidenceCorrection, applyResearchProposalOverride, persistResearchReview, clearLastChange, metrics, financialInputState, resetToDefault, setOriginatingCompany, setProjectSelection, loadCustomProject, project, originatingCompany, selectedProjectContext, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading, downloadReturnDiscrepancyRecord, communityReview, communityUnresolvedCount, reviewCommunityTerm }}>
+    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, researchEvidence: project.kind === "custom" ? state.evidence : effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, applyEvidenceCorrection, applyResearchProposalOverride, persistResearchReview, clearLastChange, metrics, financialInputState, financialScenarios, resetToDefault, setOriginatingCompany, setProjectSelection, loadCustomProject, project, originatingCompany, selectedProjectContext, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading, downloadReturnDiscrepancyRecord, communityReview, communityUnresolvedCount, reviewCommunityTerm }}>
       {children}
     </DiligenceContext.Provider>
   );
@@ -1178,6 +1229,27 @@ export type SavedScenario = {
   savedAt: string;
   classifications: Record<string, Classification>;
   metrics: ScenarioMetrics;
+  basis:
+    | {
+        status: "known";
+        scenarioId: "synthetic-current";
+        evidenceBasis: "current";
+        electricityBasis: "synthetic";
+        modelContractVersion: number;
+        modelFingerprint: string;
+        rawElectricityRate: number;
+        appliedElectricityRate: number;
+        rawElectricityEscalationPercent: number;
+        appliedElectricityEscalationPercent: number;
+      }
+    | {
+        status: "legacy-unknown";
+        scenarioId: null;
+        evidenceBasis: "unknown";
+        electricityBasis: "unknown";
+        modelContractVersion: null;
+        modelFingerprint: null;
+      };
 };
 
 function isFiniteNumber(value: unknown): value is number {
@@ -1217,6 +1289,14 @@ function loadScenarios(): SavedScenario[] {
           name: candidate.name.trim(),
           classifications: { ...candidate.classifications },
           metrics: { ...candidate.metrics },
+          basis: candidate.basis ?? {
+            status: "legacy-unknown",
+            scenarioId: null,
+            evidenceBasis: "unknown",
+            electricityBasis: "unknown",
+            modelContractVersion: null,
+            modelFingerprint: null,
+          },
         });
       }
       if (valid.length === 5) break;
@@ -1343,7 +1423,7 @@ function writeStorage(key: string, value: unknown) {
 export const SCENARIOS_STORAGE_KEY = 'safeloc:diligence:scenarios:v1';
 
 const SESSION_STORAGE_VERSION = 2;
-const SCENARIOS_STORAGE_VERSION = 1;
+const SCENARIOS_STORAGE_VERSION = 2;
 
 type SessionPayload = {
   version: number;

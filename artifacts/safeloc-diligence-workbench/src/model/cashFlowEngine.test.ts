@@ -27,6 +27,7 @@ import {
   createSanitizedReturnDiscrepancyRecord,
   type ReturnCaptureInput,
 } from "@/diagnostics/returnDiscrepancyCapture";
+import { buildFinancialScenarioMatrix } from "@/model/financialScenarioContract";
 
 const CLASSIFICATIONS: Classification[] = [
   "Verified Evidence",
@@ -96,6 +97,14 @@ test("the canonical evidence contract has 16 items and a 16-item confidence deno
 
 test("sanitized return captures preserve the replay contract without raw provider content", () => {
   const metrics = calculateCashFlowModel(INITIAL_EVIDENCE);
+  const eiaData = createEiaFallback();
+  const financialScenarios = buildFinancialScenarioMatrix({
+    syntheticEvidence: INITIAL_EVIDENCE,
+    providerEvidence: null,
+    eiaData,
+    providerState: "embedded",
+    capacityMW: 1_200,
+  });
   const hostileRawPayload = {
     data: { private: "provider-secret" },
     responsePreview: { sourceText: "private source passage" },
@@ -137,6 +146,7 @@ test("sanitized return captures preserve the replay contract without raw provide
     evidence: INITIAL_EVIDENCE,
     modelEvidence: INITIAL_EVIDENCE,
     metrics,
+    financialScenarios,
     financialInputState: {
       basis: "fallback",
       providerStatus: "fallback",
@@ -145,7 +155,7 @@ test("sanitized return captures preserve the replay contract without raw provide
       sourceUpdatedAt: null,
     },
     sourceStates: sourceStateMap(),
-    eiaData: createEiaFallback(),
+    eiaData,
     ercotQueue,
     storage: {
       currentSession,
@@ -157,8 +167,10 @@ test("sanitized return captures preserve the replay contract without raw provide
       applicationVersion: "test",
       releaseId: "test-release",
       commitSha: "test-commit",
+      sourceCommitSha: "test-commit",
       deploymentId: null,
       buildTimestamp: "2026-09-17T00:00:00.000Z",
+      assets: [{ file: "assets/app.js", hash: "sha256-test" }],
     },
   };
 
@@ -168,6 +180,7 @@ test("sanitized return captures preserve the replay contract without raw provide
     "cashFlows",
     "classifications",
     "debtAndTerminalTreatment",
+    "financialScenarios",
     "holding",
     "modelInputs",
     "project",
@@ -321,28 +334,25 @@ test("IRR results expose a typed mathematical reason without changing the nullab
 });
 
 test("provider overlay state keeps each displayed IRR paired with its own reason", () => {
-  const snapshot = (reason: "no-sign-change" | "multiple-roots", projectIRR: number | null) => ({
-    projectIRR,
-    projectIRRStatus: projectIRR === null ? "not-meaningful" as const : "meaningful" as const,
-    projectIRRReason: projectIRR === null ? reason : null,
-    assumptions: { electricityRate: 42 },
+  const eiaData = createEiaFallback();
+  const matrix = buildFinancialScenarioMatrix({
+    syntheticEvidence: INITIAL_EVIDENCE,
+    providerEvidence: null,
+    eiaData,
+    providerState: "embedded",
+    capacityMW: 1_200,
   });
   const state = buildFinancialInputState({
     projectKind: "curated",
     eiaLoading: false,
-    providerStatus: "live",
-    providerDataOrigin: "provider",
-    electricityRate: 55,
-    electricityPeriod: "2026-08",
-    sourceUpdatedAt: "2026-09-01T00:00:00.000Z",
-    syntheticModel: snapshot("no-sign-change", null),
-    providerOverlayModel: snapshot("multiple-roots", null),
+    matrix,
+    eiaData,
   });
 
-  assert.equal(state.syntheticBaselineIRR, null);
-  assert.equal(state.syntheticBaselineIRRReason, "no-sign-change");
+  assert.equal(state.syntheticBaselineIRR, matrix.scenarios["synthetic-verified"]!.returns.projectIRR);
+  assert.equal(state.syntheticCurrentIRR, matrix.scenarios["synthetic-current"]!.returns.projectIRR);
   assert.equal(state.providerOverlayIRR, null);
-  assert.equal(state.providerOverlayIRRReason, "multiple-roots");
+  assert.equal(state.providerOverlayIRRReason, null);
 });
 
 test("custom research boundary quarantines incompatible units and source-free proposals", () => {

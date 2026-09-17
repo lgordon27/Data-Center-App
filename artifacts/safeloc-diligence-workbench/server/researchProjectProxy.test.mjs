@@ -31,6 +31,7 @@ import {
   normalizeReportedCapacityMW,
   parseResearchProjectBody,
   normalizeRetrievedSources,
+  extractResearchSourceUrls,
   extractSearchTerms,
   extractObservedQueriesByEvidence,
   countWebSearchCalls,
@@ -1847,6 +1848,137 @@ test("maps only validated claim URLs and attaches auditable source metadata", ()
   assert.match(parsed.evidence[0].classificationReason, /public filing/);
   assert.equal(parsed.evidence[0].searchTermsSource, "tool-observed");
   assert.deepEqual(parsed.evidence[0].searchTerms, ["Project Atlas electricity tariff filing"]);
+});
+
+test("resolves a redirected Arizona source from provider URL through physical access to eligibility", () => {
+  const body = validResearchResponse();
+  body.projectSummary = {
+    ...body.projectSummary,
+    location: "Phoenix, Maricopa County, Arizona",
+  };
+  const originalUrl = "https://azcc.gov/records/project-atlas";
+  const finalUrl = "https://azcc.gov/records/project-atlas/decision";
+  const target = body.evidence.find((item) => item.id === "grid_interconnection");
+  Object.assign(target, {
+    value: 365,
+    numericValue: 365,
+    unit: "days",
+    classification: "Verified Evidence",
+    sourceUrl: originalUrl,
+    sourceUrls: [originalUrl],
+    citation: `Arizona Corporation Commission decision: ${originalUrl}`,
+    claimPassage: "Project Atlas filing reports 365 exact project.",
+    description: "The decision establishes the project-specific interconnection timeline.",
+    claimTimePeriod: "2026",
+  });
+  const redirectedSource = {
+    ...retrievedSource,
+    url: originalUrl,
+    resolvedUrl: finalUrl,
+    canonicalUrl: finalUrl,
+    title: "Project Atlas Arizona Corporation Commission decision",
+    excerpt: "Project Atlas filing reports 365 exact project.",
+    claimPassage: "Project Atlas filing reports 365 exact project.",
+    claimSupport: [{ evidenceId: "grid_interconnection", values: [365] }],
+    sourceClass: "primary-government",
+    exactProject: true,
+    facilityScope: "exact-project",
+    phaseScope: "exact-phase",
+    timePeriod: "2026",
+    accessOutcome: {
+      state: "accessible",
+      reason: "retrieved",
+      originalUrl,
+      resolvedUrl: finalUrl,
+      canonicalUrl: finalUrl,
+      passage: "Project Atlas filing reports 365 exact project.",
+      physicalOpenIndex: 1,
+    },
+  };
+  const parsed = parseResearchResponse(body, [redirectedSource]);
+  const record = parsed.evidence.find((item) => item.id === "grid_interconnection");
+  assert.equal(record.eligibleForModel, true);
+  assert.equal(record.sourceUrl, finalUrl);
+  assert.equal(record.sources[0].canonicalUrl, finalUrl);
+  assert.equal(record.sources[0].originalUrl, originalUrl);
+  assert.equal(record.sources[0].accessOutcome.state, "accessible");
+  assert.equal(record.claimMappings[0].sourceId, finalUrl);
+  assert.equal(record.claimMappings[0].supportStatus, "supported");
+});
+
+test("prioritizes a provider-cited Arizona candidate before the shared physical-open ceiling", () => {
+  const body = {
+    output: [{
+      type: "web_search_call",
+      action: {
+        sources: [
+          { url: "https://example.com/general", title: "General result" },
+          { url: "https://aligneddc.com/phoenix-data-centers/?utm_source=openai", title: "Vantage Phoenix Campus page" },
+        ],
+      },
+    }],
+  };
+  const research = {
+    evidence: [{
+      sourceUrl: "https://aligneddc.com/phoenix-data-centers/",
+      sourceUrls: ["https://aligneddc.com/phoenix-data-centers/"],
+      citation: "Vantage Phoenix Campus page",
+    }],
+  };
+  const sources = normalizeRetrievedSources(body, "web-search", {
+    name: "Vantage Phoenix Campus",
+    location: "Goodyear, Maricopa County, Arizona",
+  }, extractResearchSourceUrls(research));
+  assert.equal(sources[0].url, "https://aligneddc.com/phoenix-data-centers/?utm_source=openai");
+  assert.equal(sources[0].claimCited, true);
+});
+
+test("uses an explicit directory alias for exact-project identity without loose URL similarity", () => {
+  const body = validResearchResponse();
+  body.projectSummary = {
+    ...body.projectSummary,
+    name: "Aligned Phoenix Campus",
+    location: "Phoenix, Maricopa County, Arizona",
+  };
+  const sourceUrl = "https://aligneddc.com/phoenix-data-centers/";
+  const target = body.evidence.find((item) => item.id === "water_consumption");
+  Object.assign(target, {
+    value: 12,
+    numericValue: 12,
+    unit: "Mgal/year",
+    classification: "Management Assertion",
+    sourceUrl,
+    sourceUrls: [sourceUrl],
+    citation: `The Phoenix campus reports 12 Mgal/year of cooling water use: ${sourceUrl}`,
+    claimPassage: "The Phoenix campus reports 12 Mgal/year of cooling water use.",
+    description: "The Phoenix campus reports 12 Mgal/year of cooling water use.",
+    facilityScope: "exact-project",
+    phaseScope: "not-applicable",
+    claimTimePeriod: "2026",
+  });
+  const source = {
+    ...retrievedSource,
+    url: sourceUrl,
+    title: "Retrieved public source",
+    excerpt: "The Phoenix campus reports 12 Mgal/year of cooling water use.",
+    claimPassage: "The Phoenix campus reports 12 Mgal/year of cooling water use.",
+    claimSupport: [{ evidenceId: "water_consumption", values: [12] }],
+    sourceClass: "secondary-reporting",
+    facilityScope: "exact-project",
+    phaseScope: "not-applicable",
+    timePeriod: "2026",
+    accessOutcome: {
+      state: "accessible",
+      passage: "The Phoenix campus reports 12 Mgal/year of cooling water use.",
+    },
+  };
+  const parsed = parseResearchResponse(body, [source], null, null, {
+    aliases: ["Aligned Phoenix", "Aligned Data Centers Phoenix"],
+  });
+  const record = parsed.evidence.find((item) => item.id === "water_consumption");
+  assert.equal(record.eligibleForModel, true);
+  assert.equal(record.sources[0].exactProject, true);
+  assert.equal(record.claimMappings[0].supportStatus, "supported");
 });
 
 test("does not let an accessible sibling source authorize a blocked mapped claim", () => {

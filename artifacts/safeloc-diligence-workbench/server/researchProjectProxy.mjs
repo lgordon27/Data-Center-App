@@ -22,6 +22,7 @@ import {
   createSourceLedger,
   evaluateResearchEvidenceEligibility,
   isSourceProjectSpecific,
+  sourceUrlAliases,
 } from "../src/data/sourceValidationPolicy.mjs";
 import { defaultProjectResearchRegistry } from "./projectResearchRegistry.mjs";
 
@@ -1391,6 +1392,7 @@ async function orchestrateCategoryResearch(project, {
   signal,
   deadlineState = { expired: false },
   concurrent = false,
+  categoryIds = null,
 } = {}) {
   if (typeof retrieveCategory !== "function") throw new Error("A bounded category retrieval function is required.");
   const startedAtMs = now();
@@ -1404,7 +1406,10 @@ async function orchestrateCategoryResearch(project, {
   let toolCallBudgetExceeded = false;
   let physicalOpenBudgetExceeded = false;
   const resolvedEvidenceIds = new Set();
-  const categories = buildResearchCategoryPlan(project).categories;
+  const plannedCategories = buildResearchCategoryPlan(project).categories;
+  const categories = Array.isArray(categoryIds) && categoryIds.length
+    ? plannedCategories.filter((category) => categoryIds.includes(category.categoryId))
+    : plannedCategories;
   const prefetchedPrimary = new Map();
   let additionalRequestsAuthorized = 0;
   const authorizeAdditionalRequest = () => {
@@ -2012,11 +2017,10 @@ function parseResearchResponse(
       { maxRetained: RESEARCH_RUN_BUDGET.maxTotalCandidates },
     );
   const sourcePacket = packetLedger.retained;
-  const sourceByUrl = new Map(
-    sourcePacket
-      .map((source) => [canonicalizeSourceUrl(source.canonicalUrl ?? source.resolvedUrl ?? source.url), source])
-      .filter(([url]) => Boolean(url)),
-  );
+  const sourceByUrl = new Map();
+  for (const source of sourcePacket) {
+    for (const alias of sourceUrlAliases(source)) sourceByUrl.set(alias, source);
+  }
   const observedSearchTerms = normalizeSearchTerms(coverage?.searchTerms, RESEARCH_PROJECT_MAX_TOOL_CALLS);
   const seenIds = new Set();
   const evidence = evidenceCandidates.map((item, index) => {
@@ -2038,27 +2042,33 @@ function parseResearchResponse(
     const returnedSourceUrls = Array.isArray(item.sourceUrls)
       ? item.sourceUrls.map(safePublicSourceUrl).filter(Boolean)
       : [];
-    const validatedUrls = [...new Set([returnedSourceUrl, citedUrl, ...returnedSourceUrls]
+    const validatedSources = [...new Map([returnedSourceUrl, citedUrl, ...returnedSourceUrls]
       .map((url) => canonicalizeSourceUrl(url))
-      .filter((url) => url && sourceByUrl.has(url)))]
-      .sort((a, b) => {
-        const left = sourceByUrl.get(a);
-        const right = sourceByUrl.get(b);
+      .map((url) => [sourceByUrl.get(url)?.canonicalUrl ?? null, sourceByUrl.get(url)])
+      .filter(([url, source]) => Boolean(url && source))).values()]
+      .sort((left, right) => {
         const leftPriority = isTexasProject(summary)
           ? texasSourcePriority(left)
           : sourcePriority(left?.sourceClass);
         const rightPriority = isTexasProject(summary)
           ? texasSourcePriority(right)
           : sourcePriority(right?.sourceClass);
-        return leftPriority - rightPriority || String(a).localeCompare(String(b));
+        return leftPriority - rightPriority
+          || String(left.canonicalUrl).localeCompare(String(right.canonicalUrl));
       })
       .slice(0, 4);
-    const sourceUrl = validatedUrls[0] ?? null;
-    const supportingSources = validatedUrls.map((url) => {
-      const metadata = sourceByUrl.get(url);
+    const sourceUrl = validatedSources[0]?.canonicalUrl ?? null;
+    const supportingSources = validatedSources.map((metadata) => {
       const jurisdictionExcluded = isJurisdictionallyExcludedSource(metadata, summary);
-      const exactProject = !jurisdictionExcluded && isExactProjectSource(metadata, summary, item.sourceRelevance);
-      const resolvedUrl = canonicalizeSourceUrl(metadata?.resolvedUrl ?? metadata?.url ?? url) ?? url;
+      const exactProject = !jurisdictionExcluded
+        && isExactProjectSource(metadata, { ...summary, knownData }, item.sourceRelevance);
+      const resolvedUrl = canonicalizeSourceUrl(
+        metadata?.accessOutcome?.canonicalUrl
+          ?? metadata?.accessOutcome?.resolvedUrl
+          ?? metadata?.resolvedUrl
+          ?? metadata?.url
+          ?? metadata?.canonicalUrl,
+      ) ?? metadata.canonicalUrl;
       return {
         url: resolvedUrl,
         originalUrl: metadata?.originalUrl ?? metadata?.url ?? resolvedUrl,
@@ -2098,13 +2108,13 @@ function parseResearchResponse(
             : "This retrieved source is mapped to the claim but may provide related context rather than facility-level proof.",
           500,
         ),
-        relationship: url === sourceUrl ? "primary" : item.coverageStatus === "conflicting" ? "conflicting" : "corroborating",
+        relationship: metadata.canonicalUrl === sourceUrl ? "primary" : item.coverageStatus === "conflicting" ? "conflicting" : "corroborating",
       };
     });
     const claimMappings = buildClaimPassageMappings({
       id,
       sources: supportingSources,
-      project: summary,
+      project: { ...summary, knownData },
       claim: {
         text: item.description,
         description: item.description,
@@ -2417,9 +2427,11 @@ function texasSourcePriority(source = {}) {
 function prioritizeResearchSources(sources = [], project = {}) {
   const texas = isTexasProject(project);
   return [...sources].sort((left, right) => {
-    const leftRank = texas ? texasSourcePriority(left) : sourcePriority(left.sourceClass);
-    const rightRank = texas ? texasSourcePriority(right) : sourcePriority(right.sourceClass);
-    return leftRank - rightRank || Number(right.exactProject === true) - Number(left.exactProject === true) || String(left.url ?? "").localeCompare(String(right.url ?? ""));
+    return Number(right.claimCited === true) - Number(left.claimCited === true)
+      || Number(right.exactProject === true) - Number(left.exactProject === true)
+      || (texas ? texasSourcePriority(left) : sourcePriority(left.sourceClass))
+        - (texas ? texasSourcePriority(right) : sourcePriority(right.sourceClass))
+      || String(left.url ?? "").localeCompare(String(right.url ?? ""));
   });
 }
 
@@ -2564,14 +2576,20 @@ Governed category schedule:
 ${categoryPlan}${focusIds?.length ? ` This is a focused refresh for these unresolved variables: ${focusIds.join(", ")}. Prioritize their query angles, then still return all 16 records. Preserve unrelated existing records unless new searched evidence directly contradicts them.` : ""}${currentEvidence?.length ? `\n\nExisting evidence context:\n${JSON.stringify(currentEvidence)}` : ""}${knownDataPrompt}`;
 }
 
-function normalizeRetrievedSources(body, searchDomain = "project-identity", project = {}) {
+function normalizeRetrievedSources(body, searchDomain = "project-identity", project = {}, researchSourceUrls = []) {
   const candidates = [];
   const citedUrls = new Set();
+  const citedSourceIds = new Set(
+    researchSourceUrls
+      .map(canonicalizeSourceUrl)
+      .filter(Boolean),
+  );
   for (const output of Array.isArray(body?.output) ? body.output : []) {
     if (output?.type === "web_search_call" && Array.isArray(output.action?.sources)) {
       candidates.push(...output.action.sources.map((source) => ({
         ...source,
-        claimCited: source.claimCited === true || citedUrls.has(safePublicSourceUrl(source.url)),
+        claimCited: source.claimCited === true
+          || citedSourceIds.has(canonicalizeSourceUrl(source.url)),
         origin: "action.sources",
       })));
     }
@@ -2584,8 +2602,16 @@ function normalizeRetrievedSources(body, searchDomain = "project-identity", proj
       }
     }
   }
+  for (const citedUrl of citedUrls) {
+    const canonical = canonicalizeSourceUrl(citedUrl);
+    if (canonical) citedSourceIds.add(canonical);
+  }
+  for (const researchSourceUrl of researchSourceUrls) {
+    const canonical = canonicalizeSourceUrl(researchSourceUrl);
+    if (canonical) citedSourceIds.add(canonical);
+  }
   for (const candidate of candidates) {
-    if (citedUrls.has(safePublicSourceUrl(candidate.url))) candidate.claimCited = true;
+    if (citedSourceIds.has(canonicalizeSourceUrl(candidate.url))) candidate.claimCited = true;
   }
   const prioritizedCandidates = prioritizeResearchSources(candidates.map((source) => {
     const url = safePublicSourceUrl(source.url) ?? "";
@@ -2626,6 +2652,19 @@ function normalizeRetrievedSources(body, searchDomain = "project-identity", proj
   }));
   result.sourceLedger = ledger;
   return result;
+}
+
+function extractResearchSourceUrls(research) {
+  const evidence = Array.isArray(research?.evidence)
+    ? research.evidence
+    : Object.values(isRecord(research?.evidence) ? research.evidence : {});
+  return evidence.flatMap((item) => [
+    item?.sourceUrl,
+    ...(Array.isArray(item?.sourceUrls) ? item.sourceUrls : []),
+    ...(typeof item?.citation === "string"
+      ? item.citation.match(/https?:\/\/[^\s)]+/g) ?? []
+      : []),
+  ]).filter((url) => typeof url === "string" && safePublicSourceUrl(url));
 }
 
 function redactUpstreamDetail(value) {
@@ -3061,7 +3100,12 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
     throw parseError;
   }
   const bounded = boundProviderResponseToToolBudget(body, activeCategory?.maxToolCalls ?? RESEARCH_PROJECT_MAX_TOOL_CALLS);
-  const sources = normalizeRetrievedSources(bounded.body, "web-search", project);
+  const sources = normalizeRetrievedSources(
+    bounded.body,
+    "web-search",
+    project,
+    extractResearchSourceUrls(research),
+  );
   research = restrictResearchToAcceptedSources(research, sources);
   const searchTerms = extractSearchTerms(bounded.body);
   const observedQueriesByEvidence = extractObservedQueriesByEvidence(bounded.body, project);
@@ -3223,13 +3267,7 @@ function mergeCategoryResearchResults(project, categoryResults) {
   const planByCategory = new Map(buildResearchCategoryPlan(project).categories.map((category) => [category.categoryId, category]));
   for (const result of categoryResults) {
     const category = planByCategory.get(result.categoryId);
-    const retainedCategoryUrls = new Set((result.sources ?? [])
-      .map((source) => canonicalizeSourceUrl(source.canonicalUrl ?? source.resolvedUrl ?? source.url))
-      .filter(Boolean));
-    const accessibleCategoryUrls = new Set((result.sources ?? [])
-      .filter((source) => source.accessOutcome?.state === "accessible")
-      .map((source) => canonicalizeSourceUrl(source.canonicalUrl ?? source.resolvedUrl ?? source.url))
-      .filter(Boolean));
+    const retainedCategoryUrls = new Set((result.sources ?? []).flatMap((source) => sourceUrlAliases(source)));
     let containedResearch = result.research;
     const categoryEvidence = Array.isArray(result.research?.evidence) ? result.research.evidence : [];
     if (!categoryEvidence.some((item) => typeof item?.eligibleForModel === "boolean")) {
@@ -3264,14 +3302,13 @@ function mergeCategoryResearchResults(project, categoryResults) {
         ...(Array.isArray(item.sourceUrls) ? item.sourceUrls : []),
       ].map((url) => canonicalizeSourceUrl(url)).filter(Boolean);
       if (!mappedUrls.length) continue;
-      const namedSourceUrl = mappedUrls[0];
-      if (!retainedCategoryUrls.has(namedSourceUrl)) continue;
+      if (!mappedUrls.some((url) => retainedCategoryUrls.has(url))) continue;
       const containedItem = containedEvidence.get(item.id);
       if (!containedItem) continue;
       const rawItem = rawEvidence.get(item.id);
       const sourceRecords = (result.sources ?? []).filter((source) => {
-        const sourceUrl = canonicalizeSourceUrl(source.canonicalUrl ?? source.resolvedUrl ?? source.url);
-        return mappedUrls.includes(sourceUrl);
+        const aliases = sourceUrlAliases(source);
+        return mappedUrls.some((url) => aliases.includes(url));
       });
       const existing = evidenceById.get(item.id);
       const existingHasAccessibleSource = existing?.sources?.some((source) => source.accessOutcome?.state === "accessible") === true;
@@ -3318,7 +3355,15 @@ function categoryResearchIsResolved(category, research, sources, project, covera
   }
 }
 
-async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, req, documentFetchImpl = fetch, signal }) {
+async function runValidatedResearch(project, {
+  apiKey,
+  fetchImpl,
+  rateLimiter,
+  req,
+  documentFetchImpl = fetch,
+  signal,
+  categoryIds = null,
+}) {
   if (!apiKey) {
     const error = new Error("Project research not configured.");
     error.name = "ConfigurationError";
@@ -3359,6 +3404,7 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
       signal: controller.signal,
       deadlineState,
       concurrent: true,
+    categoryIds,
       retrieveCategory: async ({ categoryId, query, attempt, remainingToolCalls, authorizeAdditionalProviderRequest }) => {
         const category = buildResearchCategoryPlan(project).categories.find((candidate) => candidate.categoryId === categoryId);
         const activeCategory = {
@@ -3534,6 +3580,9 @@ async function runValidatedResearch(project, { apiKey, fetchImpl, rateLimiter, r
             searchDomain: categoryId,
             originalUrl,
             ...(finalCanonicalUrl ? { canonicalUrl: finalCanonicalUrl } : {}),
+            ...(accessOutcome.resolvedUrl || accessOutcome.canonicalUrl
+              ? { resolvedUrl: accessOutcome.resolvedUrl ?? accessOutcome.canonicalUrl }
+              : {}),
             accessOutcome,
             ...(previousAccess ? { documentAccessReused: true } : {}),
             documentReferringUrls: accessOutcome.referringUrls ?? [originalUrl].filter(Boolean),
@@ -3721,6 +3770,7 @@ export async function handleResearchProjectRequest(
     rateLimiter = defaultRateLimiter,
     cache = defaultResearchProjectCache,
     registry = defaultProjectResearchRegistry,
+    categoryIds = null,
   } = {},
 ) {
   if (req.method === "GET") {
@@ -3775,6 +3825,7 @@ export async function handleResearchProjectRequest(
     documentFetchImpl,
     rateLimiter,
     req,
+    categoryIds,
     signal: foreground ? requestController.signal : undefined,
   }).then(async (result) => {
     // Registry retention is deliberately best-effort: a local persistence
@@ -3864,6 +3915,7 @@ export {
   parseResearchProjectBody,
   parseResearchResponse,
   normalizeRetrievedSources,
+  extractResearchSourceUrls,
   normalizeSearchTerms,
   extractSearchTerms,
   extractObservedQueriesByEvidence,

@@ -196,6 +196,93 @@ test("traces the supported source mapping instead of the first attached source",
   assert.equal(report.liveAcceptance.trace[0].sourceTitle, "Supported exact-project record");
 });
 
+test("records the complete Arizona source-to-visible-finding trace across URL aliases", () => {
+  const originalUrl = "https://azcc.gov/records/project-atlas";
+  const finalUrl = "https://azcc.gov/records/project-atlas/decision";
+  const passage = "The Arizona Corporation Commission decision identifies Project Atlas and approves 48 MW for the 2026 phase.";
+  const report = buildAcceptanceReport({
+    project: { name: "Project Atlas", location: "Phoenix, Maricopa County, Arizona" },
+    liveRun: {
+      statusCode: 200,
+      payload: {
+        researchAudit: {
+          categories: [{
+            categoryId: "grid",
+            label: "Grid",
+            evidenceIds: ["grid_interconnection"],
+            executedQueries: ["observed Project Atlas Arizona interconnection query"],
+          }],
+        },
+        evidence: [{
+          id: "grid_interconnection",
+          label: "Grid interconnection",
+          value: "48 MW",
+          unit: "MW",
+          classification: "Verified Evidence",
+          description: "The decision establishes the project-specific grid arrangement.",
+          citation: `Arizona Corporation Commission decision: ${originalUrl}`,
+          eligibleForModel: true,
+          acceptedForModel: false,
+          researchState: "proposed",
+          searchTerms: ["observed Project Atlas Arizona interconnection query"],
+          sources: [{
+            url: finalUrl,
+            originalUrl,
+            resolvedUrl: finalUrl,
+            canonicalUrl: finalUrl,
+            title: "Project Atlas Arizona Corporation Commission decision",
+            searchDomain: "grid",
+            sourceState: "claim-supported",
+            exactProject: true,
+            financialEligibilityState: "eligible",
+            excerpt: passage,
+            accessOutcome: {
+              state: "accessible",
+              reason: "retrieved",
+              originalUrl,
+              resolvedUrl: finalUrl,
+              canonicalUrl: finalUrl,
+              passage,
+              physicalOpenIndex: 3,
+              retrievalTime: "2026-09-17T12:00:00.000Z",
+              transportDiagnostic: {
+                stage: "complete",
+                httpStatus: 200,
+                responseReceived: true,
+              },
+            },
+          }],
+          claimMappings: [{
+            sourceId: originalUrl,
+            supportStatus: "supported",
+            exactQuotation: passage,
+            entityScope: "project",
+            timePeriod: "2026",
+          }],
+          sourceValidation: {
+            state: "financially-eligible",
+            rejectionCodes: [],
+          },
+          quarantineReasons: [],
+        }],
+      },
+    },
+    failureRun: null,
+  });
+
+  const [trace] = report.liveAcceptance.trace;
+  assert.equal(report.liveAcceptance.status, "source-to-visible-finding");
+  assert.deepEqual(trace.observedQueries, ["observed Project Atlas Arizona interconnection query"]);
+  assert.equal(trace.candidate.originalUrl, originalUrl);
+  assert.equal(trace.physicalAccessReceipt.state, "accessible");
+  assert.equal(trace.physicalAccessReceipt.physicalOpenIndex, 3);
+  assert.equal(trace.retainedExactProjectPassage.text, passage);
+  assert.equal(trace.governedEvidenceMapping.sourceId, originalUrl);
+  assert.equal(trace.governedEvidenceMapping.supportStatus, "supported");
+  assert.equal(trace.eligibilityDecision.eligibleForModel, true);
+  assert.equal(trace.visibleHandoffFinding.finding, "48 MW");
+});
+
 test("keeps provider failures diagnostic and explicit when no category audit is returned", () => {
   const report = buildAcceptanceReport({
     project: { name: "Timed Atlas", location: "Texas" },

@@ -10,6 +10,7 @@ import {
   parseResearchProjectBody,
 } from "./researchProjectProxy.mjs";
 import { createResearchProjectCache } from "./researchProjectCache.mjs";
+import { sourceUrlAliases } from "../src/data/sourceValidationPolicy.mjs";
 
 function responseRecorder() {
   const headers = {};
@@ -45,6 +46,12 @@ async function runRequest(project, options = {}) {
     headers: response.headers,
     payload: response.json(),
   };
+}
+
+function parseCategoryIds(rawValue) {
+  if (!rawValue) return undefined;
+  const categoryIds = rawValue.split(",").map((value) => value.trim()).filter(Boolean);
+  return categoryIds.length ? categoryIds : undefined;
 }
 
 function countBy(items, key) {
@@ -108,35 +115,85 @@ function isFailedRetainedCacheResponse(payload) {
 
 function buildVisibleFindingTrace(result) {
   const evidence = Array.isArray(result?.evidence) ? result.evidence : [];
+  const categoryByEvidenceId = new Map(
+    (Array.isArray(result?.researchAudit?.categories) ? result.researchAudit.categories : [])
+      .flatMap((category) => (category.evidenceIds ?? []).map((evidenceId) => [evidenceId, category])),
+  );
   return evidence.flatMap((item) => {
     if (item?.eligibleForModel !== true) return [];
     const sources = Array.isArray(item.sources) ? item.sources : [];
     const mappings = Array.isArray(item.claimMappings)
       ? item.claimMappings
       : item.sourceValidation?.claimMappings ?? [];
-    const supportedSourceIds = new Set(
-      mappings
-        .filter((mapping) => mapping?.supportStatus === "supported" && typeof mapping.sourceId === "string")
-        .map((mapping) => mapping.sourceId),
-    );
+    const supportedMappings = mappings.filter((mapping) =>
+      mapping?.supportStatus === "supported" && typeof mapping.sourceId === "string");
     const source = sources.find((candidate) =>
       candidate?.accessOutcome?.state === "accessible"
       && candidate.exactProject === true
-      && [candidate.canonicalUrl, candidate.resolvedUrl, candidate.url]
-        .filter((value) => typeof value === "string")
-        .some((value) => supportedSourceIds.has(value))
-      && typeof candidate.excerpt === "string"
-      && candidate.excerpt.trim(),
+      && supportedMappings.some((mapping) => sourceUrlAliases(candidate).includes(mapping.sourceId)),
     );
     if (!source) return [];
+    const mapping = supportedMappings.find((candidate) =>
+      sourceUrlAliases(source).includes(candidate.sourceId));
+    const passage = source.accessOutcome?.passage ?? source.excerpt ?? source.claimPassage;
+    if (!mapping || typeof passage !== "string" || !passage.trim()) return [];
+    const category = categoryByEvidenceId.get(item.id);
+    const visibleFinding = {
+      evidenceId: item.id ?? null,
+      label: item.label ?? null,
+      finding: item.value ?? item.qualitativeValue ?? null,
+      unit: item.unit ?? null,
+      classification: item.classification ?? null,
+      description: item.description ?? null,
+      citation: item.citation ?? null,
+    };
     return [{
       evidenceId: item.id ?? null,
       finding: item.value ?? item.qualitativeValue ?? null,
-      sourceUrl: source.canonicalUrl,
+      sourceUrl: source.canonicalUrl ?? source.resolvedUrl ?? source.url,
       sourceTitle: source.title ?? null,
       searchDomain: source.searchDomain ?? null,
-      passage: source.excerpt.trim(),
+      passage: passage.trim(),
       eligibility: source.financialEligibilityState ?? "eligible",
+      observedQueries: [
+        ...(Array.isArray(item.searchTerms) ? item.searchTerms : []),
+        ...(category?.executedQueries ?? []),
+      ].filter((query, index, queries) => typeof query === "string" && query.trim() && queries.indexOf(query) === index),
+      candidate: {
+        url: source.url ?? source.canonicalUrl ?? null,
+        originalUrl: source.originalUrl ?? null,
+        resolvedUrl: source.resolvedUrl ?? null,
+        canonicalUrl: source.canonicalUrl ?? null,
+        title: source.title ?? null,
+        searchDomain: source.searchDomain ?? null,
+        sourceState: source.sourceState ?? null,
+        exactProject: source.exactProject === true,
+      },
+      physicalAccessReceipt: {
+        state: source.accessOutcome.state,
+        reason: source.accessOutcome.reason ?? null,
+        physicalOpenIndex: source.accessOutcome.physicalOpenIndex ?? null,
+        reused: source.documentAccessReused === true,
+        retrievalTime: source.accessOutcome.retrievalTime ?? null,
+        resolvedUrl: source.accessOutcome.resolvedUrl ?? null,
+        redirectChain: source.accessOutcome.redirectChain ?? [],
+        transportDiagnostic: source.accessOutcome.transportDiagnostic ?? null,
+      },
+      retainedExactProjectPassage: {
+        sourceUrl: source.canonicalUrl ?? source.resolvedUrl ?? source.url,
+        text: passage.trim(),
+        exactProject: source.exactProject === true,
+      },
+      governedEvidenceMapping: mapping,
+      eligibilityDecision: {
+        eligibleForModel: item.eligibleForModel === true,
+        acceptedForModel: item.acceptedForModel === true,
+        researchState: item.researchState ?? null,
+        financialEligibilityState: source.financialEligibilityState ?? null,
+        rejectionReasons: item.quarantineReasons ?? [],
+        sourceValidation: item.sourceValidation ?? null,
+      },
+      visibleHandoffFinding: visibleFinding,
     }];
   });
 }
@@ -297,6 +354,7 @@ export function buildAcceptanceReport({ project, liveRun, failureRun, generatedA
 export async function runLiveResearchAcceptance({
   project,
   apiKey = process.env.OPENAI_API_KEY,
+  categoryIds = parseCategoryIds(process.env.RESEARCH_ACCEPTANCE_CATEGORY_IDS),
   outputPath = process.env.RESEARCH_ACCEPTANCE_OUTPUT
     ?? path.resolve("diagnostics/research-live-acceptance.json"),
   cache,
@@ -315,6 +373,7 @@ export async function runLiveResearchAcceptance({
     cache: runCache,
     fetchImpl,
     documentFetchImpl,
+    categoryIds,
   });
   liveRun.durationMs = Math.max(0, now() - startedAt);
   let failureRun = null;
@@ -331,6 +390,7 @@ export async function runLiveResearchAcceptance({
         throw new Error("Acceptance failure rehearsal.");
       },
       documentFetchImpl,
+      categoryIds,
     });
   }
   const report = buildAcceptanceReport({
@@ -361,7 +421,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       ? { knownData: parseKnownData(process.env.RESEARCH_ACCEPTANCE_PROJECT_KNOWN_DATA) }
       : {}),
   };
-  runLiveResearchAcceptance({ project })
+  runLiveResearchAcceptance({
+    project,
+    categoryIds: parseCategoryIds(process.env.RESEARCH_ACCEPTANCE_CATEGORY_IDS),
+  })
     .then(({ report, outputPath }) => {
       console.log(JSON.stringify({
         outputPath,

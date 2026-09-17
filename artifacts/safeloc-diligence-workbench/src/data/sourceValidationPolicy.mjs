@@ -87,6 +87,25 @@ export function canonicalizeSourceUrl(value) {
   return url.href;
 }
 
+export function sourceUrlAliases(source = {}) {
+  const values = typeof source === "string"
+    ? [source]
+    : [
+        source?.url,
+        source?.originalUrl,
+        source?.resolvedUrl,
+        source?.finalUrl,
+        source?.canonicalUrl,
+        source?.accessOutcome?.resolvedUrl,
+        source?.accessOutcome?.canonicalUrl,
+        ...(Array.isArray(source?.redirectChain) ? source.redirectChain : []),
+        ...(Array.isArray(source?.accessOutcome?.redirectChain) ? source.accessOutcome.redirectChain : []),
+        ...(Array.isArray(source?.referringUrls) ? source.referringUrls : []),
+        ...(Array.isArray(source?.accessOutcome?.referringUrls) ? source.accessOutcome.referringUrls : []),
+      ];
+  return [...new Set(values.map(canonicalizeSourceUrl).filter(Boolean))];
+}
+
 function publisherForUrl(value) {
   try {
     return new URL(value).hostname.replace(/^www\./, "").toLowerCase();
@@ -122,9 +141,21 @@ export function isSourceProjectSpecific(source, project = {}, assertedRelevance)
   // adjacent, or unrelated record. Identity inference is therefore limited
   // to document metadata; a provider may still assert an exact entity match
   // explicitly when it has established one.
-  const sourceTokens = new Set(sourceIdentityTokens(`${source?.title ?? ""} ${source?.url ?? ""} ${source?.resolvedUrl ?? ""}`));
-  const nameTokens = sourceIdentityTokens(project?.name);
-  return nameTokens.length > 0 && nameTokens.every((token) => sourceTokens.has(token));
+  const sourceIdentityTokenList = sourceIdentityTokens(`${source?.title ?? ""} ${source?.url ?? ""} ${source?.resolvedUrl ?? ""}`);
+  const sourceTokens = new Set([
+    ...sourceIdentityTokenList,
+    ...sourceIdentityTokenList
+      .filter((token) => token.endsWith("dc") && token.length > 4)
+      .map((token) => token.slice(0, -2)),
+  ]);
+  const identityLabels = [
+    project?.name,
+    ...(Array.isArray(project?.knownData?.aliases) ? project.knownData.aliases : []),
+  ];
+  return identityLabels.some((label) => {
+    const labelTokens = sourceIdentityTokens(label);
+    return labelTokens.length > 0 && labelTokens.every((token) => sourceTokens.has(token));
+  });
 }
 
 function capturedPassage(source, index) {
@@ -278,7 +309,7 @@ export function evaluateResearchEvidenceEligibility(input = {}) {
   } else {
     const mappingSourceId = supportedMapping.sourceId;
     const mappingSource = (Array.isArray(input.sources) ? input.sources : []).find((source) => (
-      (source?.canonicalUrl ?? source?.url ?? source?.resolvedUrl) === mappingSourceId
+      sourceUrlAliases(source).includes(mappingSourceId)
     ));
     if (!mappingSource) {
       reasons.push("The supported claim mapping does not resolve to a retained source.");

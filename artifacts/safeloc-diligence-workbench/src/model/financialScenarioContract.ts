@@ -26,6 +26,8 @@ export type FinancialProviderState =
 
 export type FinancialScenarioSnapshot = {
   scenarioId: FinancialScenarioId;
+  name: string;
+  role: "benchmark" | "primary" | "sensitivity";
   modelContractVersion: number;
   evidenceBasis: FinancialEvidenceBasis;
   electricityBasis: FinancialElectricityBasis;
@@ -155,6 +157,18 @@ function snapshot({
       };
   const result = {
     scenarioId,
+    name: scenarioId === "synthetic-verified"
+      ? "Synthetic verified benchmark"
+      : scenarioId === "synthetic-current"
+        ? "Synthetic current-evidence case"
+        : scenarioId === "eia-verified"
+          ? "EIA verified sensitivity"
+          : "EIA current-evidence sensitivity",
+    role: scenarioId === "synthetic-verified"
+      ? "benchmark" as const
+      : scenarioId === "synthetic-current"
+        ? "primary" as const
+        : "sensitivity" as const,
     modelContractVersion: FINANCIAL_MODEL_CONTRACT_VERSION,
     evidenceBasis,
     electricityBasis,

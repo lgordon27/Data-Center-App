@@ -639,7 +639,16 @@ export function DiligenceLiveRegions({
     return (
       <div className="sr-only" aria-label="Diligence metric updates">
         <div data-testid="live-financial-state" aria-live="polite" aria-atomic="true">
-          Updating live inputs. Financial return results are temporarily withheld until the provider result settles.
+          The primary calculation remains available on the synthetic current-evidence basis. The optional EIA market sensitivity is updating; it does not change the primary recommendation.
+        </div>
+        <div data-testid="live-confidence" aria-live="polite" aria-atomic="true">
+          Evidence confidence is now {metrics.confidenceScore} percent.
+        </div>
+        <div data-testid="live-current-irr" aria-live="polite" aria-atomic="true">
+          Synthetic current-evidence primary case IRR is now {formatIRR(metrics.projectIRR)}{metrics.projectIRRReason ? ` — ${formatIRRReason(metrics.projectIRRReason)}` : ""}.
+        </div>
+        <div data-testid="live-recommendation" aria-live="polite" aria-atomic="true">
+          Recommendation status from the synthetic current-evidence primary case is now {metrics.recommendationStatus}.
         </div>
       </div>
     );
@@ -647,16 +656,16 @@ export function DiligenceLiveRegions({
   return (
     <div className="sr-only" aria-label="Diligence metric updates">
       <div data-testid="live-financial-state" aria-live="polite" aria-atomic="true">
-        Financial calculation uses {financialInputState.basis} inputs. Electricity value is {financialInputState.electricityRate === null ? "not applicable" : `$${financialInputState.electricityRate.toFixed(1)} per MWh`}; provider availability is {providerAvailability}; project applicability is {providerApplicability}; period is {financialInputState.electricityPeriod ?? "not reported"}; calculated at {financialInputState.calculatedAt ?? "not reported"}.
+        The primary calculation uses the synthetic current-evidence basis. Optional EIA sensitivity provider availability is {providerAvailability}; provider rate is {financialInputState.electricityRate === null ? "not available" : `$${financialInputState.electricityRate.toFixed(1)} per MWh`}; period is {financialInputState.electricityPeriod ?? "not reported"}; source freshness is {financialInputState.sourceUpdatedAt ?? "not reported"}; sensitivity applicability is {providerApplicability}. The EIA sensitivity does not change the primary recommendation.
       </div>
       <div data-testid="live-confidence" aria-live="polite" aria-atomic="true">
         Evidence confidence is now {metrics.confidenceScore} percent.
       </div>
       <div data-testid="live-current-irr" aria-live="polite" aria-atomic="true">
-        Conservative stress case IRR is now {formatIRR(metrics.projectIRR)}{metrics.projectIRRReason ? ` — ${formatIRRReason(metrics.projectIRRReason)}` : ""}.
+        Synthetic current-evidence primary case IRR is now {formatIRR(metrics.projectIRR)}{metrics.projectIRRReason ? ` — ${formatIRRReason(metrics.projectIRRReason)}` : ""}.
       </div>
       <div data-testid="live-recommendation" aria-live="polite" aria-atomic="true">
-        Recommendation status is now {metrics.recommendationStatus}.
+        Recommendation status from the synthetic current-evidence primary case is now {metrics.recommendationStatus}.
       </div>
       <div data-testid="live-material-gaps" aria-live="polite" aria-atomic="true">
         Unresolved decision gates: {metrics.unresolvedDecisionGateCount}. Unresolved financial drivers: {metrics.unresolvedFinancialDriverCount}.

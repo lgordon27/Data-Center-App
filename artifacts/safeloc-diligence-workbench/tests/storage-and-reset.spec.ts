@@ -8,7 +8,19 @@ const evidenceTipDismissedKey = "safeloc:diligence:evidence-room-tip-dismissed:v
 type ReturnCapture = {
   classifications: Record<string, string>;
   modelInputs: { fingerprint: string };
-  release: { fingerprint: string };
+  release: {
+    fingerprint: string;
+    identity: null | { assets: Array<{ file: string; hash: string }> };
+  };
+  financialScenarios: {
+    primaryScenarioId: string;
+    scenarios: Record<string, {
+      name: string;
+      role: string;
+      evidenceBasis: string;
+      electricityBasis: string;
+    } | null>;
+  };
   providerProvenance: {
     eia: { status: string };
     ercotQueue: { status: string };
@@ -276,7 +288,22 @@ test.describe("current-session recovery and reset isolation", () => {
       release: { identity: unknown; fingerprint: string };
     };
 
-    expect(record.captureSchemaVersion).toBe(1);
+    expect(record.captureSchemaVersion).toBe(2);
+    expect(record.financialScenarios.primaryScenarioId).toBe("synthetic-current");
+    expect(record.financialScenarios.scenarios["synthetic-current"]).toMatchObject({
+      name: "Synthetic current-evidence case",
+      role: "primary",
+      evidenceBasis: "current",
+      electricityBasis: "synthetic",
+    });
+    expect(record.release.identity).toMatchObject({
+      assets: expect.arrayContaining([
+        expect.objectContaining({
+          file: expect.stringMatching(/^assets\\/.+\\.(?:js|css)$/),
+          hash: expect.stringMatching(/^sha256-[0-9a-f]{64}$/),
+        }),
+      ]),
+    });
     expect(record.modelInputs.fingerprint).toMatch(/^fnv1a-[0-9a-f]+$/);
     expect(record.release.fingerprint).toMatch(/^fnv1a-[0-9a-f]+$/);
     expect(record.release).toHaveProperty("identity");

@@ -13,6 +13,11 @@ export function AdvisorBrief() {
         <div className="rounded-lg border border-[#e3d4b6] bg-[#fffbf2] px-4 py-3 text-xs text-[#805000]"><strong className="font-semibold">Unresolved decision gates:</strong> {brief.gapSummary.unresolvedDecisionGates}</div>
         <div className="rounded-lg border border-[#f5ddd5] bg-[#fff3f4] px-4 py-3 text-xs text-[#7f2635]"><strong className="font-semibold">Unresolved financial drivers:</strong> {brief.gapSummary.unresolvedFinancialDrivers}</div>
       </div>
+      <div data-testid="advisor-primary-case" className="rounded-xl border border-[#aac6f4] bg-[#eef5ff] p-4 text-xs leading-5 text-[#344550]">
+        <strong className="text-[#122232]">{brief.primaryCase.label}:</strong>{" "}
+        {brief.primaryCase.projectIRR === null ? "N/M" : `${brief.primaryCase.projectIRR.toFixed(1)}% IRR`} · {brief.primaryCase.recommendationStatus}.{" "}
+        {brief.primaryCase.boundary}
+      </div>
       <div className="grid md:grid-cols-2 gap-4">
         <div className="rounded-xl border border-[#d9e0e4] bg-white p-4 shadow-sm">
           <h3 className="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#122232] mb-4 flex items-center gap-2">

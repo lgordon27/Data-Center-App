@@ -26,7 +26,7 @@ function readBuiltIdentity() {
 }
 
 const isProduction = process.env.NODE_ENV === "production";
-const builtIdentity = isProduction ? readBuiltIdentity() : null;
+const builtIdentity = readBuiltIdentity();
 const applicationVersion = builtIdentity?.applicationVersion || process.env.npm_package_version || "0.0.0";
 const sourceCommitSha = builtIdentity?.sourceCommitSha ?? gitValue(["rev-parse", "HEAD"]);
 const commitSha = builtIdentity?.commitSha
@@ -68,6 +68,9 @@ export const releaseIdentity = Object.freeze({
   commitShaMatchesSource,
   deploymentId: builtIdentity?.deploymentId ?? null,
   buildTimestamp,
+  assets: Object.freeze(Array.isArray(builtIdentity?.assets)
+    ? builtIdentity.assets.map((asset) => Object.freeze({ file: asset.file, hash: asset.hash }))
+    : []),
 });
 
 export function handleVersionRequest(_req, res) {

@@ -38,7 +38,7 @@ export function FinancialTransmission({ onNavigate, onResolveEvidence }: { onNav
              metrics={metrics}
              financialInputState={financialInputState}
              providerAvailability={`${sourceStates.eia.status} EIA source`}
-             providerApplicability={project.kind === "custom" ? "not applied to this custom project" : "applied to the curated electricity input"}
+             providerApplicability={project.kind === "custom" ? "not applied to this custom project" : "an optional project-level market sensitivity only"}
            />
           {scenarioOpen ? <section data-testid="conference-scenarios">
             <button type="button" onClick={() => setScenarioOpen(false)} className="mb-4 text-sm underline">Close scenario workspace</button>

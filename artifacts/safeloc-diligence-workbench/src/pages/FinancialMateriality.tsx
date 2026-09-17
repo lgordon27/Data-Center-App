@@ -287,6 +287,9 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
   const providerApplicability = project.kind === "custom"
     ? "not applied to this custom project"
     : "optional sensitivity only";
+  const optionalSensitivityStatus = financialInputState.phase === "updating"
+    ? "The optional EIA market sensitivity is updating; the primary return and recommendation remain available and unchanged."
+    : `Optional EIA sensitivity: provider availability ${providerAvailability}; provider rate ${financialInputState.electricityRate === null ? "not available" : `$${financialInputState.electricityRate.toFixed(1)}/MWh`}; period ${financialInputState.electricityPeriod ?? "not reported"}; source freshness ${financialInputState.sourceUpdatedAt ?? "not reported"}; applicability ${providerApplicability}.`;
 
   return (
     <div data-testid="financial-transmission-model" className="min-w-0">
@@ -296,8 +299,8 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
       </div>
        <div data-testid="financial-input-state" role="status" className="mb-4 rounded-lg border border-[#cbd8d4] bg-[#f9faf8] px-4 py-3 text-[11px] leading-5 text-[#52616b]">
          <strong className="font-semibold text-[#122232]">{calculationBasis}.</strong>{" "}
-          Primary electricity input: ${financialScenarios.scenarios["synthetic-current"]!.inputs.appliedElectricityRate.toFixed(1)}/MWh
-         {` · provider availability: ${providerAvailability} · project applicability: ${providerApplicability} · calculated ${calculationTimestamp}.`}
+          Primary synthetic electricity input: ${financialScenarios.scenarios["synthetic-current"]!.inputs.appliedElectricityRate.toFixed(1)}/MWh.{" "}
+          {optionalSensitivityStatus} Primary calculated {calculationTimestamp}.
        </div>
        <ProviderOverlayComparison financialInputState={financialInputState} financialScenarios={financialScenarios} projectKind={project.kind} />
       {!hasChangedClassification && <aside data-testid="materiality-classification-prompt" role="note" className="mb-4 flex items-start gap-3 rounded-lg border border-[#aac6f4] bg-[#eef5ff] px-4 py-3 text-[11px] leading-5 text-[#344550]"><Sparkles aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#255bb7]" /><p><strong className="font-semibold text-[#122232]">Change a classification</strong> to see the return, driver ranking, confidence and recommendation update.</p></aside>}

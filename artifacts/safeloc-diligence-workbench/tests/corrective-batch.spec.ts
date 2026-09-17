@@ -44,7 +44,7 @@ test.describe("Batch 4 corrective walkthrough coverage", () => {
     await page.getByTestId("market-holding-state-meta").click();
     await expect(page.getByTestId("market-no-relationship")).toContainText("No established company");
     await expect(page.getByTestId("market-relationship-state")).toContainText("Research required");
-    await expect(page.getByTestId("market-relationship-state")).toContainText("No reviewed Stargate relationship");
+    await expect(page.getByTestId("market-relationship-state")).toContainText("No reviewed relationship to Stargate Abilene");
     await expect(page.getByTestId("market-company")).toHaveText("Meta");
     await expect.poll(() => page.evaluate((key) => JSON.parse(window.localStorage.getItem(key) ?? "{}").originatingCompany, currentSessionKey)).toBe("Meta");
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
@@ -70,7 +70,7 @@ test.describe("Batch 4 corrective walkthrough coverage", () => {
     await expect(page.getByTestId("market-holding-state-oracle")).toContainText("Source-backed");
   });
 
-  test("withholds returns while EIA is pending and labels the settled provider basis", async ({ page }) => {
+  test("keeps the synthetic primary case available while the optional EIA sensitivity updates", async ({ page }) => {
     let releaseRequest!: () => void;
     const responseBlocked = new Promise<void>((resolve) => {
       releaseRequest = resolve;
@@ -87,17 +87,26 @@ test.describe("Batch 4 corrective walkthrough coverage", () => {
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.evaluate(() => { window.location.hash = "analysis"; });
     await page.getByTestId("tab-transmission").click();
-    await expect(page.getByTestId("financial-inputs-updating")).toBeVisible();
-    await expect(page.getByTestId("metric-project-irr")).toHaveCount(0);
-    await expect(page.getByTestId("financial-inputs-updating")).toContainText("temporarily withheld");
+    await expect(page.getByTestId("financial-input-state")).toContainText("synthetic current-evidence");
+    await expect(page.getByTestId("financial-input-state")).toContainText("optional EIA market sensitivity is updating");
+    await expect(page.getByTestId("financial-input-state")).not.toContainText("withheld");
+    await expect(page.getByTestId("impact-chain-baseline-irr")).toHaveText("13.3%");
+    await expect(page.getByTestId("impact-chain-stress-irr")).toHaveText("9.1%");
+    await expect(page.getByTestId("live-financial-state")).toContainText("primary calculation remains available");
+    await expect(page.getByTestId("live-current-irr")).toContainText("9.1%");
 
     releaseRequest();
-    await expect(page.getByTestId("financial-input-state")).toContainText("Live provider-based calculation");
-    await expect(page.getByTestId("financial-input-state")).toContainText("$54.1/MWh");
+    await expect(page.getByTestId("financial-input-state")).toContainText("Synthetic current-evidence primary calculation");
+    await expect(page.getByTestId("financial-input-state")).toContainText("provider rate $54.1/MWh");
+    await expect(page.getByTestId("financial-input-state")).toContainText("optional sensitivity only");
+    await expect(page.getByTestId("financial-input-state")).not.toContainText("provider-based calculation");
+    await expect(page.getByTestId("scenario-synthetic-verified")).toContainText("13.3%");
+    await expect(page.getByTestId("scenario-synthetic-current")).toContainText("9.1%");
+    await expect(page.getByTestId("scenario-eia-current")).toContainText("Optional market sensitivity");
     const stressTest = page.getByRole("button", { name: /Illustrative Project Stress Test/i });
     if (await stressTest.getAttribute("aria-expanded") === "false") await stressTest.click();
     await page.getByRole("tab", { name: "Cash Flows" }).click();
     await expect(page.getByTestId("metric-project-irr")).toBeVisible();
-    await expect(page.getByTestId("financial-inputs-updating")).toHaveCount(0);
+    await expect(page.getByTestId("financial-input-state")).not.toContainText("updating");
   });
 });

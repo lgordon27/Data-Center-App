@@ -7,6 +7,18 @@ async function captureReturnState(page: import("@playwright/test").Page) {
         classifications: Record<string, string>;
         providerProvenance: { eia: { status: string; dataOrigin: string } };
         modelInputs: { fingerprint: string };
+        financialScenarios: {
+          primaryScenarioId: string;
+          scenarios: Record<string, {
+            role: string;
+            evidenceBasis: string;
+            electricityBasis: string;
+            provider: { state: string; period: string | null; sourceUpdatedAt: string | null };
+            inputs: { rawElectricityRate: number; appliedElectricityRate: number };
+            returns: { projectIRR: number | null };
+            modelFingerprint: string;
+          } | null>;
+        };
       }>;
     }).__safelocCaptureReturnDiscrepancyState;
     if (!capture) throw new Error("Return discrepancy capture hook is unavailable.");
@@ -68,6 +80,20 @@ test.describe("EIA electricity evidence", () => {
     expect(capture.providerProvenance.eia).toMatchObject({ status: "live", dataOrigin: "provider" });
     expect(Object.keys(capture.classifications)).toHaveLength(16);
     expect(capture.modelInputs.fingerprint).toMatch(/^fnv1a-/);
+    expect(capture.financialScenarios.primaryScenarioId).toBe("synthetic-current");
+    expect(capture.financialScenarios.scenarios["synthetic-verified"]?.returns.projectIRR).toBeCloseTo(13.343171792288588, 9);
+    expect(capture.financialScenarios.scenarios["synthetic-current"]?.returns.projectIRR).toBeCloseTo(9.086986530041251, 9);
+    expect(capture.financialScenarios.scenarios["synthetic-current"]).toMatchObject({
+      role: "primary",
+      evidenceBasis: "current",
+      electricityBasis: "synthetic",
+    });
+    expect(capture.financialScenarios.scenarios["eia-current"]).toMatchObject({
+      role: "sensitivity",
+      electricityBasis: "eia",
+      provider: { state: "live", period: "2026-08", sourceUpdatedAt: "2026-08-01T00:00:00.000Z" },
+      inputs: { rawElectricityRate: 54.1, appliedElectricityRate: 56.80500000000001 },
+    });
 
     const classification = page.getByTestId("select-classification-electricity_cost");
     await classification.selectOption("User Assumption");
@@ -81,8 +107,10 @@ test.describe("EIA electricity evidence", () => {
     const liveScenario = page.getByTestId("button-opt-in-scenario");
     if (await liveScenario.count()) await liveScenario.click();
     await page.getByTestId("financial-tab-assumptions").click();
-    await expect(page.getByTestId("model-electricity-attribution")).toContainText("U.S. Energy Information Administration Open Data, live");
-    await expect(page.getByTestId("model-electricity-attribution")).toContainText("$54.1/MWh");
+    await expect(page.getByTestId("model-electricity-attribution")).toHaveText("Electricity cost: $44.1/MWh (embedded estimate)");
+    await expect(page.getByTestId("scenario-synthetic-verified")).toContainText("13.3%");
+    await expect(page.getByTestId("scenario-synthetic-current")).toContainText("9.1%");
+    await expect(page.getByTestId("scenario-eia-current")).toContainText("Optional market sensitivity");
     await expect(page.getByTestId("footer-eia-attribution")).toHaveText("Electricity: U.S. Energy Information Administration Open Data");
   });
 
@@ -103,11 +131,15 @@ test.describe("EIA electricity evidence", () => {
     const cachedScenario = page.getByTestId("button-opt-in-scenario");
     if (await cachedScenario.count()) await cachedScenario.click();
     await page.getByTestId("financial-tab-assumptions").click();
-    await expect(page.getByTestId("model-electricity-attribution")).toContainText("cached");
-    await expect(page.getByTestId("model-electricity-attribution")).toContainText("$56.8/MWh");
+    await expect(page.getByTestId("model-electricity-attribution")).toHaveText("Electricity cost: $44.1/MWh (embedded estimate)");
+    await expect(page.getByTestId("scenario-synthetic-verified")).toContainText("13.3%");
+    await expect(page.getByTestId("scenario-synthetic-current")).toContainText("9.1%");
+    await expect(page.getByTestId("scenario-eia-current")).toContainText("Optional market sensitivity");
     const capture = await captureReturnState(page);
     expect(capture.providerProvenance.eia).toMatchObject({ status: "cached", dataOrigin: "provider" });
     expect(Object.keys(capture.classifications)).toHaveLength(16);
+    expect(capture.financialScenarios.scenarios["synthetic-current"]?.returns.projectIRR).toBeCloseTo(9.086986530041251, 9);
+    expect(capture.financialScenarios.scenarios["eia-current"]?.provider.state).toBe("cached");
   });
 
   test("keeps the hardcoded model usable when EIA and cache are unavailable", async ({ page }) => {

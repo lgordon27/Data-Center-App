@@ -1427,8 +1427,8 @@ export function LegacyCompanyExploration({ onNavigate }: { onNavigate?: (route: 
                   <div className="rounded-lg border border-white/10 bg-[#0d2435] p-3"><div className="font-mono text-[8px] uppercase tracking-[0.1em] text-[#8299a5]">Material gaps</div><div data-testid="home-preview-gaps" className="mt-2 font-mono text-[20px] font-bold text-[#f5ddd5]">{metrics.missingMaterialCount}</div></div>
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2">
-                  <div className="rounded-lg border border-white/10 bg-[#0d2435] p-3"><div className="font-mono text-[8px] uppercase tracking-[0.1em] text-[#8299a5]">Baseline IRR</div><div data-testid="home-preview-baseline-irr" className="mt-2 font-mono text-[20px] font-bold text-white">{formatIRR(baselineIRR)}</div></div>
-                  <div className="rounded-lg border border-[#d4e86b]/30 bg-[#173247] p-3"><div className="font-mono text-[8px] uppercase tracking-[0.1em] text-[#b9d43a]">Conservative IRR</div><div data-testid="home-preview-conservative-irr" className="mt-2 font-mono text-[20px] font-bold text-[#d4e86b]">{formatIRR(metrics.projectIRR)}</div></div>
+                  <div className="rounded-lg border border-white/10 bg-[#0d2435] p-3"><div className="font-mono text-[8px] uppercase tracking-[0.1em] text-[#8299a5]">Synthetic verified benchmark</div><div data-testid="home-preview-baseline-irr" className="mt-2 font-mono text-[20px] font-bold text-white">{formatIRR(baselineIRR)}</div></div>
+                  <div className="rounded-lg border border-[#d4e86b]/30 bg-[#173247] p-3"><div className="font-mono text-[8px] uppercase tracking-[0.1em] text-[#b9d43a]">Synthetic current-evidence primary</div><div data-testid="home-preview-conservative-irr" className="mt-2 font-mono text-[20px] font-bold text-[#d4e86b]">{formatIRR(metrics.projectIRR)}</div></div>
                 </div>
                 {(baselineIRRReason !== null || metrics.projectIRRReason !== null) && (
                   <div className="mt-3 space-y-2">

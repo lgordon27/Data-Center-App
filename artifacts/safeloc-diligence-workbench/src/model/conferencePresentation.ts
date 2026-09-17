@@ -5,6 +5,13 @@ export function generateAdvisorBrief(diligence: ReturnType<typeof useDiligence>)
   const summary = getConferenceEvidenceSummary(diligence.evidence);
   const relationship = getConferenceRelationship(diligence.project, diligence.originatingCompany);
   return {
+    primaryCase: {
+      label: "Synthetic current-evidence primary case",
+      projectIRR: diligence.metrics.projectIRR,
+      recommendationStatus: diligence.metrics.recommendationStatus,
+      basis: "synthetic-current" as const,
+      boundary: "Project-level synthetic diligence output; optional EIA sensitivities are not issuer returns or portfolio returns.",
+    },
     gapSummary: {
       unresolvedDecisionGates: diligence.metrics.unresolvedDecisionGateCount,
       unresolvedFinancialDrivers: diligence.metrics.unresolvedFinancialDriverCount,

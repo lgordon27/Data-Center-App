@@ -1,0 +1,35 @@
+Resume Task #228 with a read-only commit reconciliation before taking any production action.
+
+The deployed commit 1d14607c80aa9f64290e034909773cb20d8b81b5 is a descendant of the Task #228 implementation commit d014e519b4f98ad786f08efddc2e29749ecf9069. Do not roll production back merely because the SHAs are not identical.
+
+First compare the complete range:
+
+d014e519b4f98ad786f08efddc2e29749ecf9069..1d14607c80aa9f64290e034909773cb20d8b81b5
+
+Report:
+
+* Every intervening commit and parent
+* Commit messages
+* Changed paths
+* Diff statistics
+* Whether any application source, financial logic, dossier schema, seed data, evidence, API behavior, audience contract, tests, or runtime configuration changed
+* Whether 1d14607c is only an approved publish/deployment checkpoint or contains substantive changes
+* Whether the deployed asset hashes and source identity are internally consistent
+
+Decision rule:
+
+* If the descendant contains only an empty publication checkpoint, generated release metadata, or another non-substantive approved deployment change, treat 1d14607c as the valid deployed release identity and continue the existing production sequence without republishing.
+* If it contains substantive but approved Task #228 changes already covered by the implementation, list them and continue only if all protected tests and contracts remain valid.
+* If it contains unrelated, unreviewed, or conflicting product changes, STOP and report the precise conflict. Do not import production data.
+* Do not modify Git history, revert, cherry-pick, or republish during this reconciliation.
+
+If the deployed descendant is approved, continue the same Task #228 production sequence:
+
+1. Create the sanitized pre-import production export from neondb.
+2. Run the protected canonical import with explicit write confirmation.
+3. Run the import a second time and prove idempotency.
+4. Restart production.
+5. Run the complete API, clean-browser, four-stage, dossier-switching, audience-difference, restart-persistence, and canonical/session-isolation acceptance checks.
+6. Report the deployed SHA 1d14607c... as the production release identity and d014e519... as the contained Task #228 implementation commit.
+
+Do not use heliumdb, weaken the acceptance criteria, change formulas or evidence, or create a new task.

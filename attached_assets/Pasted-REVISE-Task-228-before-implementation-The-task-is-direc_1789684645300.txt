@@ -1,0 +1,193 @@
+REVISE Task #228 before implementation.
+
+The task is directionally approved, but do not begin building until the following product and persistence boundaries are incorporated into the plan.
+
+1. NAME THE DURABLE STORAGE MECHANISM
+
+“Server-side persistence” is insufficiently specific.
+
+The revised plan must identify:
+
+- The existing database infrastructure, if any
+- The proposed durable database
+- Schema and migration mechanism
+- Database client or ORM
+- Test database isolation
+- Seed/import process
+- Deployment persistence
+- Backup or sanitized export mechanism
+
+Do not use:
+
+- In-memory maps
+- Repository JSON files
+- Ephemeral deployment filesystem storage
+- The research cache as the authoritative evidence database
+- Browser localStorage as the canonical evidence store
+
+Prefer the existing managed PostgreSQL infrastructure if one is already configured. If none exists, state exactly what needs to be provisioned before implementation.
+
+Update the relevant-files list to include all database, migration and seed files that will actually be required.
+
+2. SEPARATE CANONICAL DOSSIERS FROM USER WORKING SESSIONS
+
+The public LinkedIn application must not permit anonymous users to overwrite shared canonical project evidence.
+
+Define two explicit persistence boundaries:
+
+CANONICAL DOSSIER
+
+- Maintainer-reviewed
+- Source-backed
+- Versioned
+- Shared and read-only to public users
+- Used as the default project analysis
+- Written only by a protected server-side migration, seed or maintainer process
+
+USER WORKING SESSION
+
+- Evidence reclassification experiments
+- Proposal acceptance or override experiments
+- Financial scenarios
+- Saved comparisons
+- User assumptions
+- Session-specific conclusions
+- Must never mutate the canonical shared dossier
+
+No full multi-user permissions system or team-review workflow is required.
+
+The current single-user workbench interaction may persist across reload for that user, but it must remain isolated from the published canonical record.
+
+Document which existing session and localStorage behavior remains and which data moves to durable server storage.
+
+3. NAME AND VERIFY THE THREE ANCHORS
+
+The task must identify all three exact acceptance anchors before implementation.
+
+Anchor 1:
+
+- Stargate Abilene
+
+Evaluate these provisional candidates for the remaining anchors:
+
+Anchor 2, Texas:
+
+- Project Kilby
+
+Anchor 3, Arizona:
+
+- Microsoft Goodyear data-center project or campus
+
+For each candidate, perform a bounded read-only readiness check and report:
+
+- Canonical facility identity
+- Relevant phases or aliases
+- Exact issuer relationship
+- Relationship evidence
+- Existing official sources
+- Evidence categories currently supported
+- Community documentation
+- Whether the project can support both FA and Asset Manager outputs
+- Known evidence gaps
+
+If either provisional candidate cannot support an exact-project reviewed dossier without weakening eligibility, recommend one replacement from the existing Texas or Arizona directory.
+
+Do not begin implementation with unnamed projects.
+
+4. FREEZE THE OUTPUT CONTRACTS BEFORE THE SCHEMA
+
+Before designing tables, define the actual rendered contract for:
+
+FINANCIAL ADVISOR BRIEF
+
+- Holding and exposure
+- Why the project matters
+- Verified findings
+- Unknowns
+- Issuer-materiality status
+- Three client conversation questions
+- Monitoring considerations
+- No buy/sell recommendation
+
+ASSET MANAGER BRIEF
+
+- Issuer-project relationship
+- Evidence findings
+- Project materiality
+- Issuer-materiality status
+- Financial sensitivities
+- Engagement questions
+- Disclosure requests
+- Monitoring triggers
+- Provenance references
+
+The schema should persist only the information needed to produce these outputs and the existing four stages.
+
+5. PRESERVE MATERIALITY BOUNDARIES
+
+Persist separate fields or records for:
+
+- Relationship confidence
+- Project materiality
+- Issuer materiality
+- Portfolio materiality
+
+Supported states should include:
+
+- Quantified
+- Directional
+- Exposure established but financial materiality unquantified
+- Relationship unverified
+- No supported transmission established
+
+Project IRR must not populate issuer, fund or portfolio materiality automatically.
+
+6. CLARIFY THE THREE-ANCHOR ACCEPTANCE TEST
+
+Task #228 is complete only when all three named anchors:
+
+- Load from durable storage after server restart
+- Load without requiring live research
+- Retain exact source and passage provenance
+- Traverse all four stages
+- Produce visibly different FA and Asset Manager outputs
+- Preserve canonical evidence while allowing isolated user experimentation
+- Show explicit unknowns
+- Keep unsupported materiality unresolved
+- Preserve the audited financial scenario hierarchy
+
+Test reload alone is insufficient. Test a server restart and a fresh browser session against the same persisted canonical record.
+
+7. MAINTAIN SCOPE
+
+Keep the current out-of-scope section.
+
+Do not add:
+
+- New provider connectors
+- Broader research-agent functionality
+- Team permissions
+- CAM workflows
+- Nationwide dossier population
+- Portfolio valuation
+- Automatic investment recommendations
+
+8. RETURN THE REVISED PLAN
+
+Do not implement yet.
+
+Return:
+
+- Revised What & Why
+- Revised Done looks like
+- Named anchor readiness table
+- Canonical-versus-session persistence boundary
+- Proposed database technology
+- Minimal schema entities
+- Migration strategy
+- Updated steps
+- Updated relevant files
+- Risks and prerequisites
+- Recommended Replit execution mode
+
+No files, code, tests, commits, deployments or publications should be changed during this revision.

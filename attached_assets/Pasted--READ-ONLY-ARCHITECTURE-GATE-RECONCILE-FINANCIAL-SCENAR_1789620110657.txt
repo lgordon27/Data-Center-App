@@ -1,0 +1,270 @@
+# READ-ONLY ARCHITECTURE GATE: RECONCILE FINANCIAL SCENARIOS BEFORE IMPLEMENTATION
+
+Do not modify code, tests, documentation, configuration, storage schemas, Git history or deployment state during this task. Do not create follow-up tasks. Do not commit, publish or deploy.
+
+Your job is to independently assess the proposed financial-state repair, identify discrepancies in the plan, and recommend GO, REVISE or STOP before implementation.
+
+## Phase 0: Confirm the exact starting point
+
+1. Report the current branch, full HEAD SHA and working-tree status.
+2. The latest independently verified deployed revision was:
+
+`53431509f04953c106426db41d790eea2483b734`
+
+3. If HEAD is different:
+
+   * Report the exact SHA.
+   * Explain whether it is ahead of, behind or unrelated to `5343150`.
+   * Identify relevant intervening commits.
+4. Confirm the deployed `/api/version` and `/release.json` identities before continuing.
+5. Do not change the checkout merely to match the supplied SHA.
+
+## Confirmed live discrepancy to reproduce
+
+A clean live browser session at commit `5343150` showed:
+
+* Live EIA rate: `$65.8/MWh`
+* EIA period: `2026-06`
+* Overview baseline return: `3.3%`
+* Overview conservative stress return: `-3.7%`
+* Overview difference: `-7.0 pts`
+* Provider panel “Synthetic baseline IRR”: `9.1%`
+* Provider-overlay result: `-3.7%`
+* Provider-overlay delta: `-12.8 pts`
+* Audited synthetic underwriting baseline: approximately `13.343%`
+* Audited synthetic evidence-stress return: approximately `9.087%`
+* Key Drivers electricity value: `$69.1/MWh`
+* Key Drivers classification: `User Assumption`
+* Key Drivers electricity escalation: `5.5% annually`
+
+The earlier production reconciliation concluded that `3.3% / -3.7%` was an unidentified historical result. That conclusion now appears obsolete because the exact pair was reproduced when the live EIA overlay was available.
+
+Independently reproduce or disprove this state. Do not assume these interpretations are correct merely because they are supplied here.
+
+## Central question
+
+Determine whether the application currently has four economically distinct scenarios:
+
+1. Synthetic underwriting baseline
+   Baseline or verified classifications using the synthetic electricity assumption.
+
+2. Synthetic evidence-stress case
+   Current evidence classifications using the synthetic electricity assumption.
+
+3. EIA-overlay baseline
+   Baseline or verified classifications using the provider electricity observation.
+
+4. EIA-overlay evidence-stress case
+   Current evidence classifications using the provider electricity observation.
+
+Determine whether all four are actually calculated and retained independently, or whether the app currently calculates fewer models and applies inconsistent labels to their outputs.
+
+## Required read-only analysis
+
+### 1. Trace the exact calculation pipeline
+
+Trace the complete path from:
+
+* EIA provider response
+* Provider normalization
+* Evidence/model overlay
+* Electricity rate selection
+* Stress multiplier
+* Evidence classifications
+* Financial model construction
+* Base IRR
+* Current/stress IRR
+* Provider-overlay IRR
+* Recommendation status
+* Overview display
+* Provider audit display
+* Key Drivers display
+* Saved scenarios
+* Advisor Brief
+* Summary rail
+* Sanitized discrepancy record
+
+Name the exact files, functions, state fields and tests involved.
+
+### 2. Reconcile every displayed number
+
+For each of the following, provide:
+
+* Exact unrounded result
+* Displayed result
+* Electricity-rate input
+* Classification state
+* Evidence-treatment state
+* Model fingerprint if available
+* Whether it is synthetic or provider-based
+* Whether it represents baseline or current evidence
+* Whether it affects the primary recommendation
+
+Reconcile:
+
+* `13.343%`
+* `9.087%`
+* `3.3%`
+* `-3.7%`
+* `-7.0 pts`
+* `-12.8 pts`
+* `$65.8/MWh`
+* `$69.1/MWh`
+* `5.5% annually`
+
+Explicitly determine whether `$69.1/MWh` is derived from the provider rate, a separate user assumption, a stress multiplier or another input. If it is derived from `$65.8/MWh`, explain why the UI labels it `User Assumption`.
+
+### 3. Assess the economic meaning of the EIA input
+
+Determine exactly which EIA series is being used.
+
+Report whether it represents:
+
+* Statewide average retail electricity price
+* Industrial retail price
+* Wholesale market price
+* Delivered tariff
+* Contracted project price
+* Another category
+
+Assess whether it is defensible as:
+
+* Primary underwriting input
+* Optional market sensitivity
+* General market context only
+* Not suitable for financial modeling
+
+Do not infer that a statewide EIA value is Stargate’s contracted price.
+
+### 4. Evaluate the proposed four-scenario contract
+
+Provide your independent opinion on whether the four-scenario structure is the correct architecture.
+
+Consider:
+
+* Whether four complete immutable calculation snapshots are necessary
+* Whether two classification states × two electricity bases can be derived safely
+* Whether the EIA overlay should ever replace the primary project case
+* Whether viewing or refreshing provider data should change the main recommendation
+* How cached, live, embedded and unavailable provider states should behave
+* How IRR values with no valid root or multiple roots should be represented
+* Whether the current `baseIRR`, `projectIRR`, `syntheticBaselineIRR`, `providerOverlayIRR` and related names are semantically accurate
+
+Do not recommend a copy-only repair if the state model is inconsistent.
+
+### 5. Identify downstream consumers
+
+Inventory every component, selector, context field, exported record and test that would need updating if the scenario contract changes.
+
+At minimum inspect:
+
+* Financial Overview
+* Key Drivers
+* Cash Flows
+* Assumptions
+* Waterfall
+* Provider-overlay panel
+* Persistent summary
+* Recommendation status
+* Advisor Brief
+* Scenario save/compare
+* Session restoration
+* Reset
+* Screen-reader live announcements
+* Sanitized return-discrepancy capture
+* Maintainer download
+* Custom-project synthetic-economics opt-in
+
+### 6. Storage and backward compatibility
+
+Determine whether existing saved sessions and scenarios distinguish:
+
+* Synthetic versus provider-based inputs
+* Baseline versus evidence-stress classifications
+* Live, cached and fallback provider states
+* Calculation version and model fingerprint
+
+Identify any required migration. Existing records must not silently acquire a different financial meaning after the repair.
+
+### 7. Custom-project boundary
+
+Confirm how the proposed contract should behave for custom projects.
+
+A custom project with incomplete research must not receive confident-looking financial conclusions unless synthetic economics were explicitly accepted. Provider market data must not bypass this opt-in boundary.
+
+### 8. Reproducibility and tooling
+
+Confirm whether the app package directly declares every tool invoked by its scripts.
+
+The clean independent checkout produced:
+
+`sh: 1: tsx: not found`
+
+Inspect whether `tsx` and `typescript` are declared in the correct package or are available only because of workspace/global tooling.
+
+Recommend the smallest reproducibility repair.
+
+### 9. Traceability boundary
+
+Assess whether the sanitized discrepancy record contains enough information to reproduce all four scenarios.
+
+Check for:
+
+* Commit SHA
+* Source commit SHA
+* Release ID
+* Build timestamp
+* Scenario classifications
+* Provider basis and freshness
+* Exact electricity rate and period
+* Model assumptions
+* Cash-flow schedules
+* IRR status and mathematical reason
+* Model fingerprints
+* Individual built JS/CSS asset filenames and hashes
+
+Report what remains missing. Do not recommend exposing a public maintainer control without an authentication boundary.
+
+## Required recommendation
+
+End with exactly one architecture decision:
+
+* `GO`
+* `REVISE`
+* `STOP`
+
+Then provide:
+
+1. The reason for the decision.
+2. The smallest safe sequential implementation plan.
+3. Exact files expected to change.
+4. Storage/schema migration requirements.
+5. Tests that must be added or updated.
+6. Tests that must not be weakened.
+7. Deployment verification requirements.
+8. Any claims in the proposed repair that you believe are incorrect.
+9. Whether the previous “unidentified 3.3% / -3.7% result” conclusion should be formally corrected.
+
+## Acceptance requirements for a future implementation
+
+Do not implement these now. Evaluate whether they are sufficient:
+
+* The primary synthetic underwriting baseline remains stable when provider availability changes.
+* Synthetic evidence stress remains separately visible.
+* EIA-overlay baseline and EIA-overlay stress are separately visible.
+* Every return identifies its electricity basis and evidence basis.
+* The statewide EIA observation is never represented as a disclosed project tariff.
+* The primary recommendation does not silently change merely because EIA becomes available.
+* `$69.1/MWh` has explicit derivation and provenance.
+* Live, cached, fallback and unavailable provider states are deterministic.
+* Invalid or ambiguous IRRs remain `N/M` with typed reasons.
+* Saved scenarios preserve their original scenario basis.
+* Legacy storage is migrated or safely rejected.
+* Custom projects remain fail-closed without explicit synthetic-economics acceptance.
+* Sanitized captures can reproduce every displayed return.
+* Reset and immediate reload produce identical outputs and fingerprints.
+* Desktop and mobile browser coverage verifies all four scenario states.
+* Production release identity matches Git HEAD and the served bundle.
+* Clean installation can execute the documented test commands without globally installed dependencies.
+
+Return the read-only report and stop. Wait for explicit approval before implementing anything.

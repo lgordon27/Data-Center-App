@@ -26,7 +26,7 @@ The application keeps provider credentials and transport server-side. A canonica
 - Browser `localStorage` for the current evidence-classification session and named scenario snapshots
 - No database or authentication dependency; server-side GridTracker configuration is environment-only
 
-The artifact is registered as a path-routed web artifact in `artifacts/safeloc-diligence-workbench/.replit-artifact/artifact.toml`. Its single `web` service owns `/`, receives the workflow-provided port and base path, and serves both the development and production application through the canonical Express host.
+The artifact is registered as a path-routed web artifact in `artifacts/safeloc-diligence-workbench/.replit-artifact/artifact.toml`. Its single `web` service owns the root application path `/`; the service forwards browser paths and same-origin API paths to the canonical Express host, which receives the workflow-provided port and base path. After changing the artifact route registration, restart `artifacts/safeloc-diligence-workbench: web` so the managed proxy reloads the registration rather than retaining a stale route table.
 
 ## Key files
 
@@ -144,7 +144,7 @@ pnpm --filter @workspace/safeloc-diligence-workbench run test
 pnpm --filter @workspace/safeloc-diligence-workbench run test:e2e
 ```
 
-The production build is a Vite output under `artifacts/safeloc-diligence-workbench/dist/public`. Both `pnpm ... run start` (the artifact deployment command) and `pnpm ... run serve` (the local alias) start the same production Express host, which serves that directory and preserves the API and release routes before the SPA fallback. Unknown browser paths receive the application entry document; unknown `/api/*` paths remain JSON 404s instead of being swallowed by the client fallback.
+The production build is a Vite output under `artifacts/safeloc-diligence-workbench/dist/public`. Both `pnpm ... run start` (the artifact deployment command) and `pnpm ... run serve` (the local production command) start the same canonical `server/index.ts` Express host, which serves that directory and preserves the API and release routes before the SPA fallback. Unknown browser paths receive the application entry document; unknown `/api/*` paths remain JSON 404s instead of being swallowed by the client fallback. The production validation also checks the managed preview domain when `SAFELOC_MANAGED_PREVIEW_URL` or `REPLIT_DEV_DOMAIN` is available; failures identify whether the route, port, startup, or response contract is wrong.
 
 For Playwright tests, `playwright.config.ts` starts the SafeLoc dev server on port `4173` with `PORT=4173 BASE_PATH=/` unless `PLAYWRIGHT_BASE_URL` is provided. If a custom base URL is used, start a compatible SafeLoc server yourself and set `PLAYWRIGHT_BASE_URL` to it.
 

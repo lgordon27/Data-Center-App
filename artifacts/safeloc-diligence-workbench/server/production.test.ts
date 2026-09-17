@@ -21,9 +21,13 @@ type PreviewRegistration = {
 
 function readPreviewRegistration(): PreviewRegistration {
   const previewPath = artifactToml.match(/^previewPath\s*=\s*"([^"]*)"$/m)?.[1];
-  const serviceBlock = artifactToml.match(/\[\[services\]\]\s*([\s\S]*?)(?=\n\[services\.)/)?.[1];
+  const serviceBlocks = [...artifactToml.matchAll(/\[\[services\]\]\s*([\s\S]*?)(?=\n\[\[services\]\]|\n\[services\.)/g)].map(
+    (match) => match[1],
+  );
+  const serviceBlock = serviceBlocks[0];
   const pathsSource = serviceBlock?.match(/^paths\s*=\s*\[([^\]]*)\]$/m)?.[1];
   const localPortSource = serviceBlock?.match(/^localPort\s*=\s*(\S+)$/m)?.[1];
+  const serviceName = serviceBlock?.match(/^name\s*=\s*"([^"]*)"$/m)?.[1];
   const developmentBlock = artifactToml.match(/\[services\.development\]\s*([\s\S]*?)(?=\n\[services\.)/)?.[1] ?? "";
   const developmentCommand = developmentBlock.match(/^run\s*=\s*"([^"]*)"$/m)?.[1];
   const environmentBlock = artifactToml.match(/\[services\.env\]\s*([\s\S]*)$/)?.[1] ?? "";
@@ -33,8 +37,10 @@ function readPreviewRegistration(): PreviewRegistration {
   if (!previewPath) {
     throw new Error("Preview registration check failed: artifact.toml must declare previewPath.");
   }
-  if (!serviceBlock || !pathsSource || !localPortSource) {
-    throw new Error("Preview registration check failed: artifact.toml must declare a web service with paths and localPort.");
+  if (serviceBlocks.length !== 1 || !serviceBlock || !pathsSource || !localPortSource || !serviceName) {
+    throw new Error(
+      "Preview registration check failed: artifact.toml must declare exactly one named web service with paths and localPort.",
+    );
   }
   if (!developmentCommand) {
     throw new Error("Preview registration check failed: artifact.toml must declare services.development.run.");
@@ -58,14 +64,13 @@ function readPreviewRegistration(): PreviewRegistration {
   if (configuredBasePath !== previewPath) {
     throw new Error(`Preview registration check failed: services.env.BASE_PATH "${configuredBasePath}" must match previewPath "${previewPath}".`);
   }
-  if (paths.length === 0 || paths.some((registeredPath) => !registeredPath.startsWith("/") || registeredPath.includes("*"))) {
-    throw new Error("Preview registration check failed: service paths must be non-empty absolute paths without wildcards.");
+  if (paths.length !== 1 || paths[0] !== "/") {
+    throw new Error(
+      `Preview registration check failed: web service paths must be the single root application path "/"; received ${JSON.stringify(paths)}.`,
+    );
   }
-  if (!paths.includes(previewPath)) {
-    throw new Error(`Preview registration check failed: service paths must include previewPath "${previewPath}".`);
-  }
-  if (!paths.includes("/api/version")) {
-    throw new Error('Preview registration check failed: service paths must include "/api/version" so the release API is not swallowed by the SPA.');
+  if (serviceName !== "web") {
+    throw new Error(`Preview registration check failed: the canonical service must be named "web", received "${serviceName}".`);
   }
   const expectedDevelopmentCommand = "pnpm --filter @workspace/safeloc-diligence-workbench run dev";
   if (developmentCommand !== expectedDevelopmentCommand) {
@@ -166,7 +171,11 @@ async function waitForPreviewResponse(url: string, child: ReturnType<typeof spaw
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
   }
-  throw new Error(`Timed out waiting for managed artifact preview route ${url}. Check artifact.toml previewPath/localPort registration.`);
+  throw new Error(
+    `Managed preview startup failed before ${url} responded. ` +
+      `The local process stayed alive, so check the managed artifact route registration and port agreement ` +
+      `(previewPath=${JSON.stringify(process.env.BASE_PATH ?? "/")}, localPort=${process.env.PORT ?? "unset"}).`,
+  );
 }
 
 async function stopProcess(child: ReturnType<typeof spawn>) {
@@ -191,7 +200,105 @@ async function stopProcess(child: ReturnType<typeof spawn>) {
   }
 }
 
-test("managed artifact development workflow serves SPA routes and keeps the version API JSON", async () => {
+function getManagedPreviewBaseUrl() {
+  const configuredUrl = process.env.SAFELOC_MANAGED_PREVIEW_URL ?? process.env.PLAYWRIGHT_BASE_URL;
+  const domainUrl = process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : undefined;
+  const candidate = configuredUrl ?? domainUrl;
+  if (!candidate || candidate.includes("127.0.0.1") || candidate.includes("localhost")) return undefined;
+  try {
+    return new URL(candidate).origin;
+  } catch {
+    throw new Error(
+      `Managed preview configuration failed: SAFELOC_MANAGED_PREVIEW_URL/PLAYWRIGHT_BASE_URL must be an absolute URL, received "${candidate}".`,
+    );
+  }
+}
+
+async function assertPreviewContract(baseUrl: string, label: "local" | "managed") {
+  const request = async (route: string) => {
+    const url = new URL(route, `${baseUrl}/`).toString();
+    let response: Response;
+    try {
+      response = await fetch(url);
+    } catch (error) {
+      throw new Error(
+        `${label} SafeLoc preview request failed for ${route}. ` +
+          `Check server startup, PORT, and BASE_PATH before investigating routing.`,
+        { cause: error },
+      );
+    }
+    return { response, url };
+  };
+
+  for (const route of ["/", "/client-route"]) {
+    const { response, url } = await request(route);
+    const body = await response.text();
+    if (label === "managed" && response.status === 404) {
+      throw new Error(
+        `Managed preview registration mismatch for ${route}: the proxy returned HTTP 404 instead of the SafeLoc shell at ${url}. ` +
+          `Restart the artifact-owned workflow to reload the root application path; response=${JSON.stringify(body.slice(0, 180))}`,
+      );
+    }
+    assert.equal(response.status, 200, `${label} ${route} should return the React shell; received ${response.status} from ${url}`);
+    assert.match(
+      response.headers.get("content-type") ?? "",
+      /text\/html/,
+      `${label} ${route} should return HTML; received ${response.headers.get("content-type") ?? "no content type"}`,
+    );
+    assert.match(body, /<div id="root"><\/div>/, `${label} ${route} should return the SafeLoc shell`);
+    assert.doesNotMatch(body, /"message"\s*:\s*"this route doesn't exist"/, `${label} ${route} must not be the artifact-router 404`);
+  }
+
+  const { response: versionResponse, url: versionUrl } = await request("/api/version");
+  const versionBody = await versionResponse.text();
+  if (label === "managed" && versionResponse.status === 404) {
+    throw new Error(
+      `Managed preview registration mismatch for /api/version: the proxy returned HTTP 404 at ${versionUrl}. ` +
+        `Check that the single root application path is registered and that the workflow is using the configured port.`,
+    );
+  }
+  assert.equal(
+    versionResponse.status,
+    200,
+    `${label} /api/version should reach SafeLoc, not the artifact router; received ${versionResponse.status} from ${versionUrl}`,
+  );
+  assert.match(versionResponse.headers.get("content-type") ?? "", /application\/json/, `${label} /api/version should remain JSON`);
+  const version = JSON.parse(versionBody) as Record<string, unknown>;
+  assert.equal(typeof version.applicationVersion, "string", `${label} /api/version should expose applicationVersion`);
+
+  const { response: releaseResponse, url: releaseUrl } = await request("/release.json");
+  const releaseBody = await releaseResponse.text();
+  if (label === "managed" && releaseResponse.status === 404) {
+    throw new Error(
+      `Managed preview registration mismatch for /release.json: the proxy returned HTTP 404 at ${releaseUrl}. ` +
+        `Check that the single root application path is registered and that the workflow is using the configured port.`,
+    );
+  }
+  assert.equal(
+    releaseResponse.status,
+    200,
+    `${label} /release.json should reach SafeLoc, not the artifact router; received ${releaseResponse.status} from ${releaseUrl}`,
+  );
+  assert.match(releaseResponse.headers.get("content-type") ?? "", /application\/json/, `${label} /release.json should remain JSON`);
+  const release = JSON.parse(releaseBody) as Record<string, unknown>;
+  assert.equal(release.applicationVersion, version.applicationVersion, `${label} release metadata should match /api/version`);
+
+  const { response: unknownApiResponse, url: unknownApiUrl } = await request("/api/does-not-exist");
+  const unknownApiBody = await unknownApiResponse.text();
+  assert.equal(
+    unknownApiResponse.status,
+    404,
+    `${label} unknown API route should be a SafeLoc JSON 404; received ${unknownApiResponse.status} from ${unknownApiUrl}`,
+  );
+  assert.match(
+    unknownApiResponse.headers.get("content-type") ?? "",
+    /application\/json/,
+    `${label} unknown API route should remain JSON rather than becoming the SPA shell`,
+  );
+  assert.deepEqual(JSON.parse(unknownApiBody), { status: "error", message: "API route not found" });
+}
+
+test("managed artifact registration and preview preserve the SPA/API route contract", async () => {
   const registration = readPreviewRegistration();
   const port = 4600 + (process.pid % 500);
   const output: string[] = [];
@@ -206,17 +313,15 @@ test("managed artifact development workflow serves SPA routes and keeps the vers
 
   try {
     const baseUrl = `http://127.0.0.1:${port}`;
-    for (const route of [registration.previewPath, `${registration.previewPath}client-route`]) {
-      const response = await waitForPreviewResponse(`${baseUrl}${route}`, child, output);
-      assert.equal(response.status, 200, `${route} should return the React shell`);
-      assert.match(response.headers.get("content-type") ?? "", /text\/html/, `${route} should return HTML`);
-      assert.match(await response.text(), /<div id="root"><\/div>/, `${route} should return the React shell`);
+    for (const route of ["/", "/client-route", "/api/version"]) {
+      await waitForPreviewResponse(`${baseUrl}${route}`, child, output);
     }
+    await assertPreviewContract(baseUrl, "local");
 
-    const version = await waitForPreviewResponse(`${baseUrl}${registration.previewPath}api/version`, child, output);
-    assert.equal(version.status, 200, "/api/version should remain available during preview startup");
-    assert.match(version.headers.get("content-type") ?? "", /application\/json/, "/api/version should remain JSON");
-    assert.equal(typeof (await version.json()).applicationVersion, "string");
+    const managedPreviewBaseUrl = getManagedPreviewBaseUrl();
+    if (managedPreviewBaseUrl) {
+      await assertPreviewContract(managedPreviewBaseUrl, "managed");
+    }
   } finally {
     await stopProcess(child);
   }

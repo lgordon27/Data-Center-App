@@ -7,6 +7,37 @@ import {
 } from "./researchProjectProxy.mjs";
 import { buildAcceptanceReport } from "./researchProjectAcceptance.mjs";
 
+test("reports bounded citation acceptance and rejection states distinctly", () => {
+  const report = buildAcceptanceReport({
+    project: { name: "Diagnostic Atlas", location: "Texas" },
+    liveRun: {
+      statusCode: 200,
+      payload: {
+        researchOutcome: { state: "complete-no-eligible-evidence", eligibleEvidenceCount: 0, reasonCodes: [] },
+        researchAudit: { categories: [], providerAttempts: [], elapsedMs: 1 },
+        researchCoverage: {
+          discoveryStatus: "completed",
+          discoveryState: "usable-citations",
+          discoveryRawAnnotationSummaries: [
+            { type: "url_citation", url: "https://records.example/a", canonicalUrl: "https://records.example/a", accepted: true },
+            { type: "url_citation", url: "file:///unsafe", accepted: false, rejectionReason: "unsafe-or-invalid-url" },
+          ],
+          discoveryAcceptedCitationUrls: ["https://records.example/a"],
+          discoveryRejectedCitationUrls: [{ url: "file:///unsafe", reason: "unsafe-or-invalid-url" }],
+        },
+        sourceLedger: [],
+        evidence: [],
+      },
+    },
+  });
+  assert.equal(report.discovery.status, "completed");
+  assert.equal(report.discovery.state, "usable-citations");
+  assert.equal(report.discovery.rawAnnotationSummaries[0].accepted, true);
+  assert.equal(report.discovery.rawAnnotationSummaries[1].rejectionReason, "unsafe-or-invalid-url");
+  assert.deepEqual(report.discovery.acceptedCitationUrls, ["https://records.example/a"]);
+  assert.equal(report.discovery.rejectedCitationUrls[0].reason, "unsafe-or-invalid-url");
+});
+
 test("builds a diagnostic-only report with bounded live-run and retention fields", () => {
   const report = buildAcceptanceReport({
     project: { name: "Live Atlas", location: "Texas" },

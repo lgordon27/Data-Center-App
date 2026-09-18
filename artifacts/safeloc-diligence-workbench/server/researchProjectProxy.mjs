@@ -257,7 +257,15 @@ export function createPhysicalOpenScheduler({
 
   const registerReceipt = ({ canonicalUrl, receipt } = {}) => {
     const canonical = canonicalizeSourceUrl(canonicalUrl);
-    if (canonical && receipt && !receipts.has(canonical)) receipts.set(canonical, receipt);
+    if (!canonical || !receipt) return;
+    const authorization = receipts.get(canonical);
+    receipts.set(canonical, {
+      ...receipt,
+      physicalOpenIndex: Number.isInteger(receipt.physicalOpenIndex)
+        ? receipt.physicalOpenIndex
+        : authorization?.physicalOpenIndex ?? null,
+      canonicalUrl: receipt.canonicalUrl ?? canonical,
+    });
   };
 
   return {
@@ -2574,6 +2582,9 @@ function parseResearchResponse(
         const terms = normalizeSearchTerms(coverage?.observedQueriesByEvidence?.[id]);
         return terms.length ? [[id, terms]] : [];
       })),
+      phaseTiming: coverage?.phaseTiming && typeof coverage.phaseTiming === "object"
+        ? coverage.phaseTiming
+        : null,
     },
     evidence,
   };
@@ -4152,9 +4163,14 @@ async function runValidatedResearch(project, {
   let fallbackRequestConsumed = false;
   try {
     phaseTiming.orchestrationStartedAt = new Date().toISOString();
+    phaseTiming.orchestrationBudgetMs = Math.max(
+      0,
+      RESEARCH_PROJECT_TIMEOUT_MS - (Date.now() - runStartedAtMs),
+    );
     const orchestration = await orchestrateCategoryResearch(project, {
       budget: {
         ...RESEARCH_RUN_BUDGET,
+        deadlineMs: phaseTiming.orchestrationBudgetMs,
         maxProviderRequests: Math.max(1, RESEARCH_RUN_BUDGET.maxProviderRequests - googleRequestCount),
       },
       signal: controller.signal,
@@ -4336,7 +4352,10 @@ async function runValidatedResearch(project, {
         const secAttempts = [];
         const supplementalSources = [];
         if (
-          categoryResult.coverage?.noUsableGroundedPassages === true
+          (
+            categoryResult.coverage?.noUsableGroundedPassages === true
+            || categoryResult.sources.length === 0
+          )
           && !discoveryAttemptedCategories.has(categoryId)
           && !controller.signal.aborted
         ) {
@@ -4662,6 +4681,36 @@ async function runValidatedResearch(project, {
       },
     });
     phaseTiming.orchestrationFinishedAt = new Date().toISOString();
+    phaseTiming.discoveryElapsedMs = phaseTiming.discoveryStartedAt && phaseTiming.discoveryFinishedAt
+      ? Math.max(0, Date.parse(phaseTiming.discoveryFinishedAt) - Date.parse(phaseTiming.discoveryStartedAt))
+      : 0;
+    phaseTiming.orchestrationElapsedMs = Math.max(
+      0,
+      Date.parse(phaseTiming.orchestrationFinishedAt) - Date.parse(phaseTiming.orchestrationStartedAt),
+    );
+    const phaseProviderAttempts = Object.values(orchestration.categoryExecutions)
+      .flatMap((execution) => execution?.providerAttempts ?? []);
+    phaseTiming.providerQueueElapsedMs = phaseProviderAttempts.reduce(
+      (total, attempt) => total + (Number.isFinite(attempt?.queueWaitMs) ? attempt.queueWaitMs : 0),
+      0,
+    );
+    phaseTiming.analysisElapsedMs = phaseProviderAttempts.reduce(
+      (total, attempt) => total + (Number.isFinite(attempt?.elapsedMs) ? attempt.elapsedMs : 0),
+      0,
+    );
+    const physicalReceipts = new Map();
+    for (const source of [...openedGoogleDocuments, ...orchestration.candidates]) {
+      const access = source?.accessOutcome;
+      if (!Number.isInteger(access?.physicalOpenIndex) || physicalReceipts.has(access.physicalOpenIndex)) continue;
+      physicalReceipts.set(access.physicalOpenIndex, access);
+    }
+    phaseTiming.retrievalElapsedMs = [...physicalReceipts.values()].reduce(
+      (total, access) => total + (Number.isFinite(access?.transportDiagnostic?.elapsedMs)
+        ? access.transportDiagnostic.elapsedMs
+        : 0),
+      0,
+    );
+    phaseTiming.totalElapsedMs = Math.max(0, Date.now() - runStartedAtMs);
     if (
       !orchestration.categoryResults.length
       && orchestration.lastError?.name === "UpstreamRequestError"

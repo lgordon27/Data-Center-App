@@ -1810,6 +1810,7 @@ test("reuses provider-declared canonical receipts across concurrent categories w
   const canonicalUrl = "https://records.fixture/project-atlas/decision?id=7";
   const response = responseRecorder();
   let providerCalls = 0;
+  const providerCategories = [];
   let documentCalls = 0;
   const openedUrls = [];
   const categorySource = (categoryId, index) => {
@@ -1863,7 +1864,7 @@ test("reuses provider-declared canonical receipts across concurrent categories w
     "climate-operational-hazard",
   ];
   const discoverySources = Array.from({ length: 10 }, (_, index) =>
-    categoryIdsForFairDiscovery.flatMap((categoryId) => categorySource(categoryId, index)));
+    categoryIdsForFairDiscovery.map((categoryId) => categorySource(categoryId, index))).flat();
 
   await handleResearchProjectRequest(request({
     name: "Project Atlas",
@@ -1887,6 +1888,7 @@ test("reuses provider-declared canonical receipts across concurrent categories w
         ["tenant-counterparty", "Tenant and counterparty"],
         ["climate-operational-hazard", "Climate and operational hazard"],
       ].find(([, label]) => prompt.includes(`observed ${label} category attempt`))?.[0] ?? "project-identity";
+      providerCategories.push(categoryId);
       return responseForCategory(categoryId);
     },
     documentFetchImpl: async (url) => {
@@ -1904,6 +1906,16 @@ test("reuses provider-declared canonical receipts across concurrent categories w
   assert.equal(response.statusCode, 200);
   assert.ok(/project-identity|puc\.texas\.gov/.test(openedUrls[0]));
   assert.equal(response.json().researchAudit.identityPhysicalOpenOpportunityReserved, true);
+  assert.deepEqual(providerCategories, [
+    "project-identity",
+    "grid",
+    "electricity",
+    "water",
+    "permitting-community",
+    "construction-capital",
+    "tenant-counterparty",
+    "climate-operational-hazard",
+  ]);
   assert.ok(providerCalls >= 8);
   assert.equal(documentCalls, RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens);
   assert.equal(payload.researchCoverage.physicalOpensUsed, RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens);

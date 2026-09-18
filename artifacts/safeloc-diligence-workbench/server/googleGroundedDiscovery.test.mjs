@@ -283,6 +283,35 @@ test("does not let model prose or JSON manufacture queries or URL citations", ()
   assert.equal(result.urlCitationCount, 0);
 });
 
+test("diagnoses unsafe, duplicate, and missing citation annotations without accepting them", () => {
+  const result = parseGoogleGroundedDiscoveryResponse({
+    steps: [
+      { type: "google_search_call", arguments: { queries: ["fixture query"] } },
+      { type: "google_search_result", result: {} },
+      {
+        type: "model_output",
+        content: [{
+          annotations: [
+            { type: "url_citation", url: "https://records.example/item?utm_source=one", title: "Fixture" },
+            { type: "url_citation", url: "https://records.example/item", title: "Duplicate" },
+            { type: "url_citation", url: "file:///etc/passwd", title: "Unsafe" },
+            { type: "url_citation", title: "Missing" },
+          ],
+        }],
+      },
+    ],
+  });
+  assert.deepEqual(result.acceptedCitationUrls, ["https://records.example/item"]);
+  assert.deepEqual(result.rejectedCitationUrls.map((item) => item.reason), [
+    "duplicate-canonical-url",
+    "unsafe-or-invalid-url",
+    "missing-url",
+  ]);
+  assert.equal(result.rawAnnotationSummaries.filter((item) => item.accepted).length, 1);
+  assert.equal(result.citationCount, 1);
+  assert.equal(result.urlCitationCount, 4);
+});
+
 test("does not issue structured category analysis when grounding has no retained passage", async () => {
   let openAiCalls = 0;
   const result = await runValidatedResearch({
@@ -291,18 +320,21 @@ test("does not issue structured category analysis when grounding has no retained
   }, {
     apiKey: "fixture-openai-key",
     googleApiKey: "fixture-google-key",
-    googleDiscoveryImpl: async () => ({
-      status: "completed",
-      provider: "google-gemini-grounding",
-      model: GOOGLE_GEMINI_MODEL,
-      queries: ["Project Atlas exact project"],
-      candidates: [],
-      googleSearchCallCount: 1,
-      googleSearchResultCount: 1,
-      urlCitationCount: 0,
-      citationCount: 0,
-      providerRequestCount: 1,
-    }),
+    googleDiscoveryImpl: async () => {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      return {
+        status: "completed",
+        provider: "google-gemini-grounding",
+        model: GOOGLE_GEMINI_MODEL,
+        queries: ["Project Atlas exact project"],
+        candidates: [],
+        googleSearchCallCount: 1,
+        googleSearchResultCount: 1,
+        urlCitationCount: 0,
+        citationCount: 0,
+        providerRequestCount: 1,
+      };
+    },
     categoryIds: ["project-identity"],
     rateLimiter: { allow: () => ({ allowed: true }) },
     req: { ip: "198.51.100.22" },
@@ -317,6 +349,9 @@ test("does not issue structured category analysis when grounding has no retained
   assert.equal(openAiCalls, 0);
   assert.equal(result.researchCoverage.discoveryCandidateCount, 0);
   assert.equal(result.researchOutcome.state, "incomplete-technical-limitation");
+  assert.ok(result.researchCoverage.phaseTiming.discoveryElapsedMs >= 20);
+  assert.ok(result.researchCoverage.phaseTiming.orchestrationBudgetMs < 90_000);
+  assert.equal(result.researchCoverage.phaseTiming.analysisElapsedMs, 0);
 });
 
 test("rejects malformed Interactions steps distinctly", () => {

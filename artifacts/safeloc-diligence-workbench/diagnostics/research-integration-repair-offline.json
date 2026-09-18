@@ -20,6 +20,21 @@
     "structuredAnalysisSkippedWithoutRetainedPassage": true,
     "supplementalAcquisitionRemainsBounded": true,
     "redirectAndUnsafeDestinationControlsPreserved": true,
+    "citationAnnotationAcceptanceRejectionStates": true,
+    "duplicateAndUnsafeCitationDiagnostics": true,
+    "completeOfflineSuite": {
+      "passed": 335,
+      "failed": 0
+    },
+    "productionEndpointSuite": {
+      "passed": 4,
+      "failed": 0
+    },
+    "typecheck": true,
+    "productionBuild": true,
+    "managedPreviewHealthy": true,
+    "slowDiscoveryReducesDownstreamBudget": true,
+    "phaseTimingSeparatesDiscoveryRetrievalQueueAndAnalysis": true,
     "physicalOpenCeiling": 24,
     "humanReviewRequired": true
   },

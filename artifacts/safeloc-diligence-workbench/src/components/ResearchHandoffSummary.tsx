@@ -3,10 +3,17 @@ import type {
   ResearchAudit,
   ResearchCacheMetadata,
   ResearchCoverageStatus,
+  ResearchOutcomeState,
 } from "@/services/researchProjectService";
 import { getResearchTelemetryMode } from "@/services/researchProjectService";
 
 export type ProposalDisposition = "pending" | "accepted" | "overridden" | "rejected" | "unresolved";
+
+const outcomeLabels: Record<ResearchOutcomeState, string> = {
+  "complete-with-eligible-evidence": "Research complete — eligible evidence found",
+  "complete-no-eligible-evidence": "Research complete — no eligible evidence found",
+  "incomplete-technical-limitation": "Research incomplete — technical limitation",
+};
 
 type ResearchHandoffSummaryProps = {
   projectName: string;
@@ -134,6 +141,8 @@ export function ResearchHandoffSummary({
   const localAuthorities = audit?.categories.flatMap((category) => category.localAuthorities ?? category.authorityTargets?.localAuthorities ?? []) ?? [];
   const authorityLimitations = [...new Set(audit?.categories.flatMap((category) => category.authorityLimitations ?? category.authorityTargets?.limitations ?? []) ?? [])];
   const unresolvedIds = [...new Set(audit?.categories.flatMap((category) => category.unresolvedGaps ?? []) ?? [])];
+  const outcome = audit?.terminalState;
+  const outcomeLabel = outcome ? outcomeLabels[outcome] : researchStatus ?? "not recorded";
 
   return (
     <section data-testid="research-handoff-summary" className="mb-5 rounded-xl border border-[#b8cde0] bg-[#f6fbfe] px-4 py-4 md:px-5">
@@ -143,8 +152,13 @@ export function ResearchHandoffSummary({
           <h2 className="mt-1 break-words text-[16px] font-semibold tracking-[-0.02em] text-[#122232]">{projectName}</h2>
           <p className="mt-1 break-words text-[10px] text-[#52616b]">{projectLocation}</p>
           <p data-testid="research-handoff-status" className="mt-2 text-[10px] font-semibold text-[#243844]">
-            Final status: {researchStatus ?? "not recorded"}
+            Final status: {outcomeLabel}
           </p>
+          {outcome === "incomplete-technical-limitation" && (
+            <p data-testid="research-handoff-technical-reasons" className="mt-1 text-[10px] font-semibold text-[#8a5200]">
+              Technical reasons: {audit?.terminalReasonCodes?.join(", ") || "provider or access limitation"}
+            </p>
+          )}
           <p className="mt-1 max-w-3xl text-[10px] leading-4 text-[#52616b]">Exact-project evidence can be proposed here, but it stays outside the model until a reviewer accepts it. Related and comparable material is context only.</p>
         </div>
         <button data-testid="button-review-research-findings" type="button" onClick={onReviewFindings} className="inline-flex min-h-10 items-center justify-center rounded-md bg-[#122232] px-3 py-2 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#d4e86b]">

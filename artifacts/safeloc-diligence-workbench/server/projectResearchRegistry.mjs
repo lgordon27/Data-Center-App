@@ -156,6 +156,7 @@ function researchSnapshot(result) {
     sourceLedger: Array.isArray(result?.sourceLedger) ? result.sourceLedger : [],
     researchCoverage: result?.researchCoverage ?? null,
     researchAudit: result?.researchAudit ?? null,
+    researchOutcome: result?.researchOutcome ?? null,
     researchStatus: result?.researchStatus ?? "completed",
     researchError: result?.researchError ?? null,
   };
@@ -163,11 +164,22 @@ function researchSnapshot(result) {
 
 function hasUsefulResearch(result) {
   if (!result || ["failed", "cancelled"].includes(result.researchStatus)) return false;
+  if ([
+    "complete-with-eligible-evidence",
+    "complete-no-eligible-evidence",
+    "incomplete-technical-limitation",
+  ].includes(result.researchOutcome?.state)) return true;
   const evidence = Array.isArray(result.evidence) ? result.evidence : [];
   return evidence.some((item) =>
     item?.classification !== "Missing Evidence"
       && ((item?.sources?.length ?? 0) > 0 || Boolean(item?.sourceUrl) || Boolean(item?.claimPassage)),
   ) || (Array.isArray(result.sourceLedger) && result.sourceLedger.length > 0);
+}
+
+function hasEligibleProposal(result) {
+  return result?.researchOutcome?.state === "complete-with-eligible-evidence"
+    && Array.isArray(result.evidence)
+    && result.evidence.some((item) => item?.eligibleForModel === true);
 }
 
 function registryFile(directory) {
@@ -214,7 +226,9 @@ export function createProjectResearchRegistry({
       const identity = projectResearchIdentity(project);
       const audit = result.researchAudit ?? {};
       const provenanceRunId = runId ?? audit.runCorrelationId ?? result.researchCoverage?.runCorrelationId ?? null;
-      const candidate = candidateFromOperator(identity, result, provenanceRunId, audit);
+      const candidate = hasEligibleProposal(result)
+        ? candidateFromOperator(identity, result, provenanceRunId, audit)
+        : null;
       const timestamp = new Date(now()).toISOString();
       const existing = current.records.find((record) => record.projectIdentity?.id === identity.id);
       const record = {
@@ -245,8 +259,10 @@ export function createProjectResearchRegistry({
           researchPolicyVersion: audit.policyVersion ?? null,
           retainedAt: timestamp,
           retentionState: result.researchStatus === "partial" || result.researchStatus === "timed-out"
-            ? "partial"
-            : "complete",
+            || result.researchOutcome?.state === "incomplete-technical-limitation"
+              ? "partial"
+              : "complete",
+          researchOutcome: result.researchOutcome?.state ?? null,
         },
         limitations: [
           "Local server retention only; this registry is not shared.",

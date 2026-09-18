@@ -2663,6 +2663,40 @@ test("uses bounded category web-search calls with scoped strict schemas", async 
   }
 });
 
+test("uses a dedicated non-evidence schema for project identity discovery", async () => {
+  const response = responseRecorder();
+  let providerBody = null;
+  await handleResearchProjectRequest(request({
+    name: "Meta El Paso Data Center",
+    location: "El Paso, El Paso County, Texas",
+    forceRefresh: true,
+  }), response, {
+    apiKey: "server-secret-for-test",
+    cache: createResearchProjectCache({ directory: await mkdtemp(path.join(os.tmpdir(), "safeloc-identity-schema-")) }),
+    rateLimiter: { allow: () => ({ allowed: true }) },
+    categoryIds: ["project-identity"],
+    fetchImpl: async (_url, init) => {
+      providerBody = JSON.parse(init.body);
+      return singleCallResponse(validResearchResponse(), [{
+        ...retrievedSource,
+        url: "https://www.elpasotexas.gov/meta-el-paso",
+        title: "Meta El Paso project agreement",
+        exactProject: true,
+      }]);
+    },
+    documentFetchImpl: async () => new Response(
+      "<html><body>Meta will develop the Meta El Paso Data Center in El Paso County, Texas.</body></html>",
+      { status: 200, headers: { "content-type": "text/html" } },
+    ),
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(providerBody.text.format.name, "safeloc_project_identity");
+  assert.equal("evidence" in providerBody.text.format.schema.properties, false);
+  assert.deepEqual(providerBody.text.format.schema.required, ["projectSummary", "identityAssessment"]);
+  assert.equal(response.json().researchAudit.categories[0].categoryId, "project-identity");
+});
+
 test("retains blocked access receipts and prevents blocked passages from becoming eligible", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "safeloc-research-blocked-access-"));
   const response = responseRecorder();

@@ -82,6 +82,45 @@ function reportProviderDiagnostic(value) {
   };
 }
 
+function reportCandidateLineage(entry) {
+  if (!entry || typeof entry !== "object") return null;
+  return {
+    categoryId: boundedText(entry.categoryId, 120),
+    url: reportUrl(entry.url),
+    sourceChannel: boundedText(entry.sourceChannel, 120),
+    acquisitionPath: entry.acquisitionPath && typeof entry.acquisitionPath === "object"
+      ? Object.fromEntries(Object.entries(entry.acquisitionPath).slice(0, 8).map(([key, value]) => [boundedText(key, 80), reportScalar(value)]))
+      : null,
+    accessOutcome: entry.accessOutcome && typeof entry.accessOutcome === "object"
+      ? {
+        state: boundedText(entry.accessOutcome.state, 80),
+        reason: boundedText(entry.accessOutcome.reason, 240),
+        physicalOpenIndex: Number.isInteger(entry.accessOutcome.physicalOpenIndex) ? entry.accessOutcome.physicalOpenIndex : null,
+        reused: entry.accessOutcome.reused === true,
+      }
+      : null,
+    identityResult: entry.identityResult && typeof entry.identityResult === "object"
+      ? {
+        exactProject: entry.identityResult.exactProject === true,
+        state: boundedText(entry.identityResult.state, 120),
+      }
+      : null,
+    passageResult: entry.passageResult && typeof entry.passageResult === "object"
+      ? {
+        state: boundedText(entry.passageResult.state, 80),
+        reason: boundedText(entry.passageResult.reason, 240),
+      }
+      : null,
+    eligibilityResult: entry.eligibilityResult && typeof entry.eligibilityResult === "object"
+      ? {
+        state: boundedText(entry.eligibilityResult.state, 80),
+        rejectionReasons: boundedList(entry.eligibilityResult.rejectionReasons, (value) => boundedText(value, 240), 16),
+      }
+      : null,
+    rejectionReason: boundedText(entry.rejectionReason, 500),
+  };
+}
+
 function reportAccessOutcome(source) {
   const access = source?.accessOutcome;
   if (!access || typeof access !== "object") {
@@ -639,27 +678,31 @@ export function buildAcceptanceReport({ project, liveRun, failureRun, generatedA
     ? result.proposedInputs.length
     : eligibleEvidenceCount;
   const acceptedCount = Array.isArray(result?.acceptedModelInputs) ? result.acceptedModelInputs.length : 0;
+  const canonicalOutcome = result?.researchOutcome?.state ?? audit?.terminalState ?? null;
   const terminalStatus = retainedCacheResponse || liveRun.statusCode < 200 || liveRun.statusCode >= 300
-    ? "failed"
-    : ["cancelled", "timed-out", "failed"].includes(result?.researchStatus)
-      ? result.researchStatus
-      : usefulCompletion
-        ? "useful-completion"
-        : "research-incomplete";
+    ? "incomplete-technical-limitation"
+    : canonicalOutcome ?? "incomplete-technical-limitation";
+  const liveAcceptance = canonicalOutcome === "complete-with-eligible-evidence" && visibleFindingTrace.length
+    ? {
+      status: "Research complete — eligible evidence found",
+      trace: visibleFindingTrace,
+    }
+    : canonicalOutcome === "complete-no-eligible-evidence"
+      ? {
+        status: "Research complete — no eligible evidence found",
+        reason: "All required discovery completed without a technical blocker; no source reached governed eligibility.",
+        trace: [],
+      }
+      : {
+        status: "Research incomplete — technical limitation",
+        reason: "A provider, access, timeout, or governed budget limitation prevented conclusive evaluation.",
+        trace: visibleFindingTrace,
+      };
 
   return {
     diagnosticOnly: true,
     evidenceStatus: "not-evidence",
-    liveAcceptance: visibleFindingTrace.length
-      ? {
-        status: "source-to-visible-finding",
-        trace: visibleFindingTrace,
-      }
-      : {
-        status: "LIVE ACCEPTANCE BLOCKED",
-        reason: "No accessible exact-project passage mapped to an eligible visible finding; retained passages and unresolved categories remain diagnostic only.",
-        trace: [],
-      },
+    liveAcceptance,
     generatedAt,
     project: reportProject(project, audit),
     run: {
@@ -667,6 +710,7 @@ export function buildAcceptanceReport({ project, liveRun, failureRun, generatedA
       telemetryStatus: retainedCacheResponse ? "historical-retained" : "current-live",
       runId: audit?.runCorrelationId ?? null,
       researchStatus: result?.researchStatus ?? null,
+      researchOutcome: canonicalOutcome,
       httpStatus: liveRun.statusCode,
       provider: audit?.provider ?? "openai",
       model: audit?.model ?? RESEARCH_PROJECT_MODEL,
@@ -710,6 +754,7 @@ export function buildAcceptanceReport({ project, liveRun, failureRun, generatedA
       state: category.state,
     })),
     sourceStates: source,
+    candidateLineage: boundedList(audit?.candidateLineage, reportCandidateLineage, 112).filter(Boolean),
     evidenceAudit: evidence,
     unresolvedIdentifiers,
     budgetState: {

@@ -151,6 +151,11 @@ export type CustomResearchResponse = {
     capacityProvenance: CapacityProvenance;
   };
   researchMode?: ResearchMode;
+  researchOutcome?: {
+    state: ResearchOutcomeState;
+    eligibleEvidenceCount: number;
+    reasonCodes: string[];
+  };
   researchStatus?: "researching" | "completed" | "partial" | "timed-out" | "failed" | "cancelled";
   researchError?: {
     type: "timeout" | "malformed-response" | "upstream" | "cancelled";
@@ -196,6 +201,10 @@ export type CustomResearchResponse = {
   acceptedModelInputs?: CustomEvidenceRecord[];
   quarantineReasons?: string[];
 };
+export type ResearchOutcomeState =
+  | "complete-with-eligible-evidence"
+  | "complete-no-eligible-evidence"
+  | "incomplete-technical-limitation";
 
 export type ResearchCategoryState = "Complete" | "Partial" | "No eligible evidence" | "Provider failure" | "Timed out" | "Not searched";
 export type ResearchAuditStageCounts = {
@@ -381,7 +390,10 @@ export type ResearchAudit = {
   model: string;
   providerResponseId: string | null;
   runCorrelationId?: string | null;
-  terminalState?: "completed" | "completed-with-gaps" | "timed-out-partial" | "cancelled" | "failed" | null;
+  terminalState?: ResearchOutcomeState | null;
+  terminalReasonCodes?: string[];
+  identityPhysicalOpenOpportunityReserved?: boolean;
+  candidateLineage?: Array<Record<string, unknown>>;
   startedAt: string | null;
   finishedAt: string | null;
   elapsedMs: number | null;
@@ -981,7 +993,14 @@ function parseResearchAudit(value: unknown): ResearchAudit | undefined {
     model: isNonEmptyString(value.model) ? value.model : "unknown",
     providerResponseId: value.providerResponseId === null || isNonEmptyString(value.providerResponseId) ? value.providerResponseId as string | null : null,
     ...(isNonEmptyString(value.runCorrelationId) ? { runCorrelationId: value.runCorrelationId } : {}),
-    ...(typeof value.terminalState === "string" ? { terminalState: value.terminalState as ResearchAudit["terminalState"] } : {}),
+    ...(["complete-with-eligible-evidence", "complete-no-eligible-evidence", "incomplete-technical-limitation"].includes(String(value.terminalState))
+      ? { terminalState: value.terminalState as ResearchAudit["terminalState"] }
+      : {}),
+    terminalReasonCodes: Array.isArray(value.terminalReasonCodes) ? value.terminalReasonCodes.filter(isNonEmptyString).slice(0, 16) : [],
+    identityPhysicalOpenOpportunityReserved: value.identityPhysicalOpenOpportunityReserved === true,
+    candidateLineage: Array.isArray(value.candidateLineage)
+      ? value.candidateLineage.filter(isRecord).slice(0, 112)
+      : [],
     startedAt: isNonEmptyString(value.startedAt) ? value.startedAt : null,
     finishedAt: isNonEmptyString(value.finishedAt) ? value.finishedAt : null,
     elapsedMs: typeof value.elapsedMs === "number" && Number.isFinite(value.elapsedMs) ? value.elapsedMs : null,
@@ -1280,6 +1299,18 @@ function parseResponse(value: unknown): CustomResearchResponse {
     },
     ...(value.researchStatus === "researching" || value.researchStatus === "completed" || value.researchStatus === "partial" || value.researchStatus === "timed-out" || value.researchStatus === "failed" || value.researchStatus === "cancelled"
       ? { researchStatus: value.researchStatus }
+      : {}),
+    ...(isRecord(value.researchOutcome)
+      && ["complete-with-eligible-evidence", "complete-no-eligible-evidence", "incomplete-technical-limitation"].includes(String(value.researchOutcome.state))
+      ? {
+        researchOutcome: {
+          state: value.researchOutcome.state as ResearchOutcomeState,
+          eligibleEvidenceCount: Math.max(0, Number(value.researchOutcome.eligibleEvidenceCount) || 0),
+          reasonCodes: Array.isArray(value.researchOutcome.reasonCodes)
+            ? value.researchOutcome.reasonCodes.filter(isNonEmptyString).slice(0, 16)
+            : [],
+        },
+      }
       : {}),
     ...(isRecord(value.researchError) && isNonEmptyString(value.researchError.message)
       ? {

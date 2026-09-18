@@ -253,7 +253,37 @@ function buildResearchResponseSchema(evidenceIds = RESEARCH_EVIDENCE_IDS) {
   };
 }
 
+function buildProjectIdentityResponseSchema() {
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      projectSummary: buildResearchResponseSchema([]).properties.projectSummary,
+      identityAssessment: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          exactProjectIdentityEstablished: { type: "boolean" },
+          matchedName: { anyOf: [{ type: "string" }, { type: "null" }] },
+          matchedLocation: { anyOf: [{ type: "string" }, { type: "null" }] },
+          matchedOperator: { anyOf: [{ type: "string" }, { type: "null" }] },
+          reason: { type: "string", minLength: 1 },
+        },
+        required: [
+          "exactProjectIdentityEstablished",
+          "matchedName",
+          "matchedLocation",
+          "matchedOperator",
+          "reason",
+        ],
+      },
+    },
+    required: ["projectSummary", "identityAssessment"],
+  };
+}
+
 const RESEARCH_PROJECT_RESPONSE_SCHEMA = buildResearchResponseSchema();
+const RESEARCH_PROJECT_IDENTITY_RESPONSE_SCHEMA = buildProjectIdentityResponseSchema();
 
 const RESEARCH_PROJECT_SYSTEM_PROMPT = `You are a careful infrastructure diligence researcher. Research the named data-center project and location using current, attributable public sources. Separate facility-level evidence from market, regional, or industry context. If you find public reporting confirming a data point, classify it as Management Assertion when it comes from company sources, or Verified Evidence when it comes from independent regulatory filings, government data, or independent reporting. Only classify as Missing Evidence if you genuinely cannot find any public information about that variable. Do not default to Missing Evidence as a conservative choice. Independent public records or reporting are Verified Evidence; dated company announcements, filings, or disclosures with limited independent confirmation are Management Assertion; analyst-derived estimates from related facts are Model Inference; synthetic analyst-selected values are User Assumption; and a fact not established in the searched public record is Missing Evidence.
 
@@ -1469,6 +1499,28 @@ async function orchestrateCategoryResearch(project, {
     ? plannedCategories.filter((category) => categoryIds.includes(category.categoryId))
     : plannedCategories;
   const prefetchedPrimary = new Map();
+  const prefetchPrimaryCategories = (targetCategories) => {
+    for (const category of targetCategories) {
+      const index = categories.findIndex((candidate) => candidate.categoryId === category.categoryId);
+      if (
+        index < 0
+        || index >= budget.maxProviderRequests
+        || prefetchedPrimary.has(category.categoryId)
+        || deadlineState.expired
+        || signal?.aborted
+      ) continue;
+      const primaryPromise = Promise.resolve(retrieveCategory({
+        categoryId: category.categoryId,
+        query: category.requestedPrimaryQuery,
+        attempt: "primary",
+        remainingMs: Math.max(0, budget.deadlineMs - (now() - startedAtMs)),
+        remainingToolCalls: Math.max(1, Math.floor(budget.maxToolCalls / categories.length)),
+        authorizeAdditionalProviderRequest: authorizeAdditionalRequest,
+      }));
+      primaryPromise.catch(() => {});
+      prefetchedPrimary.set(category.categoryId, primaryPromise);
+    }
+  };
   let additionalRequestsAuthorized = 0;
   const authorizeAdditionalRequest = () => {
     // All category primaries are a hard reservation. Repairs and follow-ups
@@ -1478,24 +1530,11 @@ async function orchestrateCategoryResearch(project, {
     return true;
   };
   if (concurrent) {
-    // Issue every primary before awaiting any category. Provider retrieval
-    // begins synchronously, while document work occurs only after its provider
-    // response, so the 24-open ceiling cannot starve an unissued category.
-    for (const [index, category] of categories.entries()) {
-      if (index >= budget.maxProviderRequests || deadlineState.expired || signal?.aborted) break;
-      const primaryPromise = Promise.resolve(retrieveCategory({
-          categoryId: category.categoryId,
-          query: category.requestedPrimaryQuery,
-          attempt: "primary",
-          remainingMs: Math.max(0, budget.deadlineMs - (now() - startedAtMs)),
-          remainingToolCalls: Math.max(1, Math.floor(budget.maxToolCalls / categories.length)),
-          authorizeAdditionalProviderRequest: authorizeAdditionalRequest,
-        }));
-      // Later categories may reject before the ordered accounting pass reaches
-      // them. Attach a handler now while preserving the original rejection.
-      primaryPromise.catch(() => {});
-      prefetchedPrimary.set(category.categoryId, primaryPromise);
-    }
+    // Project identity gets the first physical-open opportunity. Remaining
+    // primaries begin only after that bounded category reaches a terminal
+    // result, preserving the same run-wide ceiling and deadline.
+    const identityCategory = categories.find((category) => category.categoryId === "project-identity");
+    prefetchPrimaryCategories(identityCategory ? [identityCategory] : categories);
   }
   for (const [categoryIndex, category] of categories.entries()) {
     if (signal?.aborted && !deadlineState.expired) {
@@ -1743,6 +1782,9 @@ async function orchestrateCategoryResearch(project, {
       providerFailure,
       unresolvedGaps: category.evidenceIds.filter((id) => !categoryResolvedEvidenceIds.has(id)),
     };
+    if (concurrent && category.categoryId === "project-identity") {
+      prefetchPrimaryCategories(categories.filter((candidate) => candidate.categoryId !== "project-identity"));
+    }
     if (!concurrent && (resolvedEvidenceIds.size >= RESEARCH_EVIDENCE_IDS.length || deadlineState.expired)) break;
   }
   const finishedAtMs = now();
@@ -3173,12 +3215,18 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
   const scopedEvidenceIds = Array.isArray(activeCategory?.evidenceIds)
     ? activeCategory.evidenceIds.filter((id) => RESEARCH_EVIDENCE_IDS.includes(id))
     : RESEARCH_EVIDENCE_IDS;
+  const identityOnly = activeCategory?.categoryId === "project-identity";
   const requestedOutputTokens = activeCategory ? RESEARCH_CATEGORY_MAX_TOKENS : RESEARCH_PROJECT_MAX_TOKENS;
   const requestBody = JSON.stringify({
     model: RESEARCH_PROJECT_MODEL,
     tools: [{ type: "web_search_preview" }],
     input: [
-      { role: "system", content: `${RESEARCH_PROJECT_SYSTEM_PROMPT}${WEB_SEARCH_SOURCE_BOUNDARY_PROMPT}` },
+      {
+        role: "system",
+        content: `${RESEARCH_PROJECT_SYSTEM_PROMPT}${WEB_SEARCH_SOURCE_BOUNDARY_PROMPT}${identityOnly
+          ? "\nFor project-identity discovery, establish or reject the exact project name, location, and operator only. Do not create modeled evidence or infer financial inputs."
+          : ""}`,
+      },
       { role: "user", content: buildResearchProjectPrompt({ ...project, activeCategory }) },
     ],
     max_output_tokens: requestedOutputTokens,
@@ -3187,9 +3235,11 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
     text: {
       format: {
         type: "json_schema",
-        name: "safeloc_research_project",
+        name: identityOnly ? "safeloc_project_identity" : "safeloc_research_project",
         strict: true,
-        schema: buildResearchResponseSchema(scopedEvidenceIds),
+        schema: identityOnly
+          ? RESEARCH_PROJECT_IDENTITY_RESPONSE_SCHEMA
+          : buildResearchResponseSchema(scopedEvidenceIds),
       },
     },
   });
@@ -3263,6 +3313,13 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
       categoryId: activeCategory?.categoryId,
     });
     throw parseError;
+  }
+  if (identityOnly) {
+    research = {
+      projectSummary: research.projectSummary,
+      evidence: {},
+      identityAssessment: research.identityAssessment ?? null,
+    };
   }
   const bounded = boundProviderResponseToToolBudget(body, activeCategory?.maxToolCalls ?? RESEARCH_PROJECT_MAX_TOOL_CALLS);
   const sources = normalizeRetrievedSources(
@@ -3519,6 +3576,100 @@ function categoryResearchIsResolved(category, research, sources, project, covera
   } catch {
     return { resolved: false, unresolvedEvidenceIds: [...category.evidenceIds] };
   }
+}
+
+const RESEARCH_OUTCOMES = Object.freeze({
+  WITH_EVIDENCE: "complete-with-eligible-evidence",
+  NO_ELIGIBLE: "complete-no-eligible-evidence",
+  TECHNICAL: "incomplete-technical-limitation",
+});
+
+function technicalReasonCodesForRun({ orchestration, deadlineState }) {
+  const reasons = new Set();
+  if (deadlineState.expired) reasons.add("deadline");
+  if (orchestration.toolCallBudgetExceeded) reasons.add("tool-call-budget");
+  if (orchestration.physicalOpenBudgetExceeded) reasons.add("physical-open-budget");
+  for (const execution of Object.values(orchestration.categoryExecutions)) {
+    if (execution?.state === "Provider failure") reasons.add(execution.providerFailureType || "provider-failure");
+    if (execution?.state === "Timed out") reasons.add("deadline");
+    if (execution?.state === "Not searched") reasons.add(execution.followUpSkipReason || "required-discovery-not-searched");
+    if (["physical-open-budget", "tool-call-budget", "provider-request-budget", "deadline", "provider-failure"].includes(execution?.followUpSkipReason)) {
+      reasons.add(execution.followUpSkipReason);
+    }
+  }
+  for (const source of orchestration.candidates) {
+    const access = source?.accessOutcome;
+    if (!access || access.state === "accessible") continue;
+    if (access.reason === "physical-open-budget") reasons.add("physical-open-budget");
+    else if (access.state === "not-attempted") reasons.add("document-not-attempted");
+    else reasons.add("document-access-failure");
+  }
+  return [...reasons];
+}
+
+function candidateLineageForRun(result, orchestration) {
+  const sources = Array.isArray(result?.sourceLedger) ? result.sourceLedger : [];
+  const sourceLineage = sources.map((source) => {
+    const access = source.accessOutcome ?? {};
+    const rejectionReasons = [...new Set([
+      ...(source.rejectionCodes ?? []),
+      ...(access.state && access.state !== "accessible" ? [access.reason ?? `document-${access.state}`] : []),
+      ...(source.claimSupportState === "supported" ? [] : ["No supported immutable claim-to-passage mapping was retained."]),
+      ...(source.financialEligibilityState === "eligible" ? [] : ["Source did not reach governed evidence eligibility."]),
+    ].filter(Boolean))];
+    return {
+      categoryId: source.categoryId ?? null,
+      url: source.canonicalUrl ?? source.resolvedUrl ?? source.url ?? null,
+      sourceChannel: source.sourceChannel ?? null,
+      acquisitionPath: source.provenance ?? null,
+      accessOutcome: {
+        state: access.state ?? "unknown",
+        reason: access.reason ?? null,
+        physicalOpenIndex: access.physicalOpenIndex ?? null,
+        reused: access.reused === true || source.documentAccessReused === true,
+      },
+      identityResult: {
+        exactProject: source.exactProject === true,
+        state: source.projectSpecificityState ?? (source.exactProject === true ? "project-specific" : "unresolved"),
+      },
+      passageResult: {
+        state: access.passage || source.claimPassage ? "retained" : "not-retained",
+        reason: access.passage || source.claimPassage ? null : access.reason ?? "No attributable passage was retained.",
+      },
+      eligibilityResult: {
+        state: source.financialEligibilityState ?? "ineligible",
+        rejectionReasons,
+      },
+      rejectionReason: rejectionReasons.join(" ") || null,
+    };
+  });
+  const officialDiscoveryLineage = orchestration.categoryResults.flatMap((category) =>
+    (category.coverage?.officialDiscoveryAttempts ?? []).map((attempt) => ({
+      categoryId: category.categoryId,
+      url: attempt.url ?? null,
+      sourceChannel: attempt.sourceChannel ?? null,
+      acquisitionPath: attempt.provenance ?? null,
+      accessOutcome: {
+        state: attempt.status === "completed" ? "accessible" : attempt.status ?? "unknown",
+        reason: attempt.status === "completed" ? null : attempt.status ?? "discovery-failed",
+        physicalOpenIndex: attempt.physicalOpenIndex ?? null,
+        reused: false,
+      },
+      identityResult: {
+        exactProject: false,
+        state: "discovery-only",
+      },
+      passageResult: {
+        state: attempt.status === "completed" && attempt.bytes > 0 ? "inspected" : "not-retained",
+        reason: attempt.status === "completed" && attempt.bytes > 0 ? null : "Official discovery URL did not yield a retained exact-project passage.",
+      },
+      eligibilityResult: {
+        state: "ineligible",
+        rejectionReasons: ["Discovery-only URL did not reach governed claim eligibility."],
+      },
+      rejectionReason: "Discovery-only URL did not reach governed claim eligibility.",
+    })));
+  return [...sourceLineage, ...officialDiscoveryLineage].slice(0, RESEARCH_RUN_BUDGET.maxTotalCandidates + 32);
 }
 
 async function runValidatedResearch(project, {
@@ -3969,16 +4120,11 @@ async function runValidatedResearch(project, {
     const categoryFailureObserved = orchestration.lastError
       || Object.values(orchestration.categoryExecutions).some((execution) =>
         ["Provider failure", "Timed out"].includes(execution?.state));
-    const terminalState = deadlineState.expired
-      ? "timed-out-partial"
-      : categoryFailureObserved || orchestration.categoryResults.some((category) => category.coverage?.providerLimitations?.length)
-        ? "completed-with-gaps"
-        : "completed";
-    const researchStatus = terminalState === "timed-out-partial"
-      ? "timed-out"
-      : terminalState === "completed-with-gaps"
-        ? "partial"
-        : "completed";
+    const technicalReasonCodes = technicalReasonCodesForRun({ orchestration, deadlineState });
+    const terminalState = technicalReasonCodes.length
+      ? RESEARCH_OUTCOMES.TECHNICAL
+      : RESEARCH_OUTCOMES.NO_ELIGIBLE;
+    const researchStatus = terminalState === RESEARCH_OUTCOMES.TECHNICAL ? "partial" : "completed";
     const providerLimitations = [
       ...orchestration.categoryResults.flatMap((category) => category.coverage?.providerLimitations ?? []),
        ...(categoryFailureObserved
@@ -4009,6 +4155,10 @@ async function runValidatedResearch(project, {
         providerResponseIds: orchestration.categoryResults.map((category) => category.coverage?.providerResponseId).filter(Boolean),
         categoryExecutions: orchestration.categoryExecutions,
         providerLimitations,
+        terminalReasonCodes: technicalReasonCodes,
+        identityPhysicalOpenOpportunityReserved: !Array.isArray(categoryIds)
+          || categoryIds.length === 0
+          || categoryIds.includes("project-identity"),
         runCorrelationId,
         terminalState,
         startedAt: orchestration.startedAt,
@@ -4023,11 +4173,25 @@ async function runValidatedResearch(project, {
         result.coverage,
         project.knownData,
       );
-      if (researchStatus !== "completed") {
-        parsed.researchStatus = researchStatus;
+      const eligibleEvidenceCount = parsed.evidence.filter((item) => item.eligibleForModel === true).length;
+      const canonicalOutcome = technicalReasonCodes.length
+        ? RESEARCH_OUTCOMES.TECHNICAL
+        : eligibleEvidenceCount > 0
+          ? RESEARCH_OUTCOMES.WITH_EVIDENCE
+          : RESEARCH_OUTCOMES.NO_ELIGIBLE;
+      parsed.researchOutcome = {
+        state: canonicalOutcome,
+        eligibleEvidenceCount,
+        reasonCodes: technicalReasonCodes,
+      };
+      parsed.researchAudit.terminalState = canonicalOutcome;
+      parsed.researchAudit.terminalReasonCodes = technicalReasonCodes;
+      parsed.researchAudit.candidateLineage = candidateLineageForRun(parsed, orchestration);
+      parsed.researchStatus = canonicalOutcome === RESEARCH_OUTCOMES.TECHNICAL ? researchStatus : "completed";
+      if (canonicalOutcome === RESEARCH_OUTCOMES.TECHNICAL) {
         parsed.researchError = {
-          type: deadlineState.expired ? "timeout" : "malformed-response",
-          message: "Research returned partial/invalid data; valid findings were retained and unsupported items remain missing.",
+          type: deadlineState.expired ? "timeout" : "upstream",
+          message: "A technical limitation prevented conclusive research. Retained findings remain proposals only.",
         };
       }
       const rawEvidenceById = new Map((mergedResearch.evidence ?? []).map((item) => [item.id, item]));

@@ -226,6 +226,15 @@ export function createPhysicalOpenScheduler({
       if (canonical) receipts.set(canonical, receipt);
       return { allowed: true, reused: false, physicalOpenIndex: used, canonicalUrl: canonical, protectedRole: role };
     }
+    if (activeCategories.has(categoryId) && !openedCategories.has(categoryId)) {
+      if (used >= maxPhysicalOpens) return { allowed: false, reused: false, reason: "physical-open-budget", canonicalUrl: canonical };
+      used += 1;
+      openedCategories.add(categoryId);
+      categoryCounts.set(categoryId, (categoryCounts.get(categoryId) ?? 0) + 1);
+      const receipt = { physicalOpenIndex: used, role: role ?? null, canonicalUrl: canonical };
+      if (canonical) receipts.set(canonical, receipt);
+      return { allowed: true, reused: false, physicalOpenIndex: used, canonicalUrl: canonical, protectedRole: role ?? null };
+    }
     const unattemptedCategories = [...activeCategories].filter((categoryId) => !openedCategories.has(categoryId));
     if (unattemptedCategories.length > 0 && used >= maxPhysicalOpens - unattemptedCategories.length) {
       return {
@@ -1382,6 +1391,7 @@ function categorySourceMatches(category, source) {
 function categoryOpenedDocuments(sources = [], category = null) {
   return sources.map((source) => {
     const outcome = source.accessOutcome ?? {};
+    const reusedReceipt = source.documentAccessReused === true || outcome.reused === true;
     const referringUrls = [...new Set([
       ...(Array.isArray(outcome.referringUrls) ? outcome.referringUrls : []),
       ...(Array.isArray(source.documentReferringUrls) ? source.documentReferringUrls : []),
@@ -1393,10 +1403,10 @@ function categoryOpenedDocuments(sources = [], category = null) {
       referringUrls,
       resolvedUrl: outcome.resolvedUrl ?? source.resolvedUrl ?? source.url ?? null,
       canonicalUrl: outcome.canonicalUrl ?? source.canonicalUrl ?? source.url ?? null,
-      opened: source.documentAccessReused !== true && Number.isInteger(outcome.physicalOpenIndex),
-      attempted: source.documentAccessReused !== true && Number.isInteger(outcome.physicalOpenIndex),
-      reusedReceipt: source.documentAccessReused === true,
-      reusedFromCanonicalUrl: source.documentAccessReused === true
+      opened: !reusedReceipt && Number.isInteger(outcome.physicalOpenIndex),
+      attempted: !reusedReceipt && Number.isInteger(outcome.physicalOpenIndex),
+      reusedReceipt,
+      reusedFromCanonicalUrl: reusedReceipt
         ? outcome.canonicalUrl ?? source.canonicalUrl ?? source.url ?? null
         : null,
       accessState: outcome.state ?? "blocked",
@@ -3382,11 +3392,17 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
   const groundedSources = Array.isArray(activeCategory?.groundedSources)
     ? activeCategory.groundedSources
     : [];
+  const categoryGroundedSources = activeCategory?.categoryId
+    ? groundedSources.filter((source) =>
+      !Array.isArray(source?.categoryIds)
+      || source.categoryIds.length === 0
+      || source.categoryIds.includes(activeCategory.categoryId))
+    : groundedSources;
   const requestedOutputTokens = activeCategory?.categoryId
     ? RESEARCH_CATEGORY_MAX_TOKENS
     : RESEARCH_PROJECT_MAX_TOKENS;
-  const groundedContext = groundedSources.length
-    ? `\n\nThe following public document passages were physically retrieved by SafeLoc. Use only these passages for source-backed claims. Do not browse, call a search tool, or treat a URL, snippet, title, or generated summary as evidence. Every claimPassage must be copied exactly from one supplied passage.\n${JSON.stringify(buildGroundedSourceContext(groundedSources))}`
+  const groundedContext = categoryGroundedSources.length
+    ? `\n\nThe following public document passages were physically retrieved by SafeLoc. Use only these passages for source-backed claims. Do not browse, call a search tool, or treat a URL, snippet, title, or generated summary as evidence. Every claimPassage must be copied exactly from one supplied passage.\n${JSON.stringify(buildGroundedSourceContext(categoryGroundedSources))}`
     : "";
   const requestBody = JSON.stringify({
     model: RESEARCH_PROJECT_MODEL,
@@ -3493,9 +3509,9 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
     };
   }
   const bounded = boundProviderResponseToToolBudget(body, activeCategory?.maxToolCalls ?? RESEARCH_PROJECT_MAX_TOOL_CALLS);
-  const sources = groundedSources.length
+  const sources = categoryGroundedSources.length
     ? normalizeRetrievedSources(
-      { sources: groundedSources },
+      { sources: categoryGroundedSources },
       "google-grounded-search",
       project,
       extractResearchSourceUrls(research),
@@ -3507,8 +3523,8 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
       extractResearchSourceUrls(research),
     );
   research = restrictResearchToAcceptedSources(research, sources);
-  const searchTerms = groundedSources.length
-    ? [...new Set(groundedSources.flatMap((source) => source.referringQueries ?? []))].slice(0, RESEARCH_PROJECT_MAX_TOOL_CALLS)
+  const searchTerms = categoryGroundedSources.length
+    ? [...new Set(categoryGroundedSources.flatMap((source) => source.referringQueries ?? []))].slice(0, RESEARCH_PROJECT_MAX_TOOL_CALLS)
     : extractSearchTerms(bounded.body);
   const observedQueriesByEvidence = extractObservedQueriesByEvidence(bounded.body, project);
   const finishedAt = new Date().toISOString();
@@ -3549,7 +3565,7 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
       provider: webSearchEnabled ? "openai-web-fallback" : "openai-structured-from-grounded-passages",
       model: RESEARCH_PROJECT_MODEL,
       webSearchEnabled,
-      googleGroundedSourceCount: groundedSources.length,
+      googleGroundedSourceCount: categoryGroundedSources.length,
       providerResponseId: typeof body.id === "string" ? body.id : null,
       activeCategoryId: activeCategory?.categoryId ?? null,
       executedQuery: activeCategory?.query ?? null,
@@ -3967,10 +3983,22 @@ async function runValidatedResearch(project, {
       let accessOutcome;
       let documentAccessReused = false;
       if (previousAccess) {
-        accessOutcome = { ...(await previousAccess), reused: true };
+        const reusedAccess = await previousAccess;
+        accessOutcome = {
+          ...reusedAccess,
+          reused: true,
+          referringUrls: [...new Set([
+            ...(Array.isArray(reusedAccess?.referringUrls) ? reusedAccess.referringUrls : []),
+            originalUrl,
+          ].filter(Boolean))],
+        };
         documentAccessReused = true;
       } else {
-        const categoryId = activeCategoryIds[index % Math.max(1, activeCategoryIds.length)] ?? "project-identity";
+        const categoryId = (Array.isArray(source.categoryIds)
+          ? source.categoryIds.find((candidate) => activeCategoryIds.includes(candidate))
+          : null)
+          ?? activeCategoryIds[index % Math.max(1, activeCategoryIds.length)]
+          ?? "project-identity";
         const authorization = authorizePhysicalOpen({
           categoryId,
           canonicalUrl: announcedCanonicalUrl ?? originalUrl,

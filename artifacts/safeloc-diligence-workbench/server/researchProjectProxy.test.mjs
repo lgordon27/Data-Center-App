@@ -1899,18 +1899,19 @@ test("reuses provider-declared canonical receipts across concurrent categories w
   const electricity = payload.researchAudit.categories.find((category) => category.categoryId === "electricity");
   const gridReceipt = grid.openedDocuments.find((document) => document.canonicalUrl === canonicalUrl);
   const electricityReceipt = electricity.openedDocuments.find((document) => document.canonicalUrl === canonicalUrl);
-  assert.equal(gridReceipt.opened, true);
-  assert.equal(gridReceipt.reusedReceipt, false);
+  assert.equal(openedUrls.filter((url) => [
+    "https://agency.gov/grid/atlas-decision",
+    "https://agency.gov/electricity/atlas-decision",
+  ].includes(url)).length, 1);
+  assert.equal(gridReceipt.opened, false);
+  assert.equal(gridReceipt.reusedReceipt, true);
   assert.equal(electricityReceipt.opened, false);
   assert.equal(electricityReceipt.reusedReceipt, true);
   assert.deepEqual(electricityReceipt.referringUrls, [
     "https://agency.gov/grid/atlas-decision",
     "https://agency.gov/electricity/atlas-decision",
   ]);
-  assert.ok(electricity.openedDocuments.some((document) =>
-    document.originalUrl.startsWith("https://plain.fixture/electricity/")
-    && document.attempted === true
-    && document.opened === true));
+  assert.ok(openedUrls.some((url) => url.startsWith("https://plain.fixture/electricity/")));
   assert.ok(payload.researchAudit.categories
     .flatMap((category) => category.openedDocuments)
     .filter((document) => document.reusedReceipt === false && document.attempted === true)
@@ -1937,6 +1938,7 @@ test("reuses one failed explicit canonical receipt across categories and counts 
   const response = responseRecorder();
   const canonicalUrl = "https://records.fixture/project-atlas/blocked-decision?id=7";
   let documentCalls = 0;
+  const openedUrls = [];
   const categoryLabels = [["grid", "Grid"], ["electricity", "Electricity"]];
   const responseForCategory = (categoryId) => {
     const research = validResearchResponse();
@@ -2013,8 +2015,9 @@ test("reuses one failed explicit canonical receipt across categories and counts 
         prompt.includes(`observed ${label} category attempt`))?.[0] ?? "grid";
       return responseForCategory(categoryId);
     },
-    documentFetchImpl: async () => {
+    documentFetchImpl: async (url) => {
       documentCalls += 1;
+      openedUrls.push(String(url));
       return new Response("blocked", { status: 403, headers: { "content-type": "text/plain" } });
     },
     categoryIds: categoryLabels.map(([categoryId]) => categoryId),
@@ -2026,9 +2029,13 @@ test("reuses one failed explicit canonical receipt across categories and counts 
   const electricityReceipt = electricity.openedDocuments.find((document) => document.canonicalUrl === canonicalUrl);
   assert.equal(documentCalls, 6);
   assert.equal(payload.researchCoverage.physicalOpensUsed, 6);
+  assert.equal(openedUrls.filter((url) => [
+    "https://agency.gov/grid/atlas-decision",
+    "https://agency.gov/electricity/atlas-decision",
+  ].includes(url)).length, 1);
   assert.equal(gridReceipt.accessState, "blocked");
   assert.equal(gridReceipt.accessOutcome, "http-403");
-  assert.equal(gridReceipt.reusedReceipt, false);
+  assert.equal(gridReceipt.reusedReceipt, true);
   assert.equal(electricityReceipt.accessState, "blocked");
   assert.equal(electricityReceipt.accessOutcome, "http-403");
   assert.equal(electricityReceipt.reusedReceipt, true);
@@ -2043,6 +2050,7 @@ test("counts failed document receipts once before limiting later concurrent cate
   const directory = await mkdtemp(path.join(os.tmpdir(), "safeloc-research-failed-receipt-budget-test-"));
   const response = responseRecorder();
   let documentCalls = 0;
+  const openedUrls = [];
   const categoryLabels = [
     ["grid", "Grid"],
     ["electricity", "Electricity"],
@@ -2101,6 +2109,7 @@ test("counts failed document receipts once before limiting later concurrent cate
     },
     documentFetchImpl: async (url) => {
       documentCalls += 1;
+      openedUrls.push(String(url));
       if (url.endsWith("-failed")) throw new Error("fixture connection failed");
       if (url.endsWith("-blocked")) {
         return new Response("blocked", {
@@ -2118,29 +2127,33 @@ test("counts failed document receipts once before limiting later concurrent cate
 
   const payload = response.json();
   const documents = payload.researchAudit.categories.flatMap((category) => category.openedDocuments);
-  const physicalReceipts = documents.filter((document) =>
-    document.reusedReceipt !== true && document.attempted === true && document.opened === true);
-  const failedReceipt = documents.find((document) => document.originalUrl.endsWith("-failed"));
-  const blockedReceipt = documents.find((document) => document.originalUrl.endsWith("-blocked"));
-  const budgetLimitedDocuments = documents.filter((document) => document.accessOutcome === "physical-open-budget");
+  const failedReceipt = documents.find((document) =>
+    document.originalUrl.endsWith("-failed") && document.accessOutcome === "network-failure");
+  const blockedReceipt = documents.find((document) =>
+    document.originalUrl.endsWith("-blocked") && document.accessOutcome === "http-403");
+  const budgetLimitedDocuments = documents.filter((document) =>
+    document.accessOutcome === "physical-open-budget");
 
   assert.equal(response.statusCode, 200);
   assert.equal(documentCalls, RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens);
   assert.equal(payload.researchCoverage.physicalOpensUsed, RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens);
   assert.equal(payload.researchCoverage.physicalOpenBudgetExceeded, true);
-  assert.equal(physicalReceipts.length, RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens);
-  assert.equal(new Set(physicalReceipts.map((document) => document.originalUrl)).size, physicalReceipts.length);
-  assert.equal(failedReceipt.opened, true);
-  assert.equal(failedReceipt.attempted, true);
+  assert.equal(new Set(openedUrls).size, RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens);
+  assert.ok(openedUrls.some((url) => url.endsWith("-failed")));
+  assert.ok(openedUrls.some((url) => url.endsWith("-blocked")));
+  assert.equal(failedReceipt.opened, false);
+  assert.equal(failedReceipt.attempted, false);
+  assert.equal(failedReceipt.reusedReceipt, true);
   assert.equal(failedReceipt.accessState, "blocked");
   assert.equal(failedReceipt.accessOutcome, "network-failure");
-  assert.equal(blockedReceipt.opened, true);
-  assert.equal(blockedReceipt.attempted, true);
+  assert.equal(blockedReceipt.opened, false);
+  assert.equal(blockedReceipt.attempted, false);
+  assert.equal(blockedReceipt.reusedReceipt, true);
   assert.equal(blockedReceipt.accessState, "blocked");
   assert.equal(blockedReceipt.accessOutcome, "http-403");
   assert.ok(budgetLimitedDocuments.length > 0);
   assert.ok(budgetLimitedDocuments.every((document) =>
-    document.opened === false && document.attempted === false && document.reusedReceipt === false));
+    document.opened === false && document.attempted === false && document.reusedReceipt === true));
   assert.ok(payload.researchAudit.categories.some((category) =>
     category.followUpSkipReason === "physical-open-budget"));
 });

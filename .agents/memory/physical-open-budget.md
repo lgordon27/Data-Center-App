@@ -26,3 +26,9 @@ Identity-discovery receipts must remain visible in the final category audit even
 **Why:** Identity reads consume physical opportunities and explain later scope decisions; dropping them makes the run ledger incomplete even when evidence correctly remains ineligible.
 
 **How to apply:** Match identity receipts by explicit identity role as well as category, preserve their access outcome and provenance, and never promote them into governed evidence solely because the receipt is visible.
+
+Successful grounded discovery owns the initial physical opens; category research consumes those access outcomes as reused receipts. An unavailable discovery provider instead exercises the single project-wide fallback contract, not per-category grounded orchestration.
+
+**Why:** Generic offline provider mocks can accidentally send an OpenAI-shaped response to the discovery parser, then make downstream category, receipt, and budget behavior look regressed when the run actually entered fallback.
+
+**How to apply:** Make integration fixtures explicit about discovery success or failure. Assert initial fetch counts at the discovery/access boundary and category reuse in category audits; preserve fair first-open opportunities for every active category before generic candidates consume the ceiling.

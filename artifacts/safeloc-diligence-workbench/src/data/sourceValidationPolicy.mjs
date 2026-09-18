@@ -367,6 +367,16 @@ export function createSourceLedger(candidates = [], { maxRetained = 10 } = {}) {
       extractionOutcome: candidate?.extractionOutcome ?? candidate?.accessOutcome?.extractionOutcome ?? null,
       contentHash: candidate?.contentHash ?? candidate?.accessOutcome?.contentHash ?? null,
       date: candidate?.date ?? candidate?.publishedAt ?? candidate?.published_date ?? null,
+      categoryIds: Array.isArray(candidate?.categoryIds)
+        ? [...new Set(candidate.categoryIds.filter((value) => typeof value === "string" && value.trim()).map((value) => value.trim()))].slice(0, 12)
+        : [],
+      referringQueries: Array.isArray(candidate?.referringQueries)
+        ? [...new Set(candidate.referringQueries.filter((value) => typeof value === "string" && value.trim()).map((value) => value.trim()))].slice(0, 12)
+        : [],
+      documentAccessReused: candidate?.documentAccessReused === true || candidate?.accessOutcome?.reused === true,
+      documentReferringUrls: Array.isArray(candidate?.documentReferringUrls)
+        ? [...new Set(candidate.documentReferringUrls.filter(Boolean))].slice(0, 12)
+        : [],
       redirectChain: Array.isArray(candidate?.redirectChain) ? candidate.redirectChain.filter(Boolean) : [],
       claimCited: candidate?.claimCited === true,
       claimSupport: candidate?.claimSupport ?? null,

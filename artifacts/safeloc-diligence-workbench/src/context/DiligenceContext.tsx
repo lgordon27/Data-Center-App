@@ -299,6 +299,7 @@ export type ProjectContext = Omit<CustomResearchResponse["projectSummary"], "cap
   researchCache?: CustomResearchResponse["researchCache"];
   researchCoverage?: CustomResearchResponse["researchCoverage"];
   researchAudit?: CustomResearchResponse["researchAudit"];
+  researchOutcome?: CustomResearchResponse["researchOutcome"];
   researchProposals?: Record<string, CustomEvidenceRecord>;
   researchProposalDispositions?: Record<string, ResearchProposalDisposition>;
   researchProposalOverrides?: Record<string, ResearchProposalOverride>;
@@ -1022,6 +1023,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       researchCache: research.researchCache,
       researchCoverage: research.researchCoverage,
       researchAudit: research.researchAudit,
+      researchOutcome: research.researchOutcome,
        eligibleEvidenceCount: research.eligibleEvidence?.length ?? 0,
        retrievedLeadCount: research.retrievedLeads?.length ?? research.evidence.filter((item) => item.researchState !== "proposed" && item.researchState !== "accepted").length,
       quarantineReasons: research.quarantineReasons ?? [],

@@ -30,6 +30,7 @@ export type EvidenceRecord = Record<
   string,
   {
     id: string;
+    label?: string;
     value: string | number;
     classification: Classification;
      modelClassification?: Classification;
@@ -54,6 +55,8 @@ export type EvidenceRecord = Record<
      semanticValidationStatus?: "valid" | "unresolved" | "quarantined";
      description?: string;
      citation?: string;
+     sourceRole?: string;
+     sourceId?: string | null;
      sourceUrl?: string;
       coverageStatus?: string;
      sources?: Array<{ exactProject?: boolean; sourceClass?: string }>;
@@ -180,6 +183,14 @@ export type ModelLineItem = {
 
 export type FinancialAttribution = {
   id: string;
+  label: string;
+  rawValue: string | number;
+  rawUnit: string;
+  appliedValue: number;
+  appliedUnit: string;
+  provenance: string;
+  citation: string;
+  sourceId?: string | null;
   impactRole: ImpactRole;
   currentClassification: Classification;
   modeledClassification: Classification;
@@ -1136,7 +1147,12 @@ export function calculateCashFlowModel(evidence: EvidenceRecord, requestedCapaci
   const attribution: Record<string, FinancialAttribution> = Object.fromEntries(
     Object.entries(current.lineItems).map(([id, lineItem]) => {
       const impactRole = getEvidenceImpactRole(id);
-      const modeledClassification = safeEvidence[id].modelClassification ?? safeEvidence[id].classification;
+      const modelInput = safeEvidence[id];
+      const semanticDefinition = getEvidenceSemanticDefinition(id);
+      if (!modelInput || !semanticDefinition) {
+        throw new Error(`Financial attribution metadata is unavailable for governed evidence input "${id}".`);
+      }
+      const modeledClassification = modelInput.modelClassification ?? modelInput.classification;
       const repairedModel = runModel({
         ...safeEvidence,
         [id]: {
@@ -1161,8 +1177,16 @@ export function calculateCashFlowModel(evidence: EvidenceRecord, requestedCapaci
         id,
         {
           id,
+          label: modelInput.label ?? semanticDefinition.label,
+          rawValue: modelInput.rawValue ?? modelInput.value,
+          rawUnit: modelInput.rawUnit ?? modelInput.unit ?? lineItem.unit,
+          appliedValue: lineItem.value,
+          appliedUnit: lineItem.unit,
+          provenance: modelInput.sourceRole ?? "Synthetic underwriting model input",
+          citation: modelInput.citation ?? "Synthetic underwriting assumption; no public-source claim is asserted.",
+          sourceId: modelInput.sourceId,
           impactRole,
-           currentClassification: safeEvidence[id].classification,
+          currentClassification: modelInput.classification,
           modeledClassification,
           baselineClassification: "Verified Evidence",
           affectedCashFlowLine,

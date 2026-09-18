@@ -1365,9 +1365,15 @@ export function LegacyCompanyExploration({ onNavigate }: { onNavigate?: (route: 
       : "Review the Evidence screen for the highest-materiality unresolved item.";
   const projectStatus = project.kind === "curated"
     ? "Curated public-source case"
-    : project.researchMode === "research-incomplete"
-      ? "Research incomplete"
-      : "Custom research Beta proposal";
+    : project.researchOutcome?.state === "complete-with-eligible-evidence"
+      ? "Research complete · proposal review"
+      : project.researchOutcome?.state === "complete-no-eligible-evidence"
+        ? "Research complete · no eligible evidence"
+        : project.researchOutcome?.state === "incomplete-technical-limitation"
+          ? "Research incomplete · technical limitation"
+          : project.researchMode === "research-incomplete"
+            ? "Research incomplete"
+            : "Custom research proposal";
   const previewProjectName = project.name || "Current project";
   const previewLocation = project.location || "Location unavailable";
   const previewRelationship = originatingCompany

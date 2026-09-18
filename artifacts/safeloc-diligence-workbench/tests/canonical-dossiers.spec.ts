@@ -71,4 +71,26 @@ test.describe("canonical PostgreSQL dossiers", () => {
     await expect(page.getByTestId("conference-summary")).toContainText("CenterPoint Logistics Park");
     await expect(page.getByTestId("conference-view-market")).not.toContainText("Project Kilby appears in current market context");
   });
+
+  test("Stargate canonical navigation renders every financial view without missing driver metadata", async ({ page }) => {
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+
+    await page.goto("/#analysis");
+    await page.getByTestId("canonical-dossier-select").selectOption("stargate-abilene");
+    await page.getByTestId("tab-transmission").click();
+    const stressModel = page.getByRole("button", { name: /Illustrative Project Stress Test/i });
+    if (await stressModel.getAttribute("aria-expanded") !== "true") await stressModel.click();
+
+    await expect(page.getByTestId("impact-chain-baseline-irr")).toHaveText("13.3%");
+    await expect(page.getByTestId("impact-chain-stress-irr")).toHaveText("9.1%");
+
+    for (const tab of ["Overview", "Key Drivers", "Cash Flows", "Assumptions"]) {
+      await page.getByRole("tab", { name: tab, exact: true }).click();
+      await expect(page.getByRole("tab", { name: tab, exact: true })).toHaveAttribute("aria-selected", "true");
+    }
+
+    await expect(page.getByTestId("conference-view-transmission")).toContainText("BLOCKED");
+    expect(pageErrors.filter((message) => message !== "WebSocket closed without opened.")).toEqual([]);
+  });
 });

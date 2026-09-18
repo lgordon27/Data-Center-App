@@ -110,7 +110,17 @@ function ConferenceWorkbench({ onResolveEvidence, onReset, focusSectionId }: Pro
               </span>
             )}
             <span data-testid="conference-research-status" className={`rounded-md px-3 py-2 text-[11px] font-semibold ${incomplete ? "bg-[#fff0d6] text-[#805000]" : "bg-[#e5eeea] text-[#365b4c]"}`}>
-              {project.canonicalDossier ? "Canonical evidence review" : project.researchMode === "partial-public-source" ? "Partial public-source research" : incomplete ? "Research Incomplete" : project.kind === "custom" ? "Project evidence review" : "Curated public-source demonstration"}
+              {project.canonicalDossier
+                ? "Canonical evidence review"
+                : project.researchOutcome?.state === "complete-with-eligible-evidence"
+                  ? "Research complete · proposal review"
+                  : project.researchOutcome?.state === "complete-no-eligible-evidence"
+                    ? "Research complete · no eligible evidence"
+                    : project.researchOutcome?.state === "incomplete-technical-limitation"
+                      ? "Research incomplete · technical limitation"
+                      : project.researchMode === "partial-public-source"
+                        ? "Partial public-source research"
+                        : incomplete ? "Research Incomplete" : project.kind === "custom" ? "Project evidence review" : "Curated public-source demonstration"}
             </span>
           </div>
         </div>

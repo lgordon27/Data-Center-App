@@ -386,7 +386,12 @@ test("custom research boundary quarantines incompatible units and source-free pr
   const boundary = containEvidenceForModel(unsafe);
   assert.ok(boundary.quarantined.electricity_cost.some((reason) => /source|classification/i.test(reason)));
   assert.ok(boundary.quarantined.grid_interconnection.some((reason) => /unit/i.test(reason)));
-  assert.deepEqual(calculateCashFlowModel(unsafe), calculateCashFlowModel(baseline));
+  const unsafeModel = calculateCashFlowModel(unsafe);
+  const baselineModel = calculateCashFlowModel(baseline);
+  assert.deepEqual(
+    { ...unsafeModel, attribution: undefined },
+    { ...baselineModel, attribution: undefined },
+  );
   for (const classification of ["Management Assertion", "Model Inference", "User Assumption"] as const) {
     const sourceFree = {
       ...baseline,
@@ -401,9 +406,11 @@ test("custom research boundary quarantines incompatible units and source-free pr
         researchState: "quarantined",
       },
     };
+    const sourceFreeModel = calculateCashFlowModel(sourceFree);
+    const unchangedBaselineModel = calculateCashFlowModel(baseline);
     assert.deepEqual(
-      calculateCashFlowModel(sourceFree),
-      calculateCashFlowModel(baseline),
+      { ...sourceFreeModel, attribution: undefined },
+      { ...unchangedBaselineModel, attribution: undefined },
       `${classification} must not change custom economics before acceptance`,
     );
   }
@@ -596,7 +603,14 @@ test("display copy changes do not change structured model outputs", () => {
     },
   };
 
-  assert.deepEqual(calculateCashFlowModel(editedEvidence), calculateCashFlowModel(INITIAL_EVIDENCE));
+  const editedModel = calculateCashFlowModel(editedEvidence);
+  const initialModel = calculateCashFlowModel(INITIAL_EVIDENCE);
+  assert.deepEqual(
+    { ...editedModel, attribution: undefined },
+    { ...initialModel, attribution: undefined },
+  );
+  assert.equal(editedModel.attribution.electricity_cost.appliedValue, initialModel.attribution.electricity_cost.appliedValue);
+  assert.equal(editedModel.attribution.site_hazard_exposure.appliedValue, initialModel.attribution.site_hazard_exposure.appliedValue);
 });
 
 test("a structured EIA electricity rate flows through the existing quality policy", () => {

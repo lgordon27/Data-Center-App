@@ -1284,6 +1284,9 @@ function parseResponse(value: unknown): CustomResearchResponse {
   const containedEvidence = evidence.map(containCustomResearchEvidence);
   const eligibleEvidence = containedEvidence.filter((item) => item.eligibleForModel);
   const retrievedLeads = containedEvidence.filter((item) => item.researchState === "retrieved-lead" || item.researchState === "quarantined");
+  const terminalOutcome = isRecord(value.researchOutcome) ? value.researchOutcome.state : null;
+  const outcomeRequiresIncompleteMode = terminalOutcome === "incomplete-technical-limitation"
+    || terminalOutcome === "complete-no-eligible-evidence";
 
   return {
     projectSummary: {
@@ -1324,6 +1327,8 @@ function parseResponse(value: unknown): CustomResearchResponse {
       : {}),
     researchMode: value.researchMode === "default-assumptions"
       ? "default-assumptions"
+      : outcomeRequiresIncompleteMode
+        ? "research-incomplete"
       : eligibleEvidence.length > 0 || (Array.isArray(value.sourceLedger) && value.sourceLedger.length > 0) || Boolean(value.researchCache)
         ? eligibleEvidence.length > 0 && containedEvidence.some((item) => item.classification === "Missing Evidence")
           ? "partial-public-source"

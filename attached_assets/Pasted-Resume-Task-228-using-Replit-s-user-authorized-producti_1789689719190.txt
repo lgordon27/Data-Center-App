@@ -1,0 +1,35 @@
+Resume Task #228 using Replit’s user-authorized production-data overwrite flow instead of attempting to run the protected CLI from the development shell.
+
+Before initiating the overwrite, perform one final read-only safety audit of the entire development database and report:
+
+* Every schema and table
+* Row count for every table
+* All three dossier stable IDs and versions
+* Whether any test, fixture, session, credential, raw provider, temporary research, or unrelated data would be copied
+* Whether the three dossier records match the sanitized canonical export
+* Whether production neondb remains empty
+
+Decision rule:
+
+* If development contains only the intended schema and the three approved sanitized canonical dossiers, report GO and prepare the Replit Publish production-data overwrite flow.
+* If any unrelated, test, sensitive, or temporary data would be copied, STOP and identify it. Do not overwrite production.
+* Do not create a public mutation endpoint, expose production credentials, add startup writes, or use the development shell against production.
+
+I explicitly authorize Replit’s production-data overwrite flow only if that safety audit returns GO and production remains empty.
+
+After the user-authorized overwrite/promotion completes:
+
+1. Verify production contains exactly these three dossiers:
+    * Stargate Abilene
+    * Project Kilby
+    * Microsoft El Mirage
+2. Compare stable IDs, versions, canonical-record hashes, evidence counts, relationship counts, source counts, and passage counts between development and production.
+3. Confirm no additional records or tables containing test or sensitive data were promoted.
+4. Create the sanitized post-promotion production export.
+5. Restart production.
+6. Run the previously approved production API, fresh-browser, four-stage, dossier-switching, restart-persistence, canonical/session-isolation, and Financial Advisor versus Asset Manager acceptance checks.
+7. Confirm user experiments cannot change the three canonical records.
+8. Report the overwrite as a user-authorized canonical-data promotion, not as a protected CLI import.
+9. Explain that the two-run production CLI idempotency check was not possible under Replit’s production security model. Substitute exact pre/post record and hash reconciliation; retain the existing deterministic development import-idempotency tests.
+
+Do not create another task or repeat completed Task #228 implementation work.

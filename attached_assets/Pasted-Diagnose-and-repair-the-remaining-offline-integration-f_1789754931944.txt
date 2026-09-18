@@ -1,0 +1,69 @@
+Diagnose and repair the remaining offline integration failures.
+
+This task authorizes local inspection, targeted code/test repairs, and offline tests only. No live provider calls, acceptance runs, deployment, or production-data changes.
+
+1. Establish the actual starting HEAD and git status. Preserve existing commits, uncommitted migration work, and unrelated files. Do not reset or discard anything.
+
+2. Keep the current Interactions migration in place while diagnosing. Do not switch endpoints, models, or providers as a speculative fix.
+
+3. Run the failing integration tests individually. For each failure, trace the FIRST divergence between expected and actual behavior:
+   - Outbound request and its purpose
+   - Which mock matched it
+   - Response supplied by that mock
+   - Parser result
+   - Resulting orchestration branch
+
+Investigate:
+   - Physical-open expectations changing from 24 to 10
+   - Missing concurrent provider calls
+   - Failed canonical receipts changing from 7 to 4
+   - safeloc_research_project reaching a mock expecting safeloc_project_identity
+   - Missing later-category mapped-source calls
+
+4. Determine whether each failure comes from:
+   - An outdated fixture
+   - A mock incorrectly matching or consuming another request
+   - An implementation regression
+   - An intentionally changed contract requiring a justified test update
+
+Do not assume all failures are stale fixtures.
+
+5. Repair the demonstrated cause:
+   - Update outdated Gemini fixtures to the Interactions schema.
+   - Match mocks by endpoint and request purpose where needed, rather than fragile request ordering.
+   - Preserve separate OpenAI project-identity and structured-analysis contracts.
+   - Fix actual implementation regressions.
+
+Do not lower expected counts, skip tests, weaken assertions, or alter production behavior merely to obtain green tests.
+
+6. Preserve:
+   - Shared ceiling of 24 physical document opens
+   - 90-second research deadline
+   - Receipt reuse, including failed receipts
+   - Project and phase applicability checks
+   - Exact-passage and evidence-eligibility gates
+   - Human-only proposal acceptance
+   - Canonical-data and financial-engine protections
+
+The 24-open ceiling is a maximum, not a requirement that every run open exactly 24 documents. Explain changed counts against each test’s scenario.
+
+7. Continue through all identified offline failures within this scope. A failing test is a diagnosis target, not an instruction to stop immediately. Stop only if resolving it requires broader architectural changes, new authorization, or weakening a protected requirement.
+
+8. Run:
+   - Focused Interactions tests
+   - Routing, budget, receipt, fallback, and orchestration suites
+   - Full unit/server suite
+   - Typecheck
+   - Production build
+
+Ensure tests cannot accidentally invoke paid providers.
+
+9. Return:
+   - Starting and final HEAD
+   - Root cause and repair for each failure, with file/test references
+   - Changed paths
+   - Exact test results and remaining failures
+   - git status --short
+   - Confirmation of zero live provider calls and zero production mutations
+
+Do not commit yet. Stop after this offline closeout and request approval for the single live grounding preflight. Keep DataBank DFW acceptance unused.

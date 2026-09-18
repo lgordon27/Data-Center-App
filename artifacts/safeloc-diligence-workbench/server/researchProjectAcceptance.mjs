@@ -61,6 +61,7 @@ function reportTransportDiagnostic(value) {
     httpStatus: Number.isInteger(value.httpStatus) ? value.httpStatus : null,
     contentType: boundedText(value.contentType, 120),
     redirectChain: boundedList(value.redirectChain, reportUrl, 8),
+    addressValidationReason: boundedText(value.addressValidationReason, 120),
     elapsedMs: Number.isFinite(value.elapsedMs) ? value.elapsedMs : null,
   };
 }
@@ -383,6 +384,7 @@ function reportProviderAttempts(audit) {
     queueWaitMs: Number.isFinite(attempt?.queueWaitMs) ? attempt.queueWaitMs : null,
     elapsedMs: Number.isFinite(attempt?.elapsedMs) ? attempt.elapsedMs : null,
     status: Number.isInteger(attempt?.status) ? attempt.status : null,
+    requestState: boundedText(attempt?.requestState, 80),
     outcome: boundedText(attempt?.outcome, 80),
     requestedOutputTokens: Number.isFinite(attempt?.requestedOutputTokens)
       ? attempt.requestedOutputTokens

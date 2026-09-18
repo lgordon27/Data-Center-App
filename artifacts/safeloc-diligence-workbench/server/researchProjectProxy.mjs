@@ -539,12 +539,45 @@ function isPrivateNetworkHostname(hostname) {
     || (value >> 96n) === 0x20010db8n;
 }
 
-async function resolvePublicAddress(url, dnsLookup = dns.lookup) {
-  const parsed = new URL(url);
-  if (isPrivateNetworkHostname(parsed.hostname)) throw new Error("private-destination");
-  const addresses = await dnsLookup(parsed.hostname, { all: true, verbatim: true });
-  if (!addresses.length || addresses.some((address) => isPrivateNetworkHostname(address.address))) {
-    throw new Error("private-destination");
+export async function resolvePublicAddress(url, dnsLookup = dns.lookup) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    const error = new Error("malformed-destination");
+    error.name = "PublicAddressValidationError";
+    error.addressValidationReason = "malformed-destination";
+    throw error;
+  }
+  if (isPrivateNetworkHostname(parsed.hostname)) {
+    const error = new Error("private-destination");
+    error.name = "PublicAddressValidationError";
+    error.addressValidationReason = "prohibited-address-class";
+    throw error;
+  }
+  let addresses;
+  try {
+    addresses = await dnsLookup(parsed.hostname, { all: true, verbatim: true });
+  } catch {
+    const error = new Error("dns-lookup-failure");
+    error.name = "PublicAddressValidationError";
+    error.addressValidationReason = "dns-lookup-failure";
+    throw error;
+  }
+  if (!Array.isArray(addresses) || addresses.length === 0) {
+    const error = new Error("private-destination");
+    error.name = "PublicAddressValidationError";
+    error.addressValidationReason = "no-usable-public-address";
+    throw error;
+  }
+  if (addresses.some((address) =>
+    !address
+    || ![4, 6].includes(address.family)
+    || isPrivateNetworkHostname(address.address))) {
+    const error = new Error("private-destination");
+    error.name = "PublicAddressValidationError";
+    error.addressValidationReason = "prohibited-address-class";
+    throw error;
   }
   return addresses[0];
 }
@@ -1069,6 +1102,7 @@ function buildTransportDiagnostic({
   error = null,
   cancelled = false,
   timedOut = false,
+  addressValidationReason = null,
 }) {
   const identity = safeSourceIdentity(url);
   return {
@@ -1085,6 +1119,7 @@ function buildTransportDiagnostic({
     }).filter(Boolean).slice(0, RESEARCH_DOCUMENT_MAX_REDIRECTS),
     cancelled,
     timedOut,
+    ...(addressValidationReason ? { addressValidationReason } : {}),
     ...(error ? transportErrorDetails(error) : {}),
   };
 }
@@ -1160,11 +1195,14 @@ async function accessResearchDocument(candidate = {}, {
         resolvedUrl: currentUrl,
         redirectChain,
         transportDiagnostic: buildTransportDiagnostic({
-          stage: error?.message === "private-destination" ? "dns-validation" : "request",
+          stage: error?.name === "PublicAddressValidationError" ? "dns-validation" : "request",
           url: currentUrl,
           startedAtMs: requestStartedAtMs,
           redirectChain,
           error,
+          ...(error?.addressValidationReason
+            ? { addressValidationReason: error.addressValidationReason }
+            : {}),
         }),
         extractionLimitations: ["The destination could not be retrieved by the bounded server reader."],
       };
@@ -1421,7 +1459,8 @@ function categoryOpenedDocuments(sources = [], category = null) {
       resolvedUrl: outcome.resolvedUrl ?? source.resolvedUrl ?? source.url ?? null,
       canonicalUrl: outcome.canonicalUrl ?? source.canonicalUrl ?? source.url ?? null,
       opened: !reusedReceipt && Number.isInteger(outcome.physicalOpenIndex),
-      attempted: !reusedReceipt && Number.isInteger(outcome.physicalOpenIndex),
+      attempted: Number.isInteger(outcome.physicalOpenIndex),
+      physicalOpenIndex: Number.isInteger(outcome.physicalOpenIndex) ? outcome.physicalOpenIndex : null,
       reusedReceipt,
       reusedFromCanonicalUrl: reusedReceipt
         ? outcome.canonicalUrl ?? source.canonicalUrl ?? source.url ?? null
@@ -3459,6 +3498,21 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
   });
   const startedAt = new Date().toISOString();
   let response;
+  const providerAttempt = {
+    categoryId: activeCategory?.categoryId ?? null,
+    attemptType: activeCategory?.attempt ?? "primary",
+    requestState: "queued",
+    queuedAt: new Date(queuedAtMs).toISOString(),
+    issuedAt: null,
+    finishedAt: null,
+    queueWaitMs: null,
+    elapsedMs: null,
+    status: null,
+    outcome: "cancelled-before-issue",
+    requestedOutputTokens,
+    requestBodyBytes: Buffer.byteLength(requestBody),
+    usage: null,
+  };
   try {
     response = await providerGate.run(async () => {
       const upstream = await fetchImpl(OPENAI_RESPONSES_URL, {
@@ -3477,24 +3531,19 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
       signal,
       onStart: () => {
         issuedAtMs = Date.now();
+        providerAttempt.requestState = "issued";
+        providerAttempt.issuedAt = new Date(issuedAtMs).toISOString();
+        providerAttempt.queueWaitMs = Math.max(0, issuedAtMs - queuedAtMs);
       },
     });
   } catch (error) {
     const finishedAtMs = Date.now();
-    error.providerAttempt = {
-      categoryId: activeCategory?.categoryId ?? null,
-      attemptType: activeCategory?.attempt ?? "primary",
-      queuedAt: new Date(queuedAtMs).toISOString(),
-      issuedAt: issuedAtMs === null ? null : new Date(issuedAtMs).toISOString(),
-      finishedAt: new Date(finishedAtMs).toISOString(),
-      queueWaitMs: issuedAtMs === null ? null : Math.max(0, issuedAtMs - queuedAtMs),
-      elapsedMs: issuedAtMs === null ? null : Math.max(0, finishedAtMs - issuedAtMs),
-      status: error?.providerDiagnostic?.upstreamStatus ?? null,
-      outcome: error?.name === "ResearchCancelledError" ? "cancelled" : "failed",
-      requestedOutputTokens,
-      requestBodyBytes: Buffer.byteLength(requestBody),
-      usage: null,
-    };
+    providerAttempt.finishedAt = new Date(finishedAtMs).toISOString();
+    providerAttempt.elapsedMs = issuedAtMs === null ? null : Math.max(0, finishedAtMs - issuedAtMs);
+    providerAttempt.status = error?.providerDiagnostic?.upstreamStatus ?? null;
+    providerAttempt.requestState = issuedAtMs === null ? "cancelled-before-issue" : "failed";
+    providerAttempt.outcome = issuedAtMs === null ? "cancelled-before-issue" : "failed";
+    error.providerAttempt = providerAttempt;
     throw error;
   }
   const rawText = await response.text();
@@ -3504,12 +3553,31 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
   } catch (error) {
     const parseError = new Error("Project research provider returned invalid JSON.");
     parseError.name = "ResearchParseError";
+    const finishedAtMs = Date.now();
+    Object.assign(providerAttempt, {
+      requestState: "failed",
+      finishedAt: new Date(finishedAtMs).toISOString(),
+      elapsedMs: issuedAtMs === null ? null : Math.max(0, finishedAtMs - issuedAtMs),
+      status: response.status,
+      outcome: "failed",
+    });
+    parseError.providerAttempt = providerAttempt;
     throw parseError;
   }
   const content = extractResponseOutputText(body);
   if (!content) {
     const parseError = new Error("Project research provider returned no JSON output.");
     parseError.name = "ResearchParseError";
+    const finishedAtMs = Date.now();
+    Object.assign(providerAttempt, {
+      requestState: "failed",
+      finishedAt: new Date(finishedAtMs).toISOString(),
+      elapsedMs: issuedAtMs === null ? null : Math.max(0, finishedAtMs - issuedAtMs),
+      status: response.status,
+      outcome: "failed",
+      usage: normalizeProviderUsage(body.usage),
+    });
+    parseError.providerAttempt = providerAttempt;
     throw parseError;
   }
   let research;
@@ -3522,6 +3590,16 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
     parseError.finishReason = providerFinishReason(body);
     parseError.providerResponseId = typeof body.id === "string" ? body.id : null;
     parseError.toolCallCount = countWebSearchCalls(body);
+    const finishedAtMs = Date.now();
+    Object.assign(providerAttempt, {
+      requestState: "failed",
+      finishedAt: new Date(finishedAtMs).toISOString(),
+      elapsedMs: issuedAtMs === null ? null : Math.max(0, finishedAtMs - issuedAtMs),
+      status: response.status,
+      outcome: "failed",
+      usage: normalizeProviderUsage(body.usage),
+    });
+    parseError.providerAttempt = providerAttempt;
     logProviderDiagnostic(parseError, {
       runCorrelationId: activeCategory?.runCorrelationId,
       categoryId: activeCategory?.categoryId,
@@ -3556,20 +3634,14 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
   const observedQueriesByEvidence = extractObservedQueriesByEvidence(bounded.body, project);
   const finishedAt = new Date().toISOString();
   const finishedAtMs = Date.now();
-  const providerAttempt = {
-    categoryId: activeCategory?.categoryId ?? null,
-    attemptType: activeCategory?.attempt ?? "primary",
-    queuedAt: new Date(queuedAtMs).toISOString(),
-    issuedAt: issuedAtMs === null ? null : new Date(issuedAtMs).toISOString(),
+  Object.assign(providerAttempt, {
+    requestState: "completed",
     finishedAt,
-    queueWaitMs: issuedAtMs === null ? null : Math.max(0, issuedAtMs - queuedAtMs),
     elapsedMs: issuedAtMs === null ? null : Math.max(0, finishedAtMs - issuedAtMs),
     status: response.status,
     outcome: "completed",
-    requestedOutputTokens,
-    requestBodyBytes: Buffer.byteLength(requestBody),
     usage: normalizeProviderUsage(body.usage),
-  };
+  });
   return {
     research,
     sources,

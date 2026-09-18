@@ -46,6 +46,7 @@ import {
   evaluateResearchDocumentAccess,
   accessResearchDocument,
   createPinnedLookup,
+  resolvePublicAddress,
   orchestrateCategoryResearch,
   runValidatedResearch,
   researchProjectWithWebSearch,
@@ -731,6 +732,54 @@ test("blocks mapped IPv4-mapped IPv6 destinations and oversized streamed respons
   assert.equal(oversized.reason, "size-limit");
 });
 
+test("distinguishes sanitized DNS validation outcomes without weakening mixed-address rejection", async () => {
+  await assert.rejects(
+    resolvePublicAddress("not a URL", async () => []),
+    (error) => error.addressValidationReason === "malformed-destination",
+  );
+  await assert.rejects(
+    resolvePublicAddress("https://records.example/report", async () => {
+      throw Object.assign(new Error("resolver detail must not be retained"), { code: "EAI_AGAIN" });
+    }),
+    (error) => error.addressValidationReason === "dns-lookup-failure",
+  );
+  await assert.rejects(
+    resolvePublicAddress("https://records.example/report", async () => []),
+    (error) => error.addressValidationReason === "no-usable-public-address",
+  );
+  await assert.rejects(
+    resolvePublicAddress("https://records.example/report", async () => [
+      { address: "93.184.216.34", family: 4 },
+      { address: "127.0.0.1", family: 4 },
+    ]),
+    (error) => error.addressValidationReason === "prohibited-address-class",
+  );
+});
+
+test("retains an issued provider attempt when the HTTP response cannot be parsed", async () => {
+  await assert.rejects(
+    researchProjectWithWebSearch(
+      { name: "Project Atlas", location: "Ohio" },
+      "server-secret-for-test",
+      async () => new Response("{not-json", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+      undefined,
+      { categoryId: "grid", evidenceIds: ["grid_interconnection"], maxToolCalls: 1 },
+    ),
+    (error) => {
+      assert.equal(error.name, "ResearchParseError");
+      assert.equal(error.providerAttempt.requestState, "failed");
+      assert.equal(error.providerAttempt.outcome, "failed");
+      assert.equal(error.providerAttempt.status, 200);
+      assert.ok(error.providerAttempt.issuedAt);
+      assert.equal(error.providerAttempt.usage, null);
+      return true;
+    },
+  );
+});
+
 test("bounds category retrieval, allows one gap follow-up, and preserves provider failures", async () => {
   const calls = [];
   const run = await orchestrateCategoryResearch(
@@ -1269,6 +1318,7 @@ test("keeps identity-discovery receipts in the audit without making identity met
     canonicalUrl: identityUrl,
     opened: true,
     attempted: true,
+    physicalOpenIndex: 1,
     reusedReceipt: false,
     reusedFromCanonicalUrl: null,
     accessState: "accessible",
@@ -2173,12 +2223,12 @@ test("counts failed document receipts once before limiting later concurrent cate
   assert.ok(openedUrls.some((url) => url.endsWith("-failed")));
   assert.ok(openedUrls.some((url) => url.endsWith("-blocked")));
   assert.equal(failedReceipt.opened, false);
-  assert.equal(failedReceipt.attempted, false);
+  assert.equal(failedReceipt.attempted, true);
   assert.equal(failedReceipt.reusedReceipt, true);
   assert.equal(failedReceipt.accessState, "blocked");
   assert.equal(failedReceipt.accessOutcome, "network-failure");
   assert.equal(blockedReceipt.opened, false);
-  assert.equal(blockedReceipt.attempted, false);
+  assert.equal(blockedReceipt.attempted, true);
   assert.equal(blockedReceipt.reusedReceipt, true);
   assert.equal(blockedReceipt.accessState, "blocked");
   assert.equal(blockedReceipt.accessOutcome, "http-403");

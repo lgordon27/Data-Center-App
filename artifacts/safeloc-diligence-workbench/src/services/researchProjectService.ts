@@ -335,7 +335,8 @@ export type ResearchProviderAttempt = {
   queueWaitMs: number | null;
   elapsedMs: number | null;
   status: number | null;
-  outcome: "completed" | "failed" | "cancelled";
+  requestState?: "reserved" | "queued" | "issued" | "completed" | "failed" | "cancelled-before-issue";
+  outcome: "completed" | "failed" | "cancelled" | "cancelled-before-issue";
   requestedOutputTokens: number;
   requestBodyBytes: number;
   usage: ResearchProviderUsage | null;
@@ -468,6 +469,9 @@ export type ResearchCategoryClaimAudit = {
   sourceChannel: string | null;
   extractionMethod: string | null;
   extractionOutcome: string | null;
+  facilityScope: string | null;
+  phaseScope: string | null;
+  claimTimePeriod: string | null;
 };
 export type ResearchEvidenceAuditItem = Pick<
   CustomEvidenceRecord,
@@ -559,6 +563,9 @@ export function getResearchCategoryClaimAudits(
         sourceChannel: source?.sourceChannel ?? null,
         extractionMethod: accessOutcome?.extractionMethod ?? null,
         extractionOutcome: accessOutcome?.extractionOutcome ?? null,
+        facilityScope: mapping.facilityScope ?? null,
+        phaseScope: mapping.phaseScope ?? null,
+        claimTimePeriod: mapping.timePeriod ?? null,
       };
     });
   });
@@ -905,7 +912,10 @@ function parseProviderAttempts(value: unknown): ResearchProviderAttempt[] {
       queueWaitMs: nullableNumber(attempt.queueWaitMs),
       elapsedMs: nullableNumber(attempt.elapsedMs),
       status: nullableNumber(attempt.status),
-      outcome: ["completed", "failed", "cancelled"].includes(String(attempt.outcome))
+      requestState: ["reserved", "queued", "issued", "completed", "failed", "cancelled-before-issue"].includes(String(attempt.requestState))
+        ? attempt.requestState as ResearchProviderAttempt["requestState"]
+        : undefined,
+      outcome: ["completed", "failed", "cancelled", "cancelled-before-issue"].includes(String(attempt.outcome))
         ? attempt.outcome as ResearchProviderAttempt["outcome"]
         : "failed",
       requestedOutputTokens: Math.max(0, Number(attempt.requestedOutputTokens) || 0),

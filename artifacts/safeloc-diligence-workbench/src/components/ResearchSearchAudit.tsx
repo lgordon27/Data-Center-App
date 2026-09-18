@@ -51,6 +51,9 @@ function CategoryClaimTrace({ claim }: { claim: ResearchCategoryClaimAudit }) {
       <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[8px] uppercase tracking-[0.05em]">
         {claim.sourceTitle && <span>{claim.sourceTitle}{claim.sourcePublisher ? ` · ${claim.sourcePublisher}` : ""}</span>}
         {claim.sourceChannel && <span>Channel: {claim.sourceChannel}</span>}
+        {claim.facilityScope && <span>Facility scope: {claim.facilityScope.replaceAll("-", " ")}</span>}
+        {claim.phaseScope && <span>Phase scope: {claim.phaseScope.replaceAll("-", " ")}</span>}
+        {claim.claimTimePeriod && <span>Claim period: {claim.claimTimePeriod}</span>}
         {claim.pageOrSection !== null && <span>Page/section: {claim.pageOrSection}</span>}
         {claim.format && <span>Format: {claim.format}</span>}
         {claim.extractionMethod && <span>Extraction: {claim.extractionMethod} · {claim.extractionOutcome ?? "unknown"}</span>}

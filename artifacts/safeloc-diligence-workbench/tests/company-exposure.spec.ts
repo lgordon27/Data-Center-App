@@ -80,7 +80,7 @@ test.describe("stock-first company exposure flow", () => {
     await page.getByTestId("company-project-open-project-kilby").click();
     await expect(page.getByTestId("custom-project-dialog")).toBeVisible();
     await expect(page.getByTestId("input-custom-project-name")).toHaveValue("Project Kilby");
-    await expect(page.getByTestId("input-custom-project-location")).toHaveValue("Public location not disclosed");
+    await expect(page.getByTestId("input-custom-project-location")).toHaveValue("Reeves County, West Texas");
     expect(directoryRequests).toHaveLength(1);
   });
 
@@ -162,14 +162,14 @@ test.describe("stock-first company exposure flow", () => {
     await expect(page.getByTestId("company-project-list")).toContainText("Project Kilby");
     await expect(page.getByTestId("company-project-connection-project-kilby")).toHaveText("Developer/Operator");
     await expect(page.getByTestId("company-project-list")).toContainText("Project Rainier");
-    await expect(page.getByTestId("company-summary-source-backed")).toContainText("0");
+    await expect(page.getByTestId("company-summary-source-backed")).toContainText("2");
     await expect(page.getByTestId("company-summary-discovery")).toContainText("1");
-    await expect(page.getByTestId("company-project-evidence-project-kilby")).toHaveText("Research required");
+    await expect(page.getByTestId("company-project-evidence-project-kilby")).toHaveText("Source-backed");
     await expect(page.getByTestId("company-project-evidence-project-rainier-microsoft-wi")).toHaveText("Discovery match");
     await page.getByTestId("company-project-open-project-kilby").click();
     await expect(page.getByTestId("custom-project-dialog")).toBeVisible();
     await expect(page.getByTestId("input-custom-project-name")).toHaveValue("Project Kilby");
-    await expect(page.getByTestId("input-custom-project-location")).toHaveValue("Public location not disclosed");
+    await expect(page.getByTestId("input-custom-project-location")).toHaveValue("Reeves County, West Texas");
   });
 
   test("records safe holding and project action events", async ({ page }) => {

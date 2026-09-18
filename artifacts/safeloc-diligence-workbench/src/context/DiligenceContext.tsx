@@ -277,6 +277,20 @@ export type ScenarioMetrics = {
   payback: number | null;
   confidence: number;
 };
+export type FinancialModelingState =
+  | {
+      status: "modeled";
+      label: "Audited Stargate synthetic project model";
+      reason: string;
+      requiredInputs: [];
+    }
+  | {
+      status: "not-modeled";
+      label: "Not modeled";
+      reason: string;
+      requiredInputs: string[];
+    };
+
 export type ProjectContext = Omit<CustomResearchResponse["projectSummary"], "capacityProvenance"> & {
   capacityProvenance?: CapacityProvenance;
   researchMode?: CustomResearchResponse["researchMode"];
@@ -292,16 +306,7 @@ export type ProjectContext = Omit<CustomResearchResponse["projectSummary"], "cap
   retrievedLeadCount?: number;
   quarantineReasons?: string[];
   kind: "curated" | "custom";
-  canonicalDossier?: {
-    slug: string;
-    version: string;
-    asOfDate: string | null;
-    coverageState: string;
-    materiality: CanonicalDossierSummary["canonicalData"]["materiality"];
-    relationships: CanonicalDossierSummary["canonicalData"]["relationships"];
-    questions: string[];
-    triggers: string[];
-  };
+  canonicalDossier?: CanonicalDossierSummary;
 };
 type DiligenceState = {
   evidence: Record<string, EvidenceItem>;
@@ -328,6 +333,7 @@ type DiligenceState = {
   metrics: FinancialMetrics;
   financialInputState: FinancialInputState;
   financialScenarios: FinancialScenarioMatrix;
+  financialModeling: FinancialModelingState;
   resetToDefault: (originatingCompany?: string | null) => void;
   setOriginatingCompany: (originatingCompany: CompanyKey | null) => void;
   setProjectSelection: (selection: ProjectSelectionContext | null) => void;
@@ -520,6 +526,33 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         : eiaData.error
           ? "unavailable" as const
           : "embedded" as const;
+  const financialModeling = useMemo<FinancialModelingState>(() => {
+    if (
+      (project.kind === "curated" && !project.canonicalDossier) ||
+      project.canonicalDossier?.slug === "stargate-abilene"
+    ) {
+      return {
+        status: "modeled",
+        label: "Audited Stargate synthetic project model",
+        reason: "The audited Stargate synthetic transaction contract is available for this case.",
+        requiredInputs: [],
+      };
+    }
+    const reason = project.canonicalDossier
+      ? "This reviewed dossier establishes project evidence and relationships, but it does not contain an approved transaction-level financial scenario."
+      : "Custom research remains model-neutral until validated project economics are explicitly reviewed and accepted.";
+    return {
+      status: "not-modeled",
+      label: "Not modeled",
+      reason,
+      requiredInputs: [
+        "Approved transaction price and capital structure",
+        "Binding customer revenue and term assumptions",
+        "Project-specific operating and power-cost terms",
+        "Construction schedule, capital costs, and financing assumptions",
+      ],
+    };
+  }, [project.canonicalDossier?.slug, project.kind]);
   const providerModelEvidence = useMemo(
     () => project.kind === "curated" && eiaData.dataOrigin === "provider"
       ? applyEiaEvidence(state.modelEvidence, eiaData)
@@ -580,6 +613,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     source: "manual" | "ai" = "manual",
     reviewKind: EvidenceReviewKind = source === "ai" ? "ai-accepted" : "manual",
   ) => {
+    if (project.canonicalDossier) return false;
     const currentState = stateRef.current;
     const previous = currentState.evidence[id]?.classification;
     if (!previous || !isClassification(classification)) return false;
@@ -1047,21 +1081,56 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       sourceUrl: dossier.canonicalData.evidence[0]?.source.url ?? null,
       providerId: dossier.slug,
     } : null;
-    loadCustomProject(research, company, selection);
-    setProject((current) => ({
-      ...current,
-      canonicalDossier: {
-        slug: dossier.slug,
-        version: dossier.version,
-        asOfDate: dossier.asOfDate,
-        coverageState: dossier.coverageState,
-        materiality: dossier.canonicalData.materiality,
-        relationships: dossier.canonicalData.relationships,
-        questions: dossier.canonicalData.questions,
-        triggers: dossier.canonicalData.triggers,
+    const canonicalEvidence = Object.fromEntries(research.evidence.map((item) => [
+      item.id,
+      {
+        ...item,
+        impactRole: getEvidenceImpactRole(item.id),
+        sourceId: null,
+        providerSourceId: null,
+        claimIds: [],
       },
-    }));
-  }, [loadCustomProject]);
+    ])) as Record<string, EvidenceItem>;
+    const nextState = {
+      evidence: canonicalEvidence,
+      modelEvidence: cloneEvidence(INITIAL_EVIDENCE),
+      hasChangedClassification: false,
+      lastChange: null as FinancialMetrics["lastChange"],
+    };
+    const nextProject: ProjectContext = {
+      kind: "curated",
+      name: dossier.name,
+      location: dossier.canonicalData.identity.location,
+      description: dossier.canonicalData.identity.scope,
+      capacityMW: dossier.canonicalData.identity.capacityMW ?? DEFAULT_CAPACITY_MW,
+      capacityProvenance: dossier.canonicalData.identity.capacityMW
+        ? "directory-reported"
+        : "standardized-default",
+      canonicalDossier: dossier,
+    };
+    stateRef.current = nextState;
+    setState(nextState);
+    setProject(nextProject);
+    setOriginatingCompanyState(company);
+    setSelectedProjectContext(selection);
+    selectedProjectContextRef.current = selection;
+    const nextCommunityReview = createCommunityReview({
+      kind: "curated",
+      name: dossier.name,
+      location: dossier.canonicalData.identity.location,
+    });
+    setCommunityReview(nextCommunityReview);
+    writeCommunityReview(nextCommunityReview, nextProject);
+    clearDecisionHistory();
+    clearSessionActions();
+    writeStorage(CURRENT_SESSION_STORAGE_KEY, createSessionPayload(
+      nextState.evidence,
+      false,
+      nextState.modelEvidence,
+      company,
+      selection,
+    ));
+  }, []);
 
   const saveScenario = (name: string): SaveScenarioResult => {
     const trimmedName = name.trim();
@@ -1255,7 +1324,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   const communityUnresolvedCount = countUnresolvedCommunityTerms(communityReview.terms);
 
   return (
-    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, researchEvidence: project.kind === "custom" ? state.evidence : effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, applyEvidenceCorrection, applyResearchProposalOverride, persistResearchReview, clearLastChange, metrics, financialInputState, financialScenarios, resetToDefault, setOriginatingCompany, setProjectSelection, loadCustomProject, loadCanonicalDossier, project, originatingCompany, selectedProjectContext, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading, downloadReturnDiscrepancyRecord, communityReview, communityUnresolvedCount, reviewCommunityTerm }}>
+    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, researchEvidence: project.kind === "custom" ? state.evidence : effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, applyEvidenceCorrection, applyResearchProposalOverride, persistResearchReview, clearLastChange, metrics, financialInputState, financialScenarios, financialModeling, resetToDefault, setOriginatingCompany, setProjectSelection, loadCustomProject, loadCanonicalDossier, project, originatingCompany, selectedProjectContext, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading, downloadReturnDiscrepancyRecord, communityReview, communityUnresolvedCount, reviewCommunityTerm }}>
       {children}
     </DiligenceContext.Provider>
   );

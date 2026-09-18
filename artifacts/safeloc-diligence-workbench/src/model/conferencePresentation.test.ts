@@ -23,6 +23,12 @@ function diligence(overrides: Record<string, unknown> = {}) {
       unresolvedDecisionGateCount: 0,
       unresolvedFinancialDriverCount: 0,
     },
+    financialModeling: {
+      status: "modeled",
+      label: "Audited Stargate synthetic project model",
+      reason: "Audited case.",
+      requiredInputs: [],
+    },
     ...overrides,
   } as never;
 }
@@ -69,4 +75,36 @@ test("audience briefs share source facts but keep different contracts and bounda
   assert.equal(manager.portfolioMateriality, "Not assessed");
   assert.match(manager.projectMateriality.boundary, /not an issuer.*portfolio return/i);
   assert.equal("canonicalEvidence" in manager, false);
+});
+
+test("model-neutral projects never inherit the Stargate return in audience outputs", () => {
+  const modelNeutral = diligence({
+    project: {
+      kind: "custom",
+      name: "Exact Project",
+      location: "Arizona",
+      description: "",
+      capacityMW: 100,
+      researchMode: "research-incomplete",
+    },
+    financialModeling: {
+      status: "not-modeled",
+      label: "Not modeled",
+      reason: "No approved transaction-level financial scenario.",
+      requiredInputs: ["Approved transaction price"],
+    },
+    metrics: {
+      projectIRR: -16.7,
+      recommendationStatus: "BLOCKED",
+      unresolvedDecisionGateCount: 4,
+      unresolvedFinancialDriverCount: 10,
+    },
+  });
+  const advisor = generateAdvisorBrief(modelNeutral);
+  const manager = generateAssetManagerBrief(modelNeutral);
+  assert.equal(advisor.primaryCase.projectIRR, null);
+  assert.equal(advisor.primaryCase.recommendationStatus, "NOT MODELED");
+  assert.match(advisor.primaryCase.boundary, /approved transaction price/i);
+  assert.equal(manager.projectMateriality.scenarioRole, "No approved project financial scenario");
+  assert.doesNotMatch(JSON.stringify({ advisor, manager }), /-16\.7/);
 });

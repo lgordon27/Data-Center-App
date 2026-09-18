@@ -7,7 +7,7 @@ import { DiligenceLiveRegions } from "@/components/Shell";
 import { isConferenceResearchIncomplete } from "@/model/conferenceEvidence";
 
 export function FinancialTransmission({ onNavigate, onResolveEvidence }: { onNavigate: (screen: string) => void; onResolveEvidence: (id: string) => void }) {
-  const { project, evidence, metrics, financialInputState, sourceStates } = useDiligence();
+  const { project, evidence, metrics, financialInputState, financialModeling, sourceStates } = useDiligence();
   const incomplete = isConferenceResearchIncomplete(project, evidence);
   const [showStressTest, setShowStressTest] = useState(() => !incomplete);
   const [scenarioOpen, setScenarioOpen] = useState(false);
@@ -20,8 +20,19 @@ export function FinancialTransmission({ onNavigate, onResolveEvidence }: { onNav
       {incomplete && <div data-testid="transmission-research-incomplete" className="rounded-lg border border-[#e3d4b6] bg-[#fffbf2] p-5">
         <h3 className="font-semibold text-[#805000]">Research Incomplete</h3><p className="mt-2 text-sm leading-6 text-[#52616b]">The custom project lacks sufficient accepted, source-backed material evidence. No return conclusion is presented. You can inspect the research or explicitly explore a synthetic scenario.</p>
       </div>}
+      {project.canonicalDossier && financialModeling.status === "not-modeled" && (
+        <section data-testid="canonical-financial-not-modeled" className="rounded-xl border border-[#e3d4b6] bg-[#fffbf2] p-5">
+          <h3 className="font-semibold text-[#805000]">Not modeled</h3>
+          <p data-testid="canonical-financial-not-modeled-reason" className="mt-2 text-sm leading-6 text-[#52616b]">{financialModeling.reason}</p>
+          <p className="mt-4 text-xs font-semibold uppercase tracking-[0.1em] text-[#60707d]">Required inputs</p>
+          <ul data-testid="canonical-financial-required-inputs" className="mt-2 list-disc space-y-1 pl-5 text-xs leading-5 text-[#52616b]">
+            {financialModeling.requiredInputs.map((input) => <li key={input}>{input}</li>)}
+          </ul>
+          <p className="mt-4 text-xs leading-5 text-[#60707d]">The reviewed dossier remains available in Project Reality. No project, issuer, fund, or portfolio return is inferred.</p>
+        </section>
+      )}
       <p data-testid="transmission-return-boundary" className="text-xs leading-5 text-[#60707d]">Synthetic project economics are not reported transaction terms, issuer valuation or investment advice. Any EIA electricity overlay below is market context only—not a disclosed Stargate tariff or an issuer/portfolio return.</p>
-      <div className="rounded-xl border border-[#cbd8d4] bg-white">
+      {!(project.canonicalDossier && financialModeling.status === "not-modeled") && <div className="rounded-xl border border-[#cbd8d4] bg-white">
         <button type="button" data-testid={incomplete && !showStressTest ? "button-opt-in-scenario" : "button-illustrative-stress-test"} aria-expanded={showStressTest} aria-controls="illustrative-stress-test"
           onClick={() => { setShowStressTest(!showStressTest); setScenarioOpen(false); setRequestedAction(null); }} className="flex min-h-14 w-full items-center justify-between gap-3 p-5 text-left">
           <span><span className="block text-sm font-semibold">Illustrative Project Stress Test</span><span className="mt-1 block text-xs text-[#52616b]">{incomplete && !showStressTest ? "Explore illustrative scenario — explicitly use synthetic assumptions" : "Optional project IRR, NPV, MOIC and cash-flow schedule"}</span></span>
@@ -45,7 +56,7 @@ export function FinancialTransmission({ onNavigate, onResolveEvidence }: { onNav
             <DecisionReview onNavigate={detailNavigate} onResolve={onResolveEvidence} requestedAction={requestedAction} onRequestedActionHandled={() => setRequestedAction(null)} />
           </section> : <FinancialMateriality onNavigate={detailNavigate} />}
         </div>}
-      </div>
+      </div>}
     </section>
   );
 }

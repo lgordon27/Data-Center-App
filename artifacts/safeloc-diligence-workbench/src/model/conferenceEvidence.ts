@@ -65,6 +65,42 @@ export function getConferenceRelationship(
         : "No originating company was supplied.",
     };
   }
+  if (project.canonicalDossier) {
+    const dossier = project.canonicalDossier;
+    const relationship = dossier.canonicalData.relationships.find((item) =>
+      normalized(String(item.organization ?? "")) === normalized(company.displayName) ||
+      normalized(String(item.organization ?? "")) === normalized(company.key)
+    );
+    const sources = [...new Map(
+      dossier.canonicalData.evidence
+        .filter((item) => validHttpUrl(item.source.url))
+        .map((item) => [item.source.url, {
+          id: item.source.url,
+          title: item.source.title,
+          url: item.source.url,
+        }]),
+    ).values()];
+    if (!relationship || sources.length === 0) {
+      return {
+        company,
+        ...NO_RELATIONSHIP,
+        reason: relationship
+          ? "The canonical relationship record has no valid reviewed public source."
+          : "The canonical dossier does not establish this company-project relationship.",
+      };
+    }
+    const role = String(relationship.type ?? dossier.canonicalData.relationshipType);
+    const confidence = String(relationship.confidence ?? "reviewed");
+    return {
+      company,
+      established: true,
+      type: dossier.canonicalData.relationshipType,
+      confidence: confidence === "supported" ? "Source-backed" : confidence,
+      description: `${company.displayName}: ${role}. ${dossier.canonicalData.identity.scope}`,
+      sources,
+      reason: "The canonical dossier retains a reviewed company-project relationship and source set.",
+    };
+  }
 
   const match = companyProjects(company.key as CompanyKey, []).find((candidate) => {
     if (normalized(candidate.name) !== normalized(project.name)) return false;
@@ -265,8 +301,25 @@ function isConferenceFact(item: EvidenceItem, custom: boolean) {
 
 export function getConferenceEvidenceSummary(
   evidence: Record<string, EvidenceItem>,
+  project?: ProjectContext,
 ): { facts: EvidenceItem[]; unresolved: EvidenceItem[] } {
   const items = Object.values(evidence);
+  if (project?.canonicalDossier) {
+    const facts = items
+      .filter((item) => item.classification !== "Missing Evidence" && hasCuratedSource(item))
+      .slice(0, 3);
+    const factSet = new Set(facts);
+    return {
+      facts,
+      unresolved: items
+        .filter((item) => !factSet.has(item) && (
+          item.classification === "Missing Evidence" ||
+          item.coverageStatus === "partial" ||
+          item.coverageStatus === "conflicting"
+        ))
+        .slice(0, 3),
+    };
+  }
   const custom = items.some((item) =>
     item.researchState !== undefined || item.semanticValidationStatus !== undefined || item.sourceValidation !== undefined
   );

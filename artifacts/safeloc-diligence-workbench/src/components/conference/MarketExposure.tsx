@@ -14,9 +14,10 @@ import {
   fetchAllCompanyDirectoryFacilities,
   type DirectoryFacility,
 } from "@/services/directoryService";
+import { getCanonicalDossier } from "@/services/canonicalDossierService";
 
 export function MarketExposure() {
-  const { project, originatingCompany, selectedProjectContext, resetToDefault, setOriginatingCompany, setProjectSelection } = useDiligence();
+  const { project, originatingCompany, selectedProjectContext, resetToDefault, setOriginatingCompany, setProjectSelection, loadCanonicalDossier } = useDiligence();
   const [facilities, setFacilities] = useState<DirectoryFacility[]>([]);
   const [directoryStatus, setDirectoryStatus] = useState<"idle" | "loading" | "ready" | "unavailable">("idle");
   const relationship = getConferenceRelationship(project, originatingCompany);
@@ -61,7 +62,7 @@ export function MarketExposure() {
             <div><p className="text-xs text-[#52616b]">Selected public company</p><h3 data-testid="market-company" className="text-xl font-semibold">{relationship.company?.displayName ?? originatingCompany ?? "No company selected"}</h3>
               {relationship.company && <p className="text-xs text-[#60707d]">{relationship.company.ticker}</p>}</div>
           </div>
-          {project.kind === "curated" && options.length > 0 && <label className="text-xs text-[#52616b]">Select a starting holding
+          {project.kind === "curated" && !project.canonicalDossier && options.length > 0 && <label className="text-xs text-[#52616b]">Select a starting holding
             <select aria-label="Select public holding" data-testid="market-company-select" value={relationship.company?.key ?? ""} onChange={(event) => { if (event.target.value) setOriginatingCompany(event.target.value as typeof COMPANY_PROFILES[number]["key"]); }}
               className="mt-1 block min-h-11 w-full rounded-md border border-[#cbd8d4] bg-[#f9faf8] px-3 text-sm text-[#122232]">
               <option value="" disabled>Choose a company</option>
@@ -70,7 +71,7 @@ export function MarketExposure() {
             <span className="mt-1 block max-w-xs text-[10px]">Changes the holding context without substituting a project. Select a project below to open the supported case or start research.</span>
           </label>}
         </div>
-        {project.kind === "curated" && <div data-testid="market-holding-states" className="mt-5 grid gap-2 border-t border-[#e5eae8] pt-5 sm:grid-cols-2 lg:grid-cols-3">
+        {project.kind === "curated" && !project.canonicalDossier && <div data-testid="market-holding-states" className="mt-5 grid gap-2 border-t border-[#e5eae8] pt-5 sm:grid-cols-2 lg:grid-cols-3">
           {options.map((company) => {
             const state = relationship.established && relationship.company?.key === company.key
               ? "Source-backed"
@@ -102,6 +103,10 @@ export function MarketExposure() {
               projects={companyProjects(relationship.company.key, facilities)}
               onSelect={(selectedProject) => {
                 const selection = toProjectSelectionContext(relationship.company!.key, selectedProject);
+                if (["project-kilby", "microsoft-el-mirage"].includes(selectedProject.id)) {
+                  void getCanonicalDossier(selectedProject.id).then(loadCanonicalDossier);
+                  return;
+                }
                 if (selection.evidenceState === "Source-backed" && selectedProject.name.trim().toLowerCase() === "stargate abilene") {
                   resetToDefault(relationship.company!.key);
                   return;

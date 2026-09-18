@@ -23,14 +23,14 @@ export function ProjectReality({ evidenceOpen, onEvidenceOpenChange, onNavigate 
   evidenceOpen: boolean; onEvidenceOpenChange: (open: boolean) => void; onNavigate: (screen: string) => void;
 }) {
   const { evidence, project } = useDiligence();
-  const { facts, unresolved } = getConferenceEvidenceSummary(evidence);
+  const { facts, unresolved } = getConferenceEvidenceSummary(evidence, project);
   const community = getCommunityDocumentation(evidence, project);
   return (
     <section data-testid="conference-view-reality" className="space-y-5">
       <div><p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#607500]">02 / Check the physical reality</p><h2 className="mt-2 text-2xl font-semibold tracking-tight">What is established—and what is still open?</h2><p className="mt-2 text-xs text-[#60707d]">{project.name} · Public facts and unresolved terms</p></div>
       {!evidenceOpen && <><div className="grid gap-4 md:grid-cols-2">
         <section className="rounded-xl border border-[#cbd8d4] bg-white p-5">
-          <h3 className="font-semibold text-[#365b4c]">Top verified facts</h3>
+          <h3 className="font-semibold text-[#365b4c]">{project.canonicalDossier ? "Top accepted findings" : "Top verified facts"}</h3>
           <ul className="mt-3 space-y-3">{facts.map((item) => <li key={item.id} className="text-sm leading-5"><strong>{item.label}:</strong> {item.value}<p className="mt-1 text-[11px] text-[#60707d]">{item.sourceRole}{item.modelClassification && item.modelClassification !== "Verified Evidence" ? " · Model treatment remains an inference." : ""}</p><EvidenceCitations item={item} /></li>)}</ul>
           {!facts.length && <p className="mt-3 text-sm text-[#60707d]">No source-backed verified facts established in this record.</p>}
         </section>

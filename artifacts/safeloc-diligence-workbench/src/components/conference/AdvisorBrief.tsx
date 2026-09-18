@@ -22,7 +22,15 @@ export function AdvisorBrief() {
         {brief.primaryCase.projectIRR === null ? "N/M" : `${brief.primaryCase.projectIRR.toFixed(1)}% IRR`} · {brief.primaryCase.recommendationStatus}.{" "}
         {brief.primaryCase.boundary}
       </div>
-      <div className="grid md:grid-cols-2 gap-4">
+      {brief.monitoringConsiderations.length > 0 && (
+        <section data-testid="advisor-monitoring-considerations" className="rounded-xl border border-[#d9e0e4] bg-white p-4">
+          <h3 className="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#122232]">Monitoring considerations</h3>
+          <ul className="mt-3 space-y-2 text-xs leading-5 text-[#52616b]">
+            {brief.monitoringConsiderations.map((item) => <li key={item}>• {item}</li>)}
+          </ul>
+        </section>
+      )}
+      <div className="grid gap-4 md:grid-cols-3">
         <div className="rounded-xl border border-[#d9e0e4] bg-white p-4 shadow-sm">
           <h3 className="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#122232] mb-4 flex items-center gap-2">
             <Info className="h-4 w-4 text-[#122232]" />
@@ -54,8 +62,6 @@ export function AdvisorBrief() {
           </ul>
           {brief.whatWeDoNotKnow.length === 0 && <p className="text-xs leading-5 text-[#52616b]">No unresolved items in the available record; portfolio dependence still requires confirmation.</p>}
         </div>
-      </div>
-
       <div className="rounded-xl border border-[#d9e0e4] bg-[#f9faf8] p-4 shadow-sm">
         <h3 className="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#122232] mb-4 flex items-center gap-2">
           <AlertCircle className="h-4 w-4 text-[#ba2f45]" />
@@ -70,14 +76,15 @@ export function AdvisorBrief() {
           ))}
         </ul>
       </div>
+      </div>
 
-      <div className="rounded-xl border border-[#122232] bg-[#122232] p-4 shadow-sm text-white">
-        <h3 className="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#d4e86b] mb-4 flex items-center gap-2">
+      <div className="grid gap-4 rounded-xl border border-[#122232] bg-[#122232] p-4 text-white shadow-sm md:grid-cols-[0.85fr_1.15fr]">
+        <h3 className="flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#d4e86b] md:col-span-2">
           <Lightbulb className="h-4 w-4" />
           Manager Engagement
         </h3>
         
-        <div className="mb-6">
+        <div>
           <div className="text-[10px] uppercase tracking-[0.1em] text-white/50 mb-2 font-mono">Suggested Action</div>
           <div data-testid="advisor-recommended-action" className="flex items-start gap-3 bg-[#0a1b2a] p-4 rounded-lg border border-white/10">
             <ArrowRight className="h-5 w-5 text-[#d4e86b] shrink-0 mt-0.5" />
@@ -90,9 +97,9 @@ export function AdvisorBrief() {
 
         <div>
           <div className="text-[10px] uppercase tracking-[0.1em] text-white/50 mb-2 font-mono">Questions for the Manager</div>
-          <ul className="space-y-3">
+          <ul className="space-y-2">
             {brief.questions.slice(0, 3).map((item, i) => (
-              <li key={i} data-testid={`advisor-manager-question-${i}`} className="text-[13px] text-white leading-relaxed flex gap-3 bg-[#1a2e3f] p-3 rounded-md">
+              <li key={i} data-testid={`advisor-manager-question-${i}`} className="flex gap-3 rounded-md bg-[#1a2e3f] p-2.5 text-[12px] leading-snug text-white">
                 <span className="font-mono text-[#d4e86b] font-bold">{i + 1}.</span>
                 <span>{item}</span>
               </li>
@@ -101,12 +108,13 @@ export function AdvisorBrief() {
         </div>
       </div>
 
-      <section data-testid="asset-manager-brief" className="space-y-4 rounded-xl border border-[#d9e0e4] bg-[#f7f8f5] p-4 shadow-sm">
-        <div>
+      <details data-testid="asset-manager-brief" className="group rounded-xl border border-[#d9e0e4] bg-[#f7f8f5] shadow-sm">
+        <summary className="cursor-pointer list-none p-4 [&::-webkit-details-marker]:hidden">
           <p className="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#607500]">Asset Manager brief</p>
           <h3 className="mt-1 text-lg font-semibold text-[#122232]">{assetManagerBrief.title} · evidence and materiality review</h3>
-          <p className="mt-1 text-xs text-[#52616b]">Evidence as of {assetManagerBrief.evidenceAsOf ? new Date(assetManagerBrief.evidenceAsOf).toLocaleDateString() : "date unavailable"} · No automatic portfolio conclusion.</p>
-        </div>
+          <p className="mt-1 text-xs text-[#52616b]">Evidence as of {assetManagerBrief.evidenceAsOf ? new Date(assetManagerBrief.evidenceAsOf).toLocaleDateString() : "date unavailable"} · No automatic portfolio conclusion · Expand for the asset-manager output.</p>
+        </summary>
+        <div className="space-y-4 border-t border-[#d9e0e4] p-4">
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-lg bg-white p-3 text-xs"><strong className="block text-[#122232]">Issuer / project</strong>{assetManagerBrief.relationship.type} · {assetManagerBrief.relationship.confidence}</div>
           <div className="rounded-lg bg-white p-3 text-xs"><strong className="block text-[#122232]">Issuer materiality</strong>{assetManagerBrief.issuerMateriality}</div>
@@ -123,7 +131,18 @@ export function AdvisorBrief() {
           </div>
         </div>
         <p className="text-xs text-[#52616b]"><strong>Financial boundary:</strong> {assetManagerBrief.projectMateriality.boundary}</p>
-      </section>
+        {diligence.project.canonicalDossier && <>
+          <div data-testid="asset-manager-monitoring" className="rounded-lg bg-white p-3 text-xs">
+            <strong className="block text-[#122232]">Monitoring triggers</strong>
+            <ul className="mt-2 space-y-1 text-[#52616b]">{assetManagerBrief.monitoringTriggers.map((item) => <li key={item}>• {item}</li>)}</ul>
+          </div>
+          <div data-testid="asset-manager-provenance" className="rounded-lg bg-white p-3 text-xs">
+            <strong className="block text-[#122232]">Source provenance</strong>
+            <ul className="mt-2 space-y-1 text-[#52616b]">{assetManagerBrief.provenance.map((item) => <li key={`${item.id}-${item.url ?? "none"}`}>{item.title}{item.url ? <> · <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-[#255bb7] underline">source</a></> : null}</li>)}</ul>
+          </div>
+        </>}
+        </div>
+      </details>
     </div>
   );
 }

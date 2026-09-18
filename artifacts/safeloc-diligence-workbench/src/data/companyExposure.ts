@@ -169,15 +169,30 @@ const CURATED_PROJECTS: Partial<Record<CompanyKey, CompanyProject[]>> = {
       id: "project-kilby",
       name: "Project Kilby",
       operator: "Chevron / Microsoft",
-      location: "Public location not disclosed",
-      capacityMW: null,
-      status: "Proceeding",
+      location: "Reeves County, West Texas",
+      capacityMW: 2670,
+      status: "Pre-FID · phased development announced",
       tier: null,
-      tierLabel: "Unresolved role · citation required",
+      tierLabel: "Canonical reviewed dossier · material gaps remain",
       connectionType: "Developer/Operator",
-      description: "Project Kilby appears in current market context, but no attached citation establishes its generation, tenancy, or operating status.",
+      description: "The reviewed canonical dossier identifies Microsoft as datacenter operator and 20-year power offtaker; ownership descriptions conflict and financial materiality remains unquantified.",
       kind: "curated",
-      relationshipBasis: "unresolved",
+      relationshipBasis: "source-backed",
+      claimIds: [],
+    },
+    {
+      id: "microsoft-el-mirage",
+      name: "Microsoft El Mirage datacenter campus",
+      operator: "Microsoft",
+      location: "CenterPoint Logistics Park, southern El Mirage, Maricopa County, Arizona",
+      capacityMW: null,
+      status: "2019 announced/building scope · current status not asserted",
+      tier: null,
+      tierLabel: "Canonical reviewed dossier · material gaps remain",
+      connectionType: "Developer/Operator",
+      description: "The reviewed canonical dossier establishes Microsoft as developer/operator for the 2019 announced campus boundary; current operational, completed, or expanded status is not asserted.",
+      kind: "curated",
+      relationshipBasis: "source-backed",
       claimIds: [],
     },
   ],
@@ -365,6 +380,9 @@ export function profileForCompany(company: CompanyKey) {
 
 export function companyProjects(company: CompanyKey, facilities: DirectoryFacility[]): CompanyProject[] {
   const curated = CURATED_PROJECTS[company] ?? [];
+  const canonicalDirectoryAliases: Record<string, string> = {
+    "microsoft-el-mirage-az": "microsoft-el-mirage",
+  };
   const registeredFacilityIds = new Set(
     curated
       .map((project) => project.facility?.id ?? project.id)
@@ -375,6 +393,8 @@ export function companyProjects(company: CompanyKey, facilities: DirectoryFacili
     .filter((facility) => facility.connectedCompanies.includes(company))
     .filter((facility) => {
       const facilityId = facility.id.trim().toLowerCase();
+      const canonicalAlias = canonicalDirectoryAliases[facilityId];
+      if (canonicalAlias && registeredFacilityIds.has(canonicalAlias)) return false;
       if (registeredFacilityIds.has(facilityId) || seenFacilityIds.has(facilityId)) return false;
       seenFacilityIds.add(facilityId);
       return true;

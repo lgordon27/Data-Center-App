@@ -34,7 +34,7 @@ export function AnalysisWorkbench(props: Props) {
 
 function ConferenceWorkbench({ onResolveEvidence, onReset, focusSectionId }: Props) {
   const diligence = useDiligence();
-  const { project, evidence, originatingCompany, metrics, financialScenarios } = diligence;
+  const { project, evidence, originatingCompany, metrics, financialScenarios, financialModeling } = diligence;
   const [view, setView] = useState<View>("market");
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [dossiers, setDossiers] = useState<CanonicalDossierSummary[]>([]);
@@ -102,7 +102,7 @@ function ConferenceWorkbench({ onResolveEvidence, onReset, focusSectionId }: Pro
             <p className="break-words text-[11px] text-[#52616b]">{project.location}</p>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
-            {project.kind !== "custom" && (
+            {financialModeling.status === "modeled" && (
               <span data-testid="conference-primary-case" className="rounded-md border border-[#aac6f4] bg-[#eef5ff] px-3 py-2 text-[11px] text-[#255bb7]">
                 <strong>Synthetic current-evidence primary:</strong>{" "}
                 {metrics.projectIRR === null ? "N/M" : `${metrics.projectIRR.toFixed(1)}% IRR`} · {metrics.recommendationStatus}
@@ -110,7 +110,7 @@ function ConferenceWorkbench({ onResolveEvidence, onReset, focusSectionId }: Pro
               </span>
             )}
             <span data-testid="conference-research-status" className={`rounded-md px-3 py-2 text-[11px] font-semibold ${incomplete ? "bg-[#fff0d6] text-[#805000]" : "bg-[#e5eeea] text-[#365b4c]"}`}>
-              {project.researchMode === "partial-public-source" ? "Partial public-source research" : incomplete ? "Research Incomplete" : project.kind === "custom" ? "Project evidence review" : "Curated public-source demonstration"}
+              {project.canonicalDossier ? "Canonical evidence review" : project.researchMode === "partial-public-source" ? "Partial public-source research" : incomplete ? "Research Incomplete" : project.kind === "custom" ? "Project evidence review" : "Curated public-source demonstration"}
             </span>
           </div>
         </div>

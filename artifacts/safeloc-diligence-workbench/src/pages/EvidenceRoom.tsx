@@ -734,7 +734,7 @@ function EvidenceRow({
         <summary className="grid cursor-pointer list-none gap-3 px-4 py-3 transition-colors hover:bg-[#fbfcfa] md:grid-cols-[1.55fr_0.8fr_1.55fr] md:items-center md:px-5 [&::-webkit-details-marker]:hidden">
           <span className="flex min-w-0 items-center gap-2"><span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: meta.color }} /><span className="min-w-0"><span className="block truncate text-[12px] font-semibold text-[#243844]">{item.label}</span></span></span>
           <span className="min-w-0"><span className="flex flex-wrap items-center gap-2"><span className="font-mono text-[12px] font-bold text-[#122232]">{item.value}</span> <span className="text-[10px] text-[#52616b]">{item.unit}</span><ClassificationBadge value={item.classification} compact />{source ? <SourceStatusBadge source={source} compact testId={`evidence-source-status-${item.id}`} /> : <span data-testid={`evidence-origin-${item.id}`} className="rounded-full bg-[#e7ecef] px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.09em] text-[#52616b]">Embedded</span>}</span></span>
-          <span className="flex flex-wrap items-center justify-between gap-2"><span className="flex min-w-0 flex-1 flex-wrap items-start gap-2"><ImpactRoleBadge role={item.impactRole} compact testId={`badge-impact-role-${item.id}`} /><span className="flex min-w-[150px] flex-1 flex-col items-stretch"><span className="relative min-w-0 flex-1 md:max-w-[220px]"><select data-testid={`select-classification-${item.id}`} aria-label={`Provenance classification for ${item.label}`} value={item.classification} onChange={(event) => onChange(item.id, event.target.value as Classification)} onClick={(event) => event.stopPropagation()} className="w-full appearance-none rounded-md border bg-white py-2 pl-3 pr-8 text-[10px] font-semibold text-[#243844] outline-none focus:ring-2 focus:ring-[#b9d43a]/50" style={{ borderColor: meta.border }}>{classifications.map((classification) => <option key={classification} value={classification}>{classification}</option>)}</select><ChevronDown aria-hidden="true" className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-[#52616b]" /></span>{item.review && <p data-testid={`review-marker-${item.id}`} aria-label={`${reviewLabel(item.review.kind)} · ${formatReviewTime(item.review.reviewedAt)}`} className="mt-1 text-[9px] leading-4 text-[#7d898f]">{reviewLabel(item.review.kind)} · <time dateTime={item.review.reviewedAt}>{formatReviewTime(item.review.reviewedAt)}</time></p>}</span><button data-testid={`button-analyze-ai-${item.id}`} type="button" aria-label={`Analyze ${item.label} with AI`} aria-busy={analysisBusy} disabled={analysisDisabled} onClick={(event) => { event.preventDefault(); event.stopPropagation(); setOpen(true); onAnalyze(item); }} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[#cbd8d4] bg-white px-2 py-2 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#52616b] hover:border-[#7d898f] hover:text-[#243844] disabled:cursor-wait disabled:opacity-60"><Sparkles aria-hidden="true" className="h-3 w-3 text-[#607500]" />{analysisBusy ? "Analyzing…" : "Analyze with AI"}</button></span><ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-[#52616b] transition-transform group-open:rotate-180 md:hidden" /></span>
+          <span className="flex flex-wrap items-center justify-between gap-2"><span className="flex min-w-0 flex-1 flex-wrap items-start gap-2"><ImpactRoleBadge role={item.impactRole} compact testId={`badge-impact-role-${item.id}`} /><span className="flex min-w-[150px] flex-1 flex-col items-stretch"><span className="relative min-w-0 flex-1 md:max-w-[220px]"><select data-testid={`select-classification-${item.id}`} aria-label={`Provenance classification for ${item.label}`} value={item.classification} disabled={Boolean(project.canonicalDossier)} onChange={(event) => onChange(item.id, event.target.value as Classification)} onClick={(event) => event.stopPropagation()} className="w-full appearance-none rounded-md border bg-white py-2 pl-3 pr-8 text-[10px] font-semibold text-[#243844] outline-none focus:ring-2 focus:ring-[#b9d43a]/50 disabled:cursor-not-allowed disabled:bg-[#f1f5f3]" style={{ borderColor: meta.border }}>{classifications.map((classification) => <option key={classification} value={classification}>{classification}</option>)}</select><ChevronDown aria-hidden="true" className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-[#52616b]" /></span>{item.review && <p data-testid={`review-marker-${item.id}`} aria-label={`${reviewLabel(item.review.kind)} · ${formatReviewTime(item.review.reviewedAt)}`} className="mt-1 text-[9px] leading-4 text-[#7d898f]">{reviewLabel(item.review.kind)} · <time dateTime={item.review.reviewedAt}>{formatReviewTime(item.review.reviewedAt)}</time></p>}</span><button data-testid={`button-analyze-ai-${item.id}`} type="button" aria-label={`Analyze ${item.label} with AI`} aria-busy={analysisBusy} disabled={analysisDisabled || Boolean(project.canonicalDossier)} onClick={(event) => { event.preventDefault(); event.stopPropagation(); setOpen(true); onAnalyze(item); }} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[#cbd8d4] bg-white px-2 py-2 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#52616b] hover:border-[#7d898f] hover:text-[#243844] disabled:cursor-not-allowed disabled:opacity-60"><Sparkles aria-hidden="true" className="h-3 w-3 text-[#607500]" />{analysisBusy ? "Analyzing…" : "Analyze with AI"}</button></span><ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-[#52616b] transition-transform group-open:rotate-180 md:hidden" /></span>
         </summary>
       )}
       <div className={project.kind === "custom" ? "col-span-full" : "contents"}>
@@ -1529,7 +1529,7 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
           The AI prompt and this evidence section use the same reviewed temporal record. Dated {AI_EVIDENCE_VALID_REPORTING_YEARS_LABEL} reporting remains valid and potentially current as of the cutoff; update the shared temporal configuration when the diligence cutoff changes.
         </p>
       </aside>
-      {showClassificationTip && (
+      {showClassificationTip && !project.canonicalDossier && (
         <aside data-testid="evidence-classification-tip" role="note" className="classification-tip mb-5 flex items-start gap-3 rounded-lg border border-[#b9d43a]/70 bg-[#f8fbe8] px-4 py-3 text-[#344550]">
           <Lightbulb aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#607500]" />
           <p className="min-w-0 flex-1 text-[11px] leading-5">
@@ -1583,7 +1583,7 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
               {categoryItems.map(renderEvidenceRow)}
               {category.id === "power-grid" && (
                 <>
-                  {!customProject && <EiaElectricityEvidence
+                  {!customProject && !project.canonicalDossier && <EiaElectricityEvidence
                     data={eiaData}
                     loading={eiaLoading}
                     source={sourceStates.eia}
@@ -1591,7 +1591,7 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
                     onSuggestVerified={() => updateClassification("electricity_cost", "Verified Evidence")}
                     projectName={project.name}
                   />}
-                {!customProject && <article data-testid="ercot-grid-evidence" className="border-t border-[#d9e0e4] bg-[#f7faf8] px-4 py-4 md:px-5">
+                {!customProject && !project.canonicalDossier && <article data-testid="ercot-grid-evidence" className="border-t border-[#d9e0e4] bg-[#f7faf8] px-4 py-4 md:px-5">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <div className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#60707d]">ERCOT Interconnection Queue citation</div>
@@ -1650,10 +1650,10 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
         </section>
       )}
       <CommunityAgreementsReview />
-      <div className="mt-5 flex flex-col gap-3 rounded-lg border border-[#f1cb8b] bg-[#fff8e9] p-4 sm:flex-row sm:items-center sm:justify-between">
+      {!project.canonicalDossier && <div className="mt-5 flex flex-col gap-3 rounded-lg border border-[#f1cb8b] bg-[#fff8e9] p-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-3"><TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-[#a65a00]" /><div><div className="text-[11px] font-bold text-[#6f460e]">Classification changes are live</div><div className="mt-1 text-[10px] leading-4 text-[#7f6337]">Materiality, confidence, and the recommendation status update as soon as a dropdown changes.</div></div></div>
         {showModelConfidence && <div className="flex shrink-0 items-center gap-2 rounded border border-[#ecd39d] bg-white/50 px-2.5 py-2"><RefreshCw className="h-3.5 w-3.5 text-[#a65a00]" /><span data-testid="text-live-confidence" className="font-mono text-[10px] font-bold text-[#6f460e]">{metrics.confidenceScore}% confidence</span></div>}
-      </div>
+      </div>}
       <BottomNav screen="evidence" onNavigate={onNavigate} />
     </div>
   );

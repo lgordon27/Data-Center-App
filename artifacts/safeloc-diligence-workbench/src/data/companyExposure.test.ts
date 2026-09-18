@@ -30,14 +30,17 @@ test("company profiles preserve the six supplied stock lenses", () => {
 
 test("company projects combine reviewed context with operator-matched directory metadata", () => {
   const projects = companyProjects("Microsoft", [facility()]);
-  assert.equal(projects.length, 2);
+  assert.equal(projects.length, 3);
   assert.equal(projects[0].tier, null);
-  assert.equal(projects[0].relationshipBasis, "unresolved");
+  assert.equal(projects[0].relationshipBasis, "source-backed");
   assert.equal(projects[0].connectionType, "Developer/Operator");
-  assert.equal(projects[1].tier, null);
-  assert.equal(projects[1].relationshipBasis, "operator-derived");
-  assert.equal(projects[1].connectionType, "Customer Dependency");
-  assert.equal(projects[1].capacityMW, 315);
+  assert.equal(projects[0].location, "Reeves County, West Texas");
+  assert.equal(projects[0].capacityMW, 2670);
+  assert.equal(projects[1].id, "microsoft-el-mirage");
+  assert.equal(projects[2].tier, null);
+  assert.equal(projects[2].relationshipBasis, "operator-derived");
+  assert.equal(projects[2].connectionType, "Customer Dependency");
+  assert.equal(projects[2].capacityMW, 315);
 });
 
 test("connection types cover every company lens and preserve reviewed exceptions", () => {
@@ -77,11 +80,24 @@ test("directory projects always receive a connection type through the shared map
 
 test("project summary keeps undisclosed capacity out of disclosed totals", () => {
   const summary = projectSummary(companyProjects("Microsoft", [facility()]));
-  assert.equal(summary.count, 2);
-  assert.equal(summary.capacityMW, 315);
+  assert.equal(summary.count, 3);
+  assert.equal(summary.capacityMW, 2985);
   assert.equal(summary.tier1, 0);
   assert.equal(summary.tier2, 0);
   assert.equal(summary.undisclosedCapacity, 1);
+});
+
+test("canonical El Mirage suppresses the stale directory duplicate", () => {
+  const projects = companyProjects("Microsoft", [facility({
+    id: "microsoft-el-mirage-az",
+    name: "Microsoft El Mirage Data Center Campus",
+    city: "El Mirage",
+    county: "Maricopa",
+    state: "AZ",
+    capacityMW: null,
+  })]);
+  assert.equal(projects.filter((project) => /el mirage/i.test(project.name)).length, 1);
+  assert.equal(projects.find((project) => /el mirage/i.test(project.name))?.id, "microsoft-el-mirage");
 });
 
 test("registered provider facilities are not repeated under alternate display names", () => {

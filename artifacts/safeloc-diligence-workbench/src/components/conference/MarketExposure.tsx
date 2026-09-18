@@ -16,6 +16,11 @@ import {
 } from "@/services/directoryService";
 import { getCanonicalDossier } from "@/services/canonicalDossierService";
 
+function canonicalSlug(id: string, name: string) {
+  if (id === "project-kilby" || id === "microsoft-el-mirage") return id;
+  return name.trim().toLowerCase() === "stargate abilene" ? "stargate-abilene" : null;
+}
+
 export function MarketExposure() {
   const { project, originatingCompany, selectedProjectContext, resetToDefault, setOriginatingCompany, setProjectSelection, loadCanonicalDossier } = useDiligence();
   const [facilities, setFacilities] = useState<DirectoryFacility[]>([]);
@@ -103,12 +108,14 @@ export function MarketExposure() {
               projects={companyProjects(relationship.company.key, facilities)}
               onSelect={(selectedProject) => {
                 const selection = toProjectSelectionContext(relationship.company!.key, selectedProject);
-                if (["project-kilby", "microsoft-el-mirage"].includes(selectedProject.id)) {
-                  void getCanonicalDossier(selectedProject.id).then(loadCanonicalDossier);
-                  return;
-                }
-                if (selection.evidenceState === "Source-backed" && selectedProject.name.trim().toLowerCase() === "stargate abilene") {
-                  resetToDefault(relationship.company!.key);
+                const dossierSlug = selectedProject.kind === "curated"
+                  ? canonicalSlug(selectedProject.id, selectedProject.name)
+                  : null;
+                if (dossierSlug) {
+                  void getCanonicalDossier(dossierSlug).then((dossier) => {
+                    loadCanonicalDossier(dossier);
+                    window.location.hash = `analysis/${dossierSlug}`;
+                  });
                   return;
                 }
                 setProjectSelection(selection);

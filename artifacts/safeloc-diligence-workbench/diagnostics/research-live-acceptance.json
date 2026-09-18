@@ -1,0 +1,394 @@
+{
+  "diagnosticOnly": true,
+  "evidenceStatus": "not-evidence",
+  "liveAcceptance": {
+    "status": "LIVE ACCEPTANCE BLOCKED",
+    "reason": "No accessible exact-project passage mapped to an eligible visible finding; retained passages and unresolved categories remain diagnostic only.",
+    "trace": []
+  },
+  "generatedAt": "2026-09-18T02:22:06.038Z",
+  "project": {
+    "name": "Microsoft El Mirage Data Center",
+    "location": "El Mirage, Maricopa County, Arizona",
+    "directoryProvider": "Compute Atlas",
+    "directoryProviderId": "microsoft-el-mirage-az",
+    "aliases": [
+      "Microsoft El Mirage Data Center",
+      "El Mirage Data Center"
+    ],
+    "operator": "Microsoft",
+    "status": "operating",
+    "city": "El Mirage",
+    "county": "Maricopa",
+    "state": "Arizona",
+    "sourceUrl": null,
+    "authorities": {
+      "establishedDomains": [
+        "elmirageaz.gov",
+        "azcc.gov"
+      ],
+      "identifiedAuthorities": [
+        "City of El Mirage",
+        "Arizona Corporation Commission"
+      ],
+      "missingAuthorityDomains": [],
+      "companyDomains": [
+        "microsoft.com"
+      ]
+    }
+  },
+  "run": {
+    "status": "failed",
+    "telemetryStatus": "current-live",
+    "runId": null,
+    "researchStatus": null,
+    "httpStatus": 429,
+    "provider": "openai",
+    "model": "gpt-4o",
+    "providerResponseIds": [],
+    "startedAt": null,
+    "finishedAt": null,
+    "elapsedMs": 6467,
+    "wallClockElapsedMs": 6467,
+    "failureType": "quota-exhausted",
+    "failureMessage": "Project research provider reports insufficient quota or a billing limit; verify the OpenAI project used by this app.",
+    "providerDiagnostic": {
+      "upstreamStatus": 429,
+      "errorCode": "credit_balance_exhausted",
+      "errorType": "insufficient_quota",
+      "message": "You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.",
+      "requestId": "req_af4a9bfa6d0144ca8646bc16bf604748",
+      "rateLimit": null
+    },
+    "elapsedWithinDeadline": true,
+    "providerRequestCount": null,
+    "providerAttempts": [],
+    "toolCallCount": null,
+    "followUpCount": 0,
+    "budget": {
+      "deadlineMs": 90000,
+      "maxProviderRequests": 16,
+      "maxFollowUps": 8,
+      "maxFollowUpsPerCategory": 1,
+      "maxCandidatesPerCategory": 10,
+      "maxTotalCandidates": 80,
+      "maxToolCalls": 32,
+      "maxPhysicalDocumentOpens": 24
+    },
+    "limitsObserved": {
+      "providerRequestsWithinLimit": null,
+      "followUpsWithinLimit": null,
+      "toolCallsWithinLimit": null,
+      "candidatesWithinTotalLimit": null,
+      "candidatesByCategory": {
+        "project-identity": 0,
+        "grid": 0,
+        "electricity": 0,
+        "water": 0,
+        "permitting-community": 0,
+        "construction-capital": 0,
+        "tenant-counterparty": 0,
+        "climate-operational-hazard": 0
+      },
+      "candidateCategoryLimit": 10
+    }
+  },
+  "requests": [],
+  "observedSearches": [],
+  "returnedDomains": [],
+  "executedQueries": [
+    {
+      "categoryId": "project-identity",
+      "label": "Project identity",
+      "requestedPrimaryQuery": "\"Microsoft El Mirage Data Center\" \"El Mirage, Maricopa County, Arizona\" project operator facility identity permit record Arizona Arizona Corporation Commission Arizona Department of Water Resources Arizona Department of Environmental Quality Arizona utility and water-authority records \"Microsoft El Mirage Data Center\" \"El Mirage Data Center\" \"Microsoft\" \"Microsoft\" (site:azcc.gov OR site:azwater.gov OR site:azdeq.gov OR site:microsoft.com) official government regulator utility record",
+      "executedQueries": [],
+      "followUpExecutedQuery": null,
+      "state": "Provider failure"
+    },
+    {
+      "categoryId": "grid",
+      "label": "Grid",
+      "requestedPrimaryQuery": "\"Microsoft El Mirage Data Center\" \"El Mirage, Maricopa County, Arizona\" grid interconnection queue transmission study Arizona Arizona Corporation Commission Arizona Department of Water Resources Arizona Department of Environmental Quality Arizona utility and water-authority records \"Microsoft El Mirage Data Center\" \"El Mirage Data Center\" \"Microsoft\" \"Microsoft\" (site:azcc.gov OR site:azwater.gov OR site:azdeq.gov OR site:microsoft.com) official government regulator utility record",
+      "executedQueries": [],
+      "followUpExecutedQuery": null,
+      "state": "Provider failure"
+    },
+    {
+      "categoryId": "electricity",
+      "label": "Electricity",
+      "requestedPrimaryQuery": "\"Microsoft El Mirage Data Center\" \"El Mirage, Maricopa County, Arizona\" utility tariff electricity rate power price $/MWh Arizona Arizona Corporation Commission Arizona Department of Water Resources Arizona Department of Environmental Quality Arizona utility and water-authority records \"Microsoft El Mirage Data Center\" \"El Mirage Data Center\" \"Microsoft\" \"Microsoft\" (site:azcc.gov OR site:azwater.gov OR site:azdeq.gov OR site:microsoft.com) official government regulator utility record",
+      "executedQueries": [],
+      "followUpExecutedQuery": null,
+      "state": "Provider failure"
+    },
+    {
+      "categoryId": "water",
+      "label": "Water",
+      "requestedPrimaryQuery": "\"Microsoft El Mirage Data Center\" \"El Mirage, Maricopa County, Arizona\" water demand consumption gallons usage Arizona Arizona Corporation Commission Arizona Department of Water Resources Arizona Department of Environmental Quality Arizona utility and water-authority records City of El Mirage Maricopa County \"Microsoft El Mirage Data Center\" \"El Mirage Data Center\" \"Microsoft\" \"Microsoft\" (site:azcc.gov OR site:azwater.gov OR site:azdeq.gov OR site:elmirageaz.gov OR site:microsoft.com) official government regulator utility record",
+      "executedQueries": [],
+      "followUpExecutedQuery": null,
+      "state": "Provider failure"
+    },
+    {
+      "categoryId": "permitting-community",
+      "label": "Permitting and community",
+      "requestedPrimaryQuery": "\"Microsoft El Mirage Data Center\" \"El Mirage, Maricopa County, Arizona\" public hearing opposition complaints community Arizona Arizona Corporation Commission Arizona Department of Water Resources Arizona Department of Environmental Quality Arizona utility and water-authority records City of El Mirage Maricopa County \"Microsoft El Mirage Data Center\" \"El Mirage Data Center\" \"Microsoft\" \"Microsoft\" (site:azcc.gov OR site:azwater.gov OR site:azdeq.gov OR site:elmirageaz.gov OR site:microsoft.com) official government regulator utility record",
+      "executedQueries": [],
+      "followUpExecutedQuery": null,
+      "state": "Provider failure"
+    },
+    {
+      "categoryId": "construction-capital",
+      "label": "Construction and capital",
+      "requestedPrimaryQuery": "\"Microsoft El Mirage Data Center\" \"El Mirage, Maricopa County, Arizona\" cooling system capital cost capex Arizona Arizona Corporation Commission Arizona Department of Water Resources Arizona Department of Environmental Quality Arizona utility and water-authority records \"Microsoft El Mirage Data Center\" \"El Mirage Data Center\" \"Microsoft\" \"Microsoft\" (site:azcc.gov OR site:azwater.gov OR site:azdeq.gov OR site:microsoft.com) official government regulator utility record",
+      "executedQueries": [],
+      "followUpExecutedQuery": null,
+      "state": "Provider failure"
+    },
+    {
+      "categoryId": "tenant-counterparty",
+      "label": "Tenant and counterparty",
+      "requestedPrimaryQuery": "\"Microsoft El Mirage Data Center\" \"El Mirage, Maricopa County, Arizona\" customer concentration revenue load share percentage Arizona Arizona Corporation Commission Arizona Department of Water Resources Arizona Department of Environmental Quality Arizona utility and water-authority records \"Microsoft El Mirage Data Center\" \"El Mirage Data Center\" \"Microsoft\" \"Microsoft\" (site:azcc.gov OR site:azwater.gov OR site:azdeq.gov OR site:microsoft.com) official government regulator utility record",
+      "executedQueries": [],
+      "followUpExecutedQuery": null,
+      "state": "Provider failure"
+    },
+    {
+      "categoryId": "climate-operational-hazard",
+      "label": "Climate and operational hazard",
+      "requestedPrimaryQuery": "\"Microsoft El Mirage Data Center\" \"El Mirage, Maricopa County, Arizona\" flood wildfire seismic hazard exact site Arizona Arizona Corporation Commission Arizona Department of Water Resources Arizona Department of Environmental Quality Arizona utility and water-authority records \"Microsoft El Mirage Data Center\" \"El Mirage Data Center\" \"Microsoft\" \"Microsoft\" (site:azcc.gov OR site:azwater.gov OR site:azdeq.gov OR site:microsoft.com) official government regulator utility record",
+      "executedQueries": [],
+      "followUpExecutedQuery": null,
+      "state": "Provider failure"
+    }
+  ],
+  "sourceStates": {
+    "total": 0,
+    "bySourceState": {},
+    "byAccessOutcome": {},
+    "byClaimSupportState": {},
+    "byProjectSpecificityState": {},
+    "returnedDomains": [],
+    "normalizedCandidates": [],
+    "sources": [],
+    "retainedPassages": []
+  },
+  "evidenceAudit": [],
+  "unresolvedIdentifiers": [
+    "project-identity",
+    "grid",
+    "electricity",
+    "water",
+    "permitting-community",
+    "construction-capital",
+    "tenant-counterparty",
+    "climate-operational-hazard",
+    "grid_interconnection",
+    "electricity_cost",
+    "electricity_escalation",
+    "renewable_percentage",
+    "carbon_compliance",
+    "water_consumption",
+    "water_escalation",
+    "water_rights",
+    "water_source_resilience",
+    "community_risk",
+    "permitting_timeline",
+    "cooling_capex",
+    "backup_power_capacity",
+    "downtime_cost",
+    "customer_concentration",
+    "site_hazard_exposure"
+  ],
+  "budgetState": {
+    "telemetryStatus": "current-live",
+    "physicalOpenBudget": 24,
+    "physicalOpensUsed": null,
+    "physicalOpensRemaining": null,
+    "physicalOpenBudgetExceeded": null,
+    "documentsNotAttempted": []
+  },
+  "cacheState": {
+    "state": null,
+    "refreshStatus": null,
+    "providerAvailable": null,
+    "storedAt": null,
+    "keyPresent": false,
+    "telemetryStatus": "current-live"
+  },
+  "workbenchState": {
+    "status": "failed",
+    "reviewAction": "Review findings",
+    "eligibleSourceCount": 0,
+    "eligibleEvidenceCount": 0,
+    "proposalCount": 0,
+    "acceptedModelInputCount": 0,
+    "materialGaps": [
+      "project-identity",
+      "grid",
+      "electricity",
+      "water",
+      "permitting-community",
+      "construction-capital",
+      "tenant-counterparty",
+      "climate-operational-hazard",
+      "grid_interconnection",
+      "electricity_cost",
+      "electricity_escalation",
+      "renewable_percentage",
+      "carbon_compliance",
+      "water_consumption",
+      "water_escalation",
+      "water_rights",
+      "water_source_resilience",
+      "community_risk",
+      "permitting_timeline",
+      "cooling_capex",
+      "backup_power_capacity",
+      "downtime_cost",
+      "customer_concentration",
+      "site_hazard_exposure"
+    ],
+    "modelChangePendingHumanAcceptance": true
+  },
+  "sessionState": {
+    "runId": null,
+    "researchStatus": null,
+    "cacheState": null,
+    "telemetryStatus": "current-live",
+    "reloadRestoration": "run-scoped identity and cache metadata are retained; no model mutation is implied"
+  },
+  "categoryGaps": [
+    "project-identity",
+    "grid",
+    "electricity",
+    "water",
+    "permitting-community",
+    "construction-capital",
+    "tenant-counterparty",
+    "climate-operational-hazard"
+  ],
+  "categories": [
+    {
+      "categoryId": "project-identity",
+      "label": "Project identity",
+      "state": "Provider failure",
+      "unresolvedGaps": [
+        "project-identity"
+      ],
+      "accessLimitations": [],
+      "providerFailure": "quota-exhausted",
+      "providerAttempts": [],
+      "stageCounts": null
+    },
+    {
+      "categoryId": "grid",
+      "label": "Grid",
+      "state": "Provider failure",
+      "unresolvedGaps": [
+        "grid_interconnection",
+        "electricity_cost",
+        "electricity_escalation",
+        "renewable_percentage"
+      ],
+      "accessLimitations": [],
+      "providerFailure": "quota-exhausted",
+      "providerAttempts": [],
+      "stageCounts": null
+    },
+    {
+      "categoryId": "electricity",
+      "label": "Electricity",
+      "state": "Provider failure",
+      "unresolvedGaps": [
+        "electricity_cost",
+        "electricity_escalation",
+        "renewable_percentage",
+        "carbon_compliance"
+      ],
+      "accessLimitations": [],
+      "providerFailure": "quota-exhausted",
+      "providerAttempts": [],
+      "stageCounts": null
+    },
+    {
+      "categoryId": "water",
+      "label": "Water",
+      "state": "Provider failure",
+      "unresolvedGaps": [
+        "water_consumption",
+        "water_escalation",
+        "water_rights",
+        "water_source_resilience"
+      ],
+      "accessLimitations": [],
+      "providerFailure": "quota-exhausted",
+      "providerAttempts": [],
+      "stageCounts": null
+    },
+    {
+      "categoryId": "permitting-community",
+      "label": "Permitting and community",
+      "state": "Provider failure",
+      "unresolvedGaps": [
+        "community_risk",
+        "permitting_timeline",
+        "carbon_compliance"
+      ],
+      "accessLimitations": [],
+      "providerFailure": "quota-exhausted",
+      "providerAttempts": [],
+      "stageCounts": null
+    },
+    {
+      "categoryId": "construction-capital",
+      "label": "Construction and capital",
+      "state": "Provider failure",
+      "unresolvedGaps": [
+        "cooling_capex",
+        "backup_power_capacity",
+        "downtime_cost"
+      ],
+      "accessLimitations": [],
+      "providerFailure": "quota-exhausted",
+      "providerAttempts": [],
+      "stageCounts": null
+    },
+    {
+      "categoryId": "tenant-counterparty",
+      "label": "Tenant and counterparty",
+      "state": "Provider failure",
+      "unresolvedGaps": [
+        "customer_concentration",
+        "downtime_cost"
+      ],
+      "accessLimitations": [],
+      "providerFailure": "quota-exhausted",
+      "providerAttempts": [],
+      "stageCounts": null
+    },
+    {
+      "categoryId": "climate-operational-hazard",
+      "label": "Climate and operational hazard",
+      "state": "Provider failure",
+      "unresolvedGaps": [
+        "site_hazard_exposure",
+        "backup_power_capacity",
+        "water_source_resilience",
+        "downtime_cost"
+      ],
+      "accessLimitations": [],
+      "providerFailure": "quota-exhausted",
+      "providerAttempts": [],
+      "stageCounts": null
+    }
+  ],
+  "providerLimitations": [
+    "quota-exhausted: Project research provider reports insufficient quota or a billing limit; verify the OpenAI project used by this app."
+  ],
+  "retainedHistoricalRun": null,
+  "failureRetention": {
+    "status": "not-run",
+    "reason": "The live request did not produce a cache entry to rehearse against."
+  }
+}

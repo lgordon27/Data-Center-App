@@ -77,6 +77,38 @@ test("audience briefs share source facts but keep different contracts and bounda
   assert.equal("canonicalEvidence" in manager, false);
 });
 
+test("canonical briefs use the authoritative dossier date instead of later source dates", () => {
+  const canonical = diligence({
+    project: {
+      kind: "curated",
+      name: "Project Kilby",
+      location: "Atlanta, Georgia",
+      description: "",
+      capacityMW: 100,
+      canonicalDossier: {
+        asOfDate: "2026-06-22",
+        coverageState: "material-gaps",
+        canonicalData: { identity: { scope: "Reviewed scope" }, materiality: {}, questions: [], triggers: [] },
+      },
+    },
+    evidence: {
+      grid: {
+        id: "grid",
+        label: "Grid",
+        value: "Reviewed",
+        description: "Reviewed grid record.",
+        sourcePublishedAt: "2026-09-17",
+        classification: "Verified Evidence",
+        coverageStatus: "complete",
+        claimIds: [],
+        sources: [],
+      },
+    },
+  });
+  assert.equal(generateAdvisorBrief(canonical).evidenceAsOf, "2026-06-22");
+  assert.equal(generateAssetManagerBrief(canonical).evidenceAsOf, "2026-06-22");
+});
+
 test("model-neutral projects never inherit the Stargate return in audience outputs", () => {
   const modelNeutral = diligence({
     project: {

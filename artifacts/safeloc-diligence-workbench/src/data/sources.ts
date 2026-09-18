@@ -37,7 +37,7 @@ export type ProviderSourceBoundary = {
 export type SourceState = SourceDefinition & ProviderSourceMetadata;
 
 export const SOURCE_FALLBACK_EXPLANATION =
-  "All external feeds automatically fall back to cached values during an unavailable live demonstration.";
+  "Provider responses may use an explicitly labeled retained response when a live request is unavailable. Bundled baselines remain labeled embedded and are never represented as cached or live.";
 
 export const sourceDefinitions: readonly SourceDefinition[] = [
   {

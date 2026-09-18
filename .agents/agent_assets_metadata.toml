@@ -28,17 +28,3 @@ mtime_ms = 1789089318371
 storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:f36c34ed-5536-4eff-ae57-d0f347f2e42e/3a4305f9-fdcb-4776-8d95-70ed40fab057/a04f5b9d-b5c2-4594-b79e-9a0839bb5615"
 storage_version_token = "1789089323988655"
 content_type = "text/markdown"
-
-[[outputs]]
-id = "mLunGGK-ObpUWMnKgtaOQ"
-uri = "file://artifacts/safeloc-diligence-workbench/validation/production-dossiers-post-promotion.json"
-type = "unspecified"
-title = "Sanitized Production Dossier Export"
-description = "Read-only post-promotion export of the three canonical PostgreSQL dossiers, reconciled byte-for-byte with development and containing no credentials, sessions, or raw provider payloads."
-logical_id = "3081ed13-c830-4674-bf58-a813e1744a72"
-content_hash = "sha256:ed348002c6819ba00fca0eec475e775602bc76b1057e84409b8994d5be641cb5"
-size = 21769
-mtime_ms = 1789691887943
-storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:f36c34ed-5536-4eff-ae57-d0f347f2e42e/3081ed13-c830-4674-bf58-a813e1744a72/385cc2ef-1054-4ea7-adde-5edcffbfab8c"
-storage_version_token = "1789692028620190"
-content_type = "application/octet-stream"

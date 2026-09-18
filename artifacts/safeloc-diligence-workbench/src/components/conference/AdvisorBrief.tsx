@@ -2,6 +2,19 @@ import { useDiligence } from "@/context/DiligenceContext";
 import { generateAdvisorBrief, generateAssetManagerBrief } from "@/model/conferencePresentation";
 import { Lightbulb, Info, HelpCircle, AlertCircle, ArrowRight } from "lucide-react";
 
+function formatAsOfDate(value: string | null) {
+  if (!value) return "date unavailable";
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value);
+  const date = new Date(dateOnly ? `${value}T00:00:00Z` : value);
+  if (Number.isNaN(date.getTime())) return "date unavailable";
+  return new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(date);
+}
+
 export function AdvisorBrief() {
   const diligence = useDiligence();
   const brief = generateAdvisorBrief(diligence);
@@ -9,7 +22,7 @@ export function AdvisorBrief() {
 
   return (
     <div data-testid="conference-view-advisor" className="space-y-4">
-      <div><p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#607500]">04 / Turn evidence into audience outputs</p><h2 className="mt-2 text-2xl font-semibold tracking-tight">Advisor Brief</h2><p className="mt-1 text-xs text-[#52616b]">Evidence as of {brief.evidenceAsOf ? new Date(brief.evidenceAsOf).toLocaleDateString() : "date unavailable"}</p></div>
+      <div><p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#607500]">04 / Turn evidence into audience outputs</p><h2 className="mt-2 text-2xl font-semibold tracking-tight">Advisor Brief</h2><p className="mt-1 text-xs text-[#52616b]">Evidence as of {formatAsOfDate(brief.evidenceAsOf)}</p></div>
       <div data-testid="financial-advisor-coverage" className="rounded-lg border border-[#aac6f4] bg-[#eef5ff] px-4 py-3 text-xs text-[#122232]">
         <strong>{brief.coverageLabel}</strong> · No buy/sell recommendation. Project sensitivity is not an issuer, fund, or portfolio return.
       </div>
@@ -112,7 +125,7 @@ export function AdvisorBrief() {
         <summary className="cursor-pointer list-none p-4 [&::-webkit-details-marker]:hidden">
           <p className="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#607500]">Asset Manager brief</p>
           <h3 className="mt-1 text-lg font-semibold text-[#122232]">{assetManagerBrief.title} · evidence and materiality review</h3>
-          <p className="mt-1 text-xs text-[#52616b]">Evidence as of {assetManagerBrief.evidenceAsOf ? new Date(assetManagerBrief.evidenceAsOf).toLocaleDateString() : "date unavailable"} · No automatic portfolio conclusion · Expand for the asset-manager output.</p>
+          <p className="mt-1 text-xs text-[#52616b]">Evidence as of {formatAsOfDate(assetManagerBrief.evidenceAsOf)} · No automatic portfolio conclusion · Expand for the asset-manager output.</p>
         </summary>
         <div className="space-y-4 border-t border-[#d9e0e4] p-4">
         <div className="grid gap-3 sm:grid-cols-3">

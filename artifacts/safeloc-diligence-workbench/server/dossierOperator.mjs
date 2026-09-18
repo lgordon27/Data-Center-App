@@ -1,9 +1,20 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import pg from "pg";
 import path from "node:path";
 
 const root = path.resolve(new URL(".", import.meta.url).pathname, "..");
 const seedFile = path.join(root, "server", "dossiers.seed.json");
+const productionValidationFile = path.join(root, "validation", "production-dossiers-post-promotion.json");
+
+async function writeJsonAtomically(output, value) {
+  const target = path.resolve(output);
+  await mkdir(path.dirname(target), { recursive: true });
+  const temporary = `${target}.${process.pid}.tmp`;
+  const serialized = JSON.stringify(value, null, 2) + "\n";
+  await writeFile(temporary, serialized, { mode: 0o600, flag: "wx" });
+  JSON.parse(await readFile(temporary, "utf8"));
+  await rename(temporary, target);
+}
 
 function sanitize(value, key = "") {
   if (/(secret|password|credential|token|session|raw.?provider|payload)/i.test(key)) return undefined;
@@ -39,8 +50,8 @@ async function main() {
     } else if (process.argv[2] === "export") {
       const result = await pool.query("SELECT slug, name, version, coverage_state AS \"coverageState\", as_of_date AS \"asOfDate\", canonical_data AS \"canonicalData\" FROM dossiers ORDER BY slug");
       const output = process.argv.find((argument, index) => index > 2 && argument !== "--")
-        || "dossiers.export.json";
-      await writeFile(output, JSON.stringify(sanitize(result.rows), null, 2) + "\n", { mode: 0o600 });
+        || productionValidationFile;
+      await writeJsonAtomically(output, sanitize(result.rows));
       console.log(`Exported ${result.rows.length} sanitized canonical dossiers.`);
     } else throw new Error("Usage: dossierOperator.mjs import [file] | export [file]");
   } finally {

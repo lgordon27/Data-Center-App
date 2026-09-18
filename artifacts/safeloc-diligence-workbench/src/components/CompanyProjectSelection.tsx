@@ -17,10 +17,6 @@ function capacityLabel(capacityMW: number | null) {
   return capacityMW === null ? "Undisclosed" : `${capacityMW.toLocaleString("en-US", { maximumFractionDigits: 1 })} MW`;
 }
 
-function isStargate(project: CompanyProject) {
-  return project.kind === "curated" && project.name.trim().toLowerCase() === "stargate abilene";
-}
-
 export function CompanyProjectSelection({ company, projects, researchingProjectId = null, onSelect }: Props) {
   const [query, setQuery] = useState("");
   const [state, setState] = useState("All");
@@ -94,7 +90,7 @@ export function CompanyProjectSelection({ company, projects, researchingProjectI
       )}
       {visible.map((project) => {
         const evidenceState = projectRelationshipState(company, project);
-        const supportedWorkbench = evidenceState === "Source-backed" && isStargate(project);
+        const supportedWorkbench = project.kind === "curated";
         const researching = researchingProjectId === project.id;
         return (
           <article key={project.id} data-testid={`company-project-${project.id}`} className="min-w-0 rounded-lg border border-[#d9e0e4] bg-white p-4">
@@ -116,7 +112,7 @@ export function CompanyProjectSelection({ company, projects, researchingProjectI
                 aria-busy={researching}
                 className={`inline-flex min-h-10 shrink-0 items-center justify-center gap-1 rounded-md px-3 font-mono text-[9px] font-bold uppercase tracking-[0.08em] disabled:cursor-wait disabled:opacity-60 ${supportedWorkbench ? "bg-[#122232] text-[#d4e86b] hover:bg-[#203a4c]" : "border border-[#255bb7] text-[#255bb7] hover:bg-[#e5efff]"}`}
               >
-                {researching ? "Preparing research…" : supportedWorkbench ? "Open supported workbench" : "Research this project"}
+                {researching ? "Opening…" : supportedWorkbench ? "Open reviewed dossier" : "Research this project · Beta"}
                 <ArrowRight aria-hidden="true" className="h-3 w-3" />
               </button>
             </div>

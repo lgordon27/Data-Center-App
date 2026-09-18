@@ -18,6 +18,7 @@ import { Home } from "@/pages/Home";
 import { HowItWorks } from "@/pages/HowItWorks";
 import { Footer } from "@/components/Footer";
 import { ErrorBoundary, type ErrorFallbackProps } from "@/components/error-boundary";
+import { getCanonicalDossier } from "@/services/canonicalDossierService";
 
 const DirectoryRoute = lazy(() => import("@/pages/DirectoryRoute"));
 
@@ -89,6 +90,10 @@ function AppShell() {
   const [pendingSection, setPendingSection] = useState<string | null>(null);
   const [analysisEpoch, setAnalysisEpoch] = useState(0);
   const [pendingTourSection, setPendingTourSection] = useState<string | null>(null);
+  const [pendingDossierSlug, setPendingDossierSlug] = useState<string | null>(() => {
+    const [route, slug] = typeof window === "undefined" ? [] : window.location.hash.replace(/^#/, "").split("/");
+    return route === "analysis" && slug ? slug : null;
+  });
   const diligence = useDiligence();
   const isHome = route === "home";
   const menuButtonRef = useRef<HTMLButtonElement>(null);
@@ -124,6 +129,8 @@ function AppShell() {
           window.history.replaceState(null, "", "#analysis");
           setPendingSection(legacySectionRoutes[rawRoute]);
           setPendingTourSection(null);
+        } else if (next === "analysis" && rawTourSection) {
+          setPendingDossierSlug(rawTourSection);
         } else if (next === "how-it-works" && rawTourSection) {
           setPendingTourSection(rawTourSection);
       } else {
@@ -138,6 +145,17 @@ function AppShell() {
     window.addEventListener("hashchange", syncFromHash);
     return () => window.removeEventListener("hashchange", syncFromHash);
   }, []);
+
+  useEffect(() => {
+    if (!pendingDossierSlug) return;
+    let active = true;
+    void getCanonicalDossier(pendingDossierSlug).then((dossier) => {
+      if (active) diligence.loadCanonicalDossier(dossier);
+    }).finally(() => {
+      if (active) setPendingDossierSlug(null);
+    });
+    return () => { active = false; };
+  }, [pendingDossierSlug, diligence.loadCanonicalDossier]);
 
   useEffect(() => {
     document.title = route === "home"
@@ -352,7 +370,7 @@ function AppShell() {
                    {route === "directory" && (
                      <ErrorBoundary resetKey={route} FallbackComponent={DirectoryFailure}>
                        <Suspense fallback={<DirectoryLoading />}>
-                       <DirectoryRoute onCurated={() => { diligence.resetToDefault("Oracle"); go("analysis"); }} onResearchSuccess={(research) => { diligence.loadCustomProject(research); go("analysis"); }} />
+                        <DirectoryRoute onCurated={(slug) => { window.location.hash = `analysis/${slug}`; }} onResearchSuccess={(research) => { diligence.loadCustomProject(research); go("analysis"); }} />
                        </Suspense>
                      </ErrorBoundary>
                    )}

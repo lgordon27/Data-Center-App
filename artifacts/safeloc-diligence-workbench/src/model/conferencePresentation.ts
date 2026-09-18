@@ -12,6 +12,9 @@ export const FINANCIAL_ADVISOR_COVERAGE_LABELS = {
 } as const;
 
 function evidenceAsOf(diligence: ReturnType<typeof useDiligence>) {
+  if (diligence.project.canonicalDossier) {
+    return diligence.project.canonicalDossier.asOfDate;
+  }
   const dates = Object.values(diligence.evidence).flatMap((item) => [
     item.sourcePublishedAt,
     item.sourceAccessedAt,

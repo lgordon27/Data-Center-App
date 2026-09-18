@@ -63,8 +63,8 @@ function sourceLabel(response: DirectoryResponse | DirectoryStatsResponse | null
   return "Embedded snapshot";
 }
 
-function isStargate(facility: DirectoryFacility) {
-  return facility.directoryDisposition === "canonical" && facility.canonicalProjectId === "stargate-abilene";
+function isCanonical(facility: DirectoryFacility) {
+  return facility.directoryDisposition === "canonical" && Boolean(facility.canonicalProjectId);
 }
 
 function DirectoryRecord({
@@ -86,8 +86,8 @@ function DirectoryRecord({
         <div><div className="font-mono text-[8px] uppercase text-[#718894]">Status</div><span className="mt-1 inline-flex rounded-full border border-[#8dc8e8]/40 px-2 py-1 font-mono text-[9px] font-bold uppercase text-[#b9e1f2]">{statusLabel(facility.status)}</span></div>
         <div className="flex flex-wrap gap-2 lg:justify-end">
           {facility.sourceUrl && <a data-testid={`compute-atlas-source-${facility.id}`} href={facility.sourceUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center gap-1 rounded border border-white/20 px-2 text-[9px] font-bold uppercase text-[#b9e1f2]">Source <ExternalLink aria-hidden="true" className="h-3 w-3" /></a>}
-           <button data-testid={`compute-atlas-open-${facility.id}`} type="button" onClick={isStargate(facility) ? onCurated : onResearch} className="inline-flex min-h-9 items-center gap-1 rounded border border-[#d4e86b]/60 px-2.5 font-mono text-[9px] font-bold uppercase text-[#d4e86b]">
-             {isStargate(facility) ? "Curated Deep Dive" : "Research · Beta"}
+            <button data-testid={`compute-atlas-open-${facility.id}`} type="button" onClick={isCanonical(facility) ? onCurated : onResearch} className="inline-flex min-h-9 items-center gap-1 rounded border border-[#d4e86b]/60 px-2.5 font-mono text-[9px] font-bold uppercase text-[#d4e86b]">
+              {isCanonical(facility) ? "Open reviewed dossier" : "Research · Beta"}
           </button>
         </div>
       </div>
@@ -99,7 +99,7 @@ function DirectoryRecord({
 export default function DirectoryRoute({
   onCurated, onResearchSuccess,
 }: {
-  onCurated: () => void;
+  onCurated: (slug: string) => void;
   onResearchSuccess: (research: CustomResearchResponse) => void;
 }) {
   if (window.__safelocForceDirectoryRenderError) throw new Error("Forced directory render failure.");
@@ -207,7 +207,7 @@ export default function DirectoryRoute({
           <div data-testid="compute-atlas-result-count" className="mt-5 font-mono text-[10px] uppercase text-[#9dafb8]">Showing {facilities.length} of {totalMatching} matching · {total} total</div>
           {freshness.caution && <div data-testid="compute-atlas-retained-warning" role="alert" className="mt-4 flex gap-2 rounded border border-[#f1cb8b] p-3 text-[11px] text-[#ffe0a9]"><TriangleAlert aria-hidden="true" className="h-4 w-4" />Retained directory data is nearing its refresh window.</div>}
           {companyFilter && <p className="mt-2 text-[10px] text-[#8299a5]">ETF context: {contextFunds.join(", ") || "No mapped fund context"}. This is market exposure context, not facility evidence.</p>}
-           <div data-testid="compute-atlas-results" className="mt-4 space-y-2">{facilities.length === 0 ? <div data-testid="compute-atlas-empty" className="rounded border border-white/15 p-8 text-center text-[#b9c5c9]">No facilities match these filters.</div> : facilities.map((facility) => <DirectoryRecord key={facility.id} facility={facility} onCurated={onCurated} onResearch={() => research(facility)} />)}</div>
+          <div data-testid="compute-atlas-results" className="mt-4 space-y-2">{facilities.length === 0 ? <div data-testid="compute-atlas-empty" className="rounded border border-white/15 p-8 text-center text-[#b9c5c9]">No facilities match these filters.</div> : facilities.map((facility) => <DirectoryRecord key={facility.id} facility={facility} onCurated={() => onCurated(facility.canonicalProjectId!)} onResearch={() => research(facility)} />)}</div>
            {nextOffset !== null && facilities.length < totalMatching && <button data-testid="compute-atlas-load-more" type="button" disabled={loadingMore} onClick={() => void loadMore()} className="mt-4 min-h-11 w-full rounded border border-white/20 text-[#b9e1f2]">{loadingMore ? "Loading more facilities…" : `Show next ${Math.min(PAGE_SIZE, totalMatching - facilities.length)} facilities`}</button>}
           <div data-testid="compute-atlas-attribution" className="mt-6 border-t border-white/10 pt-4 text-[10px] text-[#8299a5]">Directory metadata by <a href="https://compute-atlas.com" target="_blank" rel="noreferrer" className="underline">Compute Atlas</a>, CC BY 4.0. {sourceLabel(directory)} is shown explicitly.</div>
         </>}

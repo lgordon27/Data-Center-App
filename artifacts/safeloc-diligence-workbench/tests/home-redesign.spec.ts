@@ -5,17 +5,16 @@ test.describe("compact conference Home", () => {
     await page.goto("/#home");
   });
 
-  test("foregrounds one curated conference walkthrough and keeps exploration secondary", async ({ page }) => {
+  test("foregrounds the reviewed dossier set and keeps exploration secondary", async ({ page }) => {
     await expect(page.getByTestId("home-hero-heading")).toHaveText(
-      "Follow the evidence behind an AI data center.",
+      "Review the evidence behind major AI data-center projects.",
     );
     await expect(page.getByText("Growth for Impact Conference · SafeLoc")).toBeVisible();
-    await expect(page.getByTestId("button-run-stargate")).toHaveText(/Open the Stargate demo/i);
-    await expect(page.getByText("Curated public-source case · Oracle relationship · Abilene, Texas")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Stargate Abilene" })).toBeVisible();
-    await expect(page.getByText("Frame the project")).toBeVisible();
-    await expect(page.getByText("Inspect the evidence")).toBeVisible();
-    await expect(page.getByText("Review the decision path")).toBeVisible();
+    await expect(page.getByTestId("button-run-stargate")).toHaveText(/Open Stargate Abilene/i);
+    await expect(page.getByText(/Reviewed dossier · evidence as of Sep 30, 2025/i)).toBeVisible();
+    await expect(page.getByTestId("home-dossier-stargate-abilene")).toBeVisible();
+    await expect(page.getByTestId("home-dossier-project-kilby")).toContainText("Not modeled");
+    await expect(page.getByTestId("home-dossier-microsoft-el-mirage")).toContainText("Not modeled");
 
     const exploration = page.getByTestId("home-explore-panel");
     await expect(exploration).toHaveAttribute("open", "");
@@ -46,7 +45,7 @@ test.describe("compact conference Home", () => {
 
   test("opens the curated Oracle relationship directly into Market Exposure", async ({ page }) => {
     await page.getByTestId("button-run-stargate").click();
-    await expect(page).toHaveURL(/#analysis$/);
+    await expect(page).toHaveURL(/#analysis\/stargate-abilene$/);
     await expect(page.getByTestId("conference-view-market")).toBeVisible();
     await expect(page.getByTestId("tab-market")).toHaveAttribute("aria-selected", "true");
     await expect(page.getByTestId("market-company")).toContainText("Oracle");

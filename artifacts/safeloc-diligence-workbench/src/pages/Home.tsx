@@ -51,8 +51,22 @@ import { trackEvent } from "@/services/analytics";
 import { ProviderQueueSnapshot } from "@/components/ProviderQueueSnapshot";
 import { Footer } from "@/components/Footer";
 import { IRRReasonNote, formatIRR } from "@/components/Shell";
+import { getCanonicalDossier } from "@/services/canonicalDossierService";
 
 type HomeRoute = "directory" | "how-it-works" | "value-chain";
+
+const REVIEWED_DOSSIERS = [
+  { slug: "stargate-abilene", name: "Stargate Abilene", location: "Taylor County, Texas", company: "Oracle", asOfDate: "2025-09-30" },
+  { slug: "project-kilby", name: "Project Kilby", location: "Atlanta, Georgia", company: "NVIDIA", asOfDate: "2026-06-22" },
+  { slug: "microsoft-el-mirage", name: "Microsoft El Mirage", location: "El Mirage, Arizona", company: "Microsoft", asOfDate: "2019-07-30" },
+] as const;
+
+function canonicalSlug(project: CompanyProject) {
+  if (project.id === "project-kilby" || project.id === "microsoft-el-mirage") return project.id;
+  return project.kind === "curated" && project.name.trim().toLowerCase() === "stargate abilene"
+    ? "stargate-abilene"
+    : null;
+}
 
 const homeEntryPoints = [
   { id: "value-chain", title: "The AI Chain", subtitle: "Trace the infrastructure chain from chips to portfolios.", href: "#value-chain", icon: Network, accent: "blue" },
@@ -638,9 +652,9 @@ function CompanyExposure({
               company: company.toLowerCase(),
               project_id: project.id,
               project_kind: project.kind,
-              action: project.name.trim().toLowerCase() === "stargate abilene" ? "open_curated" : "research_with_ai",
+             action: project.kind === "curated" ? "open_canonical" : "research_with_ai",
             });
-            if (project.name.trim().toLowerCase() === "stargate abilene" && (company === "Oracle" || company === "NVIDIA")) onCurated(project, company);
+            if (project.kind === "curated") onCurated(project, company);
             else onResearch(project, company);
           }}
         />
@@ -1574,7 +1588,7 @@ export function LegacyCompanyExploration({ onNavigate }: { onNavigate?: (route: 
 }
 
 export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void } = {}) {
-  const { resetToDefault, setOriginatingCompany, setProjectSelection, originatingCompany } = useDiligence();
+  const { loadCanonicalDossier, setOriginatingCompany, setProjectSelection, originatingCompany } = useDiligence();
   const initialCompany = COMPANY_PROFILES.some((profile) => profile.key === originatingCompany)
     ? originatingCompany as CompanyKey
     : null;
@@ -1611,9 +1625,9 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
     setSelectedCompany(initialCompany);
   }, [initialCompany]);
 
-  const openStargate = (company: CompanyKey | null = "Oracle") => {
-    resetToDefault(company);
-    window.location.hash = "analysis";
+  const openDossier = async (slug: string) => {
+    loadCanonicalDossier(await getCanonicalDossier(slug));
+    window.location.hash = `analysis/${slug}`;
   };
   const selectCompany = (company: CompanyKey) => {
     setSelectedCompany(company);
@@ -1647,40 +1661,36 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
             <div className="mt-6 grid items-center gap-8 lg:grid-cols-[1.12fr_0.88fr] lg:gap-14">
               <div>
                 <h1 data-testid="home-hero-heading" className="max-w-3xl text-[40px] font-semibold leading-[0.98] tracking-[-0.055em] sm:text-[54px] lg:text-[62px]">
-                  Follow the evidence behind an AI data center.
+                   Review the evidence behind major AI data-center projects.
                 </h1>
                 <p className="mt-5 max-w-xl text-[15px] leading-6 text-[#c4d0d6] sm:text-[17px]">
-                  Open the curated Stargate Abilene case and move from project context to sourced evidence in one click.
+                   Open a PostgreSQL-backed reviewed dossier. Source evidence, modeled economics, and unresolved disclosure gaps remain separate.
                 </p>
                 <button
                   data-testid="button-run-stargate"
                   type="button"
-                  onClick={() => openStargate("Oracle")}
+                  onClick={() => void openDossier("stargate-abilene")}
                   className="mt-7 inline-flex min-h-12 items-center justify-center gap-2 rounded-md bg-[#d4e86b] px-5 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.11em] text-[#122232] transition-transform hover:-translate-y-0.5 hover:bg-[#e3f18d] focus:outline-none focus:ring-2 focus:ring-[#d4e86b] focus:ring-offset-2 focus:ring-offset-[#0a1b2a]"
                 >
-                  Open the Stargate demo <ArrowRight aria-hidden="true" className="h-4 w-4" />
+                   Open Stargate Abilene <ArrowRight aria-hidden="true" className="h-4 w-4" />
                 </button>
                 <p className="mt-3 text-[10px] leading-4 text-[#9dafb8]">
-                  Curated public-source case · Oracle relationship · Abilene, Texas
+                  Reviewed dossier · evidence as of Sep 30, 2025 · project-level synthetic economics
                 </p>
               </div>
               <article className="rounded-xl border border-white/15 bg-[#102b3b]/95 p-5 shadow-2xl shadow-black/20 sm:p-6">
-                <div className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-[#d4e86b]">Conference walkthrough</div>
-                <h2 className="mt-2 text-[26px] font-semibold tracking-[-0.04em] text-white">Stargate Abilene</h2>
+                <div className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-[#d4e86b]">Reviewed dossiers</div>
+                <h2 className="mt-2 text-[26px] font-semibold tracking-[-0.04em] text-white">Choose a canonical case</h2>
                 <p className="mt-2 text-[12px] leading-5 text-[#c4d0d6]">
-                  Inspect the project brief, trace each classification to its source, and see which evidence gaps remain open.
+                  Each dossier opens the reviewed workbench directly. Kilby and El Mirage remain not modeled until approved project-specific scenarios exist.
                 </p>
-                <ol className="mt-5 grid gap-2 sm:grid-cols-3 lg:grid-cols-1">
-                  {["Frame the project", "Inspect the evidence", "Review the decision path"].map((label, index) => (
-                    <li key={label} className="flex items-center gap-3 rounded-lg border border-white/10 bg-[#0d2435] px-3 py-2.5 text-[11px] text-[#dce4e7]">
-                      <span className="font-mono text-[9px] font-bold text-[#d4e86b]">0{index + 1}</span>
-                      {label}
-                    </li>
+                <div className="mt-5 grid gap-2">
+                  {REVIEWED_DOSSIERS.map((dossier) => (
+                    <button key={dossier.slug} data-testid={`home-dossier-${dossier.slug}`} type="button" onClick={() => void openDossier(dossier.slug)} className="flex min-h-12 items-center justify-between gap-3 rounded-lg border border-white/10 bg-[#0d2435] px-3 py-2.5 text-left hover:border-[#d4e86b]">
+                      <span><span className="block text-[11px] font-semibold text-white">{dossier.name}</span><span className="mt-0.5 block text-[9px] text-[#9dafb8]">{dossier.location} · as of {dossier.asOfDate}</span></span>
+                      <span className="font-mono text-[8px] font-bold uppercase text-[#d4e86b]">{dossier.slug === "stargate-abilene" ? "Reviewed model" : "Not modeled"}</span>
+                    </button>
                   ))}
-                </ol>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <ClaimCitation claimId="stargate-initiative" dark />
-                  <ClaimCitation claimId="stargate-cancellation" dark />
                 </div>
               </article>
             </div>
@@ -1737,8 +1747,8 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
             sectionRef={companyExposureRef}
             onBack={() => setSelectedCompany(null)}
             onCurated={(project, company) => {
-              if (project.name.trim().toLowerCase() !== "stargate abilene") return;
-              openStargate(company);
+              const slug = canonicalSlug(project);
+              if (slug) void openDossier(slug);
             }}
             onResearch={(companyProject, company) => {
               const selection = toProjectSelectionContext(company, companyProject);

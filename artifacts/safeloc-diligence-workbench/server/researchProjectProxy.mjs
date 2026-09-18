@@ -1371,6 +1371,7 @@ function categoryReturnedDomains(sources = []) {
 function categorySourceMatches(category, source) {
   if (!category || !source) return false;
   if (source.searchDomain === category.categoryId) return true;
+  if (Array.isArray(source.categoryIds) && source.categoryIds.includes(category.categoryId)) return true;
   if (Array.isArray(source.supportedEvidenceIds)
     && source.supportedEvidenceIds.some((id) => category.evidenceIds.includes(id))) return true;
   if (category.categoryId !== "project-identity") return false;
@@ -2964,6 +2965,9 @@ function normalizeRetrievedSources(body, searchDomain = "project-identity", proj
           }
         : {}),
       ...(typeof source.exactProject === "boolean" ? { exactProject: source.exactProject } : {}),
+      ...(Array.isArray(source.categoryIds)
+        ? { categoryIds: [...new Set(source.categoryIds.filter((value) => typeof value === "string" && value.trim()).map((value) => value.trim()))].slice(0, 12) }
+        : {}),
       ...(typeof source.claimPassage === "string" ? { claimPassage: source.claimPassage } : {}),
       ...(Array.isArray(source.claimSupport) ? { claimSupport: source.claimSupport } : {}),
       ...(isJurisdictionallyExcludedSource({ url, title }, project)
@@ -2993,6 +2997,7 @@ function normalizeRetrievedSources(body, searchDomain = "project-identity", proj
         }
       : {}),
     ...(typeof source.exactProject === "boolean" ? { exactProject: source.exactProject } : {}),
+    ...(Array.isArray(source.categoryIds) ? { categoryIds: source.categoryIds.slice(0, 12) } : {}),
     relevanceNote: source.relevanceNote ?? null,
   }));
   result.sourceLedger = ledger;
@@ -4015,7 +4020,9 @@ async function runValidatedResearch(project, {
       openedGoogleDocuments.push({
         ...source,
         originalUrl,
-        canonicalUrl: canonicalizeSourceUrl(accessOutcome.canonicalUrl ?? accessOutcome.resolvedUrl ?? announcedCanonicalUrl) ?? announcedCanonicalUrl,
+        canonicalUrl: source.canonicalIdentityExplicit === true
+          ? announcedCanonicalUrl
+          : canonicalizeSourceUrl(accessOutcome.canonicalUrl ?? accessOutcome.resolvedUrl ?? announcedCanonicalUrl) ?? announcedCanonicalUrl,
         resolvedUrl: accessOutcome.resolvedUrl ?? accessOutcome.canonicalUrl ?? announcedCanonicalUrl,
         accessOutcome,
         documentAccessReused,

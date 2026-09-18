@@ -60,6 +60,35 @@ import {
   researchProjectCacheKey,
 } from "./researchProjectCache.mjs";
 
+function completedGoogleDiscovery(candidates, query = "fixture exact-project public records") {
+  return async () => ({
+    status: "completed",
+    provider: "google-gemini-grounding",
+    model: "gemini-3.8-flash",
+    queries: [query],
+    candidates: candidates.map((candidate) => ({
+      ...candidate,
+      ...(candidate.canonicalUrl && candidate.url && candidate.canonicalUrl !== candidate.url
+        ? { canonicalIdentityExplicit: true }
+        : {}),
+      categoryIds: candidate.categoryIds
+        ?? (candidate.searchDomain ? [candidate.searchDomain] : []),
+      referringQueries: candidate.referringQueries ?? [query],
+      sourceChannel: candidate.sourceChannel ?? "google-grounded-search",
+      origin: candidate.origin ?? "google-grounded-search",
+      discoveryOnly: true,
+    })),
+    groundingMetadataPresent: true,
+    groundingSearchExecuted: true,
+    usableCitationMetadataPresent: candidates.length > 0,
+    googleSearchCallCount: 1,
+    googleSearchResultCount: 1,
+    urlCitationCount: candidates.length,
+    citationCount: candidates.length,
+    providerRequestCount: 1,
+  });
+}
+
 function responseRecorder() {
   const headers = {};
   return {
@@ -1022,6 +1051,11 @@ test("enforces the 24-document ceiling in a provider and document fixture", asyn
   const directory = await mkdtemp(path.join(os.tmpdir(), "safeloc-research-physical-open-test-"));
   let providerCalls = 0;
   let documentCalls = 0;
+  const discoverySources = Array.from({ length: 30 }, (_, index) => ({
+    ...retrievedSource,
+    url: `https://fixture.example/rainier/${index}`,
+    title: `Project Rainier fixture document ${index}`,
+  }));
   const response = responseRecorder();
   await handleResearchProjectRequest(request({
     name: "Project Rainier",
@@ -1029,6 +1063,7 @@ test("enforces the 24-document ceiling in a provider and document fixture", asyn
     forceRefresh: true,
   }), response, {
     apiKey: "server-secret-for-test",
+    googleDiscoveryImpl: completedGoogleDiscovery(discoverySources),
     cache: createResearchProjectCache({ directory }),
     rateLimiter: { allow: () => ({ allowed: true }) },
     fetchImpl: async () => {
@@ -1779,6 +1814,7 @@ test("reuses provider-declared canonical receipts across concurrent categories w
     return {
       ...retrievedSource,
       url,
+      searchDomain: categoryId,
       ...(isCanonicalReceipt ? { canonicalUrl } : {}),
       title: `Project Atlas ${isCanonicalReceipt ? "official commission decision" : `${categoryId} fixture ${index}`}`,
       excerpt: "Project Atlas fixture passage.",
@@ -1804,6 +1840,16 @@ test("reuses provider-declared canonical receipts across concurrent categories w
     }
     return singleCallResponse(research, Array.from({ length: 10 }, (_, index) => categorySource(categoryId, index)));
   };
+  const discoverySources = [
+    "project-identity",
+    "grid",
+    "electricity",
+    "water",
+    "permitting-community",
+    "construction-capital",
+    "tenant-counterparty",
+    "climate-operational-hazard",
+  ].flatMap((categoryId) => Array.from({ length: 10 }, (_, index) => categorySource(categoryId, index)));
 
   await handleResearchProjectRequest(request({
     name: "Project Atlas",
@@ -1811,6 +1857,7 @@ test("reuses provider-declared canonical receipts across concurrent categories w
     forceRefresh: true,
   }), response, {
     apiKey: "server-secret-for-test",
+    googleDiscoveryImpl: completedGoogleDiscovery(discoverySources),
     cache: createResearchProjectCache({ directory }),
     rateLimiter: { allow: () => ({ allowed: true }) },
     fetchImpl: async (_url, init) => {
@@ -1912,6 +1959,30 @@ test("reuses one failed explicit canonical receipt across categories and counts 
         ...retrievedSource,
         url: `https://agency.gov/${categoryId}/atlas-decision`,
         canonicalUrl,
+        searchDomain: categoryId,
+        title: "Project Atlas blocked canonical decision",
+        excerpt: "Project Atlas fixture passage.",
+        claimPassage: "Project Atlas fixture passage.",
+        exactProject: true,
+      },
+      ...Array.from({ length: 2 }, (_, index) => ({
+        ...retrievedSource,
+        url: `https://plain.fixture/${categoryId}/atlas-${index}`,
+        searchDomain: categoryId,
+        title: `Project Atlas ${categoryId} plain fixture ${index}`,
+        excerpt: "Project Atlas fixture passage.",
+        claimPassage: "Project Atlas fixture passage.",
+        exactProject: true,
+      })),
+    ];
+    return singleCallResponse(research, sources);
+  };
+  const discoverySources = categoryLabels.flatMap(([categoryId]) => {
+    return [
+      {
+        ...retrievedSource,
+        url: `https://agency.gov/${categoryId}/atlas-decision`,
+        canonicalUrl,
         title: "Project Atlas blocked canonical decision",
         excerpt: "Project Atlas fixture passage.",
         claimPassage: "Project Atlas fixture passage.",
@@ -1926,14 +1997,14 @@ test("reuses one failed explicit canonical receipt across categories and counts 
         exactProject: true,
       })),
     ];
-    return singleCallResponse(research, sources);
-  };
+  });
   await handleResearchProjectRequest(request({
     name: "Project Atlas",
     location: "Taylor County, Texas",
     forceRefresh: true,
   }), response, {
     apiKey: "server-secret-for-test",
+    googleDiscoveryImpl: completedGoogleDiscovery(discoverySources),
     cache: createResearchProjectCache({ directory }),
     rateLimiter: { allow: () => ({ allowed: true }) },
     fetchImpl: async (_url, init) => {
@@ -1953,8 +2024,8 @@ test("reuses one failed explicit canonical receipt across categories and counts 
   const electricity = payload.researchAudit.categories.find((category) => category.categoryId === "electricity");
   const gridReceipt = grid.openedDocuments.find((document) => document.canonicalUrl === canonicalUrl);
   const electricityReceipt = electricity.openedDocuments.find((document) => document.canonicalUrl === canonicalUrl);
-  assert.equal(documentCalls, 7);
-  assert.equal(payload.researchCoverage.physicalOpensUsed, 7);
+  assert.equal(documentCalls, 6);
+  assert.equal(payload.researchCoverage.physicalOpensUsed, 6);
   assert.equal(gridReceipt.accessState, "blocked");
   assert.equal(gridReceipt.accessOutcome, "http-403");
   assert.equal(gridReceipt.reusedReceipt, false);
@@ -1984,6 +2055,7 @@ test("counts failed document receipts once before limiting later concurrent cate
   const sourceForCategory = (categoryId, index) => ({
     ...retrievedSource,
     url: `https://receipt.fixture/${categoryId}/document-${index}${index === 1 ? "-failed" : index === 2 ? "-blocked" : ""}`,
+    searchDomain: categoryId,
     title: `Project Atlas ${categoryId} receipt ${index}`,
     excerpt: "Project Atlas fixture passage.",
     claimPassage: "Project Atlas fixture passage.",
@@ -2009,6 +2081,8 @@ test("counts failed document receipts once before limiting later concurrent cate
     }
     return singleCallResponse(research, sources);
   };
+  const discoverySources = categoryLabels.flatMap(([categoryId]) =>
+    Array.from({ length: 10 }, (_, index) => sourceForCategory(categoryId, index)));
 
   await handleResearchProjectRequest(request({
     name: "Project Atlas",
@@ -2016,6 +2090,7 @@ test("counts failed document receipts once before limiting later concurrent cate
     forceRefresh: true,
   }), response, {
     apiKey: "server-secret-for-test",
+    googleDiscoveryImpl: completedGoogleDiscovery(discoverySources),
     cache: createResearchProjectCache({ directory }),
     rateLimiter: { allow: () => ({ allowed: true }) },
     fetchImpl: async (_url, init) => {
@@ -2864,6 +2939,12 @@ test("uses a dedicated non-evidence schema for project identity discovery", asyn
     forceRefresh: true,
   }), response, {
     apiKey: "server-secret-for-test",
+    googleDiscoveryImpl: completedGoogleDiscovery([{
+      ...retrievedSource,
+      url: "https://www.elpasotexas.gov/meta-el-paso",
+      title: "Meta El Paso project agreement",
+      exactProject: true,
+    }]),
     cache: createResearchProjectCache({ directory: await mkdtemp(path.join(os.tmpdir(), "safeloc-identity-schema-")) }),
     rateLimiter: { allow: () => ({ allowed: true }) },
     categoryIds: ["project-identity"],
@@ -2958,10 +3039,37 @@ test("retains and validates mapped sources from later categories after final con
     "Tenant and counterparty": "customer_concentration",
     "Climate and operational hazard": "site_hazard_exposure",
   };
+  const categoryIdByLabel = {
+    "Project identity": "project-identity",
+    Grid: "grid",
+    Electricity: "electricity",
+    Water: "water",
+    "Permitting and community": "permitting-community",
+    "Construction and capital": "construction-capital",
+    "Tenant and counterparty": "tenant-counterparty",
+    "Climate and operational hazard": "climate-operational-hazard",
+  };
+  const discoverySources = Object.keys(categoryEvidence).flatMap((label) => {
+    const evidenceId = categoryEvidence[label];
+    return Array.from({ length: 2 }, (_, index) => ({
+      ...retrievedSource,
+      url: `https://example.gov/${label.toLowerCase().replaceAll(" ", "-")}/source-${index + 1}`,
+      title: `Project Atlas ${label} filing`,
+      excerpt: "Project Atlas filing reports 42 exact project.",
+      claimPassage: "Project Atlas filing reports 42 exact project.",
+      claimSupport: evidenceId ? [{ evidenceId, values: [42] }] : [],
+      searchDomain: categoryIdByLabel[label],
+      exactProject: true,
+      facilityScope: "exact-project",
+      phaseScope: "exact-phase",
+      timePeriod: "2026",
+    }));
+  });
   let providerCalls = 0;
   const response = responseRecorder();
   await handleResearchProjectRequest(request({ name: "Ledger Atlas", location: "Texas", forceRefresh: true }), response, {
     apiKey: "server-secret-for-test",
+    googleDiscoveryImpl: completedGoogleDiscovery(discoverySources),
     cache: createResearchProjectCache({ directory }),
     fetchImpl: async (_url, init) => {
       providerCalls += 1;
@@ -2969,7 +3077,7 @@ test("retains and validates mapped sources from later categories after final con
       const prompt = payload.input?.[1]?.content ?? "";
       const label = Object.keys(categoryEvidence).find((candidate) => prompt.includes(`observed ${candidate} category attempt`)) ?? "Project identity";
       const evidenceId = categoryEvidence[label];
-      const sourceUrl = `https://example.gov/${label.toLowerCase().replaceAll(" ", "-")}/source-${providerCalls}`;
+      const sourceUrl = `https://example.gov/${label.toLowerCase().replaceAll(" ", "-")}/source-1`;
       const research = validResearchResponse();
       if (evidenceId) {
         const item = research.evidence.find((candidate) => candidate.id === evidenceId);

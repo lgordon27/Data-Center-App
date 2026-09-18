@@ -11,6 +11,11 @@ export function resolveGoogleGeminiModel(env = process.env) {
 export const GOOGLE_GEMINI_MODEL = resolveGoogleGeminiModel();
 export const GOOGLE_GROUNDED_DISCOVERY_REQUEST_LIMIT = 1;
 export const GOOGLE_GROUNDED_DISCOVERY_MAX_CANDIDATES = 80;
+export const GOOGLE_GROUNDED_PREFLIGHT_PROMPT = [
+  "Use Google Search before answering; do not answer from memory.",
+  "As of September 18, 2026, find the current official DataBank page that identifies its Dallas-area DFW data center or campus.",
+  "Return the official page URL and a short identification only. The application will trust only Google grounding metadata, not your prose.",
+].join("\n");
 
 const DISCOVERY_CATEGORIES = Object.freeze([
   "project-identity",
@@ -67,14 +72,19 @@ function groundingChunks(body) {
   );
 }
 
-function groundingQueries(body, parsed) {
-  const metadataQueries = (body?.candidates ?? []).flatMap((candidate) =>
-    Array.isArray(candidate?.groundingMetadata?.webSearchQueries)
-      ? candidate.groundingMetadata.webSearchQueries
+function groundingMetadata(body) {
+  return (body?.candidates ?? [])
+    .map((candidate) => candidate?.groundingMetadata)
+    .filter((metadata) => metadata && typeof metadata === "object");
+}
+
+function groundingQueries(body) {
+  const metadataQueries = groundingMetadata(body).flatMap((metadata) =>
+    Array.isArray(metadata?.webSearchQueries)
+      ? metadata.webSearchQueries
       : [],
   );
-  const declaredQueries = Array.isArray(parsed?.queries) ? parsed.queries : [];
-  return [...new Set([...metadataQueries, ...declaredQueries]
+  return [...new Set(metadataQueries
     .map((query) => normalizeText(query, 500))
     .filter(Boolean))].slice(0, 24);
 }
@@ -127,6 +137,7 @@ export function buildGoogleGroundedDiscoveryPrompt(project) {
   const operator = normalizeText(project?.knownData?.operator ?? project?.operator, 200) || "the stated operator";
   return [
     `Discover public sources for ${name} in ${location}, associated with ${operator}.`,
+    "You must call Google Search before answering; do not answer from memory.",
     "Use one bounded Google Search grounding request and return only discovery metadata.",
     `Cover these discovery areas in the query plan: ${DISCOVERY_CATEGORIES.join(", ")}.`,
     "The response must be JSON with this shape: {\"queries\":[string],\"citations\":[{\"url\":string,\"title\":string,\"publisher\":string|null,\"publishedAt\":string|null,\"categoryIds\":string[],\"queries\":string[]}]}.",
@@ -135,17 +146,38 @@ export function buildGoogleGroundedDiscoveryPrompt(project) {
   ].join("\n");
 }
 
-export function buildGoogleGroundedDiscoveryRequestBody(project, { model = GOOGLE_GEMINI_MODEL } = {}) {
+export function buildGoogleGroundedDiscoveryRequestBody(project, {
+  prompt = buildGoogleGroundedDiscoveryPrompt(project),
+  maxOutputTokens,
+} = {}) {
   return {
     contents: [{
       role: "user",
-      parts: [{ text: buildGoogleGroundedDiscoveryPrompt(project) }],
+      parts: [{ text: prompt }],
     }],
     tools: [{ google_search: {} }],
     generationConfig: {
-      responseMimeType: "application/json",
       temperature: 0,
+      ...(Number.isInteger(maxOutputTokens) && maxOutputTokens > 0 ? { maxOutputTokens } : {}),
     },
+  };
+}
+
+export function sanitizeGoogleGroundedRequest(endpoint, init = {}) {
+  let body = null;
+  try {
+    body = typeof init.body === "string" ? JSON.parse(init.body) : init.body ?? null;
+  } catch {
+    body = null;
+  }
+  return {
+    endpoint,
+    method: normalizeText(init.method, 20).toUpperCase() || "POST",
+    headers: {
+      accept: normalizeText(init.headers?.accept, 80) || null,
+      "content-type": normalizeText(init.headers?.["content-type"], 80) || null,
+    },
+    body,
   };
 }
 
@@ -156,7 +188,7 @@ export function parseGoogleGroundedDiscoveryResponse(body) {
     throw error;
   }
   const parsed = parseJsonText(responseText(body)) ?? {};
-  const queries = groundingQueries(body, parsed);
+  const queries = groundingQueries(body);
   const declared = declaredCitations(parsed);
   const sources = [];
   const seen = new Set();
@@ -169,10 +201,7 @@ export function parseGoogleGroundedDiscoveryResponse(body) {
   }
   for (const citation of declared) {
     const source = sourceFromCandidate(citation, queries, citation);
-    if (source && !seen.has(source.canonicalUrl)) {
-      seen.add(source.canonicalUrl);
-      sources.push(source);
-    } else if (source) {
+    if (source && seen.has(source.canonicalUrl)) {
       const existing = sources.find((candidate) => candidate.canonicalUrl === source.canonicalUrl);
       if (existing) {
         existing.title = existing.title === "Google-grounded public source" ? source.title : existing.title;
@@ -190,9 +219,38 @@ export function parseGoogleGroundedDiscoveryResponse(body) {
     queries,
     candidates: sources.slice(0, GOOGLE_GROUNDED_DISCOVERY_MAX_CANDIDATES),
     generatedSummaryIgnored: true,
-    groundingMetadataPresent: groundingChunks(body).length > 0,
+    groundingMetadataPresent: groundingMetadata(body).length > 0,
+    groundingSearchExecuted: queries.length > 0,
+    usableCitationMetadataPresent: sources.length > 0,
     citationCount: sources.length,
   };
+}
+
+export function assertGoogleGroundedPreflightResult(result) {
+  const reason = !result?.groundingMetadataPresent
+    ? "missing-grounding-metadata"
+    : !result?.groundingSearchExecuted
+      ? "missing-executed-query-metadata"
+      : !result?.usableCitationMetadataPresent || !Array.isArray(result?.candidates) || result.candidates.length === 0
+        ? "missing-usable-citation-metadata"
+        : null;
+  if (!reason) return result;
+  const error = new Error("Google Gemini returned HTTP success without proving a usable Google Search grounding call.");
+  error.name = "GoogleDiscoveryGroundingRequiredError";
+  error.researchErrorType = "google-grounding-not-proven";
+  error.providerDiagnostic = { status: 200, reason };
+  error.providerAttempt = {
+    provider: "google-gemini-grounding",
+    model: result?.model ?? GOOGLE_GEMINI_MODEL,
+    requestCount: GOOGLE_GROUNDED_DISCOVERY_REQUEST_LIMIT,
+    status: 200,
+    outcome: "failed",
+    queryCount: Array.isArray(result?.queries) ? result.queries.length : 0,
+    citationCount: Number.isInteger(result?.citationCount) ? result.citationCount : 0,
+    groundingMetadataPresent: result?.groundingMetadataPresent === true,
+    toolDeclarationTransmitted: true,
+  };
+  throw error;
 }
 
 export async function discoverGoogleGroundedProject({
@@ -201,6 +259,9 @@ export async function discoverGoogleGroundedProject({
   fetchImpl = fetch,
   signal,
   model = GOOGLE_GEMINI_MODEL,
+  prompt,
+  maxOutputTokens,
+  requireGrounding = false,
 } = {}) {
   if (!apiKey) {
     const error = new Error("Google Gemini grounding is not configured.");
@@ -209,18 +270,20 @@ export async function discoverGoogleGroundedProject({
     throw error;
   }
   const endpoint = `${GOOGLE_GEMINI_API_BASE_URL}/${encodeURIComponent(model)}:generateContent`;
+  const requestBody = buildGoogleGroundedDiscoveryRequestBody(project, { prompt, maxOutputTokens });
+  const requestInit = {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      "x-goog-api-key": apiKey,
+    },
+    body: JSON.stringify(requestBody),
+    signal,
+  };
   let response;
   try {
-    response = await fetchImpl(endpoint, {
-      method: "POST",
-      headers: {
-        accept: "application/json",
-        "content-type": "application/json",
-        "x-goog-api-key": apiKey,
-      },
-      body: JSON.stringify(buildGoogleGroundedDiscoveryRequestBody(project, { model })),
-      signal,
-    });
+    response = await fetchImpl(endpoint, requestInit);
   } catch (cause) {
     const error = new Error("Google Gemini grounding request failed.");
     error.name = cause?.name === "AbortError" ? "GoogleDiscoveryTimeoutError" : "GoogleDiscoveryProviderError";
@@ -263,14 +326,19 @@ export async function discoverGoogleGroundedProject({
       outcome: "failed",
       queryCount: 0,
       citationCount: 0,
+      groundingMetadataPresent: false,
+      toolDeclarationTransmitted: requestBody.tools?.[0]?.google_search != null,
     };
     throw error;
   }
-  const result = parseGoogleGroundedDiscoveryResponse(body);
-  return {
-    ...result,
+  const result = {
+    ...parseGoogleGroundedDiscoveryResponse(body),
     model,
+  };
+  const completed = {
+    ...result,
     providerRequestCount: GOOGLE_GROUNDED_DISCOVERY_REQUEST_LIMIT,
+    requestContract: sanitizeGoogleGroundedRequest(endpoint, requestInit),
     providerAttempt: {
       provider: "google-gemini-grounding",
       model,
@@ -279,6 +347,9 @@ export async function discoverGoogleGroundedProject({
       outcome: "completed",
       queryCount: result.queries.length,
       citationCount: result.citationCount,
+      groundingMetadataPresent: result.groundingMetadataPresent,
+      toolDeclarationTransmitted: requestBody.tools?.[0]?.google_search != null,
     },
   };
+  return requireGrounding ? assertGoogleGroundedPreflightResult(completed) : completed;
 }

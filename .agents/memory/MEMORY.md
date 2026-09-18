@@ -27,3 +27,4 @@
 - [IRR mathematical reason states](irr-mathematical-reason-states.md) — keep N/M explanations typed and separate from evidence confidence; preserve NPV, MOIC, and payback.
 - [Financial scenario hierarchy](financial-scenario-hierarchy.md) — synthetic current evidence is the stable recommendation basis; provider data remains an optional sensitivity.
 - [Generated validation exports](generated-validation-exports.md) — do not register mutable generated validation files as Library outputs; rehydration can conflict with atomic replacement.
+- [Research terminal outcomes](research-terminal-outcomes.md) — distinguish eligible, conclusive no-eligible, and technical incompleteness; identity receives first bounded open opportunity.

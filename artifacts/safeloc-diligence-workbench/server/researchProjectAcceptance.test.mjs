@@ -13,6 +13,11 @@ test("builds a diagnostic-only report with bounded live-run and retention fields
     liveRun: {
       statusCode: 200,
       payload: {
+        researchOutcome: {
+          state: "incomplete-technical-limitation",
+          eligibleEvidenceCount: 0,
+          reasonCodes: ["document-access-failure"],
+        },
         researchAudit: {
           runCorrelationId: "run-live-atlas",
           provider: "openai",
@@ -117,7 +122,7 @@ test("builds a diagnostic-only report with bounded live-run and retention fields
   assert.equal(report.diagnosticOnly, true);
   assert.equal(report.evidenceStatus, "not-evidence");
   assert.equal(report.run.provider, "openai");
-  assert.equal(report.run.status, "useful-completion");
+  assert.equal(report.run.status, "incomplete-technical-limitation");
   assert.equal(report.run.runId, "run-live-atlas");
   assert.equal(report.run.model, "gpt-4o");
   assert.equal(report.run.elapsedWithinDeadline, true);
@@ -324,13 +329,18 @@ test("attributes sparse category-scoped acceptance telemetry by category ID", ()
   assert.equal(report.categories.find((category) => category.categoryId === "grid").state, "Complete");
 });
 
-test("reports LIVE ACCEPTANCE BLOCKED when no eligible source reaches a visible finding", () => {
+test("reports complete no eligible evidence when discovery finishes without a governed finding", () => {
   const report = buildAcceptanceReport({
     project: { name: "Blocked Atlas", location: "Maricopa County, Arizona" },
     liveRun: {
       statusCode: 200,
       payload: {
-        researchStatus: "partial",
+        researchStatus: "completed",
+        researchOutcome: {
+          state: "complete-no-eligible-evidence",
+          eligibleEvidenceCount: 0,
+          reasonCodes: [],
+        },
         researchAudit: {
           runCorrelationId: "run-blocked-atlas",
           categories: [],
@@ -347,9 +357,9 @@ test("reports LIVE ACCEPTANCE BLOCKED when no eligible source reaches a visible 
     },
     failureRun: null,
   });
-  assert.equal(report.liveAcceptance.status, "LIVE ACCEPTANCE BLOCKED");
+  assert.equal(report.liveAcceptance.status, "Research complete — no eligible evidence found");
   assert.deepEqual(report.liveAcceptance.trace, []);
-  assert.match(report.liveAcceptance.reason, /eligible visible finding/i);
+  assert.match(report.liveAcceptance.reason, /governed eligibility/i);
 });
 
 test("traces the supported source mapping instead of the first attached source", () => {
@@ -359,6 +369,11 @@ test("traces the supported source mapping instead of the first attached source",
     liveRun: {
       statusCode: 200,
       payload: {
+        researchOutcome: {
+          state: "complete-with-eligible-evidence",
+          eligibleEvidenceCount: 1,
+          reasonCodes: [],
+        },
         evidence: [{
           id: "electricity_cost",
           value: 48,
@@ -389,12 +404,12 @@ test("traces the supported source mapping instead of the first attached source",
     },
     failureRun: null,
   });
-  assert.equal(report.liveAcceptance.status, "source-to-visible-finding");
+  assert.equal(report.liveAcceptance.status, "Research complete — eligible evidence found");
   assert.equal(report.liveAcceptance.trace[0].sourceUrl, supportedUrl);
   assert.equal(report.liveAcceptance.trace[0].sourceTitle, "Supported exact-project record");
 });
 
-test("records the complete Arizona source-to-visible-finding trace across URL aliases", () => {
+test("records the complete Arizona eligible-evidence trace across URL aliases", () => {
   const originalUrl = "https://azcc.gov/records/project-atlas";
   const finalUrl = "https://azcc.gov/records/project-atlas/decision";
   const passage = "The Arizona Corporation Commission decision identifies Project Atlas and approves 48 MW for the 2026 phase.";
@@ -469,7 +484,7 @@ test("records the complete Arizona source-to-visible-finding trace across URL al
   });
 
   const [trace] = report.liveAcceptance.trace;
-  assert.equal(report.liveAcceptance.status, "source-to-visible-finding");
+  assert.equal(report.liveAcceptance.status, "Research complete — eligible evidence found");
   assert.deepEqual(trace.observedQueries, ["observed Project Atlas Arizona interconnection query"]);
   assert.equal(trace.candidate.originalUrl, originalUrl);
   assert.equal(trace.physicalAccessReceipt.state, "accessible");
@@ -496,7 +511,7 @@ test("keeps provider failures diagnostic and explicit when no category audit is 
     generatedAt: "2026-09-08T10:00:00.000Z",
   });
 
-  assert.equal(report.run.status, "failed");
+  assert.equal(report.run.status, "incomplete-technical-limitation");
   assert.equal(report.run.provider, "openai");
   assert.equal(report.run.model, "gpt-4o");
   assert.equal(report.run.elapsedMs, 90_001);
@@ -595,7 +610,7 @@ test("does not attribute a failed refresh with retained cache to the current liv
     generatedAt: "2026-09-08T10:00:00.000Z",
   });
 
-  assert.equal(report.run.status, "failed");
+  assert.equal(report.run.status, "incomplete-technical-limitation");
   assert.equal(report.run.telemetryStatus, "historical-retained");
   assert.equal(report.run.failureType, "timeout");
   assert.equal(report.run.elapsedMs, 90_000);

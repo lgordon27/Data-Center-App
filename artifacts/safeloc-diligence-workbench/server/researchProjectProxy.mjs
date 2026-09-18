@@ -1447,6 +1447,8 @@ function buildResearchAudit({
     model: coverage.model ?? RESEARCH_PROJECT_MODEL,
     providerResponseId: responseId ?? coverage.providerResponseIds?.[0] ?? null,
     terminalState: coverage.terminalState ?? null,
+    terminalReasonCodes: Array.isArray(coverage.terminalReasonCodes) ? coverage.terminalReasonCodes.slice(0, 16) : [],
+    identityPhysicalOpenOpportunityReserved: coverage.identityPhysicalOpenOpportunityReserved === true,
     runCorrelationId,
     providerResponseIds: Array.isArray(coverage.providerResponseIds) ? coverage.providerResponseIds.filter(Boolean).slice(0, 16) : [],
     startedAt,
@@ -3441,7 +3443,9 @@ function classifyResearchFailure(error) {
     return { status: 502, type: "provider-request-budget", message: "Project research reached its provider-request ceiling; retry only if additional research is required." };
   }
   if (error?.name === "AbortError") return { status: 504, type: "timeout", message: "Project research reached its 90-second deadline; valid completed findings were retained and the run can be retried." };
-  if (error?.name === "ResearchParseError") return { status: 502, type: "malformed-response", message: "Project research provider returned malformed structured data; retry the affected research." };
+  if (error?.name === "ResearchParseError" || error?.researchErrorType === "malformed-response") {
+    return { status: 502, type: "malformed-response", message: "Project research provider returned malformed structured data; retry the affected research." };
+  }
   if (error?.name === "UpstreamRequestError") {
     if (error.upstreamStatus === 429) {
       const diagnostic = error.providerDiagnostic ?? { upstreamStatus: 429 };
@@ -3584,9 +3588,17 @@ const RESEARCH_OUTCOMES = Object.freeze({
   TECHNICAL: "incomplete-technical-limitation",
 });
 
+function classifyCanonicalResearchOutcome(eligibleEvidenceCount, technicalReasonCodes = []) {
+  if (technicalReasonCodes.length > 0) return RESEARCH_OUTCOMES.TECHNICAL;
+  return eligibleEvidenceCount > 0
+    ? RESEARCH_OUTCOMES.WITH_EVIDENCE
+    : RESEARCH_OUTCOMES.NO_ELIGIBLE;
+}
+
 function technicalReasonCodesForRun({ orchestration, deadlineState }) {
   const reasons = new Set();
   if (deadlineState.expired) reasons.add("deadline");
+  if (orchestration.lastError) reasons.add(classifyResearchFailure(orchestration.lastError).type);
   if (orchestration.toolCallBudgetExceeded) reasons.add("tool-call-budget");
   if (orchestration.physicalOpenBudgetExceeded) reasons.add("physical-open-budget");
   for (const execution of Object.values(orchestration.categoryExecutions)) {
@@ -3777,18 +3789,29 @@ async function runValidatedResearch(project, {
             throw error;
           }
         };
+        const validateCategoryResult = (result) => {
+          try {
+            parseResearchResponse(
+              result.research,
+              [],
+              new Date().toISOString().slice(0, 10),
+              result.coverage,
+              project.knownData ?? null,
+              category?.evidenceIds ?? [],
+            );
+          } catch (error) {
+            if (error instanceof Error) {
+              error.name = "ResearchParseError";
+              error.researchErrorType = "malformed-response";
+            }
+            throw error;
+          }
+        };
         try {
           categoryResult = await requestCategory(activeCategory);
           categoryResult.requestCount = providerRequestCount;
           categoryResult.coverage.toolCallCount = observedToolCallCount;
-          parseResearchResponse(
-            categoryResult.research,
-            [],
-            new Date().toISOString().slice(0, 10),
-            categoryResult.coverage,
-            project.knownData ?? null,
-            category?.evidenceIds ?? [],
-          );
+          validateCategoryResult(categoryResult);
         } catch (error) {
           if (
             attempt === "primary"
@@ -3810,14 +3833,7 @@ async function runValidatedResearch(project, {
             });
             categoryResult.requestCount = providerRequestCount;
             categoryResult.coverage.toolCallCount = observedToolCallCount;
-            parseResearchResponse(
-              categoryResult.research,
-              [],
-              new Date().toISOString().slice(0, 10),
-              categoryResult.coverage,
-              project.knownData ?? null,
-              category?.evidenceIds ?? [],
-            );
+            validateCategoryResult(categoryResult);
           } else {
             if (error?.name === "ResearchParseError") {
               error.schemaErrors = [error.message];
@@ -4174,11 +4190,7 @@ async function runValidatedResearch(project, {
         project.knownData,
       );
       const eligibleEvidenceCount = parsed.evidence.filter((item) => item.eligibleForModel === true).length;
-      const canonicalOutcome = technicalReasonCodes.length
-        ? RESEARCH_OUTCOMES.TECHNICAL
-        : eligibleEvidenceCount > 0
-          ? RESEARCH_OUTCOMES.WITH_EVIDENCE
-          : RESEARCH_OUTCOMES.NO_ELIGIBLE;
+      const canonicalOutcome = classifyCanonicalResearchOutcome(eligibleEvidenceCount, technicalReasonCodes);
       parsed.researchOutcome = {
         state: canonicalOutcome,
         eligibleEvidenceCount,
@@ -4189,8 +4201,21 @@ async function runValidatedResearch(project, {
       parsed.researchAudit.candidateLineage = candidateLineageForRun(parsed, orchestration);
       parsed.researchStatus = canonicalOutcome === RESEARCH_OUTCOMES.TECHNICAL ? researchStatus : "completed";
       if (canonicalOutcome === RESEARCH_OUTCOMES.TECHNICAL) {
+        const primaryTechnicalReason = technicalReasonCodes[0] ?? "upstream";
+        const malformedResponseObserved = technicalReasonCodes.includes("malformed-response")
+          || (
+            orchestration.categoryResults.length === 0
+            && orchestration.lastError?.name === "ResearchParseError"
+          )
+          || Object.values(orchestration.categoryExecutions).some((execution) =>
+            execution?.providerFailureType === "malformed-response"
+            || /invalid json|structured|schema|missing required/i.test(execution?.providerFailure ?? ""));
         parsed.researchError = {
-          type: deadlineState.expired ? "timeout" : "upstream",
+          type: deadlineState.expired || technicalReasonCodes.includes("deadline")
+            ? "timeout"
+            : primaryTechnicalReason === "malformed-response" || malformedResponseObserved
+              ? "malformed-response"
+              : "upstream",
           message: "A technical limitation prevented conclusive research. Retained findings remain proposals only.",
         };
       }
@@ -4357,6 +4382,12 @@ export async function handleResearchProjectRequest(
     sendJson(res, failure.status, {
       error: failure.message,
       errorType: failure.type,
+      researchStatus: failure.type === "timeout" ? "timed-out" : "failed",
+      researchOutcome: {
+        state: RESEARCH_OUTCOMES.TECHNICAL,
+        eligibleEvidenceCount: 0,
+        reasonCodes: [failure.type],
+      },
       ...(failure.providerDiagnostic ? { providerDiagnostic: failure.providerDiagnostic } : {}),
     });
   } finally {
@@ -4417,6 +4448,7 @@ export {
   createResearchProjectRateLimiter,
   createResearchProviderGate,
   classifyResearchFailure,
+  classifyCanonicalResearchOutcome,
   prioritizeResearchSources,
   sourcePriorityApplied,
   runValidatedResearch,

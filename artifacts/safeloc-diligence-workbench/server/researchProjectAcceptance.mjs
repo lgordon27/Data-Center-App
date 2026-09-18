@@ -678,7 +678,23 @@ export function buildAcceptanceReport({ project, liveRun, failureRun, generatedA
     ? result.proposedInputs.length
     : eligibleEvidenceCount;
   const acceptedCount = Array.isArray(result?.acceptedModelInputs) ? result.acceptedModelInputs.length : 0;
-  const canonicalOutcome = result?.researchOutcome?.state ?? audit?.terminalState ?? null;
+  const legacyTechnicalBlocker = retainedCacheResponse
+    || liveRun.statusCode < 200
+    || liveRun.statusCode >= 300
+    || ["partial", "timed-out", "failed", "cancelled"].includes(result?.researchStatus)
+    || reportCategories.some((category) =>
+      ["Provider failure", "Timed out", "Not searched"].includes(category.state)
+      || (category.accessLimitations ?? []).length > 0
+      || ["physical-open-budget", "tool-call-budget", "provider-request-budget", "deadline", "provider-failure"].includes(category.followUpSkipReason))
+    || source.normalizedCandidates.some((candidate) =>
+      candidate.accessOutcome?.state && candidate.accessOutcome.state !== "accessible");
+  const canonicalOutcome = result?.researchOutcome?.state
+    ?? audit?.terminalState
+    ?? (legacyTechnicalBlocker
+      ? "incomplete-technical-limitation"
+      : visibleFindingTrace.length
+        ? "complete-with-eligible-evidence"
+        : "complete-no-eligible-evidence");
   const terminalStatus = retainedCacheResponse || liveRun.statusCode < 200 || liveRun.statusCode >= 300
     ? "incomplete-technical-limitation"
     : canonicalOutcome ?? "incomplete-technical-limitation";
@@ -930,7 +946,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
         categoryGaps: report.categoryGaps,
         failureRetention: report.failureRetention,
       }, null, 2));
-      if (report.run.status !== "useful-completion") process.exitCode = 1;
+      if (report.run.status === "incomplete-technical-limitation") process.exitCode = 1;
     })
     .catch((error) => {
       console.error(error instanceof Error ? error.message : "Live research acceptance run failed.");

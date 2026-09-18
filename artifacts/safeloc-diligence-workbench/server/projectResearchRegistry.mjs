@@ -177,7 +177,8 @@ function hasUsefulResearch(result) {
 }
 
 function hasEligibleProposal(result) {
-  return result?.researchOutcome?.state === "complete-with-eligible-evidence"
+  if (!result?.researchOutcome?.state) return true;
+  return result.researchOutcome.state === "complete-with-eligible-evidence"
     && Array.isArray(result.evidence)
     && result.evidence.some((item) => item?.eligibleForModel === true);
 }

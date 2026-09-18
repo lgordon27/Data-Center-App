@@ -437,8 +437,7 @@
       "originatingCompany": "Oracle"
     }
   }
-]
-[
+,
   {
     "slug": "microsoft-el-mirage",
     "name": "Microsoft El Mirage datacenter campus",

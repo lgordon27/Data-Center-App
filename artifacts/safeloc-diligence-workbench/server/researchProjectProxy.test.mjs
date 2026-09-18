@@ -50,6 +50,7 @@ import {
   runValidatedResearch,
   researchProjectWithWebSearch,
   classifyResearchFailure,
+  classifyCanonicalResearchOutcome,
 } from "./researchProjectProxy.mjs";
 import {
   classifyResearchCacheAge,
@@ -813,7 +814,7 @@ test("stops the category schedule once all governed identifiers are resolved", a
   assert.equal(run.resolvedEvidenceIds.length, RESEARCH_EVIDENCE_IDS.length);
 });
 
-test("issues every concurrent primary before awaiting category retrieval and preserves failures", async () => {
+test("finishes identity first, then issues remaining primaries concurrently and preserves failures", async () => {
   let active = 0;
   let peak = 0;
   let release;
@@ -824,10 +825,13 @@ test("issues every concurrent primary before awaiting category retrieval and pre
     {
       concurrent: true,
       retrieveCategory: async ({ categoryId }) => {
+        started.push(categoryId);
+        if (categoryId === "project-identity") {
+          return { candidates: [], observedQueries: ["observed project-identity"], toolCallCount: 1 };
+        }
         active += 1;
         peak = Math.max(peak, active);
-        started.push(categoryId);
-        if (started.length === 3) release();
+        if (started.length === 8) release();
         await gate;
         active -= 1;
         if (categoryId === "water") throw new Error("isolated category failure");
@@ -836,14 +840,15 @@ test("issues every concurrent primary before awaiting category retrieval and pre
     },
   );
   const run = await runPromise;
-  assert.equal(peak, 8);
+  assert.equal(started[0], "project-identity");
+  assert.equal(peak, 7);
   assert.equal(run.providerRequests, 8);
   assert.equal(run.categoryExecutions.water.state, "Provider failure");
   assert.equal(Object.keys(run.categoryExecutions).length, 8);
   assert.ok(run.toolCalls <= 32);
 });
 
-test("all primary provider opportunities precede document work", async () => {
+test("identity document work precedes remaining primary provider opportunities", async () => {
   const events = [];
   let issued = 0;
   let releaseProviders;
@@ -854,8 +859,12 @@ test("all primary provider opportunities precede document work", async () => {
       concurrent: true,
       retrieveCategory: async ({ categoryId }) => {
         events.push(`provider:${categoryId}`);
+        if (categoryId === "project-identity") {
+          events.push(`document:${categoryId}`);
+          return { candidates: [], providerRequestCount: 1 };
+        }
         issued += 1;
-        if (issued === 8) releaseProviders();
+        if (issued === 7) releaseProviders();
         await providersIssued;
         events.push(`document:${categoryId}`);
         return { candidates: [], providerRequestCount: 1 };
@@ -863,7 +872,8 @@ test("all primary provider opportunities precede document work", async () => {
     },
   );
   assert.equal(run.providerRequests, 8);
-  assert.equal(events.slice(0, 8).every((event) => event.startsWith("provider:")), true);
+  assert.deepEqual(events.slice(0, 2), ["provider:project-identity", "document:project-identity"]);
+  assert.equal(events.slice(2, 9).every((event) => event.startsWith("provider:")), true);
   assert.ok(Object.values(run.categoryExecutions).every((execution) => execution.issuedPrimaryQuery));
 });
 
@@ -1707,6 +1717,7 @@ test("reuses provider-declared canonical receipts across concurrent categories w
   const response = responseRecorder();
   let providerCalls = 0;
   let documentCalls = 0;
+  const openedUrls = [];
   const categorySource = (categoryId, index) => {
     const isCanonicalReceipt = index === 0 && ["grid", "electricity"].includes(categoryId);
     const url = isCanonicalReceipt
@@ -1764,8 +1775,9 @@ test("reuses provider-declared canonical receipts across concurrent categories w
       ].find(([, label]) => prompt.includes(`observed ${label} category attempt`))?.[0] ?? "project-identity";
       return responseForCategory(categoryId);
     },
-    documentFetchImpl: async () => {
+    documentFetchImpl: async (url) => {
       documentCalls += 1;
+      openedUrls.push(String(url));
       await new Promise((resolve) => setTimeout(resolve, 2));
       return new Response("<html><body>Project Atlas fixture passage.</body></html>", {
         status: 200,
@@ -1776,6 +1788,8 @@ test("reuses provider-declared canonical receipts across concurrent categories w
 
   const payload = response.json();
   assert.equal(response.statusCode, 200);
+  assert.match(openedUrls[0], /project-identity/);
+  assert.equal(response.json().researchAudit.identityPhysicalOpenOpportunityReserved, true);
   assert.ok(providerCalls >= 8);
   assert.equal(documentCalls, RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens);
   assert.equal(payload.researchCoverage.physicalOpensUsed, RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens);
@@ -1801,6 +1815,21 @@ test("reuses provider-declared canonical receipts across concurrent categories w
     .flatMap((category) => category.openedDocuments)
     .filter((document) => document.reusedReceipt === false && document.attempted === true)
     .every((document) => document.opened === true));
+});
+
+test("classifies exactly three canonical research outcomes", () => {
+  assert.equal(
+    classifyCanonicalResearchOutcome(1, []),
+    "complete-with-eligible-evidence",
+  );
+  assert.equal(
+    classifyCanonicalResearchOutcome(0, []),
+    "complete-no-eligible-evidence",
+  );
+  assert.equal(
+    classifyCanonicalResearchOutcome(3, ["provider-rate-limit"]),
+    "incomplete-technical-limitation",
+  );
 });
 
 test("reuses one failed explicit canonical receipt across categories and counts one physical open", async () => {
@@ -2677,7 +2706,17 @@ test("uses a dedicated non-evidence schema for project identity discovery", asyn
     categoryIds: ["project-identity"],
     fetchImpl: async (_url, init) => {
       providerBody = JSON.parse(init.body);
-      return singleCallResponse(validResearchResponse(), [{
+      const fixture = validResearchResponse();
+      return singleCallResponse({
+        projectSummary: fixture.projectSummary,
+        identityAssessment: {
+          exactProjectIdentityEstablished: true,
+          matchedName: "Meta El Paso Data Center",
+          matchedLocation: "El Paso County, Texas",
+          matchedOperator: "Meta",
+          reason: "The official agreement identifies the project, location, and operator.",
+        },
+      }, [{
         ...retrievedSource,
         url: "https://www.elpasotexas.gov/meta-el-paso",
         title: "Meta El Paso project agreement",
@@ -2737,10 +2776,11 @@ test("enforces per-category and run-wide candidate caps before document access",
   });
   assert.equal(response.statusCode, 200);
   assert.equal(
-    documentFetches,
-    RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens,
-    "concurrent categories must stop at the shared physical-document ceiling",
+    documentFetches <= RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens,
+    true,
+    "candidate access must not exceed the shared physical-document ceiling",
   );
+  assert.equal(documentFetches, RESEARCH_RUN_BUDGET.maxCandidatesPerCategory);
 });
 
 test("retains and validates mapped sources from later categories after final containment", async () => {
@@ -3212,6 +3252,6 @@ test("returns specific safe quota, authentication, parse, and timeout errors", a
   });
   assert.equal(timeoutResponse.statusCode, 200);
   assert.equal(timeoutResponse.json().researchStatus, "partial");
-  assert.equal(timeoutResponse.json().researchError.type, "malformed-response");
+  assert.equal(timeoutResponse.json().researchError.type, "timeout");
   assert.equal(timeoutResponse.json().evidence.length, 16);
 });

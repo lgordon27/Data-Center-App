@@ -57,6 +57,35 @@ test.describe("stock-first company exposure flow", () => {
     await expect.poll(() => directoryRequests.length).toBeGreaterThan(1);
   });
 
+  test("projects canonical identity over stale metadata for reviewed directory rows", async ({ page }) => {
+    await page.unroute("**/api/directory**");
+    await page.route("**/api/directory**", (route) => route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...directoryResponse,
+        facilities: [{
+          ...directoryResponse.facilities[0],
+          id: "provider-project-kilby",
+          name: "Stale Kilby provider name",
+          city: "Atlanta",
+          county: "Fulton",
+          state: "GA",
+          directoryDisposition: "canonical",
+          canonicalProjectId: "project-kilby",
+        }],
+      }),
+    }));
+
+    await page.goto("/#directory");
+    const record = page.getByTestId("compute-atlas-record-provider-project-kilby");
+    await expect(record).toContainText("Project Kilby");
+    await expect(record).toContainText("Reeves County, West Texas");
+    await expect(record).not.toContainText("Stale Kilby provider name");
+    await expect(record).not.toContainText("Atlanta, Fulton County, GA");
+    await expect(record).toHaveAccessibleName(/Project Kilby, Reeves County, West Texas/i);
+  });
+
   test("opens alternate-project actions within the interaction budget without directory work", async ({ page }) => {
     const directoryRequests: string[] = [];
     page.on("request", (request) => {
@@ -163,6 +192,8 @@ test.describe("stock-first company exposure flow", () => {
     await expect(page.getByTestId("company-summary-source-backed")).toContainText("2");
     await expect(page.getByTestId("company-summary-discovery")).toContainText("1");
     await expect(page.getByTestId("company-project-evidence-project-kilby")).toHaveText("Source-backed");
+    await expect(page.getByTestId("company-project-project-kilby")).toContainText("Reeves County, West Texas");
+    await expect(page.getByTestId("company-project-microsoft-el-mirage")).toContainText("CenterPoint Logistics Park, southern El Mirage, Maricopa County, Arizona");
     await expect(page.getByTestId("company-project-evidence-project-rainier-microsoft-wi")).toHaveText("Discovery match");
     await page.getByTestId("company-project-open-project-kilby").click();
     await expect(page).toHaveURL(/#analysis\/project-kilby$/);

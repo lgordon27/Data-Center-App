@@ -10,6 +10,11 @@ import {
   type DirectoryStatsResponse,
 } from "@/services/directoryService";
 import { createDefaultAssumptionResearch, type CustomResearchResponse } from "@/services/researchProjectService";
+import { listCanonicalDossiers, type CanonicalDossierSummary } from "@/services/canonicalDossierService";
+import {
+  canonicalDisplayIdentityForSlug,
+  type CanonicalDisplayIdentity,
+} from "@/services/canonicalDossierIdentity";
 
 declare global {
   interface Window {
@@ -68,20 +73,28 @@ function isCanonical(facility: DirectoryFacility) {
 }
 
 function DirectoryRecord({
-  facility, onCurated, onResearch,
+  facility, canonicalIdentity, onCurated, onResearch,
 }: {
   facility: DirectoryFacility;
+  canonicalIdentity: CanonicalDisplayIdentity | null;
   onCurated: () => void;
   onResearch: () => void;
 }) {
+  const reviewed = isCanonical(facility);
+  const displayName = reviewed
+    ? canonicalIdentity?.name ?? "Reviewed dossier identity unavailable"
+    : facility.name;
+  const displayLocation = reviewed
+    ? canonicalIdentity?.location ?? "Canonical location unavailable"
+    : locationLabel(facility);
   return (
-    <article data-testid={`compute-atlas-record-${facility.id}`} className="rounded-lg border border-white/15 bg-[#102b3b] p-4">
+    <article data-testid={`compute-atlas-record-${facility.id}`} aria-label={`${displayName}, ${displayLocation}`} className="rounded-lg border border-white/15 bg-[#102b3b] p-4">
       <div className="grid gap-3 lg:grid-cols-[minmax(220px,1.35fr)_minmax(190px,1fr)_120px_120px_minmax(145px,auto)] lg:items-center">
         <div className="flex min-w-0 items-start gap-2">
           <Building2 aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#d4e86b]" />
-           <div className="min-w-0"><h3 className="truncate text-[14px] font-semibold text-white">{facility.name}</h3><p className="mt-1 truncate text-[10px] text-[#9dafb8]">{facility.operator}</p>{facility.directoryDisposition === "unverified-related" && <span data-testid={`compute-atlas-relationship-${facility.id}`} className="mt-1 inline-block font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#f1cb8b]">Relationship unverified</span>}</div>
+            <div className="min-w-0"><h3 className="truncate text-[14px] font-semibold text-white">{displayName}</h3><p className="mt-1 truncate text-[10px] text-[#9dafb8]">{facility.operator}</p>{facility.directoryDisposition === "unverified-related" && <span data-testid={`compute-atlas-relationship-${facility.id}`} className="mt-1 inline-block font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#f1cb8b]">Relationship unverified</span>}</div>
         </div>
-        <div className="flex min-w-0 items-start gap-2 text-[11px] text-[#c4d0d6]"><MapPin aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#f5ddd5]" /><span className="truncate">{locationLabel(facility)}</span></div>
+        <div className="flex min-w-0 items-start gap-2 text-[11px] text-[#c4d0d6]"><MapPin aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#f5ddd5]" /><span className="truncate">{displayLocation}</span></div>
         <div><div className="font-mono text-[8px] uppercase text-[#718894]">Capacity</div><div className="mt-1 font-mono text-[12px] font-bold text-[#d4e86b]">{facility.capacityMW === null ? "Undisclosed" : `${facility.capacityMW.toLocaleString()} MW`}</div></div>
         <div><div className="font-mono text-[8px] uppercase text-[#718894]">Status</div><span className="mt-1 inline-flex rounded-full border border-[#8dc8e8]/40 px-2 py-1 font-mono text-[9px] font-bold uppercase text-[#b9e1f2]">{statusLabel(facility.status)}</span></div>
         <div className="flex flex-wrap gap-2 lg:justify-end">
@@ -106,6 +119,7 @@ export default function DirectoryRoute({
   const [directory, setDirectory] = useState<DirectoryResponse | null>(null);
   const [stats, setStats] = useState<DirectoryStatsResponse | null>(null);
   const [facilities, setFacilities] = useState<DirectoryFacility[]>([]);
+  const [canonicalDossiers, setCanonicalDossiers] = useState<CanonicalDossierSummary[]>([]);
   const [totalMatching, setTotalMatching] = useState(0);
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -144,6 +158,14 @@ export default function DirectoryRoute({
   useEffect(() => {
     let active = true;
     void fetchDirectoryStats().then((response) => { if (active) setStats(response); }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void listCanonicalDossiers()
+      .then((dossiers) => { if (active) setCanonicalDossiers(dossiers); })
+      .catch(() => undefined);
     return () => { active = false; };
   }, []);
 
@@ -207,7 +229,7 @@ export default function DirectoryRoute({
           <div data-testid="compute-atlas-result-count" className="mt-5 font-mono text-[10px] uppercase text-[#9dafb8]">Showing {facilities.length} of {totalMatching} matching · {total} total</div>
           {freshness.caution && <div data-testid="compute-atlas-retained-warning" role="alert" className="mt-4 flex gap-2 rounded border border-[#f1cb8b] p-3 text-[11px] text-[#ffe0a9]"><TriangleAlert aria-hidden="true" className="h-4 w-4" />Retained directory data is nearing its refresh window.</div>}
           {companyFilter && <p className="mt-2 text-[10px] text-[#8299a5]">ETF context: {contextFunds.join(", ") || "No mapped fund context"}. This is market exposure context, not facility evidence.</p>}
-          <div data-testid="compute-atlas-results" className="mt-4 space-y-2">{facilities.length === 0 ? <div data-testid="compute-atlas-empty" className="rounded border border-white/15 p-8 text-center text-[#b9c5c9]">No facilities match these filters.</div> : facilities.map((facility) => <DirectoryRecord key={facility.id} facility={facility} onCurated={() => onCurated(facility.canonicalProjectId!)} onResearch={() => research(facility)} />)}</div>
+          <div data-testid="compute-atlas-results" className="mt-4 space-y-2">{facilities.length === 0 ? <div data-testid="compute-atlas-empty" className="rounded border border-white/15 p-8 text-center text-[#b9c5c9]">No facilities match these filters.</div> : facilities.map((facility) => <DirectoryRecord key={facility.id} facility={facility} canonicalIdentity={canonicalDisplayIdentityForSlug(canonicalDossiers, facility.canonicalProjectId)} onCurated={() => onCurated(facility.canonicalProjectId!)} onResearch={() => research(facility)} />)}</div>
            {nextOffset !== null && facilities.length < totalMatching && <button data-testid="compute-atlas-load-more" type="button" disabled={loadingMore} onClick={() => void loadMore()} className="mt-4 min-h-11 w-full rounded border border-white/20 text-[#b9e1f2]">{loadingMore ? "Loading more facilities…" : `Show next ${Math.min(PAGE_SIZE, totalMatching - facilities.length)} facilities`}</button>}
           <div data-testid="compute-atlas-attribution" className="mt-6 border-t border-white/10 pt-4 text-[10px] text-[#8299a5]">Directory metadata by <a href="https://compute-atlas.com" target="_blank" rel="noreferrer" className="underline">Compute Atlas</a>, CC BY 4.0. {sourceLabel(directory)} is shown explicitly.</div>
         </>}

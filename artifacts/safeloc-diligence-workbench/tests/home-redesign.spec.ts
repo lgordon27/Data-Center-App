@@ -24,6 +24,46 @@ test.describe("compact conference Home", () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   });
 
+  test("uses canonical dossier identity, coverage, dates, and routes for all reviewed cards", async ({ page }) => {
+    const dossiers = [
+      {
+        slug: "stargate-abilene",
+        name: "Stargate Abilene",
+        location: "Abilene, Taylor County, Texas",
+        date: "2025-09-30",
+        modelState: "Reviewed model",
+      },
+      {
+        slug: "project-kilby",
+        name: "Project Kilby",
+        location: "Reeves County, West Texas",
+        date: "2026-06-22",
+        modelState: "Not modeled",
+      },
+      {
+        slug: "microsoft-el-mirage",
+        name: "Microsoft El Mirage datacenter campus",
+        location: "CenterPoint Logistics Park, southern El Mirage, Maricopa County, Arizona",
+        date: "2019-07-30",
+        modelState: "Not modeled",
+      },
+    ] as const;
+
+    for (const dossier of dossiers) {
+      const card = page.getByTestId(`home-dossier-${dossier.slug}`);
+      await expect(card).toContainText(dossier.name);
+      await expect(card).toContainText(dossier.location);
+      await expect(card).toContainText(dossier.date);
+      await expect(card).toContainText(dossier.modelState);
+      await expect(page.getByTestId(`home-dossier-coverage-${dossier.slug}`)).toHaveText("material gaps");
+      await expect(card).toHaveAccessibleName(new RegExp(`${dossier.name}.*${dossier.date}.*material-gaps`, "i"));
+      await card.click();
+      await expect(page).toHaveURL(new RegExp(`#analysis/${dossier.slug}$`));
+      await expect(page.getByTestId("conference-summary")).toContainText(dossier.location);
+      await page.goto("/#home");
+    }
+  });
+
   test("labels custom research Beta and reveals all secondary exploration paths on request", async ({ page }) => {
     const exploration = page.getByTestId("home-explore-panel");
     await expect(exploration).toHaveAttribute("open", "");

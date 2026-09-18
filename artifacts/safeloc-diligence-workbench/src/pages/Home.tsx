@@ -51,22 +51,18 @@ import { trackEvent } from "@/services/analytics";
 import { ProviderQueueSnapshot } from "@/components/ProviderQueueSnapshot";
 import { Footer } from "@/components/Footer";
 import { IRRReasonNote, formatIRR } from "@/components/Shell";
-import { getCanonicalDossier } from "@/services/canonicalDossierService";
+import {
+  getCanonicalDossier,
+  listCanonicalDossiers,
+  type CanonicalDossierSummary,
+} from "@/services/canonicalDossierService";
+import {
+  canonicalSlugForProject,
+  orderedCanonicalDisplayIdentities,
+  projectWithCanonicalDisplayIdentity,
+} from "@/services/canonicalDossierIdentity";
 
 type HomeRoute = "directory" | "how-it-works" | "value-chain";
-
-const REVIEWED_DOSSIERS = [
-  { slug: "stargate-abilene", name: "Stargate Abilene", location: "Taylor County, Texas", company: "Oracle", asOfDate: "2025-09-30" },
-  { slug: "project-kilby", name: "Project Kilby", location: "Atlanta, Georgia", company: "NVIDIA", asOfDate: "2026-06-22" },
-  { slug: "microsoft-el-mirage", name: "Microsoft El Mirage", location: "El Mirage, Arizona", company: "Microsoft", asOfDate: "2019-07-30" },
-] as const;
-
-function canonicalSlug(project: CompanyProject) {
-  if (project.id === "project-kilby" || project.id === "microsoft-el-mirage") return project.id;
-  return project.kind === "curated" && project.name.trim().toLowerCase() === "stargate abilene"
-    ? "stargate-abilene"
-    : null;
-}
 
 const homeEntryPoints = [
   { id: "value-chain", title: "The AI Chain", subtitle: "Trace the infrastructure chain from chips to portfolios.", href: "#value-chain", icon: Network, accent: "blue" },
@@ -586,6 +582,7 @@ function CompanyProjectCard({
 function CompanyExposure({
   company,
   facilities,
+  canonicalDossiers = [],
   directoryStatus = "ready",
   onBack,
   onCurated,
@@ -594,6 +591,7 @@ function CompanyExposure({
 }: {
   company: CompanyKey;
   facilities: DirectoryFacility[];
+  canonicalDossiers?: CanonicalDossierSummary[];
   directoryStatus?: "idle" | "loading" | "ready" | "unavailable";
   onBack: () => void;
   onCurated: (project: CompanyProject, company: CompanyKey) => void;
@@ -602,7 +600,8 @@ function CompanyExposure({
 }) {
   const profile = profileForCompany(company);
   const provenance = getCompanyExposureProvenance(company);
-  const projects = companyProjects(company, facilities);
+  const projects = companyProjects(company, facilities)
+    .map((project) => projectWithCanonicalDisplayIdentity(project, canonicalDossiers));
   const summary = projectSummary(projects);
   return (
     <section ref={sectionRef} tabIndex={-1} data-testid="company-exposure-view" aria-labelledby="company-exposure-heading" className="border-y border-[#d9e0e4] bg-[#f1f5f3] px-5 py-9 text-[#122232] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#255bb7] sm:px-8 md:py-12 xl:px-10">
@@ -1595,7 +1594,23 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
   const [selectedCompany, setSelectedCompany] = useState<CompanyKey | null>(initialCompany);
   const [homeDirectoryFacilities, setHomeDirectoryFacilities] = useState<DirectoryFacility[]>([]);
   const [homeDirectoryStatus, setHomeDirectoryStatus] = useState<"idle" | "loading" | "ready" | "unavailable">("idle");
+  const [canonicalDossiers, setCanonicalDossiers] = useState<CanonicalDossierSummary[]>([]);
+  const [canonicalDossierStatus, setCanonicalDossierStatus] = useState<"loading" | "ready" | "unavailable">("loading");
   const companyExposureRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    let active = true;
+    void listCanonicalDossiers()
+      .then((dossiers) => {
+        if (!active) return;
+        setCanonicalDossiers(dossiers);
+        setCanonicalDossierStatus("ready");
+      })
+      .catch(() => {
+        if (active) setCanonicalDossierStatus("unavailable");
+      });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     if (!selectedCompany) {
@@ -1648,6 +1663,7 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
     if (onNavigate) onNavigate(route);
     else window.location.hash = route;
   };
+  const reviewedDossiers = orderedCanonicalDisplayIdentities(canonicalDossiers);
 
   return (
     <div data-testid="home-page" className="min-h-[calc(100vh-72px)] overflow-x-hidden bg-[#0a1b2a] text-[#f6f7f2]">
@@ -1685,10 +1701,22 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
                   Each dossier opens the reviewed workbench directly. Kilby and El Mirage remain not modeled until approved project-specific scenarios exist.
                 </p>
                 <div className="mt-5 grid gap-2">
-                  {REVIEWED_DOSSIERS.map((dossier) => (
-                    <button key={dossier.slug} data-testid={`home-dossier-${dossier.slug}`} type="button" onClick={() => void openDossier(dossier.slug)} className="flex min-h-12 items-center justify-between gap-3 rounded-lg border border-white/10 bg-[#0d2435] px-3 py-2.5 text-left hover:border-[#d4e86b]">
-                      <span><span className="block text-[11px] font-semibold text-white">{dossier.name}</span><span className="mt-0.5 block text-[9px] text-[#9dafb8]">{dossier.location} · as of {dossier.asOfDate}</span></span>
-                      <span className="font-mono text-[8px] font-bold uppercase text-[#d4e86b]">{dossier.slug === "stargate-abilene" ? "Reviewed model" : "Not modeled"}</span>
+                  {canonicalDossierStatus === "loading" && <p role="status" className="text-[10px] text-[#9dafb8]">Loading reviewed dossier identities…</p>}
+                  {canonicalDossierStatus === "unavailable" && <p role="alert" className="text-[10px] text-[#f1cb8b]">Reviewed dossier identities are unavailable. Reload before opening a canonical case.</p>}
+                  {reviewedDossiers.map((dossier) => (
+                    <button
+                      key={dossier.slug}
+                      data-testid={`home-dossier-${dossier.slug}`}
+                      type="button"
+                      aria-label={`${dossier.name}, ${dossier.location}, evidence as of ${dossier.asOfDate ?? "date unavailable"}, ${dossier.coverageState}`}
+                      onClick={() => void openDossier(dossier.slug)}
+                      className="flex min-h-12 items-center justify-between gap-3 rounded-lg border border-white/10 bg-[#0d2435] px-3 py-2.5 text-left hover:border-[#d4e86b]"
+                    >
+                      <span><span className="block text-[11px] font-semibold text-white">{dossier.name}</span><span className="mt-0.5 block text-[9px] text-[#9dafb8]">{dossier.location} · as of {dossier.asOfDate ?? "date unavailable"}</span></span>
+                      <span className="text-right font-mono text-[8px] font-bold uppercase text-[#d4e86b]">
+                        <span className="block">{dossier.slug === "stargate-abilene" ? "Reviewed model" : "Not modeled"}</span>
+                        <span data-testid={`home-dossier-coverage-${dossier.slug}`} className="mt-0.5 block text-[#9dafb8]">{dossier.coverageState.replaceAll("-", " ")}</span>
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -1743,11 +1771,12 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
           <CompanyExposure
             company={selectedCompany}
             facilities={homeDirectoryFacilities}
+            canonicalDossiers={canonicalDossiers}
             directoryStatus={homeDirectoryStatus}
             sectionRef={companyExposureRef}
             onBack={() => setSelectedCompany(null)}
             onCurated={(project, company) => {
-              const slug = canonicalSlug(project);
+              const slug = canonicalSlugForProject(project);
               if (slug) void openDossier(slug);
             }}
             onResearch={(companyProject, company) => {

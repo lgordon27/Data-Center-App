@@ -1,0 +1,35 @@
+{
+  "diagnosticOnly": true,
+  "kind": "research-integration-repair-offline",
+  "liveProvidersCalled": false,
+  "paidRequests": 0,
+  "liveAcceptanceRuns": 0,
+  "automaticEvidenceAcceptance": 0,
+  "scope": [
+    "discovery-taxonomy-routing",
+    "empty-grounding-gate",
+    "annotation-only-provenance",
+    "bounded-citation-telemetry",
+    "run-wide-deadline-telemetry",
+    "directory-identity-ambiguity"
+  ],
+  "verifiedOffline": {
+    "generatedQueriesAndUrlsRemainRejected": true,
+    "unknownLabelsRemainRelevanceOnly": true,
+    "gridAndElectricityRoutingRemainSeparate": true,
+    "structuredAnalysisSkippedWithoutRetainedPassage": true,
+    "supplementalAcquisitionRemainsBounded": true,
+    "redirectAndUnsafeDestinationControlsPreserved": true,
+    "physicalOpenCeiling": 24,
+    "humanReviewRequired": true
+  },
+  "unavailableEvidence": [
+    "No live Gemini response was collected for this repair.",
+    "No live document retrieval or final redirect destination was asserted.",
+    "No DataBank facility-level quotation was fabricated."
+  ],
+  "notes": [
+    "This file contains no provider credentials, raw provider payloads, request headers, or sensitive logs.",
+    "Offline fixtures use synthetic passages only and do not establish DataBank facts."
+  ]
+}

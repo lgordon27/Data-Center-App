@@ -1380,6 +1380,7 @@ function categoryReturnedDomains(sources = []) {
 function categorySourceMatches(category, source) {
   if (!category || !source) return false;
   if (source.searchDomain === category.categoryId) return true;
+  if (source.categoryRoutingUnknown === true) return true;
   if (Array.isArray(source.categoryIds) && source.categoryIds.includes(category.categoryId)) return true;
   if (Array.isArray(source.supportedEvidenceIds)
     && source.supportedEvidenceIds.some((id) => category.evidenceIds.includes(id))) return true;
@@ -2978,6 +2979,13 @@ function normalizeRetrievedSources(body, searchDomain = "project-identity", proj
       ...(Array.isArray(source.categoryIds)
         ? { categoryIds: [...new Set(source.categoryIds.filter((value) => typeof value === "string" && value.trim()).map((value) => value.trim()))].slice(0, 12) }
         : {}),
+      ...(Array.isArray(source.discoveryCategoryIds)
+        ? { discoveryCategoryIds: source.discoveryCategoryIds.slice(0, 12) }
+        : {}),
+      ...(Array.isArray(source.unknownCategoryLabels)
+        ? { unknownCategoryLabels: source.unknownCategoryLabels.slice(0, 12) }
+        : {}),
+      ...(source.categoryRoutingUnknown === true ? { categoryRoutingUnknown: true } : {}),
       ...(typeof source.claimPassage === "string" ? { claimPassage: source.claimPassage } : {}),
       ...(Array.isArray(source.claimSupport) ? { claimSupport: source.claimSupport } : {}),
       ...(isJurisdictionallyExcludedSource({ url, title }, project)
@@ -3008,6 +3016,9 @@ function normalizeRetrievedSources(body, searchDomain = "project-identity", proj
       : {}),
     ...(typeof source.exactProject === "boolean" ? { exactProject: source.exactProject } : {}),
     ...(Array.isArray(source.categoryIds) ? { categoryIds: source.categoryIds.slice(0, 12) } : {}),
+    ...(Array.isArray(source.discoveryCategoryIds) ? { discoveryCategoryIds: source.discoveryCategoryIds.slice(0, 12) } : {}),
+    ...(Array.isArray(source.unknownCategoryLabels) ? { unknownCategoryLabels: source.unknownCategoryLabels.slice(0, 12) } : {}),
+    ...(source.categoryRoutingUnknown === true ? { categoryRoutingUnknown: true } : {}),
     relevanceNote: source.relevanceNote ?? null,
   }));
   result.sourceLedger = ledger;
@@ -3928,12 +3939,22 @@ async function runValidatedResearch(project, {
   }
   const controller = new AbortController();
   const deadlineState = { expired: false };
+  const runStartedAtMs = Date.now();
+  const phaseTiming = {
+    runStartedAt: new Date(runStartedAtMs).toISOString(),
+    discoveryStartedAt: null,
+    discoveryFinishedAt: null,
+    orchestrationStartedAt: null,
+    orchestrationFinishedAt: null,
+    cancellationAt: null,
+  };
   const externalSignal = signal;
   const abortFromRequest = () => controller.abort();
   externalSignal?.addEventListener("abort", abortFromRequest, { once: true });
   if (externalSignal?.aborted) controller.abort();
   const timeout = setTimeout(() => {
     deadlineState.expired = true;
+    phaseTiming.cancellationAt = new Date().toISOString();
     controller.abort();
   }, RESEARCH_PROJECT_TIMEOUT_MS);
   const runCorrelationId = randomUUID();
@@ -3997,7 +4018,6 @@ async function runValidatedResearch(project, {
         const categoryId = (Array.isArray(source.categoryIds)
           ? source.categoryIds.find((candidate) => activeCategoryIds.includes(candidate))
           : null)
-          ?? activeCategoryIds[index % Math.max(1, activeCategoryIds.length)]
           ?? "project-identity";
         const authorization = authorizePhysicalOpen({
           categoryId,
@@ -4088,6 +4108,7 @@ async function runValidatedResearch(project, {
   };
   if (googleApiKey || googleDiscoveryImpl !== discoverGoogleGroundedProject) {
     googleRequestCount = 1;
+    phaseTiming.discoveryStartedAt = new Date().toISOString();
     try {
       const discovery = await googleDiscoveryImpl({
         project,
@@ -4118,6 +4139,8 @@ async function runValidatedResearch(project, {
           status: error?.providerDiagnostic?.status ?? null,
         },
       };
+    } finally {
+      phaseTiming.discoveryFinishedAt = new Date().toISOString();
     }
   }
   if (googleDiscovery.status === "pending") {
@@ -4128,6 +4151,7 @@ async function runValidatedResearch(project, {
   let fallbackProjectRequest = null;
   let fallbackRequestConsumed = false;
   try {
+    phaseTiming.orchestrationStartedAt = new Date().toISOString();
     const orchestration = await orchestrateCategoryResearch(project, {
       budget: {
         ...RESEARCH_RUN_BUDGET,
@@ -4156,6 +4180,34 @@ async function runValidatedResearch(project, {
         const requestCategory = async (options) => {
           const groundedMode = googleDiscovery.status === "completed";
           const fallbackMode = !groundedMode;
+           const usableGroundedSources = groundedMode
+             ? googleDiscovery.candidates.filter((source) =>
+               source?.accessOutcome?.state === "accessible"
+               && typeof source.accessOutcome?.passage === "string"
+               && source.accessOutcome.passage.trim())
+             : [];
+           const categoryUsableGroundedSources = usableGroundedSources.filter((source) =>
+             categorySourceMatches(activeCategory, source));
+           if (groundedMode && categoryUsableGroundedSources.length === 0) {
+             const categoryGroundedSources = googleDiscovery.candidates.filter((source) =>
+               categorySourceMatches(activeCategory, source));
+             return {
+               research: createPartialResearchBody(project),
+               sources: categoryGroundedSources,
+               coverage: {
+                 provider: "google-gemini-grounding",
+                 model: googleModel,
+                 providerRequestCount: 0,
+                 providerAttempts: [],
+                 searchTerms: googleDiscovery.queries ?? [],
+                 providerLimitations: ["No usable retained Google-grounded passage was available for this category; structured analysis was not issued."],
+                 webSearchEnabled: false,
+                 googleGroundedSourceCount: 0,
+                 noUsableGroundedPassages: true,
+                 activeCategoryId: activeCategory?.categoryId ?? null,
+               },
+             };
+           }
           const requestOptions = groundedMode
             ? {
               ...options,
@@ -4284,7 +4336,7 @@ async function runValidatedResearch(project, {
         const secAttempts = [];
         const supplementalSources = [];
         if (
-          categoryResult.sources.length === 0
+          categoryResult.coverage?.noUsableGroundedPassages === true
           && !discoveryAttemptedCategories.has(categoryId)
           && !controller.signal.aborted
         ) {
@@ -4399,11 +4451,11 @@ async function runValidatedResearch(project, {
           const hasProviderCanonicalIdentity = source.canonicalIdentityExplicit === true;
           const previousAccess = (originalCanonicalUrl && (
             openedDocumentsByCanonicalUrl.get(originalCanonicalUrl)
-            ?? (hasProviderCanonicalIdentity ? documentAccessPromisesByCanonicalUrl.get(originalCanonicalUrl) : null)
+            ?? documentAccessPromisesByCanonicalUrl.get(originalCanonicalUrl)
           ))
             || (announcedCanonicalUrl && (
               openedDocumentsByCanonicalUrl.get(announcedCanonicalUrl)
-              ?? (hasProviderCanonicalIdentity ? documentAccessPromisesByCanonicalUrl.get(announcedCanonicalUrl) : null)
+              ?? documentAccessPromisesByCanonicalUrl.get(announcedCanonicalUrl)
             ))
             || null;
           let accessOutcome;
@@ -4541,7 +4593,30 @@ async function runValidatedResearch(project, {
           categoryResult.coverage?.searchTerms,
           RESEARCH_PROJECT_MAX_TOOL_CALLS,
         );
-        const normalizedCategoryResearch = containResearchResult(parseResearchResponse(
+           if (categoryResult.coverage?.noUsableGroundedPassages
+             && accessedSources.some((source) =>
+               source.accessOutcome?.state === "accessible"
+               && typeof source.accessOutcome?.passage === "string"
+               && source.accessOutcome.passage.trim())
+             && !controller.signal.aborted
+           ) {
+             const supplementalAnalysis = await researchProjectWithWebSearch(
+               project,
+               apiKey,
+               fetchImpl,
+               controller.signal,
+               {
+                 ...activeCategory,
+                 webSearchEnabled: false,
+                 groundedSources: accessedSources,
+               },
+               researchProviderGate,
+             );
+             categoryResult = supplementalAnalysis;
+             providerRequestCount += 1;
+             if (supplementalAnalysis.coverage?.providerAttempt) providerAttempts.push(supplementalAnalysis.coverage.providerAttempt);
+           }
+           const normalizedCategoryResearch = containResearchResult(parseResearchResponse(
           categoryResult.research,
           accessedSources,
           new Date().toISOString().slice(0, 10),
@@ -4586,6 +4661,7 @@ async function runValidatedResearch(project, {
         };
       },
     });
+    phaseTiming.orchestrationFinishedAt = new Date().toISOString();
     if (
       !orchestration.categoryResults.length
       && orchestration.lastError?.name === "UpstreamRequestError"
@@ -4646,7 +4722,15 @@ async function runValidatedResearch(project, {
         discoveryProvider: "google-gemini-grounding",
         discoveryModel: googleModel,
         discoveryStatus: googleDiscovery.status,
+         discoveryState: googleDiscovery.usableCitationMetadataPresent
+           ? "usable-citations"
+           : googleDiscovery.groundingSearchExecuted
+             ? "search-executed-no-usable-citations"
+             : "provider-response-without-search-proof",
         discoveryQueries: googleDiscovery.queries,
+         discoveryRawAnnotationSummaries: googleDiscovery.rawAnnotationSummaries ?? [],
+         discoveryAcceptedCitationUrls: googleDiscovery.acceptedCitationUrls ?? [],
+         discoveryRejectedCitationUrls: googleDiscovery.rejectedCitationUrls ?? [],
         discoveryCandidateCount: googleDiscovery.candidates.length,
         discoveryCandidates: googleDiscovery.candidates.map((source) => ({
           url: source.canonicalUrl ?? source.url ?? null,
@@ -4664,8 +4748,10 @@ async function runValidatedResearch(project, {
           || categoryIds.includes("project-identity"),
         runCorrelationId,
         terminalState,
-        startedAt: orchestration.startedAt,
-        finishedAt: orchestration.finishedAt,
+         startedAt: phaseTiming.runStartedAt,
+         finishedAt: new Date().toISOString(),
+         elapsedMs: Math.max(0, Date.now() - runStartedAtMs),
+         phaseTiming,
       },
     };
     try {

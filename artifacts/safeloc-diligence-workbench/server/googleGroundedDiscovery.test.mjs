@@ -4,6 +4,7 @@ import {
   GOOGLE_GEMINI_DEFAULT_MODEL,
   GOOGLE_GEMINI_INTERACTIONS_URL,
   GOOGLE_GEMINI_MODEL,
+  GOOGLE_DISCOVERY_CATEGORY_ROUTING,
   GOOGLE_GROUNDED_PREFLIGHT_PROMPT,
   assertGoogleGroundedPreflightResult,
   buildGoogleGroundedDiscoveryRequestBody,
@@ -112,6 +113,51 @@ test("parses successful Interactions search steps and deduplicates URL-citation 
   assert.equal(result.googleSearchResultCount, 1);
   assert.equal(result.urlCitationCount, 3);
   assert.equal(result.citationCount, 2);
+});
+
+test("maps discovery labels to every downstream category without positional assignment", () => {
+  const result = parseGoogleGroundedDiscoveryResponse({
+    steps: [
+      { type: "google_search_call", arguments: { queries: ["grid and power"] } },
+      { type: "google_search_result", result: {} },
+      {
+        type: "model_output",
+        content: [{
+          type: "text",
+          annotations: [{
+            type: "url_citation",
+            url: "https://records.example/grid",
+            categoryIds: ["grid-power"],
+          }],
+        }],
+      },
+    ],
+  });
+  assert.deepEqual(result.candidates[0].categoryIds, ["grid", "electricity"]);
+  assert.deepEqual(GOOGLE_DISCOVERY_CATEGORY_ROUTING["grid-power"], ["grid", "electricity"]);
+});
+
+test("keeps unknown discovery labels available for relevance but never marks them applicable", () => {
+  const result = parseGoogleGroundedDiscoveryResponse({
+    steps: [
+      { type: "google_search_call", arguments: { queries: ["unclassified source"] } },
+      { type: "google_search_result", result: {} },
+      {
+        type: "model_output",
+        content: [{
+          type: "text",
+          annotations: [{
+            type: "url_citation",
+            url: "https://records.example/unknown",
+            categoryIds: ["new-provider-label"],
+          }],
+        }],
+      },
+    ],
+  });
+  assert.deepEqual(result.candidates[0].categoryIds, []);
+  assert.deepEqual(result.candidates[0].unknownCategoryLabels, ["new-provider-label"]);
+  assert.equal(result.candidates[0].categoryRoutingUnknown, true);
 });
 
 test("transmits the documented Interactions request and captures it without secrets", async () => {
@@ -235,6 +281,42 @@ test("does not let model prose or JSON manufacture queries or URL citations", ()
   assert.deepEqual(result.candidates, []);
   assert.equal(result.googleSearchCallCount, 0);
   assert.equal(result.urlCitationCount, 0);
+});
+
+test("does not issue structured category analysis when grounding has no retained passage", async () => {
+  let openAiCalls = 0;
+  const result = await runValidatedResearch({
+    ...project,
+    forceRefresh: true,
+  }, {
+    apiKey: "fixture-openai-key",
+    googleApiKey: "fixture-google-key",
+    googleDiscoveryImpl: async () => ({
+      status: "completed",
+      provider: "google-gemini-grounding",
+      model: GOOGLE_GEMINI_MODEL,
+      queries: ["Project Atlas exact project"],
+      candidates: [],
+      googleSearchCallCount: 1,
+      googleSearchResultCount: 1,
+      urlCitationCount: 0,
+      citationCount: 0,
+      providerRequestCount: 1,
+    }),
+    categoryIds: ["project-identity"],
+    rateLimiter: { allow: () => ({ allowed: true }) },
+    req: { ip: "198.51.100.22" },
+    fetchImpl: async () => {
+      openAiCalls += 1;
+      throw new Error("Structured analysis must not run without a retained passage.");
+    },
+    documentFetchImpl: async () => {
+      throw new Error("No cited document should be opened.");
+    },
+  });
+  assert.equal(openAiCalls, 0);
+  assert.equal(result.researchCoverage.discoveryCandidateCount, 0);
+  assert.equal(result.researchOutcome.state, "incomplete-technical-limitation");
 });
 
 test("rejects malformed Interactions steps distinctly", () => {

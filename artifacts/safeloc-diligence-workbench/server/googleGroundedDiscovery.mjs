@@ -30,6 +30,18 @@ const DISCOVERY_CATEGORIES = Object.freeze([
   "project-economics",
 ]);
 
+export const GOOGLE_DISCOVERY_CATEGORY_ROUTING = Object.freeze({
+  "project-identity": ["project-identity"],
+  "company-developer": ["construction-capital", "tenant-counterparty"],
+  facility: ["project-identity"],
+  "grid-power": ["grid", "electricity"],
+  water: ["water"],
+  community: ["permitting-community"],
+  "permitting-construction": ["permitting-community", "construction-capital"],
+  counterparty: ["tenant-counterparty"],
+  climate: ["climate-operational-hazard"],
+  "project-economics": ["electricity", "construction-capital"],
+});
 function normalizeText(value, maxLength = 500) {
   return typeof value === "string" ? value.trim().replace(/\s+/g, " ").slice(0, maxLength) : "";
 }
@@ -68,10 +80,18 @@ function categoryIdsForCitation(citation) {
     : Array.isArray(citation?.categories)
       ? citation.categories
       : [];
-  const normalized = values
+  const labels = [...new Set(values
     .map((value) => normalizeText(value, 80).toLowerCase().replaceAll("_", "-"))
-    .filter((value) => value && (DISCOVERY_CATEGORIES.includes(value) || value === "facility"));
-  return normalized.length ? [...new Set(normalized)] : [...DISCOVERY_CATEGORIES];
+    .filter(Boolean))];
+  const mapped = labels.flatMap((label) => GOOGLE_DISCOVERY_CATEGORY_ROUTING[label] ?? []);
+  // Unknown provider labels remain available for relevance assessment in every
+  // downstream category, but are never treated as evidence applicability.
+  return {
+    categoryIds: [...new Set(mapped)],
+    discoveryCategoryIds: labels,
+    unknownCategoryLabels: labels.filter((label) => !DISCOVERY_CATEGORIES.includes(label)),
+    categoryRoutingUnknown: labels.some((label) => !DISCOVERY_CATEGORIES.includes(label)),
+  };
 }
 
 function sourceFromUrlCitation(annotation, queries) {
@@ -91,7 +111,7 @@ function sourceFromUrlCitation(annotation, queries) {
     discoveryOnly: true,
     exactProject: false,
     referringQueries: [...new Set(queries)].slice(0, 12),
-    categoryIds: categoryIdsForCitation(annotation),
+    ...categoryIdsForCitation(annotation),
     relevanceNote: "Google grounding discovered this URL; generated summaries and snippets are not evidence.",
   };
 }
@@ -105,8 +125,8 @@ export function buildGoogleGroundedDiscoveryPrompt(project) {
     "You must call Google Search before answering; do not answer from memory.",
     "Use one bounded Google Search grounding request and return only discovery metadata.",
     `Cover these discovery areas in the query plan: ${DISCOVERY_CATEGORIES.join(", ")}.`,
-    "The response must be JSON with this shape: {\"queries\":[string],\"citations\":[{\"url\":string,\"title\":string,\"publisher\":string|null,\"publishedAt\":string|null,\"categoryIds\":string[],\"queries\":string[]}]}.",
-    "Citations must be URLs returned by Google grounding. Never invent a URL. Do not treat snippets, generated summaries, or your own prose as evidence.",
+    "Do not use generated JSON, prose, snippets, or model-selected URLs as provenance. The application accepts only executed google_search_call queries and provider url_citation annotations in the Interactions response.",
+    "The response may contain explanatory text, but it must not be used to manufacture queries or citations. Never invent a URL.",
     "Prefer first-party company/developer disclosures, government and regulator records, permits, utility records, court or public-agenda records, and reputable project-specific reporting.",
   ].join("\n");
 }
@@ -167,10 +187,24 @@ export function parseGoogleGroundedDiscoveryResponse(body) {
   ).filter((annotation) => annotation?.type === "url_citation");
   const sources = [];
   const seen = new Set();
-  for (const annotation of annotations) {
+  const annotationDiagnostics = annotations.map((annotation) => {
+    const rawUrl = typeof annotation?.url === "string" ? annotation.url.trim() : "";
+    const url = safeCandidateUrl(rawUrl);
+    const canonicalUrl = url ? canonicalizeSourceUrl(url) : null;
+    const duplicate = Boolean(canonicalUrl && seen.has(canonicalUrl));
+    if (canonicalUrl) seen.add(canonicalUrl);
+    return {
+      type: "url_citation",
+      title: normalizeText(annotation?.title, 240) || null,
+      url: rawUrl || null,
+      canonicalUrl,
+      accepted: Boolean(url && !duplicate),
+      rejectionReason: !rawUrl ? "missing-url" : !url ? "unsafe-or-invalid-url" : duplicate ? "duplicate-canonical-url" : null,
+    };
+  });
+  for (const [index, annotation] of annotations.entries()) {
     const source = sourceFromUrlCitation(annotation, queries);
-    if (source && !seen.has(source.canonicalUrl)) {
-      seen.add(source.canonicalUrl);
+    if (source && annotationDiagnostics[index]?.accepted) {
       sources.push(source);
     }
   }
@@ -188,6 +222,11 @@ export function parseGoogleGroundedDiscoveryResponse(body) {
     googleSearchResultCount: searchResults.length,
     urlCitationCount: annotations.length,
     citationCount: sources.length,
+    rawAnnotationSummaries: annotationDiagnostics.slice(0, 80),
+    acceptedCitationUrls: sources.map((source) => source.url),
+    rejectedCitationUrls: annotationDiagnostics
+      .filter((annotation) => !annotation.accepted)
+      .map((annotation) => ({ url: annotation.url, reason: annotation.rejectionReason })),
   };
 }
 

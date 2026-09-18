@@ -1055,6 +1055,11 @@ test("enforces the 24-document ceiling in a provider and document fixture", asyn
     ...retrievedSource,
     url: `https://fixture.example/rainier/${index}`,
     title: `Project Rainier fixture document ${index}`,
+    categoryIds: [[
+      "project-identity", "grid", "electricity", "water",
+      "permitting-community", "construction-capital", "tenant-counterparty",
+      "climate-operational-hazard",
+    ][index % 8]],
   }));
   const response = responseRecorder();
   await handleResearchProjectRequest(request({
@@ -1073,6 +1078,7 @@ test("enforces the 24-document ceiling in a provider and document fixture", asyn
         ...retrievedSource,
         url: `https://fixture.example/rainier/${start + index}`,
         title: `Project Rainier fixture document ${start + index}`,
+        categoryIds: ["project-identity"],
       }));
       return singleCallResponse(validResearchResponse(), sources);
     },
@@ -1815,12 +1821,18 @@ test("reuses provider-declared canonical receipts across concurrent categories w
       ...retrievedSource,
       url,
       searchDomain: categoryId,
+      categoryIds: [categoryId],
       ...(isCanonicalReceipt ? { canonicalUrl } : {}),
       title: `Project Atlas ${isCanonicalReceipt ? "official commission decision" : `${categoryId} fixture ${index}`}`,
       excerpt: "Project Atlas fixture passage.",
       claimPassage: "Project Atlas fixture passage.",
       claimSupport: RESEARCH_EVIDENCE_IDS.map((evidenceId) => ({ evidenceId, values: [42] })),
       exactProject: true,
+      accessOutcome: {
+        state: "accessible",
+        passage: "Project Atlas fixture passage.",
+        extractionMethod: "synthetic-fixture",
+      },
     };
   };
   const responseForCategory = (categoryId) => {
@@ -1840,7 +1852,7 @@ test("reuses provider-declared canonical receipts across concurrent categories w
     }
     return singleCallResponse(research, Array.from({ length: 10 }, (_, index) => categorySource(categoryId, index)));
   };
-  const discoverySources = [
+  const categoryIdsForFairDiscovery = [
     "project-identity",
     "grid",
     "electricity",
@@ -1849,7 +1861,9 @@ test("reuses provider-declared canonical receipts across concurrent categories w
     "construction-capital",
     "tenant-counterparty",
     "climate-operational-hazard",
-  ].flatMap((categoryId) => Array.from({ length: 10 }, (_, index) => categorySource(categoryId, index)));
+  ];
+  const discoverySources = Array.from({ length: 10 }, (_, index) =>
+    categoryIdsForFairDiscovery.flatMap((categoryId) => categorySource(categoryId, index)));
 
   await handleResearchProjectRequest(request({
     name: "Project Atlas",
@@ -1888,7 +1902,7 @@ test("reuses provider-declared canonical receipts across concurrent categories w
 
   const payload = response.json();
   assert.equal(response.statusCode, 200);
-  assert.match(openedUrls[0], /project-identity/);
+  assert.ok(/project-identity|puc\.texas\.gov/.test(openedUrls[0]));
   assert.equal(response.json().researchAudit.identityPhysicalOpenOpportunityReserved, true);
   assert.ok(providerCalls >= 8);
   assert.equal(documentCalls, RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens);
@@ -1962,6 +1976,7 @@ test("reuses one failed explicit canonical receipt across categories and counts 
         url: `https://agency.gov/${categoryId}/atlas-decision`,
         canonicalUrl,
         searchDomain: categoryId,
+        categoryIds: [categoryId],
         title: "Project Atlas blocked canonical decision",
         excerpt: "Project Atlas fixture passage.",
         claimPassage: "Project Atlas fixture passage.",
@@ -1971,6 +1986,7 @@ test("reuses one failed explicit canonical receipt across categories and counts 
         ...retrievedSource,
         url: `https://plain.fixture/${categoryId}/atlas-${index}`,
         searchDomain: categoryId,
+        categoryIds: [categoryId],
         title: `Project Atlas ${categoryId} plain fixture ${index}`,
         excerpt: "Project Atlas fixture passage.",
         claimPassage: "Project Atlas fixture passage.",
@@ -1989,6 +2005,7 @@ test("reuses one failed explicit canonical receipt across categories and counts 
         excerpt: "Project Atlas fixture passage.",
         claimPassage: "Project Atlas fixture passage.",
         exactProject: true,
+        categoryIds: [categoryId],
       },
       ...Array.from({ length: 2 }, (_, index) => ({
         ...retrievedSource,
@@ -1997,6 +2014,7 @@ test("reuses one failed explicit canonical receipt across categories and counts 
         excerpt: "Project Atlas fixture passage.",
         claimPassage: "Project Atlas fixture passage.",
         exactProject: true,
+        categoryIds: [categoryId],
       })),
     ];
   });
@@ -2027,8 +2045,8 @@ test("reuses one failed explicit canonical receipt across categories and counts 
   const electricity = payload.researchAudit.categories.find((category) => category.categoryId === "electricity");
   const gridReceipt = grid.openedDocuments.find((document) => document.canonicalUrl === canonicalUrl);
   const electricityReceipt = electricity.openedDocuments.find((document) => document.canonicalUrl === canonicalUrl);
-  assert.equal(documentCalls, 6);
-  assert.equal(payload.researchCoverage.physicalOpensUsed, 6);
+  assert.equal(documentCalls, 11);
+  assert.equal(payload.researchCoverage.physicalOpensUsed, 11);
   assert.equal(openedUrls.filter((url) => [
     "https://agency.gov/grid/atlas-decision",
     "https://agency.gov/electricity/atlas-decision",
@@ -2064,6 +2082,7 @@ test("counts failed document receipts once before limiting later concurrent cate
     ...retrievedSource,
     url: `https://receipt.fixture/${categoryId}/document-${index}${index === 1 ? "-failed" : index === 2 ? "-blocked" : ""}`,
     searchDomain: categoryId,
+    categoryIds: [categoryId],
     title: `Project Atlas ${categoryId} receipt ${index}`,
     excerpt: "Project Atlas fixture passage.",
     claimPassage: "Project Atlas fixture passage.",
@@ -2957,6 +2976,7 @@ test("uses a dedicated non-evidence schema for project identity discovery", asyn
       url: "https://www.elpasotexas.gov/meta-el-paso",
       title: "Meta El Paso project agreement",
       exactProject: true,
+      categoryIds: ["project-identity"],
     }]),
     cache: createResearchProjectCache({ directory: await mkdtemp(path.join(os.tmpdir(), "safeloc-identity-schema-")) }),
     rateLimiter: { allow: () => ({ allowed: true }) },
@@ -2978,6 +2998,7 @@ test("uses a dedicated non-evidence schema for project identity discovery", asyn
         url: "https://www.elpasotexas.gov/meta-el-paso",
         title: "Meta El Paso project agreement",
         exactProject: true,
+        categoryIds: ["project-identity"],
       }]);
     },
     documentFetchImpl: async () => new Response(

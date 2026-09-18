@@ -88,6 +88,7 @@ function reportDiscoveryTelemetry(result) {
     provider: boundedText(coverage?.discoveryProvider, 120),
     model: boundedText(coverage?.discoveryModel, 120),
     status: boundedText(coverage?.discoveryStatus, 100),
+    state: boundedText(coverage?.discoveryState, 120),
     queries: boundedList(coverage?.discoveryQueries, (value) => boundedText(value, REPORT_MAX_TEXT), 24),
     candidateCount: Number.isInteger(coverage?.discoveryCandidateCount)
       ? coverage.discoveryCandidateCount
@@ -100,6 +101,19 @@ function reportDiscoveryTelemetry(result) {
     providerRequestCount: Number.isInteger(coverage?.providerRequestCount)
       ? coverage.providerRequestCount
       : null,
+    rawAnnotationSummaries: boundedList(coverage?.discoveryRawAnnotationSummaries, (annotation) => ({
+      type: boundedText(annotation?.type, 80),
+      title: boundedText(annotation?.title, 240),
+      url: reportUrl(annotation?.url),
+      canonicalUrl: reportUrl(annotation?.canonicalUrl),
+      accepted: annotation?.accepted === true,
+      rejectionReason: boundedText(annotation?.rejectionReason, 120),
+    }), 80),
+    acceptedCitationUrls: boundedList(coverage?.discoveryAcceptedCitationUrls, reportUrl, 80),
+    rejectedCitationUrls: boundedList(coverage?.discoveryRejectedCitationUrls, (entry) => ({
+      url: reportUrl(entry?.url),
+      reason: boundedText(entry?.reason, 120),
+    }), 80),
   };
 }
 
@@ -757,6 +771,7 @@ export function buildAcceptanceReport({ project, liveRun, failureRun, generatedA
       finishedAt: audit?.finishedAt ?? null,
       elapsedMs,
       wallClockElapsedMs: liveRun.durationMs ?? null,
+      phaseTiming: audit?.phaseTiming ?? null,
       failureType: result?.errorType ?? result?.researchCache?.errorType ?? (retainedCacheResponse ? "retained-cache" : null),
       failureMessage: result?.error
         ?? (retainedCacheResponse ? "Live refresh failed; the response contains retained cached research." : null),

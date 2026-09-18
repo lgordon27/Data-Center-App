@@ -28,3 +28,4 @@
 - [Financial scenario hierarchy](financial-scenario-hierarchy.md) — synthetic current evidence is the stable recommendation basis; provider data remains an optional sensitivity.
 - [Generated validation exports](generated-validation-exports.md) — do not register mutable generated validation files as Library outputs; rehydration can conflict with atomic replacement.
 - [Research terminal outcomes](research-terminal-outcomes.md) — distinguish eligible, conclusive no-eligible, and technical incompleteness; identity receives first bounded open opportunity.
+- [Citation category routing](citation-category-routing.md) — missing labels stay relevance-assessable; mixed labels retain recognized scope; availability and analysis must share one matcher.

@@ -90,7 +90,10 @@ function categoryIdsForCitation(citation) {
     categoryIds: [...new Set(mapped)],
     discoveryCategoryIds: labels,
     unknownCategoryLabels: labels.filter((label) => !DISCOVERY_CATEGORIES.includes(label)),
-    categoryRoutingUnknown: labels.some((label) => !DISCOVERY_CATEGORIES.includes(label)),
+    // Missing, empty, unusable, and wholly unknown provider metadata all mean
+    // relevance is unresolved. Mixed metadata keeps its recognized routing;
+    // the unknown label is still retained for audit without broadening scope.
+    categoryRoutingUnknown: mapped.length === 0,
   };
 }
 

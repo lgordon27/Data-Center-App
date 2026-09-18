@@ -21,6 +21,88 @@ const project = {
   knownData: { operator: "Atlas Compute", aliases: ["Atlas"] },
 };
 
+const CATEGORY_EVIDENCE_IDS = Object.freeze({
+  grid: ["grid_interconnection", "electricity_cost", "electricity_escalation", "renewable_percentage"],
+  electricity: ["electricity_cost", "electricity_escalation", "renewable_percentage", "carbon_compliance"],
+  water: ["water_consumption", "water_escalation", "water_rights", "water_source_resilience"],
+  "permitting-community": ["community_risk", "permitting_timeline", "carbon_compliance"],
+  "construction-capital": ["cooling_capex", "backup_power_capacity", "downtime_cost"],
+  "tenant-counterparty": ["customer_concentration", "downtime_cost"],
+  "climate-operational-hazard": ["site_hazard_exposure", "backup_power_capacity", "water_source_resilience", "downtime_cost"],
+});
+
+const CATEGORY_LABELS = Object.freeze([
+  ["project-identity", "Project identity"],
+  ["grid", "Grid"],
+  ["electricity", "Electricity"],
+  ["water", "Water"],
+  ["permitting-community", "Permitting and community"],
+  ["construction-capital", "Construction and capital"],
+  ["tenant-counterparty", "Tenant and counterparty"],
+  ["climate-operational-hazard", "Climate and operational hazard"],
+]);
+
+function categoryIdFromStructuredPrompt(prompt) {
+  return CATEGORY_LABELS.find(([, label]) =>
+    prompt.includes(`observed ${label} category attempt`))?.[0] ?? "project-identity";
+}
+
+function structuredResponseForCategory(categoryId, passage, sourceUrl) {
+  const projectSummary = {
+    name: "Project Atlas",
+    location: "Taylor County, Texas",
+    description: "Synthetic offline category-routing fixture.",
+    capacityMW: null,
+    capacityProvenance: "standardized-default",
+  };
+  const output = categoryId === "project-identity"
+    ? {
+        projectSummary,
+        identityAssessment: {
+          exactProjectIdentityEstablished: false,
+          matchedName: null,
+          matchedLocation: null,
+          matchedOperator: null,
+          reason: "The synthetic passage remains subject to relevance and identity review.",
+        },
+      }
+    : {
+        projectSummary,
+        evidence: Object.fromEntries(CATEGORY_EVIDENCE_IDS[categoryId].map((id) => [id, {
+          label: id.replaceAll("_", " "),
+          value: "Not disclosed",
+          unit: "Project context",
+          classification: "Missing Evidence",
+          citation: `Synthetic offline fixture: ${sourceUrl}`,
+          description: "The synthetic passage does not establish an eligible facility-level value.",
+          sourceRole: "Synthetic offline routing fixture",
+          sourceUrl,
+          sourceUrls: [sourceUrl],
+          conflictSummary: null,
+          coverageStatus: "searched-no-support",
+          numericValue: null,
+          modelReportedConfidence: null,
+          sourceSupportConfidence: 0,
+          classificationReason: "Relevance assessment does not establish applicability.",
+          sourceRelevanceNote: "Synthetic routing control only.",
+          sourceRelevance: "unresolved",
+          claimPassage: passage,
+          facilityScope: "unknown",
+          phaseScope: "unknown",
+          claimTimePeriod: null,
+          searchTerms: ["Project Atlas synthetic offline routing"],
+          qualitativeValue: null,
+        }])),
+      };
+  return new Response(JSON.stringify({
+    id: `fixture-${categoryId}`,
+    output: [{
+      type: "message",
+      content: [{ type: "output_text", text: JSON.stringify(output) }],
+    }],
+  }), { status: 200, headers: { "content-type": "application/json" } });
+}
+
 test("uses the supported default model when GEMINI_DISCOVERY_MODEL is absent", () => {
   assert.equal(GOOGLE_GEMINI_DEFAULT_MODEL, "gemini-3.8-flash");
   assert.equal(resolveGoogleGeminiModel({}), GOOGLE_GEMINI_DEFAULT_MODEL);
@@ -158,6 +240,186 @@ test("keeps unknown discovery labels available for relevance but never marks the
   assert.deepEqual(result.candidates[0].categoryIds, []);
   assert.deepEqual(result.candidates[0].unknownCategoryLabels, ["new-provider-label"]);
   assert.equal(result.candidates[0].categoryRoutingUnknown, true);
+});
+
+test("normalizes missing, empty, unusable, unknown, mixed, and explicit citation routing", () => {
+  const annotations = [
+    { type: "url_citation", url: "https://records.example/missing" },
+    { type: "url_citation", url: "https://records.example/empty", categoryIds: [] },
+    { type: "url_citation", url: "https://records.example/unusable", categoryIds: [null, "", 42] },
+    { type: "url_citation", url: "https://records.example/unknown-only", categoryIds: ["future-label"] },
+    { type: "url_citation", url: "https://records.example/mixed", categoryIds: ["grid-power", "future-label"] },
+    { type: "url_citation", url: "https://records.example/explicit", categoryIds: ["water"] },
+  ];
+  const result = parseGoogleGroundedDiscoveryResponse({
+    steps: [
+      { type: "google_search_call", arguments: { queries: ["synthetic routing controls"] } },
+      { type: "google_search_result", result: {} },
+      { type: "model_output", content: [{ type: "text", annotations }] },
+    ],
+  });
+  const byPath = Object.fromEntries(result.candidates.map((candidate) => [
+    new URL(candidate.url).pathname.slice(1),
+    candidate,
+  ]));
+  for (const key of ["missing", "empty", "unusable", "unknown-only"]) {
+    assert.deepEqual(byPath[key].categoryIds, []);
+    assert.equal(byPath[key].categoryRoutingUnknown, true);
+  }
+  assert.deepEqual(byPath.mixed.categoryIds, ["grid", "electricity"]);
+  assert.deepEqual(byPath.mixed.unknownCategoryLabels, ["future-label"]);
+  assert.equal(byPath.mixed.categoryRoutingUnknown, false);
+  assert.deepEqual(byPath.explicit.categoryIds, ["water"]);
+  assert.equal(byPath.explicit.categoryRoutingUnknown, false);
+});
+
+test("delivers one unlabeled parsed citation passage into all eight structured-analysis inputs", async () => {
+  const sourceUrl = "https://records.example/project-atlas-routing-control";
+  const passage = "SYNTHETIC ROUTING CONTROL: Project Atlas appears in this offline retained passage; no real facility fact is asserted.";
+  let googleCalls = 0;
+  let documentCalls = 0;
+  const analysisInputs = new Map(CATEGORY_LABELS.map(([categoryId]) => [categoryId, []]));
+  const result = await runValidatedResearch({ ...project, forceRefresh: true }, {
+    apiKey: "fixture-openai-key",
+    googleApiKey: "fixture-google-key",
+    rateLimiter: { allow: () => ({ allowed: true }) },
+    req: { ip: "198.51.100.23" },
+    fetchImpl: async (url, init) => {
+      if (String(url).startsWith(GOOGLE_GEMINI_INTERACTIONS_URL)) {
+        googleCalls += 1;
+        return new Response(JSON.stringify({
+          steps: [
+            { type: "google_search_call", arguments: { queries: ["Project Atlas exact-project public records"] } },
+            { type: "google_search_result", result: { searchSuggestions: "synthetic offline result" } },
+            {
+              type: "model_output",
+              content: [{
+                type: "text",
+                text: `Generated prose and JSON are ignored: {"url":"https://invented.invalid/not-a-citation"}`,
+                annotations: [{ type: "url_citation", url: sourceUrl, title: "Synthetic routing control" }],
+              }],
+            },
+          ],
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      const body = JSON.parse(init.body);
+      assert.equal("tools" in body, false);
+      const prompt = body.input?.[1]?.content ?? "";
+      const categoryId = categoryIdFromStructuredPrompt(prompt);
+      analysisInputs.get(categoryId).push(prompt);
+      return structuredResponseForCategory(categoryId, passage, sourceUrl);
+    },
+    documentFetchImpl: async (url) => {
+      assert.equal(String(url), sourceUrl);
+      documentCalls += 1;
+      return new Response(`<html><body>${passage}</body></html>`, {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      });
+    },
+  });
+
+  assert.equal(googleCalls, 1);
+  assert.equal(documentCalls, 1);
+  assert.deepEqual(result.researchCoverage.discoveryQueries, ["Project Atlas exact-project public records"]);
+  assert.deepEqual(result.researchCoverage.discoveryCandidateCount, 1);
+  for (const [categoryId, prompts] of analysisInputs) {
+    assert.ok(prompts.length >= 1, `${categoryId} must receive structured analysis`);
+    assert.ok(prompts.every((prompt) => prompt.includes(passage)), `${categoryId} must receive the retained passage`);
+    assert.ok(prompts.every((prompt) => !prompt.includes("https://invented.invalid/not-a-citation")));
+  }
+  assert.ok(analysisInputs.get("grid").length >= 1);
+  assert.ok(analysisInputs.get("electricity").length >= 1);
+  assert.ok(result.evidence.every((item) => item.eligibleForModel !== true));
+});
+
+test("keeps mixed and recognized citation labels scoped through availability and analysis input", async () => {
+  const sourceUrl = "https://records.example/project-atlas-scoped-routing-control";
+  const passage = "SYNTHETIC SCOPED ROUTING CONTROL: this retained passage is not captured facility evidence.";
+  const run = async ({ labels, categoryIds }) => {
+    const analysisInputs = [];
+    await runValidatedResearch({ ...project, forceRefresh: true }, {
+      apiKey: "fixture-openai-key",
+      googleApiKey: "fixture-google-key",
+      categoryIds,
+      rateLimiter: { allow: () => ({ allowed: true }) },
+      req: { ip: "198.51.100.25" },
+      googleDiscoveryImpl: async () => parseGoogleGroundedDiscoveryResponse({
+        steps: [
+          { type: "google_search_call", arguments: { queries: ["Project Atlas scoped routing"] } },
+          { type: "google_search_result", result: {} },
+          {
+            type: "model_output",
+            content: [{
+              annotations: [{ type: "url_citation", url: sourceUrl, categoryIds: labels }],
+            }],
+          },
+        ],
+      }),
+      fetchImpl: async (_url, init) => {
+        const body = JSON.parse(init.body);
+        assert.equal("tools" in body, false);
+        const prompt = body.input?.[1]?.content ?? "";
+        const categoryId = categoryIdFromStructuredPrompt(prompt);
+        analysisInputs.push({ categoryId, prompt });
+        return structuredResponseForCategory(categoryId, passage, sourceUrl);
+      },
+      documentFetchImpl: async (url) => new Response(
+        String(url) === sourceUrl ? `<html><body>${passage}</body></html>` : "not found",
+        {
+          status: String(url) === sourceUrl ? 200 : 404,
+          headers: { "content-type": "text/html" },
+        },
+      ),
+    });
+    return analysisInputs;
+  };
+
+  const mixed = await run({
+    labels: ["water", "future-label"],
+    categoryIds: ["grid", "water"],
+  });
+  assert.ok(mixed.length >= 1);
+  assert.ok(mixed.every(({ categoryId, prompt }) => categoryId === "water" && prompt.includes(passage)));
+
+  const recognized = await run({
+    labels: ["grid-power"],
+    categoryIds: ["grid", "electricity", "water"],
+  });
+  assert.ok(recognized.some(({ categoryId, prompt }) => categoryId === "grid" && prompt.includes(passage)));
+  assert.ok(recognized.some(({ categoryId, prompt }) => categoryId === "electricity" && prompt.includes(passage)));
+  assert.ok(recognized.every(({ categoryId }) => categoryId !== "water"));
+});
+
+test("issues zero structured analysis for empty, failed, and inaccessible unlabeled passages", async () => {
+  const sourceUrl = "https://records.example/project-atlas-no-passage";
+  for (const [name, documentResponse] of [
+    ["empty", new Response("<html><body></body></html>", { status: 200, headers: { "content-type": "text/html" } })],
+    ["failed", new Response("failure", { status: 500, headers: { "content-type": "text/plain" } })],
+    ["inaccessible", new Response("forbidden", { status: 403, headers: { "content-type": "text/plain" } })],
+  ]) {
+    let analysisCalls = 0;
+    await runValidatedResearch({ ...project, forceRefresh: true }, {
+      apiKey: "fixture-openai-key",
+      googleApiKey: "fixture-google-key",
+      categoryIds: ["project-identity"],
+      rateLimiter: { allow: () => ({ allowed: true }) },
+      req: { ip: "198.51.100.24" },
+      googleDiscoveryImpl: async () => parseGoogleGroundedDiscoveryResponse({
+        steps: [
+          { type: "google_search_call", arguments: { queries: [`Project Atlas ${name}`] } },
+          { type: "google_search_result", result: {} },
+          { type: "model_output", content: [{ annotations: [{ type: "url_citation", url: sourceUrl }] }] },
+        ],
+      }),
+      fetchImpl: async () => {
+        analysisCalls += 1;
+        throw new Error(`${name} passage must not reach structured analysis`);
+      },
+      documentFetchImpl: async () => documentResponse.clone(),
+    });
+    assert.equal(analysisCalls, 0, name);
+  }
 });
 
 test("transmits the documented Interactions request and captures it without secrets", async () => {

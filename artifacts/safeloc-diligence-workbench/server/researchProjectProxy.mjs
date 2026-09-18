@@ -1387,14 +1387,22 @@ function categoryReturnedDomains(sources = []) {
 
 function categorySourceMatches(category, source) {
   if (!category || !source) return false;
-  if (source.searchDomain === category.categoryId) return true;
-  if (source.categoryRoutingUnknown === true) return true;
-  if (Array.isArray(source.categoryIds) && source.categoryIds.includes(category.categoryId)) return true;
+  const knownCategoryIds = new Set(RESEARCH_CATEGORIES.map((candidate) => candidate.id));
+  const explicitCategoryIds = new Set([
+    ...(knownCategoryIds.has(source.searchDomain) ? [source.searchDomain] : []),
+    ...(Array.isArray(source.categoryIds)
+      ? source.categoryIds.filter((categoryId) => knownCategoryIds.has(categoryId))
+      : []),
+  ]);
+  if (explicitCategoryIds.size > 0) return explicitCategoryIds.has(category.categoryId);
   if (Array.isArray(source.supportedEvidenceIds)
     && source.supportedEvidenceIds.some((id) => category.evidenceIds.includes(id))) return true;
-  if (category.categoryId !== "project-identity") return false;
-  return [source.identityRole, source.sourceRole, source.categoryRole]
+  const identityScoped = [source.identityRole, source.sourceRole, source.categoryRole]
     .some((role) => typeof role === "string" && /\b(identity|project identity|facility identity)\b/i.test(role));
+  if (identityScoped) return category.categoryId === "project-identity";
+  // A source without any usable explicit route remains available for relevance
+  // assessment, but this does not make it project-specific or evidence-eligible.
+  return source.categoryRoutingUnknown === true || explicitCategoryIds.size === 0;
 }
 
 function categoryOpenedDocuments(sources = [], category = null) {
@@ -3415,10 +3423,7 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
     ? activeCategory.groundedSources
     : [];
   const categoryGroundedSources = activeCategory?.categoryId
-    ? groundedSources.filter((source) =>
-      !Array.isArray(source?.categoryIds)
-      || source.categoryIds.length === 0
-      || source.categoryIds.includes(activeCategory.categoryId))
+    ? groundedSources.filter((source) => categorySourceMatches(activeCategory, source))
     : groundedSources;
   const requestedOutputTokens = activeCategory?.categoryId
     ? RESEARCH_CATEGORY_MAX_TOKENS

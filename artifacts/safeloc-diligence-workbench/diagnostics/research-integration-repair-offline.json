@@ -7,23 +7,51 @@
   "automaticEvidenceAcceptance": 0,
   "scope": [
     "discovery-taxonomy-routing",
+    "missing-label-citation-routing",
     "empty-grounding-gate",
     "annotation-only-provenance",
     "bounded-citation-telemetry",
     "run-wide-deadline-telemetry",
     "directory-identity-ambiguity"
   ],
+  "missingLabelRepair": {
+    "startingRevision": "878275a6a020a9702f60d0bc6e9ab174e4342318",
+    "offlineReproduction": "A parsed URL-citation annotation without category metadata produced a physically retained synthetic passage but no structured-analysis request.",
+    "repair": [
+      "Missing, empty, unusable, and wholly unrecognized category metadata now remain available for relevance assessment.",
+      "Mixed recognized and unrecognized labels retain recognized explicit scope.",
+      "Passage availability and structured-analysis context use the same category matcher."
+    ],
+    "syntheticPassageOnly": true
+  },
   "verifiedOffline": {
     "generatedQueriesAndUrlsRemainRejected": true,
     "unknownLabelsRemainRelevanceOnly": true,
+    "missingAndEmptyLabelsRemainRelevanceAssessable": true,
+    "mixedLabelsPreserveRecognizedScope": true,
     "gridAndElectricityRoutingRemainSeparate": true,
+    "allEightAnalysisInputsContainExpectedRetainedPassage": [
+      "project-identity",
+      "grid",
+      "electricity",
+      "water",
+      "permitting-community",
+      "construction-capital",
+      "tenant-counterparty",
+      "climate-operational-hazard"
+    ],
+    "unrelatedProjectAndPhaseRemainIneligible": true,
     "structuredAnalysisSkippedWithoutRetainedPassage": true,
     "supplementalAcquisitionRemainsBounded": true,
     "redirectAndUnsafeDestinationControlsPreserved": true,
     "citationAnnotationAcceptanceRejectionStates": true,
     "duplicateAndUnsafeCitationDiagnostics": true,
+    "focusedDiscoveryRoutingReceiptBudgetEligibilityAcceptanceSuite": {
+      "passed": 134,
+      "failed": 0
+    },
     "completeOfflineSuite": {
-      "passed": 335,
+      "passed": 339,
       "failed": 0
     },
     "productionEndpointSuite": {
@@ -41,6 +69,7 @@
   "unavailableEvidence": [
     "No live Gemini response was collected for this repair.",
     "No live document retrieval or final redirect destination was asserted.",
+    "No DataBank Red Oak validation was run and no 480 MW operating-capacity claim was made.",
     "No DataBank facility-level quotation was fabricated."
   ],
   "notes": [

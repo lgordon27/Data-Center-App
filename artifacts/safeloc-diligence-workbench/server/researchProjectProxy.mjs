@@ -3878,7 +3878,7 @@ function candidateLineageForRun(result, orchestration) {
 
 async function runValidatedResearch(project, {
   apiKey,
-  googleApiKey = process.env.GOOGLE_GEMINI_API_KEY ?? process.env.GEMINI_API_KEY,
+  googleApiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GEMINI_API_KEY,
   googleDiscoveryImpl = discoverGoogleGroundedProject,
   googleModel = GOOGLE_GEMINI_MODEL,
   allowGoogleFallback = true,
@@ -4073,7 +4073,7 @@ async function runValidatedResearch(project, {
       googleDiscovery = {
         ...googleDiscovery,
         status: "technical-failure",
-        fallbackUsed: true,
+        fallbackUsed: allowGoogleFallback,
         fallbackReason: error?.researchErrorType ?? "google-provider-failure",
         providerAttempt: error?.providerAttempt ?? {
           provider: "google-gemini-grounding",
@@ -4087,7 +4087,7 @@ async function runValidatedResearch(project, {
   }
   if (googleDiscovery.status === "pending") {
     googleDiscovery.status = "technical-failure";
-    googleDiscovery.fallbackUsed = true;
+    googleDiscovery.fallbackUsed = allowGoogleFallback;
     googleDiscovery.fallbackReason = "google-not-configured";
   }
   let fallbackProjectRequest = null;
@@ -4725,7 +4725,7 @@ export async function handleResearchProjectRequest(
   res,
   {
     apiKey = process.env.OPENAI_API_KEY,
-    googleApiKey = process.env.GOOGLE_GEMINI_API_KEY ?? process.env.GEMINI_API_KEY,
+    googleApiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GEMINI_API_KEY,
     googleDiscoveryImpl = discoverGoogleGroundedProject,
     googleModel = GOOGLE_GEMINI_MODEL,
     allowGoogleFallback = true,
@@ -4787,10 +4787,10 @@ export async function handleResearchProjectRequest(
   req.once?.("aborted", onRequestAborted);
   const refresh = (foreground = true) => cache.refresh(key, () => runValidatedResearch(project, {
     apiKey,
-          googleApiKey,
-          googleDiscoveryImpl,
-          googleModel,
-          allowGoogleFallback,
+    googleApiKey,
+    googleDiscoveryImpl,
+    googleModel,
+    allowGoogleFallback,
     fetchImpl,
     documentFetchImpl,
     secConnector,

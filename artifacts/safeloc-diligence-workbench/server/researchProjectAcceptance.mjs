@@ -888,6 +888,10 @@ export function buildAcceptanceReport({ project, liveRun, failureRun, generatedA
 export async function runLiveResearchAcceptance({
   project,
   apiKey = process.env.OPENAI_API_KEY,
+  googleApiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GEMINI_API_KEY,
+  googleModel,
+  allowGoogleFallback = true,
+  runFailureRehearsal = true,
   categoryIds = parseCategoryIds(process.env.RESEARCH_ACCEPTANCE_CATEGORY_IDS),
   outputPath = process.env.RESEARCH_ACCEPTANCE_OUTPUT
     ?? path.resolve("diagnostics/research-live-acceptance.json"),
@@ -904,6 +908,9 @@ export async function runLiveResearchAcceptance({
   const startedAt = now();
   const liveRun = await runRequest(normalizedProject, {
     apiKey,
+    googleApiKey,
+    ...(googleModel ? { googleModel } : {}),
+    allowGoogleFallback,
     cache: runCache,
     fetchImpl,
     documentFetchImpl,
@@ -912,6 +919,8 @@ export async function runLiveResearchAcceptance({
   liveRun.durationMs = Math.max(0, now() - startedAt);
   let failureRun = null;
   if (
+    runFailureRehearsal
+    &&
     liveRun.statusCode >= 200
     && liveRun.statusCode < 300
     && liveRun.payload?.researchAudit
@@ -919,6 +928,9 @@ export async function runLiveResearchAcceptance({
   ) {
     failureRun = await runRequest(normalizedProject, {
       apiKey,
+      googleApiKey,
+      ...(googleModel ? { googleModel } : {}),
+      allowGoogleFallback,
       cache: runCache,
       fetchImpl: async () => {
         throw new Error("Acceptance failure rehearsal.");

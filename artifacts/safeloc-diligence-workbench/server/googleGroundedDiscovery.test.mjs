@@ -2,10 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   GOOGLE_GEMINI_API_BASE_URL,
+  GOOGLE_GEMINI_DEFAULT_MODEL,
   GOOGLE_GEMINI_MODEL,
   buildGoogleGroundedDiscoveryRequestBody,
   discoverGoogleGroundedProject,
   parseGoogleGroundedDiscoveryResponse,
+  resolveGoogleGeminiModel,
 } from "./googleGroundedDiscovery.mjs";
 import { runValidatedResearch } from "./researchProjectProxy.mjs";
 
@@ -15,6 +17,19 @@ const project = {
   knownData: { operator: "Atlas Compute", aliases: ["Atlas"] },
 };
 
+test("uses the supported default model when GEMINI_DISCOVERY_MODEL is absent", () => {
+  assert.equal(GOOGLE_GEMINI_DEFAULT_MODEL, "gemini-3.8-flash");
+  assert.equal(resolveGoogleGeminiModel({}), GOOGLE_GEMINI_DEFAULT_MODEL);
+  assert.equal(GOOGLE_GEMINI_MODEL, GOOGLE_GEMINI_DEFAULT_MODEL);
+});
+
+test("honors a configured supported GEMINI_DISCOVERY_MODEL", () => {
+  assert.equal(
+    resolveGoogleGeminiModel({ GEMINI_DISCOVERY_MODEL: "  gemini-3.8-flash  " }),
+    "gemini-3.8-flash",
+  );
+});
+
 test("builds one Google Search grounding request without embedding generated evidence", () => {
   const body = buildGoogleGroundedDiscoveryRequestBody(project);
   assert.equal(body.tools.length, 1);
@@ -22,6 +37,33 @@ test("builds one Google Search grounding request without embedding generated evi
   assert.equal(body.generationConfig.responseMimeType, "application/json");
   assert.match(body.contents[0].parts[0].text, /project-identity/);
   assert.match(body.contents[0].parts[0].text, /Never invent a URL/);
+});
+
+test("classifies an unavailable model before any grounding query executes", async () => {
+  await assert.rejects(
+    discoverGoogleGroundedProject({
+      project,
+      apiKey: "fixture-google-key",
+      model: "gemini-obsolete",
+      fetchImpl: async () => new Response(JSON.stringify({
+        error: {
+          code: 404,
+          status: "NOT_FOUND",
+          message: "The requested model is not available.",
+        },
+      }), { status: 404, headers: { "content-type": "application/json" } }),
+    }),
+    (error) => {
+      assert.equal(error.name, "GoogleDiscoveryProviderError");
+      assert.equal(error.researchErrorType, "google-model-unavailable");
+      assert.deepEqual(error.providerDiagnostic, { status: 404, reason: "NOT_FOUND" });
+      assert.equal(error.providerAttempt.model, "gemini-obsolete");
+      assert.equal(error.providerAttempt.requestCount, 1);
+      assert.equal(error.providerAttempt.queryCount, 0);
+      assert.equal(error.providerAttempt.citationCount, 0);
+      return true;
+    },
+  );
 });
 
 test("normalizes grounding chunks and declared citations into deduplicated discovery candidates", () => {
@@ -156,4 +198,53 @@ test("runs one Google discovery request before structured extraction without Ope
   assert.equal(result.researchAudit.providerRequestCount, 2);
   assert.equal(result.researchAudit.providerAttempts[0].provider, "google-gemini-grounding");
   assert.equal(result.researchAudit.providerAttempts[0].outcome, "completed");
+});
+
+test("does not invoke OpenAI fallback when Gemini-only validation disables it", async () => {
+  let openAiCalls = 0;
+  const providerError = new Error("Google Gemini grounding returned an upstream failure.");
+  providerError.name = "GoogleDiscoveryProviderError";
+  providerError.researchErrorType = "google-model-unavailable";
+  providerError.providerDiagnostic = { status: 404, reason: "NOT_FOUND" };
+  providerError.providerAttempt = {
+    provider: "google-gemini-grounding",
+    model: "gemini-obsolete",
+    requestCount: 1,
+    status: 404,
+    outcome: "failed",
+    queryCount: 0,
+    citationCount: 0,
+  };
+
+  const result = await runValidatedResearch({
+    ...project,
+    forceRefresh: true,
+  }, {
+    apiKey: "fixture-openai-key",
+    googleApiKey: "fixture-google-key",
+    googleDiscoveryImpl: async () => {
+      throw providerError;
+    },
+    googleModel: "gemini-obsolete",
+    allowGoogleFallback: false,
+    categoryIds: ["project-identity"],
+    rateLimiter: { allow: () => ({ allowed: true }) },
+    req: { ip: "198.51.100.21" },
+    fetchImpl: async () => {
+      openAiCalls += 1;
+      throw new Error("OpenAI fallback must not run.");
+    },
+    documentFetchImpl: async () => {
+      throw new Error("No document should be opened without discovery candidates.");
+    },
+  });
+
+  assert.equal(openAiCalls, 0);
+  assert.equal(result.researchCoverage.discoveryStatus, "technical-failure");
+  assert.equal(result.researchCoverage.fallbackProvider, null);
+  assert.equal(result.researchCoverage.fallbackRequestCount, 0);
+  assert.equal(result.researchAudit.providerAttempts[0].provider, "google-gemini-grounding");
+  assert.equal(result.researchAudit.providerAttempts[0].requestCount, 1);
+  assert.equal(result.researchAudit.providerAttempts[0].queryCount, 0);
+  assert.equal(result.researchOutcome.state, "incomplete-technical-limitation");
 });

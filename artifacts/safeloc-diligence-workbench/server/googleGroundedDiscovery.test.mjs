@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  GOOGLE_GEMINI_API_BASE_URL,
   GOOGLE_GEMINI_DEFAULT_MODEL,
+  GOOGLE_GEMINI_INTERACTIONS_URL,
   GOOGLE_GEMINI_MODEL,
   GOOGLE_GROUNDED_PREFLIGHT_PROMPT,
   assertGoogleGroundedPreflightResult,
@@ -35,12 +35,13 @@ test("honors a configured supported GEMINI_DISCOVERY_MODEL", () => {
 
 test("builds one Google Search grounding request without embedding generated evidence", () => {
   const body = buildGoogleGroundedDiscoveryRequestBody(project);
-  assert.equal(body.tools.length, 1);
-  assert.deepEqual(body.tools[0], { google_search: {} });
-  assert.equal("responseMimeType" in body.generationConfig, false);
-  assert.match(body.contents[0].parts[0].text, /project-identity/);
-  assert.match(body.contents[0].parts[0].text, /must call Google Search/);
-  assert.match(body.contents[0].parts[0].text, /Never invent a URL/);
+  assert.equal(body.model, GOOGLE_GEMINI_MODEL);
+  assert.deepEqual(body.tools, [{ type: "google_search" }]);
+  assert.equal("contents" in body, false);
+  assert.equal("generationConfig" in body, false);
+  assert.match(body.input, /project-identity/);
+  assert.match(body.input, /must call Google Search/);
+  assert.match(body.input, /Never invent a URL/);
 });
 
 test("classifies an unavailable model before any grounding query executes", async () => {
@@ -70,28 +71,30 @@ test("classifies an unavailable model before any grounding query executes", asyn
   );
 });
 
-test("normalizes grounding chunks and declared citations into deduplicated discovery candidates", () => {
+test("parses successful Interactions search steps and deduplicates URL-citation annotations", () => {
   const result = parseGoogleGroundedDiscoveryResponse({
-    candidates: [{
-      content: { parts: [{ text: JSON.stringify({
-        queries: ["Project Atlas Taylor County permit"],
-        citations: [{
-          url: "https://records.example/permit?utm_source=google",
-          title: "Atlas permit record",
-          publisher: "County",
-          categoryIds: ["permitting-construction"],
-          queries: ["Project Atlas permit"],
-        }],
-      }) }] },
-      groundingMetadata: {
-        webSearchQueries: ["Project Atlas Taylor County permit"],
-        groundingChunks: [
-          { web: { uri: "https://records.example/permit", title: "Atlas permit record" } },
-          { web: { uri: "https://records.example/permit?utm_source=duplicate", title: "Atlas permit duplicate" } },
-          { web: { uri: "https://utility.example/atlas-interconnect", title: "Atlas interconnection record" } },
-        ],
+    steps: [
+      {
+        type: "google_search_call",
+        arguments: { queries: ["Project Atlas Taylor County permit"] },
       },
-    }],
+      {
+        type: "google_search_result",
+        result: { searchSuggestions: "<div>Google Search</div>" },
+      },
+      {
+        type: "model_output",
+        content: [{
+          type: "text",
+          text: "Current sources are cited.",
+          annotations: [
+            { type: "url_citation", url: "https://records.example/permit", title: "Atlas permit record" },
+            { type: "url_citation", url: "https://records.example/permit?utm_source=duplicate", title: "Duplicate" },
+            { type: "url_citation", url: "https://utility.example/atlas-interconnect", title: "Atlas interconnection record" },
+          ],
+        }],
+      },
+    ],
   });
   assert.equal(result.status, "completed");
   assert.equal(result.generatedSummaryIgnored, true);
@@ -101,143 +104,143 @@ test("normalizes grounding chunks and declared citations into deduplicated disco
   assert.equal(result.candidates[0].discoveryOnly, true);
   assert.equal(result.candidates[0].claimCited, false);
   assert.equal(result.candidates[0].excerpt, "");
-  assert.ok(result.candidates[0].referringQueries.includes("Project Atlas permit"));
+  assert.ok(result.candidates[0].referringQueries.includes("Project Atlas Taylor County permit"));
   assert.equal(result.groundingMetadataPresent, true);
   assert.equal(result.groundingSearchExecuted, true);
   assert.equal(result.usableCitationMetadataPresent, true);
+  assert.equal(result.googleSearchCallCount, 1);
+  assert.equal(result.googleSearchResultCount, 1);
+  assert.equal(result.urlCitationCount, 3);
+  assert.equal(result.citationCount, 2);
 });
 
-test("keeps a completed no-citation grounding response distinct from provider failure", async () => {
-  let requestUrl = null;
-  let requestInit = null;
-  const result = await discoverGoogleGroundedProject({
-    project,
-    apiKey: "fixture-google-key",
-    fetchImpl: async (url, init) => {
-      requestUrl = url;
-      requestInit = init;
-      return new Response(JSON.stringify({
-        candidates: [{
-          content: { parts: [{ text: "{\"queries\":[\"Project Atlas exact project\"]}" }] },
-          groundingMetadata: { webSearchQueries: ["Project Atlas exact project"], groundingChunks: [] },
-        }],
-      }), { status: 200, headers: { "content-type": "application/json" } });
-    },
-  });
-  assert.equal(requestUrl, `${GOOGLE_GEMINI_API_BASE_URL}/${GOOGLE_GEMINI_MODEL}:generateContent`);
-  assert.equal(requestInit.headers["x-goog-api-key"], "fixture-google-key");
-  assert.equal(result.status, "completed");
-  assert.equal(result.candidates.length, 0);
-  assert.deepEqual(result.queries, ["Project Atlas exact project"]);
-  assert.equal(result.providerRequestCount, 1);
-  assert.equal(result.groundingMetadataPresent, true);
-  assert.equal(result.groundingSearchExecuted, true);
-  assert.equal(result.usableCitationMetadataPresent, false);
-});
-
-test("accepts a realistic generateContent grounding response with executed queries and deduplicated URL citations", async () => {
+test("transmits the documented Interactions request and captures it without secrets", async () => {
   let transmittedUrl = null;
   let transmittedInit = null;
   const result = await discoverGoogleGroundedProject({
     project,
     apiKey: "fixture-google-key",
     prompt: GOOGLE_GROUNDED_PREFLIGHT_PROMPT,
-    maxOutputTokens: 256,
     requireGrounding: true,
     fetchImpl: async (url, init) => {
       transmittedUrl = url;
       transmittedInit = init;
       return new Response(JSON.stringify({
-        candidates: [{
-          content: { parts: [{ text: "The current official DataBank DFW page is cited below." }] },
-          groundingMetadata: {
-            webSearchQueries: ["DataBank DFW Dallas official data center current"],
-            searchEntryPoint: { renderedContent: "<div>Google Search</div>" },
-            groundingChunks: [
-              { web: { uri: "https://www.databank.com/data-centers/dallas/", title: "Dallas Data Centers" } },
-              { web: { uri: "https://www.databank.com/data-centers/dallas/?utm_source=google", title: "Dallas Data Centers" } },
-            ],
-            groundingSupports: [{
-              segment: { startIndex: 0, endIndex: 46, text: "The current official DataBank DFW page is cited" },
-              groundingChunkIndices: [0],
+        steps: [
+          { type: "google_search_call", arguments: { queries: ["Google Gemini grounding docs last updated"] } },
+          { type: "google_search_result", result: { searchSuggestions: "Google Search" } },
+          {
+            type: "model_output",
+            content: [{
+              type: "text",
+              text: "The documentation is cited.",
+              annotations: [{
+                type: "url_citation",
+                url: "https://ai.google.dev/gemini-api/docs/google-search",
+                title: "Grounding with Google Search",
+              }],
             }],
           },
-        }],
+        ],
       }), { status: 200, headers: { "content-type": "application/json" } });
     },
   });
-
-  assert.equal(result.groundingMetadataPresent, true);
-  assert.equal(result.groundingSearchExecuted, true);
-  assert.deepEqual(result.queries, ["DataBank DFW Dallas official data center current"]);
   assert.equal(result.citationCount, 1);
-  assert.equal(result.candidates[0].url, "https://www.databank.com/data-centers/dallas");
   assert.equal(result.providerAttempt.queryCount, 1);
   assert.equal(result.providerAttempt.citationCount, 1);
   assert.equal(result.providerAttempt.toolDeclarationTransmitted, true);
 
   const sanitized = sanitizeGoogleGroundedRequest(transmittedUrl, transmittedInit);
-  assert.equal(sanitized.endpoint, `${GOOGLE_GEMINI_API_BASE_URL}/${GOOGLE_GEMINI_MODEL}:generateContent`);
+  assert.equal(sanitized.endpoint, GOOGLE_GEMINI_INTERACTIONS_URL);
   assert.deepEqual(sanitized.headers, {
     accept: "application/json",
     "content-type": "application/json",
   });
   assert.equal("x-goog-api-key" in sanitized.headers, false);
-  assert.deepEqual(sanitized.body.tools, [{ google_search: {} }]);
-  assert.equal(sanitized.body.generationConfig.maxOutputTokens, 256);
-  assert.equal(sanitized.body.generationConfig.responseMimeType, undefined);
+  assert.equal(JSON.stringify(sanitized).includes("fixture-google-key"), false);
+  assert.equal(sanitized.body.model, GOOGLE_GEMINI_MODEL);
+  assert.equal(sanitized.body.input, GOOGLE_GROUNDED_PREFLIGHT_PROMPT.replace(/\s+/g, " ").trim());
+  assert.deepEqual(sanitized.body.tools, [{ type: "google_search" }]);
 });
 
-test("rejects HTTP 200 when no grounding metadata proves the tool executed", async () => {
-  await assert.rejects(
-    discoverGoogleGroundedProject({
-      project,
-      apiKey: "fixture-google-key",
-      prompt: GOOGLE_GROUNDED_PREFLIGHT_PROMPT,
-      maxOutputTokens: 256,
-      requireGrounding: true,
-      fetchImpl: async () => new Response(JSON.stringify({
-        candidates: [{
-          content: {
-            parts: [{
-              text: "{\"queries\":[\"model-declared query\"],\"citations\":[{\"url\":\"https://invented.example\"}]}",
-            }],
-          },
-        }],
-      }), { status: 200, headers: { "content-type": "application/json" } }),
-    }),
-    (error) => {
-      assert.equal(error.name, "GoogleDiscoveryGroundingRequiredError");
-      assert.equal(error.researchErrorType, "google-grounding-not-proven");
-      assert.deepEqual(error.providerDiagnostic, { status: 200, reason: "missing-grounding-metadata" });
-      assert.equal(error.providerAttempt.queryCount, 0);
-      assert.equal(error.providerAttempt.citationCount, 0);
-      assert.equal(error.providerAttempt.toolDeclarationTransmitted, true);
-      return true;
-    },
+const validCitationStep = {
+  type: "model_output",
+  content: [{
+    type: "text",
+    text: "Official source.",
+    annotations: [{ type: "url_citation", url: "https://records.example/permit" }],
+  }],
+};
+
+test("rejects HTTP 200 model output with no google_search_call", () => {
+  const result = parseGoogleGroundedDiscoveryResponse({ steps: [validCitationStep] });
+  assert.throws(
+    () => assertGoogleGroundedPreflightResult(result),
+    (error) => error?.providerDiagnostic?.reason === "missing-google-search-call",
   );
 });
 
-test("rejects executed-query metadata with malformed or missing URL citations", () => {
+test("rejects a google_search_call with an empty executed-query array", () => {
   const result = parseGoogleGroundedDiscoveryResponse({
-    candidates: [{
-      content: { parts: [{ text: "{\"citations\":[{\"url\":\"https://invented.example\"}]}" }] },
-      groundingMetadata: {
-        webSearchQueries: ["Project Atlas current official filing"],
-        groundingChunks: [
-          { web: { uri: "not-a-public-url", title: "Malformed citation" } },
-          { retrievedContext: { uri: "https://not-a-web-citation.example" } },
-        ],
-      },
-    }],
+    steps: [
+      { type: "google_search_call", arguments: { queries: [] } },
+      { type: "google_search_result", result: {} },
+      validCitationStep,
+    ],
   });
-  assert.equal(result.groundingMetadataPresent, true);
-  assert.equal(result.groundingSearchExecuted, true);
-  assert.equal(result.citationCount, 0);
-  assert.equal(result.candidates.length, 0);
   assert.throws(
     () => assertGoogleGroundedPreflightResult(result),
-    (error) => error?.providerDiagnostic?.reason === "missing-usable-citation-metadata",
+    (error) => error?.providerDiagnostic?.reason === "empty-executed-queries",
+  );
+});
+
+test("rejects search-call proof without a google_search_result step", () => {
+  const result = parseGoogleGroundedDiscoveryResponse({
+    steps: [
+      { type: "google_search_call", arguments: { queries: ["Project Atlas current permit"] } },
+      validCitationStep,
+    ],
+  });
+  assert.throws(
+    () => assertGoogleGroundedPreflightResult(result),
+    (error) => error?.providerDiagnostic?.reason === "missing-google-search-result",
+  );
+});
+
+test("rejects completed search steps without a url_citation annotation", () => {
+  const result = parseGoogleGroundedDiscoveryResponse({
+    steps: [
+      { type: "google_search_call", arguments: { queries: ["Project Atlas current permit"] } },
+      { type: "google_search_result", result: { items: [] } },
+      { type: "model_output", content: [{ type: "text", text: "No cited output.", annotations: [] }] },
+    ],
+  });
+  assert.throws(
+    () => assertGoogleGroundedPreflightResult(result),
+    (error) => error?.providerDiagnostic?.reason === "missing-url-citations",
+  );
+});
+
+test("does not let model prose or JSON manufacture queries or URL citations", () => {
+  const result = parseGoogleGroundedDiscoveryResponse({
+    steps: [{
+      type: "model_output",
+      content: [{
+        type: "text",
+        text: "{\"queries\":[\"fake query\"],\"citations\":[{\"url\":\"https://invented.example\"}]}",
+      }],
+    }],
+  });
+  assert.deepEqual(result.queries, []);
+  assert.deepEqual(result.candidates, []);
+  assert.equal(result.googleSearchCallCount, 0);
+  assert.equal(result.urlCitationCount, 0);
+});
+
+test("rejects malformed Interactions steps distinctly", () => {
+  assert.throws(
+    () => parseGoogleGroundedDiscoveryResponse({ steps: { type: "model_output" } }),
+    (error) => error?.providerDiagnostic?.reason === "malformed-interactions-response",
   );
 });
 

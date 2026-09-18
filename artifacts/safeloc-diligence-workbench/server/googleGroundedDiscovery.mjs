@@ -1,6 +1,6 @@
 import { canonicalizeSourceUrl } from "../src/data/sourceValidationPolicy.mjs";
 
-export const GOOGLE_GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
+export const GOOGLE_GEMINI_INTERACTIONS_URL = "https://generativelanguage.googleapis.com/v1beta/interactions";
 export const GOOGLE_GEMINI_DEFAULT_MODEL = "gemini-3.8-flash";
 export function resolveGoogleGeminiModel(env = process.env) {
   const configured = typeof env?.GEMINI_DISCOVERY_MODEL === "string"
@@ -12,9 +12,9 @@ export const GOOGLE_GEMINI_MODEL = resolveGoogleGeminiModel();
 export const GOOGLE_GROUNDED_DISCOVERY_REQUEST_LIMIT = 1;
 export const GOOGLE_GROUNDED_DISCOVERY_MAX_CANDIDATES = 80;
 export const GOOGLE_GROUNDED_PREFLIGHT_PROMPT = [
-  "Use Google Search before answering; do not answer from memory.",
-  "As of September 18, 2026, find the current official DataBank page that identifies its Dallas-area DFW data center or campus.",
-  "Return the official page URL and a short identification only. The application will trust only Google grounding metadata, not your prose.",
+  "Use Google Search to find Google's official “Grounding with Google Search” Gemini API documentation.",
+  "Report the date currently displayed in that page's “Last updated” footer and cite that exact official documentation page.",
+  "You must use the enabled Google Search tool before answering. The application trusts only search-call steps and URL-citation annotations, not your prose.",
 ].join("\n");
 
 const DISCOVERY_CATEGORIES = Object.freeze([
@@ -45,52 +45,21 @@ function safeCandidateUrl(value) {
   }
 }
 
-function parseJsonText(value) {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-  try {
-    const parsed = JSON.parse(trimmed);
-    return parsed && typeof parsed === "object" ? parsed : null;
-  } catch {
-    return null;
+function interactionSteps(body) {
+  if (!Array.isArray(body?.steps)) {
+    const error = new Error("Google Interactions grounding response is missing a valid steps array.");
+    error.name = "GoogleDiscoveryParseError";
+    error.researchErrorType = "google-malformed-response";
+    error.providerDiagnostic = { status: null, reason: "malformed-interactions-response" };
+    throw error;
   }
+  return body.steps;
 }
 
-function responseText(body) {
-  return (body?.candidates ?? [])
-    .flatMap((candidate) => candidate?.content?.parts ?? [])
-    .map((part) => typeof part?.text === "string" ? part.text : "")
-    .filter(Boolean)
-    .join("\n");
-}
-
-function groundingChunks(body) {
-  return (body?.candidates ?? []).flatMap((candidate) =>
-    Array.isArray(candidate?.groundingMetadata?.groundingChunks)
-      ? candidate.groundingMetadata.groundingChunks
-      : [],
-  );
-}
-
-function groundingMetadata(body) {
-  return (body?.candidates ?? [])
-    .map((candidate) => candidate?.groundingMetadata)
-    .filter((metadata) => metadata && typeof metadata === "object");
-}
-
-function groundingQueries(body) {
-  const metadataQueries = groundingMetadata(body).flatMap((metadata) =>
-    Array.isArray(metadata?.webSearchQueries)
-      ? metadata.webSearchQueries
-      : [],
-  );
-  return [...new Set(metadataQueries
-    .map((query) => normalizeText(query, 500))
-    .filter(Boolean))].slice(0, 24);
-}
-
-function declaredCitations(parsed) {
-  return Array.isArray(parsed?.citations) ? parsed.citations : [];
+function searchCallQueries(step) {
+  const args = step?.arguments;
+  const queries = Array.isArray(args?.queries) ? args.queries : [];
+  return queries.map((query) => normalizeText(query, 500)).filter(Boolean);
 }
 
 function categoryIdsForCitation(citation) {
@@ -105,19 +74,15 @@ function categoryIdsForCitation(citation) {
   return normalized.length ? [...new Set(normalized)] : [...DISCOVERY_CATEGORIES];
 }
 
-function sourceFromCandidate(candidate, queries, declared = null) {
-  const web = candidate?.web ?? candidate;
-  const url = safeCandidateUrl(web?.uri ?? web?.url ?? declared?.url);
+function sourceFromUrlCitation(annotation, queries) {
+  const url = safeCandidateUrl(annotation?.url);
   if (!url) return null;
-  const referringQueries = Array.isArray(declared?.queries)
-    ? declared.queries.map((query) => normalizeText(query, 500)).filter(Boolean)
-    : queries;
   return {
     url,
     canonicalUrl: url,
-    title: normalizeText(web?.title ?? declared?.title, 240) || "Google-grounded public source",
-    publisher: normalizeText(declared?.publisher ?? web?.domain, 160) || null,
-    date: normalizeText(declared?.publishedAt ?? declared?.date, 40) || null,
+    title: normalizeText(annotation?.title, 240) || "Google-grounded public source",
+    publisher: null,
+    date: null,
     excerpt: "",
     claimPassage: null,
     claimCited: false,
@@ -125,8 +90,8 @@ function sourceFromCandidate(candidate, queries, declared = null) {
     origin: "google-grounded-search",
     discoveryOnly: true,
     exactProject: false,
-    referringQueries: [...new Set(referringQueries)].slice(0, 12),
-    categoryIds: categoryIdsForCitation(declared),
+    referringQueries: [...new Set(queries)].slice(0, 12),
+    categoryIds: categoryIdsForCitation(annotation),
     relevanceNote: "Google grounding discovered this URL; generated summaries and snippets are not evidence.",
   };
 }
@@ -148,18 +113,12 @@ export function buildGoogleGroundedDiscoveryPrompt(project) {
 
 export function buildGoogleGroundedDiscoveryRequestBody(project, {
   prompt = buildGoogleGroundedDiscoveryPrompt(project),
-  maxOutputTokens,
+  model = GOOGLE_GEMINI_MODEL,
 } = {}) {
   return {
-    contents: [{
-      role: "user",
-      parts: [{ text: prompt }],
-    }],
-    tools: [{ google_search: {} }],
-    generationConfig: {
-      temperature: 0,
-      ...(Number.isInteger(maxOutputTokens) && maxOutputTokens > 0 ? { maxOutputTokens } : {}),
-    },
+    model,
+    input: prompt,
+    tools: [{ type: "google_search" }],
   };
 }
 
@@ -177,39 +136,42 @@ export function sanitizeGoogleGroundedRequest(endpoint, init = {}) {
       accept: normalizeText(init.headers?.accept, 80) || null,
       "content-type": normalizeText(init.headers?.["content-type"], 80) || null,
     },
-    body,
+    body: body && typeof body === "object"
+      ? {
+          model: normalizeText(body.model, 120) || null,
+          input: normalizeText(body.input, 4_000) || null,
+          tools: Array.isArray(body.tools)
+            ? body.tools.slice(0, 4).map((tool) => ({ type: normalizeText(tool?.type, 80) || null }))
+            : [],
+        }
+      : null,
   };
 }
 
 export function parseGoogleGroundedDiscoveryResponse(body) {
   if (!body || typeof body !== "object") {
-    const error = new Error("Google grounding returned a non-object response.");
+    const error = new Error("Google Interactions grounding returned a non-object response.");
     error.name = "GoogleDiscoveryParseError";
+    error.researchErrorType = "google-malformed-response";
+    error.providerDiagnostic = { status: null, reason: "malformed-interactions-response" };
     throw error;
   }
-  const parsed = parseJsonText(responseText(body)) ?? {};
-  const queries = groundingQueries(body);
-  const declared = declaredCitations(parsed);
+  const steps = interactionSteps(body);
+  const searchCalls = steps.filter((step) => step?.type === "google_search_call");
+  const searchResults = steps.filter((step) => step?.type === "google_search_result");
+  const modelOutputs = steps.filter((step) => step?.type === "model_output");
+  const queries = [...new Set(searchCalls.flatMap(searchCallQueries))].slice(0, 24);
+  const annotations = modelOutputs.flatMap((step) =>
+    (Array.isArray(step?.content) ? step.content : []).flatMap((content) =>
+      Array.isArray(content?.annotations) ? content.annotations : []),
+  ).filter((annotation) => annotation?.type === "url_citation");
   const sources = [];
   const seen = new Set();
-  for (const chunk of groundingChunks(body)) {
-    const source = sourceFromCandidate(chunk, queries);
+  for (const annotation of annotations) {
+    const source = sourceFromUrlCitation(annotation, queries);
     if (source && !seen.has(source.canonicalUrl)) {
       seen.add(source.canonicalUrl);
       sources.push(source);
-    }
-  }
-  for (const citation of declared) {
-    const source = sourceFromCandidate(citation, queries, citation);
-    if (source && seen.has(source.canonicalUrl)) {
-      const existing = sources.find((candidate) => candidate.canonicalUrl === source.canonicalUrl);
-      if (existing) {
-        existing.title = existing.title === "Google-grounded public source" ? source.title : existing.title;
-        existing.publisher ??= source.publisher;
-        existing.date ??= source.date;
-        existing.categoryIds = [...new Set([...existing.categoryIds, ...source.categoryIds])];
-        existing.referringQueries = [...new Set([...existing.referringQueries, ...source.referringQueries])].slice(0, 12);
-      }
     }
   }
   return {
@@ -219,23 +181,31 @@ export function parseGoogleGroundedDiscoveryResponse(body) {
     queries,
     candidates: sources.slice(0, GOOGLE_GROUNDED_DISCOVERY_MAX_CANDIDATES),
     generatedSummaryIgnored: true,
-    groundingMetadataPresent: groundingMetadata(body).length > 0,
-    groundingSearchExecuted: queries.length > 0,
+    groundingMetadataPresent: searchCalls.length > 0 || searchResults.length > 0 || annotations.length > 0,
+    groundingSearchExecuted: searchCalls.length > 0 && queries.length > 0,
     usableCitationMetadataPresent: sources.length > 0,
+    googleSearchCallCount: searchCalls.length,
+    googleSearchResultCount: searchResults.length,
+    urlCitationCount: annotations.length,
     citationCount: sources.length,
   };
 }
 
 export function assertGoogleGroundedPreflightResult(result) {
-  const reason = !result?.groundingMetadataPresent
-    ? "missing-grounding-metadata"
-    : !result?.groundingSearchExecuted
-      ? "missing-executed-query-metadata"
-      : !result?.usableCitationMetadataPresent || !Array.isArray(result?.candidates) || result.candidates.length === 0
-        ? "missing-usable-citation-metadata"
+  const reason = !Number.isInteger(result?.googleSearchCallCount) || result.googleSearchCallCount === 0
+    ? "missing-google-search-call"
+    : !Array.isArray(result?.queries) || result.queries.length === 0
+      ? "empty-executed-queries"
+      : !Number.isInteger(result?.googleSearchResultCount) || result.googleSearchResultCount === 0
+        ? "missing-google-search-result"
+        : !Number.isInteger(result?.urlCitationCount)
+          || result.urlCitationCount === 0
+          || !Array.isArray(result?.candidates)
+          || result.candidates.length === 0
+        ? "missing-url-citations"
         : null;
   if (!reason) return result;
-  const error = new Error("Google Gemini returned HTTP success without proving a usable Google Search grounding call.");
+  const error = new Error("Google Interactions returned HTTP success without proving a usable Google Search grounding call.");
   error.name = "GoogleDiscoveryGroundingRequiredError";
   error.researchErrorType = "google-grounding-not-proven";
   error.providerDiagnostic = { status: 200, reason };
@@ -248,6 +218,9 @@ export function assertGoogleGroundedPreflightResult(result) {
     queryCount: Array.isArray(result?.queries) ? result.queries.length : 0,
     citationCount: Number.isInteger(result?.citationCount) ? result.citationCount : 0,
     groundingMetadataPresent: result?.groundingMetadataPresent === true,
+    googleSearchCallCount: result?.googleSearchCallCount ?? 0,
+    googleSearchResultCount: result?.googleSearchResultCount ?? 0,
+    urlCitationCount: result?.urlCitationCount ?? 0,
     toolDeclarationTransmitted: true,
   };
   throw error;
@@ -260,7 +233,6 @@ export async function discoverGoogleGroundedProject({
   signal,
   model = GOOGLE_GEMINI_MODEL,
   prompt,
-  maxOutputTokens,
   requireGrounding = false,
 } = {}) {
   if (!apiKey) {
@@ -269,8 +241,8 @@ export async function discoverGoogleGroundedProject({
     error.researchErrorType = "google-not-configured";
     throw error;
   }
-  const endpoint = `${GOOGLE_GEMINI_API_BASE_URL}/${encodeURIComponent(model)}:generateContent`;
-  const requestBody = buildGoogleGroundedDiscoveryRequestBody(project, { prompt, maxOutputTokens });
+  const endpoint = GOOGLE_GEMINI_INTERACTIONS_URL;
+  const requestBody = buildGoogleGroundedDiscoveryRequestBody(project, { prompt, model });
   const requestInit = {
     method: "POST",
     headers: {
@@ -327,14 +299,34 @@ export async function discoverGoogleGroundedProject({
       queryCount: 0,
       citationCount: 0,
       groundingMetadataPresent: false,
-      toolDeclarationTransmitted: requestBody.tools?.[0]?.google_search != null,
+      googleSearchCallCount: 0,
+      googleSearchResultCount: 0,
+      urlCitationCount: 0,
+      toolDeclarationTransmitted: requestBody.tools?.some((tool) => tool?.type === "google_search") === true,
     };
     throw error;
   }
-  const result = {
-    ...parseGoogleGroundedDiscoveryResponse(body),
-    model,
-  };
+  let result;
+  try {
+    result = { ...parseGoogleGroundedDiscoveryResponse(body), model };
+  } catch (error) {
+    if (error?.providerDiagnostic) error.providerDiagnostic.status = response.status;
+    error.providerAttempt = {
+      provider: "google-gemini-grounding",
+      model,
+      requestCount: GOOGLE_GROUNDED_DISCOVERY_REQUEST_LIMIT,
+      status: response.status,
+      outcome: "failed",
+      queryCount: 0,
+      citationCount: 0,
+      groundingMetadataPresent: false,
+      googleSearchCallCount: 0,
+      googleSearchResultCount: 0,
+      urlCitationCount: 0,
+      toolDeclarationTransmitted: requestBody.tools?.some((tool) => tool?.type === "google_search") === true,
+    };
+    throw error;
+  }
   const completed = {
     ...result,
     providerRequestCount: GOOGLE_GROUNDED_DISCOVERY_REQUEST_LIMIT,
@@ -348,7 +340,10 @@ export async function discoverGoogleGroundedProject({
       queryCount: result.queries.length,
       citationCount: result.citationCount,
       groundingMetadataPresent: result.groundingMetadataPresent,
-      toolDeclarationTransmitted: requestBody.tools?.[0]?.google_search != null,
+      googleSearchCallCount: result.googleSearchCallCount,
+      googleSearchResultCount: result.googleSearchResultCount,
+      urlCitationCount: result.urlCitationCount,
+      toolDeclarationTransmitted: requestBody.tools?.some((tool) => tool?.type === "google_search") === true,
     },
   };
   return requireGrounding ? assertGoogleGroundedPreflightResult(completed) : completed;

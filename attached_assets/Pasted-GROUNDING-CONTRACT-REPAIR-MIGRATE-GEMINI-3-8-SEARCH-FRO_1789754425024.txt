@@ -1,0 +1,312 @@
+GROUNDING CONTRACT REPAIR: MIGRATE GEMINI 3.8 SEARCH FROM GENERATECONTENT TO INTERACTIONS
+
+Continue from the current repository state.
+
+Current HEAD:
+88f1251d266a0f4fd9907aed0d73adfa3ddc334a
+
+Preserve all existing commits and uncommitted work. Do not reset, discard, rewrite, or overwrite any current changes.
+
+Known uncommitted files:
+- server/googleGroundedDiscovery.mjs
+- server/googleGroundedDiscovery.test.mjs
+
+There is also a pre-existing unrelated modification in:
+- validation/production-dossiers-post-promotion.json
+
+Do not modify, stage, restore, reformat, or include that unrelated validation file in any commit.
+
+DIAGNOSIS TO VERIFY
+
+The last preflight used:
+
+POST /v1beta/models/gemini-3.8-flash:generateContent
+
+with:
+
+tools: [{ "google_search": {} }]
+
+and parsed:
+
+- candidates[].groundingMetadata.webSearchQueries
+- candidates[].groundingMetadata.groundingChunks[].web.uri
+
+That is not the current documented Google Search grounding contract for Gemini 3.8 Flash.
+
+Google’s current official Gemini API documentation shows:
+
+POST https://generativelanguage.googleapis.com/v1beta/interactions
+
+Request body:
+
+{
+  "model": "gemini-3.8-flash",
+  "input": "...",
+  "tools": [
+    {
+      "type": "google_search"
+    }
+  ]
+}
+
+The documented grounded response uses steps including:
+
+- type: "google_search_call"
+  - arguments.queries contains executed searches
+- type: "google_search_result"
+- type: "model_output"
+  - content[] text blocks
+  - content[].annotations[] entries with type: "url_citation"
+  - each citation supplies its source URL
+
+Treat this endpoint and schema mismatch as the leading diagnosis, but inspect the actual current files before editing.
+
+HARD STOP BEFORE ANY LIVE REQUEST
+
+Do not make any paid provider request until all work below is complete and all relevant deterministic tests pass.
+
+PHASE 1: READ-ONLY INSPECTION
+
+1. Inspect the current diffs in:
+   - server/googleGroundedDiscovery.mjs
+   - server/googleGroundedDiscovery.test.mjs
+
+2. Preserve the useful strictness already implemented:
+   - Model-generated JSON cannot invent executed queries.
+   - Model-generated JSON cannot invent grounding citation URLs.
+   - HTTP 200 alone is insufficient.
+   - API keys and sensitive headers never enter diagnostics.
+   - OpenAI web search remains disabled for this validation.
+   - No automatic evidence acceptance is introduced.
+
+3. Confirm from Google’s current official documentation:
+   - Gemini 3.8 Flash is a supported grounding model.
+   - The documented endpoint is /v1beta/interactions.
+   - The request uses tools: [{ "type": "google_search" }].
+   - Executed queries come from google_search_call steps.
+   - Citation URLs come from url_citation annotations on model_output content.
+
+Include the official documentation URL and its displayed last-updated date in the diagnostic, but do not copy credentials or sensitive response headers.
+
+PHASE 2: MIGRATE THE REQUEST CONTRACT
+
+4. Replace the Gemini 3.8 grounding request boundary with:
+
+   POST /v1beta/interactions
+
+5. The sanitized outbound request representation must prove that the transmitted body contains:
+
+   {
+     "model": "<configured model>",
+     "input": "<sanitized prompt representation>",
+     "tools": [
+       {
+         "type": "google_search"
+       }
+     ]
+   }
+
+6. Keep the model configurable through GEMINI_DISCOVERY_MODEL.
+
+7. Keep gemini-3.8-flash as the default only if the current official documentation still identifies it as a supported stable model for Google Search grounding.
+
+8. Do not retain generateContent as an automatic fallback.
+
+9. Do not try a second endpoint, model, prompt, project, or provider if the single live preflight fails.
+
+PHASE 3: MIGRATE THE RESPONSE PARSER
+
+10. Parse actual search execution only from response steps where:
+
+    step.type === "google_search_call"
+
+11. Extract executed queries only from the corresponding search-call arguments. Require at least one nonempty executed query.
+
+12. Recognize the google_search_result step as additional proof that the grounding workflow ran, while keeping executed-query proof tied to google_search_call.
+
+13. Extract citation URLs only from model_output content annotations where:
+
+    annotation.type === "url_citation"
+
+14. Do not treat any of the following as grounding proof:
+    - HTTP 200 by itself
+    - model text saying it searched
+    - JSON included in model-generated prose
+    - URLs included only in model-generated prose
+    - search-result snippets
+    - URLs without url_citation provenance
+
+15. The strict preflight succeeds only if all of these are present:
+    - HTTP success
+    - at least one google_search_call step
+    - at least one nonempty executed query
+    - at least one google_search_result step
+    - at least one model_output url_citation URL
+
+16. Record distinct deterministic failure boundaries, including:
+    - missing-google-search-call
+    - empty-executed-queries
+    - missing-google-search-result
+    - missing-url-citations
+    - malformed-interactions-response
+    - provider-http-failure
+
+Do not collapse all of these into missing-grounding-metadata.
+
+PHASE 4: OFFLINE FIXTURES AND TESTS
+
+17. Replace or extend the deterministic fixtures so they represent the documented Interactions response, not the old generateContent groundingMetadata response.
+
+18. Add tests for:
+    - Successful response with google_search_call, nonempty queries, google_search_result, model_output, and url_citation.
+    - HTTP 200 with model_output but no google_search_call.
+    - Search call with an empty queries array.
+    - Search call without google_search_result.
+    - Search execution with no url_citation annotations.
+    - Model text containing fake query and URL fields.
+    - A malformed steps structure.
+    - A provider HTTP failure before grounding.
+    - Sanitized request capture proving the Interactions endpoint and tool declaration.
+    - Secret-redaction checks proving the API key and sensitive headers cannot enter logs or diagnostics.
+
+19. Confirm that no test fixture allows model-generated prose or JSON to manufacture search execution or citation provenance.
+
+20. Run all relevant deterministic request-building, parsing, orchestration, and security/redaction suites.
+
+21. If any relevant offline test fails, stop. Do not make a live request.
+
+PHASE 5: EXACTLY ONE LIVE PREFLIGHT
+
+Only after the complete offline gate passes:
+
+22. Restart the development workflow cleanly.
+
+23. Run exactly one Gemini request using the Interactions endpoint and this source-dependent prompt, or a semantically identical version:
+
+    Use Google Search to find Google’s official “Grounding with Google Search” Gemini API documentation. Report the date currently displayed in that page’s “Last updated” footer and cite that exact official documentation page. You must use the enabled Google Search tool before answering.
+
+24. Do not:
+    - Retry the request.
+    - Change the prompt after it runs.
+    - Try generateContent.
+    - Try another model.
+    - Try another endpoint.
+    - Try another API project.
+    - Invoke OpenAI web search.
+    - Run the DataBank acceptance unless this preflight passes the strict proof requirements.
+
+25. The preflight report must separately show:
+    - Exact endpoint
+    - Configured model
+    - Gemini request count
+    - HTTP status
+    - Provider result
+    - Elapsed time
+    - Sanitized transmitted tool declaration
+    - google_search_call count
+    - Exact executed queries
+    - google_search_result count
+    - url_citation count
+    - Citation URLs
+    - OpenAI web-search call count, which must be zero
+    - Exact success or failure boundary
+
+Do not report “grounding proven” unless the actual response contains the required search-call, query, result, and citation structures.
+
+PHASE 6: DATABANK DFW ACCEPTANCE
+
+26. Only if the single preflight proves Google Search execution under the strict criteria, run the still-unused single DataBank DFW acceptance.
+
+27. Do not run a second project and do not retry DataBank DFW.
+
+28. Preserve the downstream evidence requirements:
+
+Google grounding citation
+→ normalized URL
+→ physically retrieved document
+→ exact retained passage
+→ exact DataBank DFW project and phase match
+→ eligible claim
+→ visible human-review proposal
+
+29. A search result, model summary, annotation alone, or snippet is not evidence. The cited document must still be physically retrieved and processed by the existing evidence engine.
+
+30. Automatic model acceptances must remain zero.
+
+31. If the search completes technically but no qualifying evidence survives the downstream gates, classify it:
+
+Research complete — no eligible evidence found
+
+32. Use incomplete-technical-limitation only when a required provider, search, access, parsing, or orchestration operation fails.
+
+PHASE 7: VALIDATION AND CLOSEOUT
+
+After a successful preflight and the single acceptance:
+
+33. Run:
+    - Full unit and server suite
+    - Production endpoint-contract tests
+    - Complete desktop/mobile browser matrix
+    - Focused financial regressions
+    - TypeScript typecheck
+    - Production build
+    - Clean workflow startup check
+
+34. Recalculate and compare the canonical dossier hashes.
+
+35. Confirm:
+    - Financial engine unchanged
+    - Kilby remains Not modeled
+    - El Mirage remains Not modeled
+    - No production data changed
+    - No public mutation endpoint introduced
+    - No automatic proposal acceptance introduced
+    - 24-open ceiling preserved
+    - 90-second deadline preserved
+    - No OpenAI web-search calls occurred
+    - No deployment or publication occurred
+
+36. Create a sanitized tracked acceptance diagnostic only after successful acceptance.
+
+37. Prove the diagnostic is tracked with:
+
+    git ls-files --error-unmatch <diagnostic-path>
+
+38. Stage only the intended grounding-contract files and the successful sanitized diagnostic. Do not stage validation/production-dossiers-post-promotion.json.
+
+39. Create one corrective commit if and only if the implementation and required validation are complete.
+
+40. Report:
+    - Starting HEAD
+    - Final HEAD
+    - New commit SHA and parent
+    - Changed paths
+    - Official Gemini documentation used
+    - Offline test results
+    - Live preflight telemetry
+    - DataBank DFW acceptance telemetry
+    - Full validation results
+    - Canonical dossier hash comparison
+    - Financial-engine confirmation
+    - Ancestry confirmation
+    - git status --short
+    - Clean or dirty working-tree explanation
+
+If the live preflight fails, stop immediately, preserve the DataBank DFW acceptance, make no commit, and report the exact Interactions response boundary that failed.
+
+HARD GUARDRAILS
+
+- No production-data mutation.
+- No deployment or publication.
+- No automatic evidence acceptance.
+- No OpenAI web-search fallback during this validation.
+- No second provider request after a failed preflight.
+- No alternate model, prompt, endpoint, provider, or project after failure.
+- No second acceptance project.
+- No financial-engine changes.
+- No canonical dossier rewrites.
+- No broad research-engine redesign.
+- Never expose provider credentials.
+- Preserve the 24-open ceiling and 90-second deadline.
+- Keep provider success separate from evidence success.
+- Stop and report blockers honestly.

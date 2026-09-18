@@ -193,6 +193,18 @@ export type CustomResearchResponse = {
       capDiscardCount: number;
     };
   };
+  canonicalProvenance?: Array<{
+    title: string;
+    url: string;
+    publisher: string;
+    publishedAt: string | null;
+    accessedAt: string | null;
+    exactPassage: string;
+    provenanceType: "evidence-claim" | "ownership-conflict";
+    variableId?: string;
+    claim?: string;
+    attributedTo?: string;
+  }>;
   researchAudit?: ResearchAudit;
   evidence: CustomEvidenceRecord[];
   retrievedLeads?: CustomEvidenceRecord[];

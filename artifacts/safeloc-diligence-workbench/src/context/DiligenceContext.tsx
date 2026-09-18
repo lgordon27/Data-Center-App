@@ -83,7 +83,7 @@ import {
   type ReturnCaptureReleaseIdentity,
   type SanitizedReturnDiscrepancyRecord,
 } from "@/diagnostics/returnDiscrepancyCapture";
-import type { CanonicalDossierSummary } from "@/services/canonicalDossierService";
+import type { CanonicalDossierSummary, CanonicalProvenance } from "@/services/canonicalDossierService";
 import { dossierToResearchResponse } from "@/services/canonicalDossierService";
 export type { Classification } from '@/model/cashFlowEngine';
 
@@ -299,6 +299,7 @@ export type ProjectContext = Omit<CustomResearchResponse["projectSummary"], "cap
   researchCache?: CustomResearchResponse["researchCache"];
   researchCoverage?: CustomResearchResponse["researchCoverage"];
   researchAudit?: CustomResearchResponse["researchAudit"];
+  canonicalProvenance?: CanonicalProvenance[];
   researchOutcome?: CustomResearchResponse["researchOutcome"];
   researchProposals?: Record<string, CustomEvidenceRecord>;
   researchProposalDispositions?: Record<string, ResearchProposalDisposition>;
@@ -1109,6 +1110,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         ? "directory-reported"
         : "standardized-default",
       canonicalDossier: dossier,
+      canonicalProvenance: research.canonicalProvenance,
     };
     stateRef.current = nextState;
     setState(nextState);

@@ -40,6 +40,38 @@ export function ProjectReality({ evidenceOpen, onEvidenceOpenChange, onNavigate 
           {!unresolved.length && <p className="mt-3 text-sm text-[#60707d]">No unresolved items in the available record. This is not a completeness guarantee.</p>}
         </section>
       </div>
+      {project.canonicalDossier && project.canonicalProvenance?.length ? <details data-testid="canonical-provenance" className="rounded-xl border border-[#cbd8d4] bg-white px-5">
+        <summary className="cursor-pointer py-4 text-sm font-semibold">
+          Canonical source lineage
+          <span className="ml-3 text-xs font-normal text-[#60707d]">
+            {project.canonicalProvenance.length} retained provenance records · evidence and conflicts shown separately
+          </span>
+        </summary>
+        <div className="space-y-3 border-t border-[#e5eae8] pb-5 pt-4">
+          {project.canonicalProvenance.map((record, index) => <article key={`${record.provenanceType}-${record.url}-${record.variableId ?? index}`} className="rounded-md bg-[#f6f8f6] p-3">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <h4 className="text-sm font-semibold">{record.title}</h4>
+                <p className="mt-1 text-[11px] uppercase tracking-[0.08em] text-[#60707d]">
+                  {record.provenanceType === "ownership-conflict" ? "Ownership conflict record" : `Evidence claim${record.variableId ? ` · ${record.variableId}` : ""}`}
+                  {record.attributedTo ? ` · attributed to ${record.attributedTo}` : ""}
+                </p>
+              </div>
+              <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${record.provenanceType === "ownership-conflict" ? "bg-[#fff0db] text-[#805000]" : "bg-[#e6f1ec] text-[#365b4c]"}`}>
+                {record.provenanceType === "ownership-conflict" ? "Conflict retained" : "Claim source"}
+              </span>
+            </div>
+            {record.claim && <p className="mt-2 text-xs leading-5 text-[#52616b]">{record.claim}</p>}
+            <a href={record.url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex max-w-full items-center gap-1 break-all text-xs text-[#255bb7] underline">
+              <ExternalLink aria-hidden="true" className="h-3 w-3 shrink-0" />{record.url}
+            </a>
+            <p className="mt-1 text-[11px] text-[#60707d]">
+              {record.publisher}{record.publishedAt ? ` · published ${record.publishedAt}` : ""}{record.accessedAt ? ` · accessed ${record.accessedAt}` : ""}
+            </p>
+            <blockquote className="mt-2 border-l-2 border-[#b7c9c0] pl-3 text-xs italic leading-5 text-[#52616b]">{record.exactPassage}</blockquote>
+          </article>)}
+        </div>
+      </details> : null}
       <div className="rounded-xl border border-[#cbd8d4] bg-white px-5">
         {categories.map((category) => <details key={category.name} data-testid={`reality-category-${category.name.toLowerCase()}`} className="border-b border-[#e5eae8]">
           <summary className="cursor-pointer py-4 text-sm font-semibold">{category.name}<span className="ml-3 text-xs font-normal text-[#60707d]">Evidence &amp; citations</span></summary>

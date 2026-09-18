@@ -6,25 +6,28 @@
     "reason": "A provider, access, timeout, or governed budget limitation prevented conclusive evaluation.",
     "trace": []
   },
-  "generatedAt": "2026-09-18T14:52:58.618Z",
+  "generatedAt": "2026-09-18T16:07:32.225Z",
   "project": {
-    "name": "CleanSpark Austin County",
-    "location": "Austin County, Texas",
+    "name": "Aligned Phoenix Campus",
+    "location": "Phoenix, Maricopa County, Arizona",
     "directoryProvider": "Compute Atlas",
     "directoryProviderId": null,
-    "aliases": [],
-    "operator": "CleanSpark",
+    "aliases": [
+      "Aligned Phoenix Campus"
+    ],
+    "operator": "Aligned Data Centers",
     "status": null,
-    "city": null,
-    "county": "Austin County",
-    "state": "Texas",
+    "city": "Phoenix",
+    "county": "Maricopa County",
+    "state": null,
     "sourceUrl": null,
     "authorities": {
       "establishedDomains": [],
       "identifiedAuthorities": [],
       "missingAuthorityDomains": [
-        "City of Austin",
-        "Austin County County"
+        "Arizona utility and water-authority records",
+        "City of Phoenix",
+        "Maricopa County County"
       ],
       "companyDomains": []
     }
@@ -32,23 +35,38 @@
   "run": {
     "status": "incomplete-technical-limitation",
     "telemetryStatus": "current-live",
-    "runId": "3f793d3a-34d0-4b50-aafa-92e023d6f12c",
+    "runId": "c122131e-259e-401a-9ba2-e401d027b27a",
     "researchStatus": "partial",
     "researchOutcome": "incomplete-technical-limitation",
     "httpStatus": 200,
     "provider": "openai",
     "model": "gpt-4o",
     "providerResponseIds": [],
-    "startedAt": "2026-09-18T14:52:58.622Z",
-    "finishedAt": "2026-09-18T14:53:05.322Z",
-    "elapsedMs": 6700,
-    "wallClockElapsedMs": 6880,
+    "startedAt": "2026-09-18T16:07:32.531Z",
+    "finishedAt": "2026-09-18T16:07:59.272Z",
+    "elapsedMs": 26741,
+    "wallClockElapsedMs": 27214,
     "failureType": null,
     "failureMessage": null,
     "providerDiagnostic": null,
     "elapsedWithinDeadline": true,
-    "providerRequestCount": 1,
-    "providerAttempts": [],
+    "providerRequestCount": 9,
+    "providerAttempts": [
+      {
+        "categoryId": null,
+        "attemptType": null,
+        "queuedAt": null,
+        "issuedAt": null,
+        "finishedAt": null,
+        "queueWaitMs": null,
+        "elapsedMs": null,
+        "status": 404,
+        "outcome": "failed",
+        "requestedOutputTokens": null,
+        "requestBodyBytes": null,
+        "usage": null
+      }
+    ],
     "toolCallCount": 0,
     "followUpCount": 0,
     "budget": {
@@ -79,14 +97,29 @@
       "candidateCategoryLimit": 10
     }
   },
-  "requests": [],
+  "requests": [
+    {
+      "categoryId": null,
+      "attemptType": null,
+      "queuedAt": null,
+      "issuedAt": null,
+      "finishedAt": null,
+      "queueWaitMs": null,
+      "elapsedMs": null,
+      "status": 404,
+      "outcome": "failed",
+      "requestedOutputTokens": null,
+      "requestBodyBytes": null,
+      "usage": null
+    }
+  ],
   "observedSearches": [],
   "returnedDomains": [],
   "executedQueries": [
     {
       "categoryId": "project-identity",
       "label": "Project identity",
-      "requestedPrimaryQuery": "\"CleanSpark Austin County\" \"Austin County, Texas\" Texas project permit operator disclosure ERCOT PUCT (site:ercot.com OR site:puc.texas.gov OR site:sec.gov) \"CleanSpark\" \"CleanSpark\"",
+      "requestedPrimaryQuery": "\"Aligned Phoenix Campus\" \"Phoenix, Maricopa County, Arizona\" project operator facility identity permit record Arizona Arizona Corporation Commission Arizona Department of Water Resources Arizona Department of Environmental Quality Arizona utility and water-authority records \"Aligned Phoenix Campus\" \"Aligned Data Centers\" \"Aligned Data Centers\" (site:azcc.gov OR site:azwater.gov OR site:azdeq.gov) official government regulator utility record",
       "executedQueries": [],
       "followUpExecutedQuery": null,
       "state": "Provider failure"
@@ -94,58 +127,58 @@
     {
       "categoryId": "grid",
       "label": "Grid",
-      "requestedPrimaryQuery": "\"CleanSpark Austin County\" \"Austin County, Texas\" ERCOT PUCT Texas interconnection queue transmission study (site:ercot.com OR site:puc.texas.gov) \"CleanSpark\" \"CleanSpark\"",
+      "requestedPrimaryQuery": "\"Aligned Phoenix Campus\" \"Phoenix, Maricopa County, Arizona\" grid interconnection queue transmission study Arizona Arizona Corporation Commission Arizona Department of Water Resources Arizona Department of Environmental Quality Arizona utility and water-authority records \"Aligned Phoenix Campus\" \"Aligned Data Centers\" \"Aligned Data Centers\" (site:azcc.gov OR site:azwater.gov OR site:azdeq.gov) official government regulator utility record",
       "executedQueries": [],
       "followUpExecutedQuery": null,
-      "state": "Not searched"
+      "state": "Provider failure"
     },
     {
       "categoryId": "electricity",
       "label": "Electricity",
-      "requestedPrimaryQuery": "\"CleanSpark Austin County\" \"Austin County, Texas\" ERCOT PUCT Texas utility tariff rate case EIA market context (site:ercot.com OR site:puc.texas.gov OR site:eia.gov) \"CleanSpark\" \"CleanSpark\"",
+      "requestedPrimaryQuery": "\"Aligned Phoenix Campus\" \"Phoenix, Maricopa County, Arizona\" utility tariff electricity rate power price $/MWh Arizona Arizona Corporation Commission Arizona Department of Water Resources Arizona Department of Environmental Quality Arizona utility and water-authority records \"Aligned Phoenix Campus\" \"Aligned Data Centers\" \"Aligned Data Centers\" (site:azcc.gov OR site:azwater.gov OR site:azdeq.gov) official government regulator utility record",
       "executedQueries": [],
       "followUpExecutedQuery": null,
-      "state": "Not searched"
+      "state": "Provider failure"
     },
     {
       "categoryId": "water",
       "label": "Water",
-      "requestedPrimaryQuery": "\"CleanSpark Austin County\" \"Austin County, Texas\" \"City of Austin\" \"Austin County County\" TWDB municipal county water demand consumption rights permit (site:twdb.texas.gov) \"CleanSpark\" \"CleanSpark\"",
+      "requestedPrimaryQuery": "\"Aligned Phoenix Campus\" \"Phoenix, Maricopa County, Arizona\" water demand consumption gallons usage Arizona Arizona Corporation Commission Arizona Department of Water Resources Arizona Department of Environmental Quality Arizona utility and water-authority records City of Phoenix Maricopa County County \"Aligned Phoenix Campus\" \"Aligned Data Centers\" \"Aligned Data Centers\" (site:azcc.gov OR site:azwater.gov OR site:azdeq.gov) official government regulator utility record",
       "executedQueries": [],
       "followUpExecutedQuery": null,
-      "state": "Not searched"
+      "state": "Provider failure"
     },
     {
       "categoryId": "permitting-community",
       "label": "Permitting and community",
-      "requestedPrimaryQuery": "\"CleanSpark Austin County\" \"Austin County, Texas\" \"City of Austin\" \"Austin County County\" Texas municipal county agenda permit public hearing agreement \"CleanSpark\" \"CleanSpark\"",
+      "requestedPrimaryQuery": "\"Aligned Phoenix Campus\" \"Phoenix, Maricopa County, Arizona\" public hearing opposition complaints community Arizona Arizona Corporation Commission Arizona Department of Water Resources Arizona Department of Environmental Quality Arizona utility and water-authority records City of Phoenix Maricopa County County \"Aligned Phoenix Campus\" \"Aligned Data Centers\" \"Aligned Data Centers\" (site:azcc.gov OR site:azwater.gov OR site:azdeq.gov) official government regulator utility record",
       "executedQueries": [],
       "followUpExecutedQuery": null,
-      "state": "Not searched"
+      "state": "Provider failure"
     },
     {
       "categoryId": "construction-capital",
       "label": "Construction and capital",
-      "requestedPrimaryQuery": "\"CleanSpark\" \"CleanSpark Austin County\" SEC EDGAR investor relations official developer project disclosure (site:sec.gov) \"CleanSpark\" \"CleanSpark\"",
+      "requestedPrimaryQuery": "\"Aligned Phoenix Campus\" \"Phoenix, Maricopa County, Arizona\" cooling system capital cost capex Arizona Arizona Corporation Commission Arizona Department of Water Resources Arizona Department of Environmental Quality Arizona utility and water-authority records \"Aligned Phoenix Campus\" \"Aligned Data Centers\" \"Aligned Data Centers\" (site:azcc.gov OR site:azwater.gov OR site:azdeq.gov) official government regulator utility record",
       "executedQueries": [],
       "followUpExecutedQuery": null,
-      "state": "Not searched"
+      "state": "Provider failure"
     },
     {
       "categoryId": "tenant-counterparty",
       "label": "Tenant and counterparty",
-      "requestedPrimaryQuery": "\"CleanSpark\" \"CleanSpark Austin County\" SEC EDGAR investor relations official project developer disclosure customer offtake (site:sec.gov) \"CleanSpark\" \"CleanSpark\"",
+      "requestedPrimaryQuery": "\"Aligned Phoenix Campus\" \"Phoenix, Maricopa County, Arizona\" customer concentration revenue load share percentage Arizona Arizona Corporation Commission Arizona Department of Water Resources Arizona Department of Environmental Quality Arizona utility and water-authority records \"Aligned Phoenix Campus\" \"Aligned Data Centers\" \"Aligned Data Centers\" (site:azcc.gov OR site:azwater.gov OR site:azdeq.gov) official government regulator utility record",
       "executedQueries": [],
       "followUpExecutedQuery": null,
-      "state": "Not searched"
+      "state": "Provider failure"
     },
     {
       "categoryId": "climate-operational-hazard",
       "label": "Climate and operational hazard",
-      "requestedPrimaryQuery": "\"CleanSpark Austin County\" \"Austin County, Texas\" FEMA NOAA Texas exact site flood wildfire drought hazard (site:fema.gov OR site:noaa.gov) \"CleanSpark\" \"CleanSpark\"",
+      "requestedPrimaryQuery": "\"Aligned Phoenix Campus\" \"Phoenix, Maricopa County, Arizona\" flood wildfire seismic hazard exact site Arizona Arizona Corporation Commission Arizona Department of Water Resources Arizona Department of Environmental Quality Arizona utility and water-authority records \"Aligned Phoenix Campus\" \"Aligned Data Centers\" \"Aligned Data Centers\" (site:azcc.gov OR site:azwater.gov OR site:azdeq.gov) official government regulator utility record",
       "executedQueries": [],
       "followUpExecutedQuery": null,
-      "state": "Not searched"
+      "state": "Provider failure"
     }
   ],
   "sourceStates": {
@@ -717,8 +750,8 @@
   "budgetState": {
     "telemetryStatus": "current-live",
     "physicalOpenBudget": 24,
-    "physicalOpensUsed": 10,
-    "physicalOpensRemaining": 14,
+    "physicalOpensUsed": 0,
+    "physicalOpensRemaining": 24,
     "physicalOpenBudgetExceeded": false,
     "documentsNotAttempted": [
       {
@@ -729,37 +762,37 @@
       {
         "categoryId": "grid",
         "count": 0,
-        "reason": "no-justified-gap"
+        "reason": "provider-failure"
       },
       {
         "categoryId": "electricity",
         "count": 0,
-        "reason": "no-justified-gap"
+        "reason": "provider-failure"
       },
       {
         "categoryId": "water",
         "count": 0,
-        "reason": "no-justified-gap"
+        "reason": "provider-failure"
       },
       {
         "categoryId": "permitting-community",
         "count": 0,
-        "reason": "no-justified-gap"
+        "reason": "provider-failure"
       },
       {
         "categoryId": "construction-capital",
         "count": 0,
-        "reason": "no-justified-gap"
+        "reason": "provider-failure"
       },
       {
         "categoryId": "tenant-counterparty",
         "count": 0,
-        "reason": "no-justified-gap"
+        "reason": "provider-failure"
       },
       {
         "categoryId": "climate-operational-hazard",
         "count": 0,
-        "reason": "no-justified-gap"
+        "reason": "provider-failure"
       }
     ]
   },
@@ -807,7 +840,7 @@
     "modelChangePendingHumanAcceptance": true
   },
   "sessionState": {
-    "runId": "3f793d3a-34d0-4b50-aafa-92e023d6f12c",
+    "runId": "c122131e-259e-401a-9ba2-e401d027b27a",
     "researchStatus": "partial",
     "cacheState": "updated",
     "telemetryStatus": "current-live",
@@ -832,7 +865,7 @@
         "project-identity"
       ],
       "accessLimitations": [],
-      "providerFailure": "Project research upstream request failed.",
+      "providerFailure": "Project research provider returned malformed structured data; retry the affected research.",
       "providerAttempts": [],
       "stageCounts": {
         "normalized": 0,
@@ -857,7 +890,7 @@
     {
       "categoryId": "grid",
       "label": "Grid",
-      "state": "Not searched",
+      "state": "Provider failure",
       "unresolvedGaps": [
         "grid_interconnection",
         "electricity_cost",
@@ -865,7 +898,7 @@
         "renewable_percentage"
       ],
       "accessLimitations": [],
-      "providerFailure": null,
+      "providerFailure": "Project research provider returned malformed structured data; retry the affected research.",
       "providerAttempts": [],
       "stageCounts": {
         "normalized": 0,
@@ -891,7 +924,7 @@
           "No immutable claim-to-passage mapping supports this evidence claim.": 4,
           "Numeric value is missing; no model input can be derived.": 4
         },
-        "issuedProviderRequests": 0,
+        "issuedProviderRequests": 1,
         "observedSearches": 0,
         "successfulExtractions": 0
       }
@@ -899,7 +932,7 @@
     {
       "categoryId": "electricity",
       "label": "Electricity",
-      "state": "Not searched",
+      "state": "Provider failure",
       "unresolvedGaps": [
         "electricity_cost",
         "electricity_escalation",
@@ -907,7 +940,7 @@
         "carbon_compliance"
       ],
       "accessLimitations": [],
-      "providerFailure": null,
+      "providerFailure": "Project research provider returned malformed structured data; retry the affected research.",
       "providerAttempts": [],
       "stageCounts": {
         "normalized": 0,
@@ -933,7 +966,7 @@
           "No immutable claim-to-passage mapping supports this evidence claim.": 4,
           "Numeric value is missing; no model input can be derived.": 4
         },
-        "issuedProviderRequests": 0,
+        "issuedProviderRequests": 1,
         "observedSearches": 0,
         "successfulExtractions": 0
       }
@@ -941,7 +974,7 @@
     {
       "categoryId": "water",
       "label": "Water",
-      "state": "Not searched",
+      "state": "Provider failure",
       "unresolvedGaps": [
         "water_consumption",
         "water_escalation",
@@ -949,7 +982,7 @@
         "water_source_resilience"
       ],
       "accessLimitations": [],
-      "providerFailure": null,
+      "providerFailure": "Project research provider returned malformed structured data; retry the affected research.",
       "providerAttempts": [],
       "stageCounts": {
         "normalized": 0,
@@ -976,7 +1009,7 @@
           "Numeric value is missing; no model input can be derived.": 2,
           "Missing or incompatible qualitative unit; a human User Assumption must supply the unit.": 2
         },
-        "issuedProviderRequests": 0,
+        "issuedProviderRequests": 1,
         "observedSearches": 0,
         "successfulExtractions": 0
       }
@@ -984,14 +1017,14 @@
     {
       "categoryId": "permitting-community",
       "label": "Permitting and community",
-      "state": "Not searched",
+      "state": "Provider failure",
       "unresolvedGaps": [
         "community_risk",
         "permitting_timeline",
         "carbon_compliance"
       ],
       "accessLimitations": [],
-      "providerFailure": null,
+      "providerFailure": "Project research provider returned malformed structured data; retry the affected research.",
       "providerAttempts": [],
       "stageCounts": {
         "normalized": 0,
@@ -1018,7 +1051,7 @@
           "An exact-project source is required for this evidence variable.": 2,
           "Numeric value is missing; no model input can be derived.": 2
         },
-        "issuedProviderRequests": 0,
+        "issuedProviderRequests": 1,
         "observedSearches": 0,
         "successfulExtractions": 0
       }
@@ -1026,14 +1059,14 @@
     {
       "categoryId": "construction-capital",
       "label": "Construction and capital",
-      "state": "Not searched",
+      "state": "Provider failure",
       "unresolvedGaps": [
         "cooling_capex",
         "backup_power_capacity",
         "downtime_cost"
       ],
       "accessLimitations": [],
-      "providerFailure": null,
+      "providerFailure": "Project research provider returned malformed structured data; retry the affected research.",
       "providerAttempts": [],
       "stageCounts": {
         "normalized": 0,
@@ -1059,7 +1092,7 @@
           "No immutable claim-to-passage mapping supports this evidence claim.": 3,
           "Numeric value is missing; no model input can be derived.": 3
         },
-        "issuedProviderRequests": 0,
+        "issuedProviderRequests": 1,
         "observedSearches": 0,
         "successfulExtractions": 0
       }
@@ -1067,13 +1100,13 @@
     {
       "categoryId": "tenant-counterparty",
       "label": "Tenant and counterparty",
-      "state": "Not searched",
+      "state": "Provider failure",
       "unresolvedGaps": [
         "customer_concentration",
         "downtime_cost"
       ],
       "accessLimitations": [],
-      "providerFailure": null,
+      "providerFailure": "Project research provider returned malformed structured data; retry the affected research.",
       "providerAttempts": [],
       "stageCounts": {
         "normalized": 0,
@@ -1099,7 +1132,7 @@
           "No immutable claim-to-passage mapping supports this evidence claim.": 2,
           "Numeric value is missing; no model input can be derived.": 2
         },
-        "issuedProviderRequests": 0,
+        "issuedProviderRequests": 1,
         "observedSearches": 0,
         "successfulExtractions": 0
       }
@@ -1107,7 +1140,7 @@
     {
       "categoryId": "climate-operational-hazard",
       "label": "Climate and operational hazard",
-      "state": "Not searched",
+      "state": "Provider failure",
       "unresolvedGaps": [
         "site_hazard_exposure",
         "backup_power_capacity",
@@ -1115,7 +1148,7 @@
         "downtime_cost"
       ],
       "accessLimitations": [],
-      "providerFailure": null,
+      "providerFailure": "Project research provider returned malformed structured data; retry the affected research.",
       "providerAttempts": [],
       "stageCounts": {
         "normalized": 0,
@@ -1142,7 +1175,7 @@
           "An exact-project source is required for this evidence variable.": 3,
           "Numeric value is missing; no model input can be derived.": 2
         },
-        "issuedProviderRequests": 0,
+        "issuedProviderRequests": 1,
         "observedSearches": 0,
         "successfulExtractions": 0
       }

@@ -16,7 +16,7 @@ export type CanonicalDossierSummary = {
   canonicalData: CanonicalDossierData;
 };
 
-type CanonicalSource = {
+export type CanonicalSource = {
   title: string;
   url: string;
   publisher: string;
@@ -35,6 +35,7 @@ type CanonicalEvidence = {
   description: string;
   coverageStatus: ResearchCoverageStatus;
   source: CanonicalSource;
+  sources?: CanonicalSource[];
   conflictSummary?: string;
   scope?: string;
 };
@@ -51,6 +52,7 @@ type CanonicalDossierData = {
   relationshipType: string;
   relationships: Array<Record<string, unknown>>;
   phases?: Array<Record<string, unknown>>;
+  ownershipConflict?: Array<Record<string, unknown>>;
   evidence: CanonicalEvidence[];
   materiality: {
     project: string;
@@ -59,6 +61,13 @@ type CanonicalDossierData = {
   };
   questions: string[];
   triggers: string[];
+};
+
+export type CanonicalProvenance = CanonicalSource & {
+  provenanceType: "evidence-claim" | "ownership-conflict";
+  variableId?: string;
+  claim?: string;
+  attributedTo?: string;
 };
 
 type DossierListEnvelope = { dossiers: CanonicalDossierSummary[] };
@@ -126,12 +135,71 @@ function toEvidence(item: CanonicalEvidence): CustomEvidenceRecord {
     sourceRelevance: "exact-project",
     coverageStatus: item.coverageStatus,
     conflictSummary: item.conflictSummary,
-    sources: [source],
+    sources: (item.sources?.length ? item.sources : [item.source]).map((candidate) => ({
+      url: candidate.url,
+      title: candidate.title,
+      publisher: candidate.publisher,
+      publishedAt: candidate.publishedAt,
+      accessedAt: candidate.accessedAt,
+      accessStatus: "open" as const,
+      excerpt: candidate.exactPassage,
+      claimPassage: candidate.exactPassage,
+      sourceClass: "primary-company" as const,
+      searchDomain: new URL(candidate.url).hostname,
+      relationship: item.conflictSummary ? "conflicting" as const : "primary" as const,
+      exactProject: true,
+      relevanceNote: item.scope,
+      canonicalUrl: candidate.url,
+      sourceState: "canonical-reviewed",
+      claimCited: true,
+      accessOutcome: {
+        state: "accessible" as const,
+        reason: "Maintainer-reviewed canonical source passage.",
+        canonicalUrl: candidate.url,
+        retrievalTime: candidate.accessedAt,
+        passage: candidate.exactPassage,
+      },
+    })),
     researchState: "accepted",
     eligibleForModel: false,
     acceptedForModel: false,
     classificationReason: "Maintainer-reviewed canonical claim; model treatment remains separate.",
   };
+}
+
+export function getCanonicalDossierProvenance(
+  dossier: CanonicalDossierSummary,
+): CanonicalProvenance[] {
+  const provenance: CanonicalProvenance[] = [];
+  for (const item of dossier.canonicalData.evidence) {
+    const sources = item.sources?.length ? item.sources : [item.source];
+    for (const source of sources) {
+      provenance.push({
+        ...source,
+        provenanceType: "evidence-claim",
+        variableId: item.variableId,
+        claim: item.claim,
+      });
+    }
+  }
+  for (const conflict of dossier.canonicalData.ownershipConflict ?? []) {
+    if (typeof conflict.sourceUrl !== "string" || !/^https?:\/\//i.test(conflict.sourceUrl)) continue;
+    provenance.push({
+      title: typeof conflict.attributedTo === "string" ? `${conflict.attributedTo} ownership record` : "Ownership conflict record",
+      url: conflict.sourceUrl,
+      publisher: typeof conflict.attributedTo === "string" ? conflict.attributedTo : "Canonical dossier",
+      publishedAt: typeof conflict.publishedAt === "string" ? conflict.publishedAt : null,
+      accessedAt: dossier.asOfDate,
+      exactPassage: typeof conflict.claim === "string" ? conflict.claim : "Ownership conflict source retained without a quoted passage.",
+      provenanceType: "ownership-conflict",
+      claim: typeof conflict.claim === "string" ? conflict.claim : undefined,
+      attributedTo: typeof conflict.attributedTo === "string" ? conflict.attributedTo : undefined,
+    });
+  }
+  return [...new Map(provenance.map((item) => [
+    `${item.provenanceType}:${item.url}:${item.variableId ?? ""}:${item.claim ?? ""}`,
+    item,
+  ])).values()];
 }
 
 export function dossierToResearchResponse(
@@ -157,6 +225,7 @@ export function dossierToResearchResponse(
       searchTerms: [],
       searchTermsSource: "unavailable",
     },
+    canonicalProvenance: getCanonicalDossierProvenance(dossier),
     evidence,
     eligibleEvidence: evidence,
     retrievedLeads: [],

@@ -12,7 +12,7 @@
     "dossiers:import": "node server/dossierOperator.mjs import --confirm-canonical-write",
     "dossiers:export": "node server/dossierOperator.mjs export",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "RESEARCH_CACHE_DIR=$(mktemp -d) tsx --test src/model/*.test.ts src/data/*.test.ts src/services/*.test.ts server/dossierApi.test.ts server/ercotProxy.test.mjs server/eiaProxy.test.mjs server/aiEvidenceProxy.test.mjs server/researchProjectProxy.test.mjs server/researchDocumentExtraction.test.mjs server/officialSourceDiscovery.test.mjs server/secConnector.test.mjs server/projectResearchRegistry.test.mjs server/researchProjectAcceptance.test.mjs server/computeAtlasProxy.test.mjs",
+    "test": "RESEARCH_CACHE_DIR=$(mktemp -d) tsx --test src/model/*.test.ts src/data/*.test.ts src/services/*.test.ts server/dossierApi.test.ts server/ercotProxy.test.mjs server/eiaProxy.test.mjs server/aiEvidenceProxy.test.mjs server/googleGroundedDiscovery.test.mjs server/researchProjectProxy.test.mjs server/researchDocumentExtraction.test.mjs server/officialSourceDiscovery.test.mjs server/secConnector.test.mjs server/projectResearchRegistry.test.mjs server/researchProjectAcceptance.test.mjs server/computeAtlasProxy.test.mjs",
     "test:production": "tsx --test server/production.test.ts",
     "test:e2e": "playwright test --config playwright.config.ts"
   },

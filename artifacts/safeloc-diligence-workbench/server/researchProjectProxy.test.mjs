@@ -1287,6 +1287,7 @@ test("serves fresh cached research without another provider call", async () => {
   let providerCalls = 0;
   const options = {
     apiKey: "server-secret-for-test",
+    googleApiKey: null,
     cache,
     fetchImpl: async () => {
       providerCalls += 1;
@@ -1305,7 +1306,7 @@ test("serves fresh cached research without another provider call", async () => {
   await handleResearchProjectRequest(request({ name: "Cached Atlas", location: "Texas" }), second, options);
   assert.equal(second.statusCode, 200);
   assert.equal(second.json().researchCache.state, "fresh");
-  assert.equal(providerCalls, 15);
+  assert.equal(providerCalls, 1);
 });
 
 test("retains physical-open diagnostics through a cached handoff", async () => {
@@ -2769,7 +2770,7 @@ test("limits paid custom research requests by client IP", async () => {
   assert.equal(allowedAgain.statusCode, 200);
 });
 
-test("uses bounded category web-search calls with scoped strict schemas", async () => {
+test("uses the bounded OpenAI fallback with scoped strict schemas after Google is unavailable", async () => {
   const response = responseRecorder();
   let requestUrl;
   let requestInit;
@@ -2781,6 +2782,12 @@ test("uses bounded category web-search calls with scoped strict schemas", async 
     knownData: { operator: "Atlas Compute" },
   }), response, {
     apiKey: "server-secret-for-test",
+    googleApiKey: "fixture-google-key",
+    googleDiscoveryImpl: async () => {
+      const error = new Error("fixture Google provider failure");
+      error.researchErrorType = "google-provider-failure";
+      throw error;
+    },
     cache: createResearchProjectCache({ directory: await mkdtemp(path.join(os.tmpdir(), "safeloc-research-schema-")) }),
     fetchImpl: async (url, init) => {
       requestUrl = url;
@@ -2797,8 +2804,7 @@ test("uses bounded category web-search calls with scoped strict schemas", async 
     }),
   });
   assert.equal(response.statusCode, 200);
-  assert.ok(providerCalls >= 8 && providerCalls <= 16);
-  assert.ok(providerCalls > 8);
+  assert.equal(providerCalls, 1);
   assert.equal(response.json().evidence[1].classification, "Management Assertion");
   assert.equal(response.json().evidence[1].sourceUrl, retrievedSource.url);
   assert.equal(calls, providerCalls);
@@ -2810,13 +2816,13 @@ test("uses bounded category web-search calls with scoped strict schemas", async 
   assert.equal(requestUrl, OPENAI_RESPONSES_URL);
   const body = JSON.parse(requestInit.body);
   assert.equal(body.model, RESEARCH_PROJECT_MODEL);
-  assert.equal(body.max_output_tokens, RESEARCH_CATEGORY_MAX_TOKENS);
+  assert.equal(body.max_output_tokens, RESEARCH_PROJECT_MAX_TOKENS);
   assert.ok(body.max_tool_calls > 0 && body.max_tool_calls <= RESEARCH_PROJECT_MAX_TOOL_CALLS);
   assert.deepEqual(body.tools, [{ type: "web_search_preview" }]);
   assert.equal(body.text.format.type, "json_schema");
   assert.equal(body.text.format.strict, true);
   const scopedIds = Object.keys(body.text.format.schema.properties.evidence.properties);
-  assert.ok(scopedIds.length <= 4);
+  assert.equal(scopedIds.length, RESEARCH_EVIDENCE_IDS.length);
   assert.ok(scopedIds.every((id) => RESEARCH_EVIDENCE_IDS.includes(id)));
   assert.deepEqual(body.text.format.schema.properties.evidence.required, scopedIds);
   assert.equal(body.input.length, 2);

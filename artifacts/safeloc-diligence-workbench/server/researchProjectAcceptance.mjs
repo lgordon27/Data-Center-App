@@ -82,6 +82,27 @@ function reportProviderDiagnostic(value) {
   };
 }
 
+function reportDiscoveryTelemetry(result) {
+  const coverage = result?.researchCoverage;
+  return {
+    provider: boundedText(coverage?.discoveryProvider, 120),
+    model: boundedText(coverage?.discoveryModel, 120),
+    status: boundedText(coverage?.discoveryStatus, 100),
+    queries: boundedList(coverage?.discoveryQueries, (value) => boundedText(value, REPORT_MAX_TEXT), 24),
+    candidateCount: Number.isInteger(coverage?.discoveryCandidateCount)
+      ? coverage.discoveryCandidateCount
+      : null,
+    fallbackProvider: boundedText(coverage?.fallbackProvider, 120),
+    fallbackReason: boundedText(coverage?.fallbackReason, 180),
+    fallbackRequestCount: Number.isInteger(coverage?.fallbackRequestCount)
+      ? coverage.fallbackRequestCount
+      : 0,
+    providerRequestCount: Number.isInteger(coverage?.providerRequestCount)
+      ? coverage.providerRequestCount
+      : null,
+  };
+}
+
 function reportCandidateLineage(entry) {
   if (!entry || typeof entry !== "object") return null;
   return {
@@ -730,6 +751,7 @@ export function buildAcceptanceReport({ project, liveRun, failureRun, generatedA
       httpStatus: liveRun.statusCode,
       provider: audit?.provider ?? "openai",
       model: audit?.model ?? RESEARCH_PROJECT_MODEL,
+      discovery: reportDiscoveryTelemetry(result),
        providerResponseIds: boundedList(audit?.providerResponseIds, (value) => boundedText(value, 180), 32),
       startedAt: audit?.startedAt ?? null,
       finishedAt: audit?.finishedAt ?? null,
@@ -759,6 +781,7 @@ export function buildAcceptanceReport({ project, liveRun, failureRun, generatedA
       },
     },
     requests: reportProviderAttempts(audit),
+    discovery: reportDiscoveryTelemetry(result),
     observedSearches,
     returnedDomains: source.returnedDomains,
     executedQueries: reportCategories.map((category) => ({

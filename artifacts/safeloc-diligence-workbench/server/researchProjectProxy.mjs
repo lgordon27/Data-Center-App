@@ -21,6 +21,10 @@ import {
 } from "../src/data/sourceValidationPolicy.mjs";
 import { defaultProjectResearchRegistry } from "./projectResearchRegistry.mjs";
 import { discoverOfficialSources } from "./officialSourceDiscovery.mjs";
+import {
+  discoverGoogleGroundedProject,
+  GOOGLE_GEMINI_MODEL,
+} from "./googleGroundedDiscovery.mjs";
 import { extractResearchDocument } from "./researchDocumentExtraction.mjs";
 import { createSecConnector } from "./secConnector.mjs";
 
@@ -2532,6 +2536,15 @@ function parseResearchResponse(
       },
       searchTerms: observedSearchTerms,
       searchTermsSource: observedSearchTerms.length ? "tool-observed" : "unavailable",
+      discoveryProvider: coverage?.discoveryProvider ?? null,
+      discoveryModel: coverage?.discoveryModel ?? null,
+      discoveryStatus: coverage?.discoveryStatus ?? null,
+      discoveryQueries: Array.isArray(coverage?.discoveryQueries) ? coverage.discoveryQueries.slice(0, 24) : [],
+      discoveryCandidateCount: Number.isInteger(coverage?.discoveryCandidateCount) ? coverage.discoveryCandidateCount : 0,
+      fallbackProvider: coverage?.fallbackProvider ?? null,
+      fallbackReason: coverage?.fallbackReason ?? null,
+      fallbackRequestCount: Number.isInteger(coverage?.fallbackRequestCount) ? coverage.fallbackRequestCount : 0,
+      providerRequestCount: Number.isInteger(coverage?.providerRequestCount) ? coverage.providerRequestCount : 0,
       toolCallCount: Number.isInteger(coverage?.toolCallCount)
         ? Math.min(RESEARCH_RUN_BUDGET.maxToolCalls, Math.max(0, coverage.toolCallCount))
         : 0,
@@ -3000,6 +3013,24 @@ function extractResearchSourceUrls(research) {
   ]).filter((url) => typeof url === "string" && safePublicSourceUrl(url));
 }
 
+function buildGroundedSourceContext(sources = []) {
+  return sources
+    .slice(0, RESEARCH_RUN_BUDGET.maxTotalCandidates)
+    .map((source) => ({
+      url: source.canonicalUrl ?? source.resolvedUrl ?? source.url ?? null,
+      title: source.title ?? null,
+      publisher: source.publisher ?? null,
+      publishedAt: source.date ?? source.publishedAt ?? null,
+      categoryIds: Array.isArray(source.categoryIds) ? source.categoryIds.slice(0, 12) : [],
+      referringQueries: Array.isArray(source.referringQueries) ? source.referringQueries.slice(0, 12) : [],
+      passage: typeof source.accessOutcome?.passage === "string"
+        ? source.accessOutcome.passage.slice(0, 20_000)
+        : null,
+      accessState: source.accessOutcome?.state ?? "unknown",
+    }))
+    .filter((source) => source.url || source.passage);
+}
+
 function redactUpstreamDetail(value) {
   return String(value ?? "")
     .replace(/Bearer\s+\S+/gi, "Bearer [redacted]")
@@ -3342,10 +3373,19 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
     ? activeCategory.evidenceIds.filter((id) => RESEARCH_EVIDENCE_IDS.includes(id))
     : RESEARCH_EVIDENCE_IDS;
   const identityOnly = activeCategory?.categoryId === "project-identity";
-  const requestedOutputTokens = activeCategory ? RESEARCH_CATEGORY_MAX_TOKENS : RESEARCH_PROJECT_MAX_TOKENS;
+  const webSearchEnabled = activeCategory?.webSearchEnabled !== false;
+  const groundedSources = Array.isArray(activeCategory?.groundedSources)
+    ? activeCategory.groundedSources
+    : [];
+  const requestedOutputTokens = activeCategory?.categoryId
+    ? RESEARCH_CATEGORY_MAX_TOKENS
+    : RESEARCH_PROJECT_MAX_TOKENS;
+  const groundedContext = groundedSources.length
+    ? `\n\nThe following public document passages were physically retrieved by SafeLoc. Use only these passages for source-backed claims. Do not browse, call a search tool, or treat a URL, snippet, title, or generated summary as evidence. Every claimPassage must be copied exactly from one supplied passage.\n${JSON.stringify(buildGroundedSourceContext(groundedSources))}`
+    : "";
   const requestBody = JSON.stringify({
     model: RESEARCH_PROJECT_MODEL,
-    tools: [{ type: "web_search_preview" }],
+    ...(webSearchEnabled ? { tools: [{ type: "web_search_preview" }] } : {}),
     input: [
       {
         role: "system",
@@ -3353,11 +3393,11 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
           ? "\nFor project-identity discovery, establish or reject the exact project name, location, and operator only. Do not create modeled evidence or infer financial inputs."
           : ""}`,
       },
-      { role: "user", content: buildResearchProjectPrompt({ ...project, activeCategory }) },
+      { role: "user", content: `${buildResearchProjectPrompt({ ...project, activeCategory })}${groundedContext}` },
     ],
     max_output_tokens: requestedOutputTokens,
-    max_tool_calls: activeCategory?.maxToolCalls ?? RESEARCH_PROJECT_MAX_TOOL_CALLS,
-    include: ["web_search_call.action.sources"],
+    ...(webSearchEnabled ? { max_tool_calls: activeCategory?.maxToolCalls ?? RESEARCH_PROJECT_MAX_TOOL_CALLS } : {}),
+    ...(webSearchEnabled ? { include: ["web_search_call.action.sources"] } : {}),
     text: {
       format: {
         type: "json_schema",
@@ -3448,14 +3488,23 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
     };
   }
   const bounded = boundProviderResponseToToolBudget(body, activeCategory?.maxToolCalls ?? RESEARCH_PROJECT_MAX_TOOL_CALLS);
-  const sources = normalizeRetrievedSources(
-    bounded.body,
-    "web-search",
-    project,
-    extractResearchSourceUrls(research),
-  );
+  const sources = groundedSources.length
+    ? normalizeRetrievedSources(
+      { sources: groundedSources },
+      "google-grounded-search",
+      project,
+      extractResearchSourceUrls(research),
+    )
+    : normalizeRetrievedSources(
+      bounded.body,
+      "web-search",
+      project,
+      extractResearchSourceUrls(research),
+    );
   research = restrictResearchToAcceptedSources(research, sources);
-  const searchTerms = extractSearchTerms(bounded.body);
+  const searchTerms = groundedSources.length
+    ? [...new Set(groundedSources.flatMap((source) => source.referringQueries ?? []))].slice(0, RESEARCH_PROJECT_MAX_TOOL_CALLS)
+    : extractSearchTerms(bounded.body);
   const observedQueriesByEvidence = extractObservedQueriesByEvidence(bounded.body, project);
   const finishedAt = new Date().toISOString();
   const finishedAtMs = Date.now();
@@ -3483,17 +3532,19 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
       sourceChannelTelemetry: sources.sourceChannelTelemetry ?? [],
       searchTerms,
       observedQueriesByEvidence,
-      toolCallCount: bounded.acceptedToolCallCount,
-      observedToolCallCount: bounded.actualToolCallCount,
-      acceptedToolCallCount: bounded.acceptedToolCallCount,
-      toolCallBudgetExceeded: bounded.toolCallBudgetExceeded,
+      toolCallCount: webSearchEnabled ? bounded.acceptedToolCallCount : 0,
+      observedToolCallCount: webSearchEnabled ? bounded.actualToolCallCount : 0,
+      acceptedToolCallCount: webSearchEnabled ? bounded.acceptedToolCallCount : 0,
+      toolCallBudgetExceeded: webSearchEnabled ? bounded.toolCallBudgetExceeded : false,
       providerLimitations: bounded.toolCallBudgetExceeded
         ? ["Provider returned more web-search calls than the remaining run allowance; excess calls, sources, and source-linked findings were excluded."]
         : [],
       sourcePriorityApplied: sourcePriorityApplied(project),
       searchTermsSource: searchTerms.length ? "tool-observed" : "unavailable",
-      provider: "openai",
+      provider: webSearchEnabled ? "openai-web-fallback" : "openai-structured-from-grounded-passages",
       model: RESEARCH_PROJECT_MODEL,
+      webSearchEnabled,
+      googleGroundedSourceCount: groundedSources.length,
       providerResponseId: typeof body.id === "string" ? body.id : null,
       activeCategoryId: activeCategory?.categoryId ?? null,
       executedQuery: activeCategory?.query ?? null,
@@ -3827,6 +3878,9 @@ function candidateLineageForRun(result, orchestration) {
 
 async function runValidatedResearch(project, {
   apiKey,
+  googleApiKey = process.env.GOOGLE_GEMINI_API_KEY ?? process.env.GEMINI_API_KEY,
+  googleDiscoveryImpl = discoverGoogleGroundedProject,
+  googleModel = GOOGLE_GEMINI_MODEL,
   fetchImpl,
   rateLimiter,
   req,
@@ -3883,6 +3937,95 @@ async function runValidatedResearch(project, {
     if (authorization.reason === "physical-open-budget") physicalOpenBudgetExceeded = true;
     return authorization;
   };
+  const activeCategoryIds = buildResearchCategoryPlan(project).categories
+    .filter((category) => !Array.isArray(categoryIds) || !categoryIds.length || categoryIds.includes(category.categoryId))
+    .map((category) => category.categoryId);
+  const openedGoogleDocuments = [];
+  const prefetchGoogleGroundedSources = async (candidates) => {
+    const boundedCandidates = (Array.isArray(candidates) ? candidates : [])
+      .slice(0, RESEARCH_RUN_BUDGET.maxTotalCandidates);
+    for (const [index, source] of boundedCandidates.entries()) {
+      throwIfResearchCancelled(controller.signal);
+      const originalUrl = source.originalUrl ?? source.url ?? null;
+      const originalCanonicalUrl = canonicalizeSourceUrl(originalUrl);
+      const announcedCanonicalUrl = canonicalizeSourceUrl(source.canonicalUrl ?? source.resolvedUrl ?? source.url);
+      const previousAccess = (originalCanonicalUrl && (
+        openedDocumentsByCanonicalUrl.get(originalCanonicalUrl)
+        ?? documentAccessPromisesByCanonicalUrl.get(originalCanonicalUrl)
+      ))
+        || (announcedCanonicalUrl && (
+          openedDocumentsByCanonicalUrl.get(announcedCanonicalUrl)
+          ?? documentAccessPromisesByCanonicalUrl.get(announcedCanonicalUrl)
+        ))
+        || null;
+      let accessOutcome;
+      let documentAccessReused = false;
+      if (previousAccess) {
+        accessOutcome = { ...(await previousAccess), reused: true };
+        documentAccessReused = true;
+      } else {
+        const categoryId = activeCategoryIds[index % Math.max(1, activeCategoryIds.length)] ?? "project-identity";
+        const authorization = authorizePhysicalOpen({
+          categoryId,
+          canonicalUrl: announcedCanonicalUrl ?? originalUrl,
+          source,
+        });
+        if (!authorization.allowed) {
+          accessOutcome = {
+            state: "not-attempted",
+            reason: authorization.reason,
+            originalUrl,
+            resolvedUrl: null,
+            canonicalUrl: announcedCanonicalUrl,
+            referringUrls: [originalUrl].filter(Boolean),
+            extractionLimitations: [
+              authorization.reason === "physical-open-budget"
+                ? "The hard physical document-open ceiling was reached; no additional document was fetched."
+                : "The document was deferred so protected source-acquisition roles retain an opportunity.",
+          ],
+          };
+        } else {
+          const physicalOpenIndex = authorization.physicalOpenIndex;
+          const accessTask = documentAccessQueue
+            .then(() => accessResearchDocument(source, {
+              fetchImpl: documentFetchImpl,
+              signal: controller.signal,
+              ocrImpl,
+            }))
+            .then((outcome) => ({
+              ...outcome,
+              physicalOpenIndex,
+              originalUrl,
+              referringUrls: [...new Set([...(outcome.referringUrls ?? []), originalUrl].filter(Boolean))],
+            }));
+          if (originalCanonicalUrl) documentAccessPromisesByCanonicalUrl.set(originalCanonicalUrl, accessTask);
+          if (announcedCanonicalUrl) documentAccessPromisesByCanonicalUrl.set(announcedCanonicalUrl, accessTask);
+          documentAccessQueue = accessTask.catch(() => {});
+          accessOutcome = await accessTask;
+        }
+        if (originalCanonicalUrl) openedDocumentsByCanonicalUrl.set(originalCanonicalUrl, accessOutcome);
+        if (announcedCanonicalUrl) openedDocumentsByCanonicalUrl.set(announcedCanonicalUrl, accessOutcome);
+        const finalCanonicalUrl = canonicalizeSourceUrl(accessOutcome.canonicalUrl ?? accessOutcome.resolvedUrl ?? announcedCanonicalUrl);
+        if (finalCanonicalUrl) {
+          openedDocumentsByCanonicalUrl.set(finalCanonicalUrl, accessOutcome);
+          physicalOpenScheduler.registerReceipt({ canonicalUrl: finalCanonicalUrl, receipt: accessOutcome });
+        }
+      }
+      openedGoogleDocuments.push({
+        ...source,
+        originalUrl,
+        canonicalUrl: canonicalizeSourceUrl(accessOutcome.canonicalUrl ?? accessOutcome.resolvedUrl ?? announcedCanonicalUrl) ?? announcedCanonicalUrl,
+        resolvedUrl: accessOutcome.resolvedUrl ?? accessOutcome.canonicalUrl ?? announcedCanonicalUrl,
+        accessOutcome,
+        documentAccessReused,
+        documentReferringUrls: accessOutcome.referringUrls ?? [originalUrl].filter(Boolean),
+        accessibilityState: accessOutcome.state,
+        parsingState: accessOutcome.state === "accessible" ? "parsed" : "failed",
+        ...(accessOutcome.passage ? { excerpt: accessOutcome.passage, claimPassage: accessOutcome.passage } : {}),
+      });
+    }
+    return openedGoogleDocuments;
+  };
   let activeSecConnector = secConnector;
   if (!activeSecConnector && process.env.SEC_USER_AGENT) {
     activeSecConnector = createSecConnector({
@@ -3895,9 +4038,65 @@ async function runValidatedResearch(project, {
       },
     });
   }
+  let googleRequestCount = 0;
+  let googleDiscovery = {
+    status: googleApiKey || googleDiscoveryImpl !== discoverGoogleGroundedProject ? "pending" : "not-configured",
+    provider: "google-gemini-grounding",
+    model: googleModel,
+    queries: [],
+    candidates: [],
+    fallbackUsed: false,
+    fallbackReason: googleApiKey || googleDiscoveryImpl !== discoverGoogleGroundedProject
+      ? null
+      : "google-not-configured",
+  };
+  if (googleApiKey || googleDiscoveryImpl !== discoverGoogleGroundedProject) {
+    googleRequestCount = 1;
+    try {
+      const discovery = await googleDiscoveryImpl({
+        project,
+        apiKey: googleApiKey,
+        fetchImpl,
+        signal: controller.signal,
+        model: googleModel,
+      });
+      const groundedSources = await prefetchGoogleGroundedSources(discovery.candidates ?? []);
+      googleDiscovery = {
+        ...googleDiscovery,
+        ...discovery,
+        status: "completed",
+        candidates: groundedSources,
+        physicalOpenCount: groundedSources.filter((source) => Number.isInteger(source.accessOutcome?.physicalOpenIndex)).length,
+      };
+    } catch (error) {
+      googleDiscovery = {
+        ...googleDiscovery,
+        status: "technical-failure",
+        fallbackUsed: true,
+        fallbackReason: error?.researchErrorType ?? "google-provider-failure",
+        providerAttempt: error?.providerAttempt ?? {
+          provider: "google-gemini-grounding",
+          model: googleModel,
+          requestCount: googleRequestCount,
+          outcome: "failed",
+          status: error?.providerDiagnostic?.status ?? null,
+        },
+      };
+    }
+  }
+  if (googleDiscovery.status === "pending") {
+    googleDiscovery.status = "technical-failure";
+    googleDiscovery.fallbackUsed = true;
+    googleDiscovery.fallbackReason = "google-not-configured";
+  }
+  let fallbackProjectRequest = null;
+  let fallbackRequestConsumed = false;
   try {
     const orchestration = await orchestrateCategoryResearch(project, {
-      budget: RESEARCH_RUN_BUDGET,
+      budget: {
+        ...RESEARCH_RUN_BUDGET,
+        maxProviderRequests: Math.max(1, RESEARCH_RUN_BUDGET.maxProviderRequests - googleRequestCount),
+      },
       signal: controller.signal,
       deadlineState,
       concurrent: true,
@@ -3919,9 +4118,60 @@ async function runValidatedResearch(project, {
         let observedToolCallCount = 0;
         const providerAttempts = [];
         const requestCategory = async (options) => {
+          const groundedMode = googleDiscovery.status === "completed";
+          const fallbackMode = !groundedMode;
+          const requestOptions = groundedMode
+            ? {
+              ...options,
+              webSearchEnabled: false,
+              groundedSources: googleDiscovery.candidates,
+            }
+            : options;
+          if (fallbackMode) {
+            if (!fallbackProjectRequest) {
+              fallbackProjectRequest = researchProjectWithWebSearch(
+                project,
+                apiKey,
+                fetchImpl,
+                controller.signal,
+                {
+                  categoryId: null,
+                  label: "project-wide fallback",
+                  query: buildResearchProjectPrompt(project),
+                  attempt: "google-fallback",
+                  evidenceIds: RESEARCH_EVIDENCE_IDS,
+                  runCorrelationId,
+                  maxToolCalls: RESEARCH_PROJECT_MAX_TOOL_CALLS,
+                },
+                researchProviderGate,
+              );
+            }
+            try {
+              const result = await fallbackProjectRequest;
+              if (!fallbackRequestConsumed) {
+                fallbackRequestConsumed = true;
+                providerRequestCount += 1;
+              }
+              observedToolCallCount += Number.isInteger(result.coverage?.toolCallCount) ? result.coverage.toolCallCount : 0;
+              if (result.coverage?.providerAttempt && !providerAttempts.includes(result.coverage.providerAttempt)) {
+                providerAttempts.push(result.coverage.providerAttempt);
+              }
+              return result;
+            } catch (error) {
+              if (!fallbackRequestConsumed) {
+                fallbackRequestConsumed = true;
+                providerRequestCount += 1;
+              }
+              observedToolCallCount += Number.isInteger(error?.toolCallCount) ? error.toolCallCount : 0;
+              if (error?.providerAttempt) providerAttempts.push(error.providerAttempt);
+              error.providerRequestCount = providerRequestCount;
+              error.providerAttempts = [...providerAttempts];
+              throw error;
+            }
+          }
           providerRequestCount += 1;
           try {
-            const result = await researchProjectWithWebSearch(project, apiKey, fetchImpl, controller.signal, options);
+            const result = await researchProjectWithWebSearch(project, apiKey, fetchImpl, controller.signal, requestOptions);
             observedToolCallCount += Number.isInteger(result.coverage?.toolCallCount) ? result.coverage.toolCallCount : 0;
             if (result.coverage?.providerAttempt) providerAttempts.push(result.coverage.providerAttempt);
             return result;
@@ -4323,8 +4573,14 @@ async function runValidatedResearch(project, {
       sources: orchestration.categoryResults.flatMap((category) => category.sources ?? []),
       coverage: {
         ...(orchestration.categoryResults[0]?.coverage ?? {}),
-        searchedDomains: [...new Set(orchestration.categoryResults.flatMap((category) => category.coverage?.searchedDomains ?? []))],
-        searchTerms: [...new Set(orchestration.categoryResults.flatMap((category) => category.coverage?.searchTerms ?? []))],
+        searchedDomains: [...new Set([
+          ...orchestration.categoryResults.flatMap((category) => category.coverage?.searchedDomains ?? []),
+          ...googleDiscovery.candidates.map((source) => sourceHostname(source)).filter(Boolean),
+        ])],
+        searchTerms: [...new Set([
+          ...googleDiscovery.queries,
+          ...orchestration.categoryResults.flatMap((category) => category.coverage?.searchTerms ?? []),
+        ])],
         toolCallCount: orchestration.toolCalls,
         observedToolCallCount: orchestration.categoryResults.reduce((total, category) => total + (category.coverage?.observedToolCallCount ?? category.coverage?.toolCallCount ?? 0), 0),
         acceptedToolCallCount: orchestration.toolCalls,
@@ -4332,8 +4588,11 @@ async function runValidatedResearch(project, {
         physicalOpensUsed,
         physicalOpensRemaining: Math.max(0, RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens - physicalOpensUsed),
         physicalOpenBudgetExceeded: orchestration.physicalOpenBudgetExceeded,
-        providerRequestCount: orchestration.providerRequests,
-        providerAttempts: Object.values(orchestration.categoryExecutions).flatMap((execution) => execution?.providerAttempts ?? []),
+        providerRequestCount: orchestration.providerRequests + googleRequestCount,
+        providerAttempts: [
+          ...(googleDiscovery.providerAttempt ? [googleDiscovery.providerAttempt] : []),
+          ...Object.values(orchestration.categoryExecutions).flatMap((execution) => execution?.providerAttempts ?? []),
+        ],
         followUpCount: orchestration.followUps,
         followUpLimit: orchestration.followUpLimit,
         followUpLimitPerCategory: orchestration.followUpLimitPerCategory,
@@ -4342,6 +4601,21 @@ async function runValidatedResearch(project, {
         providerResponseIds: orchestration.categoryResults.map((category) => category.coverage?.providerResponseId).filter(Boolean),
         categoryExecutions: orchestration.categoryExecutions,
         providerLimitations,
+        discoveryProvider: "google-gemini-grounding",
+        discoveryModel: googleModel,
+        discoveryStatus: googleDiscovery.status,
+        discoveryQueries: googleDiscovery.queries,
+        discoveryCandidateCount: googleDiscovery.candidates.length,
+        discoveryCandidates: googleDiscovery.candidates.map((source) => ({
+          url: source.canonicalUrl ?? source.url ?? null,
+          title: source.title ?? null,
+          referringQueries: source.referringQueries ?? [],
+          categoryIds: source.categoryIds ?? [],
+          accessOutcome: source.accessOutcome ?? null,
+        })),
+        fallbackProvider: googleDiscovery.fallbackUsed ? "openai-web-search" : null,
+        fallbackReason: googleDiscovery.fallbackReason,
+        fallbackRequestCount: googleDiscovery.fallbackUsed ? 1 : 0,
         terminalReasonCodes: technicalReasonCodes,
         identityPhysicalOpenOpportunityReserved: !Array.isArray(categoryIds)
           || categoryIds.length === 0
@@ -4444,6 +4718,9 @@ export async function handleResearchProjectRequest(
   res,
   {
     apiKey = process.env.OPENAI_API_KEY,
+    googleApiKey = process.env.GOOGLE_GEMINI_API_KEY ?? process.env.GEMINI_API_KEY,
+    googleDiscoveryImpl = discoverGoogleGroundedProject,
+    googleModel = GOOGLE_GEMINI_MODEL,
     fetchImpl = fetch,
     documentFetchImpl = fetch,
     secConnector = null,
@@ -4502,6 +4779,9 @@ export async function handleResearchProjectRequest(
   req.once?.("aborted", onRequestAborted);
   const refresh = (foreground = true) => cache.refresh(key, () => runValidatedResearch(project, {
     apiKey,
+          googleApiKey,
+          googleDiscoveryImpl,
+          googleModel,
     fetchImpl,
     documentFetchImpl,
     secConnector,

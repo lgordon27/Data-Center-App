@@ -1,0 +1,58 @@
+{
+  "diagnosticOnly": true,
+  "evidenceStatus": "not-evidence",
+  "liveAcceptance": {
+    "status": "LIVE ACCEPTANCE BLOCKED",
+    "reason": "The existing sanitized provider diagnostic confirms quota exhaustion. The no-retry rule prevented a new live research request."
+  },
+  "generatedAt": "2026-09-18T03:00:00.000Z",
+  "project": {
+    "name": "Meta El Paso Data Center",
+    "location": "El Paso, El Paso County, Texas",
+    "directoryProvider": "Compute Atlas",
+    "directoryProviderId": "meta-el-paso-tx",
+    "canonicalDossier": false,
+    "originatingCompany": "Meta",
+    "operator": "Meta",
+    "aliases": [
+      "Meta El Paso project",
+      "Wurldwide data center project"
+    ],
+    "officialSourcePathsDiscoveredOutsideLiveAcceptance": [
+      {
+        "authority": "City of El Paso",
+        "url": "https://www.elpasotexas.gov/assets/Press-Releases/2023.12.04-NEWS-RELEASE_City-of-El-Paso-El-Paso-County-and-Borderplex-Alliance-Announcement.pdf"
+      },
+      {
+        "authority": "Meta",
+        "url": "https://datacenters.atmeta.com/wp-content/uploads/2026/03/Meta-El-Paso-Data-Center.pdf"
+      }
+    ]
+  },
+  "preflight": {
+    "state": "confirmed-quota-exhaustion",
+    "basis": "Prior sanitized live provider response",
+    "observedAt": "2026-09-18T02:22:06.038Z",
+    "provider": "openai",
+    "upstreamStatus": 429,
+    "errorCode": "credit_balance_exhausted",
+    "errorType": "insufficient_quota",
+    "rateLimitResetAvailable": false,
+    "newProviderRequestCount": 0
+  },
+  "budget": {
+    "deadlineMs": 90000,
+    "maxProviderRequests": 16,
+    "maxFollowUps": 8,
+    "maxFollowUpsPerCategory": 1,
+    "maxCandidatesPerCategory": 10,
+    "maxTotalCandidates": 80,
+    "maxToolCalls": 32,
+    "maxPhysicalDocumentOpens": 24
+  },
+  "requests": [],
+  "observedSearches": [],
+  "eligibleVisibleProposals": [],
+  "modelChanges": [],
+  "issuerFundPortfolioConclusions": []
+}

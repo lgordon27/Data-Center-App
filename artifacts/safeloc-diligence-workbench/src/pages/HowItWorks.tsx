@@ -5,6 +5,7 @@ import { ProviderQueueSnapshot } from "@/components/ProviderQueueSnapshot";
 import { useDiligence } from "@/context/DiligenceContext";
 import { evidenceTiers, sourceGroups, SOURCE_FALLBACK_EXPLANATION } from "@/data/sources";
 import { milestones } from "@/data/timeline";
+import { getCanonicalDossier } from "@/services/canonicalDossierService";
 
 type AnalysisView = "market" | "reality" | "transmission" | "advisor";
 
@@ -26,7 +27,7 @@ const stages: Array<{
     id: "market-exposure",
     number: "01",
     title: "Market Exposure",
-    description: "Establish the documented relationship between a public company and the infrastructure project.",
+    description: "Establish the documented relationship between a public company and an exact infrastructure project without treating directory metadata as proof.",
     cta: "Open Market Exposure",
     view: "market",
   },
@@ -34,7 +35,7 @@ const stages: Array<{
     id: "project-reality",
     number: "02",
     title: "Project Reality",
-    description: "Separate verified project facts from unresolved power, water, construction, climate and community claims.",
+    description: "Review exact-project sources, retained passages, provenance, classifications, conflicts and unresolved evidence gaps.",
     cta: "Open Project Reality",
     view: "reality",
   },
@@ -42,7 +43,7 @@ const stages: Array<{
     id: "financial-transmission",
     number: "03",
     title: "Financial Transmission",
-    description: "Trace how a physical constraint could affect project timing, costs, an issuer and ultimately a portfolio.",
+    description: "Show project sensitivity only when an approved scenario exists; otherwise show Not modeled without inferring issuer, fund or portfolio returns.",
     cta: "Open Financial Transmission",
     view: "transmission",
   },
@@ -50,7 +51,7 @@ const stages: Array<{
     id: "advisor-brief",
     number: "04",
     title: "Advisor Brief",
-    description: "Convert the analysis into concise questions for a company, fund manager or client conversation.",
+    description: "Produce separate Financial Advisor conversation and Asset Manager evidence/materiality outputs without an automatic investment conclusion.",
     cta: "Open Advisor Brief",
     view: "advisor",
   },
@@ -95,7 +96,7 @@ function Disclosure({ id, title, preview, children }: { id: string; title: strin
 }
 
 export function HowItWorks({ onReturn, onOpenScreen, initialSection }: HowItWorksProps) {
-  const { ercotQueue, resetToDefault } = useDiligence();
+  const { ercotQueue, loadCanonicalDossier } = useDiligence();
 
   useEffect(() => {
     if (!initialSection) return undefined;
@@ -112,8 +113,9 @@ export function HowItWorks({ onReturn, onOpenScreen, initialSection }: HowItWork
     return () => window.clearTimeout(timer);
   }, [initialSection]);
 
-  const openStargate = () => {
-    resetToDefault("Oracle");
+  const openStargate = async () => {
+    loadCanonicalDossier(await getCanonicalDossier("stargate-abilene"));
+    window.location.hash = "analysis/stargate-abilene";
     onOpenScreen("market");
   };
 
@@ -133,7 +135,7 @@ export function HowItWorks({ onReturn, onOpenScreen, initialSection }: HowItWork
             <div className="grid gap-8 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)] lg:items-end">
               <div>
                 <div className="mb-5 flex flex-wrap items-center gap-3 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[#b9d43a]">
-                  <span>SafeLoc / Stargate Abilene</span>
+                  <span>SafeLoc / reviewed dossiers + custom research Beta</span>
                   <span aria-hidden="true" className="h-px w-8 bg-[#60717f]" />
                   <span>Four-stage walkthrough</span>
                 </div>
@@ -141,10 +143,10 @@ export function HowItWorks({ onReturn, onOpenScreen, initialSection }: HowItWork
                   See how an infrastructure constraint could become an <span className="text-[#d4e86b]">investment question.</span>
                 </h1>
                 <p data-testid="tour-sri-context" className="mt-6 max-w-3xl text-[15px] leading-7 text-[#d1dbe0] md:text-[17px] md:leading-8">
-                  Start with a public company, inspect the project evidence, trace the possible financial pathway, and leave with questions an advisor or investor can use.
+                  Start with a documented company–project relationship, inspect provenance and unresolved evidence, review project sensitivity or a clear Not modeled state, and produce separate Financial Advisor and Asset Manager outputs.
                 </p>
-                <button data-testid="button-open-stargate-demonstration" type="button" onClick={openStargate} className="mt-7 inline-flex min-h-11 items-center gap-2 rounded-md bg-[#d4e86b] px-4 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.13em] text-[#122232] transition-transform hover:-translate-y-0.5">
-                  Open the Stargate demonstration <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" />
+                <button data-testid="button-open-stargate-demonstration" type="button" onClick={() => void openStargate()} className="mt-7 inline-flex min-h-11 items-center gap-2 rounded-md bg-[#d4e86b] px-4 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.13em] text-[#122232] transition-transform hover:-translate-y-0.5">
+                  Open the reviewed Stargate dossier <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" />
                 </button>
               </div>
               <aside className="rounded-xl border border-white/15 bg-white/5 p-5 lg:mb-1">
@@ -163,7 +165,7 @@ export function HowItWorks({ onReturn, onOpenScreen, initialSection }: HowItWork
                 <TourKicker>01 / the current workbench</TourKicker>
                 <h2 id="tour-workflow-title" className="text-[31px] font-semibold leading-[1] tracking-[-0.05em] md:text-[43px]">Four views. One question.</h2>
               </div>
-              <p className="max-w-xl text-[13px] leading-6 text-[#63717a]">Follow the constraint from public-company exposure to a conversation an advisor can use.</p>
+              <p className="max-w-xl text-[13px] leading-6 text-[#63717a]">Canonical dossiers are maintainer-reviewed PostgreSQL records. Directory matches are discovery metadata. Custom AI research remains a Beta proposal until a human accepts eligible inputs.</p>
             </div>
             <div className="mt-7 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               {stages.map((stage) => (
@@ -189,7 +191,7 @@ export function HowItWorks({ onReturn, onOpenScreen, initialSection }: HowItWork
               <ShieldCheck aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-[#0b7a63]" />
               <div>
                 <h2 id="tour-boundary-title" className="text-[14px] font-semibold text-[#122232]">Evidence stays visible and correctable.</h2>
-                <p className="mt-2 max-w-4xl text-[12px] leading-5 text-[#52616b]">AI helps locate and organize public evidence. Sources, assumptions and unresolved gaps remain visible and correctable.</p>
+                <p className="mt-2 max-w-4xl text-[12px] leading-5 text-[#52616b]">AI helps locate candidate sources and organize bounded passages; it does not automatically create verified facts, accepted model inputs or investment conclusions. Sources, assumptions, conflicts and unresolved gaps remain visible for human review.</p>
               </div>
             </div>
           </div>
@@ -242,8 +244,8 @@ export function HowItWorks({ onReturn, onOpenScreen, initialSection }: HowItWork
                 <ClaimCitation claimId="synthetic-transaction" />
               </Disclosure>
 
-              <Disclosure id="ai-research" title="AI research process" preview="AI organizes public-source leads while unresolved gaps remain visible.">
-                <p className="max-w-3xl text-[12px] leading-5 text-[#52616b]">Custom-project research retrieves bounded public-source context for the same evidence categories used by the workbench. Source support, project scope and unresolved gaps remain distinct from any synthetic economics.</p>
+              <Disclosure id="ai-research" title="AI research process · Beta" preview="AI organizes candidate sources and bounded passages while human acceptance remains explicit.">
+                <p className="max-w-3xl text-[12px] leading-5 text-[#52616b]">Custom-project research starts from directory-backed identity and company context, searches authoritative sources under fixed request and document-open limits, retains exact-project passages, maps them to governed evidence variables, and keeps gaps or conflicts visible. Eligible findings remain pending and model-neutral until a reviewer explicitly accepts them. Provider caches and the local registry retain diagnostics and prior research; they are not canonical authority.</p>
               </Disclosure>
 
               <Disclosure id="market-context" title="Detailed market timeline and statistics" preview="Open the dated context and source citations behind the demonstration.">

@@ -370,8 +370,8 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
         </div>
         <div className={`hidden flex-1 items-center justify-center lg:flex ${isHome ? "opacity-0" : ""}`} aria-hidden={isHome}>
           <div className="text-center">
-             <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-[#b9d43a]">{project.kind === "custom" ? project.researchMode === "default-assumptions" ? "Default assumptions · research unavailable" : project.researchMode === "research-incomplete" ? "Research incomplete · no validated sources" : project.researchMode === "partial-public-source" ? "Partial public-source research" : "AI-researched · high-level project" : "Current project"}</div>
-              <div className="mt-1 text-[10px] text-[#96a4ad]">{project.name} / {project.location} · Advisor demonstration</div>
+             <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-[#b9d43a]">{project.kind === "custom" ? project.researchMode === "default-assumptions" ? "Custom research Beta · unavailable" : project.researchMode === "research-incomplete" ? "Custom research Beta · incomplete" : project.researchMode === "partial-public-source" ? "Custom research Beta · partial proposal" : "Custom research Beta · proposal review" : project.canonicalDossier ? "Maintainer-reviewed canonical dossier" : "Curated starting case"}</div>
+              <div className="mt-1 text-[10px] text-[#96a4ad]">{project.name} / {project.location} · Evidence before conclusion</div>
           </div>
         </div>
         <div className="flex items-center gap-1 sm:gap-2">
@@ -487,8 +487,8 @@ export function ShellAside({ screen, metrics, onNavigate, onReset }: { screen: S
     <aside className="hidden w-[246px] shrink-0 border-r border-[#d9e0e4] bg-[#eef2f1] px-5 py-7 lg:block">
       <SectionKicker>Active mandate</SectionKicker>
       <div className="mb-7">
-         <div className="font-mono text-[11px] font-bold text-[#122232]">{project.kind === "custom" ? "CUSTOM / SESSION-ONLY" : "STARGATE / ABI-26-001"}</div>
-          <div className="mt-1 text-xs leading-5 text-[#52616b]">{project.kind === "custom" ? project.researchMode === "default-assumptions" ? "Default-assumptions project" : project.researchMode === "research-incomplete" ? "Research Incomplete" : project.researchMode === "partial-public-source" ? "Partial public-source research" : "AI-researched project" : "AI infrastructure diligence case"}</div>
+         <div className="font-mono text-[11px] font-bold text-[#122232]">{project.kind === "custom" ? "CUSTOM RESEARCH / BETA" : project.canonicalDossier ? "CANONICAL / REVIEWED" : "CURATED STARTING CASE"}</div>
+          <div className="mt-1 text-xs leading-5 text-[#52616b]">{project.kind === "custom" ? project.researchMode === "default-assumptions" ? "Research unavailable · no project evidence" : project.researchMode === "research-incomplete" ? "Incomplete proposal · gaps remain" : project.researchMode === "partial-public-source" ? "Partial public-source proposal" : "AI research proposal · human acceptance required" : project.canonicalDossier ? "Maintainer-reviewed PostgreSQL dossier" : "AI infrastructure diligence case"}</div>
       </div>
       <div className="mb-8 rounded-lg border border-[#cbd8d4] bg-[#f9faf8] p-3.5">
         <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#60707d]">

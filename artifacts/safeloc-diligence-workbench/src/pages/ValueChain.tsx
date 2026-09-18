@@ -99,6 +99,29 @@ export function ValueChain({ onWorkbench }: { onWorkbench: () => void }) {
           </div>
         </div>
 
+        <section data-testid="value-chain-evidence-workflow" className="mt-4 rounded-lg border border-[#d4e86b]/35 bg-[#102b3b] p-5">
+          <div className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#d4e86b]">SafeLoc evidence workflow</div>
+          <p className="mt-2 max-w-4xl text-[12px] leading-5 text-[#c4d0d6]">The market chain explains where infrastructure risk may arise. The evidence workflow determines what SafeLoc can responsibly say about one exact project.</p>
+          <ol className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              ["01", "Candidate discovery", "Directory metadata proposes a project and originating-company context; it is not facility proof."],
+              ["02", "Exact-project identity", "Names, location, operator and authoritative domains must resolve to the same project."],
+              ["03", "Bounded passages", "Fixed request and document-open limits retain exact quotations, dates and source URLs."],
+              ["04", "Evidence review", "Claims are classified by scope and unit; missing or conflicting evidence stays visible."],
+              ["05", "Human acceptance", "AI proposals remain pending and model-neutral until a reviewer explicitly accepts them."],
+              ["06", "Eligible model inputs", "Only accepted, semantically compatible project inputs may enter an approved scenario."],
+              ["07", "Audience outputs", "Financial Advisor and Asset Manager outputs remain separate from issuer, fund or portfolio conclusions."],
+            ].map(([number, title, description]) => (
+              <li key={number} className="rounded-md border border-white/10 bg-[#0d1c2b] p-3">
+                <span className="font-mono text-[9px] font-bold text-[#8dc8e8]">{number}</span>
+                <strong className="mt-2 block text-[11px] text-white">{title}</strong>
+                <span className="mt-1 block text-[10px] leading-4 text-[#9dafb8]">{description}</span>
+              </li>
+            ))}
+          </ol>
+          <p className="mt-4 text-[11px] font-semibold leading-5 text-[#f5ddd5]">AI does not automatically create verified facts, accepted inputs or investment conclusions.</p>
+        </section>
+
         <details data-testid="value-chain-supporting-context" className="group mt-4 rounded-lg border border-white/10 bg-white/5">
           <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#9dafb8] [&::-webkit-details-marker]:hidden">
             Supporting market context and sources <ChevronDown aria-hidden="true" className="h-4 w-4 transition-transform group-open:rotate-180" />

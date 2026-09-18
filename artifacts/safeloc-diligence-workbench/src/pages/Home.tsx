@@ -279,7 +279,7 @@ export function CustomProjectForm({ onStart, onSuccess, onResearchError, compact
                   onClick={onReturnToCurated}
                   className="min-h-10 rounded-md border border-current px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.08em]"
                 >
-                  Return to Stargate demonstration
+                  Return to reviewed Stargate dossier
                 </button>
               )}
             </div>
@@ -1368,7 +1368,7 @@ export function LegacyCompanyExploration({ onNavigate }: { onNavigate?: (route: 
     ? "Curated public-source case"
     : project.researchMode === "research-incomplete"
       ? "Research incomplete"
-      : "Session-only custom case";
+      : "Custom research Beta proposal";
   const previewProjectName = project.name || "Current project";
   const previewLocation = project.location || "Location unavailable";
   const previewRelationship = originatingCompany

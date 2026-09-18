@@ -386,11 +386,11 @@ function AppShell() {
         <AlertDialogContent className="border-[#cbd8d4] bg-[#f9faf8]">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-[#122232]">Reset to Default?</AlertDialogTitle>
-            <AlertDialogDescription className="text-[#65737d]">This restores the curated Oracle conference demonstration: Oracle, Stargate Abilene, canonical evidence classifications and assumptions, and the Market Exposure starting view. It clears the current session; named scenarios are kept.</AlertDialogDescription>
+            <AlertDialogDescription className="text-[#65737d]">This restores the reviewed Stargate Abilene starting case and returns to Market Exposure. It clears custom research proposals and current review changes; named scenarios are kept. Project evidence remains separate from synthetic economics and issuer or portfolio conclusions.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="border-[#cbd8d4] text-[#52616b]">Cancel</AlertDialogCancel>
-            <AlertDialogAction data-testid="button-confirm-reset-default" onClick={confirmReset} className="border-[#ba2f45] bg-[#ba2f45] text-white hover:bg-[#9c2439]">Reset to Default</AlertDialogAction>
+            <AlertDialogAction data-testid="button-confirm-reset-default" onClick={confirmReset} className="border-[#ba2f45] bg-[#ba2f45] text-white hover:bg-[#9c2439]">Restore reviewed starting case</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

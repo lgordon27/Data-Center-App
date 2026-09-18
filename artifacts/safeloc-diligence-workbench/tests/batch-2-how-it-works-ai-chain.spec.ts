@@ -12,9 +12,12 @@ test.describe("Batch 2 advisor tour and AI Chain", () => {
     await page.goto("/#how-it-works");
 
     await expect(page.getByRole("heading", { name: /See how an infrastructure constraint could become an investment question/i })).toBeVisible();
-    await expect(page.getByText("Start with a public company, inspect the project evidence, trace the possible financial pathway, and leave with questions an advisor or investor can use.")).toBeVisible();
-    await expect(page.getByTestId("button-open-stargate-demonstration")).toHaveText(/Open the Stargate demonstration/);
+    await expect(page.getByText(/Start with a documented company–project relationship/)).toBeVisible();
+    await expect(page.getByTestId("button-open-stargate-demonstration")).toHaveText(/Open the reviewed Stargate dossier/);
     await expect(page.locator("[data-testid^='tour-stage-'] h3")).toHaveText(currentViews.map(([, , title]) => title));
+    await expect(page.getByTestId("tour-stage-project-reality")).toContainText(/provenance.*conflicts.*gaps/i);
+    await expect(page.getByTestId("tour-stage-financial-transmission")).toContainText(/Not modeled.*issuer, fund or portfolio returns/i);
+    await expect(page.getByTestId("tour-stage-advisor-brief")).toContainText(/Financial Advisor.*Asset Manager/i);
 
     const stageTour = page.getByTestId("tour-stage-market-exposure").locator("..");
     await expect(stageTour).not.toContainText("Project Overview");
@@ -50,7 +53,7 @@ test.describe("Batch 2 advisor tour and AI Chain", () => {
     }
   });
 
-  test("opens the curated Stargate demonstration with Oracle selected", async ({ page }) => {
+  test("opens the reviewed PostgreSQL Stargate dossier with Oracle selected", async ({ page }) => {
     await page.goto("/#how-it-works");
     await page.getByTestId("button-open-stargate-demonstration").click();
     await expect(page).toHaveURL(/#analysis$/);
@@ -92,6 +95,14 @@ test.describe("Batch 2 advisor tour and AI Chain", () => {
     await expect(page.getByText("Investors evaluating AI exposure increasingly need to understand the physical infrastructure and community conditions beneath public-company growth assumptions.")).toHaveCount(1);
     await expect(page.getByText("A documented infrastructure relationship is a starting point for diligence, not proof of security-level or fund-level materiality.")).toHaveCount(1);
     await expect(page.getByTestId("value-chain-supporting-context")).not.toHaveAttribute("open", "");
+    const workflow = page.getByTestId("value-chain-evidence-workflow");
+    await expect(workflow).toContainText("Candidate discovery");
+    await expect(workflow).toContainText("Exact-project identity");
+    await expect(workflow).toContainText("Bounded passages");
+    await expect(workflow).toContainText("Human acceptance");
+    await expect(workflow).toContainText("Eligible model inputs");
+    await expect(workflow).toContainText("Financial Advisor and Asset Manager outputs");
+    await expect(workflow).toContainText("AI does not automatically create verified facts, accepted inputs or investment conclusions.");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   });
 });

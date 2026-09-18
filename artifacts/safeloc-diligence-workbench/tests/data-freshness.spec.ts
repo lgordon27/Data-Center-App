@@ -47,7 +47,7 @@ test("shows the expandable three-source bar only on workbench routes", async ({ 
   await expect(page.getByTestId("data-sources-details")).toBeVisible();
   await expect(page.getByTestId("source-detail-fema-nri")).toContainText("v1.20");
   await expect(page.getByTestId("data-sources-fallback")).toHaveText(
-    "All external feeds automatically fall back to cached values during an unavailable live demonstration.",
+    "Provider responses may use an explicitly labeled retained response when a live request is unavailable. Bundled baselines remain labeled embedded and are never represented as cached or live.",
   );
 
   await page.unroute(eiaEndpoint);
@@ -135,6 +135,7 @@ test("documents the three source integrations and the fallback rule in How It Wo
   await expect(register).toContainText("U.S. Energy Information Administration (EIA)");
   await expect(register).toContainText("FEMA National Risk Index");
   await expect(register).toContainText(
-    "All external feeds automatically fall back to cached values during an unavailable live demonstration.",
+    "Provider responses may use an explicitly labeled retained response when a live request is unavailable. Bundled baselines remain labeled embedded and are never represented as cached or live.",
   );
+  await expect(register).toContainText("Compute Atlas metadata is discovery context, not facility-level proof or a modeled financial input.");
 });

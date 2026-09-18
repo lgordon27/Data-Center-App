@@ -78,10 +78,8 @@ test.describe("stock-first company exposure flow", () => {
     await expect.poll(() => directoryRequests.length).toBe(1);
     expect(directoryRequests[0]).toContain("company=Microsoft");
     await page.getByTestId("company-project-open-project-kilby").click();
-    await expect(page.getByTestId("custom-project-dialog")).toBeVisible();
-    await expect(page.getByTestId("input-custom-project-name")).toHaveValue("Project Kilby");
-    await expect(page.getByTestId("input-custom-project-location")).toHaveValue("Reeves County, West Texas");
-    expect(directoryRequests).toHaveLength(1);
+    await expect(page).toHaveURL(/#analysis\/project-kilby$/);
+    await expect(page.getByTestId("conference-summary")).toContainText("Project Kilby");
   });
 
   test("contains directory render failures inside the route and keeps Home usable", async ({ page }) => {
@@ -167,9 +165,8 @@ test.describe("stock-first company exposure flow", () => {
     await expect(page.getByTestId("company-project-evidence-project-kilby")).toHaveText("Source-backed");
     await expect(page.getByTestId("company-project-evidence-project-rainier-microsoft-wi")).toHaveText("Discovery match");
     await page.getByTestId("company-project-open-project-kilby").click();
-    await expect(page.getByTestId("custom-project-dialog")).toBeVisible();
-    await expect(page.getByTestId("input-custom-project-name")).toHaveValue("Project Kilby");
-    await expect(page.getByTestId("input-custom-project-location")).toHaveValue("Reeves County, West Texas");
+    await expect(page).toHaveURL(/#analysis\/project-kilby$/);
+    await expect(page.getByTestId("conference-summary")).toContainText("Project Kilby");
   });
 
   test("records safe holding and project action events", async ({ page }) => {
@@ -208,7 +205,7 @@ test.describe("stock-first company exposure flow", () => {
           company: "microsoft",
           project_id: "project-kilby",
           project_kind: "curated",
-           action: "research_with_ai",
+          action: "open_canonical",
         },
       },
     ]);
@@ -262,7 +259,7 @@ test.describe("stock-first company exposure flow", () => {
     await page.getByTestId("company-card-oracle").click();
     await expect(page.getByTestId("company-exposure-view")).toBeVisible();
     await page.getByTestId("company-project-open-curated-stargate-oracle").click();
-    await expect(page).toHaveURL(/#analysis$/);
+    await expect(page).toHaveURL(/#analysis\/stargate-abilene$/);
     await page.getByTestId("button-reset-default").click();
     await page.getByTestId("button-confirm-reset-default").click();
     await page.goto("/#analysis");

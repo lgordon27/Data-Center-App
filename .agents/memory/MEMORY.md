@@ -30,3 +30,4 @@
 - [Research terminal outcomes](research-terminal-outcomes.md) — distinguish eligible, conclusive no-eligible, and technical incompleteness; identity receives first bounded open opportunity.
 - [Citation category routing](citation-category-routing.md) — missing labels stay relevance-assessable; mixed labels retain recognized scope; availability and analysis must share one matcher.
 - [Offline document transport fixtures](offline-document-transport-fixtures.md) — security fixtures must validate every hop before a mocked transport can return a document.
+- [Exact GitHub object publication](exact-github-object-publication.md) — connector-based publication must preserve raw Git bytes and verify every object hash before moving a ref.

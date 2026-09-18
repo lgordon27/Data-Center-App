@@ -621,6 +621,19 @@ function fetchPinnedPublicUrl(url, init = {}, dnsLookup = dns.lookup) {
   }));
 }
 
+async function fetchResearchDocumentUrl(url, init, {
+  fetchImpl,
+  dnsLookup,
+  transportImpl,
+} = {}) {
+  if (typeof transportImpl === "function") {
+    const address = await resolvePublicAddress(url, dnsLookup);
+    return transportImpl(url, init, { address });
+  }
+  if (fetchImpl === fetch) return fetchPinnedPublicUrl(url, init, dnsLookup);
+  return fetchImpl(url, init);
+}
+
 function parseResearchProjectBody(body) {
   if (!isRecord(body)) throw new Error("Research project body must be a JSON object.");
   const name = body.name ?? body.projectName;
@@ -1152,6 +1165,7 @@ async function accessResearchDocument(candidate = {}, {
   maxRedirects = RESEARCH_DOCUMENT_MAX_REDIRECTS,
   signal,
   dnsLookup = dns.lookup,
+  transportImpl = null,
   ocrImpl,
 } = {}) {
   const documentStartedAtMs = Date.now();
@@ -1171,9 +1185,11 @@ async function accessResearchDocument(candidate = {}, {
         redirect: "manual",
         signal,
       };
-      response = fetchImpl === fetch
-        ? await fetchPinnedPublicUrl(currentUrl, requestInit, dnsLookup)
-        : await fetchImpl(currentUrl, requestInit);
+      response = await fetchResearchDocumentUrl(currentUrl, requestInit, {
+        fetchImpl,
+        dnsLookup,
+        transportImpl,
+      });
     } catch (error) {
       if (error?.name === "ResearchCancelledError" || signal?.aborted) {
         const cancellation = createResearchCancellationError();
@@ -1210,15 +1226,42 @@ async function accessResearchDocument(candidate = {}, {
     throwIfResearchCancelled(signal);
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers?.get?.("location");
-      const safeLocation = safePublicSourceUrl(location ? new URL(location, currentUrl).href : null);
-      if (!safeLocation || redirect === maxRedirects) {
+      let resolvedLocation = null;
+      try {
+        resolvedLocation = location ? new URL(location, currentUrl) : null;
+      } catch {
+        resolvedLocation = null;
+      }
+      const privateRedirect = resolvedLocation && isPrivateNetworkHostname(resolvedLocation.hostname);
+      const safeLocation = safePublicSourceUrl(resolvedLocation?.href ?? null);
+      if (privateRedirect || !safeLocation || redirect === maxRedirects) {
+        const reason = privateRedirect
+          ? "private-destination"
+          : safeLocation
+            ? "redirect-limit"
+            : "unsafe-redirect";
         return {
           ...initial,
           state: "blocked",
-          reason: "redirect-limit",
+          reason,
           resolvedUrl: currentUrl,
           redirectChain,
-          extractionLimitations: ["Redirect chain exceeded the bounded access limit or supplied an unsafe destination."],
+          transportDiagnostic: buildTransportDiagnostic({
+            stage: "redirect-validation",
+            url: currentUrl,
+            startedAtMs: requestStartedAtMs,
+            responseReceived: true,
+            response,
+            redirectChain,
+            ...(privateRedirect ? { addressValidationReason: "prohibited-address-class" } : {}),
+          }),
+          extractionLimitations: [
+            privateRedirect
+              ? "Redirect target resolved to a private, loopback, link-local, or reserved destination."
+              : safeLocation
+                ? "Redirect chain exceeded the bounded access limit."
+                : "Redirect target was malformed, unsupported, or contained credentials.",
+          ],
         };
       }
       redirectChain.push(safeLocation);

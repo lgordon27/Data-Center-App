@@ -530,6 +530,134 @@ test("reads bounded HTML and text PDFs while recording retrieval limitations", a
   assert.match(xml.passage, /Project Atlas Approved/);
 });
 
+test("opens a public DataBank-style redirect with validated offline DNS and transport fixtures", async () => {
+  const initialUrl = "https://grounding.fixture/citation";
+  const finalUrl = "https://www.databank.com/resources/press-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas/";
+  const dnsCalls = [];
+  const transportCalls = [];
+  const addresses = {
+    "grounding.fixture": { address: "93.184.216.34", family: 4 },
+    "www.databank.com": { address: "93.184.216.35", family: 4 },
+  };
+  const result = await accessResearchDocument({ url: initialUrl, accessStatus: "open" }, {
+    dnsLookup: async (hostname, options) => {
+      dnsCalls.push({ hostname, options });
+      return [addresses[hostname]];
+    },
+    transportImpl: async (url, _init, { address }) => {
+      transportCalls.push({ url, address });
+      if (url === initialUrl) {
+        return new Response(null, {
+          status: 302,
+          headers: { location: finalUrl },
+        });
+      }
+      return new Response(
+        "<html><body><h1>DataBank announces a 480 MW data center campus in South Dallas</h1><p>The public announcement describes the planned campus.</p></body></html>",
+        { status: 200, headers: { "content-type": "text/html" } },
+      );
+    },
+  });
+
+  assert.equal(result.state, "accessible");
+  assert.equal(result.reason, "retrieved");
+  assert.equal(result.canonicalUrl, "https://www.databank.com/resources/press-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas");
+  assert.match(result.passage, /480 MW data center campus/i);
+  assert.deepEqual(dnsCalls.map(({ hostname }) => hostname), ["grounding.fixture", "www.databank.com"]);
+  assert.ok(dnsCalls.every(({ options }) => options.all === true && options.verbatim === true));
+  assert.deepEqual(transportCalls, [
+    { url: initialUrl, address: addresses["grounding.fixture"] },
+    { url: finalUrl, address: addresses["www.databank.com"] },
+  ]);
+  assert.deepEqual(result.transportDiagnostic.redirectChain, [
+    finalUrl,
+  ]);
+});
+
+test("blocks private and mixed-address redirect destinations before offline transport access", async () => {
+  const initialUrl = "https://grounding.fixture/citation";
+  let privateTransportCalls = 0;
+  const privateResult = await accessResearchDocument({ url: initialUrl, accessStatus: "open" }, {
+    dnsLookup: async () => [{ address: "93.184.216.34", family: 4 }],
+    transportImpl: async () => {
+      privateTransportCalls += 1;
+      return new Response(null, {
+        status: 302,
+        headers: { location: "http://127.0.0.1/admin?token=secret" },
+      });
+    },
+  });
+  assert.equal(privateResult.state, "blocked");
+  assert.equal(privateResult.reason, "private-destination");
+  assert.equal(privateTransportCalls, 1);
+  assert.equal(privateResult.transportDiagnostic.stage, "redirect-validation");
+  assert.doesNotMatch(JSON.stringify(privateResult), /token=secret|127\.0\.0\.1/);
+
+  let mixedTransportCalls = 0;
+  const mixedResult = await accessResearchDocument({ url: initialUrl, accessStatus: "open" }, {
+    dnsLookup: async (hostname) => hostname === "grounding.fixture"
+      ? [{ address: "93.184.216.34", family: 4 }]
+      : [
+        { address: "93.184.216.35", family: 4 },
+        { address: "10.0.0.7", family: 4 },
+      ],
+    transportImpl: async (url) => {
+      mixedTransportCalls += 1;
+      return new Response(null, {
+        status: 302,
+        headers: { location: "https://www.databank.com/public" },
+      });
+    },
+  });
+  assert.equal(mixedResult.state, "blocked");
+  assert.equal(mixedResult.reason, "private-destination");
+  assert.equal(mixedResult.transportDiagnostic.stage, "dns-validation");
+  assert.equal(mixedResult.transportDiagnostic.addressValidationReason, "prohibited-address-class");
+  assert.equal(mixedTransportCalls, 1);
+});
+
+test("revalidates each redirect hop and blocks DNS rebinding without leaking resolver details", async () => {
+  const url = "https://grounding.fixture/citation";
+  let lookupCount = 0;
+  let transportCalls = 0;
+  const result = await accessResearchDocument({ url, accessStatus: "open" }, {
+    dnsLookup: async () => {
+      lookupCount += 1;
+      return lookupCount === 1
+        ? [{ address: "93.184.216.34", family: 4 }]
+        : [{ address: "169.254.169.254", family: 4 }];
+    },
+    transportImpl: async () => {
+      transportCalls += 1;
+      return new Response(null, {
+        status: 302,
+        headers: { location: url },
+      });
+    },
+  });
+  assert.equal(result.state, "blocked");
+  assert.equal(result.reason, "private-destination");
+  assert.equal(result.transportDiagnostic.stage, "dns-validation");
+  assert.equal(result.transportDiagnostic.addressValidationReason, "prohibited-address-class");
+  assert.equal(lookupCount, 2);
+  assert.equal(transportCalls, 1);
+  assert.doesNotMatch(JSON.stringify(result), /169\.254\.169\.254/);
+});
+
+test("keeps unsafe redirects distinct from bounded redirect limits", async () => {
+  const result = await accessResearchDocument({ url: "https://grounding.fixture/citation", accessStatus: "open" }, {
+    dnsLookup: async () => [{ address: "93.184.216.34", family: 4 }],
+    transportImpl: async () => new Response(null, {
+      status: 302,
+      headers: { location: "javascript:alert(1)" },
+    }),
+  });
+  assert.equal(result.state, "blocked");
+  assert.equal(result.reason, "unsafe-redirect");
+  assert.equal(result.transportDiagnostic.stage, "redirect-validation");
+  assert.doesNotMatch(JSON.stringify(result), /javascript:|alert/);
+});
+
 test("blocks DNS rebinding before a default outbound document request", async () => {
   const result = await accessResearchDocument({ url: "https://rebind.example.gov/atlas", accessStatus: "open" }, {
     dnsLookup: async () => [{ address: "127.0.0.1", family: 4 }],

@@ -51,6 +51,8 @@ import {
   researchProjectWithWebSearch,
   classifyResearchFailure,
   classifyCanonicalResearchOutcome,
+  createPhysicalOpenScheduler,
+  PROTECTED_SOURCE_OPPORTUNITIES,
 } from "./researchProjectProxy.mjs";
 import {
   classifyResearchCacheAge,
@@ -212,6 +214,56 @@ function compressedTextPdf(text) {
 
 test("uses a 90-second server research budget", () => {
   assert.equal(RESEARCH_PROJECT_TIMEOUT_MS, 90_000);
+});
+
+test("schedules protected source opportunities before generic context and reuses failed canonical receipts", () => {
+  const scheduler = createPhysicalOpenScheduler({ maxPhysicalOpens: 24 });
+  assert.equal(PROTECTED_SOURCE_OPPORTUNITIES.length, 9);
+  const first = scheduler.authorize({
+    categoryId: "project-identity",
+    canonicalUrl: "https://developer.example/disclosure?utm_source=search",
+    source: { sourceChannel: "declared-company-domain" },
+  });
+  assert.equal(first.allowed, true);
+  assert.equal(first.physicalOpenIndex, 1);
+  const reused = scheduler.authorize({
+    categoryId: "water",
+    canonicalUrl: "https://developer.example/disclosure",
+    source: { sourceChannel: "declared-company-domain" },
+  });
+  assert.equal(reused.reused, true);
+  assert.equal(reused.physicalOpenIndex, 1);
+  const deferred = scheduler.authorize({
+    categoryId: "project-identity",
+    canonicalUrl: "https://developer.example/context",
+    source: { sourceChannel: "provider" },
+  });
+  assert.equal(deferred.allowed, true);
+  assert.equal(deferred.physicalOpenIndex, 2);
+  const roles = [
+    ["construction-capital", "https://developer.example/company"],
+    ["construction-capital", "https://developer.example/permit"],
+    ["permitting-community", "https://county.example/authority"],
+    ["permitting-community", "https://county.example/community"],
+    ["grid", "https://grid.example/record"],
+    ["water", "https://water.example/record"],
+    ["tenant-counterparty", "https://tenant.example/record"],
+    ["climate-operational-hazard", "https://climate.example/record"],
+  ];
+  for (const [categoryId, url] of roles) {
+    assert.equal(scheduler.authorize({
+      categoryId,
+      canonicalUrl: url,
+      source: { sourceChannel: "provider" },
+    }).allowed, true);
+  }
+  const generic = scheduler.authorize({
+    categoryId: "project-identity",
+    canonicalUrl: "https://developer.example/context",
+    source: { sourceChannel: "provider" },
+  });
+  assert.equal(generic.allowed, true);
+  assert.equal(scheduler.used, 10);
 });
 
 test("builds an auditable eight-category plan without changing the 16 identifiers", () => {
@@ -2461,7 +2513,112 @@ test("resolves a redirected Arizona source from provider URL through physical ac
   assert.equal(record.sources[0].originalUrl, originalUrl);
   assert.equal(record.sources[0].accessOutcome.state, "accessible");
   assert.equal(record.claimMappings[0].sourceId, finalUrl);
-  assert.equal(record.claimMappings[0].supportStatus, "supported");
+  assert.equal(
+    record.claimMappings[0].supportStatus,
+    "supported",
+    JSON.stringify({
+      source: record.sources[0],
+      mapping: record.claimMappings[0],
+    }),
+  );
+});
+
+test("carries a generic first-party disclosure from normalized URL through visible proposal handoff", async () => {
+  const disclosureUrl = "https://developer.example/disclosures/atlas-campus?utm_source=provider";
+  const passage = "Atlas Compute identifies Project Atlas in Taylor County, Texas, describes the 600 MW campus on 400 acres, and reports a 365-day interconnection timeline, $42/MWh electricity cost, 6% annual electricity escalation, and 25% renewable procurement for its 2026 construction phase.";
+  const research = validResearchResponse();
+  for (const item of research.evidence) {
+    delete item.sourceUrl;
+    item.sourceUrls = [];
+    item.citation = "No source cited for this non-grid item.";
+  }
+  const gridClaims = {
+    grid_interconnection: { value: 365, unit: "days" },
+    electricity_cost: { value: 42, unit: "$/MWh" },
+    electricity_escalation: { value: 6, unit: "%" },
+    renewable_percentage: { value: 25, unit: "%" },
+  };
+  for (const [id, claim] of Object.entries(gridClaims)) {
+    Object.assign(research.evidence.find((item) => item.id === id), {
+      value: claim.value,
+      numericValue: claim.value,
+      unit: claim.unit,
+      classification: "Management Assertion",
+      sourceUrl: disclosureUrl,
+      sourceUrls: [disclosureUrl],
+      citation: `Atlas Compute disclosure: ${disclosureUrl}`,
+      description: "The first-party disclosure reports a governed exact-project grid claim.",
+      claimPassage: passage,
+      facilityScope: "exact-project",
+      phaseScope: "exact-phase",
+      claimTimePeriod: "2026",
+      coverageStatus: "supported",
+    });
+  }
+  const response = responseRecorder();
+  const result = await runValidatedResearch({
+    name: "Project Atlas",
+    location: "Taylor County, Texas",
+    knownData: { operator: "Atlas Compute", companyDomains: ["developer.example"] },
+  }, {
+    apiKey: "server-secret-for-test",
+    req: request({}),
+    categoryIds: ["grid"],
+    rateLimiter: { allow: () => ({ allowed: true }) },
+    fetchImpl: async () => singleCallResponse(research, [{
+      ...retrievedSource,
+      url: disclosureUrl,
+      title: "Atlas Compute Project Atlas disclosure",
+      excerpt: passage,
+      claimPassage: passage,
+      claimSupport: Object.entries(gridClaims).map(([evidenceId, claim]) => ({
+        evidenceId,
+        values: [claim.value],
+      })),
+      sourceClass: "primary-company",
+      date: "2026-06-15",
+      exactProject: true,
+      facilityScope: "exact-project",
+      phaseScope: "exact-phase",
+      timePeriod: "2026",
+    }]),
+    documentFetchImpl: async (url) => {
+      assert.equal(url, disclosureUrl);
+      return new Response(`<html><body><h1>Project Atlas disclosure</h1><p>${passage}</p></body></html>`, {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      });
+    },
+  });
+  const record = result.evidence.find((item) => item.id === "grid_interconnection");
+  assert.equal(record.eligibleForModel, true);
+  assert.equal(record.acceptedForModel, false);
+  assert.equal(record.sources[0].canonicalUrl, "https://developer.example/disclosures/atlas-campus");
+  assert.equal(record.sources[0].accessOutcome.state, "accessible");
+  assert.match(record.sources[0].accessOutcome.passage, /600 MW campus/);
+  assert.ok(
+    record.sources[0].excerpt.includes(record.sources[0].claimPassage),
+    JSON.stringify({
+      excerpt: record.sources[0].excerpt,
+      claimPassage: record.sources[0].claimPassage,
+    }),
+  );
+  assert.equal(
+    record.claimMappings[0].supportStatus,
+    "supported",
+    JSON.stringify({
+      source: record.sources[0],
+      mapping: record.claimMappings[0],
+    }),
+  );
+  assert.equal(
+    result.researchOutcome.state,
+    "complete-with-eligible-evidence",
+    JSON.stringify({
+      outcome: result.researchOutcome,
+      candidateLineage: result.researchAudit?.candidateLineage,
+    }),
+  );
 });
 
 test("prioritizes a provider-cited Arizona candidate before the shared physical-open ceiling", () => {

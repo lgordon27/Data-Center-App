@@ -47,6 +47,26 @@ const RESEARCH_RUN_BUDGET = Object.freeze({
   maxToolCalls: RESEARCH_PROJECT_MAX_TOOL_CALLS,
   maxPhysicalDocumentOpens: 24,
 });
+export const PROTECTED_SOURCE_OPPORTUNITIES = Object.freeze([
+  "exact-project-identity",
+  "company-developer",
+  "city-county-authority",
+  "construction-permitting",
+  "grid-power",
+  "water",
+  "community",
+  "counterparty",
+  "climate",
+]);
+const PROTECTED_OPPORTUNITY_CATEGORIES = Object.freeze({
+  "project-identity": ["exact-project-identity"],
+  "construction-capital": ["company-developer", "construction-permitting"],
+  "permitting-community": ["city-county-authority", "community"],
+  grid: ["grid-power"],
+  water: ["water"],
+  "tenant-counterparty": ["counterparty"],
+  "climate-operational-hazard": ["climate"],
+});
 const RESEARCH_DOCUMENT_MAX_BYTES = 1_000_000;
 const RESEARCH_DOCUMENT_MAX_REDIRECTS = 3;
 const SEC_CONNECTOR_CACHE = new Map();
@@ -153,6 +173,92 @@ const RESEARCH_EVIDENCE_IDS = [
   "water_source_resilience",
   "downtime_cost",
 ];
+
+function protectedOpportunityForSource(categoryId, source = {}, categoryCounts = new Map()) {
+  const channel = String(source.sourceChannel ?? "").toLowerCase();
+  if (/city|county|municipal|authority/.test(channel)) return "city-county-authority";
+  if (/company|developer|sec|investor/.test(channel)) return "company-developer";
+  const opportunities = PROTECTED_OPPORTUNITY_CATEGORIES[categoryId] ?? [];
+  if (!opportunities.length) return null;
+  const count = categoryCounts.get(categoryId) ?? 0;
+  return opportunities[Math.min(count, opportunities.length - 1)] ?? null;
+}
+
+/**
+ * A run-wide physical-open scheduler. Canonical identities are receipts, not
+ * opportunities: a failed receipt still consumes one open, while a later
+ * occurrence of that identity reuses the same receipt at zero cost.
+ *
+ * The first candidate for each protected source role is admitted before a
+ * category can spend the remaining ceiling on generic context. This is
+ * deliberately independent of evidence eligibility; all downstream gates
+ * still apply after access.
+ */
+export function createPhysicalOpenScheduler({
+  maxPhysicalOpens = RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens,
+  activeCategoryIds = Object.keys(PROTECTED_OPPORTUNITY_CATEGORIES),
+} = {}) {
+  const receipts = new Map();
+  const protectedRoles = new Set();
+  const openedCategories = new Set();
+  const activeCategories = new Set(activeCategoryIds);
+  const categoryCounts = new Map();
+  let used = 0;
+
+  const authorize = ({ categoryId = "unknown", canonicalUrl = null, source = {} } = {}) => {
+    const canonical = canonicalizeSourceUrl(canonicalUrl ?? source.url);
+    if (canonical && receipts.has(canonical)) {
+      return { allowed: true, reused: true, physicalOpenIndex: receipts.get(canonical).physicalOpenIndex, canonicalUrl: canonical };
+    }
+    const role = protectedOpportunityForSource(categoryId, source, categoryCounts);
+    const unfilledProtectedRoles = PROTECTED_SOURCE_OPPORTUNITIES.filter((item) => !protectedRoles.has(item));
+    if (role && !protectedRoles.has(role)) {
+      if (used >= maxPhysicalOpens) return { allowed: false, reused: false, reason: "physical-open-budget", canonicalUrl: canonical };
+      used += 1;
+      protectedRoles.add(role);
+      openedCategories.add(categoryId);
+      categoryCounts.set(categoryId, (categoryCounts.get(categoryId) ?? 0) + 1);
+      const receipt = { physicalOpenIndex: used, role, canonicalUrl: canonical };
+      if (canonical) receipts.set(canonical, receipt);
+      return { allowed: true, reused: false, physicalOpenIndex: used, canonicalUrl: canonical, protectedRole: role };
+    }
+    const unattemptedCategories = [...activeCategories].filter((categoryId) => !openedCategories.has(categoryId));
+    if (unattemptedCategories.length > 0 && used >= maxPhysicalOpens - unattemptedCategories.length) {
+      return {
+        allowed: false,
+        reused: false,
+        reason: "protected-opportunity",
+        canonicalUrl: canonical,
+        protectedRolesRemaining: unfilledProtectedRoles,
+        categoriesRemaining: unattemptedCategories,
+      };
+    }
+    if (used >= maxPhysicalOpens) return { allowed: false, reused: false, reason: "physical-open-budget", canonicalUrl: canonical };
+    used += 1;
+    openedCategories.add(categoryId);
+    categoryCounts.set(categoryId, (categoryCounts.get(categoryId) ?? 0) + 1);
+    const receipt = { physicalOpenIndex: used, role: null, canonicalUrl: canonical };
+    if (canonical) receipts.set(canonical, receipt);
+    return { allowed: true, reused: false, physicalOpenIndex: used, canonicalUrl: canonical };
+  };
+
+  const registerReceipt = ({ canonicalUrl, receipt } = {}) => {
+    const canonical = canonicalizeSourceUrl(canonicalUrl);
+    if (canonical && receipt && !receipts.has(canonical)) receipts.set(canonical, receipt);
+  };
+
+  return {
+    authorize,
+    registerReceipt,
+    getReceipt: (canonicalUrl) => {
+      const canonical = canonicalizeSourceUrl(canonicalUrl);
+      return canonical ? receipts.get(canonical) ?? null : null;
+    },
+    get used() { return used; },
+    get protectedRoles() { return [...protectedRoles]; },
+    get receipts() { return new Map(receipts); },
+  };
+}
 
 const VALID_CLASSIFICATIONS = [
   "Verified Evidence",
@@ -2193,7 +2299,11 @@ function parseResearchResponse(
         publishedAt: normalizePublicDate(metadata?.date),
         accessedAt: normalizePublicDate(accessedAt),
         accessStatus: ["open", "paywall", "registration"].includes(metadata?.accessStatus) ? metadata.accessStatus : "not provided",
-        excerpt: stringOrFallback(metadata?.excerpt, "No excerpt returned.", 1_000),
+        excerpt: stringOrFallback(
+          metadata?.accessOutcome?.passage ?? metadata?.excerpt,
+          "No excerpt returned.",
+          1_000,
+        ),
         sourceClass: metadata?.sourceClass ?? classifySource(url, metadata?.title),
         searchDomain: metadata?.searchDomain ?? "project-identity",
         exactProject,
@@ -2476,6 +2586,18 @@ function classifySource(url, title = "") {
     return "primary-company";
   }
   return "secondary-reporting";
+}
+
+function classifySourceForProject(url, title = "", project = {}) {
+  const hostname = new URL(url).hostname.toLowerCase().replace(/^www\./, "");
+  const companyDomains = [
+    ...(Array.isArray(project?.knownData?.companyDomains) ? project.knownData.companyDomains : []),
+    ...(Array.isArray(project?.companyDomains) ? project.companyDomains : []),
+  ].map((value) => String(value).toLowerCase().replace(/^www\./, ""));
+  if (companyDomains.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`))) {
+    return "primary-company";
+  }
+  return classifySource(url, title);
 }
 
 function sourcePriority(sourceClass) {
@@ -2820,7 +2942,7 @@ function normalizeRetrievedSources(body, searchDomain = "project-identity", proj
       excerpt: typeof source.snippet === "string" ? source.snippet.trim() : typeof source.excerpt === "string" ? source.excerpt.trim() : "",
       accessStatus: ["open", "paywall", "registration"].includes(source.access_status) ? source.access_status : "not provided",
       contentType: typeof source.content_type === "string" ? source.content_type : typeof source.contentType === "string" ? source.contentType : null,
-      sourceClass: url ? classifySource(url, title) : "secondary-reporting",
+      sourceClass: url ? classifySourceForProject(url, title, project) : "secondary-reporting",
       searchDomain,
       ...(safePublicSourceUrl(source.canonicalUrl)
         ? {
@@ -2829,6 +2951,8 @@ function normalizeRetrievedSources(body, searchDomain = "project-identity", proj
           }
         : {}),
       ...(typeof source.exactProject === "boolean" ? { exactProject: source.exactProject } : {}),
+      ...(typeof source.claimPassage === "string" ? { claimPassage: source.claimPassage } : {}),
+      ...(Array.isArray(source.claimSupport) ? { claimSupport: source.claimSupport } : {}),
       ...(isJurisdictionallyExcludedSource({ url, title }, project)
         ? {
             exactProject: false,
@@ -3544,10 +3668,27 @@ function mergeCategoryResearchResults(project, categoryResults) {
       evidenceById.set(item.id, {
         ...item,
         ...containedItem,
+        // A category may be normalized before its source has been physically
+        // accessed. Once an accessible receipt exists, restore the raw claim
+        // fields and let the final run-wide parse evaluate them against that
+        // receipt instead of carrying forward a pre-access quarantine value.
+        ...(currentHasAccessibleSource && rawItem ? rawItem : {}),
         ...(containedItem.sourceUrl || !rawItem?.sourceUrl ? {} : { sourceUrl: rawItem.sourceUrl }),
         ...(Array.isArray(containedItem.sourceUrls) && containedItem.sourceUrls.length
           ? {}
           : Array.isArray(rawItem?.sourceUrls) ? { sourceUrls: rawItem.sourceUrls } : {}),
+        ...(!containedItem.claimPassage && rawItem?.claimPassage
+          ? { claimPassage: rawItem.claimPassage }
+          : {}),
+        ...(!containedItem.facilityScope && rawItem?.facilityScope
+          ? { facilityScope: rawItem.facilityScope }
+          : {}),
+        ...(!containedItem.phaseScope && rawItem?.phaseScope
+          ? { phaseScope: rawItem.phaseScope }
+          : {}),
+        ...(!containedItem.claimTimePeriod && rawItem?.claimTimePeriod
+          ? { claimTimePeriod: rawItem.claimTimePeriod }
+          : {}),
         ...(item.sources?.length || !sourceRecords.length ? {} : { sources: sourceRecords }),
       });
     }
@@ -3731,13 +3872,16 @@ async function runValidatedResearch(project, {
   let fetchedCandidateCount = 0;
   let physicalOpensUsed = 0;
   let physicalOpenBudgetExceeded = false;
-  const authorizePhysicalOpen = () => {
-    if (physicalOpensUsed >= RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens) {
-      physicalOpenBudgetExceeded = true;
-      return { allowed: false, physicalOpenIndex: null };
-    }
-    physicalOpensUsed += 1;
-    return { allowed: true, physicalOpenIndex: physicalOpensUsed };
+  const physicalOpenScheduler = createPhysicalOpenScheduler({
+    activeCategoryIds: buildResearchCategoryPlan(project).categories
+      .filter((category) => !Array.isArray(categoryIds) || !categoryIds.length || categoryIds.includes(category.categoryId))
+      .map((category) => category.categoryId),
+  });
+  const authorizePhysicalOpen = (details = {}) => {
+    const authorization = physicalOpenScheduler.authorize(details);
+    physicalOpensUsed = physicalOpenScheduler.used;
+    if (authorization.reason === "physical-open-budget") physicalOpenBudgetExceeded = true;
+    return authorization;
   };
   let activeSecConnector = secConnector;
   if (!activeSecConnector && process.env.SEC_USER_AGENT) {
@@ -3859,7 +4003,11 @@ async function runValidatedResearch(project, {
             category: categoryId,
             signal: controller.signal,
             maxAttempts: RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens,
-            authorizeAttempt: authorizePhysicalOpen,
+        authorizeAttempt: (url) => authorizePhysicalOpen({
+          categoryId,
+          canonicalUrl: url,
+          source: { url, sourceChannel: "official-domain-discovery" },
+        }),
             fetchImpl: documentFetchImpl === fetch
               ? (url, init) => fetchPinnedPublicUrl(url, init)
               : documentFetchImpl,
@@ -3978,64 +4126,82 @@ async function runValidatedResearch(project, {
             const preflight = evaluateResearchDocumentAccess(source);
             if (preflight.state !== "accessible") {
               accessOutcome = preflight;
-            } else if (physicalOpensUsed >= RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens) {
-              accessOutcome = {
-                ...preflight,
-                state: "not-attempted",
-                reason: "physical-open-budget",
-                originalUrl,
-                resolvedUrl: null,
-                canonicalUrl: announcedCanonicalUrl,
-                referringUrls: [originalUrl].filter(Boolean),
-                extractionLimitations: ["The hard physical document-open ceiling was reached; no additional document was fetched."],
-              };
             } else {
-              physicalOpensUsed += 1;
-              const physicalOpenIndex = physicalOpensUsed;
-              const accessTask = documentAccessQueue
-                .then(() => accessResearchDocument(source, {
-                  fetchImpl: documentFetchImpl,
-                  signal: controller.signal,
-                  ocrImpl,
-                }))
-                .then((outcome) => ({
-                  ...outcome,
+              const authorization = authorizePhysicalOpen({
+                categoryId,
+                canonicalUrl: announcedCanonicalUrl ?? originalUrl,
+                source,
+              });
+              if (authorization.reused) {
+                const priorReceipt = physicalOpenScheduler.getReceipt(authorization.canonicalUrl);
+                accessOutcome = {
+                  ...(priorReceipt?.accessOutcome ?? priorReceipt ?? preflight),
+                  state: priorReceipt?.accessOutcome?.state ?? priorReceipt?.state ?? "unknown",
+                  reused: true,
+                  originalUrl,
+                  referringUrls: [...new Set([...(priorReceipt?.accessOutcome?.referringUrls ?? priorReceipt?.referringUrls ?? []), originalUrl].filter(Boolean))],
+                };
+              } else if (!authorization.allowed) {
+                accessOutcome = {
+                  ...preflight,
+                  state: "not-attempted",
+                  reason: authorization.reason,
+                  originalUrl,
+                  resolvedUrl: null,
+                  canonicalUrl: announcedCanonicalUrl,
                   referringUrls: [originalUrl].filter(Boolean),
-                  physicalOpenIndex,
-                }));
-              if (originalCanonicalUrl) documentAccessPromisesByCanonicalUrl.set(originalCanonicalUrl, accessTask);
-              if (announcedCanonicalUrl) documentAccessPromisesByCanonicalUrl.set(announcedCanonicalUrl, accessTask);
-              documentAccessQueue = accessTask.catch(() => {});
-              accessOutcome = await accessTask;
-              accessOutcome = {
-                ...accessOutcome,
-              };
-              if (accessOutcome.underlyingDocumentUrl) {
-                const underlyingAuthorization = authorizePhysicalOpen();
-                if (underlyingAuthorization.allowed) {
-                  const underlyingOutcome = await accessResearchDocument({
-                    ...source,
-                    url: accessOutcome.underlyingDocumentUrl,
-                    originalUrl: accessOutcome.underlyingDocumentUrl,
-                    javascriptOnly: false,
-                    contentType: null,
-                  }, {
+                  extractionLimitations: [authorization.reason === "physical-open-budget"
+                    ? "The hard physical document-open ceiling was reached; no additional document was fetched."
+                    : "The document was deferred so every protected source-acquisition role receives an opportunity before generic context."],
+                };
+              } else {
+                const physicalOpenIndex = authorization.physicalOpenIndex;
+                const accessTask = documentAccessQueue
+                  .then(() => accessResearchDocument(source, {
                     fetchImpl: documentFetchImpl,
                     signal: controller.signal,
                     ocrImpl,
+                  }))
+                  .then((outcome) => ({
+                    ...outcome,
+                    referringUrls: [originalUrl].filter(Boolean),
+                    physicalOpenIndex,
+                  }));
+                if (originalCanonicalUrl) documentAccessPromisesByCanonicalUrl.set(originalCanonicalUrl, accessTask);
+                if (announcedCanonicalUrl) documentAccessPromisesByCanonicalUrl.set(announcedCanonicalUrl, accessTask);
+                documentAccessQueue = accessTask.catch(() => {});
+                accessOutcome = await accessTask;
+                if (accessOutcome.underlyingDocumentUrl) {
+                  const underlyingAuthorization = authorizePhysicalOpen({
+                    categoryId,
+                    canonicalUrl: accessOutcome.underlyingDocumentUrl,
+                    source: { ...source, url: accessOutcome.underlyingDocumentUrl },
                   });
-                  accessOutcome = {
-                    ...underlyingOutcome,
-                    originalUrl,
-                    underlyingDocumentUrl: accessOutcome.underlyingDocumentUrl,
-                    physicalOpenIndexes: [physicalOpenIndex, underlyingAuthorization.physicalOpenIndex],
-                    physicalOpenIndex: underlyingAuthorization.physicalOpenIndex,
-                    referringUrls: [originalUrl, accessOutcome.underlyingDocumentUrl].filter(Boolean),
-                    extractionLimitations: [
-                      ...(accessOutcome.extractionLimitations ?? []),
-                      ...(underlyingOutcome.extractionLimitations ?? []),
-                    ],
-                  };
+                  if (underlyingAuthorization.allowed) {
+                    const underlyingOutcome = await accessResearchDocument({
+                      ...source,
+                      url: accessOutcome.underlyingDocumentUrl,
+                      originalUrl: accessOutcome.underlyingDocumentUrl,
+                      javascriptOnly: false,
+                      contentType: null,
+                    }, {
+                      fetchImpl: documentFetchImpl,
+                      signal: controller.signal,
+                      ocrImpl,
+                    });
+                    accessOutcome = {
+                      ...underlyingOutcome,
+                      originalUrl,
+                      underlyingDocumentUrl: accessOutcome.underlyingDocumentUrl,
+                      physicalOpenIndexes: [physicalOpenIndex, underlyingAuthorization.physicalOpenIndex],
+                      physicalOpenIndex: underlyingAuthorization.physicalOpenIndex,
+                      referringUrls: [originalUrl, accessOutcome.underlyingDocumentUrl].filter(Boolean),
+                      extractionLimitations: [
+                        ...(accessOutcome.extractionLimitations ?? []),
+                        ...(underlyingOutcome.extractionLimitations ?? []),
+                      ],
+                    };
+                  }
                 }
               }
             }
@@ -4057,6 +4223,10 @@ async function runValidatedResearch(project, {
             }
             if (finalCanonicalUrl) openedDocumentsByCanonicalUrl.set(finalCanonicalUrl, accessOutcome);
           }
+          if (finalCanonicalUrl) physicalOpenScheduler.registerReceipt({
+            canonicalUrl: finalCanonicalUrl,
+            receipt: accessOutcome,
+          });
           accessedSources.push({
             ...source,
             searchDomain: categoryId,
@@ -4071,6 +4241,7 @@ async function runValidatedResearch(project, {
             accessibilityState: accessOutcome.state,
             parsingState: accessOutcome.state === "accessible" ? "parsed" : "failed",
             ...(accessOutcome.passage ? { excerpt: accessOutcome.passage } : {}),
+             ...((accessOutcome.passage ?? source.excerpt) ? { claimPassage: accessOutcome.passage ?? source.excerpt } : {}),
           });
         }
         const eligibleCount = accessedSources.filter((source) => source.accessOutcome?.state === "accessible").length;

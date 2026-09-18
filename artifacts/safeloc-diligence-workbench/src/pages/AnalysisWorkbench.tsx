@@ -8,6 +8,7 @@ import { FinancialTransmission } from "@/components/conference/FinancialTransmis
 import { AdvisorBrief } from "@/components/conference/AdvisorBrief";
 import { isConferenceResearchIncomplete } from "@/model/conferenceEvidence";
 import { ResearchTelemetryStatus } from "@/components/ResearchHandoffSummary";
+import { getResearchStatusPresentation } from "@/services/researchProjectService";
 import {
   getCanonicalDossier,
   listCanonicalDossiers,
@@ -35,12 +36,19 @@ export function AnalysisWorkbench(props: Props) {
 function ConferenceWorkbench({ onResolveEvidence, onReset, focusSectionId }: Props) {
   const diligence = useDiligence();
   const { project, evidence, originatingCompany, metrics, financialScenarios, financialModeling } = diligence;
+  const incomplete = isConferenceResearchIncomplete(project, evidence);
+  const researchPresentation = getResearchStatusPresentation({
+    outcome: project.researchOutcome,
+    researchMode: project.researchMode,
+    researchStatus: project.researchStatus,
+    eligibleProposalCount: Object.keys(project.researchProposals ?? {}).length,
+    fallbackIncomplete: incomplete,
+  });
   const [view, setView] = useState<View>("market");
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [dossiers, setDossiers] = useState<CanonicalDossierSummary[]>([]);
   const [dossierLoadState, setDossierLoadState] = useState<"idle" | "loading" | "error">("idle");
   const contentRef = useRef<HTMLDivElement>(null);
-  const incomplete = isConferenceResearchIncomplete(project, evidence);
   const index = VIEWS.indexOf(view);
   const navigateView = (next: View) => {
     setView(next);
@@ -112,15 +120,9 @@ function ConferenceWorkbench({ onResolveEvidence, onReset, focusSectionId }: Pro
             <span data-testid="conference-research-status" className={`rounded-md px-3 py-2 text-[11px] font-semibold ${incomplete ? "bg-[#fff0d6] text-[#805000]" : "bg-[#e5eeea] text-[#365b4c]"}`}>
               {project.canonicalDossier
                 ? "Canonical evidence review"
-                : project.researchOutcome?.state === "complete-with-eligible-evidence"
-                  ? "Research complete · proposal review"
-                  : project.researchOutcome?.state === "complete-no-eligible-evidence"
-                    ? "Research complete · no eligible evidence"
-                    : project.researchOutcome?.state === "incomplete-technical-limitation"
-                      ? "Research incomplete · technical limitation"
-                      : project.researchMode === "partial-public-source"
-                        ? "Partial public-source research"
-                        : incomplete ? "Research Incomplete" : project.kind === "custom" ? "Project evidence review" : "Curated public-source demonstration"}
+                : project.kind === "custom"
+                  ? researchPresentation.label
+                  : incomplete ? "Research Incomplete" : "Curated public-source demonstration"}
             </span>
           </div>
         </div>

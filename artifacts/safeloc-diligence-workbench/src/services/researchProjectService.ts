@@ -206,6 +206,84 @@ export type ResearchOutcomeState =
   | "complete-no-eligible-evidence"
   | "incomplete-technical-limitation";
 
+export type ResearchStatusPresentation = {
+  state: ResearchOutcomeState | null;
+  label: string;
+  proposalReview: boolean;
+  mode: ResearchMode | undefined;
+};
+
+/**
+ * The server-owned terminal outcome is authoritative for status copy. The
+ * visible proposal count is an additional guard: a result cannot be presented
+ * as "proposal review" when there is nothing a reviewer can actually review.
+ */
+export function getResearchStatusPresentation({
+  outcome,
+  researchMode,
+  eligibleProposalCount = 0,
+  researchStatus,
+  fallbackIncomplete = false,
+}: {
+  outcome?: CustomResearchResponse["researchOutcome"];
+  researchMode?: ResearchMode;
+  eligibleProposalCount?: number;
+  researchStatus?: string;
+  fallbackIncomplete?: boolean;
+}): ResearchStatusPresentation {
+  const state = outcome?.state ?? null;
+  const hasVisibleProposal = Number.isFinite(eligibleProposalCount) && eligibleProposalCount > 0;
+  const proposalReview = state === "complete-with-eligible-evidence" && hasVisibleProposal;
+
+  if (state === "complete-with-eligible-evidence") {
+    return {
+      state,
+      label: proposalReview
+        ? "Research complete · proposal review"
+        : "Research complete · eligible evidence found",
+      proposalReview,
+      mode: researchMode,
+    };
+  }
+  if (state === "complete-no-eligible-evidence") {
+    return {
+      state,
+      label: "Research complete · no eligible evidence",
+      proposalReview: false,
+      mode: "research-incomplete",
+    };
+  }
+  if (state === "incomplete-technical-limitation") {
+    return {
+      state,
+      label: "Research incomplete · technical limitation",
+      proposalReview: false,
+      mode: "research-incomplete",
+    };
+  }
+  if (researchStatus === "researching") {
+    return { state, label: "Research in progress", proposalReview: false, mode: researchMode };
+  }
+  if (researchMode === "default-assumptions") {
+    return { state, label: "Research unavailable", proposalReview: false, mode: researchMode };
+  }
+  if (researchMode === "research-incomplete") {
+    return { state, label: "Research Incomplete", proposalReview: false, mode: researchMode };
+  }
+  if (researchMode === "partial-public-source") {
+    return { state, label: "Partial public-source research", proposalReview: false, mode: researchMode };
+  }
+  if (fallbackIncomplete || researchStatus === "timed-out" || researchStatus === "failed") {
+    return { state, label: "Research Incomplete", proposalReview: false, mode: "research-incomplete" };
+  }
+  return {
+    state,
+    label: hasVisibleProposal ? "Research complete · proposal review" : "Project evidence review",
+    proposalReview: hasVisibleProposal,
+    mode: researchMode,
+  };
+}
+
 export type ResearchCategoryState = "Complete" | "Partial" | "No eligible evidence" | "Provider failure" | "Timed out" | "Not searched";
 export type ResearchAuditStageCounts = {
   normalized: number;

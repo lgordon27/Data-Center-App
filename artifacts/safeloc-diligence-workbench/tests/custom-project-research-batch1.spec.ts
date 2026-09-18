@@ -42,6 +42,28 @@ const placeholderDirectoryResponse = {
 function incompleteResearch(name: string, location: string) {
   return {
     projectSummary: { name, location, description: "Bounded public-source review.", capacityMW: 800 },
+    researchOutcome: {
+      state: "incomplete-technical-limitation",
+      eligibleEvidenceCount: 0,
+      reasonCodes: ["physical-open-budget", "provider-deadline"],
+    },
+    researchCache: {
+      key: "a".repeat(64),
+      state: "fresh",
+      storedAt: "2026-09-18T12:00:00.000Z",
+      refreshStatus: "idle",
+      providerAvailable: true,
+    },
+    researchAudit: {
+      terminalState: "incomplete-technical-limitation",
+      terminalReasonCodes: ["physical-open-budget", "provider-deadline"],
+      physicalOpenBudget: 24,
+      physicalOpensUsed: 24,
+      physicalOpensRemaining: 0,
+      physicalOpenBudgetExceeded: true,
+      budget: { maxPhysicalDocumentOpens: 24 },
+      categories: [],
+    },
     evidence: evidenceIds.map((id) => ({
       id,
       label: id,
@@ -99,8 +121,50 @@ test.describe("Batch 1 custom-project research lifecycle", () => {
       },
     });
     await expect(page).toHaveURL(/#analysis$/);
-    await expect(page.getByTestId("conference-research-status")).toContainText("Research Incomplete");
+    await expect(page.getByTestId("conference-research-status")).toContainText("Research incomplete · technical limitation");
     await expect(page.getByTestId("conference-summary")).toContainText("No company selected");
+  });
+
+  test("keeps technical limitation status consistent with zero proposals after reload and route changes", async ({ page }) => {
+    await page.route("**/api/research-project", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(incompleteResearch("GW Ranch", "Pecos County, Texas")),
+      });
+    });
+    await page.goto("/#directory");
+    await page.getByTestId("compute-atlas-open-gw-ranch-pecos-tx").click();
+    await page.getByTestId("button-submit-custom-project").click();
+    await expect(page).toHaveURL(/#analysis$/);
+
+    const assertTechnicalLimitation = async () => {
+      await expect(page.getByTestId("conference-research-status")).toHaveText("Research incomplete · technical limitation");
+      await expect(page.getByTestId("custom-research-banner")).toContainText("RESEARCH INCOMPLETE");
+      await expect(page.locator("header")).toContainText("incomplete");
+      await expect(page.locator("body")).not.toContainText("proposal review");
+    };
+    await assertTechnicalLimitation();
+
+    await page.getByTestId("tab-reality").click();
+    await page.getByTestId("button-detailed-evidence").click();
+    await expect(page.getByTestId("research-handoff-status")).toHaveText(
+      "Final status: Research incomplete · technical limitation",
+    );
+    await expect(page.getByTestId("research-handoff-proposals")).toContainText("0");
+
+    await page.goto("/#home");
+    await expect(page.getByTestId("custom-research-banner")).toContainText("RESEARCH INCOMPLETE");
+    await expect(page.locator("body")).not.toContainText("proposal review");
+    await page.goto("/#analysis");
+    await assertTechnicalLimitation();
+    await page.reload();
+    await assertTechnicalLimitation();
+    await page.getByTestId("tab-reality").click();
+    await page.getByTestId("button-detailed-evidence").click();
+    await expect(page.getByTestId("research-handoff-status")).toHaveText(
+      "Final status: Research incomplete · technical limitation",
+    );
   });
 
   test("cancels and closes pending research, and route changes dismiss the modal", async ({ page }) => {

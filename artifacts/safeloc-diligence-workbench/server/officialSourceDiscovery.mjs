@@ -379,6 +379,24 @@ export async function discoverOfficialSources({
       });
       break;
     }
+    if (authorization?.reused === true) {
+      attempts.push({
+        url: target.url,
+        sourceChannel,
+        provenance: { ...target.provenance, discoveryOnly: true },
+        startedAt: new Date(now()).toISOString(),
+        status: "reused",
+        httpStatus: null,
+        contentType: null,
+        bytes: 0,
+        truncated: false,
+        physicalOpenIndex: Number.isInteger(authorization.physicalOpenIndex)
+          ? authorization.physicalOpenIndex
+          : null,
+        reusedReceipt: true,
+      });
+      continue;
+    }
     const attempt = {
       url: target.url,
       sourceChannel,

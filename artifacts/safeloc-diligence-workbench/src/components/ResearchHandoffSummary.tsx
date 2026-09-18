@@ -5,20 +5,23 @@ import type {
   ResearchCoverageStatus,
   ResearchOutcomeState,
 } from "@/services/researchProjectService";
-import { getResearchTelemetryMode } from "@/services/researchProjectService";
+import {
+  getResearchStatusPresentation,
+  getResearchTelemetryMode,
+} from "@/services/researchProjectService";
 
 export type ProposalDisposition = "pending" | "accepted" | "overridden" | "rejected" | "unresolved";
-
-const outcomeLabels: Record<ResearchOutcomeState, string> = {
-  "complete-with-eligible-evidence": "Research complete — eligible evidence found",
-  "complete-no-eligible-evidence": "Research complete — no eligible evidence found",
-  "incomplete-technical-limitation": "Research incomplete — technical limitation",
-};
 
 type ResearchHandoffSummaryProps = {
   projectName: string;
   projectLocation: string;
   researchStatus?: string;
+  researchOutcome?: {
+    state: ResearchOutcomeState;
+    eligibleEvidenceCount: number;
+    reasonCodes: string[];
+  };
+  researchMode?: "ai-researched" | "partial-public-source" | "default-assumptions" | "research-incomplete";
   evidence: CustomEvidenceRecord[];
   proposals: Record<string, CustomEvidenceRecord>;
   dispositions: Record<string, ProposalDisposition>;
@@ -96,11 +99,19 @@ export function ResearchHandoffSummary({
   evidence,
   proposals,
   dispositions,
+  researchOutcome,
+  researchMode,
   audit,
   researchCache,
   coverage,
   onReviewFindings,
 }: ResearchHandoffSummaryProps) {
+  const researchPresentation = getResearchStatusPresentation({
+    outcome: researchOutcome,
+    researchMode,
+    researchStatus,
+    eligibleProposalCount: Object.keys(proposals).length,
+  });
   const eligibleSourceUrls = new Set(
     evidence.flatMap((item) => {
       if (item.sourceValidation?.state !== "financially-eligible") return [];
@@ -141,8 +152,10 @@ export function ResearchHandoffSummary({
   const localAuthorities = audit?.categories.flatMap((category) => category.localAuthorities ?? category.authorityTargets?.localAuthorities ?? []) ?? [];
   const authorityLimitations = [...new Set(audit?.categories.flatMap((category) => category.authorityLimitations ?? category.authorityTargets?.limitations ?? []) ?? [])];
   const unresolvedIds = [...new Set(audit?.categories.flatMap((category) => category.unresolvedGaps ?? []) ?? [])];
-  const outcome = audit?.terminalState;
-  const outcomeLabel = outcome ? outcomeLabels[outcome] : researchStatus ?? "not recorded";
+  const outcome = researchPresentation.state;
+  const outcomeLabel = researchOutcome || outcome
+    ? researchPresentation.label
+    : researchStatus ?? "not recorded";
 
   return (
     <section data-testid="research-handoff-summary" className="mb-5 rounded-xl border border-[#b8cde0] bg-[#f6fbfe] px-4 py-4 md:px-5">

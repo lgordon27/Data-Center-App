@@ -42,7 +42,10 @@ import {
   type EvidenceCompletenessTier
 } from "@/model/advisorLens";
 import { CustomProjectDialog } from "@/pages/Home";
-import type { KnownProjectData } from "@/services/researchProjectService";
+import {
+  getResearchStatusPresentation,
+  type KnownProjectData,
+} from "@/services/researchProjectService";
 import { trackEvent } from "@/services/analytics";
 import type { ImpactRole } from "@/data/evidenceImpactRoles";
 import type { CompanyKey, ProjectSelectionContext } from "@/data/companyExposure";
@@ -309,6 +312,12 @@ export function ProgressNav({ current, onNavigate }: { current: Screen; onNaviga
 
 export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, onDirectory, onWorkbench, route, sessionRestored, mobileOpen, menuButtonRef }: { onMenu: () => void; onReset: () => void; onHome: () => void; onHowItWorks: () => void; onValueChain: () => void; onDirectory: () => void; onWorkbench: () => void; onAnalyzeCustom?: () => void; route: AppRoute; sessionRestored: boolean; mobileOpen: boolean; menuButtonRef: RefObject<HTMLButtonElement | null> }) {
   const { sessionMigrated, project, loadCustomProject } = useDiligence();
+  const researchPresentation = getResearchStatusPresentation({
+    outcome: project.researchOutcome,
+    researchMode: project.researchMode,
+    researchStatus: project.researchStatus,
+    eligibleProposalCount: Object.keys(project.researchProposals ?? {}).length,
+  });
   const [customProjectOpen, setCustomProjectOpen] = useState(false);
   const [customProjectPrefill, setCustomProjectPrefill] = useState<{ name: string; location: string; knownData?: KnownProjectData } | null>(null);
   const [customProjectSelection, setCustomProjectSelection] = useState<{ company: CompanyKey | null; selection: ProjectSelectionContext | null } | null>(null);
@@ -370,7 +379,7 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
         </div>
         <div className={`hidden flex-1 items-center justify-center lg:flex ${isHome ? "opacity-0" : ""}`} aria-hidden={isHome}>
           <div className="text-center">
-             <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-[#b9d43a]">{project.kind === "custom" ? project.researchMode === "default-assumptions" ? "Custom research Beta · unavailable" : project.researchMode === "research-incomplete" ? "Custom research Beta · incomplete" : project.researchMode === "partial-public-source" ? "Custom research Beta · partial proposal" : "Custom research Beta · proposal review" : project.canonicalDossier ? "Maintainer-reviewed canonical dossier" : "Curated starting case"}</div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-[#b9d43a]">{project.kind === "custom" ? `Custom research Beta · ${researchPresentation.proposalReview ? "proposal review" : researchPresentation.label.replace(/^Research /, "").toLowerCase()}` : project.canonicalDossier ? "Maintainer-reviewed canonical dossier" : "Curated starting case"}</div>
               <div className="mt-1 text-[10px] text-[#96a4ad]">{project.name} / {project.location} · Evidence before conclusion</div>
           </div>
         </div>
@@ -483,12 +492,18 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
 
 export function ShellAside({ screen, metrics, onNavigate, onReset }: { screen: Screen; metrics: ReturnType<typeof useDiligence>["metrics"]; onNavigate: (screen: Screen) => void; onReset: () => void }) {
   const { project } = useDiligence();
+  const researchPresentation = getResearchStatusPresentation({
+    outcome: project.researchOutcome,
+    researchMode: project.researchMode,
+    researchStatus: project.researchStatus,
+    eligibleProposalCount: Object.keys(project.researchProposals ?? {}).length,
+  });
   return (
     <aside className="hidden w-[246px] shrink-0 border-r border-[#d9e0e4] bg-[#eef2f1] px-5 py-7 lg:block">
       <SectionKicker>Active mandate</SectionKicker>
       <div className="mb-7">
          <div className="font-mono text-[11px] font-bold text-[#122232]">{project.kind === "custom" ? "CUSTOM RESEARCH / BETA" : project.canonicalDossier ? "CANONICAL / REVIEWED" : "CURATED STARTING CASE"}</div>
-          <div className="mt-1 text-xs leading-5 text-[#52616b]">{project.kind === "custom" ? project.researchMode === "default-assumptions" ? "Research unavailable · no project evidence" : project.researchMode === "research-incomplete" ? "Incomplete proposal · gaps remain" : project.researchMode === "partial-public-source" ? "Partial public-source proposal" : "AI research proposal · human acceptance required" : project.canonicalDossier ? "Maintainer-reviewed PostgreSQL dossier" : "AI infrastructure diligence case"}</div>
+          <div className="mt-1 text-xs leading-5 text-[#52616b]">{project.kind === "custom" ? researchPresentation.proposalReview ? "AI research proposal · human acceptance required" : researchPresentation.state === "incomplete-technical-limitation" ? "Research incomplete · technical limitation" : researchPresentation.state === "complete-no-eligible-evidence" ? "Research complete · no eligible evidence" : researchPresentation.label : project.canonicalDossier ? "Maintainer-reviewed PostgreSQL dossier" : "AI infrastructure diligence case"}</div>
       </div>
       <div className="mb-8 rounded-lg border border-[#cbd8d4] bg-[#f9faf8] p-3.5">
         <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#60707d]">
@@ -538,9 +553,15 @@ export function ShellAside({ screen, metrics, onNavigate, onReset }: { screen: S
 export function CustomResearchBanner({ onCancel }: { onCancel?: () => void }) {
   const { project } = useDiligence();
   if (project.kind !== "custom") return null;
-  const isDefaultAssumptions = project.researchMode === "default-assumptions";
-  const isPartialResearch = project.researchMode === "partial-public-source";
-  const isResearchIncomplete = project.researchMode === "research-incomplete";
+  const researchPresentation = getResearchStatusPresentation({
+    outcome: project.researchOutcome,
+    researchMode: project.researchMode,
+    researchStatus: project.researchStatus,
+    eligibleProposalCount: Object.keys(project.researchProposals ?? {}).length,
+  });
+  const isDefaultAssumptions = researchPresentation.mode === "default-assumptions";
+  const isPartialResearch = researchPresentation.mode === "partial-public-source";
+  const isResearchIncomplete = researchPresentation.mode === "research-incomplete";
   const isResearching = project.researchStatus === "researching";
   const isTimedOut = project.researchStatus === "timed-out";
   const isFailed = project.researchStatus === "failed";

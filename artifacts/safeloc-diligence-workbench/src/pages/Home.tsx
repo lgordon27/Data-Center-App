@@ -20,6 +20,7 @@ import { useDiligence } from "@/context/DiligenceContext";
 import {
   createDefaultAssumptionResearch,
   createProvisionalResearch,
+  getResearchStatusPresentation,
   researchProject,
   type CustomResearchResponse,
   type KnownProjectData,
@@ -1365,15 +1366,12 @@ export function LegacyCompanyExploration({ onNavigate }: { onNavigate?: (route: 
       : "Review the Evidence screen for the highest-materiality unresolved item.";
   const projectStatus = project.kind === "curated"
     ? "Curated public-source case"
-    : project.researchOutcome?.state === "complete-with-eligible-evidence"
-      ? "Research complete · proposal review"
-      : project.researchOutcome?.state === "complete-no-eligible-evidence"
-        ? "Research complete · no eligible evidence"
-        : project.researchOutcome?.state === "incomplete-technical-limitation"
-          ? "Research incomplete · technical limitation"
-          : project.researchMode === "research-incomplete"
-            ? "Research incomplete"
-            : "Custom research proposal";
+    : getResearchStatusPresentation({
+      outcome: project.researchOutcome,
+      researchMode: project.researchMode,
+      researchStatus: project.researchStatus,
+      eligibleProposalCount: Object.keys(project.researchProposals ?? {}).length,
+    }).label;
   const previewProjectName = project.name || "Current project";
   const previewLocation = project.location || "Location unavailable";
   const previewRelationship = originatingCompany

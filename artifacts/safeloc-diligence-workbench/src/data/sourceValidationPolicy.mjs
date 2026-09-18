@@ -370,6 +370,7 @@ export function createSourceLedger(candidates = [], { maxRetained = 10 } = {}) {
       redirectChain: Array.isArray(candidate?.redirectChain) ? candidate.redirectChain.filter(Boolean) : [],
       claimCited: candidate?.claimCited === true,
       claimSupport: candidate?.claimSupport ?? null,
+      claimPassage: normalizeText(candidate?.claimPassage),
       accessOutcome: candidate?.accessOutcome ?? null,
       facilityScope: candidate?.facilityScope ?? "unknown",
       phaseScope: candidate?.phaseScope ?? "unknown",
@@ -400,7 +401,9 @@ export function createSourceLedger(candidates = [], { maxRetained = 10 } = {}) {
       const existing = occurrences[existingIndex];
       const replacementWins = Boolean(existing) && (
         Number(base.claimCited) > Number(existing.claimCited) ||
-        Number(isPrimarySource(base)) > Number(isPrimarySource(existing))
+        Number(isPrimarySource(base)) > Number(isPrimarySource(existing)) ||
+        Number(Boolean(base.claimSupport && base.claimPassage)) >
+          Number(Boolean(existing.claimSupport && existing.claimPassage))
       );
       if (replacementWins) {
         ledger.push({

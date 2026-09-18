@@ -8,6 +8,7 @@ import {
   containCustomResearchEvidence,
   CUSTOM_EVIDENCE_IDS,
   getResearchCategoryClaimAudits,
+  getResearchStatusPresentation,
   parseResponse,
   researchProject,
   RESEARCH_PROJECT_TIMEOUT_MS,
@@ -15,6 +16,45 @@ import {
   summarizeResearchAudit,
   summarizeSourceCoverage,
 } from "./researchProjectService";
+
+test("uses the persisted terminal outcome for status and gates proposal review on visible proposals", () => {
+  const incomplete = getResearchStatusPresentation({
+    outcome: {
+      state: "incomplete-technical-limitation",
+      eligibleEvidenceCount: 0,
+      reasonCodes: ["physical-open-budget"],
+    },
+    researchMode: "ai-researched",
+    eligibleProposalCount: 0,
+  });
+  assert.equal(incomplete.label, "Research incomplete · technical limitation");
+  assert.equal(incomplete.mode, "research-incomplete");
+  assert.equal(incomplete.proposalReview, false);
+
+  const noProposal = getResearchStatusPresentation({
+    outcome: {
+      state: "complete-with-eligible-evidence",
+      eligibleEvidenceCount: 1,
+      reasonCodes: [],
+    },
+    researchMode: "ai-researched",
+    eligibleProposalCount: 0,
+  });
+  assert.equal(noProposal.label, "Research complete · eligible evidence found");
+  assert.equal(noProposal.proposalReview, false);
+
+  const review = getResearchStatusPresentation({
+    outcome: {
+      state: "complete-with-eligible-evidence",
+      eligibleEvidenceCount: 1,
+      reasonCodes: [],
+    },
+    researchMode: "ai-researched",
+    eligibleProposalCount: 1,
+  });
+  assert.equal(review.label, "Research complete · proposal review");
+  assert.equal(review.proposalReview, true);
+});
 
 test("labels updated provider responses as live and retained cache responses as historical", () => {
   assert.equal(getResearchTelemetryMode(undefined), "current-live");

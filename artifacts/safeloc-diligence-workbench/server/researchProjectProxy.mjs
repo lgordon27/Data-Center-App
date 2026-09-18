@@ -3881,6 +3881,7 @@ async function runValidatedResearch(project, {
   googleApiKey = process.env.GOOGLE_GEMINI_API_KEY ?? process.env.GEMINI_API_KEY,
   googleDiscoveryImpl = discoverGoogleGroundedProject,
   googleModel = GOOGLE_GEMINI_MODEL,
+  allowGoogleFallback = true,
   fetchImpl,
   rateLimiter,
   req,
@@ -4128,6 +4129,12 @@ async function runValidatedResearch(project, {
             }
             : options;
           if (fallbackMode) {
+            if (!allowGoogleFallback) {
+              const validationError = new Error("Google grounding failed; OpenAI fallback is disabled for this validation.");
+              validationError.name = "GoogleValidationFallbackDisabledError";
+              validationError.researchErrorType = "google-validation-fallback-disabled";
+              throw validationError;
+            }
             if (!fallbackProjectRequest) {
               fallbackProjectRequest = researchProjectWithWebSearch(
                 project,
@@ -4721,6 +4728,7 @@ export async function handleResearchProjectRequest(
     googleApiKey = process.env.GOOGLE_GEMINI_API_KEY ?? process.env.GEMINI_API_KEY,
     googleDiscoveryImpl = discoverGoogleGroundedProject,
     googleModel = GOOGLE_GEMINI_MODEL,
+    allowGoogleFallback = true,
     fetchImpl = fetch,
     documentFetchImpl = fetch,
     secConnector = null,
@@ -4782,6 +4790,7 @@ export async function handleResearchProjectRequest(
           googleApiKey,
           googleDiscoveryImpl,
           googleModel,
+          allowGoogleFallback,
     fetchImpl,
     documentFetchImpl,
     secConnector,

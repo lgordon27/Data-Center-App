@@ -1,7 +1,14 @@
 import { canonicalizeSourceUrl } from "../src/data/sourceValidationPolicy.mjs";
 
 export const GOOGLE_GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
-export const GOOGLE_GEMINI_MODEL = "gemini-2.5-flash";
+export const GOOGLE_GEMINI_DEFAULT_MODEL = "gemini-3.8-flash";
+export function resolveGoogleGeminiModel(env = process.env) {
+  const configured = typeof env?.GEMINI_DISCOVERY_MODEL === "string"
+    ? env.GEMINI_DISCOVERY_MODEL.trim()
+    : "";
+  return configured || GOOGLE_GEMINI_DEFAULT_MODEL;
+}
+export const GOOGLE_GEMINI_MODEL = resolveGoogleGeminiModel();
 export const GOOGLE_GROUNDED_DISCOVERY_REQUEST_LIMIT = 1;
 export const GOOGLE_GROUNDED_DISCOVERY_MAX_CANDIDATES = 80;
 
@@ -235,10 +242,27 @@ export async function discoverGoogleGroundedProject({
   if (!response.ok) {
     const error = new Error("Google Gemini grounding returned an upstream failure.");
     error.name = "GoogleDiscoveryProviderError";
-    error.researchErrorType = response.status === 429 ? "google-quota-failure" : "google-provider-failure";
+    const providerStatus = normalizeText(body?.error?.status, 120).toUpperCase();
+    const providerMessage = normalizeText(body?.error?.message, 180);
+    const modelUnavailable = response.status === 404
+      && (providerStatus === "NOT_FOUND" || /model|not available|not found/i.test(providerMessage));
+    error.researchErrorType = modelUnavailable
+      ? "google-model-unavailable"
+      : response.status === 429
+        ? "google-quota-failure"
+        : "google-provider-failure";
     error.providerDiagnostic = {
       status: response.status,
-      reason: normalizeText(body?.error?.status ?? body?.error?.message, 180) || "upstream-failure",
+      reason: providerStatus || providerMessage || "upstream-failure",
+    };
+    error.providerAttempt = {
+      provider: "google-gemini-grounding",
+      model,
+      requestCount: GOOGLE_GROUNDED_DISCOVERY_REQUEST_LIMIT,
+      status: response.status,
+      outcome: "failed",
+      queryCount: 0,
+      citationCount: 0,
     };
     throw error;
   }

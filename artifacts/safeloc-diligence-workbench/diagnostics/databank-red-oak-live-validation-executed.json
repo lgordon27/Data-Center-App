@@ -1,0 +1,460 @@
+{
+  "diagnosticOnly": true,
+  "kind": "databank-red-oak-live-validation-executed",
+  "environment": "development",
+  "status": "executed-incomplete-technical-limitation",
+  "recordedAt": "2026-09-18",
+  "startingRevision": "e9a66fea915af8928fbae46a2f92aa2689bd2848",
+  "validatedCodeRevision": "e9a66fea915af8928fbae46a2f92aa2689bd2848",
+  "priorBlockedDiagnostic": {
+    "path": "artifacts/safeloc-diligence-workbench/diagnostics/databank-red-oak-live-validation.json",
+    "commit": "e9a66fea915af8928fbae46a2f92aa2689bd2848",
+    "preservedUnchanged": true
+  },
+  "target": {
+    "name": "DataBank Red Oak Campus",
+    "location": "Red Oak, Texas",
+    "operatorDeveloper": "DataBank",
+    "expectedCapacityMW": 480,
+    "expectedCapacityBasis": "Source-reported planned full-build critical IT capacity across eight buildings, including future expansion; not verified currently operating capacity.",
+    "capacityIncludedInDiscoveryPrompt": false,
+    "suppliedUrls": [],
+    "knownOfficialEndpoints": [],
+    "directoryBoundary": "The unresolved 48 MW DataBank DFW directory record was not used, replaced, renamed, or modified."
+  },
+  "configuredProviders": {
+    "gemini": {
+      "provider": "google-gemini-grounding",
+      "model": "gemini-3.8-flash",
+      "endpoint": "https://generativelanguage.googleapis.com/v1beta/interactions"
+    },
+    "openAiStructuredAnalysis": {
+      "model": "gpt-4o",
+      "endpoint": "https://api.openai.com/v1/responses",
+      "webSearchEnabled": false
+    }
+  },
+  "credentialReadiness": {
+    "geminiDevelopmentSecretExists": true,
+    "openAiDevelopmentSecretExists": true,
+    "secretValuesInspected": false,
+    "secretValuesRecorded": false
+  },
+  "runControls": {
+    "researchRunCount": 1,
+    "googleFallbackAllowed": false,
+    "googleFallbackRequests": 0,
+    "alternateModelsOrEndpointsUsed": false,
+    "sharedDeadlineMs": 90000,
+    "physicalDocumentOpenLimit": 24,
+    "providerRequestLimitsIncreased": false,
+    "sourceUrlsSupplied": false,
+    "automaticLiveReruns": 0,
+    "failureInjectionCalls": 0
+  },
+  "geminiDiscovery": {
+    "requestCount": 1,
+    "httpStatus": 200,
+    "outcome": "completed",
+    "groundingMetadataPresent": true,
+    "toolDeclarationTransmitted": true,
+    "googleSearchCallCount": 1,
+    "googleSearchResultStepCount": 1,
+    "observedQueryCount": 5,
+    "observedQueries": [
+      "DataBank Red Oak Texas TDLR permit construction",
+      "DataBank Red Oak Texas power substation Oncor ERCOT",
+      "DataBank Red Oak Texas campus data center announcement",
+      "DataBank Red Oak TX data center capacity MW facility square feet",
+      "DataBank Red Oak Texas city council agenda minutes economic development tax abatement"
+    ],
+    "rawUrlCitationAnnotationCount": 56,
+    "normalizedCandidateCount": 19,
+    "normalizationDelta": 37,
+    "normalizationNote": "Repeated URL-citation occurrences were collapsed into normalized candidates. The existing result contract did not retain a per-occurrence rejection ledger for all 56 annotations.",
+    "retainedSourceLedgerCount": 10,
+    "retainedSourceLedgerRejectedCount": 0,
+    "retainedSourceLedgerCapDiscardCount": 0,
+    "fullRawInteractionResponseRetained": false,
+    "offlineReplayAvailability": "Observed queries, provider counts, normalized candidate count, ten retained candidate records, resolved URLs, and retained passages are available. The raw Interactions response and nine normalized candidates omitted from the final source ledger are unavailable."
+  },
+  "documentAccess": {
+    "physicalOpensUsed": 17,
+    "physicalOpensRemaining": 7,
+    "physicalOpenBudgetExceeded": false,
+    "uniquePhysicalDocumentAttempts": 17,
+    "retainedLedgerDocuments": 10,
+    "retainedLedgerAccessibleWithPassage": 6,
+    "retainedLedgerBlockedPrivateDestination": 3,
+    "retainedLedgerNotAttemptedProtectedOpportunity": 1,
+    "receiptsReusedByDownstreamGridAnalysis": 10,
+    "fullPerOpenDetailAvailable": false,
+    "detailLimitation": "The contained result preserved ten retained ledger records. It did not preserve individual records for eight other physical opens counted by the shared scheduler."
+  },
+  "retainedCandidateRecords": [
+    {
+      "origin": "gemini-discovered",
+      "sourceChannelAfterStructuredNormalization": "provider-structured-sources",
+      "url": "https://www.tdlr.texas.gov/TABS/Search/Project/TABS2024020821",
+      "redirectLineage": [
+        "[google-grounding-redirect-redacted]",
+        "https://www.tdlr.texas.gov/TABS/Search/Project/TABS2024020821"
+      ],
+      "access": "accessible",
+      "physicalOpenIndex": 7,
+      "downstreamReceiptReused": true,
+      "applicability": {
+        "campus": "related exact-location building record",
+        "building": "DFW9",
+        "phase": "new construction registered 2024; scheduled 2024-09-15 through 2027-02-15",
+        "capacityScope": "No MW capacity in retained passage"
+      },
+      "exactRetainedPassage": "Project #: TABS2024020821 Registration Date: 6/13/2024 PROJECT Project Name: Databank Red Oak - DFW9 Project Number: TABS2024020821 Facility Name: DFW9 Location Address: Stainback Rd Red Oak, TX 75154 Location County: Ellis Start Date: 9/15/2024 Completion Date: 2/15/2027 Estimated Cost: $256,000,000 Type of Work: New Construction Type of Funds: This project is privately funded, on private land for private use. Scope of Work: New construction, two story data center with office component. 425,170 SF Square Footage: 425,170 ft 2",
+      "claimMapping": "none",
+      "financialEligibility": "ineligible",
+      "rejectionBoundary": "No immutable claim-to-passage mapping was retained for a governed financial evidence variable."
+    },
+    {
+      "origin": "gemini-discovered",
+      "sourceChannelAfterStructuredNormalization": "provider-structured-sources",
+      "url": "https://www.tdlr.texas.gov/TABS/Search/Project/TABS2026009183",
+      "redirectLineage": [
+        "[google-grounding-redirect-redacted]",
+        "https://www.tdlr.texas.gov/TABS/Search/Project/TABS2026009183"
+      ],
+      "access": "accessible",
+      "physicalOpenIndex": 3,
+      "downstreamReceiptReused": true,
+      "applicability": {
+        "campus": "related exact-location building record",
+        "building": "DFW13",
+        "phase": "new construction registered 2026; scheduled 2026-03-01 through 2027-12-31",
+        "capacityScope": "No MW capacity in retained passage"
+      },
+      "exactRetainedPassage": "Project #: TABS2026009183 Registration Date: 1/5/2026 PROJECT Project Name: Databank Red Oak - DFW13 Project Number: TABS2026009183 Facility Name: DFW13 Location Address: Stainback Rd, Red Oak, TX 75154 Location County: Ellis Start Date: 3/1/2026 Completion Date: 12/31/2027 Estimated Cost: $325,000,000 Type of Work: New Construction Type of Funds: This project is privately funded, on private land for private use. Scope of Work: New construction, two story data center with office component. 425,170 SF Square Footage: 425,170 ft 2",
+      "claimMapping": "none",
+      "financialEligibility": "ineligible",
+      "rejectionBoundary": "No immutable claim-to-passage mapping was retained for a governed financial evidence variable."
+    },
+    {
+      "origin": "gemini-discovered",
+      "sourceChannelAfterStructuredNormalization": "provider-structured-sources",
+      "url": "https://www.zabalist.com/projects/TABS2025016916",
+      "redirectLineage": [
+        "[google-grounding-redirect-redacted]",
+        "https://www.zabalist.com/projects/TABS2025016916"
+      ],
+      "access": "accessible",
+      "physicalOpenIndex": 16,
+      "downstreamReceiptReused": true,
+      "applicability": {
+        "campus": "related exact-location building record",
+        "building": "DFW11",
+        "phase": "filed new construction; scheduled completion January 2028",
+        "capacityScope": "No MW capacity in retained passage"
+      },
+      "exactRetainedPassage": "Databank Red Oak - DFW11 Stainback Rd, Red Oak, TX, 75154 Opening ~Jan 2028 Project Registered. Databank Red Oak - DFW11 is a new construction project at Stainback Rd, Red Oak, in Ellis County, TX, tracked from its Texas Department of Licensing and Regulation (TDLR) registration. Under construction, estimated completion Jan 2028. The project has an estimated value of $325.0M across about 425,170 sq ft.",
+      "claimMapping": "none",
+      "financialEligibility": "ineligible",
+      "rejectionBoundary": "Secondary presentation of a building-level filing did not establish a governed financial input or campus MW capacity."
+    },
+    {
+      "origin": "gemini-discovered",
+      "sourceChannelAfterStructuredNormalization": "provider-structured-sources",
+      "url": "https://www.redoaktx.org/175/Agenda-Minutes",
+      "access": "accessible",
+      "physicalOpenIndex": 13,
+      "downstreamReceiptReused": true,
+      "applicability": {
+        "campus": "context only",
+        "building": "not identified",
+        "phase": "not identified",
+        "capacityScope": "none"
+      },
+      "exactRetainedPassage": "For the convenience of our citizens, the City of Red Oak posts past agendas and minutes for all City of Red Oak Council and Council appointed boards, commissions and committees meetings. Current and past agendas and minutes are available in the City of Red Oak Agendas and Minutes Portal.",
+      "claimMapping": "none",
+      "financialEligibility": "ineligible",
+      "rejectionBoundary": "Directory page did not contain a project-specific passage."
+    },
+    {
+      "origin": "gemini-discovered",
+      "sourceChannelAfterStructuredNormalization": "provider-structured-sources",
+      "url": "https://www.redoaktx.org/Archive.aspx",
+      "access": "accessible",
+      "physicalOpenIndex": 14,
+      "downstreamReceiptReused": true,
+      "applicability": {
+        "campus": "context only",
+        "building": "not identified",
+        "phase": "not identified",
+        "capacityScope": "none"
+      },
+      "exactRetainedPassage": "Archive Center IDC Minutes All Archives Minutes - Special IDC Meeting - December 02, 2025 Minutes - Regular IDC Meeting - October 09, 2025 Minutes - Regular IDC Meeting - September 25, 2025 Minutes - Regular IDC Meeting - August 21, 2025",
+      "claimMapping": "none",
+      "financialEligibility": "ineligible",
+      "rejectionBoundary": "Archive index did not contain a project-specific passage."
+    },
+    {
+      "origin": "gemini-discovered",
+      "sourceChannelAfterStructuredNormalization": "provider-structured-sources",
+      "url": "https://therealdeal.com/data/texas/2026/top-permits-three-100m-plus-data-centers-on-tap-in-texas",
+      "access": "accessible-transport-unusable-content",
+      "physicalOpenIndex": 5,
+      "downstreamReceiptReused": true,
+      "applicability": {
+        "campus": "not assessable",
+        "building": "not assessable",
+        "phase": "not assessable",
+        "capacityScope": "none"
+      },
+      "exactRetainedPassage": "JavaScript is disabled In order to continue, we need to verify that you're not a robot. This requires JavaScript. Enable JavaScript and then reload the page.",
+      "claimMapping": "none",
+      "financialEligibility": "ineligible",
+      "rejectionBoundary": "Retrieved content was an anti-bot interstitial, not project evidence."
+    },
+    {
+      "origin": "gemini-discovered",
+      "sourceChannelAfterStructuredNormalization": "provider-structured-sources",
+      "url": "https://www.databank.com/resources/press-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas/",
+      "redirectLineage": [
+        "[google-grounding-redirect-redacted]",
+        "https://www.databank.com/resources/press-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas/"
+      ],
+      "access": "blocked",
+      "accessReason": "private-destination",
+      "physicalOpenIndex": 1,
+      "downstreamReceiptReused": true,
+      "applicability": {
+        "campus": "potentially target-specific but not passage-verified",
+        "building": "not assessable",
+        "phase": "not assessable",
+        "capacityScope": "URL indicates a 480 MW campus announcement, but URL text is not evidence"
+      },
+      "exactRetainedPassage": null,
+      "claimMapping": "none",
+      "financialEligibility": "ineligible",
+      "rejectionBoundary": "Redirect resolved to the DataBank announcement, but public-network validation returned private-destination before a passage could be retained."
+    },
+    {
+      "origin": "gemini-discovered",
+      "sourceChannelAfterStructuredNormalization": "provider-structured-sources",
+      "url": "https://www.databank.com/resources/news/inside-databanks-multibillion-dollar-red-oak-data-center-campus/",
+      "redirectLineage": [
+        "[google-grounding-redirect-redacted]",
+        "https://www.databank.com/resources/news/inside-databanks-multibillion-dollar-red-oak-data-center-campus/"
+      ],
+      "access": "blocked",
+      "accessReason": "private-destination",
+      "physicalOpenIndex": 2,
+      "downstreamReceiptReused": true,
+      "exactRetainedPassage": null,
+      "claimMapping": "none",
+      "financialEligibility": "ineligible"
+    },
+    {
+      "origin": "gemini-discovered",
+      "sourceChannelAfterStructuredNormalization": "provider-structured-sources",
+      "url": "https://www.databank.com/resources/press-releases/databank-closes-1-45-billion-in-new-financing-across-two-transactions/",
+      "redirectLineage": [
+        "[google-grounding-redirect-redacted]",
+        "https://www.databank.com/resources/press-releases/databank-closes-1-45-billion-in-new-financing-across-two-transactions/"
+      ],
+      "access": "blocked",
+      "accessReason": "private-destination",
+      "physicalOpenIndex": 17,
+      "downstreamReceiptReused": true,
+      "exactRetainedPassage": null,
+      "claimMapping": "none",
+      "financialEligibility": "ineligible"
+    },
+    {
+      "origin": "gemini-discovered",
+      "sourceChannelAfterStructuredNormalization": "provider-structured-sources",
+      "url": "[google-grounding-redirect-redacted]",
+      "access": "not-attempted",
+      "accessReason": "protected-opportunity",
+      "physicalOpenIndex": null,
+      "downstreamReceiptReused": true,
+      "exactRetainedPassage": null,
+      "claimMapping": "none",
+      "financialEligibility": "ineligible"
+    }
+  ],
+  "supplementalSources": {
+    "suppliedSources": 0,
+    "explicitSupplementalSourceRecordsInFinalLedger": 0,
+    "supplementalAcquisitionMayHaveConsumedUnretainedOpens": true,
+    "limitation": "The final contained result does not expose the eight physical-open records omitted from its retained source ledger, so their source-channel breakdown cannot be reconstructed safely."
+  },
+  "openAiStructuredAnalysis": {
+    "webSearchCalls": 0,
+    "toolCallCount": 0,
+    "budgetCountedRequestOpportunities": 9,
+    "confirmedOrInferredIssuedRequests": 7,
+    "instrumentedIssuedRequests": 6,
+    "uninstrumentedProjectIdentityFailureRequests": 1,
+    "cancelledBeforeIssue": 2,
+    "instrumentedHttp200": 3,
+    "instrumentedHttp429": 3,
+    "successfulAttemptCategories": [
+      "grid",
+      "electricity",
+      "permitting-community"
+    ],
+    "rateLimitedCategories": [
+      "water",
+      "construction-capital",
+      "tenant-counterparty"
+    ],
+    "cancelledBeforeIssueCategories": [
+      "grid-follow-up",
+      "climate-operational-hazard"
+    ],
+    "upstreamFailureWithoutAttemptTelemetry": [
+      "project-identity"
+    ],
+    "tokenUsage": {
+      "available": false,
+      "reason": "Successful provider attempts returned empty usage objects; failed and cancelled attempts returned null usage."
+    }
+  },
+  "categoryOutcomes": [
+    {
+      "category": "project-identity",
+      "state": "Provider failure",
+      "failure": "upstream",
+      "eligibleClaims": 0
+    },
+    {
+      "category": "grid",
+      "state": "Partial",
+      "failure": "cancelled at shared deadline after primary analysis",
+      "normalizedCandidates": 10,
+      "accessiblePassages": 6,
+      "eligibleClaims": 0
+    },
+    {
+      "category": "electricity",
+      "state": "Provider failure",
+      "failure": "cancelled during terminal processing",
+      "eligibleClaims": 0
+    },
+    {
+      "category": "water",
+      "state": "Provider failure",
+      "failure": "provider-rate-limit",
+      "eligibleClaims": 0
+    },
+    {
+      "category": "permitting-community",
+      "state": "Provider failure",
+      "failure": "cancelled during terminal processing",
+      "eligibleClaims": 0
+    },
+    {
+      "category": "construction-capital",
+      "state": "Provider failure",
+      "failure": "provider-rate-limit",
+      "eligibleClaims": 0
+    },
+    {
+      "category": "tenant-counterparty",
+      "state": "Provider failure",
+      "failure": "provider-rate-limit",
+      "eligibleClaims": 0
+    },
+    {
+      "category": "climate-operational-hazard",
+      "state": "Provider failure",
+      "failure": "cancelled before issue at shared deadline",
+      "eligibleClaims": 0
+    }
+  ],
+  "eligibilityAndProposals": {
+    "researchTerminalState": "incomplete-technical-limitation",
+    "terminalReasonCodes": [
+      "deadline",
+      "cancelled",
+      "upstream",
+      "provider-failure",
+      "provider-rate-limit",
+      "document-not-attempted",
+      "document-access-failure"
+    ],
+    "evidenceRecords": 16,
+    "retrievedLeads": 16,
+    "eligibleEvidence": 0,
+    "proposedInputs": 0,
+    "visibleHumanReviewableProposals": 0,
+    "acceptedModelInputs": 0,
+    "automaticEvidenceAcceptance": 0,
+    "commonRejectionBoundaries": [
+      "No validated source was returned for the governed evidence variable.",
+      "No immutable claim-to-passage mapping supported the evidence claim.",
+      "An exact-project source was required for applicable variables.",
+      "Source support confidence remained below the model-eligibility threshold.",
+      "No numeric value or compatible unit was available for the modeled variable."
+    ],
+    "proposalVisibilityVerification": "The returned proposedInputs collection was empty. The UI has no proposal record to render, and no second research request was issued."
+  },
+  "capacityAssessment": {
+    "expectedCapacityMW": 480,
+    "independentlySupportedThroughFullChain": false,
+    "citationDiscovered": true,
+    "citationResolvedTarget": "https://www.databank.com/resources/press-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas/",
+    "exactPassageRetained": false,
+    "failureBoundary": "document-access/private-destination after redirect resolution",
+    "sourceAndBasisIfAccessible": "The provider-native citation resolved to a DataBank press-release URL describing a 480 MW South Dallas campus, but the URL slug is not evidence and the page body was not retained.",
+    "differingCapacityFigures": [],
+    "scopeDistinctionsObserved": [
+      "DFW9: individual-building construction filing; 425,170 square feet; no MW value.",
+      "DFW11: individual-building construction record; approximately 425,170 square feet; no MW value.",
+      "DFW13: individual-building construction filing; 425,170 square feet; no MW value.",
+      "Construction cost and floor area do not establish critical IT capacity.",
+      "No retained passage established substation supply capacity, phase MW capacity, current operating MW, or full-campus IT capacity."
+    ],
+    "sameScopeCapacityConflict": false,
+    "unresolvedSameScopeContradiction": null,
+    "directory48MWTreatedAsTypo": false
+  },
+  "successCriteria": {
+    "observedGoogleSearchExecution": true,
+    "providerNativeCitationsDelivered": true,
+    "citationNormalizationCompleted": true,
+    "atLeastOneRedOakDocumentRetrieved": true,
+    "atLeastOneExactPassageRetained": true,
+    "targetBuildingAndPhaseApplicabilityAssessed": true,
+    "deterministicEligibilityCompleted": true,
+    "visibleProposalProduced": false,
+    "fullIndependentDiscoverySuccess": false,
+    "fullSuccessFailureBoundary": "No Gemini-discovered source completed exact retained passage to governed eligible claim to visible proposal. The 480 MW target citation failed at document access; accessible building records failed at claim mapping and financial eligibility."
+  },
+  "timing": {
+    "serverTotalElapsedMs": 90018,
+    "wrapperWallClockElapsedMs": 90031,
+    "discoveryElapsedMs": 16707,
+    "orchestrationElapsedMs": 73291,
+    "providerQueueElapsedMs": 111850,
+    "analysisElapsedMs": 51947,
+    "retrievalElapsedMs": 3977,
+    "cancellationAt": "2026-09-18T20:43:27.901Z",
+    "concurrentTimingTotalsAreNonAdditive": true,
+    "deadlineCompliance": "The shared controller cancelled remaining queued work at approximately 90 seconds. The small wrapper overrun reflects terminal result assembly after cancellation, not additional provider scheduling."
+  },
+  "unchangedBoundaries": {
+    "canonicalDossiersModified": false,
+    "capacityValuesModified": false,
+    "financialEngineModified": false,
+    "productionModified": false,
+    "deploymentPerformed": false,
+    "automaticEvidenceAcceptance": 0
+  },
+  "sanitization": {
+    "containsCredentials": false,
+    "containsAuthorizationHeaders": false,
+    "containsSensitiveQueryParameters": false,
+    "containsRawProviderLogs": false,
+    "googleGroundingRedirectPathsRedacted": true,
+    "publicContactDetailsOmittedFromRetainedPassageExcerpts": true
+  }
+}

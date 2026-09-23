@@ -568,8 +568,22 @@ export async function resolvePublicAddress(url, dnsLookup = dns.lookup) {
     const error = new Error("private-destination");
     error.name = "PublicAddressValidationError";
     error.addressValidationReason = "no-usable-public-address";
+    error.addressValidationTelemetry = {
+      answerCount: 0,
+      addressFamilies: [],
+      publicAnswerCount: 0,
+      prohibitedAnswerCount: 0,
+    };
     throw error;
   }
+  const validAnswers = addresses.filter((address) => address && [4, 6].includes(address.family));
+  const publicAnswers = validAnswers.filter((address) => !isPrivateNetworkHostname(address.address));
+  const validationTelemetry = {
+    answerCount: addresses.length,
+    addressFamilies: [...new Set(validAnswers.map((address) => address.family))].sort(),
+    publicAnswerCount: publicAnswers.length,
+    prohibitedAnswerCount: addresses.length - publicAnswers.length,
+  };
   if (addresses.some((address) =>
     !address
     || ![4, 6].includes(address.family)
@@ -577,9 +591,10 @@ export async function resolvePublicAddress(url, dnsLookup = dns.lookup) {
     const error = new Error("private-destination");
     error.name = "PublicAddressValidationError";
     error.addressValidationReason = "prohibited-address-class";
+    error.addressValidationTelemetry = validationTelemetry;
     throw error;
   }
-  return addresses[0];
+  return Object.assign(addresses[0], { validationTelemetry });
 }
 
 function createPinnedLookup(address) {
@@ -1116,6 +1131,7 @@ function buildTransportDiagnostic({
   cancelled = false,
   timedOut = false,
   addressValidationReason = null,
+  addressValidationTelemetry = null,
 }) {
   const identity = safeSourceIdentity(url);
   return {
@@ -1133,6 +1149,7 @@ function buildTransportDiagnostic({
     cancelled,
     timedOut,
     ...(addressValidationReason ? { addressValidationReason } : {}),
+    ...(addressValidationTelemetry ? { addressValidationTelemetry } : {}),
     ...(error ? transportErrorDetails(error) : {}),
   };
 }
@@ -1218,6 +1235,9 @@ async function accessResearchDocument(candidate = {}, {
           error,
           ...(error?.addressValidationReason
             ? { addressValidationReason: error.addressValidationReason }
+            : {}),
+          ...(error?.addressValidationTelemetry
+            ? { addressValidationTelemetry: error.addressValidationTelemetry }
             : {}),
         }),
         extractionLimitations: ["The destination could not be retrieved by the bounded server reader."],
@@ -3583,7 +3603,13 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
     const finishedAtMs = Date.now();
     providerAttempt.finishedAt = new Date(finishedAtMs).toISOString();
     providerAttempt.elapsedMs = issuedAtMs === null ? null : Math.max(0, finishedAtMs - issuedAtMs);
-    providerAttempt.status = error?.providerDiagnostic?.upstreamStatus ?? null;
+    providerAttempt.status = error?.providerDiagnostic?.upstreamStatus
+      ?? error?.providerDiagnostic?.status
+      ?? error?.upstreamStatus
+      ?? error?.status
+      ?? null;
+    providerAttempt.failureClassification = classifyResearchFailure(error).type;
+    providerAttempt.providerDiagnostic = error?.providerDiagnostic ?? null;
     providerAttempt.requestState = issuedAtMs === null ? "cancelled-before-issue" : "failed";
     providerAttempt.outcome = issuedAtMs === null ? "cancelled-before-issue" : "failed";
     error.providerAttempt = providerAttempt;

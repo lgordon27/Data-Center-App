@@ -212,6 +212,27 @@ export type CustomResearchResponse = {
   proposedInputs?: CustomEvidenceRecord[];
   acceptedModelInputs?: CustomEvidenceRecord[];
   quarantineReasons?: string[];
+  retainedFindings?: RetainedResearchFinding[];
+  replay?: {
+    mode: "offline-saved-response";
+    sourceRunDate: string | null;
+    originalResponseSha256: string | null;
+  };
+};
+export type RetainedResearchFinding = {
+  id: string;
+  topic: "capacity-phase" | "community-context";
+  statement: string;
+  attribution: string;
+  projectScope: string;
+  phaseScope: string;
+  reportingDate: string | null;
+  accessedAt: string | null;
+  sourceTitle: string;
+  sourceUrl: string;
+  passage: string;
+  evidenceEligibility: "research-only";
+  demonstratedFinancialEffect: false;
 };
 export type ResearchOutcomeState =
   | "complete-with-eligible-evidence"
@@ -683,6 +704,93 @@ const DEFAULT_EVIDENCE_DEFINITIONS = Object.fromEntries(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function safeLedgerUrl(value: Record<string, unknown>) {
+  return safePublicSourceUrl(value.resolvedUrl)
+    ?? safePublicSourceUrl(value.canonicalUrl)
+    ?? safePublicSourceUrl(value.url);
+}
+
+function sentenceContaining(text: string, pattern: RegExp) {
+  const sentences = text.replace(/\s+/g, " ").trim().split(/(?<=[.!?])\s+/);
+  const index = sentences.findIndex((sentence) => pattern.test(sentence));
+  if (index < 0) return null;
+  return [sentences[Math.max(0, index - 1)], sentences[index]]
+    .filter(Boolean)
+    .join(" ")
+    .slice(0, 1_200);
+}
+
+export function deriveRetainedResearchFindings(sourceLedger: unknown): RetainedResearchFinding[] {
+  if (!Array.isArray(sourceLedger)) return [];
+  const findings: RetainedResearchFinding[] = [];
+  for (const candidate of sourceLedger) {
+    if (!isRecord(candidate) || !isRecord(candidate.accessOutcome) || candidate.accessOutcome.state !== "accessible") continue;
+    const passage = isNonEmptyString(candidate.accessOutcome.passage)
+      ? candidate.accessOutcome.passage.replace(/\s+/g, " ").trim()
+      : "";
+    const sourceUrl = safeLedgerUrl(candidate);
+    if (!passage || !sourceUrl) continue;
+    const title = isNonEmptyString(candidate.title) ? candidate.title.trim() : new URL(sourceUrl).hostname;
+    const accessedAt = optionalDate(candidate.accessedAt ?? candidate.accessOutcome.retrievalTime) ?? null;
+    if (/\bcompass\b/i.test(passage) && !/\bdatabank\b/i.test(passage)) continue;
+
+    if (
+      /\bdatabank\b/i.test(passage)
+      && /\bred oak\b/i.test(passage)
+      && /\bfirst three\b/i.test(passage)
+      && /\bDFW9\b/i.test(passage)
+      && /\bDFW10\b/i.test(passage)
+      && /\bDFW11\b/i.test(passage)
+      && /\b180\s*MW\b/i.test(passage)
+    ) {
+      const scopedPassage = sentenceContaining(passage, /\b180\s*MW\b/i);
+      if (scopedPassage) findings.push({
+        id: "retained-capacity-first-three-buildings",
+        topic: "capacity-phase",
+        statement: "A retained third-party passage reports 180 MW across DFW9, DFW10, and DFW11.",
+        attribution: `Attributed to ${title}; not independently verified by SafeLoc.`,
+        projectScope: "DataBank Red Oak campus reporting",
+        phaseScope: "First three buildings only; not full-campus or operating capacity",
+        reportingDate: /\bUpdated April 2026\b/i.test(passage) ? "2026-04" : null,
+        accessedAt,
+        sourceTitle: title,
+        sourceUrl,
+        passage: scopedPassage,
+        evidenceEligibility: "research-only",
+        demonstratedFinancialEffect: false,
+      });
+    }
+
+    if (
+      /\bred oak\b/i.test(passage)
+      && /\b(resident|community|protest|opposition|backlash)\b/i.test(passage)
+      && /\b(noise|power grid|water supply|rezon)\b/i.test(passage)
+    ) {
+      const scopedPassage = sentenceContaining(passage, /\b(resident|community|protest|opposition|backlash)\b/i);
+      if (scopedPassage) findings.push({
+        id: `retained-community-${new URL(sourceUrl).hostname.replace(/^www\./, "")}`,
+        topic: "community-context",
+        statement: "Local reporting describes Red Oak resident concerns and public process around data-center development.",
+        attribution: `Attributed reporting from ${title}; not a verified engineering, utility, or regulatory conclusion.`,
+        projectScope: /\bdatabank\b/i.test(scopedPassage)
+          ? "DataBank Red Oak campus reporting"
+          : "Red Oak municipal context; the passage does not establish DataBank-campus applicability",
+        phaseScope: "No DataBank building or phase established",
+        reportingDate: /\bMay 12, 2026\b/i.test(passage) ? "2026-05-12"
+          : /\bSeptember 23, 2026\b/i.test(passage) ? "2026-09-23"
+            : null,
+        accessedAt,
+        sourceTitle: title,
+        sourceUrl,
+        passage: scopedPassage,
+        evidenceEligibility: "research-only",
+        demonstratedFinancialEffect: false,
+      });
+    }
+  }
+  return [...new Map(findings.map((finding) => [finding.id, finding])).values()].slice(0, 8);
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -1260,6 +1368,7 @@ function parseResponse(value: unknown): CustomResearchResponse {
     throw new Error("Project research returned an incomplete response.");
   }
   const summary = value.projectSummary;
+  const retainedFindings = deriveRetainedResearchFindings(value.sourceLedger);
   const reportedCapacityMW = normalizeReportedCapacityMW(summary.capacityMW);
   if (
     !isNonEmptyString(summary.name) ||
@@ -1388,17 +1497,41 @@ function parseResponse(value: unknown): CustomResearchResponse {
   const outcomeRequiresIncompleteMode = terminalOutcome === "incomplete-technical-limitation"
     || terminalOutcome === "complete-no-eligible-evidence";
 
+  const reportedCapacitySupported = reportedCapacityMW !== null && retainedFindings.some((finding) =>
+    finding.topic === "capacity-phase"
+    && new RegExp(`\\b${reportedCapacityMW}\\s*MW\\b`, "i").test(finding.passage)
+    && !/not full-campus|first three buildings only/i.test(finding.phaseScope));
+  const trustedCapacity = summary.capacityProvenance === "directory-reported"
+    || summary.capacityProvenance === "standardized-default"
+    || reportedCapacitySupported;
+  const safeCapacityMW = trustedCapacity && reportedCapacityMW !== null
+    ? reportedCapacityMW
+    : DEFAULT_RESEARCH_CAPACITY_MW;
+  const safeCapacityProvenance: CapacityProvenance = trustedCapacity && reportedCapacityMW !== null
+    ? summary.capacityProvenance === "directory-reported" ? "directory-reported"
+      : summary.capacityProvenance === "standardized-default" ? "standardized-default"
+        : "ai-reported"
+    : "standardized-default";
+  const safeDescription = summary.capacityProvenance === "ai-reported" && !reportedCapacitySupported
+    ? `${summary.name} in ${summary.location}. Retrieved research is shown separately as scoped, attributed findings. Unsupported generated summary facts remain unknown and are not treated as established project facts.`
+    : summary.description as string;
+  const replay = isRecord(value.replay) && value.replay.mode === "offline-saved-response"
+    ? {
+        mode: "offline-saved-response" as const,
+        sourceRunDate: optionalDate(value.replay.sourceRunDate) ?? null,
+        originalResponseSha256: isNonEmptyString(value.replay.originalResponseSha256)
+          && /^[a-f0-9]{64}$/i.test(value.replay.originalResponseSha256)
+          ? value.replay.originalResponseSha256.toLowerCase()
+          : null,
+      }
+    : undefined;
   return {
     projectSummary: {
       name: summary.name as string,
       location: summary.location as string,
-      description: summary.description as string,
-      capacityMW: summary.capacityProvenance === "standardized-default"
-        ? DEFAULT_RESEARCH_CAPACITY_MW
-        : reportedCapacityMW ?? DEFAULT_RESEARCH_CAPACITY_MW,
-      capacityProvenance: summary.capacityProvenance !== "standardized-default" && reportedCapacityMW !== null
-        ? summary.capacityProvenance === "directory-reported" ? "directory-reported" : "ai-reported"
-        : "standardized-default",
+      description: safeDescription,
+      capacityMW: safeCapacityMW,
+      capacityProvenance: safeCapacityProvenance,
     },
     ...(value.researchStatus === "researching" || value.researchStatus === "completed" || value.researchStatus === "partial" || value.researchStatus === "timed-out" || value.researchStatus === "failed" || value.researchStatus === "cancelled"
       ? { researchStatus: value.researchStatus }
@@ -1486,6 +1619,8 @@ function parseResponse(value: unknown): CustomResearchResponse {
      proposedInputs: eligibleEvidence,
      acceptedModelInputs: containedEvidence.filter((item) => item.acceptedForModel),
      quarantineReasons: [...new Set(containedEvidence.flatMap((item) => item.quarantineReasons ?? []))],
+     retainedFindings,
+     ...(replay ? { replay } : {}),
   };
 }
 

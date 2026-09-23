@@ -302,6 +302,8 @@ export type ProjectContext = Omit<CustomResearchResponse["projectSummary"], "cap
   canonicalProvenance?: CanonicalProvenance[];
   researchOutcome?: CustomResearchResponse["researchOutcome"];
   researchProposals?: Record<string, CustomEvidenceRecord>;
+  retainedFindings?: CustomResearchResponse["retainedFindings"];
+  replay?: CustomResearchResponse["replay"];
   researchProposalDispositions?: Record<string, ResearchProposalDisposition>;
   researchProposalOverrides?: Record<string, ResearchProposalOverride>;
   eligibleEvidenceCount?: number;
@@ -1031,6 +1033,8 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       researchProposals,
       researchProposalDispositions,
       researchProposalOverrides: {},
+      retainedFindings: research.retainedFindings ?? [],
+      replay: research.replay,
     };
     setProject(nextProject);
     const customCommunityProject: CommunityProjectInput = {

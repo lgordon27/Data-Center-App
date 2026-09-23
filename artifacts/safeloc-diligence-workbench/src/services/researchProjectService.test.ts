@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { calculateCashFlowModel } from "@/model/cashFlowEngine";
 import { getAdvisorEvidenceSummary } from "@/model/advisorLens";
@@ -98,8 +99,43 @@ const response = {
 test("accepts the exact 16-item custom research contract", () => {
   const parsed = parseResponse(response);
   assert.equal(parsed.evidence.length, 16);
-  assert.equal(parsed.projectSummary.capacityMW, 600);
-  assert.equal(parsed.projectSummary.capacityProvenance, "ai-reported");
+  assert.equal(parsed.projectSummary.capacityMW, 1_200);
+  assert.equal(parsed.projectSummary.capacityProvenance, "standardized-default");
+  assert.doesNotMatch(parsed.projectSummary.description, /\b600\b/);
+});
+
+test("replays the saved DataBank response without promoting unsupported summary facts or research findings", () => {
+  const saved = JSON.parse(readFileSync(
+    new URL("../../diagnostics/databank-red-oak-single-shot-2026-09-23.json", import.meta.url),
+    "utf8",
+  ));
+  const parsed = parseResponse({
+    ...saved,
+    replay: {
+      mode: "offline-saved-response",
+      sourceRunDate: "2026-09-23",
+      originalResponseSha256: "ccc821ebfae2cf0e90521cc51579a8716722a0aa61c3a1b2f8f766114b58e41b",
+    },
+  });
+
+  assert.equal(parsed.projectSummary.capacityMW, 1_200);
+  assert.equal(parsed.projectSummary.capacityProvenance, "standardized-default");
+  assert.doesNotMatch(parsed.projectSummary.description, /\b480\s*MW\b|Oracle|292 acres/i);
+  assert.equal(parsed.replay?.mode, "offline-saved-response");
+  assert.equal(parsed.researchOutcome?.state, "incomplete-technical-limitation");
+  assert.equal(parsed.eligibleEvidence?.length, 0);
+  assert.equal(parsed.proposedInputs?.length, 0);
+  assert.equal(parsed.acceptedModelInputs?.length, 0);
+
+  const capacityFinding = parsed.retainedFindings?.find((finding) => finding.topic === "capacity-phase");
+  assert.match(capacityFinding?.statement ?? "", /180 MW.*DFW9.*DFW10.*DFW11/i);
+  assert.match(capacityFinding?.phaseScope ?? "", /first three buildings only/i);
+  assert.equal(capacityFinding?.evidenceEligibility, "research-only");
+  assert.equal(capacityFinding?.demonstratedFinancialEffect, false);
+  assert.ok(parsed.retainedFindings?.some((finding) =>
+    finding.topic === "community-context"
+    && /not a verified engineering, utility, or regulatory conclusion/i.test(finding.attribution)));
+  assert.equal(parsed.retainedFindings?.some((finding) => /compass/i.test(finding.statement)), false);
 });
 
 test("preserves eligible server evidence through client parsing", () => {

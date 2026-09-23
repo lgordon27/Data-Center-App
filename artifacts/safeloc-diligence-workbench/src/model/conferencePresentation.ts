@@ -66,6 +66,10 @@ export function generateAdvisorBrief(diligence: ReturnType<typeof useDiligence>)
       sourceTitle: item.sourceTitle ?? item.sources?.[0]?.title ?? null,
       sourceUrl: item.sourceUrl ?? item.sources?.[0]?.url ?? null,
     })),
+    retainedResearch: (diligence.project.retainedFindings ?? []).map((finding) => ({
+      ...finding,
+      limitation: `${finding.attribution} ${finding.projectScope}. ${finding.phaseScope}. No financial effect is demonstrated.`,
+    })),
     primaryCase: {
       label: notModeled ? "Project financial scenario" : "Synthetic current-evidence primary case",
       projectIRR: notModeled ? null : diligence.metrics.projectIRR,
@@ -76,12 +80,18 @@ export function generateAdvisorBrief(diligence: ReturnType<typeof useDiligence>)
         : "Project-level synthetic diligence output; optional EIA sensitivities are not issuer returns or portfolio returns.",
     },
     gapSummary: {
-      unresolvedDecisionGates: dossier ? unresolved.length : diligence.metrics.unresolvedDecisionGateCount,
+      unresolvedDecisionGates: dossier ? unresolved.length
+        : diligence.project.kind === "custom" && diligence.project.researchAudit?.categoryGaps
+          ? diligence.project.researchAudit.categoryGaps.length
+          : diligence.metrics.unresolvedDecisionGateCount,
       unresolvedFinancialDrivers: dossier && notModeled
         ? diligence.financialModeling.requiredInputs.length
         : diligence.metrics.unresolvedFinancialDriverCount,
     },
-    whatWeKnow: summary.facts.map((item) => `${item.label}: ${String(item.value)}`),
+    whatWeKnow: [
+      ...summary.facts.map((item) => `${item.label}: ${String(item.value)}`),
+      ...(diligence.project.retainedFindings ?? []).map((finding) => `${finding.statement} ${finding.attribution}`),
+    ],
     whatWeDoNotKnow: unresolved.slice(0, 3).map((item) =>
       `${item.label}: ${item.conflictSummary ?? item.description}`
     ),

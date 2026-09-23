@@ -28,6 +28,19 @@ export function ProjectReality({ evidenceOpen, onEvidenceOpenChange, onNavigate 
   return (
     <section data-testid="conference-view-reality" className="space-y-5">
       <div><p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#607500]">02 / Check the physical reality</p><h2 className="mt-2 text-2xl font-semibold tracking-tight">What is established—and what is still open?</h2><p className="mt-2 text-xs text-[#60707d]">{project.name} · Public facts and unresolved terms</p></div>
+      {project.replay?.mode === "offline-saved-response" && <div data-testid="offline-replay-label" className="rounded-lg border border-[#f1cb8b] bg-[#fff8e9] px-4 py-3 text-xs text-[#6f460e]"><strong>Offline replay of saved research</strong> · No live provider request was made. The original run remains partial, and retained passages are untrusted research material until scoped below.</div>}
+      {(project.retainedFindings ?? []).length > 0 && <section data-testid="retained-research-findings" className="rounded-xl border border-[#aac6f4] bg-[#eef5ff] p-5">
+        <h3 className="font-semibold text-[#122232]">Retained sourced findings</h3>
+        <p className="mt-1 text-xs text-[#52616b]">Useful retrieved research is shown separately from model-eligible evidence.</p>
+        <div className="mt-3 space-y-3">{project.retainedFindings?.map((finding) => <article key={finding.id} data-testid={`retained-finding-${finding.id}`} className="rounded-lg border border-[#cbd8d4] bg-white p-3 text-xs leading-5">
+          <p className="font-semibold text-[#122232]">{finding.statement}</p>
+          <p className="mt-1 text-[#52616b]">{finding.attribution}</p>
+          <p className="mt-1 text-[#805000]">{finding.projectScope} · {finding.phaseScope} · Potential relevance only; no financial effect demonstrated.</p>
+          <p className="mt-1 text-[#60707d]">Reported {finding.reportingDate ?? "date unavailable"} · passage access {finding.accessedAt ?? "date unavailable"}</p>
+          <blockquote className="mt-2 border-l-2 border-[#aac6f4] pl-3 text-[#52616b]">{finding.passage}</blockquote>
+          <a href={finding.sourceUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 text-[#255bb7] underline"><ExternalLink aria-hidden="true" className="h-3 w-3" />{finding.sourceTitle}</a>
+        </article>)}</div>
+      </section>}
       {!evidenceOpen && <><div className="grid gap-4 md:grid-cols-2">
         <section className="rounded-xl border border-[#cbd8d4] bg-white p-5">
           <h3 className="font-semibold text-[#365b4c]">{project.canonicalDossier ? "Top accepted findings" : "Top verified facts"}</h3>

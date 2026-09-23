@@ -566,8 +566,8 @@ test("opens a public DataBank-style redirect with validated offline DNS and tran
   assert.deepEqual(dnsCalls.map(({ hostname }) => hostname), ["grounding.fixture", "www.databank.com"]);
   assert.ok(dnsCalls.every(({ options }) => options.all === true && options.verbatim === true));
   assert.deepEqual(transportCalls, [
-    { url: initialUrl, address: addresses["grounding.fixture"] },
-    { url: finalUrl, address: addresses["www.databank.com"] },
+    { url: initialUrl, address: { ...addresses["grounding.fixture"], validationTelemetry: { answerCount: 1, addressFamilies: [4], publicAnswerCount: 1, prohibitedAnswerCount: 0 } } },
+    { url: finalUrl, address: { ...addresses["www.databank.com"], validationTelemetry: { answerCount: 1, addressFamilies: [4], publicAnswerCount: 1, prohibitedAnswerCount: 0 } } },
   ]);
   assert.deepEqual(result.transportDiagnostic.redirectChain, [
     finalUrl,
@@ -613,6 +613,12 @@ test("blocks private and mixed-address redirect destinations before offline tran
   assert.equal(mixedResult.reason, "private-destination");
   assert.equal(mixedResult.transportDiagnostic.stage, "dns-validation");
   assert.equal(mixedResult.transportDiagnostic.addressValidationReason, "prohibited-address-class");
+  assert.deepEqual(mixedResult.transportDiagnostic.addressValidationTelemetry, {
+    answerCount: 2,
+    addressFamilies: [4],
+    publicAnswerCount: 1,
+    prohibitedAnswerCount: 1,
+  });
   assert.equal(mixedTransportCalls, 1);
 });
 

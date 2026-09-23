@@ -461,7 +461,7 @@ test("aligns the browser request budget with the server-owned research deadline"
   assert.equal(RESEARCH_PROJECT_TIMEOUT_MS, 90_000);
 });
 
-test("retries one timeout response and reports retry progress", async () => {
+test("returns the first timeout without issuing an automatic retry", async () => {
   let calls = 0;
   const progress: string[] = [];
   const fetchImpl = async (_input: string | URL | Request, init?: RequestInit) => {
@@ -480,18 +480,20 @@ test("retries one timeout response and reports retry progress", async () => {
       ? new Response(JSON.stringify({ error: "Project research timed out." }), { status: 504 })
       : new Response(JSON.stringify(response), { status: 200 });
   };
-  const result = await researchProject("Atlas", "Texas", fetchImpl as typeof fetch, {
-    knownData: {
-      capacity: 800,
-      operator: "Atlas Compute",
-      status: "Operating",
-      sourceUrl: "https://example.com/directory/atlas",
-    },
-    onProgress: (state) => progress.push(state),
-  });
-  assert.equal(result.evidence.length, 16);
-  assert.equal(calls, 2);
-  assert.deepEqual(progress, ["researching", "retrying", "researching"]);
+  await assert.rejects(
+    researchProject("Atlas", "Texas", fetchImpl as typeof fetch, {
+      knownData: {
+        capacity: 800,
+        operator: "Atlas Compute",
+        status: "Operating",
+        sourceUrl: "https://example.com/directory/atlas",
+      },
+      onProgress: (state) => progress.push(state),
+    }),
+    /timed out/i,
+  );
+  assert.equal(calls, 1);
+  assert.deepEqual(progress, ["researching"]);
 });
 
 test("does not retry non-timeout failures", async () => {

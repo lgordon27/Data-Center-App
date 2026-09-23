@@ -4045,6 +4045,7 @@ async function runValidatedResearch(project, {
   googleDiscoveryImpl = discoverGoogleGroundedProject,
   googleModel = GOOGLE_GEMINI_MODEL,
   allowGoogleFallback = true,
+  allowCorrectiveRetries = true,
   fetchImpl,
   rateLimiter,
   req,
@@ -4438,6 +4439,8 @@ async function runValidatedResearch(project, {
           validateCategoryResult(categoryResult);
         } catch (error) {
           if (
+            allowCorrectiveRetries
+            &&
             attempt === "primary"
             && error?.name === "ResearchParseError"
             && !controller.signal.aborted
@@ -5019,6 +5022,7 @@ export async function handleResearchProjectRequest(
     googleDiscoveryImpl = discoverGoogleGroundedProject,
     googleModel = GOOGLE_GEMINI_MODEL,
     allowGoogleFallback = true,
+    allowCorrectiveRetries = true,
     fetchImpl = fetch,
     documentFetchImpl = fetch,
     secConnector = null,
@@ -5073,6 +5077,10 @@ export async function handleResearchProjectRequest(
   }
 
   const requestController = new AbortController();
+  const runPolicyHeader = typeof req.get === "function"
+    ? req.get("x-safeloc-research-policy")
+    : req.headers?.["x-safeloc-research-policy"];
+  const singleShotRun = runPolicyHeader === "single-shot";
   const onRequestAborted = () => requestController.abort();
   req.once?.("aborted", onRequestAborted);
   const refresh = (foreground = true) => cache.refresh(key, () => runValidatedResearch(project, {
@@ -5080,7 +5088,8 @@ export async function handleResearchProjectRequest(
     googleApiKey,
     googleDiscoveryImpl,
     googleModel,
-    allowGoogleFallback,
+    allowGoogleFallback: allowGoogleFallback && !singleShotRun,
+    allowCorrectiveRetries: allowCorrectiveRetries && !singleShotRun,
     fetchImpl,
     documentFetchImpl,
     secConnector,

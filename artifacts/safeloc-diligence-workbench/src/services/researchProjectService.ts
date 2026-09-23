@@ -1637,7 +1637,11 @@ async function requestResearchProject(
     onProgress?.("researching");
     const response = await fetchImpl(RESEARCH_PROJECT_ENDPOINT, {
       method: "POST",
-      headers: { accept: "application/json", "content-type": "application/json" },
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+        "x-safeloc-research-policy": "single-shot",
+      },
       body: JSON.stringify({
         name,
         location,
@@ -1695,20 +1699,18 @@ export async function researchProject(
     ...options.knownData,
   });
   const focusIds = options.focusIds?.filter((id) => CUSTOM_EVIDENCE_IDS.includes(id as (typeof CUSTOM_EVIDENCE_IDS)[number]));
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    if (options.signal?.aborted) throw new ResearchCancelledError();
-    try {
-      return await requestResearchProject(name, location, knownData, focusIds, options.currentEvidence, options.forceRefresh === true, options.signal, options.onProgress, fetchImpl);
-    } catch (error) {
-      if (error instanceof ResearchCancelledError) throw error;
-      if (error instanceof ResearchTimeoutError && attempt === 0) {
-        options.onProgress?.("retrying");
-        continue;
-      }
-      throw error;
-    }
-  }
-  throw new ResearchTimeoutError();
+  if (options.signal?.aborted) throw new ResearchCancelledError();
+  return requestResearchProject(
+    name,
+    location,
+    knownData,
+    focusIds,
+    options.currentEvidence,
+    options.forceRefresh === true,
+    options.signal,
+    options.onProgress,
+    fetchImpl,
+  );
 }
 
 export async function checkResearchStatus(cacheKey: string, fetchImpl: typeof fetch = fetch): Promise<ResearchStatusResponse> {

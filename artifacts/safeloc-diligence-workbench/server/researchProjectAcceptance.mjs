@@ -907,8 +907,8 @@ export async function runLiveResearchAcceptance({
   apiKey = process.env.OPENAI_API_KEY,
   googleApiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GEMINI_API_KEY,
   googleModel,
-  allowGoogleFallback = true,
-  runFailureRehearsal = true,
+  allowGoogleFallback = false,
+  runFailureRehearsal = false,
   categoryIds = parseCategoryIds(process.env.RESEARCH_ACCEPTANCE_CATEGORY_IDS),
   outputPath = process.env.RESEARCH_ACCEPTANCE_OUTPUT
     ?? path.resolve("diagnostics/research-live-acceptance.json"),

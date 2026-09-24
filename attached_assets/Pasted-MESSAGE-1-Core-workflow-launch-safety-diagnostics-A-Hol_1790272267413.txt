@@ -1,0 +1,28 @@
+MESSAGE 1 — Core workflow, launch safety, diagnostics
+A. Holding handoff and routing
+loadCanonicalDossier (src/context/DiligenceContext.tsx ~1070–1118) must accept the user's selected company and relationship type and use them instead of dossier.canonicalData.originatingCompany. Pass the selection from src/pages/Home.tsx ~1648 and src/components/conference/MarketExposure.tsx ~116.
+Switching dossiers updates the URL to #analysis/<slug>; loading that URL opens that dossier. Reset clears the project name from the header.
+Accept: Home → NVIDIA → Stargate Abilene → Open reviewed dossier shows NVIDIA. Switching to Kilby changes the URL; refreshing reopens Kilby.
+B. Dossier evidence drives the model
+Build dossier modelEvidence (~line 1099) from INITIAL_EVIDENCE overlaid with the dossier's records joined on variableId. Variables without a dossier record are labeled "Synthetic default — not dossier evidence" and never display as Verified.
+Accept: every Key Driver on Abilene states dossier evidence or synthetic default. Report the new baseline and current IRR; do not tune to old numbers.
+C. Human decisions move the model
+Remove if (project.canonicalDossier) return false (~line 620). On dossiers, changes are session overrides: labeled on the row, recorded in the decision trail, cleared by Reset, never written to the maintainer dossier.
+Replace the slug === "stargate-abilene" check in financialModeling (~534–538) with: dossiers with an approved scenario are modeled; custom projects get an "Illustrative model" only after a human accepts an eligible input and enters an illustrative capacity.
+Any disabled control shows a one-line reason.
+Accept: on Abilene, changing Water Rights from Missing to Verified updates counts, IRR, and status immediately; Reset restores the baseline.
+D. One definition of known and unknown
+One shared helper puts each item in exactly one bucket: Established (Verified with source), Reported not verified (Management Assertion or attributed reporting), Open (Missing, partial, conflicting, ambiguous). Use it in Project Reality, Financial Transmission, Advisor Brief, and the Asset Manager brief. Gate and driver counts come from the same helper everywhere.
+Accept: on all three dossiers no item appears twice, and counts match on every tab.
+E. Copy
+Remove "Stargate" from disclaimers when another project is loaded (src/pages/FinancialMateriality.tsx ~96 and the Financial header).
+Replace "the same 16 modeled evidence inputs" (src/pages/Home.tsx ~234, ~353) with: "SafeLoc searches public sources and returns sourced findings and open questions. Financial modeling uses only inputs you accept."
+F. Launch safety
+Configure Express trusted-proxy handling for the Replit proxy so requestClientKey in server/researchProjectProxy.mjs and server/aiEvidenceProxy.mjs sees the real client. Test that two clients get separate rate-limit buckets.
+Add a global daily spend cap for research and AI analysis (configurable env var). When reached, research shows "Daily research capacity reached — try again tomorrow"; the rest of the app keeps working.
+Store rate-limit counters, the spend counter, and the research cache in persistent storage (PostgreSQL is already in use), not memory or a temp directory. A repeated project is served from cache with its research date shown.
+G. Diagnostics and safe retry
+Log for each research run: every rejected URL with host and rejecting DNS rule (no IP addresses); every non-2xx provider response with status, provider error code, Retry-After, and requests in flight; time spent per stage; the reason each discovered citation was not opened.
+Save each run's sanitized diagnostic to persistent storage with an owner-only download.
+Run structured-analysis requests one at a time. On a 429 with Retry-After, wait and retry once if the deadline allows.
+Do not change any DNS or SSRF rule.

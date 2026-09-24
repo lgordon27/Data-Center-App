@@ -1,0 +1,87 @@
+PASS 1 — Restore the demo path
+1.1 Carry the selected holding into the dossier
+
+Problem: Home → NVIDIA → Open reviewed dossier shows ORACLE. loadCanonicalDossier (src/context/DiligenceContext.tsx ~1070–1118) sets the company from dossier.canonicalData.originatingCompany and ignores the user's selection. Call sites: src/pages/Home.tsx ~1648 and src/components/conference/MarketExposure.tsx ~116.
+
+Fix:
+
+Change the signature to loadCanonicalDossier(dossier, selection?: { company: CompanyKey; relationshipType?: ... } | null).
+If the user arrived through a company, use that company and its relationship type for this project. Fall back to the dossier's default company only when no company was selected.
+Pass the selection from both call sites.
+
+Also fix routing:
+
+Switching dossiers with the Canonical Dossier dropdown must update the URL hash to #analysis/<slug>. Loading #analysis/<slug> directly must open that dossier.
+Reset must clear the header's project name back to the Home state.
+
+Acceptance:
+
+Home → NVIDIA → Stargate Abilene → Open reviewed dossier: header reads "NVIDIA · INFRASTRUCTURE REVIEW", Market Exposure shows NVIDIA and its relationship label (Supplier Relationship).
+Same path via Oracle shows Oracle.
+Switching the dropdown to Project Kilby changes the URL to #analysis/project-kilby. Refreshing that URL reopens Kilby.
+After Reset, the header on Home no longer names a project.
+1.2 Connect dossier evidence to the model
+
+Problem: loadCanonicalDossier sets modelEvidence: cloneEvidence(INITIAL_EVIDENCE) (~line 1099). The dossier's sourced evidence never reaches the model. The dossier records already carry variableId (see server/dossiers.seed.json), which matches the model variable ids in INITIAL_EVIDENCE.
+
+Fix:
+
+Build modelEvidence as INITIAL_EVIDENCE overlaid with the dossier's records, joined on variableId. The dossier record's classification, value, and source replace the synthetic one for that variable.
+Every variable not covered by a dossier record keeps its synthetic value but must be labeled "Synthetic default — not dossier evidence" everywhere it appears (Key Drivers, Assumptions, evidence register). A synthetic default must never display as "Verified Evidence". If INITIAL_EVIDENCE marks it Verified, display it as "Synthetic default" instead.
+The evidence register in Project Reality must list the same set of variables the model uses, split into "Dossier evidence" and "Synthetic defaults".
+
+Acceptance:
+
+On Abilene, every Key Driver row states whether it comes from dossier evidence or a synthetic default.
+grid_interconnection and community_risk no longer display as Verified unless a dossier record with a source backs them.
+Record the new Abilene baseline and current-evidence IRR in the pass report. They may differ from 13.3% / 9.1%. Do not tune inputs to reproduce the old numbers.
+1.3 Let human decisions move the model
+
+Problem:
+
+updateClassification returns early for any canonical dossier: if (project.canonicalDossier) return false (~line 620). All classification selects on Abilene are disabled with no explanation.
+For custom projects, financialModeling (~lines 534–538) returns "modeled" only for slug === "stargate-abilene", so human-accepted research can never reach a visible model.
+
+Fix:
+
+Remove the early return. On canonical dossiers, classification changes become session overrides: stored separately from the maintainer baseline, marked "Session override" on the row, recorded in the decision trail, and cleared by Reset. The maintainer-reviewed dossier in PostgreSQL is never modified.
+Accepting an AI proposal on a dossier applies it the same way, as a session override.
+Replace the slug check in financialModeling with a rule:
+Canonical dossier with an approved financial scenario → modeled.
+Custom project → "Illustrative model" becomes available only after (a) a human has accepted at least one proposal-eligible input and (b) a human has entered an illustrative capacity (see 2.2). Label every output "Illustrative — not project economics".
+Otherwise → not modeled, with the existing required-inputs list.
+Add a one-line explanation wherever a control is disabled, stating why.
+
+Acceptance:
+
+Abilene: change Facility Water Rights from Missing Evidence to Verified Evidence. The classification counts, IRR, and recommendation status update immediately; the row shows "Session override"; the decision trail records it.
+Accept an AI proposal on Abilene: the same effects occur.
+Reset restores the pass 1.2 baseline exactly.
+Reload the page: session overrides persist until Reset.
+1.4 One definition of "unresolved" and "known"
+
+Problem:
+
+generateAdvisorBrief recomputes unresolved (src/model/conferencePresentation.ts ~57–61) without excluding items already listed as facts. Abilene's Oracle relationship and Kilby's Microsoft PPA appear under both "What We Know" and "What We Do Not Know".
+For canonical dossiers, getConferenceEvidenceSummary (src/model/conferenceEvidence.ts ~307–319) treats any non-Missing sourced item as a fact, including Management Assertions.
+Gate counts disagree: Financial Transmission uses metrics.unresolvedDecisionGateCount (1 on Abilene); Advisor Brief uses unresolved.length for dossiers (2).
+
+Fix:
+
+Create one shared helper that classifies each evidence item into exactly one bucket:
+Established: Verified Evidence with a source.
+Reported, not verified: Management Assertion or attributed reporting with a source. Show what was reported and by whom.
+Open: Missing, partial, conflicting, or ambiguous applicability.
+Use it in Project Reality, Financial Transmission, Advisor Brief, and the Asset Manager brief. No item may appear in two buckets.
+Decision gates and financial drivers are counted from the same helper, filtered by impact role, everywhere. Show both counts on both tabs.
+
+Acceptance:
+
+On Abilene, Kilby, and El Mirage, no item appears in more than one bucket.
+Gate and driver counts are identical across all tabs for each dossier.
+A test fails if any item appears in two buckets or if the counts differ between tabs.
+1.5 Copy fixes
+src/pages/FinancialMateriality.tsx ~96 and the Financial header disclaimer: use the current project's name instead of "Stargate". For not-modeled projects, do not say "primary recommendation basis".
+src/pages/Home.tsx ~234 and ~353: replace the "same 16 modeled evidence inputs" promise with an accurate description: "SafeLoc searches public sources and returns sourced findings, open questions, and any evidence you can review. Financial modeling requires inputs you accept."
+
+Acceptance: No page mentions Stargate while Kilby or El Mirage is loaded, except in Stargate-specific benchmark content. The research modal no longer promises 16 inputs.

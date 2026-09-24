@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { deflateSync } from "node:zlib";
@@ -566,8 +566,8 @@ test("opens a public DataBank-style redirect with validated offline DNS and tran
   assert.deepEqual(dnsCalls.map(({ hostname }) => hostname), ["grounding.fixture", "www.databank.com"]);
   assert.ok(dnsCalls.every(({ options }) => options.all === true && options.verbatim === true));
   assert.deepEqual(transportCalls, [
-    { url: initialUrl, address: { ...addresses["grounding.fixture"], validationTelemetry: { answerCount: 1, addressFamilies: [4], publicAnswerCount: 1, prohibitedAnswerCount: 0 } } },
-    { url: finalUrl, address: { ...addresses["www.databank.com"], validationTelemetry: { answerCount: 1, addressFamilies: [4], publicAnswerCount: 1, prohibitedAnswerCount: 0 } } },
+    { url: initialUrl, address: { ...addresses["grounding.fixture"], validationTelemetry: { answerCount: 1, addressFamilies: [4], addressFamilyCounts: { ipv4: 1, ipv6: 0, other: 0 }, publicAnswerCount: 1, prohibitedAnswerCount: 0, rejectingRules: [] } } },
+    { url: finalUrl, address: { ...addresses["www.databank.com"], validationTelemetry: { answerCount: 1, addressFamilies: [4], addressFamilyCounts: { ipv4: 1, ipv6: 0, other: 0 }, publicAnswerCount: 1, prohibitedAnswerCount: 0, rejectingRules: [] } } },
   ]);
   assert.deepEqual(result.transportDiagnostic.redirectChain, [
     finalUrl,
@@ -616,10 +616,56 @@ test("blocks private and mixed-address redirect destinations before offline tran
   assert.deepEqual(mixedResult.transportDiagnostic.addressValidationTelemetry, {
     answerCount: 2,
     addressFamilies: [4],
+    addressFamilyCounts: { ipv4: 2, ipv6: 0, other: 0 },
     publicAnswerCount: 1,
     prohibitedAnswerCount: 1,
+    rejectingRules: ["ipv4-private-use"],
   });
+  assert.equal(mixedResult.transportDiagnostic.addressValidationCategory, "dns-answer-policy");
+  assert.equal(mixedResult.transportDiagnostic.addressValidationRule, "ipv4-private-use");
   assert.equal(mixedTransportCalls, 1);
+});
+
+test("replays a committed synthetic project-scope and rejected-DNS fixture offline", async () => {
+  const fixture = JSON.parse(await readFile(new URL("./fixtures/research-workflow-offline.json", import.meta.url), "utf8"));
+  assert.equal(fixture.testOnly, true);
+  assert.equal(fixture.synthetic, true);
+  assert.equal(fixture.liveProviderPayloadsIncluded, false);
+  assert.equal(fixture.historicalDataBankDiagnostic.rootCause, "unknown");
+  assert.equal(fixture.historicalDataBankDiagnostic.smallestNonPaidRuntimeDiagnostic.providerRequests, 0);
+  assert.match(fixture.documentAccess.retrievedPassage.passage, /168 MW of IT load/);
+  assert.equal(fixture.documentAccess.retrievedPassage.applicability.buildingPhase, "Phase A, Buildings 1–3");
+  assert.equal(fixture.unsupportedSummaryClaims.length, 2);
+  assert.equal(fixture.providerFailures.length, 3);
+  assert.ok(fixture.requestOutcomes.some((attempt) => attempt.outcome === "cancelled-before-issue"));
+  assert.ok(fixture.requestOutcomes.some((attempt) => attempt.outcome === "cancelled-after-issue"));
+
+  let transportCalls = 0;
+  const result = await accessResearchDocument({
+    url: fixture.documentAccess.candidate.url,
+    accessStatus: "open",
+  }, {
+    dnsLookup: async () => [
+      { address: "93.184.216.35", family: 4 },
+      { address: "10.0.0.7", family: 4 },
+    ],
+    transportImpl: async () => {
+      transportCalls += 1;
+      return new Response("<html>must not be fetched</html>", {
+        headers: { "content-type": "text/html" },
+      });
+    },
+  });
+  assert.equal(result.state, "blocked");
+  assert.equal(result.reason, fixture.documentAccess.candidate.expectedReason);
+  assert.equal(result.transportDiagnostic.addressValidationReason,
+    fixture.documentAccess.candidate.expectedValidationReason);
+  assert.equal(result.transportDiagnostic.addressValidationCategory, fixture.documentAccess.candidate.expectedCategory);
+  assert.equal(result.transportDiagnostic.addressValidationRule, fixture.documentAccess.candidate.expectedRejectingRule);
+  assert.deepEqual(result.transportDiagnostic.addressValidationTelemetry.addressFamilyCounts,
+    fixture.documentAccess.candidate.expectedAnswerFamilyCounts);
+  assert.equal(transportCalls, 0);
+  assert.doesNotMatch(JSON.stringify(result), /93\.184\.216\.35|10\.0\.0\.7/);
 });
 
 test("revalidates each redirect hop and blocks DNS rebinding without leaking resolver details", async () => {
@@ -849,8 +895,133 @@ test("honors provider reset pressure without retrying and cancels queued work", 
     blockedGate,
   );
   controller.abort();
-  await assert.rejects(queued, { name: "ResearchCancelledError" });
+  await assert.rejects(queued, (error) => {
+    assert.equal(error.name, "ResearchCancelledError");
+    assert.equal(error.providerAttempt.outcome, "cancelled-before-issue");
+    assert.equal(error.providerAttempt.requestState, "cancelled-before-issue");
+    assert.equal(error.providerAttempt.issuedAt, null);
+    return true;
+  });
   assert.equal(queuedFetchCalled, false);
+});
+
+test("pressure-gates every recognized temporary rate-limit code but not quota or unknown 429s", async () => {
+  for (const [code, type, expectedBlocked] of [
+    ["rate_limit_exceeded", "tokens", true],
+    ["rate_limit_error", "tokens", true],
+    ["too_many_requests", "request", true],
+    ["insufficient_quota", "insufficient_quota", false],
+    [undefined, undefined, false],
+  ]) {
+    let now = 1_000;
+    const gate = createResearchProviderGate({
+      limit: 1,
+      now: () => now,
+      schedule: () => ({ pending: true }),
+      cancelSchedule: () => {},
+    });
+    await assert.rejects(researchProjectWithWebSearch(
+      { name: "Pressure Atlas", location: "Ohio" },
+      "server-secret-for-test",
+      async () => new Response(JSON.stringify({
+        error: { message: "Retry after a short wait.", code, type },
+      }), {
+        status: 429,
+        headers: { "content-type": "application/json", "retry-after": "5" },
+      }),
+      undefined,
+      { categoryId: "grid", evidenceIds: ["grid_interconnection"] },
+      gate,
+    ), (error) => {
+      assert.equal(error.providerAttempt.status, 429);
+      assert.equal(error.providerAttempt.outcome, "failed");
+      assert.equal(error.providerAttempt.providerDiagnostic.upstreamStatus, 429);
+      return true;
+    });
+    assert.equal(gate.snapshot().blockedUntil, expectedBlocked ? now + 5_000 : 0);
+  }
+
+  let now = 2_000;
+  const noHeaderGate = createResearchProviderGate({
+    limit: 1,
+    now: () => now,
+    schedule: () => ({ pending: true }),
+    cancelSchedule: () => {},
+  });
+  await assert.rejects(researchProjectWithWebSearch(
+    { name: "No Header Atlas", location: "Ohio" },
+    "server-secret-for-test",
+    async () => new Response(JSON.stringify({
+      error: { message: "Rate limited.", code: "rate_limit_error" },
+    }), { status: 429, headers: { "content-type": "application/json" } }),
+    undefined,
+    { categoryId: "grid", evidenceIds: ["grid_interconnection"] },
+    noHeaderGate,
+  ));
+  assert.equal(noHeaderGate.snapshot().blockedUntil, now + 1_000);
+});
+
+test("keeps an issued deadline cancellation distinct and reports concurrent analysis count", async () => {
+  const gate = createResearchProviderGate({ limit: 1 });
+  const analysisTracker = { inFlight: 0, peak: 0, attempts: [] };
+  const controller = new AbortController();
+  let markStarted;
+  const started = new Promise((resolve) => { markStarted = resolve; });
+  const pending = researchProjectWithWebSearch(
+    { name: "Cancelled Atlas", location: "Ohio" },
+    "server-secret-for-test",
+    async (_url, init) => {
+      markStarted();
+      return new Promise((_resolve, reject) => {
+        init.signal.addEventListener("abort", () => {
+          reject(Object.assign(new Error("deadline"), { name: "AbortError" }));
+        }, { once: true });
+      });
+    },
+    controller.signal,
+    { categoryId: "grid", evidenceIds: ["grid_interconnection"], analysisTracker },
+    gate,
+  );
+  await started;
+  assert.equal(analysisTracker.inFlight, 1);
+  controller.abort();
+  await assert.rejects(pending, (error) => {
+    assert.equal(error.providerAttempt.outcome, "cancelled-after-issue");
+    assert.equal(error.providerAttempt.requestState, "cancelled-after-issue");
+    assert.equal(error.providerAttempt.status, null);
+    assert.equal(error.providerAttempt.inFlightAnalysisCountAtIssue, 1);
+    assert.equal(error.providerAttempt.inFlightAnalysisCount, 0);
+    return true;
+  });
+  assert.equal(analysisTracker.inFlight, 0);
+  assert.equal(analysisTracker.peak, 1);
+  assert.equal(analysisTracker.attempts.length, 1);
+
+  const bodyController = new AbortController();
+  const bodyTracker = { inFlight: 0, peak: 0, attempts: [] };
+  await assert.rejects(researchProjectWithWebSearch(
+    { name: "Body Cancelled Atlas", location: "Ohio" },
+    "server-secret-for-test",
+    async () => ({
+      ok: true,
+      status: 200,
+      text: async () => {
+        bodyController.abort();
+        throw Object.assign(new Error("deadline"), { name: "AbortError" });
+      },
+    }),
+    bodyController.signal,
+    { categoryId: "grid", evidenceIds: ["grid_interconnection"], analysisTracker: bodyTracker },
+    createResearchProviderGate({ limit: 1 }),
+  ), (error) => {
+    assert.equal(error.providerAttempt.requestState, "cancelled-after-issue");
+    assert.equal(error.providerAttempt.outcome, "cancelled-after-issue");
+    assert.equal(error.providerAttempt.status, 200);
+    assert.equal(error.providerAttempt.failureClassification, "timeout");
+    assert.equal(error.providerAttempt.inFlightAnalysisCount, 0);
+    return true;
+  });
+  assert.equal(bodyTracker.inFlight, 0);
 });
 
 test("blocks mapped IPv4-mapped IPv6 destinations and oversized streamed responses", async () => {

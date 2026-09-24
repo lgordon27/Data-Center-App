@@ -225,7 +225,7 @@ function NextViewButton({ label, target, onClick }: { label: string; target: Fin
 }
 
 export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
-  const { evidence, hasChangedClassification, metrics, sourceStates, project, originatingCompany, financialInputState, financialScenarios } = useDiligence();
+  const { evidence, hasChangedClassification, metrics, sourceStates, project, originatingCompany, financialInputState, financialScenarios, financialModeling } = useDiligence();
   const [financialView, setFinancialView] = useState<FinancialView>("overview");
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const currentIRR = metrics.projectIRR;
@@ -272,6 +272,28 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
     : metrics.recommendationStatus === "CONDITIONAL"
       ? "Proceed only with explicit conditions around the unresolved evidence and modeled treatments."
       : "Resolve material evidence gaps before using the output as an investment conclusion.";
+
+  if (project.kind === "custom" && financialModeling.status === "not-modeled") {
+    return (
+      <section data-testid="custom-project-not-modeled" className="rounded-xl border-2 border-[#f1cb8b] bg-[#fff8e9] p-6">
+        <SectionKicker>Illustrative project economics</SectionKicker>
+        <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#122232]">Not modeled</h2>
+        <p className="mt-3 max-w-3xl text-sm leading-6 text-[#6f460e]">{financialModeling.reason}</p>
+        <p className="mt-3 max-w-3xl text-xs leading-5 text-[#6f460e]">
+          Retrieved research and explicit reviewer acceptance can update the evidence record only. They do not create approved transaction economics or authorize a project return; no custom-project IRR, cash flow, recommendation, or materiality calculation is presented.
+        </p>
+        <div className="mt-4 rounded-lg border border-[#e3d4b6] bg-white p-4 text-xs leading-5 text-[#805000]">
+          <strong>Required before modeling:</strong>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            {financialModeling.requiredInputs.map((input) => <li key={input}>{input}</li>)}
+          </ul>
+        </div>
+        <button type="button" onClick={() => onNavigate("evidence")} className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-md bg-[#122232] px-4 text-xs font-semibold text-[#d4e86b]">
+          Review evidence <ArrowRight aria-hidden="true" className="h-4 w-4" />
+        </button>
+      </section>
+    );
+  }
 
   const calculationBasis = project.kind === "custom"
     ? "Custom project calculation"

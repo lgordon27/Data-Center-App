@@ -55,6 +55,35 @@ function reportScalar(value) {
 
 function reportTransportDiagnostic(value) {
   if (!value || typeof value !== "object") return null;
+  const addressValidationTelemetry = value.addressValidationTelemetry
+    && typeof value.addressValidationTelemetry === "object"
+    ? {
+      answerCount: Number.isInteger(value.addressValidationTelemetry.answerCount)
+        ? Math.max(0, value.addressValidationTelemetry.answerCount)
+        : null,
+      addressFamilies: boundedList(value.addressValidationTelemetry.addressFamilies,
+        (family) => family === 4 || family === 6 ? family : null, 2),
+      addressFamilyCounts: {
+        ipv4: Number.isInteger(value.addressValidationTelemetry.addressFamilyCounts?.ipv4)
+          ? Math.max(0, value.addressValidationTelemetry.addressFamilyCounts.ipv4)
+          : null,
+        ipv6: Number.isInteger(value.addressValidationTelemetry.addressFamilyCounts?.ipv6)
+          ? Math.max(0, value.addressValidationTelemetry.addressFamilyCounts.ipv6)
+          : null,
+        other: Number.isInteger(value.addressValidationTelemetry.addressFamilyCounts?.other)
+          ? Math.max(0, value.addressValidationTelemetry.addressFamilyCounts.other)
+          : null,
+      },
+      publicAnswerCount: Number.isInteger(value.addressValidationTelemetry.publicAnswerCount)
+        ? Math.max(0, value.addressValidationTelemetry.publicAnswerCount)
+        : null,
+      prohibitedAnswerCount: Number.isInteger(value.addressValidationTelemetry.prohibitedAnswerCount)
+        ? Math.max(0, value.addressValidationTelemetry.prohibitedAnswerCount)
+        : null,
+      rejectingRules: boundedList(value.addressValidationTelemetry.rejectingRules,
+        (rule) => typeof rule === "string" && /^[a-z0-9-]{1,80}$/.test(rule) ? rule : null, 8),
+    }
+    : null;
   return {
     stage: boundedText(value.stage, 80),
     responseReceived: value.responseReceived === true,
@@ -62,24 +91,38 @@ function reportTransportDiagnostic(value) {
     contentType: boundedText(value.contentType, 120),
     redirectChain: boundedList(value.redirectChain, reportUrl, 8),
     addressValidationReason: boundedText(value.addressValidationReason, 120),
+    addressValidationCategory: boundedText(value.addressValidationCategory, 100),
+    addressValidationRule: boundedText(value.addressValidationRule, 120),
+    addressValidationTelemetry,
     elapsedMs: Number.isFinite(value.elapsedMs) ? value.elapsedMs : null,
   };
 }
 
 function reportProviderDiagnostic(value) {
   if (!value || typeof value !== "object") return null;
+  const rateLimitFields = value.rateLimit && typeof value.rateLimit === "object"
+    ? Object.fromEntries(Object.entries({
+      retryAfter: value.rateLimit.retryAfter,
+      limitRequests: value.rateLimit.limitRequests,
+      remainingRequests: value.rateLimit.remainingRequests,
+      resetRequests: value.rateLimit.resetRequests,
+      limitTokens: value.rateLimit.limitTokens,
+      remainingTokens: value.rateLimit.remainingTokens,
+      resetTokens: value.rateLimit.resetTokens,
+    }).flatMap(([key, indicator]) => {
+      const bounded = boundedText(indicator, 80);
+      return bounded ? [[key, bounded]] : [];
+    }))
+    : null;
+  const rateLimit = rateLimitFields && Object.keys(rateLimitFields).length ? rateLimitFields : null;
   return {
-    upstreamStatus: Number.isInteger(value.upstreamStatus) ? value.upstreamStatus : null,
+    upstreamStatus: Number.isInteger(value.upstreamStatus) ? value.upstreamStatus
+      : Number.isInteger(value.status) ? value.status : null,
     errorCode: boundedText(value.errorCode, 120),
     errorType: boundedText(value.errorType, 120),
     message: boundedText(value.message, 500),
     requestId: boundedText(value.requestId, 160),
-    rateLimit: value.rateLimit && typeof value.rateLimit === "object"
-      ? {
-        retryAfter: boundedText(value.rateLimit.retryAfter, 80),
-        remainingRequests: boundedText(value.rateLimit.remainingRequests, 80),
-      }
-      : null,
+    rateLimit,
   };
 }
 
@@ -375,7 +418,10 @@ function reportEvidence(result, categories) {
 }
 
 function reportProviderAttempts(audit) {
-  return boundedList(audit?.providerAttempts, (attempt) => ({
+  return boundedList(audit?.providerAttempts ?? audit?.researchCache?.providerAttempts, (attempt) => ({
+    provider: boundedText(attempt?.provider, 120),
+    model: boundedText(attempt?.model, 120),
+    requestCount: Number.isInteger(attempt?.requestCount) ? attempt.requestCount : null,
     categoryId: boundedText(attempt?.categoryId, 120),
     attemptType: boundedText(attempt?.attemptType, 80),
     queuedAt: boundedText(attempt?.queuedAt, 80),
@@ -386,6 +432,14 @@ function reportProviderAttempts(audit) {
     status: Number.isInteger(attempt?.status) ? attempt.status : null,
     requestState: boundedText(attempt?.requestState, 80),
     outcome: boundedText(attempt?.outcome, 80),
+    failureClassification: boundedText(attempt?.failureClassification, 100),
+    inFlightAnalysisCount: Number.isInteger(attempt?.inFlightAnalysisCount)
+      ? Math.max(0, attempt.inFlightAnalysisCount)
+      : null,
+    inFlightAnalysisCountAtIssue: Number.isInteger(attempt?.inFlightAnalysisCountAtIssue)
+      ? Math.max(0, attempt.inFlightAnalysisCountAtIssue)
+      : null,
+    providerDiagnostic: reportProviderDiagnostic(attempt?.providerDiagnostic),
     requestedOutputTokens: Number.isFinite(attempt?.requestedOutputTokens)
       ? attempt.requestedOutputTokens
       : null,
@@ -782,7 +836,17 @@ export function buildAcceptanceReport({ project, liveRun, failureRun, generatedA
        ),
       elapsedWithinDeadline: typeof elapsedMs === "number" && elapsedMs <= budget.deadlineMs,
       providerRequestCount: audit?.providerRequestCount ?? null,
-       providerAttempts: reportProviderAttempts(audit),
+       providerAttempts: reportProviderAttempts(audit ?? result),
+       inFlightAnalysisCount: Number.isInteger(
+         result?.inFlightAnalysisCount
+           ?? result?.researchCache?.inFlightAnalysisCount
+           ?? audit?.inFlightAnalysisCount,
+       )
+         ? Math.max(0,
+           result?.inFlightAnalysisCount
+             ?? result?.researchCache?.inFlightAnalysisCount
+             ?? audit?.inFlightAnalysisCount)
+         : null,
       toolCallCount: audit?.toolCallCount ?? null,
        followUpCount: reportCategories.filter((category) => category.followUpExecutedQuery).length,
       budget,
@@ -797,7 +861,7 @@ export function buildAcceptanceReport({ project, liveRun, failureRun, generatedA
         candidateCategoryLimit: budget.maxCandidatesPerCategory,
       },
     },
-    requests: reportProviderAttempts(audit),
+    requests: reportProviderAttempts(audit ?? result),
     discovery: reportDiscoveryTelemetry(result),
     observedSearches,
     returnedDomains: source.returnedDomains,

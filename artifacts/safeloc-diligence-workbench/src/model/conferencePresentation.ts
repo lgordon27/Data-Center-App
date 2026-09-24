@@ -8,6 +8,7 @@ import {
 export const FINANCIAL_ADVISOR_COVERAGE_LABELS = {
   reviewed: "Client conversation brief · evidence reviewed",
   gaps: "Client conversation brief · material gaps remain",
+  partial: "Partial public-source research · not conversation-ready",
   incomplete: "Research incomplete · not conversation-ready",
 } as const;
 
@@ -35,6 +36,10 @@ function coverageLabel(
       ? FINANCIAL_ADVISOR_COVERAGE_LABELS.reviewed
       : FINANCIAL_ADVISOR_COVERAGE_LABELS.gaps;
   }
+  if (
+    diligence.project.kind === "custom"
+    && (diligence.project.researchMode === "partial-public-source" || diligence.project.researchStatus === "partial")
+  ) return FINANCIAL_ADVISOR_COVERAGE_LABELS.partial;
   if (isConferenceResearchIncomplete(diligence.project, diligence.evidence)) {
     return FINANCIAL_ADVISOR_COVERAGE_LABELS.incomplete;
   }
@@ -88,12 +93,9 @@ export function generateAdvisorBrief(diligence: ReturnType<typeof useDiligence>)
         ? diligence.financialModeling.requiredInputs.length
         : diligence.metrics.unresolvedFinancialDriverCount,
     },
-    whatWeKnow: [
-      ...summary.facts.map((item) => `${item.label}: ${String(item.value)}`),
-      ...(diligence.project.retainedFindings ?? []).map((finding) => `${finding.statement} ${finding.attribution}`),
-    ],
+    whatWeKnow: summary.facts.map((item) => `${item.label}: ${String(item.value)}`),
     whatWeDoNotKnow: unresolved.slice(0, 3).map((item) =>
-      `${item.label}: ${item.conflictSummary ?? item.description}`
+      `${item.label}: Not established by a validated project-specific source.`
     ),
     whyItMatters: dossier ? [
       dossier.canonicalData.identity.scope,

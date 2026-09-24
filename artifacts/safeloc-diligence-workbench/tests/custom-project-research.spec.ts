@@ -1,4 +1,9 @@
 import { expect, test } from "@playwright/test";
+import { readFileSync } from "node:fs";
+
+const syntheticResearchFixture = JSON.parse(
+  readFileSync(new URL("./fixtures/research-project-synthetic.json", import.meta.url), "utf8"),
+) as Record<string, unknown>;
 
 const evidenceIds = [
   "electricity_cost",
@@ -388,6 +393,59 @@ test.describe("custom project research", () => {
         }),
       });
     });
+  });
+
+  test("hands off the committed offline fixture without promoting unsupported claims", async ({ page }) => {
+    await page.unroute("**/api/research-project");
+    let researchRequests = 0;
+    await page.route("**/api/research-project", async (route) => {
+      researchRequests += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(syntheticResearchFixture),
+      });
+    });
+    for (const endpoint of ["**/api/eia**", "**/api/ercot**", "**/api/directory**", "**/api/compute-atlas**"]) {
+      await page.route(endpoint, (route) => route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Provider traffic is blocked by the offline handoff test." }),
+      }));
+    }
+    await page.route(/https:\/\/(api\.openai\.com|generativelanguage\.googleapis\.com)\//, (route) => route.abort("blockedbyclient"));
+
+    await page.goto("/");
+    await openCustomProjectDialog(page);
+    await page.getByTestId("input-custom-project-name").fill("Aster Northstar Campus");
+    await page.getByTestId("input-custom-project-location").fill("Cedar County, Iowa");
+    await page.getByTestId("button-submit-custom-project").click();
+
+    await expect(page).toHaveURL(/#analysis$/);
+    await expect(page.getByTestId("custom-research-banner")).toContainText("Aster Northstar Campus");
+    await page.getByTestId("tab-reality").click();
+    const findings = page.getByTestId("retained-research-findings");
+    await expect(findings).toContainText("Source-supported passage");
+    await expect(findings).toContainText("Attributed reporting");
+    await expect(findings).toContainText("Ambiguous applicability");
+    await expect(findings).toContainText("180 MW");
+    await expect(findings).toContainText("24 MW of IT load");
+    await expect(findings).not.toContainText("Dayton, Ohio");
+    await expect(findings).toContainText("Reporting date:");
+    await expect(findings).toContainText("Accessed:");
+
+    await expect(page.getByTestId("custom-research-banner")).not.toContainText("operating 480 MW");
+
+    await page.getByTestId("tab-advisor").click();
+    const advisor = page.getByTestId("conference-view-advisor");
+    await expect(advisor).toContainText("Partial public-source research");
+    await expect(advisor.getByTestId("advisor-retained-research")).toContainText("180 MW");
+    await expect(advisor).not.toContainText("operating 480 MW");
+
+    await page.getByTestId("tab-transmission").click();
+    await page.getByTestId("button-opt-in-scenario").click();
+    await expect(page.getByTestId("custom-project-not-modeled")).toContainText("Not modeled");
+    expect(researchRequests).toBe(1);
   });
 
   test("launches research from Home, preserves 16 items, and resets to Stargate", async ({ page }) => {

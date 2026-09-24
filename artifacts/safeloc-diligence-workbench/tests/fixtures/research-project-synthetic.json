@@ -1,0 +1,127 @@
+{
+  "projectSummary": {
+    "name": "Aster Northstar Campus",
+    "location": "Cedar County, Iowa",
+    "description": "Unsupported generated summary: operating 480 MW campus with a 2028 completion date.",
+    "capacityMW": 480,
+    "capacityProvenance": "ai-reported"
+  },
+  "researchStatus": "partial",
+  "researchOutcome": {
+    "state": "complete-no-eligible-evidence",
+    "eligibleEvidenceCount": 0,
+    "reasonCodes": ["no-financially-eligible-claims"]
+  },
+  "evidence": [
+    { "id": "electricity_cost", "label": "Electricity cost", "value": "Not disclosed", "unit": "Context", "classification": "Missing Evidence", "citation": "No validated claim.", "description": "Not established.", "sourceRole": "Research gap", "sourceUrl": "https://northstar.example/announcements/phase-one", "sourceTitle": "Northstar Infrastructure announcement", "sourcePublisher": "Northstar Infrastructure", "sourcePublishedAt": "2025-03-18", "sourceAccessedAt": "2026-03-04", "sourceAccessStatus": "open" },
+    { "id": "water_consumption", "label": "Water consumption", "value": "Not disclosed", "unit": "Context", "classification": "Missing Evidence", "citation": "No validated claim.", "description": "Not established.", "sourceRole": "Research gap" },
+    { "id": "grid_interconnection", "label": "Grid interconnection", "value": "Not disclosed", "unit": "Context", "classification": "Missing Evidence", "citation": "No validated claim.", "description": "Not established.", "sourceRole": "Research gap" },
+    { "id": "water_escalation", "label": "Water escalation", "value": "Not disclosed", "unit": "Context", "classification": "Missing Evidence", "citation": "No validated claim.", "description": "Not established.", "sourceRole": "Research gap" },
+    { "id": "community_risk", "label": "Community risk", "value": "Not disclosed", "unit": "Context", "classification": "Missing Evidence", "citation": "No validated claim.", "description": "Not established.", "sourceRole": "Research gap" },
+    { "id": "renewable_percentage", "label": "Renewable percentage", "value": "Not disclosed", "unit": "Context", "classification": "Missing Evidence", "citation": "No validated claim.", "description": "Not established.", "sourceRole": "Research gap" },
+    { "id": "cooling_capex", "label": "Cooling capex", "value": "Not disclosed", "unit": "Context", "classification": "Missing Evidence", "citation": "No validated claim.", "description": "Not established.", "sourceRole": "Research gap" },
+    { "id": "electricity_escalation", "label": "Electricity escalation", "value": "Not disclosed", "unit": "Context", "classification": "Missing Evidence", "citation": "No validated claim.", "description": "Not established.", "sourceRole": "Research gap" },
+    { "id": "carbon_compliance", "label": "Carbon compliance", "value": "Not disclosed", "unit": "Context", "classification": "Missing Evidence", "citation": "No validated claim.", "description": "Not established.", "sourceRole": "Research gap" },
+    { "id": "permitting_timeline", "label": "Permitting timeline", "value": "Not disclosed", "unit": "Context", "classification": "Missing Evidence", "citation": "No validated claim.", "description": "Not established.", "sourceRole": "Research gap" },
+    { "id": "customer_concentration", "label": "Customer concentration", "value": "Not disclosed", "unit": "Context", "classification": "Missing Evidence", "citation": "No validated claim.", "description": "Not established.", "sourceRole": "Research gap" },
+    { "id": "water_rights", "label": "Water rights", "value": "Not disclosed", "unit": "Context", "classification": "Missing Evidence", "citation": "No validated claim.", "description": "Not established.", "sourceRole": "Research gap" },
+    { "id": "site_hazard_exposure", "label": "Site hazard exposure", "value": "Not disclosed", "unit": "Context", "classification": "Missing Evidence", "citation": "No validated claim.", "description": "Not established.", "sourceRole": "Research gap" },
+    { "id": "backup_power_capacity", "label": "Backup power capacity", "value": "Not disclosed", "unit": "Context", "classification": "Missing Evidence", "citation": "No validated claim.", "description": "Not established.", "sourceRole": "Research gap" },
+    { "id": "water_source_resilience", "label": "Water-source resilience", "value": "Not disclosed", "unit": "Context", "classification": "Missing Evidence", "citation": "No validated claim.", "description": "Not established.", "sourceRole": "Research gap" },
+    { "id": "downtime_cost", "label": "Downtime cost", "value": "Not disclosed", "unit": "Context", "classification": "Missing Evidence", "citation": "No validated claim.", "description": "Not established.", "sourceRole": "Research gap" }
+  ],
+  "sourceLedger": [
+    {
+      "title": "Northstar Infrastructure announcement",
+      "sourceClass": "primary-company",
+      "exactProject": true,
+      "facilityScope": "project",
+      "phaseScope": "exact-phase",
+      "timePeriod": "Phase One announcement",
+      "financialEligibilityState": "unknown",
+      "date": "2025-03-18",
+      "accessOutcome": {
+        "state": "accessible",
+        "reason": "Fetched public page.",
+        "retrievalTime": "2026-03-04T12:30:00.000Z",
+        "passage": "Aster Northstar Campus, operated by Northstar Infrastructure, is located in Cedar County, Iowa.\nThe Phase One utility interconnection was announced at 180 MW; no campus-wide total or IT load is stated."
+      },
+      "url": "https://northstar.example/announcements/phase-one"
+    },
+    {
+      "title": "Regional technology trade report",
+      "sourceClass": "secondary-reporting",
+      "exactProject": true,
+      "facilityScope": "project",
+      "phaseScope": "unknown",
+      "timePeriod": "planned",
+      "financialEligibilityState": "unknown",
+      "date": "2025-05-02",
+      "accessOutcome": {
+        "state": "accessible",
+        "reason": "Fetched public page.",
+        "retrievalTime": "2026-03-05T13:00:00.000Z",
+        "passage": "Northstar Infrastructure's Aster Northstar Campus in Cedar County, Iowa is planned for 24 MW of IT load; an operating date was not reported."
+      },
+      "url": "https://technology.example/reports/northstar-campus"
+    },
+    {
+      "title": "Midwestern planning roundup",
+      "sourceClass": "secondary-reporting",
+      "exactProject": false,
+      "facilityScope": "unknown",
+      "phaseScope": "unknown",
+      "timePeriod": null,
+      "financialEligibilityState": "unknown",
+      "accessOutcome": {
+        "state": "accessible",
+        "reason": "Fetched public page.",
+        "retrievalTime": "2026-03-06T10:00:00.000Z",
+        "passage": "Aster Northstar Campus appeared in a roundup of Midwestern projects; the article did not identify an operator, phase, or state."
+      },
+      "url": "https://planning.example/roundup"
+    },
+    {
+      "title": "Dayton industrial development notice",
+      "sourceClass": "primary-government",
+      "exactProject": false,
+      "facilityScope": "unknown",
+      "phaseScope": "unknown",
+      "timePeriod": null,
+      "financialEligibilityState": "unknown",
+      "accessOutcome": {
+        "state": "accessible",
+        "reason": "Fetched public page.",
+        "retrievalTime": "2026-03-07T10:00:00.000Z",
+        "passage": "Aster Northstar Campus is planned for Dayton, Ohio and is unrelated to the Iowa development."
+      },
+      "url": "https://dayton.example/notices/campus"
+    },
+    {
+      "title": "Other project overview",
+      "sourceClass": "secondary-reporting",
+      "exactProject": false,
+      "facilityScope": "unknown",
+      "phaseScope": "unknown",
+      "timePeriod": null,
+      "financialEligibilityState": "unknown",
+      "accessOutcome": {
+        "state": "accessible",
+        "reason": "Fetched public page.",
+        "retrievalTime": "2026-03-08T10:00:00.000Z",
+        "passage": "An unrelated Oak Harbor data center announcement described a new utility connection in Ohio."
+      },
+      "url": "https://projects.example/oak-harbor"
+    },
+    {
+      "title": "Unopened investor report",
+      "sourceClass": "secondary-reporting",
+      "exactProject": false,
+      "accessOutcome": {
+        "state": "not-attempted",
+        "reason": "The public page was not opened."
+      },
+      "url": "https://reports.example/unopened"
+    }
+  ]
+}

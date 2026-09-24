@@ -46,6 +46,38 @@ function normalizeText(value, maxLength = 500) {
   return typeof value === "string" ? value.trim().replace(/\s+/g, " ").slice(0, maxLength) : "";
 }
 
+function safeGoogleErrorKind(value) {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase().split(/[./]/).at(-1)?.slice(0, 80) ?? "";
+  return /^[a-z0-9_-]+$/.test(normalized) ? normalized : null;
+}
+
+function safeGoogleErrorMessage(value) {
+  return normalizeText(value, 240)
+    .replace(/https?:\/\/\S+/gi, "[redacted-url]")
+    .replace(/Bearer\s+\S+/gi, "Bearer [redacted]")
+    .replace(/\bAIza[A-Za-z0-9_-]+/g, "[redacted-key]")
+    .replace(/\borg-[A-Za-z0-9_-]+\b/gi, "org-[redacted]")
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]")
+    .replace(/(api[_ -]?key|authorization|token)\s*[:=]\s*\S+/gi, "$1=[redacted]");
+}
+
+function googleRateLimitIndicators(headers) {
+  const fields = {
+    retryAfter: "retry-after",
+    limitRequests: "x-ratelimit-limit-requests",
+    remainingRequests: "x-ratelimit-remaining-requests",
+    resetRequests: "x-ratelimit-reset-requests",
+    limitTokens: "x-ratelimit-limit-tokens",
+    remainingTokens: "x-ratelimit-remaining-tokens",
+    resetTokens: "x-ratelimit-reset-tokens",
+  };
+  return Object.fromEntries(Object.entries(fields).flatMap(([key, header]) => {
+    const value = headers.get(header)?.trim().slice(0, 80);
+    return value && /^[A-Za-z0-9_.:/ -]+$/.test(value) ? [[key, value]] : [];
+  }));
+}
+
 function safeCandidateUrl(value) {
   if (typeof value !== "string" || !value.trim()) return null;
   try {
@@ -276,6 +308,7 @@ export async function discoverGoogleGroundedProject({
   model = GOOGLE_GEMINI_MODEL,
   prompt,
   requireGrounding = false,
+  analysisTracker = null,
 } = {}) {
   if (!apiKey) {
     const error = new Error("Google Gemini grounding is not configured.");
@@ -295,17 +328,103 @@ export async function discoverGoogleGroundedProject({
     body: JSON.stringify(requestBody),
     signal,
   };
+  const queuedAtMs = Date.now();
+  const providerAttempt = {
+    provider: "google-gemini-grounding",
+    model,
+    requestCount: GOOGLE_GROUNDED_DISCOVERY_REQUEST_LIMIT,
+    queuedAt: new Date(queuedAtMs).toISOString(),
+    issuedAt: null,
+    finishedAt: null,
+    queueWaitMs: null,
+    elapsedMs: null,
+    status: null,
+    requestState: "queued",
+    outcome: "cancelled-before-issue",
+    usage: null,
+    requestBodyBytes: Buffer.byteLength(requestInit.body),
+  };
+  analysisTracker?.attempts?.push(providerAttempt);
+  let issuedAtMs = null;
+  let tracked = false;
+  const finishAttempt = (outcome, status = null) => {
+    const finishedAtMs = Date.now();
+    if (tracked && analysisTracker) {
+      analysisTracker.inFlight = Math.max(0, analysisTracker.inFlight - 1);
+      tracked = false;
+    }
+    Object.assign(providerAttempt, {
+      finishedAt: new Date(finishedAtMs).toISOString(),
+      elapsedMs: issuedAtMs === null ? null : Math.max(0, finishedAtMs - issuedAtMs),
+      status: Number.isInteger(status) ? status : null,
+      requestState: issuedAtMs === null ? "cancelled-before-issue"
+        : outcome === "completed" ? "completed"
+          : outcome === "cancelled-after-issue" ? "cancelled-after-issue" : "failed",
+      outcome,
+      inFlightAnalysisCount: analysisTracker?.inFlight ?? null,
+    });
+  };
   let response;
+  if (signal?.aborted) {
+    const error = new Error("Google Gemini grounding request was cancelled before issue.");
+    error.name = "GoogleDiscoveryTimeoutError";
+    error.researchErrorType = "google-timeout";
+    error.providerDiagnostic = {
+      provider: "google-gemini-grounding",
+      status: null,
+      upstreamStatus: null,
+      reason: "cancelled-before-issue",
+    };
+    Object.assign(providerAttempt, { providerDiagnostic: error.providerDiagnostic });
+    finishAttempt("cancelled-before-issue");
+    error.providerAttempt = providerAttempt;
+    throw error;
+  }
+  issuedAtMs = Date.now();
+  providerAttempt.issuedAt = new Date(issuedAtMs).toISOString();
+  providerAttempt.queueWaitMs = Math.max(0, issuedAtMs - queuedAtMs);
+  providerAttempt.requestState = "issued";
+  if (analysisTracker) {
+    analysisTracker.inFlight += 1;
+    analysisTracker.peak = Math.max(analysisTracker.peak, analysisTracker.inFlight);
+    tracked = true;
+    providerAttempt.inFlightAnalysisCountAtIssue = analysisTracker.inFlight;
+  }
   try {
     response = await fetchImpl(endpoint, requestInit);
   } catch (cause) {
     const error = new Error("Google Gemini grounding request failed.");
     error.name = cause?.name === "AbortError" ? "GoogleDiscoveryTimeoutError" : "GoogleDiscoveryProviderError";
     error.researchErrorType = cause?.name === "AbortError" ? "google-timeout" : "google-provider-failure";
-    error.providerDiagnostic = { status: null, reason: normalizeText(cause?.message, 180) || "network-failure" };
+    error.providerDiagnostic = {
+      provider: "google-gemini-grounding",
+      status: null,
+      upstreamStatus: null,
+      reason: safeGoogleErrorKind(cause?.code) ?? (cause?.name === "AbortError" ? "aborted" : "network-failure"),
+    };
+    Object.assign(providerAttempt, { providerDiagnostic: error.providerDiagnostic });
+    finishAttempt(cause?.name === "AbortError" || signal?.aborted ? "cancelled-after-issue" : "failed");
+    error.providerAttempt = providerAttempt;
     throw error;
   }
-  const raw = await response.text();
+  let raw;
+  try {
+    raw = await response.text();
+  } catch (cause) {
+    const error = new Error("Google Gemini grounding response could not be read.");
+    error.name = cause?.name === "AbortError" ? "GoogleDiscoveryTimeoutError" : "GoogleDiscoveryProviderError";
+    error.researchErrorType = cause?.name === "AbortError" ? "google-timeout" : "google-provider-failure";
+    error.providerDiagnostic = {
+      provider: "google-gemini-grounding",
+      status: response.status,
+      upstreamStatus: response.status,
+      reason: safeGoogleErrorKind(cause?.code) ?? (cause?.name === "AbortError" ? "aborted" : "response-read-failure"),
+    };
+    Object.assign(providerAttempt, { providerDiagnostic: error.providerDiagnostic });
+    finishAttempt(cause?.name === "AbortError" || signal?.aborted ? "cancelled-after-issue" : "failed", response.status);
+    error.providerAttempt = providerAttempt;
+    throw error;
+  }
   let body;
   try {
     body = JSON.parse(raw);
@@ -314,30 +433,36 @@ export async function discoverGoogleGroundedProject({
     error.name = "GoogleDiscoveryParseError";
     error.researchErrorType = "google-malformed-response";
     error.providerDiagnostic = { status: response.status, reason: "invalid-json" };
+    Object.assign(providerAttempt, { providerDiagnostic: error.providerDiagnostic });
+    finishAttempt("failed", response.status);
+    error.providerAttempt = providerAttempt;
     throw error;
   }
   if (!response.ok) {
     const error = new Error("Google Gemini grounding returned an upstream failure.");
     error.name = "GoogleDiscoveryProviderError";
     const providerStatus = normalizeText(body?.error?.status, 120).toUpperCase();
-    const providerMessage = normalizeText(body?.error?.message, 180);
+    const providerMessage = safeGoogleErrorMessage(body?.error?.message);
     const modelUnavailable = response.status === 404
       && (providerStatus === "NOT_FOUND" || /model|not available|not found/i.test(providerMessage));
     error.researchErrorType = modelUnavailable
       ? "google-model-unavailable"
-      : response.status === 429
-        ? "google-quota-failure"
-        : "google-provider-failure";
+      : "google-provider-failure";
+    const errorCode = safeGoogleErrorKind(body?.error?.code)
+      ?? safeGoogleErrorKind(providerStatus);
+    const errorType = safeGoogleErrorKind(body?.error?.type);
     error.providerDiagnostic = {
-      status: response.status,
-      reason: providerStatus || providerMessage || "upstream-failure",
-    };
-    error.providerAttempt = {
       provider: "google-gemini-grounding",
-      model,
-      requestCount: GOOGLE_GROUNDED_DISCOVERY_REQUEST_LIMIT,
       status: response.status,
-      outcome: "failed",
+      upstreamStatus: response.status,
+      ...(errorCode ? { errorCode } : {}),
+      ...(errorType ? { errorType } : {}),
+      ...(providerMessage ? { message: providerMessage } : {}),
+      rateLimit: googleRateLimitIndicators(response.headers),
+      reason: safeGoogleErrorKind(providerStatus) ?? providerMessage ?? "upstream-failure",
+    };
+    Object.assign(providerAttempt, {
+      providerDiagnostic: error.providerDiagnostic,
       queryCount: 0,
       citationCount: 0,
       groundingMetadataPresent: false,
@@ -345,20 +470,21 @@ export async function discoverGoogleGroundedProject({
       googleSearchResultCount: 0,
       urlCitationCount: 0,
       toolDeclarationTransmitted: requestBody.tools?.some((tool) => tool?.type === "google_search") === true,
-    };
+    });
+    finishAttempt("failed", response.status);
+    error.providerAttempt = providerAttempt;
     throw error;
   }
   let result;
   try {
     result = { ...parseGoogleGroundedDiscoveryResponse(body), model };
   } catch (error) {
-    if (error?.providerDiagnostic) error.providerDiagnostic.status = response.status;
-    error.providerAttempt = {
-      provider: "google-gemini-grounding",
-      model,
-      requestCount: GOOGLE_GROUNDED_DISCOVERY_REQUEST_LIMIT,
-      status: response.status,
-      outcome: "failed",
+    if (error?.providerDiagnostic) {
+      error.providerDiagnostic.status = response.status;
+      error.providerDiagnostic.upstreamStatus = response.status;
+    }
+    Object.assign(providerAttempt, {
+      providerDiagnostic: error?.providerDiagnostic ?? null,
       queryCount: 0,
       citationCount: 0,
       groundingMetadataPresent: false,
@@ -366,27 +492,38 @@ export async function discoverGoogleGroundedProject({
       googleSearchResultCount: 0,
       urlCitationCount: 0,
       toolDeclarationTransmitted: requestBody.tools?.some((tool) => tool?.type === "google_search") === true,
-    };
+    });
+    finishAttempt("failed", response.status);
+    error.providerAttempt = providerAttempt;
     throw error;
   }
   const completed = {
     ...result,
     providerRequestCount: GOOGLE_GROUNDED_DISCOVERY_REQUEST_LIMIT,
     requestContract: sanitizeGoogleGroundedRequest(endpoint, requestInit),
-    providerAttempt: {
-      provider: "google-gemini-grounding",
-      model,
-      requestCount: GOOGLE_GROUNDED_DISCOVERY_REQUEST_LIMIT,
-      status: response.status,
-      outcome: "completed",
-      queryCount: result.queries.length,
-      citationCount: result.citationCount,
-      groundingMetadataPresent: result.groundingMetadataPresent,
-      googleSearchCallCount: result.googleSearchCallCount,
-      googleSearchResultCount: result.googleSearchResultCount,
-      urlCitationCount: result.urlCitationCount,
-      toolDeclarationTransmitted: requestBody.tools?.some((tool) => tool?.type === "google_search") === true,
-    },
+    providerAttempt,
   };
-  return requireGrounding ? assertGoogleGroundedPreflightResult(completed) : completed;
+  Object.assign(providerAttempt, {
+    queryCount: result.queries.length,
+    citationCount: result.citationCount,
+    groundingMetadataPresent: result.groundingMetadataPresent,
+    googleSearchCallCount: result.googleSearchCallCount,
+    googleSearchResultCount: result.googleSearchResultCount,
+    urlCitationCount: result.urlCitationCount,
+    toolDeclarationTransmitted: requestBody.tools?.some((tool) => tool?.type === "google_search") === true,
+  });
+  if (!requireGrounding) {
+    finishAttempt("completed", response.status);
+    return completed;
+  }
+  try {
+    const grounded = assertGoogleGroundedPreflightResult(completed);
+    finishAttempt("completed", response.status);
+    return grounded;
+  } catch (error) {
+    Object.assign(providerAttempt, error?.providerAttempt ?? {});
+    finishAttempt("failed", response.status);
+    error.providerAttempt = providerAttempt;
+    throw error;
+  }
 }

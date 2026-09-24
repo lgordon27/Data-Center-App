@@ -1,0 +1,125 @@
+{
+  "fixtureVersion": 1,
+  "testOnly": true,
+  "synthetic": true,
+  "liveProviderPayloadsIncluded": false,
+  "project": {
+    "name": "Cedar Vault",
+    "operator": "Northstar Compute",
+    "location": "Example County, Ohio",
+    "buildingPhase": "Phase A, Buildings 1–3",
+    "reportingPeriod": "Not stated",
+    "powerMeasure": "IT load"
+  },
+  "documentAccess": {
+    "candidate": {
+      "url": "https://portal.northstar.example.test/projects/cedar-vault",
+      "sourceType": "first-party project page",
+      "expectedOutcome": "blocked",
+      "expectedReason": "private-destination",
+      "expectedValidationReason": "prohibited-address-class",
+      "expectedCategory": "dns-answer-policy",
+      "expectedRejectingRule": "ipv4-private-use",
+      "expectedAnswerFamilyCounts": {
+        "ipv4": 2,
+        "ipv6": 0,
+        "other": 0
+      }
+    },
+    "retrievedPassage": {
+      "sourceId": "synthetic-regional-report",
+      "url": "https://regional-records.example.test/reports/cedar-vault",
+      "title": "Synthetic regional project report",
+      "passage": "Northstar Compute described Cedar Vault Phase A, Buildings 1–3, as planned for commissioning after construction. The phase is described as 168 MW of IT load. The report does not state utility interconnection capacity or that the buildings are operating.",
+      "reportingPeriod": null,
+      "accessDate": "2026-09-24",
+      "accessDateBasis": "offline fixture construction date; not a source publication date",
+      "applicability": {
+        "project": "exact synthetic project name",
+        "operator": "exact synthetic operator",
+        "location": "Example County, Ohio",
+        "buildingPhase": "Phase A, Buildings 1–3",
+        "operationStatus": "planned",
+        "powerMeasure": "IT load"
+      }
+    }
+  },
+  "unsupportedSummaryClaims": [
+    {
+      "claim": "The complete campus has 480 MW of operating utility capacity.",
+      "reason": "The retrieved passage supports only a planned phase-specific IT-load figure and explicitly does not establish utility capacity or operation."
+    },
+    {
+      "claim": "The project occupies 1,000 acres and is already operating.",
+      "reason": "Neither acreage nor operating status is established by the retrieved passage."
+    }
+  ],
+  "providerFailures": [
+    {
+      "httpStatus": 429,
+      "errorCode": "rate_limit_exceeded",
+      "errorType": "rate_limit_error",
+      "retryAfter": "12",
+      "rateLimit": {
+        "limitRequests": "10",
+        "remainingRequests": "0",
+        "resetRequests": "12s",
+        "limitTokens": "20000",
+        "remainingTokens": "0",
+        "resetTokens": "12s"
+      },
+      "expectedClassification": "provider-rate-limit"
+    },
+    {
+      "httpStatus": 429,
+      "errorCode": "insufficient_quota",
+      "errorType": "insufficient_quota",
+      "expectedClassification": "quota-exhausted"
+    },
+    {
+      "httpStatus": 429,
+      "expectedClassification": "provider-429"
+    }
+  ],
+  "requestOutcomes": [
+    {
+      "requestState": "failed",
+      "outcome": "failed",
+      "status": 429,
+      "issued": true
+    },
+    {
+      "requestState": "cancelled-before-issue",
+      "outcome": "cancelled-before-issue",
+      "status": null,
+      "issued": false
+    },
+    {
+      "requestState": "cancelled-after-issue",
+      "outcome": "cancelled-after-issue",
+      "status": null,
+      "issued": true,
+      "cause": "deadline"
+    }
+  ],
+  "historicalDataBankDiagnostic": {
+    "savedAccessReason": "private-destination",
+    "observedResolverAnswersRetained": false,
+    "resolverMessagesRetained": false,
+    "rootCause": "unknown",
+    "insufficientEvidenceFor": [
+      "prohibited DNS answer",
+      "resolver or hosting behavior",
+      "classifier defect",
+      "redirect defect"
+    ],
+    "smallestNonPaidRuntimeDiagnostic": {
+      "target": "one previously rejected DataBank first-party URL from the preserved local diagnostic",
+      "purpose": "re-run one bounded document-access attempt with the existing redirect-by-redirect DNS validation and pinned transport, capturing only the rejecting DNS rule/category, answer family/count totals, resolver error code, sanitized HTTP status, and transport stage",
+      "documentAccessAttempts": 1,
+      "providerRequests": 0,
+      "expectedEvidence": "per-hop validation result, family/count-only DNS telemetry, and bounded transport outcome; never retain addresses, queries, credentials, or response body",
+      "costBoundary": "no paid provider request"
+    }
+  }
+}

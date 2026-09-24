@@ -32,6 +32,7 @@ import {
 import { ClaimCitation } from "@/components/ClaimCitation";
 import { summarizeResearchAudit, summarizeSourceCoverage } from "@/services/researchProjectService";
 import { ResearchSearchAudit } from "@/components/ResearchSearchAudit";
+import { RetainedResearchFindings } from "@/components/RetainedResearchFindings";
 
 function ScopeLimitationsDisclosure() {
   return (
@@ -81,19 +82,19 @@ function CustomCaseBrief({ project, onNavigate, onFocusCommunity }: { project: R
   const sourceCoverage = summarizeSourceCoverage(researchItems);
   const researchAudit = summarizeResearchAudit(researchItems);
   const isDefaultAssumptions = project.researchMode === "default-assumptions";
-  const isResearchIncomplete = project.researchMode === "research-incomplete";
+  const isResearchIncomplete = project.researchMode === "research-incomplete"
+    || project.researchStatus === "timed-out"
+    || project.researchStatus === "failed"
+    || project.researchStatus === "cancelled";
+  const isPartialResearch = project.researchMode === "partial-public-source" || project.researchStatus === "partial";
   const eligibleEvidenceCount = project.eligibleEvidenceCount ?? 0;
   const retrievedLeadCount = project.retrievedLeadCount ?? 0;
-  const capacityLabel = project.capacityProvenance === "directory-reported"
-    ? "Directory-reported model capacity"
-    : project.capacityProvenance === "ai-reported"
-      ? "AI-reported model capacity"
-      : "Standardized model capacity";
+  const capacityLabel = project.capacityMW === null
+    ? "Project capacity unknown"
+    : "Directory-reported capacity";
   const capacityNote = project.capacityProvenance === "directory-reported"
-    ? "Compute Atlas directory capacity used to scale the synthetic model; it is not SafeLoc evidence."
-    : project.capacityProvenance === "ai-reported"
-      ? "AI-reported capacity used to scale the synthetic model."
-      : "No usable project capacity returned; standardized 1,200 MW default used.";
+    ? "Directory discovery value; it is not an independently verified operating, IT-load, or phase-capacity measure and does not enable custom-project modeling."
+    : "No defensible project-level capacity has been established. Reported MW values remain scoped to their attributed source passages.";
   const cacheLabel = project.researchCache
     ? project.researchCache.state === "updated" ? "Updated just now"
       : `${project.researchCache.state[0].toUpperCase()}${project.researchCache.state.slice(1)} cached research`
@@ -103,13 +104,13 @@ function CustomCaseBrief({ project, onNavigate, onFocusCommunity }: { project: R
       <PageIntro
         eyebrow="01 / frame the opportunity"
         title={project.name}
-        description={isDefaultAssumptions ? "Review the default project setup, capacity basis, and unresolved evidence scope before using the model." : isResearchIncomplete ? "Research Incomplete: review source coverage before treating any generated lead as evidence." : "Review the researched project summary, capacity basis, and evidence scope before relying on the return."}
-        right={<div data-testid="custom-project-status" className="flex items-center gap-2 self-start rounded-full border border-[#f1cb8b] bg-[#fff8e9] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#6f460e] md:self-auto"><span className="h-2 w-2 rounded-full bg-[#a65a00]" /> {isDefaultAssumptions ? "Default assumptions · research unavailable" : isResearchIncomplete ? "Research Incomplete" : "AI-researched · high-level"}</div>}
+        description={isDefaultAssumptions ? "Review the default project setup, capacity basis, and unresolved evidence scope before using the model." : isResearchIncomplete ? "Research Incomplete: review source coverage before treating any generated lead as evidence." : isPartialResearch ? "Partial public-source research: review retained passages, scope assessments, and eligibility separately." : "Review the researched project summary, capacity basis, and evidence scope before relying on the return."}
+        right={<div data-testid="custom-project-status" className="flex items-center gap-2 self-start rounded-full border border-[#f1cb8b] bg-[#fff8e9] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#6f460e] md:self-auto"><span className="h-2 w-2 rounded-full bg-[#a65a00]" /> {isDefaultAssumptions ? "Default assumptions · research unavailable" : isResearchIncomplete ? "Research Incomplete" : isPartialResearch ? "Partial public-source research" : "Research reviewed · claims remain quarantined"}</div>}
       />
       <section data-testid="custom-project-summary" className="rounded-xl border border-[#cbd8d4] bg-white p-5 md:p-7">
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[#e5eae8] pb-5">
           <div><SectionKicker>Custom project summary</SectionKicker><h2 className="text-[29px] font-semibold tracking-[-0.04em] text-[#122232]">{project.name}</h2><p className="mt-2 flex items-center gap-2 text-[12px] text-[#52616b]"><MapPin className="h-3.5 w-3.5 text-[#ba2f45]" />{project.location}</p></div>
-          <div className="rounded-lg bg-[#122232] px-4 py-3 text-right text-white"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#a4b4bd]">{capacityLabel}</div><div data-testid="custom-project-capacity" className="mt-1 font-mono text-xl font-bold text-[#d4e86b]">{project.capacityMW.toLocaleString()} MW</div><div data-testid="custom-project-capacity-note" className="mt-1 max-w-[180px] text-[9px] leading-4 text-[#c4d0d6]">{capacityNote}</div></div>
+          <div className="rounded-lg bg-[#122232] px-4 py-3 text-right text-white"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#a4b4bd]">{capacityLabel}</div><div data-testid="custom-project-capacity" className="mt-1 font-mono text-xl font-bold text-[#d4e86b]">{project.capacityMW === null ? "Unknown" : `${project.capacityMW.toLocaleString()} MW`}</div><div data-testid="custom-project-capacity-note" className="mt-1 max-w-[180px] text-[9px] leading-4 text-[#c4d0d6]">{capacityNote}</div></div>
         </div>
         {isResearchIncomplete ? (
           <div data-testid="custom-unverified-leads" className="mt-5 rounded-lg border border-[#f1cb8b] bg-[#fff8e9] p-4">
@@ -119,6 +120,9 @@ function CustomCaseBrief({ project, onNavigate, onFocusCommunity }: { project: R
         ) : (
           <p data-testid="custom-project-description" className="mt-5 max-w-4xl text-[13px] leading-6 text-[#344550]">{project.description}</p>
         )}
+        <div className="mt-5">
+          <RetainedResearchFindings findings={project.retainedFindings} audit={project.retainedFindingAudit} />
+        </div>
         <aside data-testid="custom-research-acceptance-boundary" className="mt-4 rounded-lg border-2 border-[#ba2f45] bg-[#fff3f4] px-4 py-3 text-[10px] leading-5 text-[#7f2635]">
           <strong>Research is not yet accepted into the model.</strong> Loading, reviewing, refreshing, or caching a finding cannot change returns, decision posture, or material-gap counts. {eligibleEvidenceCount} eligible proposal{eligibleEvidenceCount === 1 ? "" : "s"} await explicit reviewer acceptance; {retrievedLeadCount} lead{retrievedLeadCount === 1 ? "" : "s"} remain quarantined.
         </aside>

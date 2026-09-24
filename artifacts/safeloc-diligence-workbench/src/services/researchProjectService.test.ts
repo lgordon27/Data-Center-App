@@ -44,6 +44,18 @@ test("uses the persisted terminal outcome for status and gates proposal review o
   assert.equal(noProposal.label, "Research complete · eligible evidence found");
   assert.equal(noProposal.proposalReview, false);
 
+  const noEligibleEvidence = getResearchStatusPresentation({
+    outcome: {
+      state: "complete-no-eligible-evidence",
+      eligibleEvidenceCount: 0,
+      reasonCodes: ["no-financially-eligible-claims"],
+    },
+    researchMode: "research-incomplete",
+    eligibleProposalCount: 0,
+  });
+  assert.equal(noEligibleEvidence.label, "Research complete · no eligible evidence");
+  assert.equal(noEligibleEvidence.mode, "partial-public-source");
+
   const review = getResearchStatusPresentation({
     outcome: {
       state: "complete-with-eligible-evidence",
@@ -74,68 +86,63 @@ test("labels updated provider responses as live and retained cache responses as 
   }
 });
 
-const response = {
-  projectSummary: { name: "Atlas", location: "Texas", description: "High-level research.", capacityMW: 600 },
-  evidence: CUSTOM_EVIDENCE_IDS.map((id) => ({
-    id,
-    label: id,
-    value: "Not disclosed",
-    unit: "Context",
-    classification: "Missing Evidence" as const,
-    citation: "Public source searched.",
-    description: "Not established at facility level.",
-    sourceRole: "AI-researched",
-    ...(id === CUSTOM_EVIDENCE_IDS[0] ? {
-      sourceUrl: "https://example.com/atlas/source",
-      sourceTitle: "Atlas filing",
-      sourcePublisher: "example.com",
-      sourcePublishedAt: "2026-06-01",
-      sourceAccessedAt: "2026-08-30",
-      sourceAccessStatus: "not provided",
-    } : {}),
-  })),
-};
+const response = JSON.parse(readFileSync(
+  new URL("../../tests/fixtures/research-project-synthetic.json", import.meta.url),
+  "utf8",
+));
 
 test("accepts the exact 16-item custom research contract", () => {
   const parsed = parseResponse(response);
   assert.equal(parsed.evidence.length, 16);
-  assert.equal(parsed.projectSummary.capacityMW, 1_200);
-  assert.equal(parsed.projectSummary.capacityProvenance, "standardized-default");
-  assert.doesNotMatch(parsed.projectSummary.description, /\b600\b/);
+  assert.equal(parsed.projectSummary.capacityMW, null);
+  assert.equal(parsed.projectSummary.capacityProvenance, "unknown");
+  assert.doesNotMatch(parsed.projectSummary.description, /\b480\b|2028/);
 });
 
-test("replays the saved DataBank response without promoting unsupported summary facts or research findings", () => {
-  const saved = JSON.parse(readFileSync(
-    new URL("../../diagnostics/databank-red-oak-single-shot-2026-09-23.json", import.meta.url),
-    "utf8",
-  ));
-  const parsed = parseResponse({
-    ...saved,
-    replay: {
-      mode: "offline-saved-response",
-      sourceRunDate: "2026-09-23",
-      originalResponseSha256: "ccc821ebfae2cf0e90521cc51579a8716722a0aa61c3a1b2f8f766114b58e41b",
-    },
+test("retains exact scoped passages and separates project support, attributed reporting, ambiguity, and finance eligibility", () => {
+  const parsed = parseResponse(response, {
+    name: "Aster Northstar Campus",
+    location: "Cedar County, Iowa",
+    knownData: { operator: "Northstar Infrastructure", state: "Iowa" },
   });
+  const findings = parsed.retainedFindings ?? [];
+  assert.equal(findings.length, 3);
+  assert.equal(findings.filter((finding) => finding.assessment === "source-supported").length, 1);
+  assert.equal(findings.filter((finding) => finding.assessment === "attributed-report").length, 1);
+  assert.equal(findings.filter((finding) => finding.assessment === "ambiguous-unresolved").length, 1);
 
-  assert.equal(parsed.projectSummary.capacityMW, 1_200);
-  assert.equal(parsed.projectSummary.capacityProvenance, "standardized-default");
-  assert.doesNotMatch(parsed.projectSummary.description, /\b480\s*MW\b|Oracle|292 acres/i);
-  assert.equal(parsed.replay?.mode, "offline-saved-response");
-  assert.equal(parsed.researchOutcome?.state, "incomplete-technical-limitation");
+  const phaseFinding = findings.find((finding) => finding.assessment === "source-supported");
+  assert.match(phaseFinding?.passage ?? "", /Phase One utility interconnection was announced at 180 MW/);
+  assert.equal(phaseFinding?.powerMeasure, "utility/grid service or interconnection");
+  assert.equal(phaseFinding?.financialProposalEligibility, "unresolved");
+  assert.equal(phaseFinding?.reportingDate, "2025-03-18");
+  assert.equal(phaseFinding?.reportingDateBasis, "retrieved-source-metadata");
+  assert.equal(phaseFinding?.accessedAt, "2026-03-04");
+  assert.equal(phaseFinding?.accessedAtBasis, "retrieval-time");
+
+  const itLoadFinding = findings.find((finding) => finding.powerMeasure === "IT load/capacity");
+  assert.equal(itLoadFinding?.assessment, "attributed-report");
+  assert.equal(itLoadFinding?.powerMeasure, "IT load/capacity");
+  assert.equal(findings.some((finding) => /Dayton|Oak Harbor/.test(finding.passage)), false);
+  assert.equal(parsed.retainedFindingAudit?.unrelatedExcludedCount, 2);
+  const duplicatePassage = parseResponse({
+    ...response,
+    sourceLedger: [...response.sourceLedger, response.sourceLedger[0]],
+  }, {
+    name: "Aster Northstar Campus",
+    location: "Cedar County, Iowa",
+    knownData: { operator: "Northstar Infrastructure", state: "Iowa" },
+  });
+  assert.equal(duplicatePassage.retainedFindings?.length, findings.length);
+  assert.equal(duplicatePassage.retainedFindingAudit?.duplicateExcludedCount, 1);
+  assert.equal(parsed.retainedFindingAudit?.financiallyEligibleCount, 0);
+  assert.equal(parsed.projectSummary.capacityMW, null);
+  assert.equal(parsed.projectSummary.capacityProvenance, "unknown");
   assert.equal(parsed.eligibleEvidence?.length, 0);
-  assert.equal(parsed.proposedInputs?.length, 0);
-  assert.equal(parsed.acceptedModelInputs?.length, 0);
-
-  const capacityFinding = parsed.retainedFindings?.find((finding) => finding.topic === "capacity-phase");
-  assert.match(capacityFinding?.statement ?? "", /180 MW.*DFW9.*DFW10.*DFW11/i);
-  assert.match(capacityFinding?.phaseScope ?? "", /first three buildings only/i);
-  assert.equal(capacityFinding?.evidenceEligibility, "research-only");
-  assert.equal(capacityFinding?.demonstratedFinancialEffect, false);
-  assert.ok(parsed.retainedFindings?.some((finding) =>
-    finding.topic === "community-context"
-    && /not a verified engineering, utility, or regulatory conclusion/i.test(finding.attribution)));
-  assert.equal(parsed.retainedFindings?.some((finding) => /compass/i.test(finding.statement)), false);
+  assert.match(parsed.projectSummary.description, /Generated project-summary prose is withheld/);
+  assert.doesNotMatch(parsed.projectSummary.description, /480 MW|2028/);
+  assert.equal(parsed.researchStatus, "partial");
+  assert.equal(parsed.researchMode, "partial-public-source");
 });
 
 test("preserves eligible server evidence through client parsing", () => {
@@ -176,6 +183,10 @@ test("preserves eligible server evidence through client parsing", () => {
   const parsed = parseResponse(valid);
   const evidence = parsed.evidence[0];
   assert.equal(evidence.eligibleForModel, true);
+  assert.equal(evidence.acceptedForModel, false);
+  assert.notEqual(evidence.researchState, "accepted");
+  assert.equal(parsed.acceptedModelInputs?.length, 0);
+  assert.equal(parsed.proposedInputs?.length, 1);
   assert.equal(evidence.sourceValidation?.state, "financially-eligible");
 });
 
@@ -393,9 +404,9 @@ test("keeps model self-confidence separate from source support and every model o
   assert.equal(createDefaultAssumptionResearch("Fallback", "Texas").evidence[0].modelReportedConfidence, undefined);
 });
 
-test("source URLs without exact-project validation leave research incomplete", () => {
+test("source URLs without exact-project validation remain partial and quarantined", () => {
   const parsed = parseResponse(response);
-  assert.equal(parsed.researchMode, "research-incomplete");
+  assert.equal(parsed.researchMode, "partial-public-source");
   assert.equal(parsed.eligibleEvidence?.length, 0);
   assert.equal(parsed.proposedInputs?.length, 0);
   assert.equal(parsed.retrievedLeads?.length, 16);
@@ -429,15 +440,18 @@ test("retains the complete bounded response-level search audit beyond eight quer
   assert.equal(result.researchCoverage?.toolCallBudgetExceeded, true);
 });
 
-test("uses the standardized capacity fallback for malformed or implausible capacity", () => {
+test("keeps capacity unknown when returned AI values are malformed or unsupported", () => {
   for (const capacityMW of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, 10_001, "2,000 MW"]) {
     const parsed = parseResponse({
       ...response,
       projectSummary: { ...response.projectSummary, capacityMW },
     });
-    assert.equal(parsed.projectSummary.capacityMW, 1_200);
-    assert.equal(parsed.projectSummary.capacityProvenance, "standardized-default");
+    assert.equal(parsed.projectSummary.capacityMW, null);
+    assert.equal(parsed.projectSummary.capacityProvenance, "unknown");
   }
+  const directoryReported = parseResponse(response, { knownData: { capacity: 980 } });
+  assert.equal(directoryReported.projectSummary.capacityMW, 980);
+  assert.equal(directoryReported.projectSummary.capacityProvenance, "directory-reported");
 });
 
 test("rejects custom responses with a missing modeled item", () => {
@@ -446,10 +460,10 @@ test("rejects custom responses with a missing modeled item", () => {
 
 test("keeps only safe direct source links from custom responses", () => {
   const parsed = parseResponse(response);
-  assert.equal(parsed.evidence[0].sourceUrl, "https://example.com/atlas/source");
-  assert.equal(parsed.evidence[0].sourceTitle, "Atlas filing");
-  assert.equal(parsed.evidence[0].sourcePublishedAt, "2026-06-01");
-  assert.equal(parsed.evidence[0].sourceAccessStatus, "not provided");
+  assert.equal(parsed.evidence[0].sourceUrl, "https://northstar.example/announcements/phase-one");
+  assert.equal(parsed.evidence[0].sourceTitle, "Northstar Infrastructure announcement");
+  assert.equal(parsed.evidence[0].sourcePublishedAt, "2025-03-18");
+  assert.equal(parsed.evidence[0].sourceAccessStatus, "open");
 
   const unsafe = {
     ...response,
@@ -653,6 +667,9 @@ test("creates an explicitly labeled 16-item Missing Evidence fallback", () => {
   assert.equal(fallback.evidence.length, 16);
   assert.equal(fallback.evidence.every((item) => item.classification === "Missing Evidence"), true);
   assert.equal(fallback.evidence.every((item) => item.sourceUrl === undefined), true);
+  const noDirectoryCapacity = createDefaultAssumptionResearch("Atlas", "Taylor County, Texas");
+  assert.equal(noDirectoryCapacity.projectSummary.capacityMW, null);
+  assert.equal(noDirectoryCapacity.projectSummary.capacityProvenance, "unknown");
 });
 
 test("preserves server-normalized varied classifications and partial coverage", () => {

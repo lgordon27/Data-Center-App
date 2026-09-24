@@ -15,7 +15,6 @@ export const RESEARCH_PROJECT_ENDPOINT = "/api/research-project";
 // The server owns the single research deadline.  Keep the client request
 // budget aligned, but do not add a second browser wall-clock terminal state.
 export const RESEARCH_PROJECT_TIMEOUT_MS = 90_000;
-export const DEFAULT_RESEARCH_CAPACITY_MW = 1_200;
 export const MAX_RESEARCH_CAPACITY_MW = 10_000;
 
 export const CUSTOM_EVIDENCE_IDS = [
@@ -147,7 +146,7 @@ export type CustomResearchResponse = {
     name: string;
     location: string;
     description: string;
-    capacityMW: number;
+    capacityMW: number | null;
     capacityProvenance: CapacityProvenance;
   };
   researchMode?: ResearchMode;
@@ -213,6 +212,7 @@ export type CustomResearchResponse = {
   acceptedModelInputs?: CustomEvidenceRecord[];
   quarantineReasons?: string[];
   retainedFindings?: RetainedResearchFinding[];
+  retainedFindingAudit?: RetainedResearchFindingAudit;
   replay?: {
     mode: "offline-saved-response";
     sourceRunDate: string | null;
@@ -221,18 +221,35 @@ export type CustomResearchResponse = {
 };
 export type RetainedResearchFinding = {
   id: string;
-  topic: "capacity-phase" | "community-context";
+  topic: string;
+  assessment: "source-supported" | "attributed-report" | "ambiguous-unresolved";
+  applicability: "exact-project" | "ambiguous";
+  financialProposalEligibility: "eligible" | "ineligible" | "unresolved";
   statement: string;
   attribution: string;
   projectScope: string;
   phaseScope: string;
+  timePeriod: string | null;
+  powerMeasure: string | null;
   reportingDate: string | null;
+  reportingDateBasis: "retrieved-source-metadata" | "not-reported";
   accessedAt: string | null;
+  accessedAtBasis: "retrieval-time" | "not-recorded";
   sourceTitle: string;
   sourceUrl: string;
   passage: string;
   evidenceEligibility: "research-only";
   demonstratedFinancialEffect: false;
+};
+export type RetainedResearchFindingAudit = {
+  accessiblePassagesReviewed: number;
+  sourceSupportedCount: number;
+  attributedReportCount: number;
+  ambiguousUnresolvedCount: number;
+  unrelatedExcludedCount: number;
+  duplicateExcludedCount: number;
+  inaccessibleExcludedCount: number;
+  financiallyEligibleCount: number;
 };
 export type ResearchOutcomeState =
   | "complete-with-eligible-evidence"
@@ -283,7 +300,7 @@ export function getResearchStatusPresentation({
       state,
       label: "Research complete · no eligible evidence",
       proposalReview: false,
-      mode: "research-incomplete",
+      mode: "partial-public-source",
     };
   }
   if (state === "incomplete-technical-limitation") {
@@ -624,7 +641,7 @@ export type ResearchStatusResponse = {
   result?: CustomResearchResponse;
 };
 
-export type CapacityProvenance = "ai-reported" | "directory-reported" | "standardized-default";
+export type CapacityProvenance = "ai-reported" | "directory-reported" | "standardized-default" | "unknown";
 export type ResearchMode = "ai-researched" | "partial-public-source" | "default-assumptions" | "research-incomplete";
 export type KnownProjectData = {
   capacity?: number | null;
@@ -712,85 +729,211 @@ function safeLedgerUrl(value: Record<string, unknown>) {
     ?? safePublicSourceUrl(value.url);
 }
 
-function sentenceContaining(text: string, pattern: RegExp) {
-  const sentences = text.replace(/\s+/g, " ").trim().split(/(?<=[.!?])\s+/);
-  const index = sentences.findIndex((sentence) => pattern.test(sentence));
-  if (index < 0) return null;
-  return [sentences[Math.max(0, index - 1)], sentences[index]]
-    .filter(Boolean)
-    .join(" ")
-    .slice(0, 1_200);
+const US_STATE_NAMES = [
+  "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", "Connecticut", "Delaware",
+  "Florida", "Georgia", "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky",
+  "Louisiana", "Maine", "Maryland", "Massachusetts", "Michigan", "Minnesota", "Mississippi",
+  "Missouri", "Montana", "Nebraska", "Nevada", "New Hampshire", "New Jersey", "New Mexico",
+  "New York", "North Carolina", "North Dakota", "Ohio", "Oklahoma", "Oregon", "Pennsylvania",
+  "Rhode Island", "South Carolina", "South Dakota", "Tennessee", "Texas", "Utah", "Vermont",
+  "Virginia", "Washington", "West Virginia", "Wisconsin", "Wyoming",
+];
+
+export type ResearchIdentity = {
+  name?: string;
+  location?: string;
+  knownData?: KnownProjectData;
+};
+
+function normalizeIdentityText(value: string) {
+  return value.toLocaleLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
-export function deriveRetainedResearchFindings(sourceLedger: unknown): RetainedResearchFinding[] {
-  if (!Array.isArray(sourceLedger)) return [];
+function stateInText(value: string) {
+  const normalized = normalizeIdentityText(value);
+  return US_STATE_NAMES.find((state) => {
+    const name = normalizeIdentityText(state);
+    return ` ${normalized} `.includes(` ${name} `);
+  });
+}
+
+function statesInText(value: string) {
+  const normalized = normalizeIdentityText(value);
+  return US_STATE_NAMES.filter((state) => ` ${normalized} `.includes(` ${normalizeIdentityText(state)} `));
+}
+
+const US_STATE_CODES: Record<string, string> = {
+  al: "Alabama", ak: "Alaska", az: "Arizona", ar: "Arkansas", ca: "California",
+  co: "Colorado", ct: "Connecticut", de: "Delaware", fl: "Florida", ga: "Georgia",
+  hi: "Hawaii", id: "Idaho", il: "Illinois", in: "Indiana", ia: "Iowa", ks: "Kansas",
+  ky: "Kentucky", la: "Louisiana", me: "Maine", md: "Maryland", ma: "Massachusetts",
+  mi: "Michigan", mn: "Minnesota", ms: "Mississippi", mo: "Missouri", mt: "Montana",
+  ne: "Nebraska", nv: "Nevada", nh: "New Hampshire", nj: "New Jersey", nm: "New Mexico",
+  ny: "New York", nc: "North Carolina", nd: "North Dakota", oh: "Ohio", ok: "Oklahoma",
+  or: "Oregon", pa: "Pennsylvania", ri: "Rhode Island", sc: "South Carolina",
+  sd: "South Dakota", tn: "Tennessee", tx: "Texas", ut: "Utah", vt: "Vermont",
+  va: "Virginia", wa: "Washington", wv: "West Virginia", wi: "Wisconsin", wy: "Wyoming",
+};
+
+function canonicalState(value: string | null | undefined) {
+  if (!value) return undefined;
+  const normalized = normalizeIdentityText(value);
+  return US_STATE_NAMES.find((state) => normalizeIdentityText(state) === normalized)
+    ?? US_STATE_CODES[normalized];
+}
+
+function findingApplicability(
+  passage: string,
+  candidate: Record<string, unknown>,
+  identity: ResearchIdentity,
+): "exact-project" | "ambiguous" | "unrelated" {
+  const normalizedPassage = normalizeIdentityText(passage);
+  const projectName = isNonEmptyString(identity.name) ? normalizeIdentityText(identity.name) : "";
+  const nameMatches = Boolean(projectName && ` ${normalizedPassage} `.includes(` ${projectName} `));
+  const aliases = identity.knownData?.aliases?.filter(isNonEmptyString).map(normalizeIdentityText) ?? [];
+  const aliasMatches = aliases.some((alias) => alias && ` ${normalizedPassage} `.includes(` ${alias} `));
+  const hasIdentityName = nameMatches || aliasMatches;
+  const requestedState = canonicalState(identity.knownData?.state)
+    ?? (isNonEmptyString(identity.location) ? stateInText(identity.location) : undefined);
+  const passageStates = statesInText(passage);
+  const stateConflicts = Boolean(requestedState && passageStates.some((state) =>
+    normalizeIdentityText(requestedState) !== normalizeIdentityText(state)));
+  const requestedOperator = isNonEmptyString(identity.knownData?.operator)
+    ? normalizeIdentityText(identity.knownData.operator)
+    : "";
+  const operatorMatches = !requestedOperator || ` ${normalizedPassage} `.includes(` ${requestedOperator} `);
+
+  if (stateConflicts || (!hasIdentityName && candidate.exactProject !== true)) return "unrelated";
+  if (
+    candidate.exactProject === true
+    && hasIdentityName
+    && !stateConflicts
+    && operatorMatches
+    && (!requestedState || passageStates.some((state) => normalizeIdentityText(requestedState) === normalizeIdentityText(state)))
+  ) return "exact-project";
+  return "ambiguous";
+}
+
+function powerMeasureFromPassage(passage: string) {
+  const normalized = passage.replace(/\s+/g, " ").trim();
+  const itLoadIsUnreported = /\b(?:no|not|without|unreported|unknown|undisclosed)\b.{0,70}\b(?:IT|information technology|computing)\s+(?:load|capacity)\b/i.test(normalized);
+  const measurePatterns: Array<[RegExp, string]> = [
+    [/\b(?:IT|information technology|computing)\s+(?:load|capacity)\b/i, "IT load/capacity"],
+    [/\b(?:utility|grid)\s+(?:service|interconnection|connection|capacity)\b/i, "utility/grid service or interconnection"],
+    [/\b(?:backup|standby|onsite|on-site)\s+(?:power|generation|generators?)\b/i, "backup/onsite generation"],
+    [/\b(?:campus|site|facility|project)\s+(?:total\s+)?(?:power\s+)?capacity\b/i, "stated campus/site/facility capacity"],
+    [/\b(?:contracted|reserved|planned|announced)\s+(?:power\s+)?capacity\b/i, "contracted/reserved/planned capacity"],
+  ];
+  return measurePatterns.find(([pattern, label]) => pattern.test(normalized) && !(label === "IT load/capacity" && itLoadIsUnreported))?.[1] ?? null;
+}
+
+function financialEligibilityFromLedger(candidate: Record<string, unknown>): RetainedResearchFinding["financialProposalEligibility"] {
+  const state = typeof candidate.financialEligibilityState === "string"
+    ? candidate.financialEligibilityState.trim().toLocaleLowerCase()
+    : "";
+  if (["eligible", "financially-eligible", "proposal-eligible"].includes(state)) return "eligible";
+  if (["ineligible", "not-eligible", "blocked", "research-only"].includes(state)) return "ineligible";
+  return "unresolved";
+}
+
+function deriveRetainedResearchFindingReport(sourceLedger: unknown, identity: ResearchIdentity = {}) {
   const findings: RetainedResearchFinding[] = [];
+  const audit: RetainedResearchFindingAudit = {
+    accessiblePassagesReviewed: 0,
+    sourceSupportedCount: 0,
+    attributedReportCount: 0,
+    ambiguousUnresolvedCount: 0,
+    unrelatedExcludedCount: 0,
+    duplicateExcludedCount: 0,
+    inaccessibleExcludedCount: 0,
+    financiallyEligibleCount: 0,
+  };
+  if (!Array.isArray(sourceLedger)) return { findings, audit };
+
+  const seenPassages = new Set<string>();
   for (const candidate of sourceLedger) {
-    if (!isRecord(candidate) || !isRecord(candidate.accessOutcome) || candidate.accessOutcome.state !== "accessible") continue;
-    const passage = isNonEmptyString(candidate.accessOutcome.passage)
-      ? candidate.accessOutcome.passage.replace(/\s+/g, " ").trim()
-      : "";
+    if (!isRecord(candidate) || !isRecord(candidate.accessOutcome) || candidate.accessOutcome.state !== "accessible") {
+      audit.inaccessibleExcludedCount += 1;
+      continue;
+    }
+    const passage = isNonEmptyString(candidate.accessOutcome.passage) ? candidate.accessOutcome.passage : "";
     const sourceUrl = safeLedgerUrl(candidate);
-    if (!passage || !sourceUrl) continue;
+    if (!passage.trim() || !sourceUrl) {
+      audit.inaccessibleExcludedCount += 1;
+      continue;
+    }
+    audit.accessiblePassagesReviewed += 1;
+    const duplicateKey = `${sourceUrl.toLocaleLowerCase()}|${normalizeIdentityText(passage)}`;
+    if (seenPassages.has(duplicateKey)) {
+      audit.duplicateExcludedCount += 1;
+      continue;
+    }
+    seenPassages.add(duplicateKey);
+    const applicability = findingApplicability(passage, candidate, identity);
+    if (applicability === "unrelated") {
+      audit.unrelatedExcludedCount += 1;
+      continue;
+    }
+
     const title = isNonEmptyString(candidate.title) ? candidate.title.trim() : new URL(sourceUrl).hostname;
-    const accessedAt = optionalDate(candidate.accessedAt ?? candidate.accessOutcome.retrievalTime) ?? null;
-    if (/\bcompass\b/i.test(passage) && !/\bdatabank\b/i.test(passage)) continue;
-
-    if (
-      /\bdatabank\b/i.test(passage)
-      && /\bred oak\b/i.test(passage)
-      && /\bfirst three\b/i.test(passage)
-      && /\bDFW9\b/i.test(passage)
-      && /\bDFW10\b/i.test(passage)
-      && /\bDFW11\b/i.test(passage)
-      && /\b180\s*MW\b/i.test(passage)
-    ) {
-      const scopedPassage = sentenceContaining(passage, /\b180\s*MW\b/i);
-      if (scopedPassage) findings.push({
-        id: "retained-capacity-first-three-buildings",
-        topic: "capacity-phase",
-        statement: "A retained third-party passage reports 180 MW across DFW9, DFW10, and DFW11.",
-        attribution: `Attributed to ${title}; not independently verified by SafeLoc.`,
-        projectScope: "DataBank Red Oak campus reporting",
-        phaseScope: "First three buildings only; not full-campus or operating capacity",
-        reportingDate: /\bUpdated April 2026\b/i.test(passage) ? "2026-04" : null,
-        accessedAt,
-        sourceTitle: title,
-        sourceUrl,
-        passage: scopedPassage,
-        evidenceEligibility: "research-only",
-        demonstratedFinancialEffect: false,
-      });
-    }
-
-    if (
-      /\bred oak\b/i.test(passage)
-      && /\b(resident|community|protest|opposition|backlash)\b/i.test(passage)
-      && /\b(noise|power grid|water supply|rezon)\b/i.test(passage)
-    ) {
-      const scopedPassage = sentenceContaining(passage, /\b(resident|community|protest|opposition|backlash)\b/i);
-      if (scopedPassage) findings.push({
-        id: `retained-community-${new URL(sourceUrl).hostname.replace(/^www\./, "")}`,
-        topic: "community-context",
-        statement: "Local reporting describes Red Oak resident concerns and public process around data-center development.",
-        attribution: `Attributed reporting from ${title}; not a verified engineering, utility, or regulatory conclusion.`,
-        projectScope: /\bdatabank\b/i.test(scopedPassage)
-          ? "DataBank Red Oak campus reporting"
-          : "Red Oak municipal context; the passage does not establish DataBank-campus applicability",
-        phaseScope: "No DataBank building or phase established",
-        reportingDate: /\bMay 12, 2026\b/i.test(passage) ? "2026-05-12"
-          : /\bSeptember 23, 2026\b/i.test(passage) ? "2026-09-23"
-            : null,
-        accessedAt,
-        sourceTitle: title,
-        sourceUrl,
-        passage: scopedPassage,
-        evidenceEligibility: "research-only",
-        demonstratedFinancialEffect: false,
-      });
-    }
+    const sourceClass = typeof candidate.sourceClass === "string" ? candidate.sourceClass : "";
+    const assessment: RetainedResearchFinding["assessment"] =
+      applicability === "ambiguous" ? "ambiguous-unresolved"
+        : sourceClass.startsWith("primary-") ? "source-supported" : "attributed-report";
+    const financialProposalEligibility = financialEligibilityFromLedger(candidate);
+    const reportingDate = optionalDate(candidate.date)
+      ?? optionalDate(candidate.publishedAt)
+      ?? optionalDate(candidate.sourcePublishedAt)
+      ?? null;
+    const accessedAt = optionalDate(candidate.accessedAt)
+      ?? optionalDate(candidate.accessOutcome.retrievalTime)
+      ?? null;
+    const sourceScope = [
+      isNonEmptyString(candidate.facilityScope) ? `Facility scope assessment: ${candidate.facilityScope}.` : null,
+      isNonEmptyString(candidate.phaseScope) ? `Phase scope assessment: ${candidate.phaseScope}.` : null,
+    ].filter(Boolean).join(" ") || "Facility and phase scope are not established.";
+    const id = `${new URL(sourceUrl).hostname.replace(/^www\./, "")}-${findings.length + 1}`;
+    findings.push({
+      id,
+      topic: isNonEmptyString(candidate.searchDomain) ? candidate.searchDomain.trim() : "retrieved-source",
+      assessment,
+      applicability,
+      financialProposalEligibility,
+      statement: "Retrieved source passage retained for reviewer assessment.",
+      attribution: assessment === "source-supported"
+        ? `Source-supported passage from ${title}; the source assertion is not independently verified by SafeLoc.`
+        : assessment === "ambiguous-unresolved"
+          ? `Retrieved reporting from ${title}; applicability to the submitted project is unresolved.`
+          : `Attributed reporting from ${title}; no independently verified project fact or financial effect is inferred.`,
+      projectScope: applicability === "exact-project"
+        ? "Source passage identifies the submitted project name and requested location."
+        : "Project-level applicability is ambiguous; do not apply this passage to the project.",
+      phaseScope: sourceScope,
+      timePeriod: isNonEmptyString(candidate.timePeriod) ? candidate.timePeriod : null,
+      powerMeasure: powerMeasureFromPassage(passage),
+      reportingDate,
+      reportingDateBasis: reportingDate ? "retrieved-source-metadata" : "not-reported",
+      accessedAt,
+      accessedAtBasis: accessedAt ? "retrieval-time" : "not-recorded",
+      sourceTitle: title,
+      sourceUrl,
+      passage,
+      evidenceEligibility: "research-only",
+      demonstratedFinancialEffect: false,
+    });
+    if (assessment === "source-supported") audit.sourceSupportedCount += 1;
+    if (assessment === "attributed-report") audit.attributedReportCount += 1;
+    if (assessment === "ambiguous-unresolved") audit.ambiguousUnresolvedCount += 1;
+    if (financialProposalEligibility === "eligible") audit.financiallyEligibleCount += 1;
   }
-  return [...new Map(findings.map((finding) => [finding.id, finding])).values()].slice(0, 8);
+  return { findings: findings.slice(0, 8), audit };
+}
+
+export function deriveRetainedResearchFindings(
+  sourceLedger: unknown,
+  identity: ResearchIdentity = {},
+): RetainedResearchFinding[] {
+  return deriveRetainedResearchFindingReport(sourceLedger, identity).findings;
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -818,9 +961,11 @@ function optionalDate(value: unknown): string | null | undefined {
   if (value === null) return null;
   if (!isNonEmptyString(value)) return undefined;
   const date = value.trim();
-  return /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(Date.parse(`${date}T00:00:00.000Z`))
-    ? date
-    : undefined;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return Number.isFinite(Date.parse(`${date}T00:00:00.000Z`)) ? date : undefined;
+  }
+  if (!/^\d{4}-\d{2}-\d{2}T/.test(date) || !Number.isFinite(Date.parse(date))) return undefined;
+  return new Date(date).toISOString().slice(0, 10);
 }
 
 function normalizeReportedCapacityMW(value: unknown): number | null {
@@ -925,7 +1070,7 @@ function parseSource(value: unknown): ResearchEvidenceSource | null {
          ...(safePublicSourceUrl(rawAccessOutcome.resolvedUrl) ? { resolvedUrl: safePublicSourceUrl(rawAccessOutcome.resolvedUrl) } : {}),
          ...(safePublicSourceUrl(rawAccessOutcome.canonicalUrl) ? { canonicalUrl: safePublicSourceUrl(rawAccessOutcome.canonicalUrl) } : {}),
         ...(optionalDate(rawAccessOutcome.retrievalTime) ? { retrievalTime: optionalDate(rawAccessOutcome.retrievalTime) } : {}),
-        ...(isNonEmptyString(rawAccessOutcome.passage) ? { passage: rawAccessOutcome.passage.trim() } : {}),
+        ...(isNonEmptyString(rawAccessOutcome.passage) ? { passage: rawAccessOutcome.passage } : {}),
         ...(typeof rawAccessOutcome.pageOrSection === "number" || isNonEmptyString(rawAccessOutcome.pageOrSection) ? { pageOrSection: rawAccessOutcome.pageOrSection } : {}),
         ...(Array.isArray(rawAccessOutcome.extractionLimitations) ? { extractionLimitations: rawAccessOutcome.extractionLimitations.filter(isNonEmptyString) } : {}),
         ...(isNonEmptyString(rawAccessOutcome.extractionMethod) ? { extractionMethod: rawAccessOutcome.extractionMethod.trim() } : {}),
@@ -947,7 +1092,7 @@ function parseSource(value: unknown): ResearchEvidenceSource | null {
       ? value.accessStatus as EvidenceItem["sourceAccessStatus"]
       : "not provided",
     excerpt: value.excerpt.trim(),
-    ...(isNonEmptyString(value.claimPassage) ? { claimPassage: value.claimPassage.trim() } : {}),
+    ...(isNonEmptyString(value.claimPassage) ? { claimPassage: value.claimPassage } : {}),
     sourceClass,
     searchDomain: isNonEmptyString(value.searchDomain) ? value.searchDomain.trim() : "project-identity",
     relationship,
@@ -1363,13 +1508,19 @@ export function containCustomResearchEvidence(item: CustomEvidenceRecord): Custo
   };
 }
 
-function parseResponse(value: unknown): CustomResearchResponse {
+function parseResponse(value: unknown, identity: ResearchIdentity = {}): CustomResearchResponse {
   if (!isRecord(value) || !isRecord(value.projectSummary) || !Array.isArray(value.evidence)) {
     throw new Error("Project research returned an incomplete response.");
   }
   const summary = value.projectSummary;
-  const retainedFindings = deriveRetainedResearchFindings(value.sourceLedger);
-  const reportedCapacityMW = normalizeReportedCapacityMW(summary.capacityMW);
+  const requestedIdentity: ResearchIdentity = {
+    name: identity.name ?? (isNonEmptyString(summary.name) ? summary.name : undefined),
+    location: identity.location ?? (isNonEmptyString(summary.location) ? summary.location : undefined),
+    knownData: normalizeKnownData(identity.knownData),
+  };
+  const retainedFindingReport = deriveRetainedResearchFindingReport(value.sourceLedger, requestedIdentity);
+  const retainedFindings = retainedFindingReport.findings;
+  const directoryCapacityMW = normalizeReportedCapacityMW(requestedIdentity.knownData?.capacity);
   if (
     !isNonEmptyString(summary.name) ||
     !isNonEmptyString(summary.location) ||
@@ -1495,26 +1646,10 @@ function parseResponse(value: unknown): CustomResearchResponse {
   const retrievedLeads = containedEvidence.filter((item) => item.researchState === "retrieved-lead" || item.researchState === "quarantined");
   const terminalOutcome = isRecord(value.researchOutcome) ? value.researchOutcome.state : null;
   const outcomeRequiresIncompleteMode = terminalOutcome === "incomplete-technical-limitation"
-    || terminalOutcome === "complete-no-eligible-evidence";
-
-  const reportedCapacitySupported = reportedCapacityMW !== null && retainedFindings.some((finding) =>
-    finding.topic === "capacity-phase"
-    && new RegExp(`\\b${reportedCapacityMW}\\s*MW\\b`, "i").test(finding.passage)
-    && !/not full-campus|first three buildings only/i.test(finding.phaseScope));
-  const trustedCapacity = summary.capacityProvenance === "directory-reported"
-    || summary.capacityProvenance === "standardized-default"
-    || reportedCapacitySupported;
-  const safeCapacityMW = trustedCapacity && reportedCapacityMW !== null
-    ? reportedCapacityMW
-    : DEFAULT_RESEARCH_CAPACITY_MW;
-  const safeCapacityProvenance: CapacityProvenance = trustedCapacity && reportedCapacityMW !== null
-    ? summary.capacityProvenance === "directory-reported" ? "directory-reported"
-      : summary.capacityProvenance === "standardized-default" ? "standardized-default"
-        : "ai-reported"
-    : "standardized-default";
-  const safeDescription = summary.capacityProvenance === "ai-reported" && !reportedCapacitySupported
-    ? `${summary.name} in ${summary.location}. Retrieved research is shown separately as scoped, attributed findings. Unsupported generated summary facts remain unknown and are not treated as established project facts.`
-    : summary.description as string;
+    || value.researchStatus === "timed-out"
+    || value.researchStatus === "failed"
+    || value.researchStatus === "cancelled";
+  const safeDescription = "Generated project-summary prose is withheld. Review the accessible, attributed source passages and claim-level evidence separately.";
   const replay = isRecord(value.replay) && value.replay.mode === "offline-saved-response"
     ? {
         mode: "offline-saved-response" as const,
@@ -1527,11 +1662,11 @@ function parseResponse(value: unknown): CustomResearchResponse {
     : undefined;
   return {
     projectSummary: {
-      name: summary.name as string,
-      location: summary.location as string,
+      name: requestedIdentity.name ?? summary.name as string,
+      location: requestedIdentity.location ?? summary.location as string,
       description: safeDescription,
-      capacityMW: safeCapacityMW,
-      capacityProvenance: safeCapacityProvenance,
+      capacityMW: directoryCapacityMW,
+      capacityProvenance: directoryCapacityMW === null ? "unknown" : "directory-reported",
     },
     ...(value.researchStatus === "researching" || value.researchStatus === "completed" || value.researchStatus === "partial" || value.researchStatus === "timed-out" || value.researchStatus === "failed" || value.researchStatus === "cancelled"
       ? { researchStatus: value.researchStatus }
@@ -1562,10 +1697,18 @@ function parseResponse(value: unknown): CustomResearchResponse {
       ? "default-assumptions"
       : outcomeRequiresIncompleteMode
         ? "research-incomplete"
+      : terminalOutcome === "complete-no-eligible-evidence"
+        || value.researchStatus === "partial"
+        || value.researchMode === "partial-public-source"
+        ? "partial-public-source"
+      : value.researchMode === "research-incomplete"
+        ? "research-incomplete"
       : eligibleEvidence.length > 0 || (Array.isArray(value.sourceLedger) && value.sourceLedger.length > 0) || Boolean(value.researchCache)
-        ? eligibleEvidence.length > 0 && containedEvidence.some((item) => item.classification === "Missing Evidence")
+        ? (eligibleEvidence.length > 0 && containedEvidence.some((item) => item.classification === "Missing Evidence"))
           ? "partial-public-source"
-          : "ai-researched"
+          : Array.isArray(value.sourceLedger) && value.sourceLedger.length > 0 && eligibleEvidence.length === 0
+            ? "partial-public-source"
+            : "ai-researched"
         : "research-incomplete",
      ...(parseResearchCache(value.researchCache) ? { researchCache: parseResearchCache(value.researchCache) } : {}),
      semanticPolicyVersion: typeof value.semanticPolicyVersion === "number" ? value.semanticPolicyVersion : EVIDENCE_SEMANTIC_POLICY_VERSION,
@@ -1620,6 +1763,7 @@ function parseResponse(value: unknown): CustomResearchResponse {
      acceptedModelInputs: containedEvidence.filter((item) => item.acceptedForModel),
      quarantineReasons: [...new Set(containedEvidence.flatMap((item) => item.quarantineReasons ?? []))],
      retainedFindings,
+      retainedFindingAudit: retainedFindingReport.audit,
      ...(replay ? { replay } : {}),
   };
 }
@@ -1630,7 +1774,7 @@ export function createDefaultAssumptionResearch(
   knownData?: KnownProjectData,
 ): CustomResearchResponse {
   const normalizedKnownData = normalizeKnownData(knownData);
-  const capacityMW = normalizeReportedCapacityMW(normalizedKnownData?.capacity) ?? DEFAULT_RESEARCH_CAPACITY_MW;
+  const capacityMW = normalizeReportedCapacityMW(normalizedKnownData?.capacity);
   const context = [
     normalizedKnownData?.operator ? `Operator: ${normalizedKnownData.operator}.` : null,
     normalizedKnownData?.status ? `Directory status: ${normalizedKnownData.status}.` : null,
@@ -1642,7 +1786,7 @@ export function createDefaultAssumptionResearch(
       location: location.trim(),
       description: `AI research was unavailable. This case uses default assumptions and no project-specific evidence. ${context}`.trim(),
       capacityMW,
-      capacityProvenance: normalizedKnownData?.capacity ? "directory-reported" : "standardized-default",
+      capacityProvenance: capacityMW === null ? "unknown" : "directory-reported",
     },
     researchMode: "default-assumptions",
     researchCoverage: {
@@ -1691,14 +1835,14 @@ export function createProvisionalResearch(
     ...deriveLocationContext(location),
     ...knownData,
   });
-  const capacityMW = normalizeReportedCapacityMW(normalizedKnownData?.capacity) ?? DEFAULT_RESEARCH_CAPACITY_MW;
+  const capacityMW = normalizeReportedCapacityMW(normalizedKnownData?.capacity);
   return {
     projectSummary: {
       name: name.trim(),
       location: location.trim(),
       description: "Research is running for this submitted project. No synthetic economics have been applied; unresolved items remain Missing Evidence until validated findings arrive.",
       capacityMW,
-      capacityProvenance: normalizedKnownData?.capacity ? "directory-reported" : "standardized-default",
+      capacityProvenance: capacityMW === null ? "unknown" : "directory-reported",
     },
     researchMode: "research-incomplete",
     researchStatus: "researching",
@@ -1796,7 +1940,7 @@ async function requestResearchProject(
     }
     if (!response.ok) {
       if (isRecord(body) && isRecord(body.result)) {
-        const partial = parseResponse(body.result);
+        const partial = parseResponse(body.result, { name, location, knownData });
         const researchMode: ResearchMode = partial.researchMode === "default-assumptions" || partial.researchMode === "research-incomplete"
           ? partial.researchMode
           : "partial-public-source";
@@ -1809,7 +1953,7 @@ async function requestResearchProject(
       const message = isRecord(body) && isNonEmptyString(body.error) ? body.error : "Project research is unavailable. Try again or use the curated case.";
       throw new Error(message);
     }
-    return parseResponse(body);
+    return parseResponse(body, { name, location, knownData });
   } catch (error) {
     if (signal?.aborted) throw new ResearchCancelledError();
     if (error instanceof ResearchTimeoutError) throw error;

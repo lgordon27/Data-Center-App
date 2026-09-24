@@ -303,6 +303,7 @@ export type ProjectContext = Omit<CustomResearchResponse["projectSummary"], "cap
   researchOutcome?: CustomResearchResponse["researchOutcome"];
   researchProposals?: Record<string, CustomEvidenceRecord>;
   retainedFindings?: CustomResearchResponse["retainedFindings"];
+  retainedFindingAudit?: CustomResearchResponse["retainedFindingAudit"];
   replay?: CustomResearchResponse["replay"];
   researchProposalDispositions?: Record<string, ResearchProposalDisposition>;
   researchProposalOverrides?: Record<string, ResearchProposalOverride>;
@@ -569,7 +570,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       providerEvidence: providerModelEvidence as EvidenceRecord | null,
       eiaData,
       providerState,
-      capacityMW: project.capacityMW,
+      capacityMW: project.capacityMW ?? DEFAULT_CAPACITY_MW,
     }),
     [eiaData, project.capacityMW, providerModelEvidence, providerState, state.modelEvidence],
   );
@@ -623,10 +624,10 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     if (!previous || !isClassification(classification)) return false;
     const classificationChanged = previous !== classification;
     if (!classificationChanged && reviewKind === "manual") return false;
-    const settledForFinancialCalculation = true;
+    const settledForFinancialCalculation = project.kind === "curated";
 
     const previousIrr = classificationChanged && settledForFinancialCalculation
-      ? calculateCashFlowModel(currentState.modelEvidence as EvidenceRecord, project.capacityMW).projectIRR
+      ? calculateCashFlowModel(currentState.modelEvidence as EvidenceRecord, project.capacityMW ?? DEFAULT_CAPACITY_MW).projectIRR
       : null;
     const nextEvidence = {
       ...currentState.evidence,
@@ -643,7 +644,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     const nextIrr = classificationChanged && settledForFinancialCalculation
       ? calculateCashFlowModel(
         (project.kind === "custom" ? currentState.modelEvidence : nextEvidence) as EvidenceRecord,
-        project.capacityMW,
+        project.capacityMW ?? DEFAULT_CAPACITY_MW,
       ).projectIRR
       : null;
     const nextState = {
@@ -806,17 +807,11 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       ...currentState.modelEvidence,
       ...(proposal?.eligibleForModel ? { [id]: nextEvidence[id] } : {}),
     };
-    const previousIrr = calculateCashFlowModel(currentState.modelEvidence as EvidenceRecord, project.capacityMW).projectIRR;
-    const nextIrr = calculateCashFlowModel(nextModelEvidence as EvidenceRecord, project.capacityMW).projectIRR;
     const nextState = {
       evidence: nextEvidence,
       modelEvidence: nextModelEvidence,
       hasChangedClassification: true,
-      lastChange: {
-        from: previousIrr ?? 0,
-        to: nextIrr ?? 0,
-        delta: (nextIrr ?? 0) - (previousIrr ?? 0),
-      },
+      lastChange: null,
     };
     stateRef.current = nextState;
     setState(nextState);
@@ -1034,6 +1029,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       researchProposalDispositions,
       researchProposalOverrides: {},
       retainedFindings: research.retainedFindings ?? [],
+      retainedFindingAudit: research.retainedFindingAudit,
       replay: research.replay,
     };
     setProject(nextProject);
@@ -1280,7 +1276,9 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
           kind: project.kind,
           name: project.name,
           location: project.location,
-          capacityMW: project.capacityMW,
+       // Custom projects remain Not modeled. This capacity is only the unchanged
+       // internal synthetic-matrix default required by the shared scenario type.
+       capacityMW: project.capacityMW ?? DEFAULT_CAPACITY_MW,
           description: project.description,
         },
         originatingCompany,
@@ -1720,8 +1718,8 @@ function parsePersistedCustomResearch(value: unknown): PersistedCustomResearch |
     typeof projectRecord.name !== "string" ||
     typeof projectRecord.location !== "string" ||
     typeof projectRecord.description !== "string" ||
-    typeof projectRecord.capacityMW !== "number" ||
-    !Number.isFinite(projectRecord.capacityMW)
+    (typeof projectRecord.capacityMW !== "number" && projectRecord.capacityMW !== null) ||
+    (typeof projectRecord.capacityMW === "number" && !Number.isFinite(projectRecord.capacityMW))
   ) return null;
   const parseEvidenceMap = (input: unknown, exact: boolean) => {
     if (!input || typeof input !== "object" || Array.isArray(input)) return null;
@@ -1749,8 +1747,46 @@ function parsePersistedCustomResearch(value: unknown): PersistedCustomResearch |
         && typeof record.reviewedAt === "string";
     }))
     : {};
+  const capacityIsDirectoryReported = projectRecord.capacityProvenance === "directory-reported";
+  const persistedCapacity = capacityIsDirectoryReported
+    && typeof projectRecord.capacityMW === "number"
+    && Number.isFinite(projectRecord.capacityMW)
+    ? projectRecord.capacityMW
+    : null;
+  const retainedFindings = Array.isArray(projectRecord.retainedFindings)
+    ? projectRecord.retainedFindings.flatMap((candidate) => {
+      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return [];
+      const finding = candidate as Record<string, unknown>;
+      if (
+        !["source-supported", "attributed-report", "ambiguous-unresolved"].includes(String(finding.assessment))
+        || !["exact-project", "ambiguous"].includes(String(finding.applicability))
+        || !["eligible", "ineligible", "unresolved"].includes(String(finding.financialProposalEligibility))
+        || typeof finding.passage !== "string"
+        || !finding.passage.trim()
+        || typeof finding.sourceTitle !== "string"
+        || typeof finding.sourceUrl !== "string"
+      ) return [];
+      try {
+        const url = new URL(finding.sourceUrl);
+        if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) return [];
+      } catch {
+        return [];
+      }
+      return [{
+        ...finding,
+        passage: finding.passage,
+      }];
+    })
+    : [];
+  const safeProject = {
+    ...projectRecord,
+    description: "Generated project-summary prose is withheld. Review the accessible, attributed source passages and claim-level evidence separately.",
+    capacityMW: persistedCapacity,
+    capacityProvenance: persistedCapacity === null ? "unknown" : "directory-reported",
+    retainedFindings,
+  } as unknown as ProjectContext;
   return {
-    project: projectRecord as unknown as ProjectContext,
+    project: safeProject,
     evidence: evidence as Record<string, EvidenceItem>,
     modelEvidence: modelEvidence as Record<string, EvidenceItem>,
     researchProposals: researchProposals as Record<string, CustomEvidenceRecord>,

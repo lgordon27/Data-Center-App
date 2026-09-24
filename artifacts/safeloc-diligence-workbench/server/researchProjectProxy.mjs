@@ -38,6 +38,7 @@ const RESEARCH_PROJECT_MAX_TOKENS = 8_000;
 const RESEARCH_CATEGORY_MAX_TOKENS = 3_500;
 const RESEARCH_PROVIDER_MAX_CONCURRENCY = 2;
 const RESEARCH_PROJECT_TIMEOUT_MS = 90_000;
+const DEFAULT_PROVIDER_RATE_LIMIT_PRESSURE_MS = 1_000;
 const RESEARCH_PROJECT_MAX_TOOL_CALLS = 32;
 const RESEARCH_POLICY_VERSION = 2;
 const RESEARCH_CATEGORY_AUDIT_VERSION = 3;
@@ -442,6 +443,12 @@ function cacheMetadata(key, entry, state, refreshStatus = "idle", extras = {}) {
     revalidated: entry?.needsRevalidation === true,
     ...(extras.errorType ? { errorType: extras.errorType } : {}),
     ...(extras.providerDiagnostic ? { providerDiagnostic: extras.providerDiagnostic } : {}),
+    ...(Array.isArray(extras.providerAttempts)
+      ? { providerAttempts: extras.providerAttempts.slice(0, RESEARCH_RUN_BUDGET.maxProviderRequests) }
+      : {}),
+    ...(Number.isInteger(extras.inFlightAnalysisCount)
+      ? { inFlightAnalysisCount: Math.max(0, extras.inFlightAnalysisCount) }
+      : {}),
   };
 }
 
@@ -539,6 +546,43 @@ function isPrivateNetworkHostname(hostname) {
     || (value >> 96n) === 0x20010db8n;
 }
 
+function prohibitedAddressRule(address) {
+  const value = String(address?.address ?? "").replace(/^\[|\]$/g, "");
+  const family = Number(address?.family);
+  if (![4, 6].includes(family) || isIP(value) !== family) return "unsupported-answer-family";
+  if (family === 4) {
+    const octets = value.split(".").map(Number);
+    const [a, b, c, d] = octets;
+    if (a === 0) return "ipv4-this-network";
+    if (a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) return "ipv4-private-use";
+    if (a === 127) return "ipv4-loopback";
+    if (a === 169 && b === 254) return "ipv4-link-local";
+    if (a === 100 && b >= 64 && b <= 127) return "ipv4-carrier-grade-nat";
+    if ((a === 192 && b === 0) || (a === 192 && b === 88 && c === 99)) return "ipv4-special-purpose";
+    if ((a === 192 && b === 2) || (a === 198 && b === 51 && c === 100)
+      || (a === 203 && b === 0 && c === 113)) return "ipv4-documentation";
+    if (a === 198 && (b === 18 || b === 19)) return "ipv4-benchmark";
+    if (a >= 224) return "ipv4-multicast-or-reserved";
+    if (a === 255 && b === 255 && c === 255 && d === 255) return "ipv4-limited-broadcast";
+    return "ipv4-prohibited-special-purpose";
+  }
+  if (value.startsWith("::ffff:")) {
+    const mapped = value.slice("::ffff:".length);
+    if (isIP(mapped) === 4) return prohibitedAddressRule({ address: mapped, family: 4 });
+  }
+  const normalized = value.toLowerCase();
+  if (normalized === "::") return "ipv6-unspecified";
+  if (normalized === "::1") return "ipv6-loopback";
+  const firstGroup = normalized.split(":").find(Boolean) ?? "";
+  const first = Number.parseInt(firstGroup.padStart(4, "0").slice(0, 4), 16);
+  if ((first & 0xfe00) === 0xfc00) return "ipv6-unique-local";
+  if ((first & 0xffc0) === 0xfe80) return "ipv6-link-local";
+  if ((first & 0xff00) === 0xff00) return "ipv6-multicast";
+  if (normalized.startsWith("2001:db8:")) return "ipv6-documentation";
+  if ((first & 0xff00) === 0xfe00) return "ipv6-special-purpose";
+  return "ipv6-prohibited-special-purpose";
+}
+
 export async function resolvePublicAddress(url, dnsLookup = dns.lookup) {
   let parsed;
   try {
@@ -547,12 +591,16 @@ export async function resolvePublicAddress(url, dnsLookup = dns.lookup) {
     const error = new Error("malformed-destination");
     error.name = "PublicAddressValidationError";
     error.addressValidationReason = "malformed-destination";
+    error.addressValidationCategory = "destination-syntax";
+    error.addressValidationRule = "invalid-url";
     throw error;
   }
   if (isPrivateNetworkHostname(parsed.hostname)) {
     const error = new Error("private-destination");
     error.name = "PublicAddressValidationError";
     error.addressValidationReason = "prohibited-address-class";
+    error.addressValidationCategory = "hostname-policy";
+    error.addressValidationRule = "local-or-reserved-hostname";
     throw error;
   }
   let addresses;
@@ -562,35 +610,58 @@ export async function resolvePublicAddress(url, dnsLookup = dns.lookup) {
     const error = new Error("dns-lookup-failure");
     error.name = "PublicAddressValidationError";
     error.addressValidationReason = "dns-lookup-failure";
+    error.addressValidationCategory = "resolver";
+    error.addressValidationRule = "resolver-error";
     throw error;
   }
   if (!Array.isArray(addresses) || addresses.length === 0) {
     const error = new Error("private-destination");
     error.name = "PublicAddressValidationError";
     error.addressValidationReason = "no-usable-public-address";
+    error.addressValidationCategory = "dns-answer-policy";
+    error.addressValidationRule = "no-usable-answer";
     error.addressValidationTelemetry = {
       answerCount: 0,
       addressFamilies: [],
+      addressFamilyCounts: { ipv4: 0, ipv6: 0, other: 0 },
       publicAnswerCount: 0,
       prohibitedAnswerCount: 0,
+      rejectingRules: ["no-usable-answer"],
     };
     throw error;
   }
-  const validAnswers = addresses.filter((address) => address && [4, 6].includes(address.family));
+  const validAnswers = addresses.filter((address) =>
+    address && [4, 6].includes(address.family) && isIP(String(address.address ?? "")) === address.family);
   const publicAnswers = validAnswers.filter((address) => !isPrivateNetworkHostname(address.address));
+  const rejectingRules = [...new Set(addresses
+    .filter((address) =>
+      !address
+      || ![4, 6].includes(address.family)
+      || isIP(String(address.address ?? "")) !== address.family
+      || isPrivateNetworkHostname(address.address))
+    .map((address) => prohibitedAddressRule(address)))].sort();
   const validationTelemetry = {
     answerCount: addresses.length,
     addressFamilies: [...new Set(validAnswers.map((address) => address.family))].sort(),
+    addressFamilyCounts: {
+      ipv4: addresses.filter((address) => address?.family === 4).length,
+      ipv6: addresses.filter((address) => address?.family === 6).length,
+      other: addresses.filter((address) => ![4, 6].includes(address?.family)).length,
+    },
     publicAnswerCount: publicAnswers.length,
     prohibitedAnswerCount: addresses.length - publicAnswers.length,
+    rejectingRules,
   };
   if (addresses.some((address) =>
     !address
     || ![4, 6].includes(address.family)
+    || isIP(String(address.address ?? "")) !== address.family
     || isPrivateNetworkHostname(address.address))) {
     const error = new Error("private-destination");
     error.name = "PublicAddressValidationError";
     error.addressValidationReason = "prohibited-address-class";
+    error.addressValidationCategory = "dns-answer-policy";
+    error.addressValidationRule = rejectingRules[0] ?? "prohibited-special-purpose-address";
     error.addressValidationTelemetry = validationTelemetry;
     throw error;
   }
@@ -1131,6 +1202,8 @@ function buildTransportDiagnostic({
   cancelled = false,
   timedOut = false,
   addressValidationReason = null,
+  addressValidationCategory = null,
+  addressValidationRule = null,
   addressValidationTelemetry = null,
 }) {
   const identity = safeSourceIdentity(url);
@@ -1149,6 +1222,8 @@ function buildTransportDiagnostic({
     cancelled,
     timedOut,
     ...(addressValidationReason ? { addressValidationReason } : {}),
+    ...(addressValidationCategory ? { addressValidationCategory } : {}),
+    ...(addressValidationRule ? { addressValidationRule } : {}),
     ...(addressValidationTelemetry ? { addressValidationTelemetry } : {}),
     ...(error ? transportErrorDetails(error) : {}),
   };
@@ -1224,7 +1299,11 @@ async function accessResearchDocument(candidate = {}, {
       return {
         ...initial,
         state: "blocked",
-        reason: error?.message === "private-destination" ? "private-destination" : "network-failure",
+    reason: error?.name === "PublicAddressValidationError"
+      ? error.message === "private-destination"
+        ? "private-destination"
+        : error.addressValidationReason ?? error.message
+      : "network-failure",
         resolvedUrl: currentUrl,
         redirectChain,
         transportDiagnostic: buildTransportDiagnostic({
@@ -1235,6 +1314,12 @@ async function accessResearchDocument(candidate = {}, {
           error,
           ...(error?.addressValidationReason
             ? { addressValidationReason: error.addressValidationReason }
+            : {}),
+          ...(error?.addressValidationCategory
+            ? { addressValidationCategory: error.addressValidationCategory }
+            : {}),
+          ...(error?.addressValidationRule
+            ? { addressValidationRule: error.addressValidationRule }
             : {}),
           ...(error?.addressValidationTelemetry
             ? { addressValidationTelemetry: error.addressValidationTelemetry }
@@ -1274,6 +1359,8 @@ async function accessResearchDocument(candidate = {}, {
             response,
             redirectChain,
             ...(privateRedirect ? { addressValidationReason: "prohibited-address-class" } : {}),
+            ...(privateRedirect ? { addressValidationCategory: "literal-destination-policy" } : {}),
+            ...(privateRedirect ? { addressValidationRule: "local-or-reserved-hostname" } : {}),
           }),
           extractionLimitations: [
             privateRedirect
@@ -3292,12 +3379,18 @@ function createResearchProviderGate({
 
   const recordPressure = (error) => {
     const diagnostic = error?.providerDiagnostic;
-    if (diagnostic?.upstreamStatus !== 429 || diagnostic?.errorCode !== "rate_limit_exceeded") return;
+    const rateLimitCodes = new Set(["rate_limit_exceeded", "rate_limit_error", "too_many_requests"]);
+    if (
+      diagnostic?.upstreamStatus !== 429
+      || ![diagnostic?.errorCode, diagnostic?.errorType].some((kind) => rateLimitCodes.has(kind))
+    ) return;
     const rateLimit = diagnostic.rateLimit ?? {};
-    const delayMs = Math.max(
+    const indicatedDelayMs = Math.max(
       parseRateLimitDurationMs(rateLimit.retryAfter),
       rateLimit.remainingTokens === "0" ? parseRateLimitDurationMs(rateLimit.resetTokens) : 0,
+      rateLimit.remainingRequests === "0" ? parseRateLimitDurationMs(rateLimit.resetRequests) : 0,
     );
+    const delayMs = indicatedDelayMs > 0 ? indicatedDelayMs : DEFAULT_PROVIDER_RATE_LIMIT_PRESSURE_MS;
     if (delayMs > 0) blockedUntil = Math.max(blockedUntil, now() + delayMs);
   };
 
@@ -3365,7 +3458,7 @@ async function createUpstreamRequestError(response, stage) {
     upstreamStatus: response.status,
     ...(providerErrorCode ? { errorCode: providerErrorCode } : {}),
     ...(providerErrorType ? { errorType: providerErrorType } : {}),
-    ...(suffix ? { message: suffix } : {}),
+    ...(suffix && response.status !== 401 ? { message: suffix } : {}),
     ...(requestId ? { requestId } : {}),
     ...(Object.keys(rateLimit).length ? { rateLimit } : {}),
   };
@@ -3516,6 +3609,9 @@ function restrictResearchToAcceptedSources(research, sources) {
 async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, activeCategory = null, providerGate = researchProviderGate) {
   const queuedAtMs = Date.now();
   let issuedAtMs = null;
+  let providerRequestTracked = false;
+  let receivedSuccessfulResponse = false;
+  const analysisTracker = activeCategory?.analysisTracker;
   const scopedEvidenceIds = Array.isArray(activeCategory?.evidenceIds)
     ? activeCategory.evidenceIds.filter((id) => RESEARCH_EVIDENCE_IDS.includes(id))
     : RESEARCH_EVIDENCE_IDS;
@@ -3576,20 +3672,29 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
     requestBodyBytes: Buffer.byteLength(requestBody),
     usage: null,
   };
+  if (analysisTracker) analysisTracker.attempts.push(providerAttempt);
   try {
     response = await providerGate.run(async () => {
-      const upstream = await fetchImpl(OPENAI_RESPONSES_URL, {
-        method: "POST",
-        headers: {
-          accept: "application/json",
-          "content-type": "application/json",
-          authorization: `Bearer ${apiKey}`,
-        },
-        body: requestBody,
-        signal,
-      });
-      if (!upstream.ok) throw await createUpstreamRequestError(upstream, "Research with web search");
-      return upstream;
+      try {
+        const upstream = await fetchImpl(OPENAI_RESPONSES_URL, {
+          method: "POST",
+          headers: {
+            accept: "application/json",
+            "content-type": "application/json",
+            authorization: `Bearer ${apiKey}`,
+          },
+          body: requestBody,
+          signal,
+        });
+        if (!upstream.ok) throw await createUpstreamRequestError(upstream, "Research with web search");
+        receivedSuccessfulResponse = true;
+        return upstream;
+      } finally {
+        if (providerRequestTracked && !receivedSuccessfulResponse) {
+          analysisTracker.inFlight = Math.max(0, analysisTracker.inFlight - 1);
+          providerRequestTracked = false;
+        }
+      }
     }, {
       signal,
       onStart: () => {
@@ -3597,6 +3702,12 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
         providerAttempt.requestState = "issued";
         providerAttempt.issuedAt = new Date(issuedAtMs).toISOString();
         providerAttempt.queueWaitMs = Math.max(0, issuedAtMs - queuedAtMs);
+        if (analysisTracker) {
+          analysisTracker.inFlight += 1;
+          analysisTracker.peak = Math.max(analysisTracker.peak, analysisTracker.inFlight);
+          providerRequestTracked = true;
+          providerAttempt.inFlightAnalysisCountAtIssue = analysisTracker.inFlight;
+        }
       },
     });
   } catch (error) {
@@ -3610,12 +3721,50 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
       ?? null;
     providerAttempt.failureClassification = classifyResearchFailure(error).type;
     providerAttempt.providerDiagnostic = error?.providerDiagnostic ?? null;
-    providerAttempt.requestState = issuedAtMs === null ? "cancelled-before-issue" : "failed";
-    providerAttempt.outcome = issuedAtMs === null ? "cancelled-before-issue" : "failed";
+    const cancelled = error?.name === "ResearchCancelledError"
+      || error?.name === "AbortError"
+      || signal?.aborted === true;
+    providerAttempt.requestState = issuedAtMs === null
+      ? "cancelled-before-issue"
+      : cancelled ? "cancelled-after-issue" : "failed";
+    providerAttempt.outcome = issuedAtMs === null
+      ? "cancelled-before-issue"
+      : cancelled ? "cancelled-after-issue" : "failed";
+    if (analysisTracker) providerAttempt.inFlightAnalysisCount = analysisTracker.inFlight;
     error.providerAttempt = providerAttempt;
     throw error;
   }
-  const rawText = await response.text();
+  let rawText;
+  let responseBodyError = null;
+  try {
+    rawText = await response.text();
+  } catch (error) {
+    responseBodyError = error;
+  } finally {
+    if (providerRequestTracked && analysisTracker) {
+      analysisTracker.inFlight = Math.max(0, analysisTracker.inFlight - 1);
+      providerRequestTracked = false;
+    }
+    if (analysisTracker) providerAttempt.inFlightAnalysisCount = analysisTracker.inFlight;
+  }
+  if (responseBodyError) {
+    const finishedAtMs = Date.now();
+    const cancelled = responseBodyError?.name === "AbortError" || signal?.aborted === true;
+    Object.assign(providerAttempt, {
+      finishedAt: new Date(finishedAtMs).toISOString(),
+      elapsedMs: issuedAtMs === null ? null : Math.max(0, finishedAtMs - issuedAtMs),
+      status: response.status,
+      requestState: cancelled ? "cancelled-after-issue" : "failed",
+      outcome: cancelled ? "cancelled-after-issue" : "failed",
+      failureClassification: cancelled ? "timeout" : "upstream",
+      providerDiagnostic: {
+        upstreamStatus: response.status,
+        errorType: cancelled ? "response-body-cancelled" : "response-body-read-failure",
+      },
+    });
+    responseBodyError.providerAttempt = providerAttempt;
+    throw responseBodyError;
+  }
   let body;
   try {
     body = JSON.parse(rawText);
@@ -3801,14 +3950,72 @@ const defaultRateLimiter = createResearchProjectRateLimiter();
 
 function classifyResearchFailure(error) {
   if (error?.name === "ResearchCancelledError" || error?.researchErrorType === "cancelled") {
-    return { status: 499, type: "cancelled", message: "Project research was cancelled by the requesting client." };
+    return {
+      status: 499,
+      type: "cancelled",
+      message: "Project research was cancelled by the requesting client.",
+      ...(error?.providerDiagnostic ? { providerDiagnostic: error.providerDiagnostic } : {}),
+      ...(Number.isInteger(error?.inFlightAnalysisCount)
+        ? { inFlightAnalysisCount: error.inFlightAnalysisCount }
+        : {}),
+      ...(Array.isArray(error?.providerAttempts) ? { providerAttempts: error.providerAttempts } : {}),
+    };
   }
   if (error?.name === "ResearchBudgetError" || error?.researchErrorType === "provider-request-budget") {
     return { status: 502, type: "provider-request-budget", message: "Project research reached its provider-request ceiling; retry only if additional research is required." };
   }
   if (error?.name === "AbortError") return { status: 504, type: "timeout", message: "Project research reached its 90-second deadline; valid completed findings were retained and the run can be retried." };
+  if (error?.name === "GoogleDiscoveryTimeoutError") {
+    return {
+      status: 504,
+      type: "timeout",
+      message: "Project research discovery reached the run deadline.",
+      ...(error?.providerDiagnostic ? { providerDiagnostic: error.providerDiagnostic } : {}),
+      ...(error?.providerAttempt ? { providerAttempts: [error.providerAttempt] } : {}),
+      ...(Number.isInteger(error?.providerAttempt?.inFlightAnalysisCount)
+        ? { inFlightAnalysisCount: error.providerAttempt.inFlightAnalysisCount }
+        : {}),
+    };
+  }
   if (error?.name === "ResearchParseError" || error?.researchErrorType === "malformed-response") {
     return { status: 502, type: "malformed-response", message: "Project research provider returned malformed structured data; retry the affected research." };
+  }
+  if (error?.name === "GoogleDiscoveryProviderError") {
+    const diagnostic = error.providerDiagnostic ?? {};
+    const status = diagnostic.upstreamStatus ?? diagnostic.status;
+    if (status === 429) {
+      const kinds = [diagnostic.errorCode, diagnostic.errorType].filter(Boolean);
+      if (kinds.some((value) =>
+        ["insufficient_quota", "billing_hard_limit_reached", "quota_exceeded", "daily_limit_exceeded"].includes(value))) {
+        return {
+          status: 429,
+          type: "quota-exhausted",
+          message: "Project research discovery provider reports an explicit quota or billing limit.",
+          providerDiagnostic: diagnostic,
+        };
+      }
+      if (kinds.some((value) => ["rate_limit_exceeded", "rate_limit_error", "too_many_requests"].includes(value))
+        || /\brate[\s_-]*limit\b|\btoo many requests\b/i.test(diagnostic.message ?? "")) {
+        return {
+          status: 429,
+          type: "provider-rate-limit",
+          message: "Project research discovery provider is temporarily rate-limited; use the supplied delay if present.",
+          providerDiagnostic: diagnostic,
+        };
+      }
+      return {
+        status: 429,
+        type: "provider-429",
+        message: "Project research discovery provider returned HTTP 429 without evidence distinguishing quota from rate limiting.",
+        providerDiagnostic: diagnostic,
+      };
+    }
+    return {
+      status: 502,
+      type: error.researchErrorType ?? "google-provider-failure",
+      message: "Project research discovery provider request failed.",
+      ...(Object.keys(diagnostic).length ? { providerDiagnostic: diagnostic } : {}),
+    };
   }
   if (error?.name === "UpstreamRequestError") {
     if (error.upstreamStatus === 429) {
@@ -4116,6 +4323,7 @@ async function runValidatedResearch(project, {
     controller.abort();
   }, RESEARCH_PROJECT_TIMEOUT_MS);
   const runCorrelationId = randomUUID();
+  const analysisTracker = { inFlight: 0, peak: 0, attempts: [] };
   const fetchedCandidatesByCategory = new Map();
   const reservedCandidatesByCategory = new Map();
   let reservedCandidateCount = 0;
@@ -4274,6 +4482,7 @@ async function runValidatedResearch(project, {
         fetchImpl,
         signal: controller.signal,
         model: googleModel,
+        analysisTracker,
       });
       const groundedSources = await prefetchGoogleGroundedSources(discovery.candidates ?? []);
       googleDiscovery = {
@@ -4288,13 +4497,14 @@ async function runValidatedResearch(project, {
         ...googleDiscovery,
         status: "technical-failure",
         fallbackUsed: allowGoogleFallback,
-        fallbackReason: error?.researchErrorType ?? "google-provider-failure",
+        fallbackReason: classifyResearchFailure(error).type,
         providerAttempt: error?.providerAttempt ?? {
           provider: "google-gemini-grounding",
           model: googleModel,
           requestCount: googleRequestCount,
           outcome: "failed",
-          status: error?.providerDiagnostic?.status ?? null,
+          status: error?.providerDiagnostic?.upstreamStatus ?? error?.providerDiagnostic?.status ?? null,
+          providerDiagnostic: error?.providerDiagnostic ?? null,
         },
       };
     } finally {
@@ -4333,6 +4543,7 @@ async function runValidatedResearch(project, {
           attempt,
           evidenceIds: category?.evidenceIds ?? [],
           runCorrelationId,
+          analysisTracker,
           maxToolCalls: Math.max(1, Math.min(RESEARCH_PROJECT_MAX_TOOL_CALLS, remainingToolCalls ?? RESEARCH_PROJECT_MAX_TOOL_CALLS)),
         };
         let categoryResult;
@@ -4398,6 +4609,7 @@ async function runValidatedResearch(project, {
                   attempt: "google-fallback",
                   evidenceIds: RESEARCH_EVIDENCE_IDS,
                   runCorrelationId,
+                  analysisTracker,
                   maxToolCalls: RESEARCH_PROJECT_MAX_TOOL_CALLS,
                 },
                 researchProviderGate,
@@ -4909,6 +5121,8 @@ async function runValidatedResearch(project, {
           ...(googleDiscovery.providerAttempt ? [googleDiscovery.providerAttempt] : []),
           ...Object.values(orchestration.categoryExecutions).flatMap((execution) => execution?.providerAttempts ?? []),
         ],
+        inFlightAnalysisCount: analysisTracker.inFlight,
+        peakInFlightAnalysisCount: analysisTracker.peak,
         followUpCount: orchestration.followUps,
         followUpLimit: orchestration.followUpLimit,
         followUpLimitPerCategory: orchestration.followUpLimitPerCategory,
@@ -5029,6 +5243,11 @@ async function runValidatedResearch(project, {
       const cancelled = new Error("Project research was cancelled.");
       cancelled.name = "ResearchCancelledError";
       cancelled.researchErrorType = "cancelled";
+      cancelled.providerAttempts = analysisTracker.attempts.slice(0, RESEARCH_RUN_BUDGET.maxProviderRequests);
+      cancelled.inFlightAnalysisCount = analysisTracker.inFlight;
+      const latestDiagnostic = [...analysisTracker.attempts].reverse()
+        .find((attempt) => attempt?.providerDiagnostic)?.providerDiagnostic;
+      if (latestDiagnostic) cancelled.providerDiagnostic = latestDiagnostic;
       throw cancelled;
     }
     if (error && !error.researchErrorType) error.researchErrorType = classifyResearchFailure(error).type;
@@ -5158,6 +5377,10 @@ export async function handleResearchProjectRequest(
         providerAvailable: false,
         errorType: failure.type,
         providerDiagnostic: failure.providerDiagnostic,
+        providerAttempts: failure.providerAttempts
+          ?? (error?.providerAttempt ? [error.providerAttempt] : undefined),
+        inFlightAnalysisCount: failure.inFlightAnalysisCount
+          ?? error?.providerAttempt?.inFlightAnalysisCount,
       })));
       return;
     }
@@ -5174,6 +5397,20 @@ export async function handleResearchProjectRequest(
         reasonCodes: [failure.type],
       },
       ...(failure.providerDiagnostic ? { providerDiagnostic: failure.providerDiagnostic } : {}),
+      ...((failure.providerAttempts?.length || error?.providerAttempt)
+        ? {
+            providerAttempts: (failure.providerAttempts
+              ?? (error?.providerAttempts?.length ? error.providerAttempts : [error.providerAttempt]))
+              .slice(0, RESEARCH_RUN_BUDGET.maxProviderRequests),
+          }
+        : {}),
+      ...(Number.isInteger(failure.inFlightAnalysisCount ?? error?.inFlightAnalysisCount ?? error?.providerAttempt?.inFlightAnalysisCount)
+        ? {
+            inFlightAnalysisCount: failure.inFlightAnalysisCount
+              ?? error?.inFlightAnalysisCount
+              ?? error?.providerAttempt?.inFlightAnalysisCount,
+          }
+        : {}),
     });
   } finally {
     req.removeListener?.("aborted", onRequestAborted);

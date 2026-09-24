@@ -62,6 +62,20 @@ test("financial advisor coverage uses the approved exact labels", () => {
     })).coverageLabel,
     "Research incomplete · not conversation-ready",
   );
+  assert.equal(
+    generateAdvisorBrief(diligence({
+      project: {
+        kind: "custom",
+        name: "Candidate",
+        location: "Arizona",
+        description: "",
+        capacityMW: null,
+        researchMode: "partial-public-source",
+        researchStatus: "partial",
+      },
+    })).coverageLabel,
+    "Partial public-source research · not conversation-ready",
+  );
 });
 
 
@@ -139,4 +153,56 @@ test("model-neutral projects never inherit the Stargate return in audience outpu
   assert.match(advisor.primaryCase.boundary, /approved transaction price/i);
   assert.equal(manager.projectMateriality.scenarioRole, "No approved project financial scenario");
   assert.doesNotMatch(JSON.stringify({ advisor, manager }), /-16\.7/);
+});
+
+test("advisor summaries do not promote generated project prose or attributed passages into What We Know", () => {
+  const advisor = generateAdvisorBrief(diligence({
+    project: {
+      kind: "custom",
+      name: "Northstar Campus",
+      location: "Iowa",
+      description: "Generated summary is withheld.",
+      capacityMW: null,
+      researchMode: "research-incomplete",
+      retainedFindings: [{
+        id: "source-1",
+        topic: "capacity",
+        assessment: "attributed-report",
+        applicability: "exact-project",
+        financialProposalEligibility: "unresolved",
+        statement: "Retrieved source passage retained for reviewer assessment.",
+        attribution: "Attributed reporting; not an independently verified fact.",
+        projectScope: "Potential project relation.",
+        phaseScope: "Phase One only.",
+        timePeriod: null,
+        powerMeasure: "utility interconnection",
+        reportingDate: null,
+        reportingDateBasis: "not-reported",
+        accessedAt: null,
+        accessedAtBasis: "not-recorded",
+        sourceTitle: "Synthetic reporting",
+        sourceUrl: "https://research.example/report",
+        passage: "The campus is operating at 480 MW.",
+        evidenceEligibility: "research-only",
+        demonstratedFinancialEffect: false,
+      }],
+    },
+    evidence: {
+      electricity_cost: {
+        id: "electricity_cost",
+        label: "Electricity cost",
+        value: "48 USD/MWh",
+        classification: "Missing Evidence",
+        description: "Unsupported prose claims this 480 MW campus is operating.",
+        conflictSummary: "Unsupported generated conflict summary.",
+        impactRole: "Financial Driver",
+      },
+    },
+  }));
+  assert.deepEqual(advisor.whatWeKnow, []);
+  assert.deepEqual(advisor.whatWeDoNotKnow, [
+    "Electricity cost: Not established by a validated project-specific source.",
+  ]);
+  assert.doesNotMatch(JSON.stringify(advisor.whatWeKnow), /480 MW|operating/i);
+  assert.doesNotMatch(JSON.stringify(advisor.whatWeDoNotKnow), /480 MW|operating|generated/i);
 });

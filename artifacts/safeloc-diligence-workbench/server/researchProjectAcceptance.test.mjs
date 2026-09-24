@@ -589,6 +589,114 @@ test("includes only the bounded sanitized upstream diagnostic in acceptance outp
   });
 });
 
+test("retains selected rate-limit, request-state, in-flight, and DNS-rule telemetry only", () => {
+  const report = buildAcceptanceReport({
+    project: { name: "Synthetic Atlas", location: "Ohio" },
+    liveRun: {
+      statusCode: 429,
+      payload: {
+        errorType: "provider-rate-limit",
+        providerDiagnostic: {
+          upstreamStatus: 429,
+          errorCode: "rate_limit_error",
+          errorType: "rate_limit_error",
+          message: "Retry after a short delay.",
+          requestId: "req_synthetic",
+          rateLimit: {
+            retryAfter: "12",
+            remainingRequests: "0",
+            resetRequests: "12s",
+            remainingTokens: "0",
+            resetTokens: "12s",
+            authorization: "must not be retained",
+          },
+        },
+        providerAttempts: [
+          {
+            status: 429,
+            requestState: "failed",
+            outcome: "failed",
+            failureClassification: "provider-rate-limit",
+            inFlightAnalysisCount: 1,
+            inFlightAnalysisCountAtIssue: 2,
+            providerDiagnostic: {
+              upstreamStatus: 429,
+              errorCode: "rate_limit_error",
+              rateLimit: { retryAfter: "12", remainingRequests: "0", resetRequests: "12s" },
+            },
+          },
+          {
+            requestState: "cancelled-before-issue",
+            outcome: "cancelled-before-issue",
+            status: null,
+            inFlightAnalysisCount: 1,
+          },
+        ],
+        inFlightAnalysisCount: 1,
+      },
+    },
+    failureRun: null,
+  });
+  assert.equal(report.run.providerDiagnostic.upstreamStatus, 429);
+  assert.deepEqual(report.run.providerDiagnostic.rateLimit, {
+    retryAfter: "12",
+    remainingRequests: "0",
+    resetRequests: "12s",
+    remainingTokens: "0",
+    resetTokens: "12s",
+  });
+  assert.equal(report.run.providerAttempts[0].failureClassification, "provider-rate-limit");
+  assert.equal(report.run.providerAttempts[0].inFlightAnalysisCountAtIssue, 2);
+  assert.equal(report.run.providerAttempts[1].outcome, "cancelled-before-issue");
+  assert.equal(report.run.inFlightAnalysisCount, 1);
+  assert.doesNotMatch(JSON.stringify(report), /authorization|must not be retained/);
+
+  const dnsReport = buildAcceptanceReport({
+    project: { name: "Synthetic Atlas", location: "Ohio" },
+    liveRun: {
+      statusCode: 200,
+      payload: {
+        researchAudit: { categories: [] },
+        sourceLedger: [{
+          url: "https://portal.synthetic.example.test/project",
+          accessOutcome: {
+            state: "blocked",
+            reason: "prohibited-address-class",
+            transportDiagnostic: {
+              stage: "dns-validation",
+              responseReceived: false,
+              addressValidationReason: "prohibited-address-class",
+              addressValidationCategory: "dns-answer-policy",
+              addressValidationRule: "ipv4-private-use",
+              addressValidationTelemetry: {
+                answerCount: 2,
+                addressFamilies: [4],
+                addressFamilyCounts: { ipv4: 2, ipv6: 0, other: 0 },
+                publicAnswerCount: 1,
+                prohibitedAnswerCount: 1,
+                rejectingRules: ["ipv4-private-use"],
+                addresses: ["10.0.0.8"],
+              },
+            },
+          },
+        }],
+        evidence: [],
+      },
+    },
+    failureRun: null,
+  });
+  const transport = dnsReport.sourceStates.normalizedCandidates[0].accessOutcome.transportDiagnostic;
+  assert.equal(transport.addressValidationCategory, "dns-answer-policy");
+  assert.equal(transport.addressValidationRule, "ipv4-private-use");
+  assert.deepEqual(transport.addressValidationTelemetry.addressFamilyCounts, {
+    ipv4: 2,
+    ipv6: 0,
+    other: 0,
+  });
+  assert.deepEqual(transport.addressValidationTelemetry.rejectingRules, ["ipv4-private-use"]);
+  assert.doesNotMatch(JSON.stringify(dnsReport), /10\.0\.0\.8|addresses/);
+});
+
 test("does not attribute a failed refresh with retained cache to the current live run", () => {
   const report = buildAcceptanceReport({
     project: { name: "Cached Atlas", location: "Texas" },

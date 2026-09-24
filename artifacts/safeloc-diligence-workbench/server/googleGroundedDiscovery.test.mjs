@@ -144,14 +144,90 @@ test("classifies an unavailable model before any grounding query executes", asyn
     (error) => {
       assert.equal(error.name, "GoogleDiscoveryProviderError");
       assert.equal(error.researchErrorType, "google-model-unavailable");
-      assert.deepEqual(error.providerDiagnostic, { status: 404, reason: "NOT_FOUND" });
+      assert.equal(error.providerDiagnostic.status, 404);
+      assert.equal(error.providerDiagnostic.upstreamStatus, 404);
+      assert.equal(error.providerDiagnostic.errorCode, "not_found");
+      assert.equal(error.providerDiagnostic.reason, "not_found");
       assert.equal(error.providerAttempt.model, "gemini-obsolete");
       assert.equal(error.providerAttempt.requestCount, 1);
+      assert.equal(error.providerAttempt.requestState, "failed");
       assert.equal(error.providerAttempt.queryCount, 0);
       assert.equal(error.providerAttempt.citationCount, 0);
       return true;
     },
   );
+});
+
+test("retains sanitized Google 429 metadata and issued-request timing offline", async () => {
+  const analysisTracker = { inFlight: 0, peak: 0, attempts: [] };
+  await assert.rejects(
+    discoverGoogleGroundedProject({
+      project,
+      apiKey: "fixture-google-key",
+      analysisTracker,
+      fetchImpl: async () => new Response(JSON.stringify({
+        error: {
+          code: 429,
+          status: "RESOURCE_EXHAUSTED",
+          message: "Rate limit reached; api_key=secret and https://private.example.test/path?token=secret",
+        },
+      }), {
+        status: 429,
+        headers: {
+          "content-type": "application/json",
+          "retry-after": "12",
+          "x-ratelimit-remaining-requests": "0",
+          "x-ratelimit-reset-requests": "12s",
+        },
+      }),
+    }),
+    (error) => {
+      assert.equal(error.name, "GoogleDiscoveryProviderError");
+      assert.equal(error.providerDiagnostic.upstreamStatus, 429);
+      assert.equal(error.providerDiagnostic.errorCode, "resource_exhausted");
+      assert.equal(error.providerDiagnostic.rateLimit.retryAfter, "12");
+      assert.equal(error.providerDiagnostic.rateLimit.remainingRequests, "0");
+      assert.equal(error.providerAttempt.outcome, "failed");
+      assert.equal(error.providerAttempt.requestState, "failed");
+      assert.equal(error.providerAttempt.status, 429);
+      assert.equal(error.providerAttempt.inFlightAnalysisCountAtIssue, 1);
+      assert.equal(error.providerAttempt.inFlightAnalysisCount, 0);
+      assert.doesNotMatch(JSON.stringify(error.providerDiagnostic), /secret|private\.example\.test/);
+      return true;
+    },
+  );
+  assert.equal(analysisTracker.inFlight, 0);
+  assert.equal(analysisTracker.peak, 1);
+  assert.equal(analysisTracker.attempts.length, 1);
+});
+
+test("keeps Google discovery cancellation before issue separate from an issued deadline request", async () => {
+  const analysisTracker = { inFlight: 0, peak: 0, attempts: [] };
+  const controller = new AbortController();
+  controller.abort();
+  let fetchCalls = 0;
+  await assert.rejects(
+    discoverGoogleGroundedProject({
+      project,
+      apiKey: "fixture-google-key",
+      analysisTracker,
+      signal: controller.signal,
+      fetchImpl: async () => {
+        fetchCalls += 1;
+        throw new Error("fetch should not be called");
+      },
+    }),
+    (error) => {
+      assert.equal(error.providerAttempt.requestState, "cancelled-before-issue");
+      assert.equal(error.providerAttempt.outcome, "cancelled-before-issue");
+      assert.equal(error.providerAttempt.issuedAt, null);
+      assert.equal(error.providerAttempt.inFlightAnalysisCount, 0);
+      return true;
+    },
+  );
+  assert.equal(fetchCalls, 0);
+  assert.equal(analysisTracker.inFlight, 0);
+  assert.equal(analysisTracker.peak, 0);
 });
 
 test("parses successful Interactions search steps and deduplicates URL-citation annotations", () => {

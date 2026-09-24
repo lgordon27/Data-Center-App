@@ -1,4 +1,5 @@
 import { useDiligence } from "@/context/DiligenceContext";
+import { RetainedResearchFindings } from "@/components/RetainedResearchFindings";
 import { generateAdvisorBrief, generateAssetManagerBrief } from "@/model/conferencePresentation";
 import { Lightbulb, Info, HelpCircle, AlertCircle, ArrowRight } from "lucide-react";
 
@@ -27,6 +28,11 @@ export function AdvisorBrief() {
         <strong>{brief.coverageLabel}</strong> · No buy/sell recommendation. Project sensitivity is not an issuer, fund, or portfolio return.
       </div>
       {diligence.project.replay?.mode === "offline-saved-response" && <div data-testid="advisor-offline-replay-label" className="rounded-lg border border-[#f1cb8b] bg-[#fff8e9] px-4 py-3 text-xs text-[#6f460e]"><strong>Offline replay of saved research</strong> · No live provider request was made. Partial-run limitations and zero financial eligibility remain in force.</div>}
+      {diligence.project.kind === "custom" && <RetainedResearchFindings
+        testId="advisor-retained-research"
+        findings={diligence.project.retainedFindings}
+        audit={diligence.project.retainedFindingAudit}
+      />}
       <div data-testid="advisor-gap-summary" className="grid gap-2 sm:grid-cols-2">
         <div className="rounded-lg border border-[#e3d4b6] bg-[#fffbf2] px-4 py-3 text-xs text-[#805000]"><strong className="font-semibold">Unresolved decision gates:</strong> {brief.gapSummary.unresolvedDecisionGates}</div>
         <div className="rounded-lg border border-[#f5ddd5] bg-[#fff3f4] px-4 py-3 text-xs text-[#7f2635]"><strong className="font-semibold">Unresolved financial drivers:</strong> {brief.gapSummary.unresolvedFinancialDrivers}</div>
@@ -59,12 +65,6 @@ export function AdvisorBrief() {
             ))}
           </ul>
           {brief.whatWeKnow.length === 0 && <p className="text-xs leading-5 text-[#52616b]">No source-backed verified facts established. Review Project Reality for the retained research.</p>}
-          {brief.retainedResearch.map((finding) => <article key={finding.id} data-testid={`advisor-retained-finding-${finding.id}`} className="mt-3 rounded-md border border-[#d9e0e4] bg-[#f9faf8] p-3 text-xs leading-5">
-            <p className="font-semibold">{finding.statement}</p>
-            <p className="mt-1 text-[#52616b]">{finding.limitation}</p>
-            <p className="mt-1 text-[#60707d]">Reported {finding.reportingDate ?? "date unavailable"} · passage access {finding.accessedAt ?? "date unavailable"}</p>
-            <a href={finding.sourceUrl} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-[#255bb7] underline">{finding.sourceTitle}</a>
-          </article>)}
         </div>
         
         <div className="rounded-xl border border-[#d9e0e4] bg-white p-4 shadow-sm">

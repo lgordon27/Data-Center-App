@@ -250,6 +250,9 @@ export type RetainedResearchFindingAudit = {
   duplicateExcludedCount: number;
   inaccessibleExcludedCount: number;
   financiallyEligibleCount: number;
+  totalFindingCount: number;
+  shownFindingCount: number;
+  capDiscardCount: number;
 };
 export type ResearchOutcomeState =
   | "complete-with-eligible-evidence"
@@ -750,16 +753,29 @@ function normalizeIdentityText(value: string) {
 }
 
 function stateInText(value: string) {
-  const normalized = normalizeIdentityText(value);
-  return US_STATE_NAMES.find((state) => {
-    const name = normalizeIdentityText(state);
-    return ` ${normalized} `.includes(` ${name} `);
-  });
+  return statesInText(value)[0];
 }
 
 function statesInText(value: string) {
   const normalized = normalizeIdentityText(value);
-  return US_STATE_NAMES.filter((state) => ` ${normalized} `.includes(` ${normalizeIdentityText(state)} `));
+  const fullNames = US_STATE_NAMES
+    .filter((state) => ` ${normalized} `.includes(` ${normalizeIdentityText(state)} `))
+    .filter((state) => !US_STATE_NAMES.some((other) =>
+      other !== state
+      && normalizeIdentityText(other).length > normalizeIdentityText(state).length
+      && normalizeIdentityText(other).includes(normalizeIdentityText(state))
+      && ` ${normalized} `.includes(` ${normalizeIdentityText(other)} `)));
+  const abbreviated = Object.entries(US_STATE_CODES)
+    .filter(([code]) => new RegExp(`(?:^|[,\\s])${code.toUpperCase()}(?:$|[,\\s])`).test(value))
+    .map(([, state]) => state);
+  return [...new Set([...fullNames, ...abbreviated])];
+}
+
+function firstStateInText(value: string) {
+  return statesInText(value)
+    .map((state) => ({ state, index: value.toLocaleLowerCase().indexOf(state.toLocaleLowerCase()) }))
+    .filter((entry) => entry.index >= 0)
+    .sort((a, b) => a.index - b.index)[0]?.state;
 }
 
 const US_STATE_CODES: Record<string, string> = {
@@ -788,29 +804,66 @@ function findingApplicability(
   identity: ResearchIdentity,
 ): "exact-project" | "ambiguous" | "unrelated" {
   const normalizedPassage = normalizeIdentityText(passage);
-  const projectName = isNonEmptyString(identity.name) ? normalizeIdentityText(identity.name) : "";
-  const nameMatches = Boolean(projectName && ` ${normalizedPassage} `.includes(` ${projectName} `));
-  const aliases = identity.knownData?.aliases?.filter(isNonEmptyString).map(normalizeIdentityText) ?? [];
-  const aliasMatches = aliases.some((alias) => alias && ` ${normalizedPassage} `.includes(` ${alias} `));
-  const hasIdentityName = nameMatches || aliasMatches;
+  const identityNames = [
+    ...(isNonEmptyString(identity.name) ? [identity.name] : []),
+    ...(identity.knownData?.aliases?.filter(isNonEmptyString) ?? []),
+  ].map(normalizeIdentityText).filter(Boolean);
+  const nameMatches = identityNames.some((name) => ` ${normalizedPassage} `.includes(` ${name} `));
+  const hasIdentityName = nameMatches;
   const requestedState = canonicalState(identity.knownData?.state)
     ?? (isNonEmptyString(identity.location) ? stateInText(identity.location) : undefined);
   const passageStates = statesInText(passage);
-  const stateConflicts = Boolean(requestedState && passageStates.some((state) =>
-    normalizeIdentityText(requestedState) !== normalizeIdentityText(state)));
+  const location = isNonEmptyString(identity.location) ? identity.location : "";
+  const requestedCity = isNonEmptyString(identity.knownData?.city)
+    ? identity.knownData.city.trim()
+    : location.split(",").map((part) => part.trim()).find((part) =>
+      part && !/county\b/i.test(part) && !canonicalState(part) && !/^(?:us|united states)$/i.test(part));
+  const requestedCounty = isNonEmptyString(identity.knownData?.county)
+    ? identity.knownData.county.trim()
+    : location.match(/\b([\w .'-]+County)\b/i)?.[1];
   const requestedOperator = isNonEmptyString(identity.knownData?.operator)
-    ? normalizeIdentityText(identity.knownData.operator)
+    ? identity.knownData.operator.trim()
     : "";
-  const operatorMatches = !requestedOperator || ` ${normalizedPassage} `.includes(` ${requestedOperator} `);
+  const contains = (value: string) => ` ${normalizedPassage} `.includes(` ${normalizeIdentityText(value)} `);
 
-  if (stateConflicts || (!hasIdentityName && candidate.exactProject !== true)) return "unrelated";
-  if (
-    candidate.exactProject === true
-    && hasIdentityName
-    && !stateConflicts
-    && operatorMatches
-    && (!requestedState || passageStates.some((state) => normalizeIdentityText(requestedState) === normalizeIdentityText(state)))
-  ) return "exact-project";
+  if (!hasIdentityName) return candidate.exactProject === true ? "ambiguous" : "unrelated";
+
+  const stateMatches = Boolean(requestedState && passageStates.some((state) =>
+    normalizeIdentityText(requestedState) === normalizeIdentityText(state)));
+  const namedSentences = passage.split(/(?<=[.!?])\s+/).filter((sentence) => {
+    const normalized = normalizeIdentityText(sentence);
+    return identityNames.some((name) => ` ${normalized} `.includes(` ${name} `));
+  });
+  const projectLocationSentences = namedSentences.filter((sentence) =>
+    /\b(?:located|based|site|facility|campus|project|built|planned|proposed|operating|in)\b/i.test(sentence));
+  const statesNearProject = projectLocationSentences.map(firstStateInText).filter((state): state is string => Boolean(state));
+  if (requestedState && passageStates.length > 0 && !stateMatches) return "unrelated";
+  if (requestedState && statesNearProject.length > 0
+    && !statesNearProject.some((state) => normalizeIdentityText(state) === normalizeIdentityText(requestedState))) {
+    return "unrelated";
+  }
+
+  const cityMatches = Boolean(requestedCity && contains(requestedCity));
+  const countyMatches = Boolean(requestedCounty && contains(requestedCounty));
+  const operatorMatches = Boolean(requestedOperator && contains(requestedOperator));
+  const namedText = namedSentences.join(" ");
+  const hasAlternativeCity = Boolean(requestedCity && namedText && /\b(?:in|near|at|located in|based in)\s+[A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+)?/i.test(namedText)
+    && !normalizeIdentityText(namedText).includes(normalizeIdentityText(requestedCity)));
+  const hasAlternativeCounty = Boolean(requestedCounty
+    && namedText.match(/\b[A-Z][\w .'-]*County\b/i)
+    && !contains(requestedCounty));
+  if (hasAlternativeCity || hasAlternativeCounty) return "unrelated";
+
+  const requiredLocationMatches = (!requestedState || stateMatches)
+    && (!requestedCity || cityMatches)
+    && (!requestedCounty || countyMatches);
+  const hasIdentityDetail = Boolean(requestedState || requestedCity || requestedCounty || requestedOperator);
+  const operatorContradiction = requestedOperator
+    && /\b(?:operated|owned|developed|sponsored)\s+by\b/i.test(passage)
+    && !operatorMatches;
+  if (operatorContradiction) return "unrelated";
+  if (candidate.exactProject === true && hasIdentityDetail && requiredLocationMatches
+    && (!requestedOperator || operatorMatches)) return "exact-project";
   return "ambiguous";
 }
 
@@ -836,6 +889,15 @@ function financialEligibilityFromLedger(candidate: Record<string, unknown>): Ret
   return "unresolved";
 }
 
+function sourceDerivedStatement(passage: string, powerMeasure: string | null) {
+  const sentences = passage.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [passage];
+  const relevant = powerMeasure
+    ? sentences.find((sentence) => /\b\d+(?:[,.]\d+)?\s*(?:MW|MWh|GW|kW)\b/i.test(sentence))
+    : undefined;
+  const statement = (relevant ?? sentences[0] ?? passage).trim();
+  return statement.length > 320 ? `${statement.slice(0, 317).trimEnd()}…` : statement;
+}
+
 function deriveRetainedResearchFindingReport(sourceLedger: unknown, identity: ResearchIdentity = {}) {
   const findings: RetainedResearchFinding[] = [];
   const audit: RetainedResearchFindingAudit = {
@@ -847,6 +909,9 @@ function deriveRetainedResearchFindingReport(sourceLedger: unknown, identity: Re
     duplicateExcludedCount: 0,
     inaccessibleExcludedCount: 0,
     financiallyEligibleCount: 0,
+    totalFindingCount: 0,
+    shownFindingCount: 0,
+    capDiscardCount: 0,
   };
   if (!Array.isArray(sourceLedger)) return { findings, audit };
 
@@ -881,6 +946,7 @@ function deriveRetainedResearchFindingReport(sourceLedger: unknown, identity: Re
       applicability === "ambiguous" ? "ambiguous-unresolved"
         : sourceClass.startsWith("primary-") ? "source-supported" : "attributed-report";
     const financialProposalEligibility = financialEligibilityFromLedger(candidate);
+    const powerMeasure = powerMeasureFromPassage(passage);
     const reportingDate = optionalDate(candidate.date)
       ?? optionalDate(candidate.publishedAt)
       ?? optionalDate(candidate.sourcePublishedAt)
@@ -899,7 +965,7 @@ function deriveRetainedResearchFindingReport(sourceLedger: unknown, identity: Re
       assessment,
       applicability,
       financialProposalEligibility,
-      statement: "Retrieved source passage retained for reviewer assessment.",
+      statement: sourceDerivedStatement(passage, powerMeasure),
       attribution: assessment === "source-supported"
         ? `Source-supported passage from ${title}; the source assertion is not independently verified by SafeLoc.`
         : assessment === "ambiguous-unresolved"
@@ -910,7 +976,7 @@ function deriveRetainedResearchFindingReport(sourceLedger: unknown, identity: Re
         : "Project-level applicability is ambiguous; do not apply this passage to the project.",
       phaseScope: sourceScope,
       timePeriod: isNonEmptyString(candidate.timePeriod) ? candidate.timePeriod : null,
-      powerMeasure: powerMeasureFromPassage(passage),
+      powerMeasure,
       reportingDate,
       reportingDateBasis: reportingDate ? "retrieved-source-metadata" : "not-reported",
       accessedAt,
@@ -926,7 +992,19 @@ function deriveRetainedResearchFindingReport(sourceLedger: unknown, identity: Re
     if (assessment === "ambiguous-unresolved") audit.ambiguousUnresolvedCount += 1;
     if (financialProposalEligibility === "eligible") audit.financiallyEligibleCount += 1;
   }
-  return { findings: findings.slice(0, 8), audit };
+  const assessmentRank: Record<RetainedResearchFinding["assessment"], number> = {
+    "source-supported": 0,
+    "attributed-report": 1,
+    "ambiguous-unresolved": 2,
+  };
+  findings.sort((a, b) =>
+    assessmentRank[a.assessment] - assessmentRank[b.assessment]
+    || Number(Boolean(b.powerMeasure)) - Number(Boolean(a.powerMeasure))
+    || a.id.localeCompare(b.id));
+  audit.totalFindingCount = findings.length;
+  audit.shownFindingCount = Math.min(findings.length, 8);
+  audit.capDiscardCount = Math.max(0, findings.length - audit.shownFindingCount);
+  return { findings: findings.slice(0, audit.shownFindingCount), audit };
 }
 
 export function deriveRetainedResearchFindings(

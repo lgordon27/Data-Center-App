@@ -1,9 +1,23 @@
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
+import { runValidatedResearch } from "../server/researchProjectProxy.mjs";
 
 const syntheticResearchFixture = JSON.parse(
   readFileSync(new URL("./fixtures/research-project-synthetic.json", import.meta.url), "utf8"),
 ) as Record<string, unknown>;
+const partialReceiptsFixture = JSON.parse(
+  readFileSync(new URL("../server/fixtures/research-partial-receipts.json", import.meta.url), "utf8"),
+) as {
+  project: { name: string; location: string; knownData: { city: string; state: string } };
+  accessibleReceipt: {
+    url: string;
+    title: string;
+    date: string;
+    categoryIds: string[];
+    sourceChannel: string;
+    passage: string;
+  };
+};
 
 const evidenceIds = [
   "electricity_cost",
@@ -430,6 +444,8 @@ test.describe("custom project research", () => {
     await expect(findings).toContainText("Ambiguous applicability");
     await expect(findings).toContainText("180 MW");
     await expect(findings).toContainText("24 MW of IT load");
+    await expect(findings.getByTestId("retained-research-findings-audit")).toContainText("3 shown of 3 retained findings");
+    await expect(findings).toContainText("The Phase One utility interconnection was announced at 180 MW");
     await expect(findings).not.toContainText("Dayton, Ohio");
     await expect(findings).toContainText("Reporting date:");
     await expect(findings).toContainText("Accessed:");
@@ -446,6 +462,70 @@ test.describe("custom project research", () => {
     await page.getByTestId("button-opt-in-scenario").click();
     await expect(page.getByTestId("custom-project-not-modeled")).toContainText("Not modeled");
     expect(researchRequests).toBe(1);
+  });
+
+  test("hands an actual partial server workflow result to Project Reality and Advisor Brief", async ({ page }) => {
+    const source = {
+      ...partialReceiptsFixture.accessibleReceipt,
+      excerpt: partialReceiptsFixture.accessibleReceipt.passage,
+    };
+    const serverResult = await runValidatedResearch(partialReceiptsFixture.project, {
+      apiKey: "synthetic-browser-test-key",
+      req: { method: "POST", body: {}, ip: "198.51.100.20" },
+      categoryIds: ["water"],
+      rateLimiter: { allow: () => ({ allowed: true, retryAfterSeconds: 0 }) },
+      googleDiscoveryImpl: async () => ({
+        status: "completed",
+        provider: "google-gemini-grounding",
+        model: "synthetic-offline-model",
+        queries: ["synthetic exact-project public record"],
+        candidates: [{
+          ...source,
+          referringQueries: ["synthetic exact-project public record"],
+          origin: "synthetic-offline-discovery",
+          discoveryOnly: true,
+        }],
+        groundingMetadataPresent: true,
+        groundingSearchExecuted: true,
+        usableCitationMetadataPresent: true,
+        googleSearchCallCount: 1,
+        googleSearchResultCount: 1,
+        urlCitationCount: 1,
+        citationCount: 1,
+        providerRequestCount: 1,
+      }),
+      fetchImpl: async () => new Response(JSON.stringify({
+        error: { message: "synthetic rate limit", type: "rate_limit_error", code: "rate_limit_exceeded" },
+      }), { status: 429 }),
+      documentFetchImpl: async () => new Response(
+        `<html><body>${partialReceiptsFixture.accessibleReceipt.passage}</body></html>`,
+        { status: 200, headers: { "content-type": "text/html" } },
+      ),
+    });
+
+    await page.unroute("**/api/research-project");
+    await page.route("**/api/research-project", (route) => route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(serverResult),
+    }));
+    await page.goto("/");
+    await openCustomProjectDialog(page);
+    await page.getByTestId("input-custom-project-name").fill(partialReceiptsFixture.project.name);
+    await page.getByTestId("input-custom-project-location").fill(partialReceiptsFixture.project.location);
+    await page.getByTestId("button-submit-custom-project").click();
+
+    await expect(page.getByTestId("custom-research-banner")).toContainText("RESEARCH INCOMPLETE · no eligible sources");
+    await page.getByTestId("tab-reality").click();
+    const realityFindings = page.getByTestId("retained-research-findings");
+    await expect(realityFindings).toContainText(partialReceiptsFixture.accessibleReceipt.passage);
+    await expect(realityFindings).toContainText(partialReceiptsFixture.accessibleReceipt.date);
+    await expect(realityFindings).toContainText("0 financially eligible");
+
+    await page.getByTestId("tab-advisor").click();
+    const advisorFindings = page.getByTestId("advisor-retained-research");
+    await expect(advisorFindings).toContainText(partialReceiptsFixture.accessibleReceipt.passage);
+    await expect(advisorFindings).toContainText("Financial eligibility unresolved");
   });
 
   test("launches research from Home, preserves 16 items, and resets to Stargate", async ({ page }) => {

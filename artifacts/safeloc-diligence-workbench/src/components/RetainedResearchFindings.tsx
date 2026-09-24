@@ -35,6 +35,7 @@ export function RetainedResearchFindings({
       </p>
       {audit && <div data-testid={`${testId}-audit`} className="mt-3 rounded-lg bg-white p-3 text-[10px] leading-5 text-[#52616b]">
         {audit.accessiblePassagesReviewed} accessible passages reviewed · {audit.sourceSupportedCount} source-supported · {audit.attributedReportCount} attributed · {audit.ambiguousUnresolvedCount} ambiguous · {audit.unrelatedExcludedCount} unrelated excluded · {audit.duplicateExcludedCount} duplicate passages excluded · {audit.financiallyEligibleCount} financially eligible
+        {" · "}{audit.shownFindingCount} shown of {audit.totalFindingCount} retained findings (cap 8; {audit.capDiscardCount} cap-discarded)
       </div>}
       {entries.length === 0 ? (
         <p className="mt-3 rounded-lg bg-white p-3 text-xs leading-5 text-[#52616b]">No passage was retained as potentially relevant to this project. Excluded unrelated passages are not project findings.</p>
@@ -51,6 +52,7 @@ export function RetainedResearchFindings({
                 </span>
               </div>
               <p className="mt-2 font-semibold text-[#122232]">{finding.attribution}</p>
+              <p className="mt-1 text-[#344550]">{finding.statement}</p>
               <p className="mt-1 text-[#52616b]">{finding.projectScope}</p>
               <p className="mt-1 text-[#60707d]">
                 Scope metadata (unverified): {finding.phaseScope}

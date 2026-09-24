@@ -27,6 +27,17 @@ test("extracts bounded HTML without executing script", async () => {
   assert.match(result.contentHash, /^[a-f0-9]{64}$/);
 });
 
+test("prioritizes article facts over long navigation and boilerplate text", async () => {
+  const navigation = `<nav><h2>${"Navigation links and cookie settings. ".repeat(180)}</h2>${"Footer links. ".repeat(180)}</nav>`;
+  const result = await extractResearchDocument({
+    bytes: `<header>${navigation}</header><main><h1>Project Atlas</h1><p>The Texas facility received a 240 MW interconnection approval.</p></main><footer>${"Footer links. ".repeat(400)}</footer>`,
+    contentType: "text/html",
+  });
+  assert.ok(result.passage.length <= 4_000);
+  assert.match(result.passage, /240 MW interconnection approval/);
+  assert.doesNotMatch(result.passage, /Navigation links|Footer links|cookie settings/);
+});
+
 test("extracts plain text, generic JSON, and bounded indexes", async () => {
   const text = await extractResearchDocument({ bytes: " Atlas \n permit ", contentType: "text/plain" });
   assert.equal(text.passage, "Atlas permit");

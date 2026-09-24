@@ -74,6 +74,9 @@ const PROTECTED_OPPORTUNITY_CATEGORIES = Object.freeze({
 });
 const RESEARCH_DOCUMENT_MAX_BYTES = 1_000_000;
 const RESEARCH_DOCUMENT_MAX_REDIRECTS = 3;
+const RESEARCH_DOCUMENT_TIMEOUT_MS = 12_000;
+const RESEARCH_DOCUMENT_ANALYSIS_RESERVE_MS = 20_000;
+const RESEARCH_DOCUMENT_MAX_CONCURRENCY = 4;
 const SEC_CONNECTOR_CACHE = new Map();
 const RESEARCH_CATEGORY_STATES = Object.freeze([
   "Complete",
@@ -1544,7 +1547,7 @@ function categoryStageCounts(category, sources, evidence, project = {}) {
     ? category.evidenceIds.every((id) => categoryEvidence.some((item) => item.id === id && item.eligibleForModel === true))
     : sourceCandidates.some((source) =>
       source.accessOutcome?.state === "accessible"
-      && (source.exactProject === true || isSourceProjectSpecific(source, project)));
+      && sourceEstablishesProjectIdentity(source, project));
   const rejectionReasons = categoryEvidence.flatMap((item) => item.quarantineReasons ?? []);
   const openedDocuments = categoryOpenedDocuments(sourceCandidates, category);
   return {
@@ -1631,6 +1634,52 @@ function categoryOpenedDocuments(sources = [], category = null) {
   });
 }
 
+function sourceEstablishesProjectIdentity(source, project = {}) {
+  const identityMetadata = { ...source };
+  delete identityMetadata.exactProject;
+  delete identityMetadata.entityMatch;
+  if (!isSourceProjectSpecific(identityMetadata, project)) return false;
+  const locationText = String(project.location ?? "");
+  const normalizedSourceText = ` ${[
+    source?.title,
+    source?.url,
+    source?.resolvedUrl,
+    source?.excerpt,
+    source?.accessOutcome?.passage,
+  ].filter((value) => typeof value === "string").join(" ").toLowerCase().replace(/[^a-z0-9]+/g, " ")} `;
+  const normalizedLocation = locationText.toLowerCase();
+  const stateEntries = Object.entries(US_STATE_NAMES);
+  const knownState = String(project.knownData?.state ?? "").trim();
+  const expectedStateEntry = stateEntries.find(([abbr, name]) =>
+    knownState.toLowerCase() === name.toLowerCase() || knownState.toUpperCase() === abbr)
+    ?? stateEntries
+      .filter(([, name]) => new RegExp(`\\b${name.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(normalizedLocation))
+      .sort((left, right) => right[1].length - left[1].length)[0]
+    ?? stateEntries.find(([abbr]) => new RegExp(`\\b${abbr}\\b`, "i").test(normalizedLocation));
+  if (!expectedStateEntry) return false;
+  const [stateAbbreviation, stateName] = expectedStateEntry;
+  const hasExpectedState = normalizedSourceText.includes(` ${stateName.toLowerCase()} `)
+    || new RegExp(`\\b${stateAbbreviation}\\b`, "i").test(normalizedSourceText);
+  if (!hasExpectedState) return false;
+  const stateNamesMentioned = Object.values(US_STATE_NAMES)
+    .filter((name) => normalizedSourceText.includes(` ${name.toLowerCase()} `));
+  const otherStateNames = stateNamesMentioned.filter((name) =>
+    name !== stateName
+    && !stateNamesMentioned.some((longerName) =>
+      longerName.length > name.length && longerName.toLowerCase().includes(name.toLowerCase())));
+  if (otherStateNames.length) return false;
+  const expectedCity = String(project.knownData?.city ?? locationText.split(",")[0] ?? "")
+    .replace(/\b(metro|region|area)\b/gi, "")
+    .trim();
+  if (expectedCity && !/\bcounty\b/i.test(expectedCity)) {
+    const normalizedCity = expectedCity.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    if (normalizedCity && !normalizedSourceText.includes(` ${normalizedCity} `)) return false;
+  }
+  const expectedCounty = String(project.knownData?.county ?? "").trim();
+  if (expectedCounty && !normalizedSourceText.includes(` ${expectedCounty.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()} `)) return false;
+  return true;
+}
+
 function buildResearchAudit({
   project,
   coverage = {},
@@ -1703,7 +1752,7 @@ function buildResearchAudit({
       localAuthorities: category.authorityTargets?.localAuthorities ?? [],
       authorityLimitations: category.authorityTargets?.limitations ?? [],
       returnedDomains: Array.isArray(supplied.returnedDomains) ? supplied.returnedDomains.filter(Boolean).slice(0, 20) : categoryReturnedDomains(sources.filter((source) => categorySourceMatches(category, source))),
-      openedDocuments: Array.isArray(supplied.openedDocuments)
+      openedDocuments: Array.isArray(supplied.openedDocuments) && supplied.openedDocuments.length
         ? supplied.openedDocuments.slice(0, 20).map((document) => ({
           ...document,
           categoryId: document.categoryId ?? category.categoryId,
@@ -4150,7 +4199,7 @@ function categoryResearchIsResolved(category, research, sources, project, covera
   if (!category.evidenceIds.length) {
     const resolved = sources.some((source) =>
       source.accessOutcome?.state === "accessible"
-      && (source.exactProject === true || isSourceProjectSpecific(source, project)));
+      && sourceEstablishesProjectIdentity(source, project));
     return { resolved, unresolvedEvidenceIds: resolved ? [] : [category.categoryId] };
   }
   try {
@@ -4197,6 +4246,9 @@ function technicalReasonCodesForRun({ orchestration, deadlineState }) {
       reasons.add(execution.followUpSkipReason);
     }
   }
+  for (const category of orchestration.categoryResults) {
+    if (category.coverage?.analysisFailureType) reasons.add(category.coverage.analysisFailureType);
+  }
   for (const source of orchestration.candidates) {
     const access = source?.accessOutcome;
     if (!access || access.state === "accessible") continue;
@@ -4229,8 +4281,10 @@ function candidateLineageForRun(result, orchestration) {
         reused: access.reused === true || source.documentAccessReused === true,
       },
       identityResult: {
-        exactProject: source.exactProject === true,
-        state: source.projectSpecificityState ?? (source.exactProject === true ? "project-specific" : "unresolved"),
+        exactProject: sourceEstablishesProjectIdentity(source, result?.projectSummary ?? {}),
+        state: sourceEstablishesProjectIdentity(source, result?.projectSummary ?? {})
+          ? "project-specific"
+          : "unresolved",
       },
       passageResult: {
         state: access.passage || source.claimPassage ? "retained" : "not-retained",
@@ -4287,7 +4341,25 @@ async function runValidatedResearch(project, {
   ocrImpl,
   signal,
   categoryIds = null,
+  researchTimeoutMs = RESEARCH_PROJECT_TIMEOUT_MS,
+  documentTimeoutMs = RESEARCH_DOCUMENT_TIMEOUT_MS,
+  analysisReserveMs = RESEARCH_DOCUMENT_ANALYSIS_RESERVE_MS,
+  maxConcurrentDocumentOpens = RESEARCH_DOCUMENT_MAX_CONCURRENCY,
 }) {
+  researchTimeoutMs = Math.min(RESEARCH_PROJECT_TIMEOUT_MS, Math.max(1,
+    Number.isFinite(researchTimeoutMs) ? researchTimeoutMs : RESEARCH_PROJECT_TIMEOUT_MS));
+  documentTimeoutMs = Math.min(RESEARCH_DOCUMENT_TIMEOUT_MS, Math.max(1,
+    Number.isFinite(documentTimeoutMs) ? documentTimeoutMs : RESEARCH_DOCUMENT_TIMEOUT_MS));
+  analysisReserveMs = researchTimeoutMs < RESEARCH_PROJECT_TIMEOUT_MS
+    ? Math.min(RESEARCH_DOCUMENT_ANALYSIS_RESERVE_MS, Math.max(0,
+      Number.isFinite(analysisReserveMs) ? analysisReserveMs : RESEARCH_DOCUMENT_ANALYSIS_RESERVE_MS))
+    : RESEARCH_DOCUMENT_ANALYSIS_RESERVE_MS;
+  maxConcurrentDocumentOpens = Math.min(
+    RESEARCH_DOCUMENT_MAX_CONCURRENCY,
+    Math.max(1, Number.isInteger(maxConcurrentDocumentOpens)
+      ? maxConcurrentDocumentOpens
+      : RESEARCH_DOCUMENT_MAX_CONCURRENCY),
+  );
   if (!apiKey) {
     const error = new Error("Project research not configured.");
     error.name = "ConfigurationError";
@@ -4321,7 +4393,7 @@ async function runValidatedResearch(project, {
     deadlineState.expired = true;
     phaseTiming.cancellationAt = new Date().toISOString();
     controller.abort();
-  }, RESEARCH_PROJECT_TIMEOUT_MS);
+  }, researchTimeoutMs);
   const runCorrelationId = randomUUID();
   const analysisTracker = { inFlight: 0, peak: 0, attempts: [] };
   const fetchedCandidatesByCategory = new Map();
@@ -4331,7 +4403,81 @@ async function runValidatedResearch(project, {
   const documentAccessPromisesByCanonicalUrl = new Map();
   const discoveryAttemptedCategories = new Set();
   const secAttemptedCategories = new Set();
-  let documentAccessQueue = Promise.resolve();
+  let activeDocumentOpens = 0;
+  const documentOpenWaiters = [];
+  const acquireDocumentOpenSlot = async (openSignal) => {
+    if (openSignal?.aborted) throw createResearchCancellationError();
+    if (activeDocumentOpens < maxConcurrentDocumentOpens) {
+      activeDocumentOpens += 1;
+      return;
+    }
+    await new Promise((resolve, reject) => {
+      const waiter = { resolve, reject, signal: openSignal, onAbort: null };
+      waiter.onAbort = () => {
+        const index = documentOpenWaiters.indexOf(waiter);
+        if (index >= 0) documentOpenWaiters.splice(index, 1);
+        reject(createResearchCancellationError());
+      };
+      openSignal?.addEventListener("abort", waiter.onAbort, { once: true });
+      documentOpenWaiters.push(waiter);
+    });
+    if (openSignal?.aborted) {
+      releaseDocumentOpenSlot();
+      throw createResearchCancellationError();
+    }
+  };
+  const releaseDocumentOpenSlot = () => {
+    const next = documentOpenWaiters.shift();
+    if (next) {
+      next.signal?.removeEventListener("abort", next.onAbort);
+      next.resolve();
+    } else {
+      activeDocumentOpens = Math.max(0, activeDocumentOpens - 1);
+    }
+  };
+  const openDocumentWithBudget = async (source) => {
+    await acquireDocumentOpenSlot(controller.signal);
+    const remainingMs = Math.max(0, researchTimeoutMs - (Date.now() - runStartedAtMs));
+    const availableMs = remainingMs - analysisReserveMs;
+    if (availableMs <= 0) {
+      releaseDocumentOpenSlot();
+      return {
+        ...evaluateResearchDocumentAccess(source),
+        state: "not-attempted",
+        reason: "analysis-budget-reserved",
+        extractionLimitations: ["Document access was deferred to preserve the remaining structured-analysis budget."],
+      };
+    }
+    const localController = new AbortController();
+    const abortFromRun = () => localController.abort(controller.signal.reason);
+    controller.signal.addEventListener("abort", abortFromRun, { once: true });
+    const sliceMs = Math.max(1, Math.min(documentTimeoutMs, availableMs));
+    const localTimeout = setTimeout(() => {
+      localController.abort(Object.assign(new Error("Document access time slice expired."), { name: "TimeoutError" }));
+    }, sliceMs);
+    try {
+      return await accessResearchDocument(source, {
+        fetchImpl: documentFetchImpl,
+        signal: localController.signal,
+        ocrImpl,
+      });
+    } catch (error) {
+      if (localController.signal.aborted && !controller.signal.aborted) {
+        return {
+          ...evaluateResearchDocumentAccess(source),
+          state: "blocked",
+          reason: "document-time-slice",
+          extractionLimitations: ["The document did not finish within its bounded access time slice."],
+          transportDiagnostic: { stage: "document-time-slice", elapsedMs: sliceMs },
+        };
+      }
+      throw error;
+    } finally {
+      clearTimeout(localTimeout);
+      controller.signal.removeEventListener("abort", abortFromRun);
+      releaseDocumentOpenSlot();
+    }
+  };
   let fetchedCandidateCount = 0;
   let physicalOpensUsed = 0;
   let physicalOpenBudgetExceeded = false;
@@ -4350,10 +4496,11 @@ async function runValidatedResearch(project, {
     .filter((category) => !Array.isArray(categoryIds) || !categoryIds.length || categoryIds.includes(category.categoryId))
     .map((category) => category.categoryId);
   const openedGoogleDocuments = [];
+  const retainedDocumentReceipts = [];
   const prefetchGoogleGroundedSources = async (candidates) => {
     const boundedCandidates = (Array.isArray(candidates) ? candidates : [])
       .slice(0, RESEARCH_RUN_BUDGET.maxTotalCandidates);
-    for (const [index, source] of boundedCandidates.entries()) {
+    await Promise.all(boundedCandidates.map(async (source) => {
       throwIfResearchCancelled(controller.signal);
       const originalUrl = source.originalUrl ?? source.url ?? null;
       const originalCanonicalUrl = canonicalizeSourceUrl(originalUrl);
@@ -4406,12 +4553,7 @@ async function runValidatedResearch(project, {
           };
         } else {
           const physicalOpenIndex = authorization.physicalOpenIndex;
-          const accessTask = documentAccessQueue
-            .then(() => accessResearchDocument(source, {
-              fetchImpl: documentFetchImpl,
-              signal: controller.signal,
-              ocrImpl,
-            }))
+          const accessTask = openDocumentWithBudget(source)
             .then((outcome) => ({
               ...outcome,
               physicalOpenIndex,
@@ -4420,7 +4562,6 @@ async function runValidatedResearch(project, {
             }));
           if (originalCanonicalUrl) documentAccessPromisesByCanonicalUrl.set(originalCanonicalUrl, accessTask);
           if (announcedCanonicalUrl) documentAccessPromisesByCanonicalUrl.set(announcedCanonicalUrl, accessTask);
-          documentAccessQueue = accessTask.catch(() => {});
           accessOutcome = await accessTask;
         }
         if (originalCanonicalUrl) openedDocumentsByCanonicalUrl.set(originalCanonicalUrl, accessOutcome);
@@ -4431,7 +4572,7 @@ async function runValidatedResearch(project, {
           physicalOpenScheduler.registerReceipt({ canonicalUrl: finalCanonicalUrl, receipt: accessOutcome });
         }
       }
-      openedGoogleDocuments.push({
+      const openedSource = {
         ...source,
         originalUrl,
         canonicalUrl: source.canonicalIdentityExplicit === true
@@ -4444,8 +4585,10 @@ async function runValidatedResearch(project, {
         accessibilityState: accessOutcome.state,
         parsingState: accessOutcome.state === "accessible" ? "parsed" : "failed",
         ...(accessOutcome.passage ? { excerpt: accessOutcome.passage, claimPassage: accessOutcome.passage } : {}),
-      });
-    }
+      };
+      openedGoogleDocuments.push(openedSource);
+      if (accessOutcome.state === "accessible" && accessOutcome.passage) retainedDocumentReceipts.push(openedSource);
+    }));
     return openedGoogleDocuments;
   };
   let activeSecConnector = secConnector;
@@ -4700,12 +4843,40 @@ async function runValidatedResearch(project, {
             categoryResult.coverage.toolCallCount = observedToolCallCount;
             validateCategoryResult(categoryResult);
           } else {
+            const retainedGroundedSources = googleDiscovery.status === "completed"
+              ? googleDiscovery.candidates.filter((source) =>
+                categorySourceMatches(activeCategory, source)
+                && source?.accessOutcome?.state === "accessible"
+                && typeof source.accessOutcome?.passage === "string"
+                && source.accessOutcome.passage.trim())
+              : [];
+            if (retainedGroundedSources.length && !externalSignal?.aborted) {
+              categoryResult = {
+                research: createPartialResearchBody(project),
+                sources: retainedGroundedSources,
+                coverage: {
+                  provider: "google-gemini-grounding",
+                  model: googleModel,
+                  providerRequestCount,
+                  providerAttempts: [...providerAttempts],
+                  searchTerms: googleDiscovery.queries ?? [],
+                  providerLimitations: [
+                    `Structured category analysis failed (${classifyResearchFailure(error).type}); retrieved passages were retained with Missing Evidence pending analysis.`,
+                  ],
+                  analysisFailureType: classifyResearchFailure(error).type,
+                  activeCategoryId: categoryId,
+                  noUsableGroundedPassages: false,
+                  toolCallCount: observedToolCallCount,
+                },
+              };
+            } else {
             if (error?.name === "ResearchParseError") {
               error.schemaErrors = [error.message];
               error.partialFindingsRetained = false;
               logProviderDiagnostic(error, { runCorrelationId, categoryId });
             }
             throw error;
+            }
           }
         }
         const discoveryAttempts = [];
@@ -4824,7 +4995,7 @@ async function runValidatedResearch(project, {
         fetchedCandidateCount += boundedSources.length;
         const accessedSources = [];
         for (const source of boundedSources) {
-          throwIfResearchCancelled(controller.signal);
+          if (controller.signal.aborted && !deadlineState.expired) throw createResearchCancellationError();
           const originalUrl = source.originalUrl ?? source.url ?? null;
           const originalCanonicalUrl = canonicalizeSourceUrl(originalUrl);
           const announcedCanonicalUrl = canonicalizeSourceUrl(source.canonicalUrl ?? source.resolvedUrl ?? source.url);
@@ -4880,12 +5051,7 @@ async function runValidatedResearch(project, {
                 };
               } else {
                 const physicalOpenIndex = authorization.physicalOpenIndex;
-                const accessTask = documentAccessQueue
-                  .then(() => accessResearchDocument(source, {
-                    fetchImpl: documentFetchImpl,
-                    signal: controller.signal,
-                    ocrImpl,
-                  }))
+                const accessTask = openDocumentWithBudget(source)
                   .then((outcome) => ({
                     ...outcome,
                     referringUrls: [originalUrl].filter(Boolean),
@@ -4893,7 +5059,6 @@ async function runValidatedResearch(project, {
                   }));
                 if (originalCanonicalUrl) documentAccessPromisesByCanonicalUrl.set(originalCanonicalUrl, accessTask);
                 if (announcedCanonicalUrl) documentAccessPromisesByCanonicalUrl.set(announcedCanonicalUrl, accessTask);
-                documentAccessQueue = accessTask.catch(() => {});
                 accessOutcome = await accessTask;
                 if (accessOutcome.underlyingDocumentUrl) {
                   const underlyingAuthorization = authorizePhysicalOpen({
@@ -4902,16 +5067,12 @@ async function runValidatedResearch(project, {
                     source: { ...source, url: accessOutcome.underlyingDocumentUrl },
                   });
                   if (underlyingAuthorization.allowed) {
-                    const underlyingOutcome = await accessResearchDocument({
+                    const underlyingOutcome = await openDocumentWithBudget({
                       ...source,
                       url: accessOutcome.underlyingDocumentUrl,
                       originalUrl: accessOutcome.underlyingDocumentUrl,
                       javascriptOnly: false,
                       contentType: null,
-                    }, {
-                      fetchImpl: documentFetchImpl,
-                      signal: controller.signal,
-                      ocrImpl,
                     });
                     accessOutcome = {
                       ...underlyingOutcome,
@@ -4951,7 +5112,7 @@ async function runValidatedResearch(project, {
             canonicalUrl: finalCanonicalUrl,
             receipt: accessOutcome,
           });
-          accessedSources.push({
+          const accessedSource = {
             ...source,
             searchDomain: categoryId,
             originalUrl,
@@ -4966,7 +5127,9 @@ async function runValidatedResearch(project, {
             parsingState: accessOutcome.state === "accessible" ? "parsed" : "failed",
             ...(accessOutcome.passage ? { excerpt: accessOutcome.passage } : {}),
              ...((accessOutcome.passage ?? source.excerpt) ? { claimPassage: accessOutcome.passage ?? source.excerpt } : {}),
-          });
+          };
+          accessedSources.push(accessedSource);
+          if (accessOutcome.state === "accessible" && accessOutcome.passage) retainedDocumentReceipts.push(accessedSource);
         }
         const eligibleCount = accessedSources.filter((source) => source.accessOutcome?.state === "accessible").length;
         const observedQueries = normalizeSearchTerms(
@@ -5014,7 +5177,9 @@ async function runValidatedResearch(project, {
         return {
           candidates: accessedSources,
           eligibleCount,
-          gapDrivenFollowUp: !categoryResolution.resolved && !repairAttempted,
+          gapDrivenFollowUp: !categoryResolution.resolved
+            && !repairAttempted
+            && !categoryResult.coverage?.providerLimitations?.some((message) => /structured category analysis failed/i.test(message)),
           followUpQuery: buildCategoryFollowUpQuery(project, category, categoryResolution.unresolvedEvidenceIds),
           unresolvedEvidenceIds: categoryResolution.unresolvedEvidenceIds,
           resolvedEvidenceIds: category.evidenceIds.filter((id) => !categoryResolution.unresolvedEvidenceIds.includes(id)),
@@ -5042,6 +5207,40 @@ async function runValidatedResearch(project, {
       },
     });
     phaseTiming.orchestrationFinishedAt = new Date().toISOString();
+    const allRetainedReceipts = [
+      ...retainedDocumentReceipts,
+      ...[...openedDocumentsByCanonicalUrl.values()].map((accessOutcome) => ({
+        url: accessOutcome?.canonicalUrl ?? accessOutcome?.resolvedUrl ?? null,
+        originalUrl: accessOutcome?.originalUrl ?? null,
+        title: accessOutcome?.title ?? null,
+        date: accessOutcome?.date ?? null,
+        excerpt: accessOutcome?.passage ?? null,
+        claimPassage: accessOutcome?.passage ?? null,
+        sourceChannel: accessOutcome?.sourceChannel ?? "document-access",
+        accessOutcome,
+      })),
+    ].filter((source, index, sources) => source?.accessOutcome?.state === "accessible"
+      && typeof source.accessOutcome.passage === "string"
+      && source.accessOutcome.passage.trim()
+      && sources.findIndex((candidate) => canonicalizeSourceUrl(
+        candidate.canonicalUrl ?? candidate.url ?? candidate.accessOutcome?.canonicalUrl,
+      ) === canonicalizeSourceUrl(source.canonicalUrl ?? source.url ?? source.accessOutcome?.canonicalUrl)) === index);
+    for (const category of buildResearchCategoryPlan(project).categories) {
+      if ((Array.isArray(categoryIds) && categoryIds.length && !categoryIds.includes(category.categoryId))
+        || orchestration.categoryResults.some((result) => result.categoryId === category.categoryId)) continue;
+      const retainedSources = allRetainedReceipts.filter((source) => categorySourceMatches(category, source));
+      if (!retainedSources.length) continue;
+      orchestration.categoryResults.push({
+        categoryId: category.categoryId,
+        research: createPartialResearchBody(project),
+        sources: retainedSources,
+        coverage: {
+          providerLimitations: ["The run deadline prevented structured category analysis; retrieved passages and their access receipts were retained."],
+          categoryExecutions: orchestration.categoryExecutions,
+        },
+      });
+      orchestration.candidates.push(...retainedSources);
+    }
     phaseTiming.discoveryElapsedMs = phaseTiming.discoveryStartedAt && phaseTiming.discoveryFinishedAt
       ? Math.max(0, Date.parse(phaseTiming.discoveryFinishedAt) - Date.parse(phaseTiming.discoveryStartedAt))
       : 0;
@@ -5098,7 +5297,10 @@ async function runValidatedResearch(project, {
     ].slice(0, 12);
     const result = {
       research: mergedResearch,
-      sources: orchestration.categoryResults.flatMap((category) => category.sources ?? []),
+      sources: [
+        ...orchestration.categoryResults.flatMap((category) => category.sources ?? []),
+        ...allRetainedReceipts,
+      ],
       coverage: {
         ...(orchestration.categoryResults[0]?.coverage ?? {}),
         searchedDomains: [...new Set([
@@ -5276,6 +5478,10 @@ export async function handleResearchProjectRequest(
     cache = defaultResearchProjectCache,
     registry = defaultProjectResearchRegistry,
     categoryIds = null,
+    researchTimeoutMs = RESEARCH_PROJECT_TIMEOUT_MS,
+    documentTimeoutMs = RESEARCH_DOCUMENT_TIMEOUT_MS,
+    analysisReserveMs = RESEARCH_DOCUMENT_ANALYSIS_RESERVE_MS,
+    maxConcurrentDocumentOpens = RESEARCH_DOCUMENT_MAX_CONCURRENCY,
   } = {},
 ) {
   if (req.method === "GET") {
@@ -5342,6 +5548,10 @@ export async function handleResearchProjectRequest(
     rateLimiter,
     req,
     categoryIds,
+    researchTimeoutMs,
+    documentTimeoutMs,
+    analysisReserveMs,
+    maxConcurrentDocumentOpens,
     signal: foreground ? requestController.signal : undefined,
   }).then(async (result) => {
     // Registry retention is deliberately best-effort: a local persistence

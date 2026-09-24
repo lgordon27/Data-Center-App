@@ -69,8 +69,6 @@ function htmlAdapter(raw, sourceUrl, limits) {
     .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, " ")
     .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, " ")
     .replace(/<!--[\s\S]*?-->/g, " ");
-  const headings = [...withoutExecutable.matchAll(/<(?:title|h[1-6])\b[^>]*>([\s\S]*?)<\/(?:title|h[1-6])\s*>/gi)]
-    .map((match) => decodeEntities(match[1].replace(/<[^>]*>/g, " ")));
   const candidates = [];
   const addCandidate = (url) => {
     const safe = safeDocumentUrl(url, sourceUrl);
@@ -97,7 +95,27 @@ function htmlAdapter(raw, sourceUrl, limits) {
   for (const match of withoutExecutable.matchAll(/\bdata-(?:document|download)-url\s*=\s*(?:"([^"]*)"|'([^']*)')/gi)) {
     addCandidate(match[1] ?? match[2]);
   }
-  const text = cleanText(decodeEntities(withoutExecutable.replace(/<[^>]+>/g, " ")));
+  const withoutBoilerplate = withoutExecutable
+    .replace(/<(nav|header|footer|aside)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, " ")
+    .replace(/<(?:div|section)\b[^>]*(?:id|class)\s*=\s*["'][^"']*(?:banner|cookie|consent|navigation|navbar|menu|breadcrumb)[^"']*["'][^>]*>[\s\S]*?<\/(?:div|section)\s*>/gi, " ");
+  const mainContainers = [...withoutBoilerplate.matchAll(/<main\b[^>]*>([\s\S]*?)<\/main\s*>/gi)].map((match) => match[1]);
+  const articleContainers = [...withoutBoilerplate.matchAll(/<article\b[^>]*>([\s\S]*?)<\/article\s*>/gi)].map((match) => match[1]);
+  const sectionContainers = [...withoutBoilerplate.matchAll(/<section\b[^>]*>([\s\S]*?)<\/section\s*>/gi)].map((match) => match[1]);
+  const contentContainers = mainContainers.length ? mainContainers
+    : articleContainers.length ? articleContainers
+      : sectionContainers;
+  const titleText = [...withoutBoilerplate.matchAll(/<title\b[^>]*>([\s\S]*?)<\/title\s*>/gi)]
+    .map((match) => decodeEntities(match[1].replace(/<[^>]*>/g, " ")));
+  const preferredHeadings = contentContainers.flatMap((container) =>
+    [...container.matchAll(/<h[1-6]\b[^>]*>([\s\S]*?)<\/h[1-6]\s*>/gi)]
+      .map((match) => decodeEntities(match[1].replace(/<[^>]*>/g, " "))));
+  const fallbackHeadings = [...withoutBoilerplate.matchAll(/<h[1-6]\b[^>]*>([\s\S]*?)<\/h[1-6]\s*>/gi)]
+    .map((match) => decodeEntities(match[1].replace(/<[^>]*>/g, " ")));
+  const headings = contentContainers.length ? [...titleText, ...preferredHeadings] : [...titleText, ...fallbackHeadings];
+  const textSource = contentContainers.length
+    ? `${titleText.join(" ")} ${contentContainers.join(" ")}`
+    : withoutBoilerplate;
+  const text = cleanText(decodeEntities(textSource.replace(/<[^>]+>/g, " ")));
   return { text, index: makeIndex(headings, limits), candidates };
 }
 

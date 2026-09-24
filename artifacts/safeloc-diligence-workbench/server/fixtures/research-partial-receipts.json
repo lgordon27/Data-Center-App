@@ -1,0 +1,60 @@
+{
+  "fixtureVersion": 1,
+  "testOnly": true,
+  "synthetic": true,
+  "liveProviderPayloadsIncluded": false,
+  "project": {
+    "name": "Project Atlas",
+    "location": "Phoenix, Arizona",
+    "knownData": {
+      "city": "Phoenix",
+      "state": "Arizona"
+    }
+  },
+  "accessibleReceipt": {
+    "url": "https://records.example.test/atlas/water",
+    "title": "Synthetic Project Atlas water record",
+    "date": "2026-03-14",
+    "categoryIds": ["water"],
+    "sourceChannel": "synthetic-public-record",
+    "passage": "Project Atlas in Phoenix, Arizona has a documented water planning record dated March 14, 2026."
+  },
+  "providerFailures": [
+    {
+      "httpStatus": 429,
+      "outcome": "provider-rate-limit"
+    },
+    {
+      "httpStatus": 503,
+      "outcome": "provider-failure"
+    }
+  ],
+  "slowDocument": {
+    "url": "https://records.example.test/atlas/slow-water",
+    "title": "Synthetic slow Project Atlas record",
+    "date": "2026-03-15",
+    "categoryIds": ["water"],
+    "sourceChannel": "synthetic-public-record",
+    "expectedOutcome": "document-time-slice"
+  },
+  "identityCases": [
+    {
+      "name": "same-name-wrong-city-state",
+      "location": "Phoenix, Arizona",
+      "passage": "Project Atlas in Richmond, Virginia has a documented record.",
+      "expectedExactProject": false
+    },
+    {
+      "name": "multi-state-passage",
+      "location": "Phoenix, Arizona",
+      "passage": "Project Atlas in Phoenix, Arizona is compared with a site in Nevada.",
+      "expectedExactProject": false
+    },
+    {
+      "name": "west-virginia-exact-match",
+      "location": "Morgantown, West Virginia",
+      "passage": "Project Atlas in Morgantown, WV has a documented record.",
+      "expectedExactProject": true
+    }
+  ]
+}

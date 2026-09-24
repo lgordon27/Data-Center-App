@@ -10,6 +10,7 @@ import {
   CUSTOM_EVIDENCE_IDS,
   getResearchCategoryClaimAudits,
   getResearchStatusPresentation,
+  deriveRetainedResearchFindings,
   parseResponse,
   researchProject,
   RESEARCH_PROJECT_TIMEOUT_MS,
@@ -115,6 +116,7 @@ test("retains exact scoped passages and separates project support, attributed re
   assert.match(phaseFinding?.passage ?? "", /Phase One utility interconnection was announced at 180 MW/);
   assert.equal(phaseFinding?.powerMeasure, "utility/grid service or interconnection");
   assert.equal(phaseFinding?.financialProposalEligibility, "unresolved");
+  assert.match(phaseFinding?.statement ?? "", /The Phase One utility interconnection was announced at 180 MW/);
   assert.equal(phaseFinding?.reportingDate, "2025-03-18");
   assert.equal(phaseFinding?.reportingDateBasis, "retrieved-source-metadata");
   assert.equal(phaseFinding?.accessedAt, "2026-03-04");
@@ -143,6 +145,86 @@ test("retains exact scoped passages and separates project support, attributed re
   assert.doesNotMatch(parsed.projectSummary.description, /480 MW|2028/);
   assert.equal(parsed.researchStatus, "partial");
   assert.equal(parsed.researchMode, "partial-public-source");
+});
+
+function retainedPassage(passage: string, exactProject = true, sourceClass = "primary-government") {
+  return {
+    title: "Project record",
+    url: `https://records.example.gov/${encodeURIComponent(passage.slice(0, 24))}`,
+    exactProject,
+    sourceClass,
+    accessOutcome: { state: "accessible", passage },
+  };
+}
+
+test("repairs retained applicability from source name, aliases, operator, city, county, and state", () => {
+  const identity = {
+    name: "Project Atlas",
+    location: "Irving, Dallas County, Texas",
+    knownData: { aliases: ["Atlas Compute Campus"], operator: "Atlas Compute", city: "Irving", county: "Dallas County", state: "Texas" },
+  };
+  const texasWithVirginiaHq = deriveRetainedResearchFindings([retainedPassage(
+    "Project Atlas is located in Irving, Dallas County, Texas. Atlas Compute operates the facility; its headquarters are in Virginia.",
+  )], identity);
+  assert.equal(texasWithVirginiaHq[0]?.applicability, "exact-project");
+
+  const exactWestVirginia = deriveRetainedResearchFindings([retainedPassage(
+    "Atlas Compute Campus is located in Morgantown, Monongalia County, West Virginia.",
+  )], {
+    name: "Project Atlas",
+    location: "Morgantown, Monongalia County, West Virginia",
+    knownData: {
+      aliases: ["Atlas Compute Campus"],
+      operator: "Atlas Compute",
+      city: "Morgantown",
+      county: "Monongalia County",
+      state: "WV",
+    },
+  });
+  assert.equal(exactWestVirginia[0]?.applicability, "exact-project");
+
+  const wrongLocation = deriveRetainedResearchFindings([retainedPassage(
+    "Project Atlas is located in Austin, Travis County, Virginia.",
+  )], identity);
+  assert.equal(wrongLocation.length, 0);
+
+  const missingDetails = deriveRetainedResearchFindings([retainedPassage(
+    "Project Atlas was mentioned in a regional development report.",
+  )], { name: "Project Atlas", location: "Texas" });
+  assert.equal(missingDetails[0]?.assessment, "ambiguous-unresolved");
+  assert.equal(missingDetails[0]?.applicability, "ambiguous");
+});
+
+test("ranks all retained passages before cap and audits cap discards", () => {
+  const passages = Array.from({ length: 8 }, (_, index) =>
+    retainedPassage(`Project Atlas was mentioned in a regional article, entry ${index + 1}.`));
+  passages.push(retainedPassage(
+    "Project Atlas is located in Dallas, Texas. The facility has a stated interconnection capacity of 240 MW.",
+    true,
+    "secondary-reporting",
+  ));
+  passages.push(retainedPassage(
+    "Project Atlas is located in Dallas, Texas. Its Phase One interconnection was approved at 320 MW.",
+  ));
+  const result = parseResponse({ ...response, sourceLedger: passages }, {
+    name: "Project Atlas",
+    location: "Dallas, Texas",
+    knownData: { city: "Dallas", state: "Texas" },
+  });
+  const findings = result.retainedFindings ?? [];
+  assert.equal(findings.length, 8);
+  assert.equal(findings[0]?.assessment, "source-supported");
+  assert.equal(findings[1]?.assessment, "attributed-report");
+  assert.equal(result.retainedFindingAudit?.totalFindingCount, 10);
+  assert.equal(result.retainedFindingAudit?.shownFindingCount, 8);
+  assert.equal(result.retainedFindingAudit?.capDiscardCount, 2);
+  assert.equal(findings[0]?.statement, "Project Atlas is located in Dallas, Texas.");
+  assert.equal(findings[0]?.financialProposalEligibility, "unresolved");
+  assert.equal(findings.every((finding) => finding.demonstratedFinancialEffect === false), true);
+  assert.equal(result.retainedFindingAudit?.financiallyEligibleCount, 0);
+  assert.equal(result.projectSummary.capacityMW, null);
+  assert.equal(result.projectSummary.capacityProvenance, "unknown");
+  assert.equal(result.eligibleEvidence?.length, 0);
 });
 
 test("preserves eligible server evidence through client parsing", () => {

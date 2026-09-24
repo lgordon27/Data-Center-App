@@ -1208,6 +1208,201 @@ test("keeps SEC connector failure diagnostic without starving category research"
   assert.ok(category.stageCounts.accessed > 0);
 });
 
+test("actual request workflow returns retrieved receipts as HTTP 200 partial after category HTTP 429", async () => {
+  const fixture = JSON.parse(await readFile(new URL("./fixtures/research-partial-receipts.json", import.meta.url), "utf8"));
+  const directory = await mkdtemp(path.join(os.tmpdir(), "research-partial-429-"));
+  const candidate = { ...fixture.accessibleReceipt, excerpt: fixture.accessibleReceipt.passage };
+  const response = responseRecorder();
+  await handleResearchProjectRequest(request({
+    ...fixture.project,
+    forceRefresh: true,
+  }), response, {
+    apiKey: "synthetic-test-key",
+    cache: createResearchProjectCache({ directory }),
+    rateLimiter: { allow: () => ({ allowed: true, retryAfterSeconds: 0 }) },
+    categoryIds: ["water"],
+    googleDiscoveryImpl: completedGoogleDiscovery([candidate]),
+    fetchImpl: async () => new Response(JSON.stringify({
+      error: { message: "synthetic rate limit", type: "rate_limit_error", code: "rate_limit_exceeded" },
+    }), { status: fixture.providerFailures[0].httpStatus }),
+    documentFetchImpl: async () => new Response(`<html><body>${fixture.accessibleReceipt.passage}</body></html>`, {
+      status: 200,
+      headers: { "content-type": "text/html" },
+    }),
+  });
+  const payload = response.json();
+  const receipt = payload.sourceLedger.find((source) => source.originalUrl === candidate.url);
+  const water = payload.researchAudit.categories.find((category) => category.categoryId === "water");
+  assert.equal(response.statusCode, 200);
+  assert.equal(payload.researchStatus, "partial");
+  assert.equal(payload.researchOutcome.eligibleEvidenceCount, 0);
+  assert.ok(receipt, "the accessible source is retained in the source ledger");
+  assert.equal(receipt.date ?? receipt.publishedAt, fixture.accessibleReceipt.date);
+  assert.equal(receipt.accessOutcome.state, "accessible");
+  assert.equal(receipt.accessOutcome.passage, fixture.accessibleReceipt.passage);
+  assert.equal(receipt.accessOutcome.physicalOpenIndex, 1);
+  assert.ok(water.openedDocuments.some((document) =>
+    document.accessState === "accessible" && document.retainedPassage === fixture.accessibleReceipt.passage));
+  assert.ok(payload.researchAudit.providerLimitations.some((limitation) => /structured category analysis failed/i.test(limitation)));
+  assert.ok(payload.evidence.filter((item) => item.id.startsWith("water_")).every((item) => item.eligibleForModel === false));
+});
+
+test("actual validated workflow retains receipts after total category-analysis failure", async () => {
+  const fixture = JSON.parse(await readFile(new URL("./fixtures/research-partial-receipts.json", import.meta.url), "utf8"));
+  const candidate = { ...fixture.accessibleReceipt, excerpt: fixture.accessibleReceipt.passage };
+  const result = await runValidatedResearch(fixture.project, {
+    apiKey: "synthetic-test-key",
+    req: request({}),
+    categoryIds: ["water"],
+    rateLimiter: { allow: () => ({ allowed: true, retryAfterSeconds: 0 }) },
+    googleDiscoveryImpl: completedGoogleDiscovery([candidate]),
+    fetchImpl: async () => new Response(JSON.stringify({
+      error: { message: "synthetic provider unavailable", type: "server_error" },
+    }), { status: fixture.providerFailures[1].httpStatus }),
+    documentFetchImpl: async () => new Response(`<html><body>${fixture.accessibleReceipt.passage}</body></html>`, {
+      status: 200,
+      headers: { "content-type": "text/html" },
+    }),
+  });
+  const receipt = result.sourceLedger.find((source) => source.originalUrl === candidate.url);
+  assert.equal(result.researchStatus, "partial");
+  assert.equal(result.researchOutcome.eligibleEvidenceCount, 0);
+  assert.equal(receipt.accessOutcome.state, "accessible");
+  assert.equal(receipt.accessOutcome.passage, fixture.accessibleReceipt.passage);
+  assert.equal(receipt.date ?? receipt.publishedAt, fixture.accessibleReceipt.date);
+  assert.equal(result.researchAudit.categories.find((item) => item.categoryId === "water").openedDocuments[0].accessOutcome, "retrieved");
+  assert.ok(result.evidence.every((item) => item.eligibleForModel === false));
+});
+
+test("parallel bounded document access lets a fast receipt survive a slow-document time slice", async () => {
+  const fixture = JSON.parse(await readFile(new URL("./fixtures/research-partial-receipts.json", import.meta.url), "utf8"));
+  const fastCandidate = { ...fixture.accessibleReceipt, excerpt: fixture.accessibleReceipt.passage };
+  const slowCandidate = { ...fixture.slowDocument, excerpt: fixture.accessibleReceipt.passage };
+  const started = Date.now();
+  let activeFetches = 0;
+  let peakFetches = 0;
+  let slowAborted = false;
+  const result = await runValidatedResearch(fixture.project, {
+    apiKey: "synthetic-test-key",
+    req: request({}),
+    categoryIds: ["water"],
+    rateLimiter: { allow: () => ({ allowed: true, retryAfterSeconds: 0 }) },
+    googleDiscoveryImpl: completedGoogleDiscovery([slowCandidate, fastCandidate]),
+    fetchImpl: async () => new Response(JSON.stringify({
+      error: { message: "synthetic rate limit", type: "rate_limit_error", code: "rate_limit_exceeded" },
+    }), { status: 429 }),
+    documentFetchImpl: async (url, init) => {
+      activeFetches += 1;
+      peakFetches = Math.max(peakFetches, activeFetches);
+      if (url === slowCandidate.url) {
+        return await new Promise((resolve, reject) => {
+          const timer = setTimeout(() => resolve(new Response("late body", {
+            status: 200,
+            headers: { "content-type": "text/html" },
+          })), 2_000);
+          init.signal.addEventListener("abort", () => {
+            clearTimeout(timer);
+            activeFetches -= 1;
+            slowAborted = true;
+            reject(Object.assign(new Error("aborted slow fixture"), { name: "AbortError" }));
+          }, { once: true });
+        });
+      }
+      activeFetches -= 1;
+      return new Response(`<html><body>${fixture.accessibleReceipt.passage}</body></html>`, {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      });
+    },
+    researchTimeoutMs: 1_000,
+    documentTimeoutMs: 35,
+    analysisReserveMs: 100,
+    maxConcurrentDocumentOpens: 2,
+  });
+  const elapsed = Date.now() - started;
+  const fastReceipt = result.sourceLedger.find((source) => source.originalUrl === fastCandidate.url);
+  assert.equal(fastReceipt.accessOutcome.state, "accessible");
+  assert.equal(fastReceipt.accessOutcome.passage, fixture.accessibleReceipt.passage);
+  assert.ok(elapsed < 700, `bounded slow document monopolized the run (${elapsed}ms)`);
+  assert.equal(peakFetches, 2);
+  assert.equal(slowAborted, true);
+  assert.ok(result.researchAudit.physicalOpensUsed <= RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens);
+  assert.equal(result.researchStatus, "partial");
+});
+
+test("deadline finalizes retained passages as a partial response after retrieval", async () => {
+  const fixture = JSON.parse(await readFile(new URL("./fixtures/research-partial-receipts.json", import.meta.url), "utf8"));
+  const candidate = { ...fixture.accessibleReceipt, excerpt: fixture.accessibleReceipt.passage };
+  const started = Date.now();
+  const result = await runValidatedResearch(fixture.project, {
+    apiKey: "synthetic-test-key",
+    req: request({}),
+    categoryIds: ["water"],
+    rateLimiter: { allow: () => ({ allowed: true, retryAfterSeconds: 0 }) },
+    googleDiscoveryImpl: completedGoogleDiscovery([candidate]),
+    fetchImpl: async (_url, init) => await new Promise((_resolve, reject) => {
+      init.signal.addEventListener("abort", () => {
+        reject(Object.assign(new Error("synthetic analysis deadline"), { name: "AbortError" }));
+      }, { once: true });
+    }),
+    documentFetchImpl: async () => new Response(`<html><body>${fixture.accessibleReceipt.passage}</body></html>`, {
+      status: 200,
+      headers: { "content-type": "text/html" },
+    }),
+    researchTimeoutMs: 80,
+    documentTimeoutMs: 40,
+    analysisReserveMs: 10,
+  });
+  const elapsed = Date.now() - started;
+  const receipt = result.sourceLedger.find((source) => source.originalUrl === candidate.url);
+  const water = result.researchAudit.categories.find((category) => category.categoryId === "water");
+  assert.equal(result.researchStatus, "partial");
+  assert.equal(result.researchOutcome.eligibleEvidenceCount, 0);
+  assert.equal(receipt.accessOutcome.state, "accessible");
+  assert.equal(receipt.accessOutcome.passage, fixture.accessibleReceipt.passage);
+  assert.equal(receipt.date ?? receipt.publishedAt, fixture.accessibleReceipt.date);
+  assert.ok(water.openedDocuments.some((document) => document.retainedPassage === fixture.accessibleReceipt.passage));
+  assert.ok(result.researchAudit.terminalReasonCodes.includes("deadline"));
+  assert.ok(elapsed < 600, `deadline did not promptly finalize the partial result (${elapsed}ms)`);
+});
+
+test("identity workflow ignores provider exactProject when location conflicts or passage spans states", async () => {
+  const fixture = JSON.parse(await readFile(new URL("./fixtures/research-partial-receipts.json", import.meta.url), "utf8"));
+  const cases = fixture.identityCases;
+  for (const identityCase of cases) {
+    const cityAndState = identityCase.location.split(",").map((part) => part.trim());
+    const [city, state] = cityAndState;
+    const candidate = {
+      url: `https://records.example.test/atlas/${identityCase.name}`,
+      title: "Project Atlas official identity record",
+      date: "2026-03-14",
+      categoryIds: ["project-identity"],
+      sourceChannel: "synthetic-public-record",
+      exactProject: true,
+    };
+    const result = await runValidatedResearch({
+      name: "Project Atlas",
+      location: identityCase.location,
+      knownData: { city, state },
+    }, {
+      apiKey: "synthetic-test-key",
+      req: request({}),
+      categoryIds: ["project-identity"],
+      rateLimiter: { allow: () => ({ allowed: true, retryAfterSeconds: 0 }) },
+      googleDiscoveryImpl: completedGoogleDiscovery([candidate]),
+      fetchImpl: async () => new Response(JSON.stringify({
+        error: { message: "synthetic provider unavailable", type: "server_error" },
+      }), { status: 503 }),
+      documentFetchImpl: async () => new Response(`<html><body>${identityCase.passage}</body></html>`, {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      }),
+    });
+    const identity = result.researchAudit.categories.find((item) => item.categoryId === "project-identity");
+    assert.equal(identity.stageCounts.allEvidenceEligible, identityCase.expectedExactProject, identityCase.name);
+  }
+});
+
 test("enforces one gap follow-up per category and records the limit", async () => {
   const run = await orchestrateCategoryResearch(
     { name: "Atlas", location: "Texas" },
@@ -1613,7 +1808,8 @@ test("keeps identity-discovery receipts in the audit without making identity met
     evidence: [],
   });
   const identity = audit.categories.find((category) => category.categoryId === "project-identity");
-  assert.equal(identity.state, "Complete");
+  assert.equal(identity.state, "Partial");
+  assert.equal(identity.stageCounts.allEvidenceEligible, false);
   assert.equal(identity.openedDocuments.length, 1);
   assert.deepEqual(identity.openedDocuments[0], {
     sourceChannel: "provider",

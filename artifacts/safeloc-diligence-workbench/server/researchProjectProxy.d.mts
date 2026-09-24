@@ -55,5 +55,27 @@ export declare function createResearchProviderGate(options?: { limit?: number })
 export declare function handleResearchProjectRequest(
   req: unknown,
   res: unknown,
-  options?: { apiKey?: string; fetchImpl?: typeof fetch; rateLimiter?: ReturnType<typeof createResearchProjectRateLimiter> },
+  options?: {
+    apiKey?: string;
+    fetchImpl?: typeof fetch;
+    rateLimiter?: ReturnType<typeof createResearchProjectRateLimiter>;
+    researchTimeoutMs?: number;
+    documentTimeoutMs?: number;
+    analysisReserveMs?: number;
+    maxConcurrentDocumentOpens?: number;
+  },
 ): Promise<void>;
+export declare function runValidatedResearch(
+  project: { name: string; location: string; knownData?: Record<string, unknown> },
+  options?: {
+    apiKey?: string;
+    fetchImpl?: typeof fetch;
+    documentFetchImpl?: typeof fetch;
+    signal?: AbortSignal;
+    categoryIds?: string[];
+    researchTimeoutMs?: number;
+    documentTimeoutMs?: number;
+    analysisReserveMs?: number;
+    maxConcurrentDocumentOpens?: number;
+  },
+): Promise<Record<string, unknown>>;

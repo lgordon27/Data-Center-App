@@ -57,7 +57,11 @@ export function RetainedResearchFindings({
               <p className="mt-1 text-[#60707d]">
                 Scope metadata (unverified): {finding.phaseScope}
                 {finding.timePeriod ? ` · Claim period metadata: ${finding.timePeriod}` : ""}
-                {finding.powerMeasure ? ` · Power measure phrase: ${finding.powerMeasure}` : ""}
+                {finding.powerClaimState === "resolved" && finding.powerClaim
+                  ? ` · Power claim: ${finding.powerClaim.quantity} · ${finding.powerClaim.measure} · status ${finding.powerClaim.status}${finding.powerClaim.phaseScope ? ` · ${finding.powerClaim.phaseScope}` : ""}${finding.powerClaim.facilityScope ? ` · ${finding.powerClaim.facilityScope}` : ""}`
+                  : finding.powerClaimState === "unresolved"
+                    ? " · Power claim unresolved; see exact passage"
+                    : ""}
               </p>
               <p className="mt-1 text-[#60707d]">
                 Reporting date: {finding.reportingDate ?? "not reported"} ({finding.reportingDateBasis}) · Accessed: {finding.accessedAt ?? "not recorded"} ({finding.accessedAtBasis})

@@ -194,30 +194,81 @@ function attempt(url, values) {
   };
 }
 
+function cancellationError(signal) {
+  if (signal?.reason instanceof Error) return signal.reason;
+  const error = new Error("SEC request was cancelled.");
+  error.name = "AbortError";
+  return error;
+}
+
+function throwIfAborted(signal) {
+  if (signal?.aborted) throw cancellationError(signal);
+}
+
+async function awaitWithSignal(promise, signal) {
+  if (!signal) return promise;
+  throwIfAborted(signal);
+  let onAbort;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        onAbort = () => reject(cancellationError(signal));
+        signal.addEventListener("abort", onAbort, { once: true });
+      }),
+    ]);
+  } finally {
+    if (onAbort) signal.removeEventListener("abort", onAbort);
+  }
+}
+
+function cancelResponseBody(response) {
+  void Promise.resolve(response?.body?.cancel?.()).catch(() => {});
+}
+
 export function createSecConnector(options = {}) {
   const userAgent = validateOptions(options);
   const fetchImpl = options.fetchImpl ?? fetch;
-  const sleep = options.sleep ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
+  const sleep = options.sleep ?? ((milliseconds, signal) => new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(cancellationError(signal));
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, milliseconds);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(cancellationError(signal));
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  }));
   const clock = options.clock ?? (() => Date.now());
   const cache = options.cache ?? new Map();
   let lastRequestAt = Number.NEGATIVE_INFINITY;
   let queue = Promise.resolve();
 
-  const schedule = (operation) => {
+  const schedule = (operation, signal) => {
     const scheduled = queue.then(async () => {
+      throwIfAborted(signal);
       const current = clockMilliseconds(clock);
       if (!Number.isFinite(current)) throw new TypeError("SEC connector clock returned an invalid time.");
       const wait = Math.max(0, MIN_REQUEST_INTERVAL_MS - (current - lastRequestAt));
-      if (wait > 0) await sleep(wait);
+      if (wait > 0) {
+        await awaitWithSignal(Promise.resolve().then(() => sleep(wait, signal)), signal);
+      }
+      throwIfAborted(signal);
       const afterWait = clockMilliseconds(clock);
       lastRequestAt = Number.isFinite(afterWait) ? Math.max(afterWait, lastRequestAt + wait) : current + wait;
-      return operation();
+      return await awaitWithSignal(Promise.resolve().then(operation), signal);
     });
     queue = scheduled.catch(() => {});
     return scheduled;
   };
 
-  async function requestJson(url, attempts) {
+  async function requestJson(url, attempts, signal) {
+    throwIfAborted(signal);
     if (!isAllowedSecUrl(url)) throw new TypeError("Only HTTPS SEC.gov URLs are allowed.");
     const cached = cache.get(url);
     const current = clockMilliseconds(clock);
@@ -226,18 +277,22 @@ export function createSecConnector(options = {}) {
       return { payload: cached.payload, retrievedAt: cached.retrievedAt };
     }
     for (let retry = 0; retry < 2; retry += 1) {
+      throwIfAborted(signal);
       const headers = { accept: "application/json", "user-agent": userAgent };
       if (cached?.etag) headers["if-none-match"] = cached.etag;
       if (cached?.lastModified) headers["if-modified-since"] = cached.lastModified;
       const requestedAtMs = clockMilliseconds(clock);
       let response;
       try {
-        response = await schedule(() => fetchImpl(url, { method: "GET", headers, redirect: "error" }));
+        response = await schedule(
+          () => fetchImpl(url, { method: "GET", headers, redirect: "error", signal }),
+          signal,
+        );
       } catch (error) {
         attempts.push(attempt(url, {
           requestedAt: isoTime(requestedAtMs),
           status: null,
-          outcome: "network-error",
+          outcome: signal?.aborted ? "cancelled" : "network-error",
           error: String(error?.message ?? "SEC request failed").replace(/\s+/g, " ").slice(0, 160),
         }));
         throw error;
@@ -254,7 +309,7 @@ export function createSecConnector(options = {}) {
         : null;
       if (retryDelay !== null && retry === 0) {
         attempts.push(attempt(url, { requestedAt: isoTime(requestedAtMs), status: response.status, outcome: "retry-after", retryAfterMs: retryDelay }));
-        await sleep(retryDelay);
+        await awaitWithSignal(Promise.resolve().then(() => sleep(retryDelay, signal)), signal);
         continue;
       }
       if (!response.ok) {
@@ -268,8 +323,12 @@ export function createSecConnector(options = {}) {
       }
       let payload;
       try {
-        payload = await response.json();
-      } catch {
+        payload = await awaitWithSignal(Promise.resolve().then(() => response.json()), signal);
+      } catch (error) {
+        if (signal?.aborted) {
+          cancelResponseBody(response);
+          throw error;
+        }
         attempts.push(attempt(url, { requestedAt: isoTime(requestedAtMs), status: response.status, outcome: "malformed-json" }));
         throw new TypeError("SEC upstream returned malformed JSON.");
       }
@@ -294,11 +353,14 @@ export function createSecConnector(options = {}) {
   async function search(query = {}) {
     const forbidden = Object.keys(query).find((key) => /(?:api.?key|token|account)/i.test(key));
     if (forbidden) throw new TypeError("SEC public data queries cannot contain token, account, or API-key concepts.");
+    const signal = query.signal;
+    throwIfAborted(signal);
     const attempts = [];
-    const directory = await requestJson(COMPANY_TICKERS_URL, attempts);
+    const directory = await requestJson(COMPANY_TICKERS_URL, attempts, signal);
+    throwIfAborted(signal);
     const companyIdentity = resolveSecCompany(directory.payload, query);
     const submissionsUrl = `${SUBMISSIONS_BASE_URL}/CIK${companyIdentity.cik}.json`;
-    const submissions = await requestJson(submissionsUrl, attempts);
+    const submissions = await requestJson(submissionsUrl, attempts, signal);
     return {
       candidates: filingCandidates(submissions.payload, companyIdentity, query, submissions.retrievedAt),
       attempts,

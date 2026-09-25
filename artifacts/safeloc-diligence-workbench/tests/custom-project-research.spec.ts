@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { runValidatedResearch } from "../server/researchProjectProxy.mjs";
+import { mkdtemp } from "node:fs/promises";
+import { EventEmitter } from "node:events";
+import os from "node:os";
+import path from "node:path";
+import { handleResearchProjectRequest } from "../server/researchProjectProxy.mjs";
+import { createResearchProjectCache } from "../server/researchProjectCache.mjs";
 
 const syntheticResearchFixture = JSON.parse(
   readFileSync(new URL("./fixtures/research-project-synthetic.json", import.meta.url), "utf8"),
@@ -38,6 +43,38 @@ const evidenceIds = [
   "downtime_cost",
 ];
 const scenariosKey = "safeloc:diligence:scenarios:v1";
+
+async function invokeResearchHandler(project: Record<string, unknown>, options: Record<string, unknown>) {
+  const request: any = new EventEmitter();
+  request.method = "POST";
+  request.body = { ...project, forceRefresh: true };
+  request.ip = "198.51.100.52";
+  request.headers = { "x-safeloc-research-policy": "single-shot" };
+  request.get = (name: string) => request.headers[name.toLowerCase()];
+
+  const response: any = {
+    statusCode: 200,
+    headers: {},
+    body: "",
+    writableEnded: false,
+    destroyed: false,
+    setHeader(name: string, value: string) {
+      this.headers[name.toLowerCase()] = value;
+    },
+    end(body = "") {
+      this.body = body;
+      this.writableEnded = true;
+    },
+  };
+  const directory = await mkdtemp(path.join(os.tmpdir(), "safeloc-browser-handler-"));
+  await handleResearchProjectRequest(request, response, {
+    ...options,
+    cache: createResearchProjectCache({ directory }),
+    registry: { retain: async () => {} },
+    rateLimiter: { allow: () => ({ allowed: true, retryAfterSeconds: 0 }) },
+  });
+  return { statusCode: response.statusCode, body: JSON.parse(response.body) as Record<string, unknown> };
+}
 
 async function openCustomProjectDialog(page: import("@playwright/test").Page) {
   const paths = page.getByTestId("home-explore-panel");
@@ -464,16 +501,28 @@ test.describe("custom project research", () => {
     expect(researchRequests).toBe(1);
   });
 
-  test("hands an actual partial server workflow result to Project Reality and Advisor Brief", async ({ page }) => {
+  test("hands a handler-produced partial response to Project Reality and Advisor Brief", async ({ page }) => {
+    const categoryIds = [
+      "project-identity",
+      "grid",
+      "electricity",
+      "water",
+      "permitting-community",
+      "construction-capital",
+      "tenant-counterparty",
+      "climate-operational-hazard",
+    ];
     const source = {
       ...partialReceiptsFixture.accessibleReceipt,
+      categoryIds,
       excerpt: partialReceiptsFixture.accessibleReceipt.passage,
     };
-    const serverResult = await runValidatedResearch(partialReceiptsFixture.project, {
+    let providerCalls = 0;
+    const serverResponse = await invokeResearchHandler(partialReceiptsFixture.project, {
       apiKey: "synthetic-browser-test-key",
-      req: { method: "POST", body: {}, ip: "198.51.100.20" },
-      categoryIds: ["water"],
-      rateLimiter: { allow: () => ({ allowed: true, retryAfterSeconds: 0 }) },
+      categoryIds,
+      allowGoogleFallback: false,
+      allowCorrectiveRetries: false,
       googleDiscoveryImpl: async () => ({
         status: "completed",
         provider: "google-gemini-grounding",
@@ -494,20 +543,25 @@ test.describe("custom project research", () => {
         citationCount: 1,
         providerRequestCount: 1,
       }),
-      fetchImpl: async () => new Response(JSON.stringify({
-        error: { message: "synthetic rate limit", type: "rate_limit_error", code: "rate_limit_exceeded" },
-      }), { status: 429 }),
+      fetchImpl: async () => {
+        providerCalls += 1;
+        return new Response(JSON.stringify({ error: { message: "synthetic provider unavailable" } }), { status: 503 });
+      },
       documentFetchImpl: async () => new Response(
         `<html><body>${partialReceiptsFixture.accessibleReceipt.passage}</body></html>`,
         { status: 200, headers: { "content-type": "text/html" } },
       ),
     });
+    expect(serverResponse.statusCode).toBe(200);
+    expect(serverResponse.body).toMatchObject({ researchStatus: "partial" });
+    expect(providerCalls).toBe(categoryIds.length);
+    expect((serverResponse.body.researchAudit as any).categories).toHaveLength(categoryIds.length);
 
     await page.unroute("**/api/research-project");
     await page.route("**/api/research-project", (route) => route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify(serverResult),
+      body: JSON.stringify(serverResponse.body),
     }));
     await page.goto("/");
     await openCustomProjectDialog(page);
@@ -936,7 +990,6 @@ test.describe("custom project research", () => {
     await page.unroute("**/api/research-project");
     await page.route("**/api/research-project", async (route) => {
       calls += 1;
-      if (calls === 2) await new Promise((resolve) => setTimeout(resolve, 250));
       await route.fulfill({
         status: 504,
         contentType: "application/json",
@@ -952,7 +1005,7 @@ test.describe("custom project research", () => {
     await expect(page).toHaveURL(/#analysis$/);
     await expect(page.getByTestId("custom-research-banner")).toContainText("RESEARCH TIMED OUT");
     await expect(page.getByTestId("custom-research-retry")).toBeVisible();
-    expect(calls).toBe(2);
+    expect(calls).toBe(1);
     await page.getByTestId("custom-research-retry").click();
     await expect(page.getByTestId("custom-project-dialog")).toBeVisible();
     await page.getByTestId("button-close-custom-project").click();

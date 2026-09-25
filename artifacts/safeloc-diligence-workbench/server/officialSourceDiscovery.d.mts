@@ -8,6 +8,7 @@ export interface OfficialSourceDiscoveryOptions {
   now?: () => number;
   maxAttempts?: number;
   authorizeAttempt?: (url: string) => boolean | { allowed: boolean; physicalOpenIndex?: number | null };
+  withRequestBudget?: <T>(operation: (signal: AbortSignal) => Promise<T>) => Promise<T>;
 }
 
 export interface OfficialSourceCandidate {

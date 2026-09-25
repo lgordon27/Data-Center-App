@@ -130,3 +130,32 @@ test("rejects credential concepts and malformed SEC responses", async () => {
   });
   await assert.rejects(connector.search({ ticker: "ACME" }), /non-JSON/);
 });
+
+test("an aborted SEC spacing wait prevents the next request from starting", async () => {
+  const controller = new AbortController();
+  let spacingWaitStarted;
+  const waitStarted = new Promise((resolve) => { spacingWaitStarted = resolve; });
+  const calls = [];
+  const connector = createSecConnector({
+    userAgent: "SafeLoc tests sec@example.com",
+    clock: () => 1_000,
+    sleep: async (_ms, signal) => {
+      spacingWaitStarted();
+      return new Promise((_resolve, reject) => {
+        if (signal.aborted) reject(signal.reason);
+        else signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+      });
+    },
+    fetchImpl: async (url, init) => {
+      calls.push({ url, signal: init.signal, signalAbortedAtCall: init.signal.aborted });
+      return json(String(url).includes("company_tickers") ? directory : submissions);
+    },
+  });
+  const search = connector.search({ ticker: "ACME", signal: controller.signal });
+  await waitStarted;
+  controller.abort();
+  await assert.rejects(search, /abort/i);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].signalAbortedAtCall, false);
+});

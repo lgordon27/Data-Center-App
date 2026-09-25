@@ -176,6 +176,8 @@ test("advisor summaries do not promote generated project prose or attributed pas
         phaseScope: "Phase One only.",
         timePeriod: null,
         powerMeasure: "utility interconnection",
+        powerClaimState: "not-present",
+        powerClaim: null,
         reportingDate: null,
         reportingDateBasis: "not-reported",
         accessedAt: null,

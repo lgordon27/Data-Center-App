@@ -14,7 +14,7 @@
 - [Recurring attribution semantics](recurring-attribution-semantics.md) — annual driver effects must exclude terminal value and debt repayment; keep total equity impact separate.
 - [Community benchmark provenance](community-benchmark-provenance.md) — external benchmark rows need immutable source fields, explicit review state, and no invented quote or primary-document fallback.
 - [Evidence semantic boundaries](evidence-semantic-boundaries.md) — normalize once, preserve raw research, and persist accepted model/history state separately from reviewer-visible proposals.
-- [Source validation pipeline](source-validation-pipeline.md) — provider links stay candidates until identity, passage, scope, time, and financial gates all pass.
+- [Source validation pipeline](source-validation-pipeline.md) — explicit passage conflicts outrank provider identity flags; power quantities stay bound to one measure and clause.
 - [Category query attribution](category-query-attribution.md) — audit executed queries against each category’s own planned query, not shared evidence-variable keywords.
 - [Research audit ledger](research-audit-ledger.md) — enforce run-wide tool budgets before every attempt and count audit stages from the full normalized ledger.
 - [Release interface validation](release-interface-validation.md) — compare content-hash release documents and cache behavior before accepting the public SafeLoc bundle.

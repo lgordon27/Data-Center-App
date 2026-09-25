@@ -48,7 +48,7 @@
       "name": "multi-state-passage",
       "location": "Phoenix, Arizona",
       "passage": "Project Atlas in Phoenix, Arizona is compared with a site in Nevada.",
-      "expectedExactProject": false
+      "expectedExactProject": true
     },
     {
       "name": "west-virginia-exact-match",

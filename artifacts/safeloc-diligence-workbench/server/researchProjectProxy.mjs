@@ -19,6 +19,7 @@ import {
   isSourceProjectSpecific,
   sourceUrlAliases,
 } from "../src/data/sourceValidationPolicy.mjs";
+import { assessResearchProjectIdentity } from "../src/data/researchIdentity.mjs";
 import { defaultProjectResearchRegistry } from "./projectResearchRegistry.mjs";
 import { discoverOfficialSources } from "./officialSourceDiscovery.mjs";
 import {
@@ -586,7 +587,7 @@ function prohibitedAddressRule(address) {
   return "ipv6-prohibited-special-purpose";
 }
 
-export async function resolvePublicAddress(url, dnsLookup = dns.lookup) {
+export async function resolvePublicAddress(url, dnsLookup = dns.lookup, signal) {
   let parsed;
   try {
     parsed = new URL(url);
@@ -608,8 +609,12 @@ export async function resolvePublicAddress(url, dnsLookup = dns.lookup) {
   }
   let addresses;
   try {
-    addresses = await dnsLookup(parsed.hostname, { all: true, verbatim: true });
-  } catch {
+    addresses = await awaitWithResearchSignal(
+      Promise.resolve().then(() => dnsLookup(parsed.hostname, { all: true, verbatim: true })),
+      signal,
+    );
+  } catch (caught) {
+    if (signal?.aborted || caught?.name === "ResearchCancelledError") throw createResearchCancellationError();
     const error = new Error("dns-lookup-failure");
     error.name = "PublicAddressValidationError";
     error.addressValidationReason = "dns-lookup-failure";
@@ -682,7 +687,7 @@ function createPinnedLookup(address) {
 }
 
 function fetchPinnedPublicUrl(url, init = {}, dnsLookup = dns.lookup) {
-  return resolvePublicAddress(url, dnsLookup).then((address) => new Promise((resolve, reject) => {
+  return resolvePublicAddress(url, dnsLookup, init.signal).then((address) => new Promise((resolve, reject) => {
     const parsed = new URL(url);
     const transport = parsed.protocol === "https:" ? https : http;
     const request = transport.request({
@@ -715,12 +720,20 @@ async function fetchResearchDocumentUrl(url, init, {
   dnsLookup,
   transportImpl,
 } = {}) {
-  if (typeof transportImpl === "function") {
-    const address = await resolvePublicAddress(url, dnsLookup);
-    return transportImpl(url, init, { address });
-  }
-  if (fetchImpl === fetch) return fetchPinnedPublicUrl(url, init, dnsLookup);
-  return fetchImpl(url, init);
+  const requestPromise = Promise.resolve().then(async () => {
+    if (typeof transportImpl === "function") {
+      const address = await resolvePublicAddress(url, dnsLookup, init.signal);
+      return transportImpl(url, init, { address });
+    }
+    if (fetchImpl === fetch) return fetchPinnedPublicUrl(url, init, dnsLookup);
+    return fetchImpl(url, init);
+  });
+  void requestPromise.then((response) => {
+    if (init.signal?.aborted) {
+      void Promise.resolve(response?.body?.cancel?.()).catch(() => {});
+    }
+  }, () => {});
+  return await awaitWithResearchSignal(requestPromise, init.signal);
 }
 
 function parseResearchProjectBody(body) {
@@ -1151,6 +1164,16 @@ function createResearchCancellationError() {
   return error;
 }
 
+function createResearchBudgetError(reason, timeSliceMs = null) {
+  const error = new Error(reason === "analysis-budget-reserved"
+    ? "Research work was deferred to preserve the analysis budget."
+    : "Research work did not finish within its bounded time slice.");
+  error.name = "ResearchBudgetExceededError";
+  error.researchBudgetReason = reason;
+  if (Number.isFinite(timeSliceMs)) error.timeSliceMs = timeSliceMs;
+  return error;
+}
+
 function safeSourceIdentity(value) {
   try {
     const parsed = new URL(value);
@@ -1343,6 +1366,7 @@ async function accessResearchDocument(candidate = {}, {
       const privateRedirect = resolvedLocation && isPrivateNetworkHostname(resolvedLocation.hostname);
       const safeLocation = safePublicSourceUrl(resolvedLocation?.href ?? null);
       if (privateRedirect || !safeLocation || redirect === maxRedirects) {
+        void Promise.resolve(response.body?.cancel?.()).catch(() => {});
         const reason = privateRedirect
           ? "private-destination"
           : safeLocation
@@ -1374,11 +1398,13 @@ async function accessResearchDocument(candidate = {}, {
           ],
         };
       }
+      void Promise.resolve(response.body?.cancel?.()).catch(() => {});
       redirectChain.push(safeLocation);
       currentUrl = safeLocation;
       continue;
     }
     if (!response.ok) {
+      void Promise.resolve(response.body?.cancel?.()).catch(() => {});
       return {
         ...initial,
         state: "blocked",
@@ -1399,20 +1425,21 @@ async function accessResearchDocument(candidate = {}, {
     const contentType = response.headers?.get?.("content-type") ?? candidate.contentType ?? null;
     const contentLength = Number(response.headers?.get?.("content-length"));
     if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+      void Promise.resolve(response.body?.cancel?.()).catch(() => {});
       return { ...initial, state: "blocked", reason: "size-limit", resolvedUrl: currentUrl, redirectChain, contentType, extractionLimitations: [`Document exceeds the ${maxBytes}-byte access limit.`] };
     }
     let bytes;
     try {
       if (response.body?.getReader) {
         const reader = response.body.getReader();
-        const cancelReader = () => { void reader.cancel(); };
+        const cancelReader = () => { void Promise.resolve(reader.cancel()).catch(() => {}); };
         signal?.addEventListener("abort", cancelReader, { once: true });
         const chunks = [];
         let total = 0;
         try {
           while (true) {
             throwIfResearchCancelled(signal);
-            const part = await reader.read();
+            const part = await awaitWithResearchSignal(reader.read(), signal);
             if (part.done) break;
             total += part.value.byteLength;
             if (total > maxBytes) {
@@ -1426,7 +1453,7 @@ async function accessResearchDocument(candidate = {}, {
         }
         bytes = Buffer.concat(chunks, total);
       } else {
-        const buffered = await awaitWithResearchSignal(response.arrayBuffer(), signal);
+        const buffered = await awaitWithResearchSignal(Promise.resolve().then(() => response.arrayBuffer()), signal);
         if (buffered.byteLength > maxBytes) throw new Error("size-limit");
         bytes = Buffer.from(buffered);
       }
@@ -1634,50 +1661,20 @@ function categoryOpenedDocuments(sources = [], category = null) {
   });
 }
 
-function sourceEstablishesProjectIdentity(source, project = {}) {
+export function sourceEstablishesProjectIdentity(source, project = {}) {
   const identityMetadata = { ...source };
   delete identityMetadata.exactProject;
   delete identityMetadata.entityMatch;
   if (!isSourceProjectSpecific(identityMetadata, project)) return false;
-  const locationText = String(project.location ?? "");
-  const normalizedSourceText = ` ${[
-    source?.title,
-    source?.url,
-    source?.resolvedUrl,
-    source?.excerpt,
+  const passage = [
     source?.accessOutcome?.passage,
-  ].filter((value) => typeof value === "string").join(" ").toLowerCase().replace(/[^a-z0-9]+/g, " ")} `;
-  const normalizedLocation = locationText.toLowerCase();
-  const stateEntries = Object.entries(US_STATE_NAMES);
-  const knownState = String(project.knownData?.state ?? "").trim();
-  const expectedStateEntry = stateEntries.find(([abbr, name]) =>
-    knownState.toLowerCase() === name.toLowerCase() || knownState.toUpperCase() === abbr)
-    ?? stateEntries
-      .filter(([, name]) => new RegExp(`\\b${name.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(normalizedLocation))
-      .sort((left, right) => right[1].length - left[1].length)[0]
-    ?? stateEntries.find(([abbr]) => new RegExp(`\\b${abbr}\\b`, "i").test(normalizedLocation));
-  if (!expectedStateEntry) return false;
-  const [stateAbbreviation, stateName] = expectedStateEntry;
-  const hasExpectedState = normalizedSourceText.includes(` ${stateName.toLowerCase()} `)
-    || new RegExp(`\\b${stateAbbreviation}\\b`, "i").test(normalizedSourceText);
-  if (!hasExpectedState) return false;
-  const stateNamesMentioned = Object.values(US_STATE_NAMES)
-    .filter((name) => normalizedSourceText.includes(` ${name.toLowerCase()} `));
-  const otherStateNames = stateNamesMentioned.filter((name) =>
-    name !== stateName
-    && !stateNamesMentioned.some((longerName) =>
-      longerName.length > name.length && longerName.toLowerCase().includes(name.toLowerCase())));
-  if (otherStateNames.length) return false;
-  const expectedCity = String(project.knownData?.city ?? locationText.split(",")[0] ?? "")
-    .replace(/\b(metro|region|area)\b/gi, "")
-    .trim();
-  if (expectedCity && !/\bcounty\b/i.test(expectedCity)) {
-    const normalizedCity = expectedCity.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-    if (normalizedCity && !normalizedSourceText.includes(` ${normalizedCity} `)) return false;
-  }
-  const expectedCounty = String(project.knownData?.county ?? "").trim();
-  if (expectedCounty && !normalizedSourceText.includes(` ${expectedCounty.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()} `)) return false;
-  return true;
+    source?.claimPassage,
+    source?.excerpt,
+  ].find((value) => typeof value === "string" && value.trim()) ?? "";
+  return assessResearchProjectIdentity(passage, {
+    exactProject: source?.exactProject === true || source?.entityMatch === "exact",
+    entityMatch: source?.entityMatch,
+  }, project) === "exact-project";
 }
 
 function buildResearchAudit({
@@ -4337,6 +4334,7 @@ async function runValidatedResearch(project, {
   rateLimiter,
   req,
   documentFetchImpl = fetch,
+  dnsLookup = dns.lookup,
   secConnector = null,
   ocrImpl,
   signal,
@@ -4435,47 +4433,67 @@ async function runValidatedResearch(project, {
       activeDocumentOpens = Math.max(0, activeDocumentOpens - 1);
     }
   };
-  const openDocumentWithBudget = async (source) => {
-    await acquireDocumentOpenSlot(controller.signal);
-    const remainingMs = Math.max(0, researchTimeoutMs - (Date.now() - runStartedAtMs));
-    const availableMs = remainingMs - analysisReserveMs;
-    if (availableMs <= 0) {
-      releaseDocumentOpenSlot();
-      return {
-        ...evaluateResearchDocumentAccess(source),
-        state: "not-attempted",
-        reason: "analysis-budget-reserved",
-        extractionLimitations: ["Document access was deferred to preserve the remaining structured-analysis budget."],
-      };
-    }
+  const withResearchTimeSlice = async (operation, maximumMs = documentTimeoutMs) => {
+    const availableMs = researchTimeoutMs - (Date.now() - runStartedAtMs) - analysisReserveMs;
+    if (availableMs <= 0) throw createResearchBudgetError("analysis-budget-reserved");
+    const sliceMs = Math.max(1, Math.min(maximumMs, availableMs));
     const localController = new AbortController();
     const abortFromRun = () => localController.abort(controller.signal.reason);
     controller.signal.addEventListener("abort", abortFromRun, { once: true });
-    const sliceMs = Math.max(1, Math.min(documentTimeoutMs, availableMs));
+    let timedOut = false;
     const localTimeout = setTimeout(() => {
+      timedOut = true;
       localController.abort(Object.assign(new Error("Document access time slice expired."), { name: "TimeoutError" }));
     }, sliceMs);
     try {
-      return await accessResearchDocument(source, {
-        fetchImpl: documentFetchImpl,
-        signal: localController.signal,
-        ocrImpl,
-      });
+      const operationPromise = Promise.resolve().then(() => operation(localController.signal));
+      return await awaitWithResearchSignal(operationPromise, localController.signal);
     } catch (error) {
-      if (localController.signal.aborted && !controller.signal.aborted) {
-        return {
-          ...evaluateResearchDocumentAccess(source),
-          state: "blocked",
-          reason: "document-time-slice",
-          extractionLimitations: ["The document did not finish within its bounded access time slice."],
-          transportDiagnostic: { stage: "document-time-slice", elapsedMs: sliceMs },
-        };
-      }
+      if (timedOut && !controller.signal.aborted) throw createResearchBudgetError("time-slice", sliceMs);
       throw error;
     } finally {
       clearTimeout(localTimeout);
       controller.signal.removeEventListener("abort", abortFromRun);
-      releaseDocumentOpenSlot();
+    }
+  };
+  const withDocumentOpenBudget = async (operation) => {
+    let acquired = false;
+    return withResearchTimeSlice(async (openSignal) => {
+      await acquireDocumentOpenSlot(openSignal);
+      acquired = true;
+      try {
+        return await operation(openSignal);
+      } finally {
+        if (acquired) {
+          acquired = false;
+          releaseDocumentOpenSlot();
+        }
+      }
+    });
+  };
+  const openDocumentWithBudget = async (source) => {
+    try {
+      return await withDocumentOpenBudget((openSignal) => accessResearchDocument(source, {
+        fetchImpl: documentFetchImpl,
+        dnsLookup,
+        signal: openSignal,
+        ocrImpl,
+      }));
+    } catch (error) {
+      if (error?.name !== "ResearchBudgetExceededError") throw error;
+      const deferred = error.researchBudgetReason === "analysis-budget-reserved";
+      return {
+        ...evaluateResearchDocumentAccess(source),
+        state: deferred ? "not-attempted" : "blocked",
+        reason: deferred ? "analysis-budget-reserved" : "document-time-slice",
+        extractionLimitations: [deferred
+          ? "Document access was deferred to preserve the remaining structured-analysis budget."
+          : "The document did not finish within its bounded access time slice."],
+        transportDiagnostic: {
+          stage: deferred ? "analysis-budget-reserved" : "document-time-slice",
+          elapsedMs: error.timeSliceMs ?? null,
+        },
+      };
     }
   };
   let fetchedCandidateCount = 0;
@@ -4599,7 +4617,7 @@ async function runValidatedResearch(project, {
       fetchImpl: async (url, init) => {
         const authorization = authorizePhysicalOpen();
         if (!authorization.allowed) throw new Error("physical-open-budget");
-        return fetchPinnedPublicUrl(url, { ...init, signal: controller.signal });
+        return fetchPinnedPublicUrl(url, { ...init, signal: init.signal ?? controller.signal }, dnsLookup);
       },
     });
   }
@@ -4898,14 +4916,15 @@ async function runValidatedResearch(project, {
             category: categoryId,
             signal: controller.signal,
             maxAttempts: RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens,
-        authorizeAttempt: (url) => authorizePhysicalOpen({
-          categoryId,
-          canonicalUrl: url,
-          source: { url, sourceChannel: "official-domain-discovery" },
-        }),
+            authorizeAttempt: (url) => authorizePhysicalOpen({
+              categoryId,
+              canonicalUrl: url,
+              source: { url, sourceChannel: "official-domain-discovery" },
+            }),
             fetchImpl: documentFetchImpl === fetch
-              ? (url, init) => fetchPinnedPublicUrl(url, init)
+              ? (url, init) => fetchPinnedPublicUrl(url, init, dnsLookup)
               : documentFetchImpl,
+            withRequestBudget: (operation) => withDocumentOpenBudget(operation),
           });
           discoveryAttempts.push(...discovery.attempts);
           authorityRecords.push(...discovery.authorities);
@@ -4936,13 +4955,14 @@ async function runValidatedResearch(project, {
         ) {
           secAttemptedCategories.add(categoryId);
           try {
-            const secResult = await activeSecConnector.search({
+            const secResult = await withResearchTimeSlice((secSignal) => activeSecConnector.search({
               ticker: project.knownData?.ticker,
               companyName: project.knownData?.companyName ?? project.knownData?.operator,
               projectName: project.name,
               terms: [project.name, ...(project.knownData?.aliases ?? [])],
               maxCandidates: 6,
-            });
+              signal: secSignal,
+            }));
             secAttempts.push(...(secResult.attempts ?? []));
             supplementalSources.push(...(secResult.candidates ?? []).map((candidate) => ({
               ...candidate,
@@ -4960,7 +4980,9 @@ async function runValidatedResearch(project, {
           } catch (error) {
             secAttempts.push({
               sourceChannel: "sec-public-data",
-              outcome: "failed",
+              outcome: error?.name === "ResearchBudgetExceededError"
+                ? error.researchBudgetReason === "analysis-budget-reserved" ? "skipped-analysis-reserve" : "timed-out"
+                : "failed",
               reason: sanitizeTransportText(error instanceof Error ? error.message : "SEC connector failed."),
             });
             categoryResult.coverage.providerLimitations = [
@@ -5474,6 +5496,7 @@ export async function handleResearchProjectRequest(
     documentFetchImpl = fetch,
     secConnector = null,
     ocrImpl,
+    dnsLookup = dns.lookup,
     rateLimiter = defaultRateLimiter,
     cache = defaultResearchProjectCache,
     registry = defaultProjectResearchRegistry,
@@ -5552,6 +5575,7 @@ export async function handleResearchProjectRequest(
     documentTimeoutMs,
     analysisReserveMs,
     maxConcurrentDocumentOpens,
+    dnsLookup,
     signal: foreground ? requestController.signal : undefined,
   }).then(async (result) => {
     // Registry retention is deliberately best-effort: a local persistence

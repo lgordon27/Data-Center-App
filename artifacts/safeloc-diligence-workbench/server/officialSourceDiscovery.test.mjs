@@ -177,3 +177,34 @@ test("deduplicates an exact-project URL repeated in a sitemap", async () => {
     "https://official.example/projects/project-atlas",
   ]);
 });
+
+test("official discovery cancels a stalled streamed body on client abort", async () => {
+  const controller = new AbortController();
+  let bodyPullStarted;
+  let bodyCancelled = false;
+  const bodyReadStarted = new Promise((resolve) => { bodyPullStarted = resolve; });
+  const resultPromise = discoverOfficialSources({
+    projectIdentity: {
+      name: "Project Atlas",
+      location: "Taylor County, Texas",
+      knownData: { companyDomains: ["records.example"] },
+    },
+    knownData: { companyDomains: ["records.example"] },
+    maxAttempts: 1,
+    signal: controller.signal,
+    fetchImpl: async () => new Response(new ReadableStream({
+      pull() {
+        bodyPullStarted();
+      },
+      cancel() {
+        bodyCancelled = true;
+      },
+    }), { status: 200, headers: { "content-type": "text/html" } }),
+  });
+  await bodyReadStarted;
+  controller.abort();
+  const result = await resultPromise;
+  assert.equal(result.attempts.length, 1);
+  assert.equal(result.attempts[0].status, "aborted");
+  assert.equal(bodyCancelled, true);
+});

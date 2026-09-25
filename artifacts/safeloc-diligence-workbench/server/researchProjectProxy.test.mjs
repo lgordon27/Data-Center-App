@@ -53,6 +53,7 @@ import {
   classifyResearchFailure,
   classifyCanonicalResearchOutcome,
   createPhysicalOpenScheduler,
+  sourceEstablishesProjectIdentity,
   PROTECTED_SOURCE_OPPORTUNITIES,
 } from "./researchProjectProxy.mjs";
 import {
@@ -89,6 +90,53 @@ function completedGoogleDiscovery(candidates, query = "fixture exact-project pub
     providerRequestCount: 1,
   });
 }
+
+test("server identity agrees with retained-passage applicability and ignores HQ or comparison locations", () => {
+  const texasProject = {
+    name: "Project Atlas",
+    location: "Irving, Dallas County, Texas",
+    knownData: {
+      aliases: ["Atlas Compute Campus"],
+      operator: "Atlas Compute",
+      city: "Irving",
+      county: "Dallas County",
+      state: "Texas",
+    },
+  };
+  const source = (passage) => ({
+    title: "Project Atlas official project record",
+    url: "https://records.example.gov/project-atlas",
+    exactProject: true,
+    accessOutcome: { state: "accessible", passage },
+  });
+
+  assert.equal(sourceEstablishesProjectIdentity(source(
+    "Project Atlas is located in Irving, Dallas County, Texas. Atlas Compute operates the facility; its headquarters are in Virginia.",
+  ), texasProject), true);
+  assert.equal(sourceEstablishesProjectIdentity(source(
+    "Project Atlas is located in Irving, Dallas County, Texas, compared with a similar project in Richmond, Virginia.",
+  ), texasProject), true);
+  assert.equal(sourceEstablishesProjectIdentity(source(
+    "Project Atlas is located in Houston, Harris County, Texas.",
+  ), texasProject), false);
+  assert.equal(sourceEstablishesProjectIdentity(source(
+    "Project Atlas is located in Irving, Dallas County, Texas and is operated by Different Operator.",
+  ), texasProject), false);
+
+  assert.equal(sourceEstablishesProjectIdentity(source(
+    "Atlas Compute Campus is located in Morgantown, Monongalia County, WV.",
+  ), {
+    name: "Project Atlas",
+    location: "Morgantown, Monongalia County, West Virginia",
+    knownData: {
+      aliases: ["Atlas Compute Campus"],
+      operator: "Atlas Compute",
+      city: "Morgantown",
+      county: "Monongalia County",
+      state: "WV",
+    },
+  }), true);
+});
 
 function responseRecorder() {
   const headers = {};
@@ -1059,6 +1107,27 @@ test("distinguishes sanitized DNS validation outcomes without weakening mixed-ad
     ]),
     (error) => error.addressValidationReason === "prohibited-address-class",
   );
+});
+
+test("aborted DNS lookup settles promptly and ignores a late injected answer", async () => {
+  const controller = new AbortController();
+  let dnsStarted;
+  let resolveLate;
+  let observedOptions;
+  const lookupStarted = new Promise((resolve) => { dnsStarted = resolve; });
+  const pending = resolvePublicAddress("https://records.example/report", (_hostname, options) => {
+    observedOptions = options;
+    return new Promise((resolve) => {
+      resolveLate = resolve;
+      dnsStarted();
+    });
+  }, controller.signal);
+  await lookupStarted;
+  controller.abort();
+  await assert.rejects(pending, (error) => error?.name === "ResearchCancelledError");
+  assert.deepEqual(observedOptions, { all: true, verbatim: true });
+  resolveLate([{ address: "93.184.216.34", family: 4 }]);
+  await new Promise((resolve) => setImmediate(resolve));
 });
 
 test("retains an issued provider attempt when the HTTP response cannot be parsed", async () => {
@@ -4122,4 +4191,171 @@ test("returns specific safe quota, authentication, parse, and timeout errors", a
   assert.equal(timeoutResponse.json().researchStatus, "partial");
   assert.equal(timeoutResponse.json().researchError.type, "timeout");
   assert.equal(timeoutResponse.json().evidence.length, 16);
+});
+
+test("HTTP research records an independent provider failure for every category without losing retained receipts", async () => {
+  const fixture = JSON.parse(await readFile(new URL("./fixtures/research-partial-receipts.json", import.meta.url), "utf8"));
+  const categoryIds = [
+    "project-identity",
+    "grid",
+    "electricity",
+    "water",
+    "permitting-community",
+    "construction-capital",
+    "tenant-counterparty",
+    "climate-operational-hazard",
+  ];
+  const candidate = {
+    ...fixture.accessibleReceipt,
+    categoryIds,
+    excerpt: fixture.accessibleReceipt.passage,
+  };
+  const response = responseRecorder();
+  let providerCalls = 0;
+  await handleResearchProjectRequest(request({ ...fixture.project, forceRefresh: true }), response, {
+    apiKey: "synthetic-test-key",
+    cache: createResearchProjectCache({
+      directory: await mkdtemp(path.join(os.tmpdir(), "safeloc-all-category-failures-")),
+    }),
+    registry: { retain: async () => {} },
+    rateLimiter: { allow: () => ({ allowed: true, retryAfterSeconds: 0 }) },
+    categoryIds,
+    allowGoogleFallback: false,
+    allowCorrectiveRetries: false,
+    researchTimeoutMs: 5_000,
+    analysisReserveMs: 100,
+    googleDiscoveryImpl: completedGoogleDiscovery([candidate]),
+    secConnector: { search: async () => ({ attempts: [], candidates: [] }) },
+    fetchImpl: async () => {
+      providerCalls += 1;
+      return new Response(JSON.stringify({ error: { message: "synthetic provider unavailable" } }), { status: 503 });
+    },
+    documentFetchImpl: async () => new Response(
+      `<html><body>${fixture.accessibleReceipt.passage}</body></html>`,
+      { status: 200, headers: { "content-type": "text/html" } },
+    ),
+  });
+  const payload = response.json();
+  assert.equal(response.statusCode, 200);
+  assert.equal(payload.researchStatus, "partial");
+  assert.equal(providerCalls, categoryIds.length);
+  assert.deepEqual(
+    payload.researchAudit.categories.map((category) => category.categoryId).sort(),
+    [...categoryIds].sort(),
+  );
+  assert.ok(payload.researchAudit.categories.every((category) => category.state !== "Complete"));
+  assert.ok(payload.sourceLedger.some((source) => source.accessOutcome?.state === "accessible"));
+});
+
+test("HTTP research deadline aborts a stalled provider and returns a typed timeout", async () => {
+  const fixture = JSON.parse(await readFile(new URL("./fixtures/research-partial-receipts.json", import.meta.url), "utf8"));
+  const candidate = {
+    ...fixture.accessibleReceipt,
+    categoryIds: ["water"],
+    excerpt: fixture.accessibleReceipt.passage,
+  };
+  const response = responseRecorder();
+  let providerSignal;
+  await handleResearchProjectRequest(request({ ...fixture.project, forceRefresh: true }), response, {
+    apiKey: "synthetic-test-key",
+    cache: createResearchProjectCache({
+      directory: await mkdtemp(path.join(os.tmpdir(), "safeloc-handler-deadline-")),
+    }),
+    registry: { retain: async () => {} },
+    rateLimiter: { allow: () => ({ allowed: true, retryAfterSeconds: 0 }) },
+    categoryIds: ["water"],
+    allowGoogleFallback: false,
+    allowCorrectiveRetries: false,
+    researchTimeoutMs: 250,
+    analysisReserveMs: 0,
+    documentTimeoutMs: 10,
+    googleDiscoveryImpl: completedGoogleDiscovery([candidate]),
+    secConnector: { search: async () => ({ attempts: [], candidates: [] }) },
+    documentFetchImpl: async () => new Response(
+      `<html><body>${fixture.accessibleReceipt.passage}</body></html>`,
+      { status: 200, headers: { "content-type": "text/html" } },
+    ),
+    fetchImpl: async (_url, init) => new Promise((_resolve, reject) => {
+      providerSignal = init.signal;
+      const fail = () => reject(Object.assign(new Error("synthetic deadline"), { name: "AbortError" }));
+      if (init.signal.aborted) fail();
+      else init.signal.addEventListener("abort", fail, { once: true });
+    }),
+  });
+  const payload = response.json();
+  assert.equal(response.statusCode, 200);
+  assert.equal(payload.researchStatus, "partial");
+  assert.equal(payload.researchError.type, "timeout");
+  assert.equal(providerSignal?.aborted, true);
+});
+
+test("HTTP client abort cancels a stalled document body and suppresses the response", async () => {
+  const fixture = JSON.parse(await readFile(new URL("./fixtures/research-partial-receipts.json", import.meta.url), "utf8"));
+  const candidate = {
+    ...fixture.accessibleReceipt,
+    excerpt: fixture.accessibleReceipt.passage,
+  };
+  let aborted;
+  let bodyPullStarted;
+  let bodyCancelled = false;
+  let fetchSignal;
+  const bodyReadStarted = new Promise((resolve) => { bodyPullStarted = resolve; });
+  const req = {
+    method: "POST",
+    body: { ...fixture.project, forceRefresh: true },
+    ip: "198.51.100.31",
+    listeners: new Map(),
+    once(event, listener) {
+      this.listeners.set(event, listener);
+      return this;
+    },
+    removeListener(event, listener) {
+      if (this.listeners.get(event) === listener) this.listeners.delete(event);
+      return this;
+    },
+    emitAborted() {
+      this.listeners.get("aborted")?.();
+    },
+  };
+  const response = responseRecorder();
+  response.destroyed = false;
+  response.writableEnded = false;
+  const pending = handleResearchProjectRequest(req, response, {
+    apiKey: "synthetic-test-key",
+    cache: createResearchProjectCache({
+      directory: await mkdtemp(path.join(os.tmpdir(), "safeloc-handler-abort-")),
+    }),
+    registry: { retain: async () => {} },
+    rateLimiter: { allow: () => ({ allowed: true, retryAfterSeconds: 0 }) },
+    categoryIds: ["water"],
+    allowGoogleFallback: false,
+    allowCorrectiveRetries: false,
+    researchTimeoutMs: 5_000,
+    analysisReserveMs: 100,
+    googleDiscoveryImpl: completedGoogleDiscovery([candidate]),
+    secConnector: { search: async () => ({ attempts: [], candidates: [] }) },
+    fetchImpl: async () => {
+      throw new Error("Provider work must not begin after document cancellation.");
+    },
+    documentFetchImpl: async (_url, init) => {
+      fetchSignal = init.signal;
+      init.signal.addEventListener("abort", () => { aborted = true; }, { once: true });
+      return new Response(new ReadableStream({
+        pull() {
+          bodyPullStarted();
+        },
+        cancel() {
+          bodyCancelled = true;
+        },
+      }), { status: 200, headers: { "content-type": "text/html" } });
+    },
+  });
+  await bodyReadStarted;
+  response.destroyed = true;
+  req.emitAborted();
+  await pending;
+  assert.equal(fetchSignal?.aborted, true);
+  assert.equal(aborted, true);
+  assert.equal(bodyCancelled, true);
+  assert.equal(response.body, "");
 });

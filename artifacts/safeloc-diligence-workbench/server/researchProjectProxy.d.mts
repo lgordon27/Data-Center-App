@@ -1,3 +1,8 @@
+type ResearchDnsLookup = (
+  hostname: string,
+  options: { all: true; verbatim: true },
+) => Promise<Array<{ address: string; family: number }>>;
+
 export declare const DEFAULT_RESEARCH_CAPACITY_MW: number;
 export declare const OPENAI_RESPONSES_URL: string;
 export declare const RESEARCH_EVIDENCE_IDS: string[];
@@ -27,6 +32,7 @@ export declare function createSourceLedger(candidates?: Array<Record<string, unk
 export declare function normalizeSearchTerms(value: unknown): string[];
 export declare function extractSearchTerms(body: unknown): string[];
 export declare function isExactProjectSource(source: Record<string, unknown>, summary: Record<string, unknown>, itemRelevance?: unknown): boolean;
+export declare function sourceEstablishesProjectIdentity(source: Record<string, unknown>, project?: Record<string, unknown>): boolean;
 export declare function calculateSourceSupportConfidence(options: {
   classification: string;
   sources?: Array<Record<string, unknown>>;
@@ -57,12 +63,23 @@ export declare function handleResearchProjectRequest(
   res: unknown,
   options?: {
     apiKey?: string;
+    googleApiKey?: string;
     fetchImpl?: typeof fetch;
+    documentFetchImpl?: typeof fetch;
+    googleDiscoveryImpl?: (options: Record<string, unknown>) => Promise<Record<string, unknown>>;
+    allowGoogleFallback?: boolean;
+    allowCorrectiveRetries?: boolean;
+    secConnector?: { search(query: Record<string, unknown>): Promise<Record<string, unknown>> } | null;
+    ocrImpl?: (input: Record<string, unknown>) => Promise<unknown>;
     rateLimiter?: ReturnType<typeof createResearchProjectRateLimiter>;
+    cache?: unknown;
+    registry?: unknown;
+    categoryIds?: string[] | null;
     researchTimeoutMs?: number;
     documentTimeoutMs?: number;
     analysisReserveMs?: number;
     maxConcurrentDocumentOpens?: number;
+    dnsLookup?: ResearchDnsLookup;
   },
 ): Promise<void>;
 export declare function runValidatedResearch(
@@ -71,11 +88,17 @@ export declare function runValidatedResearch(
     apiKey?: string;
     fetchImpl?: typeof fetch;
     documentFetchImpl?: typeof fetch;
+    dnsLookup?: ResearchDnsLookup;
     signal?: AbortSignal;
+    googleApiKey?: string;
+    googleDiscoveryImpl?: (options: Record<string, unknown>) => Promise<Record<string, unknown>>;
+    allowGoogleFallback?: boolean;
+    allowCorrectiveRetries?: boolean;
     categoryIds?: string[];
     researchTimeoutMs?: number;
     documentTimeoutMs?: number;
     analysisReserveMs?: number;
     maxConcurrentDocumentOpens?: number;
+    secConnector?: { search(query: Record<string, unknown>): Promise<Record<string, unknown>> } | null;
   },
 ): Promise<Record<string, unknown>>;

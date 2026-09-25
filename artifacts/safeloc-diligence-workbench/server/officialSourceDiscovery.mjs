@@ -127,28 +127,63 @@ function sourceChannelForHost(url, domainFamilies) {
   return "declared-source-url";
 }
 
-async function readBoundedBody(response) {
+async function awaitWithSignal(promise, signal) {
+  if (!signal) return promise;
+  if (signal.aborted) throw signal.reason ?? new DOMException("Operation aborted.", "AbortError");
+  let onAbort;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        onAbort = () => reject(signal.reason ?? new DOMException("Operation aborted.", "AbortError"));
+        signal.addEventListener("abort", onAbort, { once: true });
+      }),
+    ]);
+  } finally {
+    if (onAbort) signal.removeEventListener("abort", onAbort);
+  }
+}
+
+function cancelResponseBody(response) {
+  void Promise.resolve(response?.body?.cancel?.()).catch(() => {});
+}
+
+async function readBoundedBody(response, signal) {
   const reader = response?.body?.getReader?.();
   if (!reader) {
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    return { text: new TextDecoder().decode(bytes.slice(0, MAX_DOCUMENT_BYTES)), bytes: Math.min(bytes.length, MAX_DOCUMENT_BYTES), truncated: bytes.length > MAX_DOCUMENT_BYTES };
+    try {
+      const bytes = new Uint8Array(await awaitWithSignal(
+        Promise.resolve().then(() => response.arrayBuffer()),
+        signal,
+      ));
+      return { text: new TextDecoder().decode(bytes.slice(0, MAX_DOCUMENT_BYTES)), bytes: Math.min(bytes.length, MAX_DOCUMENT_BYTES), truncated: bytes.length > MAX_DOCUMENT_BYTES };
+    } catch (error) {
+      if (signal?.aborted) cancelResponseBody(response);
+      throw error;
+    }
   }
   const chunks = [];
   let length = 0;
   let truncated = false;
-  while (length <= MAX_DOCUMENT_BYTES) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    const remaining = MAX_DOCUMENT_BYTES - length;
-    if (value.byteLength > remaining) {
-      if (remaining > 0) chunks.push(value.slice(0, remaining));
-      length += remaining;
-      truncated = true;
-      await reader.cancel();
-      break;
+  const cancelReader = () => { void Promise.resolve(reader.cancel()).catch(() => {}); };
+  signal?.addEventListener("abort", cancelReader, { once: true });
+  try {
+    while (length <= MAX_DOCUMENT_BYTES) {
+      const { done, value } = await awaitWithSignal(reader.read(), signal);
+      if (done) break;
+      const remaining = MAX_DOCUMENT_BYTES - length;
+      if (value.byteLength > remaining) {
+        if (remaining > 0) chunks.push(value.slice(0, remaining));
+        length += remaining;
+        truncated = true;
+        cancelReader();
+        break;
+      }
+      chunks.push(value);
+      length += value.byteLength;
     }
-    chunks.push(value);
-    length += value.byteLength;
+  } finally {
+    signal?.removeEventListener("abort", cancelReader);
   }
   const bytes = new Uint8Array(length);
   let offset = 0;
@@ -263,6 +298,7 @@ export async function discoverOfficialSources({
   now = () => Date.now(),
   maxAttempts = DEFAULT_MAX_ATTEMPTS,
   authorizeAttempt,
+  withRequestBudget,
 } = {}) {
   const identity = isRecord(projectIdentity) ? projectIdentity : isRecord(project) ? project : {};
   const knownData = isRecord(suppliedKnownData)
@@ -413,42 +449,57 @@ export async function discoverOfficialSources({
     };
     attempts.push(attempt);
     try {
-      const response = await fetchImpl(target.url, {
-        method: "GET",
-        redirect: "manual",
-        signal,
-        headers: { accept: "text/html, application/xml, text/xml, application/json;q=0.9, */*;q=0.1" },
-      });
-      attempt.httpStatus = Number.isInteger(response?.status) ? response.status : null;
-      attempt.contentType = cleanText(response?.headers?.get?.("content-type"), 120).toLowerCase();
-      if (attempt.httpStatus >= 300 && attempt.httpStatus < 400) {
-        const redirected = safeUrl(response?.headers?.get?.("location"), target.url);
-        if (redirected && hostAllowed(redirected, allowedDomains)) enqueue(redirected, { kind: "same-domain-redirect", parent: target.url });
-        attempt.status = redirected ? "redirect-enqueued" : "redirect-rejected";
-        continue;
-      }
-      if (!response?.ok) {
-        attempt.status = `http-${attempt.httpStatus ?? "error"}`;
-        continue;
-      }
-      if (attempt.contentType && !/(?:html|xhtml|xml|json)/i.test(attempt.contentType)) {
-        attempt.status = "unsupported-content-type";
-        continue;
-      }
-      const body = await readBoundedBody(response);
-      attempt.bytes = body.bytes;
-      attempt.truncated = body.truncated;
-      attempt.status = "parsed";
-      const contexts = extractUrlContexts(body.text, attempt.contentType);
-      for (const context of contexts) {
-        const candidate = safeUrl(context.url, target.url);
-        if (!candidate || !hostAllowed(candidate, allowedDomains)) continue;
-        const matchedAlias = aliases.find((alias) => mentionsExactAlias(`${context.context} ${safelyDecoded(candidate)}`, [alias]));
-        if (!matchedAlias) continue;
-        addCandidate(candidate, sourceChannel, { kind: "exact-alias-index-match", parent: target.url }, matchedAlias);
-      }
+      const executeAttempt = async (attemptSignal) => {
+        const requestPromise = Promise.resolve().then(() => fetchImpl(target.url, {
+          method: "GET",
+          redirect: "manual",
+          signal: attemptSignal,
+          headers: { accept: "text/html, application/xml, text/xml, application/json;q=0.9, */*;q=0.1" },
+        }));
+        void requestPromise.then((response) => {
+          if (attemptSignal?.aborted) cancelResponseBody(response);
+        }, () => {});
+        const response = await awaitWithSignal(requestPromise, attemptSignal);
+        attempt.httpStatus = Number.isInteger(response?.status) ? response.status : null;
+        attempt.contentType = cleanText(response?.headers?.get?.("content-type"), 120).toLowerCase();
+        if (attempt.httpStatus >= 300 && attempt.httpStatus < 400) {
+          const redirected = safeUrl(response?.headers?.get?.("location"), target.url);
+          if (redirected && hostAllowed(redirected, allowedDomains)) enqueue(redirected, { kind: "same-domain-redirect", parent: target.url });
+          attempt.status = redirected ? "redirect-enqueued" : "redirect-rejected";
+          cancelResponseBody(response);
+          return;
+        }
+        if (!response?.ok) {
+          attempt.status = `http-${attempt.httpStatus ?? "error"}`;
+          cancelResponseBody(response);
+          return;
+        }
+        if (attempt.contentType && !/(?:html|xhtml|xml|json)/i.test(attempt.contentType)) {
+          attempt.status = "unsupported-content-type";
+          cancelResponseBody(response);
+          return;
+        }
+        const body = await readBoundedBody(response, attemptSignal);
+        attempt.bytes = body.bytes;
+        attempt.truncated = body.truncated;
+        attempt.status = "parsed";
+        const contexts = extractUrlContexts(body.text, attempt.contentType);
+        for (const context of contexts) {
+          const candidate = safeUrl(context.url, target.url);
+          if (!candidate || !hostAllowed(candidate, allowedDomains)) continue;
+          const matchedAlias = aliases.find((alias) => mentionsExactAlias(`${context.context} ${safelyDecoded(candidate)}`, [alias]));
+          if (!matchedAlias) continue;
+          addCandidate(candidate, sourceChannel, { kind: "exact-alias-index-match", parent: target.url }, matchedAlias);
+        }
+      };
+      if (typeof withRequestBudget === "function") await withRequestBudget(executeAttempt);
+      else await executeAttempt(signal);
     } catch (error) {
-      attempt.status = signal?.aborted ? "aborted" : "fetch-error";
+      attempt.status = signal?.aborted
+        ? "aborted"
+        : error?.name === "ResearchBudgetExceededError"
+          ? error.researchBudgetReason ?? "time-slice"
+          : "fetch-error";
       attempt.error = cleanText(error instanceof Error ? error.message : String(error), 160);
     }
   }

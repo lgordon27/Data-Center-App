@@ -115,6 +115,10 @@ test("retains exact scoped passages and separates project support, attributed re
   const phaseFinding = findings.find((finding) => finding.assessment === "source-supported");
   assert.match(phaseFinding?.passage ?? "", /Phase One utility interconnection was announced at 180 MW/);
   assert.equal(phaseFinding?.powerMeasure, "utility/grid service or interconnection");
+  assert.equal(phaseFinding?.powerClaimState, "resolved");
+  assert.equal(phaseFinding?.powerClaim?.quantity, "180 MW");
+  assert.equal(phaseFinding?.powerClaim?.measure, "utility/grid service or interconnection");
+  assert.equal(phaseFinding?.powerClaim?.phaseScope, "Phase One");
   assert.equal(phaseFinding?.financialProposalEligibility, "unresolved");
   assert.match(phaseFinding?.statement ?? "", /The Phase One utility interconnection was announced at 180 MW/);
   assert.equal(phaseFinding?.reportingDate, "2025-03-18");
@@ -188,6 +192,21 @@ test("repairs retained applicability from source name, aliases, operator, city, 
   )], identity);
   assert.equal(wrongLocation.length, 0);
 
+  const sameNameDifferentTexasCity = deriveRetainedResearchFindings([retainedPassage(
+    "Project Atlas is located in Houston, Harris County, Texas.",
+  )], identity);
+  assert.equal(sameNameDifferentTexasCity.length, 0);
+
+  const comparisonDoesNotReplaceProjectLocation = deriveRetainedResearchFindings([retainedPassage(
+    "Project Atlas is located in Irving, Dallas County, Texas, compared with a similar project in Richmond, Virginia.",
+  )], identity);
+  assert.equal(comparisonDoesNotReplaceProjectLocation[0]?.applicability, "exact-project");
+
+  const operatorConflict = deriveRetainedResearchFindings([retainedPassage(
+    "Project Atlas is located in Irving, Dallas County, Texas and is operated by Different Operator.",
+  )], identity);
+  assert.equal(operatorConflict.length, 0);
+
   const missingDetails = deriveRetainedResearchFindings([retainedPassage(
     "Project Atlas was mentioned in a regional development report.",
   )], { name: "Project Atlas", location: "Texas" });
@@ -218,7 +237,12 @@ test("ranks all retained passages before cap and audits cap discards", () => {
   assert.equal(result.retainedFindingAudit?.totalFindingCount, 10);
   assert.equal(result.retainedFindingAudit?.shownFindingCount, 8);
   assert.equal(result.retainedFindingAudit?.capDiscardCount, 2);
-  assert.equal(findings[0]?.statement, "Project Atlas is located in Dallas, Texas.");
+  assert.equal(findings[0]?.statement, "Its Phase One interconnection was approved at 320 MW.");
+  assert.equal(findings[0]?.passage, "Project Atlas is located in Dallas, Texas. Its Phase One interconnection was approved at 320 MW.");
+  assert.equal(findings[0]?.powerClaim?.quantity, "320 MW");
+  assert.equal(findings[0]?.powerClaim?.measure, "utility/grid service or interconnection");
+  assert.equal(findings[0]?.powerClaim?.phaseScope, "Phase One");
+  assert.equal(findings[0]?.powerClaimState, "resolved");
   assert.equal(findings[0]?.financialProposalEligibility, "unresolved");
   assert.equal(findings.every((finding) => finding.demonstratedFinancialEffect === false), true);
   assert.equal(result.retainedFindingAudit?.financiallyEligibleCount, 0);

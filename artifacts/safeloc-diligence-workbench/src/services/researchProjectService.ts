@@ -10,6 +10,16 @@ import {
   buildClaimPassageMappings,
   evaluateResearchEvidenceEligibility,
 } from "@/data/sourceValidationPolicy.mjs";
+import { assessResearchProjectIdentity } from "@/data/researchIdentity.mjs";
+
+function normalizeIdentityText(value: string): string {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
 
 export const RESEARCH_PROJECT_ENDPOINT = "/api/research-project";
 // The server owns the single research deadline.  Keep the client request
@@ -231,6 +241,8 @@ export type RetainedResearchFinding = {
   phaseScope: string;
   timePeriod: string | null;
   powerMeasure: string | null;
+  powerClaimState: "resolved" | "unresolved" | "not-present";
+  powerClaim: RetainedPowerClaim | null;
   reportingDate: string | null;
   reportingDateBasis: "retrieved-source-metadata" | "not-reported";
   accessedAt: string | null;
@@ -240,6 +252,14 @@ export type RetainedResearchFinding = {
   passage: string;
   evidenceEligibility: "research-only";
   demonstratedFinancialEffect: false;
+};
+export type RetainedPowerClaim = {
+  quantity: string;
+  measure: string;
+  status: "operating" | "planned" | "unknown";
+  phaseScope: string | null;
+  facilityScope: string | null;
+  sentence: string;
 };
 export type RetainedResearchFindingAudit = {
   accessiblePassagesReviewed: number;
@@ -748,136 +768,65 @@ export type ResearchIdentity = {
   knownData?: KnownProjectData;
 };
 
-function normalizeIdentityText(value: string) {
-  return value.toLocaleLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-}
-
-function stateInText(value: string) {
-  return statesInText(value)[0];
-}
-
-function statesInText(value: string) {
-  const normalized = normalizeIdentityText(value);
-  const fullNames = US_STATE_NAMES
-    .filter((state) => ` ${normalized} `.includes(` ${normalizeIdentityText(state)} `))
-    .filter((state) => !US_STATE_NAMES.some((other) =>
-      other !== state
-      && normalizeIdentityText(other).length > normalizeIdentityText(state).length
-      && normalizeIdentityText(other).includes(normalizeIdentityText(state))
-      && ` ${normalized} `.includes(` ${normalizeIdentityText(other)} `)));
-  const abbreviated = Object.entries(US_STATE_CODES)
-    .filter(([code]) => new RegExp(`(?:^|[,\\s])${code.toUpperCase()}(?:$|[,\\s])`).test(value))
-    .map(([, state]) => state);
-  return [...new Set([...fullNames, ...abbreviated])];
-}
-
-function firstStateInText(value: string) {
-  return statesInText(value)
-    .map((state) => ({ state, index: value.toLocaleLowerCase().indexOf(state.toLocaleLowerCase()) }))
-    .filter((entry) => entry.index >= 0)
-    .sort((a, b) => a.index - b.index)[0]?.state;
-}
-
-const US_STATE_CODES: Record<string, string> = {
-  al: "Alabama", ak: "Alaska", az: "Arizona", ar: "Arkansas", ca: "California",
-  co: "Colorado", ct: "Connecticut", de: "Delaware", fl: "Florida", ga: "Georgia",
-  hi: "Hawaii", id: "Idaho", il: "Illinois", in: "Indiana", ia: "Iowa", ks: "Kansas",
-  ky: "Kentucky", la: "Louisiana", me: "Maine", md: "Maryland", ma: "Massachusetts",
-  mi: "Michigan", mn: "Minnesota", ms: "Mississippi", mo: "Missouri", mt: "Montana",
-  ne: "Nebraska", nv: "Nevada", nh: "New Hampshire", nj: "New Jersey", nm: "New Mexico",
-  ny: "New York", nc: "North Carolina", nd: "North Dakota", oh: "Ohio", ok: "Oklahoma",
-  or: "Oregon", pa: "Pennsylvania", ri: "Rhode Island", sc: "South Carolina",
-  sd: "South Dakota", tn: "Tennessee", tx: "Texas", ut: "Utah", vt: "Vermont",
-  va: "Virginia", wa: "Washington", wv: "West Virginia", wi: "Wisconsin", wy: "Wyoming",
-};
-
-function canonicalState(value: string | null | undefined) {
-  if (!value) return undefined;
-  const normalized = normalizeIdentityText(value);
-  return US_STATE_NAMES.find((state) => normalizeIdentityText(state) === normalized)
-    ?? US_STATE_CODES[normalized];
-}
-
 function findingApplicability(
   passage: string,
   candidate: Record<string, unknown>,
   identity: ResearchIdentity,
 ): "exact-project" | "ambiguous" | "unrelated" {
-  const normalizedPassage = normalizeIdentityText(passage);
-  const identityNames = [
-    ...(isNonEmptyString(identity.name) ? [identity.name] : []),
-    ...(identity.knownData?.aliases?.filter(isNonEmptyString) ?? []),
-  ].map(normalizeIdentityText).filter(Boolean);
-  const nameMatches = identityNames.some((name) => ` ${normalizedPassage} `.includes(` ${name} `));
-  const hasIdentityName = nameMatches;
-  const requestedState = canonicalState(identity.knownData?.state)
-    ?? (isNonEmptyString(identity.location) ? stateInText(identity.location) : undefined);
-  const passageStates = statesInText(passage);
-  const location = isNonEmptyString(identity.location) ? identity.location : "";
-  const requestedCity = isNonEmptyString(identity.knownData?.city)
-    ? identity.knownData.city.trim()
-    : location.split(",").map((part) => part.trim()).find((part) =>
-      part && !/county\b/i.test(part) && !canonicalState(part) && !/^(?:us|united states)$/i.test(part));
-  const requestedCounty = isNonEmptyString(identity.knownData?.county)
-    ? identity.knownData.county.trim()
-    : location.match(/\b([\w .'-]+County)\b/i)?.[1];
-  const requestedOperator = isNonEmptyString(identity.knownData?.operator)
-    ? identity.knownData.operator.trim()
-    : "";
-  const contains = (value: string) => ` ${normalizedPassage} `.includes(` ${normalizeIdentityText(value)} `);
-
-  if (!hasIdentityName) return candidate.exactProject === true ? "ambiguous" : "unrelated";
-
-  const stateMatches = Boolean(requestedState && passageStates.some((state) =>
-    normalizeIdentityText(requestedState) === normalizeIdentityText(state)));
-  const namedSentences = passage.split(/(?<=[.!?])\s+/).filter((sentence) => {
-    const normalized = normalizeIdentityText(sentence);
-    return identityNames.some((name) => ` ${normalized} `.includes(` ${name} `));
-  });
-  const projectLocationSentences = namedSentences.filter((sentence) =>
-    /\b(?:located|based|site|facility|campus|project|built|planned|proposed|operating|in)\b/i.test(sentence));
-  const statesNearProject = projectLocationSentences.map(firstStateInText).filter((state): state is string => Boolean(state));
-  if (requestedState && passageStates.length > 0 && !stateMatches) return "unrelated";
-  if (requestedState && statesNearProject.length > 0
-    && !statesNearProject.some((state) => normalizeIdentityText(state) === normalizeIdentityText(requestedState))) {
-    return "unrelated";
-  }
-
-  const cityMatches = Boolean(requestedCity && contains(requestedCity));
-  const countyMatches = Boolean(requestedCounty && contains(requestedCounty));
-  const operatorMatches = Boolean(requestedOperator && contains(requestedOperator));
-  const namedText = namedSentences.join(" ");
-  const hasAlternativeCity = Boolean(requestedCity && namedText && /\b(?:in|near|at|located in|based in)\s+[A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+)?/i.test(namedText)
-    && !normalizeIdentityText(namedText).includes(normalizeIdentityText(requestedCity)));
-  const hasAlternativeCounty = Boolean(requestedCounty
-    && namedText.match(/\b[A-Z][\w .'-]*County\b/i)
-    && !contains(requestedCounty));
-  if (hasAlternativeCity || hasAlternativeCounty) return "unrelated";
-
-  const requiredLocationMatches = (!requestedState || stateMatches)
-    && (!requestedCity || cityMatches)
-    && (!requestedCounty || countyMatches);
-  const hasIdentityDetail = Boolean(requestedState || requestedCity || requestedCounty || requestedOperator);
-  const operatorContradiction = requestedOperator
-    && /\b(?:operated|owned|developed|sponsored)\s+by\b/i.test(passage)
-    && !operatorMatches;
-  if (operatorContradiction) return "unrelated";
-  if (candidate.exactProject === true && hasIdentityDetail && requiredLocationMatches
-    && (!requestedOperator || operatorMatches)) return "exact-project";
-  return "ambiguous";
+  return assessResearchProjectIdentity(passage, candidate, identity);
 }
 
-function powerMeasureFromPassage(passage: string) {
-  const normalized = passage.replace(/\s+/g, " ").trim();
-  const itLoadIsUnreported = /\b(?:no|not|without|unreported|unknown|undisclosed)\b.{0,70}\b(?:IT|information technology|computing)\s+(?:load|capacity)\b/i.test(normalized);
-  const measurePatterns: Array<[RegExp, string]> = [
-    [/\b(?:IT|information technology|computing)\s+(?:load|capacity)\b/i, "IT load/capacity"],
-    [/\b(?:utility|grid)\s+(?:service|interconnection|connection|capacity)\b/i, "utility/grid service or interconnection"],
-    [/\b(?:backup|standby|onsite|on-site)\s+(?:power|generation|generators?)\b/i, "backup/onsite generation"],
-    [/\b(?:campus|site|facility|project)\s+(?:total\s+)?(?:power\s+)?capacity\b/i, "stated campus/site/facility capacity"],
-    [/\b(?:contracted|reserved|planned|announced)\s+(?:power\s+)?capacity\b/i, "contracted/reserved/planned capacity"],
+function powerClaimFromPassage(passage: string): {
+  state: RetainedResearchFinding["powerClaimState"];
+  claim: RetainedPowerClaim | null;
+} {
+  const sentences = passage.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [passage];
+  const measureMatchers: Array<[RegExp, string]> = [
+    [/\b(?:IT|information technology|computing)\s+(?:load|capacity)\b/gi, "IT load/capacity"],
+    [/\b(?:(?:utility|grid)\s+(?:service|interconnection|connection|capacity)(?:\s+capacity)?|(?:interconnection|interconnect)(?:\s+(?:service|capacity))?)\b/gi, "utility/grid service or interconnection"],
+    [/\b(?:backup|standby|onsite|on-site)\s+(?:power|generation|generators?)\b/gi, "backup/onsite generation"],
+    [/\b(?:campus|site|facility|project)\s+(?:total\s+)?(?:power\s+)?capacity\b/gi, "stated campus/site/facility capacity"],
+    [/\b(?:contracted|reserved|planned|announced)\s+(?:power\s+)?capacity\b/gi, "contracted/reserved/planned capacity"],
   ];
-  return measurePatterns.find(([pattern, label]) => pattern.test(normalized) && !(label === "IT load/capacity" && itLoadIsUnreported))?.[1] ?? null;
+  let mentionsPower = false;
+  const claims: RetainedPowerClaim[] = [];
+  for (const rawSentence of sentences) {
+    const sentence = rawSentence.trim();
+    for (const clause of sentence.split(";").map((part) => part.trim()).filter(Boolean)) {
+      const figures = [...clause.matchAll(/\b(\d[\d,]*(?:\.\d+)?)\s*(MW|MWh|GW|kW)\b/gi)];
+      const measureMatches = measureMatchers.flatMap(([pattern, label]) => {
+        pattern.lastIndex = 0;
+        return [...clause.matchAll(pattern)].map((match) => ({ label, index: match.index ?? 0, text: match[0] }));
+      });
+      mentionsPower ||= figures.length > 0 || measureMatches.length > 0;
+      if (figures.length !== 1 || measureMatches.length !== 1 || sentence.length > 600) continue;
+
+      const figure = figures[0];
+      const measure = measureMatches[0];
+      const localContext = clause.slice(Math.max(0, measure.index - 70), measure.index + measure.text.length + 40);
+      if (/\b(?:no|not|without|unreported|unavailable|unknown|undisclosed)\b/i.test(localContext)) continue;
+
+      const hasOperatingStatus = /\b(?:operating|in operation|operational|online|energized|commissioned)\b/i.test(clause)
+        && !/\b(?:not|never|no longer)\s+(?:yet\s+)?(?:operating|in operation|operational|online|energized|commissioned)\b/i.test(clause);
+      const hasPlannedStatus = /\b(?:planned|proposed|expected|targeted|scheduled|under construction|reserved|requested|will be built|to be built)\b/i.test(clause)
+        && !/\b(?:not|never)\s+(?:planned|proposed|expected|targeted|scheduled)\b/i.test(clause);
+      const status: RetainedPowerClaim["status"] = hasOperatingStatus === hasPlannedStatus
+        ? "unknown"
+        : hasOperatingStatus ? "operating" : "planned";
+      const phaseScope = clause.match(/\bPhase\s+(?:\d+[A-Za-z]?|One|Two|Three|Four|Five|I{1,3}|IV|V)\b/i)?.[0] ?? null;
+      const facilityScope = clause.match(/\b(campus|site|facility|building|project)\b/i)?.[1]?.toLocaleLowerCase() ?? null;
+      claims.push({
+        quantity: `${figure[1].replace(/,/g, "")} ${figure[2]}`,
+        measure: measure.label,
+        status,
+        phaseScope,
+        facilityScope,
+        sentence,
+      });
+    }
+  }
+  if (claims.length === 1) return { state: "resolved", claim: claims[0] };
+  return { state: mentionsPower ? "unresolved" : "not-present", claim: null };
 }
 
 function financialEligibilityFromLedger(candidate: Record<string, unknown>): RetainedResearchFinding["financialProposalEligibility"] {
@@ -889,12 +838,12 @@ function financialEligibilityFromLedger(candidate: Record<string, unknown>): Ret
   return "unresolved";
 }
 
-function sourceDerivedStatement(passage: string, powerMeasure: string | null) {
+function sourceDerivedStatement(passage: string, powerClaimState: RetainedResearchFinding["powerClaimState"]) {
+  if (powerClaimState === "unresolved") {
+    return "No single figure-to-measure power claim could be safely isolated; review the exact retained passage.";
+  }
   const sentences = passage.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [passage];
-  const relevant = powerMeasure
-    ? sentences.find((sentence) => /\b\d+(?:[,.]\d+)?\s*(?:MW|MWh|GW|kW)\b/i.test(sentence))
-    : undefined;
-  const statement = (relevant ?? sentences[0] ?? passage).trim();
+  const statement = (sentences[0] ?? passage).trim();
   return statement.length > 320 ? `${statement.slice(0, 317).trimEnd()}…` : statement;
 }
 
@@ -946,7 +895,7 @@ function deriveRetainedResearchFindingReport(sourceLedger: unknown, identity: Re
       applicability === "ambiguous" ? "ambiguous-unresolved"
         : sourceClass.startsWith("primary-") ? "source-supported" : "attributed-report";
     const financialProposalEligibility = financialEligibilityFromLedger(candidate);
-    const powerMeasure = powerMeasureFromPassage(passage);
+    const { state: powerClaimState, claim: powerClaim } = powerClaimFromPassage(passage);
     const reportingDate = optionalDate(candidate.date)
       ?? optionalDate(candidate.publishedAt)
       ?? optionalDate(candidate.sourcePublishedAt)
@@ -965,7 +914,7 @@ function deriveRetainedResearchFindingReport(sourceLedger: unknown, identity: Re
       assessment,
       applicability,
       financialProposalEligibility,
-      statement: sourceDerivedStatement(passage, powerMeasure),
+      statement: powerClaim?.sentence ?? sourceDerivedStatement(passage, powerClaimState),
       attribution: assessment === "source-supported"
         ? `Source-supported passage from ${title}; the source assertion is not independently verified by SafeLoc.`
         : assessment === "ambiguous-unresolved"
@@ -976,7 +925,9 @@ function deriveRetainedResearchFindingReport(sourceLedger: unknown, identity: Re
         : "Project-level applicability is ambiguous; do not apply this passage to the project.",
       phaseScope: sourceScope,
       timePeriod: isNonEmptyString(candidate.timePeriod) ? candidate.timePeriod : null,
-      powerMeasure,
+      powerMeasure: powerClaim?.measure ?? null,
+      powerClaimState,
+      powerClaim,
       reportingDate,
       reportingDateBasis: reportingDate ? "retrieved-source-metadata" : "not-reported",
       accessedAt,

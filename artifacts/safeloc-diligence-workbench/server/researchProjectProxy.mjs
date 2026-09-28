@@ -2548,11 +2548,43 @@ function containResearchRecord(item) {
     explicitZero: item.explicitZero === true || (rawValue === 0 && Boolean(item.sourceUrl)),
   });
   reasons.push(...semantic.quarantineReasons);
+  const semanticCheck = {
+    id: "semantic-validation",
+    passed: semantic.modelEligible === true,
+    reason: semantic.modelEligible === true
+      ? "Evidence passed semantic validation."
+      : semantic.quarantineReasons.join("; ") || "Semantic validation rejected this evidence item.",
+  };
+  const eligibilityChecks = [
+    ...(researchEligibility.checkTrace?.checks ?? []),
+    semanticCheck,
+  ];
+  let firstFailure = researchEligibility.checkTrace?.firstFailure
+    ?? eligibilityChecks.find((check) => check.passed === false)
+    ?? null;
+  if (!firstFailure && !semanticCheck.passed) {
+    firstFailure = { id: semanticCheck.id, reason: semanticCheck.reason };
+  }
   if (item.coverageStatus === "conflicting" || item.conflictSummary) reasons.push("Conflicting source coverage requires reviewer resolution.");
   if (item.classification === "Model Inference" || item.classification === "User Assumption") {
     reasons.push(`${item.classification} is not source-backed and cannot activate custom economics.`);
   }
   const eligible = reasons.length === 0;
+  const eligibleForModel = eligible && semantic.modelEligible;
+  if (eligibleForModel === false && !eligibilityChecks.some((check) => check.passed === false)) {
+    const finalEligibilityCheck = {
+      id: "final-eligibility",
+      passed: false,
+      reason: "Rejected without a recorded check",
+    };
+    eligibilityChecks.push(finalEligibilityCheck);
+    firstFailure ??= { id: finalEligibilityCheck.id, reason: finalEligibilityCheck.reason };
+  }
+  const eligibilityTrace = {
+    ...researchEligibility.checkTrace,
+    checks: eligibilityChecks,
+    firstFailure,
+  };
   return {
     ...item,
     rawValue: item.rawValue ?? item.value,
@@ -2568,7 +2600,7 @@ function containResearchRecord(item) {
       validationStatus: semantic.validationStatus,
     },
     semanticValidationStatus: semantic.validationStatus,
-    eligibleForModel: eligible && semantic.modelEligible,
+    eligibleForModel,
     acceptedForModel: false,
     researchState: eligible ? "proposed" : hasSource ? "quarantined" : "retrieved-lead",
     quarantineReasons: [...new Set(reasons)],
@@ -2577,7 +2609,7 @@ function containResearchRecord(item) {
       state: researchEligibility.state,
       rejectionCodes: researchEligibility.rejectionCodes,
       claimMappings: item.claimMappings ?? [],
-      eligibilityTrace: researchEligibility.checkTrace,
+      eligibilityTrace,
     },
   };
 }

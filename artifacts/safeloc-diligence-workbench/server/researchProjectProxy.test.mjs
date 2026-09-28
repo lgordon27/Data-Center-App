@@ -25,7 +25,7 @@ import {
   buildVariableQueries,
   buildVariableQueryPlan,
   handleResearchProjectRequest,
-  parseResearchResponse,
+  parseResearchResponse as parseResearchResponseUnchecked,
   createResearchProjectRateLimiter,
   createResearchProviderGate,
   safePublicSourceUrl,
@@ -39,7 +39,7 @@ import {
   countWebSearchCalls,
   normalizeModelReportedConfidence,
   calculateSourceSupportConfidence,
-  containResearchResult,
+  containResearchResult as containResearchResultUnchecked,
   buildResearchAudit,
   buildResearchCategoryPlan,
   buildProjectIdentityContext,
@@ -67,6 +67,26 @@ import {
   createResearchProjectCache,
   researchProjectCacheKey,
 } from "./researchProjectCache.mjs";
+
+function assertRejectedEvidenceHasFailedTrace(result) {
+  for (const item of result?.evidence ?? []) {
+    if (item?.eligibleForModel !== false) continue;
+    const checks = item.sourceValidation?.eligibilityTrace?.checks;
+    assert.ok(
+      Array.isArray(checks) && checks.some((check) => check.passed === false),
+      `Rejected evidence ${item.id ?? "(unknown)"} must have a failed eligibility trace check.`,
+    );
+  }
+  return result;
+}
+
+function parseResearchResponse(...args) {
+  return assertRejectedEvidenceHasFailedTrace(parseResearchResponseUnchecked(...args));
+}
+
+function containResearchResult(...args) {
+  return assertRejectedEvidenceHasFailedTrace(containResearchResultUnchecked(...args));
+}
 
 function completedGoogleDiscovery(candidates, query = "fixture exact-project public records") {
   return async () => ({

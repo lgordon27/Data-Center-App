@@ -1,0 +1,18 @@
+Build a standalone research claim verifier. Only create new files: server/researchClaimVerifier.mjs and server/researchClaimVerifier.test.mjs. Do not edit any existing file and do not connect it to the research pipeline. No paid calls. Do not deploy.
+
+The verifier checks claims that an AI extracted from a fetched document. Functions:
+1. verifyQuote(documentText, quote): true only if the quote appears in the document, ignoring differences in whitespace, curly vs straight quotes, and dashes.
+2. parseLocations(text): find location phrases such as "in <City>, <State>", "<Name> County, <State>" and "<City>, <ST>". Check longer state names first so "West Virginia" is never read as "Virginia". Treat "Washington County" and "Washington, D.C." as non-state references.
+3. matchProject(claim, requestedProject): compare the claim's subject with the requested project name, aliases, operator, city, county and state. Tolerate possessives ("DataBank's"), punctuation and word order. Return exact-project, ambiguous or unrelated, with a reason. A different state mentioned elsewhere in the text is not a conflict; only a conflicting location attached to the subject project is.
+
+Tests must use these passages and expected results:
+- Requested DataBank Red Oak Campus, Red Oak, Ellis County, Texas. "DataBank's Red Oak campus in Texas will reach 480 MW of IT load at full build." → exact-project
+- Same project. "The DataBank Red Oak Campus in Ellis County, Texas will reach 480 MW." → exact-project
+- Same project. "The DataBank Red Oak Campus in Texas follows its Atlanta, Georgia build." → exact-project
+- Same project. "In Red Oak, Iowa, residents raised noise concerns about a proposed crypto facility." → unrelated
+- Requested Oracle Hillsboro Data Center, Hillsboro, Washington County, Oregon. "The Oracle Hillsboro Data Center in Washington County, Oregon is operating." → exact-project
+- Requested Acme Charleston Campus, Charleston, West Virginia. "Acme Charleston Campus in Charleston, West Virginia opened in 2025." → exact-project
+- Requested Stargate Abilene, Abilene, Taylor County, Texas. "The first phase of Stargate's flagship data center campus in Abilene, Texas, is now up and running." → exact-project
+- A quote that does not appear in the document → verifyQuote false
+
+Report: test results.

@@ -61,6 +61,23 @@ export function createResearchAuditRepository(client: Pick<Pool, "query">) {
       );
       if (result.rowCount !== 1) throw new Error("Research audit run was not open for completion.");
     },
+    // A failed finish call may have committed before returning an error, so the
+    // failure marker must also update a row whose finished_at is already set.
+    async markFinalizationFailed(record: ResearchRunAudit): Promise<void> {
+      const summary = redactAuditAddresses(record.projectSummary);
+      const audit = redactAuditAddresses(record.audit);
+      const result = await client.query(
+        `UPDATE research_run_audits SET
+           research_status = $2,
+           project_summary = $3::jsonb,
+           audit = $4::jsonb,
+           finished_at = COALESCE($5::timestamptz, now())
+         WHERE run_id = $1`,
+        [record.runId, record.researchStatus, JSON.stringify(summary), JSON.stringify(audit),
+          record.finishedAt ?? null],
+      );
+      if (result.rowCount !== 1) throw new Error("Research audit run was not found for finalization failure.");
+    },
     async save(record: ResearchRunAudit): Promise<void> {
       const summary = redactAuditAddresses(record.projectSummary);
       const audit = redactAuditAddresses(record.audit);

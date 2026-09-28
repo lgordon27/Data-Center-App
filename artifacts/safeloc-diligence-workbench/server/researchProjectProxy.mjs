@@ -32,7 +32,7 @@ import { releaseIdentity } from "./version.mjs";
 
 const RESEARCH_PROJECT_PROMPT_VERSION = "safeloc-project-research-prompt-v1";
 const GOOGLE_DISCOVERY_PROMPT_VERSION = "safeloc-google-grounding-prompt-v1";
-const CLAIM_REVIEW_VERSION = "ordered-eligibility-gates-v1";
+const CLAIM_REVIEW_VERSION = "policy-check-trace-v2";
 
 function sourceStateTransition(from, to, reason) {
   return { from, to, reason };
@@ -1777,7 +1777,7 @@ function auditSafePassage(value) {
     : "";
 }
 
-function buildClaimEligibilityReviews(evidence, sources, project) {
+function buildClaimEligibilityReviews(evidence, sources) {
   return evidence.slice(0, RESEARCH_EVIDENCE_IDS.length).map((claim) => {
     const claimUrls = new Set([
       claim.sourceUrl,
@@ -1797,50 +1797,16 @@ function buildClaimEligibilityReviews(evidence, sources, project) {
       ?? source?.claimPassage
       ?? source?.excerpt,
     );
-    const passageRetained = Boolean(sourcePassage);
-    const claimMapped = Boolean(source)
-      && (source?.claimSupportState === "supported"
-        || source?.financialEligibilityState === "eligible"
-        || (passageRetained && claimUrls.size > 0));
-    const exactProject = source
-      ? sourceEstablishesProjectIdentity(source, project)
-      : claim.facilityScope === "exact-project";
-    const scopeAndPeriod = claim.facilityScope === "exact-project"
-      && claim.phaseScope === "exact-phase"
-      && typeof claim.claimTimePeriod === "string"
-      && Boolean(claim.claimTimePeriod.trim());
     const eligible = claim.eligibleForModel === true;
-    const gates = [
-      {
-        id: "source-passage-retained",
-        passed: passageRetained,
-        reason: passageRetained ? null : "No exact source passage was retained for this claim.",
-      },
-      {
-        id: "claim-to-source-mapping",
-        passed: claimMapped,
-        reason: claimMapped ? null : "No retained source is mapped to this claim.",
-      },
-      {
-        id: "exact-project-identity",
-        passed: exactProject,
-        reason: exactProject ? null : "The retained source does not establish exact-project identity.",
-      },
-      {
-        id: "claim-scope-and-period",
-        passed: scopeAndPeriod,
-        reason: scopeAndPeriod ? null : "Exact-project phase scope or claim time period is not established.",
-      },
-      {
-        id: "governed-model-eligibility",
-        passed: eligible,
-        reason: eligible
-          ? null
-          : (Array.isArray(claim.quarantineReasons) && claim.quarantineReasons.length
-            ? claim.quarantineReasons.slice(0, 4)
-            : ["Claim is not eligible for the governed model."]),
-      },
-    ];
+    const policyTrace = claim.sourceValidation?.eligibilityTrace;
+    const gates = Array.isArray(policyTrace?.checks)
+      ? policyTrace.checks.map((check) => ({
+        id: check.id,
+        passed: check.passed === true,
+        reason: typeof check.reason === "string" ? check.reason : null,
+      }))
+      : [];
+    const firstFailure = policyTrace?.firstFailure ?? gates.find((gate) => !gate.passed) ?? null;
     return {
       evidenceId: claim.id ?? null,
       sourceUrl: source
@@ -1852,7 +1818,8 @@ function buildClaimEligibilityReviews(evidence, sources, project) {
       sourcePassage: sourcePassage || null,
       eligibleForModel: eligible,
       gates,
-      firstFailedGate: gates.find((gate) => !gate.passed)?.id ?? null,
+      firstFailure: firstFailure ? { id: firstFailure.id, reason: firstFailure.reason } : null,
+      firstFailedGate: firstFailure?.id ?? null,
     };
   });
 }
@@ -1873,7 +1840,7 @@ function buildResearchAudit({
   const plan = buildResearchCategoryPlan(project);
   const observedQueries = normalizeSearchTerms(coverage.searchTerms, RESEARCH_PROJECT_MAX_TOOL_CALLS);
   const executions = isRecord(coverage.categoryExecutions) ? coverage.categoryExecutions : {};
-  const eligibilityReviews = buildClaimEligibilityReviews(evidence, sources, project);
+  const eligibilityReviews = buildClaimEligibilityReviews(evidence, sources);
   const providerAttempts = Array.isArray(coverage.providerAttempts)
     ? coverage.providerAttempts.slice(0, RESEARCH_RUN_BUDGET.maxProviderRequests)
     : [];
@@ -2565,7 +2532,7 @@ function containResearchRecord(item) {
     conflictSummary: item.conflictSummary,
     claimMappings: item.claimMappings,
     semanticValidationStatus: item.semanticValidationStatus,
-  });
+  }, { includeCheckTrace: true });
   reasons.push(...researchEligibility.reasons);
   const rawValue = item.rawValue ?? item.value;
   const rawUnit = item.rawUnit ?? item.unit;
@@ -2610,6 +2577,7 @@ function containResearchRecord(item) {
       state: researchEligibility.state,
       rejectionCodes: researchEligibility.rejectionCodes,
       claimMappings: item.claimMappings ?? [],
+      eligibilityTrace: researchEligibility.checkTrace,
     },
   };
 }
@@ -5842,6 +5810,7 @@ async function runValidatedResearch(project, {
  * @typedef {{
  *   startRun?: (record: ResearchRunAuditRecord) => Promise<void>,
  *   finishRun?: (record: ResearchRunAuditRecord) => Promise<void>,
+ *   markFinalizationFailed?: (record: ResearchRunAuditRecord) => Promise<void>,
  *   save?: (record: ResearchRunAuditRecord) => Promise<void>,
  * }} ResearchAuditRepository
  */
@@ -6152,8 +6121,46 @@ export async function handleResearchProjectRequest(
           startedAt: context?.startedAt ?? audit.startedAt,
           finishedAt,
         };
-        if (canFinishStartedRow) await auditStore.finishRun(record);
-        else await auditStore.save(record);
+        if (canFinishStartedRow) {
+          try {
+            await auditStore.finishRun(record);
+          } catch (firstFailure) {
+            try {
+              await auditStore.finishRun(record);
+            } catch (retryFailure) {
+              const finalizationFailureRecord = {
+                ...record,
+                researchStatus: "finalization-failed",
+                audit: {
+                  ...record.audit,
+                  lifecycleState: "finalization-failed",
+                  finalizationFailure: {
+                    firstAttempt: firstFailure instanceof Error ? firstFailure.name : "unknown",
+                    retry: retryFailure instanceof Error ? retryFailure.name : "unknown",
+                  },
+                },
+              };
+              try {
+                if (auditStore.markFinalizationFailed) {
+                  await auditStore.markFinalizationFailed(finalizationFailureRecord);
+                } else {
+                  await auditStore.finishRun(finalizationFailureRecord);
+                }
+              } catch (markerFailure) {
+                console.error(JSON.stringify({
+                  level: "error",
+                  event: "research_audit_finalization_failed",
+                  runId: record.runId,
+                  failureState: "finalization-failed",
+                  retryError: retryFailure instanceof Error ? retryFailure.name : "unknown",
+                  markerError: markerFailure instanceof Error ? markerFailure.name : "unknown",
+                }));
+              }
+            }
+          }
+        } else {
+          await auditStore.save(record);
+        }
       }).catch((failure) => console.warn("[research-project] Audit persistence failed:", failure instanceof Error ? failure.message : "unknown error"));
     }
   };

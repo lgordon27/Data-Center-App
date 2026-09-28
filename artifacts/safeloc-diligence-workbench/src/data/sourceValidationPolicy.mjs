@@ -296,27 +296,83 @@ export function buildClaimPassageMappings({
   return mappings;
 }
 
-export function evaluateResearchEvidenceEligibility(input = {}) {
+export function evaluateResearchEvidenceEligibility(input = {}, { includeCheckTrace = false } = {}) {
   const base = evaluateEvidenceSourceEligibility(input);
   const mappings = Array.isArray(input.claimMappings) ? input.claimMappings : [];
   const supportedMapping = mappings.find((mapping) => mapping?.supportStatus === "supported");
   const reasons = [...base.reasons];
   const rejectionCodes = [];
+  const checks = includeCheckTrace ? [] : null;
+  const addCheck = (id, passed, passReason, failureReason) => {
+    if (!checks) return;
+    checks.push({ id, passed, reason: passed ? passReason : failureReason });
+  };
+  const definition = getEvidenceSemanticDefinition(input.id);
+
+  if (checks) {
+    if (!definition) {
+      addCheck("known-evidence-identifier", false, "Evidence identifier is recognized.", "Unknown evidence identifier.");
+    } else {
+      const baseChecks = [
+        ["validated-source", "No validated source was returned.", "A validated source URL or retained source was returned."],
+        ["eligible-source-type", "No source matches the eligible source types for this evidence variable.", "At least one non-reviewer source matches an eligible source type."],
+        ...(definition.projectSpecificityRequired
+          ? [["exact-project-source", "An exact-project source is required for this evidence variable.", "The required exact-project source is present."]]
+          : []),
+        ["non-reviewer-source", "Reviewer-submitted sources cannot establish research provenance.", "At least one source is not reviewer-submitted."],
+        ["source-backed-classification", "Only source-backed classifications can activate research evidence.", "The classification is source-backed."],
+        ["source-support-confidence", "Source support confidence is below the model-eligibility threshold.", "Source support confidence meets the eligibility threshold."],
+        ["non-conflicting-coverage", "Conflicting source coverage requires reviewer resolution.", "Source coverage is not marked conflicting."],
+      ];
+      for (const [id, failureReason, passReason] of baseChecks) {
+        addCheck(id, !base.reasons.includes(failureReason), passReason, failureReason);
+      }
+    }
+  }
+
   if (!supportedMapping) {
-    reasons.push("No immutable claim-to-passage mapping supports this evidence claim.");
+    const reason = "No immutable claim-to-passage mapping supports this evidence claim.";
+    reasons.push(reason);
+    addCheck("claim-to-passage-mapping", false, "An immutable claim-to-passage mapping supports this evidence claim.", reason);
     rejectionCodes.push(...new Set(mappings.flatMap((mapping) => mapping?.rejectionCodes ?? [])));
     if (!rejectionCodes.length) rejectionCodes.push("claim-not-mapped");
   } else {
+    addCheck(
+      "claim-to-passage-mapping",
+      true,
+      "An immutable claim-to-passage mapping supports this evidence claim.",
+      "No immutable claim-to-passage mapping supports this evidence claim.",
+    );
     const mappingSourceId = supportedMapping.sourceId;
     const mappingSource = (Array.isArray(input.sources) ? input.sources : []).find((source) => (
       sourceUrlAliases(source).includes(mappingSourceId)
     ));
     if (!mappingSource) {
-      reasons.push("The supported claim mapping does not resolve to a retained source.");
+      const reason = "The supported claim mapping does not resolve to a retained source.";
+      reasons.push(reason);
+      addCheck("mapping-source-retained", false, "The supported mapping resolves to a retained source.", reason);
       rejectionCodes.push("source-not-in-packet");
-    } else if (mappingSource.accessOutcome && mappingSource.accessOutcome.state !== "accessible") {
-      reasons.push("The source named by the supported claim mapping was not successfully accessed.");
-      rejectionCodes.push("inaccessible-without-capture");
+    } else {
+      addCheck(
+        "mapping-source-retained",
+        true,
+        "The supported mapping resolves to a retained source.",
+        "The supported claim mapping does not resolve to a retained source.",
+      );
+      if (mappingSource.accessOutcome) {
+        const accessible = mappingSource.accessOutcome.state === "accessible";
+        const reason = "The source named by the supported claim mapping was not successfully accessed.";
+        addCheck(
+          "mapped-source-accessible",
+          accessible,
+          "The source named by the supported mapping was successfully accessed.",
+          reason,
+        );
+        if (!accessible) {
+          reasons.push(reason);
+          rejectionCodes.push("inaccessible-without-capture");
+        }
+      }
     }
   }
   if (input.coverageStatus === "conflicting" || input.conflictSummary) rejectionCodes.push("blocking-contradiction");
@@ -324,17 +380,34 @@ export function evaluateResearchEvidenceEligibility(input = {}) {
   if (input.sources?.some((source) => source?.sourceClass === "reviewer-submitted")) rejectionCodes.push("reviewer-submitted");
   const accessedSources = Array.isArray(input.sources) ? input.sources.filter((source) => source?.accessOutcome) : [];
   if (accessedSources.length && !accessedSources.some((source) => source.accessOutcome?.state === "accessible")) {
-    reasons.push("No bounded document access receipt supports this evidence claim.");
+    const reason = "No bounded document access receipt supports this evidence claim.";
+    reasons.push(reason);
+    addCheck("document-access-receipt", false, "At least one bounded document access receipt is accessible.", reason);
     rejectionCodes.push("document-not-accessible");
+  } else if (accessedSources.length) {
+    addCheck(
+      "document-access-receipt",
+      true,
+      "At least one bounded document access receipt is accessible.",
+      "No bounded document access receipt supports this evidence claim.",
+    );
   }
   if (input.sourceRelevance === "related-context" || input.sourceRelevance === "unresolved") rejectionCodes.push("not-project-specific");
-  return {
+  const result = {
     eligible: reasons.length === 0,
     reasons: [...new Set(reasons)],
     rejectionCodes: [...new Set(rejectionCodes)],
     state: reasons.length === 0 ? "financially-eligible" : "rejected",
     supportingMapping: supportedMapping ?? null,
   };
+  if (checks) {
+    const firstFailure = checks.find((check) => !check.passed) ?? null;
+    result.checkTrace = {
+      checks,
+      firstFailure: firstFailure ? { id: firstFailure.id, reason: firstFailure.reason } : null,
+    };
+  }
+  return result;
 }
 
 export function createSourceLedger(candidates = [], { maxRetained = 10 } = {}) {

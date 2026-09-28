@@ -132,6 +132,10 @@ test("authorized audit downloads are rate limited per client", async () => {
 
   const rejected = await requestFrom("203.0.113.12", "Bearer invalid-token-value");
   assert.equal(rejected.statusCode, 401);
+  assert.equal((await requestFrom("203.0.113.12", "Bearer invalid-token-value")).statusCode, 401);
+  const invalidTokenLimited = await requestFrom("203.0.113.12", "Bearer invalid-token-value");
+  assert.equal(invalidTokenLimited.statusCode, 429);
+  assert.equal(invalidTokenLimited.headers["retry-after"], "60");
   now += 60_000;
   assert.equal((await requestFrom("203.0.113.10")).statusCode, 200);
 });
@@ -146,9 +150,15 @@ test("research audit repository starts and finishes the same open row", async ()
   } as unknown as Pick<Pool, "query">);
   const started = { ...record, startedAt: "2026-09-28T12:00:00.000Z", finishedAt: null };
   const finished = { ...started, researchStatus: "partial", finishedAt: "2026-09-28T12:00:04.000Z" };
+  const finalizationFailed = {
+    ...finished,
+    researchStatus: "finalization-failed",
+    audit: { ...finished.audit, lifecycleState: "finalization-failed" },
+  };
 
   await repository.startRun(started);
   await repository.finishRun(finished);
+  await repository.markFinalizationFailed(finalizationFailed);
   assert.match(calls[0].text, /INSERT INTO research_run_audits/);
   assert.match(calls[0].text, /started_at, finished_at/);
   assert.match(calls[0].text, /ON CONFLICT \(run_id\) DO NOTHING/);
@@ -158,6 +168,12 @@ test("research audit repository starts and finishes the same open row", async ()
   assert.match(calls[1].text, /WHERE run_id = \$1 AND finished_at IS NULL/);
   assert.equal(calls[1].values?.[0], record.runId);
   assert.equal(calls[1].values?.[4], finished.finishedAt);
+  assert.match(calls[2].text, /UPDATE research_run_audits SET/);
+  assert.match(calls[2].text, /WHERE run_id = \$1$/);
+  assert.doesNotMatch(calls[2].text, /finished_at IS NULL/);
+  assert.equal(calls[2].values?.[0], record.runId);
+  assert.equal(calls[2].values?.[1], "finalization-failed");
+  assert.equal(JSON.parse(calls[2].values?.[3] as string).lifecycleState, "finalization-failed");
 });
 
 if (process.env.DATABASE_URL && process.env.TEST_RESEARCH_AUDIT_DATABASE === "1") {

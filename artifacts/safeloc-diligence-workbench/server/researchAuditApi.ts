@@ -57,15 +57,15 @@ export async function handleResearchAuditDownload(
 ): Promise<void> {
   response.setHeader("Cache-Control", "no-store");
   response.setHeader("Vary", "Authorization");
-  if (!hasOwnerToken(request.get("authorization"), options.ownerToken ?? process.env.RESEARCH_AUDIT_OWNER_TOKEN)) {
-    response.status(401).json({ error: "Owner authorization required." });
-    return;
-  }
   const clientKey = request.ip ?? request.socket?.remoteAddress ?? "unknown-client";
   const rateLimit = (options.rateLimiter ?? defaultDownloadRateLimiter).allow(clientKey);
   if (!rateLimit.allowed) {
     response.setHeader("Retry-After", String(rateLimit.retryAfterSeconds));
     response.status(429).json({ error: "Audit download rate limit exceeded." });
+    return;
+  }
+  if (!hasOwnerToken(request.get("authorization"), options.ownerToken ?? process.env.RESEARCH_AUDIT_OWNER_TOKEN)) {
+    response.status(401).json({ error: "Owner authorization required." });
     return;
   }
   const runId = request.params.runId;

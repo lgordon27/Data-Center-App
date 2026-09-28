@@ -59,6 +59,10 @@ import {
   PROTECTED_SOURCE_OPPORTUNITIES,
 } from "./researchProjectProxy.mjs";
 import {
+  buildClaimPassageMappings,
+  evaluateResearchEvidenceEligibility,
+} from "../src/data/sourceValidationPolicy.mjs";
+import {
   classifyResearchCacheAge,
   createResearchProjectCache,
   researchProjectCacheKey,
@@ -156,6 +160,35 @@ function responseRecorder() {
       return JSON.parse(this.body);
     },
   };
+}
+
+async function completeOfflineAuditResponse(auditRepository) {
+  const response = Object.assign(new EventEmitter(), responseRecorder());
+  response.writableEnded = false;
+  response.writableFinished = false;
+  let markEnded;
+  const ended = new Promise((resolve) => { markEnded = resolve; });
+  response.end = function end(body) {
+    this.body = body ?? "";
+    this.writableEnded = true;
+    markEnded();
+  };
+  const pending = handleResearchProjectRequest(request({
+    name: "Audit Finalization Fixture",
+    location: "Texas",
+    forceRefresh: true,
+  }), response, {
+    apiKey: null,
+    googleApiKey: null,
+    fetchImpl: async () => { throw new Error("No provider request is expected."); },
+    cache: createResearchProjectCache(),
+    auditRepository,
+  });
+  await ended;
+  await pending;
+  response.writableFinished = true;
+  response.emit("finish");
+  return response;
 }
 
 function request(body, method = "POST") {
@@ -4477,7 +4510,105 @@ test("HTTP client abort cancels a stalled document body and suppresses the respo
   assert.equal(response.body, "");
 });
 
-test("research audits retain ordered claim gates, provider retries, redirects, and fetch metrics", () => {
+test("claim audit reviews reuse the policy trace for not-applicable phase scope and rejection", () => {
+  const url = "https://records.example.test/northstar/electricity";
+  const passage = "Northstar Campus pays a facility electricity cost of 42 USD/MWh.";
+  const source = {
+    url,
+    canonicalUrl: url,
+    resolvedUrl: url,
+    title: "Northstar Campus electricity filing",
+    sourceClass: "primary-company",
+    exactProject: true,
+    facilityScope: "exact-facility",
+    phaseScope: "not-applicable",
+    timePeriod: "2026",
+    excerpt: passage,
+    claimPassage: passage,
+    claimSupport: [{ evidenceId: "electricity_cost", values: [42] }],
+    accessOutcome: { state: "accessible", passage },
+  };
+  const description = "The campus electricity cost is 42 USD/MWh.";
+  const claimMappings = buildClaimPassageMappings({
+    id: "electricity_cost",
+    sources: [source],
+    project: { name: "Northstar Campus", location: "Texas" },
+    claim: {
+      description,
+      value: 42,
+      numericValue: 42,
+      sourceRelevance: "exact-project",
+    },
+    coverageStatus: "supported",
+  });
+  assert.equal(claimMappings[0].supportStatus, "supported");
+
+  const policyInput = {
+    id: "electricity_cost",
+    sourceUrl: url,
+    sources: [source],
+    sourceRelevance: "exact-project",
+    sourceSupportConfidence: 94,
+    classification: "Management Assertion",
+    coverageStatus: "supported",
+    claimMappings,
+  };
+  const eligibleDecision = evaluateResearchEvidenceEligibility(policyInput);
+  const tracedEligibleDecision = evaluateResearchEvidenceEligibility(policyInput, { includeCheckTrace: true });
+  const { checkTrace: _eligibleTrace, ...eligibleOutcome } = tracedEligibleDecision;
+  assert.deepEqual(eligibleOutcome, eligibleDecision);
+  assert.equal(tracedEligibleDecision.eligible, true);
+  assert.equal(tracedEligibleDecision.checkTrace.firstFailure, null);
+  assert.ok(tracedEligibleDecision.checkTrace.checks.length > 0);
+  assert.ok(tracedEligibleDecision.checkTrace.checks.every((check) => check.passed && check.reason));
+
+  const claim = {
+    ...policyInput,
+    id: "electricity_cost",
+    value: 42,
+    numericValue: 42,
+    unit: "USD/MWh",
+    classification: "Management Assertion",
+    citation: "Northstar Campus filing.",
+    description,
+    claimPassage: passage,
+    sources: [source],
+  };
+  const acceptedEvidence = containResearchResult({ evidence: [claim] }).evidence;
+  const acceptedAudit = buildResearchAudit({
+    project: { name: "Northstar Campus", location: "Texas" },
+    evidence: acceptedEvidence,
+    sources: [source],
+  });
+  const acceptedReview = acceptedAudit.eligibilityReview.claims[0];
+  assert.equal(acceptedEvidence[0].eligibleForModel, true);
+  assert.ok(acceptedReview.gates.length > 0);
+  assert.ok(acceptedReview.gates.every((check) => check.passed && check.reason));
+  assert.equal(acceptedReview.firstFailure, null);
+  assert.equal(acceptedReview.firstFailedGate, null);
+
+  const rejectedPolicyInput = { ...policyInput, claimMappings: [] };
+  const rejectedDecision = evaluateResearchEvidenceEligibility(rejectedPolicyInput);
+  const tracedRejectedDecision = evaluateResearchEvidenceEligibility(rejectedPolicyInput, { includeCheckTrace: true });
+  const { checkTrace: _rejectedTrace, ...rejectedOutcome } = tracedRejectedDecision;
+  assert.deepEqual(rejectedOutcome, rejectedDecision);
+  assert.equal(tracedRejectedDecision.eligible, false);
+  assert.equal(tracedRejectedDecision.checkTrace.firstFailure.id, "claim-to-passage-mapping");
+  const rejectedEvidence = containResearchResult({
+    evidence: [{ ...claim, claimMappings: [] }],
+  }).evidence;
+  const rejectedAudit = buildResearchAudit({
+    project: { name: "Northstar Campus", location: "Texas" },
+    evidence: rejectedEvidence,
+    sources: [source],
+  });
+  const rejectedReview = rejectedAudit.eligibilityReview.claims[0];
+  assert.equal(rejectedEvidence[0].eligibleForModel, false);
+  assert.equal(rejectedReview.firstFailedGate, tracedRejectedDecision.checkTrace.firstFailure.id);
+  assert.deepEqual(rejectedReview.firstFailure, tracedRejectedDecision.checkTrace.firstFailure);
+});
+
+test("research audits retain policy checks, provider retries, redirects, and fetch metrics", () => {
   const url = "https://records.example.gov/grid/permit";
   const passage = "The project requested an 80 MW grid connection in 2025.";
   const source = {
@@ -4562,12 +4693,8 @@ test("research audits retain ordered claim gates, provider retries, redirects, a
   const review = audit.eligibilityReview.claims[0];
   assert.equal(review.sourcePassage, passage);
   assert.equal(review.sourcePassageHash, createHash("sha256").update(passage).digest("hex"));
-  assert.deepEqual(review.gates.slice(0, 3).map((gate) => gate.id), [
-    "source-passage-retained",
-    "claim-to-source-mapping",
-    "exact-project-identity",
-  ]);
-  assert.equal(review.firstFailedGate, review.gates.find((gate) => !gate.passed).id);
+  assert.deepEqual(review.gates, []);
+  assert.equal(review.firstFailedGate, null);
 });
 
 test("research refuses provider work when the audit start insert fails", async () => {
@@ -4599,6 +4726,77 @@ test("research refuses provider work when the audit start insert fails", async (
   assert.equal(response.json().errorType, "audit-storage");
   assert.match(response.json().error, /No research provider request was issued/);
   assert.equal(providerCalls, 0);
+});
+
+test("research audit finalization retries finishRun once after transient failure", async () => {
+  let finishCalls = 0;
+  let markFinished;
+  const finished = new Promise((resolve) => { markFinished = resolve; });
+  await completeOfflineAuditResponse({
+    async startRun() {},
+    async finishRun(record) {
+      finishCalls += 1;
+      if (finishCalls === 1) throw new Error("transient completion failure");
+      markFinished(record);
+    },
+  });
+  const saved = await finished;
+  assert.equal(finishCalls, 2);
+  assert.notEqual(saved.researchStatus, "finalization-failed");
+  assert.notEqual(saved.audit.lifecycleState, "finalization-failed");
+});
+
+test("research audit marks finalization-failed after both finish attempts fail", async () => {
+  let finishCalls = 0;
+  let markCalls = 0;
+  let markFailed;
+  const marked = new Promise((resolve) => { markFailed = resolve; });
+  await completeOfflineAuditResponse({
+    async startRun() {},
+    async finishRun() {
+      finishCalls += 1;
+      throw new Error("audit storage is unavailable");
+    },
+    async markFinalizationFailed(record) {
+      markCalls += 1;
+      markFailed(record);
+    },
+  });
+  const saved = await marked;
+  assert.equal(finishCalls, 2);
+  assert.equal(markCalls, 1);
+  assert.equal(saved.researchStatus, "finalization-failed");
+  assert.equal(saved.audit.lifecycleState, "finalization-failed");
+});
+
+test("research audit logs run ID and failure state when marker persistence also fails", async () => {
+  let startedRecord;
+  let logged;
+  let markLogged;
+  const logReceived = new Promise((resolve) => { markLogged = resolve; });
+  const originalConsoleError = console.error;
+  console.error = (...args) => {
+    const serialized = args.find((argument) => typeof argument === "string" && argument.startsWith("{"));
+    if (!serialized) return;
+    const entry = JSON.parse(serialized);
+    if (entry.event !== "research_audit_finalization_failed") return;
+    logged = entry;
+    markLogged();
+  };
+  try {
+    await completeOfflineAuditResponse({
+      async startRun(record) { startedRecord = record; },
+      async finishRun() { throw new Error("audit storage is unavailable"); },
+      async markFinalizationFailed() { throw new Error("audit storage is unavailable"); },
+    });
+    await logReceived;
+  } finally {
+    console.error = originalConsoleError;
+  }
+  assert.equal(logged.runId, startedRecord.runId);
+  assert.equal(logged.failureState, "finalization-failed");
+  assert.equal(logged.level, "error");
+  assert.equal(logged.event, "research_audit_finalization_failed");
 });
 
 test("research audit finalization waits for the response finish event", async () => {

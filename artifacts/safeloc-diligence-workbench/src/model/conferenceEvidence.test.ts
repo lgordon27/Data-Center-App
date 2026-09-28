@@ -3,6 +3,7 @@ import test from "node:test";
 
 import type { EvidenceItem, ProjectContext } from "../context/DiligenceContext";
 import {
+  classifyConferenceEvidence,
   getCommunityDocumentation,
   getConferenceEvidenceSummary,
   getConferenceRelationship,
@@ -248,6 +249,107 @@ test("conference facts are verified, source-backed, non-synthetic, and preserve 
   assert.equal(JSON.stringify(evidence), before);
   assert.ok(result.unresolved.includes(synthetic));
   assert.ok(result.unresolved.includes(unsourced));
+});
+
+test("conference evidence status is exhaustive, exclusive, source-aware, and role-counted", () => {
+  const evidence = {
+    established: item({
+      id: "established",
+      impactRole: "Financial Driver",
+      claimIds: ["stargate-campus"],
+    }),
+    reported: item({
+      id: "reported",
+      impactRole: "Decision Gate",
+      classification: "Management Assertion",
+      sourceUrl: "https://example.com/reported",
+    }),
+    attributed: item({
+      id: "attributed",
+      classification: "Model Inference",
+      sourceRole: "Attributed reporting",
+      sourceUrl: "https://example.com/attributed",
+    }),
+    missing: item({
+      id: "missing",
+      impactRole: "Financial Driver",
+      classification: "Missing Evidence",
+      sourceUrl: "https://example.com/missing",
+    }),
+    partial: item({
+      id: "partial",
+      impactRole: "Decision Gate",
+      coverageStatus: "partial",
+      sourceUrl: "https://example.com/partial",
+    }),
+    conflicting: item({
+      id: "conflicting",
+      coverageStatus: "conflicting",
+      sourceUrl: "https://example.com/conflicting",
+    }),
+    unclearApplicability: item({
+      id: "unclear-applicability",
+      impactRole: "Financial Driver",
+      sourceRelevance: "related-context",
+      sourceUrl: "https://example.com/related",
+    }),
+    sourceFree: item({ id: "source-free" }),
+  };
+  const before = JSON.stringify(evidence);
+  const result = classifyConferenceEvidence(evidence, curated);
+  const assignedIds = [
+    ...result.established.map(({ id }) => id),
+    ...result.reportedNotVerified.map(({ id }) => id),
+    ...result.open.map(({ id }) => id),
+  ];
+
+  const inputIds = Object.values(evidence).map(({ id }) => id);
+  assert.deepEqual([...assignedIds].sort(), inputIds.sort());
+  assert.equal(new Set(assignedIds).size, inputIds.length);
+  assert.deepEqual(result.established.map(({ id }) => id), ["established"]);
+  assert.deepEqual(result.reportedNotVerified.map(({ id }) => id), ["reported", "attributed"]);
+  assert.deepEqual(result.open.map(({ id }) => id), [
+    "missing",
+    "partial",
+    "conflicting",
+    "unclear-applicability",
+    "source-free",
+  ]);
+  assert.equal(result.unresolvedDecisionGateCount, 1);
+  assert.equal(result.unresolvedFinancialDriverCount, 2);
+  assert.equal(JSON.stringify(evidence), before);
+});
+
+test("custom conference evidence requires exact-project supported passages for reported and established groups", () => {
+  const customProject = { ...curated, kind: "custom" as const, researchMode: "ai-researched" as const };
+  const accepted = acceptedCommunity("The source records an exact project fact.", { id: "accepted" });
+  const related = acceptedCommunity("A related project fact.", {
+    id: "related",
+    sources: [{
+      url: "https://city.example.gov/related",
+      title: "Related record",
+      publisher: "City",
+      publishedAt: null,
+      accessedAt: null,
+      accessStatus: "open",
+      excerpt: "A related project fact.",
+      sourceClass: "primary-government",
+      searchDomain: "community",
+      relationship: "primary",
+      exactProject: false,
+    }],
+  });
+  const reported = acceptedCommunity("The source reports a management claim.", {
+    id: "reported",
+    classification: "Management Assertion",
+  });
+  const result = classifyConferenceEvidence(
+    { accepted, related, reported },
+    customProject,
+  );
+  assert.deepEqual(result.established.map(({ id }) => id), ["accepted"]);
+  assert.deepEqual(result.reportedNotVerified.map(({ id }) => id), ["reported"]);
+  assert.deepEqual(result.open.map(({ id }) => id), ["related"]);
 });
 
 test("custom facts and research completeness require accepted validated material evidence", () => {

@@ -24,7 +24,10 @@ export function ProjectReality({ evidenceOpen, onEvidenceOpenChange, onNavigate 
   evidenceOpen: boolean; onEvidenceOpenChange: (open: boolean) => void; onNavigate: (screen: string) => void;
 }) {
   const { evidence, project } = useDiligence();
-  const { facts, unresolved } = getConferenceEvidenceSummary(evidence, project);
+  const evidenceSummary = getConferenceEvidenceSummary(evidence, project);
+  const facts = evidenceSummary.facts;
+  const reportedNotVerified = evidenceSummary.reportedNotVerified.slice(0, 3);
+  const unresolved = evidenceSummary.unresolved;
   const community = getCommunityDocumentation(evidence, project);
   return (
     <section data-testid="conference-view-reality" className="space-y-5">
@@ -34,15 +37,20 @@ export function ProjectReality({ evidenceOpen, onEvidenceOpenChange, onNavigate 
         findings={project.retainedFindings}
         audit={project.retainedFindingAudit}
       />}
-      {!evidenceOpen && <><div className="grid gap-4 md:grid-cols-2">
-        <section className="rounded-xl border border-[#cbd8d4] bg-white p-5">
-          <h3 className="font-semibold text-[#365b4c]">{project.canonicalDossier ? "Top accepted findings" : "Top verified facts"}</h3>
-          <ul className="mt-3 space-y-3">{facts.map((item) => <li key={item.id} className="text-sm leading-5"><strong>{item.label}:</strong> {item.value}<p className="mt-1 text-[11px] text-[#60707d]">{item.sourceRole}{item.modelClassification && item.modelClassification !== "Verified Evidence" ? " · Model treatment remains an inference." : ""}</p><EvidenceCitations item={item} /></li>)}</ul>
-          {!facts.length && <p className="mt-3 text-sm text-[#60707d]">No source-backed verified facts established in this record.</p>}
+      {!evidenceOpen && <><div className="grid gap-4 lg:grid-cols-3">
+        <section data-testid="reality-evidence-established" className="rounded-xl border border-[#cbd8d4] bg-white p-5">
+          <h3 className="font-semibold text-[#365b4c]">Established</h3>
+          <ul className="mt-3 space-y-3">{facts.map((item) => <li key={item.id} data-evidence-id={item.id} className="text-sm leading-5"><strong>{item.label}:</strong> {item.value}<p className="mt-1 text-[11px] text-[#60707d]">{item.sourceRole}{item.modelClassification && item.modelClassification !== "Verified Evidence" ? " · Model treatment remains an inference." : ""}</p><EvidenceCitations item={item} /></li>)}</ul>
+          {!facts.length && <p className="mt-3 text-sm text-[#60707d]">No evidence meets the established standard in this record.</p>}
         </section>
-        <section className="rounded-xl border border-[#e3d4b6] bg-[#fffbf2] p-5">
-          <h3 className="font-semibold text-[#805000]">Top three unresolved items</h3>
-          <ul className="mt-3 space-y-3">{unresolved.map((item) => <li key={item.id} className="text-sm leading-5"><strong>{item.label}</strong><p className="mt-1 text-xs text-[#52616b]">{item.classification} · source terms require review.</p></li>)}</ul>
+        <section data-testid="reality-evidence-reported" className="rounded-xl border border-[#e3d4b6] bg-[#fffbf2] p-5">
+          <h3 className="font-semibold text-[#805000]">Reported, not verified</h3>
+          <ul className="mt-3 space-y-3">{reportedNotVerified.map((item) => <li key={item.id} data-evidence-id={item.id} className="text-sm leading-5"><strong>{item.label}:</strong> {item.value}<p className="mt-1 text-xs text-[#52616b]">{item.sourceRole} · reported material is not independently established.</p><EvidenceCitations item={item} /></li>)}</ul>
+          {!reportedNotVerified.length && <p className="mt-3 text-sm text-[#60707d]">No sourced management assertions or attributed reports are recorded.</p>}
+        </section>
+        <section data-testid="reality-evidence-open" className="rounded-xl border border-[#e3d4b6] bg-[#fffbf2] p-5">
+          <h3 className="font-semibold text-[#805000]">Top three open items</h3>
+          <ul className="mt-3 space-y-3">{unresolved.map((item) => <li key={item.id} data-evidence-id={item.id} className="text-sm leading-5"><strong>{item.label}</strong><p className="mt-1 text-xs text-[#52616b]">{item.classification} · source terms require review.</p></li>)}</ul>
           {!unresolved.length && <p className="mt-3 text-sm text-[#60707d]">No unresolved items in the available record. This is not a completeness guarantee.</p>}
         </section>
       </div>

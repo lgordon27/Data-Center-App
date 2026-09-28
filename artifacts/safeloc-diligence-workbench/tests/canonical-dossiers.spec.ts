@@ -48,8 +48,14 @@ test.describe("canonical PostgreSQL dossiers", () => {
       await expect(page.getByTestId("advisor-monitoring-considerations")).toBeVisible();
 
       await page.getByTestId("tab-reality").click();
-      await expect(page.getByTestId("conference-view-reality")).toContainText("Top accepted findings");
-      await expect(page.getByTestId("conference-view-reality")).not.toContainText("No source-backed verified facts established");
+      await expect(page.getByTestId("reality-evidence-established").getByRole("heading", { name: "Established" })).toBeVisible();
+      const realityBuckets = {
+        established: await page.getByTestId("reality-evidence-established").locator("[data-evidence-id]").evaluateAll((items) => items.map((item) => item.getAttribute("data-evidence-id"))),
+        reported: await page.getByTestId("reality-evidence-reported").locator("[data-evidence-id]").evaluateAll((items) => items.map((item) => item.getAttribute("data-evidence-id"))),
+        open: await page.getByTestId("reality-evidence-open").locator("[data-evidence-id]").evaluateAll((items) => items.map((item) => item.getAttribute("data-evidence-id"))),
+      };
+      const realityIds = [...realityBuckets.established, ...realityBuckets.reported, ...realityBuckets.open];
+      expect(new Set(realityIds).size).toBe(realityIds.length);
       const detailedEvidence = page.getByTestId("button-detailed-evidence");
       if (await detailedEvidence.getAttribute("aria-expanded") !== "true") {
         await detailedEvidence.click();
@@ -66,6 +72,7 @@ test.describe("canonical PostgreSQL dossiers", () => {
         await expect(page.getByTestId("conference-view-transmission")).not.toContainText("-16.7%");
         await expect(page.getByTestId("conference-view-transmission")).not.toContainText("9.1% IRR");
         await expect(page.getByTestId("conference-view-transmission")).not.toContainText("13.3% IRR");
+        await expect(page.getByTestId("conference-view-transmission")).not.toContainText(/primary recommendation basis/i);
       }
 
       await page.getByTestId("tab-advisor").click();
@@ -74,7 +81,22 @@ test.describe("canonical PostgreSQL dossiers", () => {
       } else {
         await expect(page.getByTestId("advisor-primary-case")).toContainText("NOT MODELED");
         await expect(page.getByTestId("advisor-primary-case")).not.toContainText("-16.7%");
+        await expect(page.getByTestId("conference-view-advisor")).not.toContainText(/primary recommendation basis/i);
       }
+      for (const [realityBucket, advisorBucket] of [
+        ["established", "advisor-evidence-established"],
+        ["reported", "advisor-evidence-reported"],
+        ["open", "advisor-evidence-open"],
+      ] as const) {
+        const advisorIds = await page.getByTestId(advisorBucket).locator("[data-evidence-id]").evaluateAll((items) => items.map((item) => item.getAttribute("data-evidence-id")));
+        expect(advisorIds).toEqual(realityBuckets[realityBucket]);
+      }
+      const advisorIds = [
+        ...await page.getByTestId("advisor-evidence-established").locator("[data-evidence-id]").evaluateAll((items) => items.map((item) => item.getAttribute("data-evidence-id"))),
+        ...await page.getByTestId("advisor-evidence-reported").locator("[data-evidence-id]").evaluateAll((items) => items.map((item) => item.getAttribute("data-evidence-id"))),
+        ...await page.getByTestId("advisor-evidence-open").locator("[data-evidence-id]").evaluateAll((items) => items.map((item) => item.getAttribute("data-evidence-id"))),
+      ];
+      expect(new Set(advisorIds).size).toBe(advisorIds.length);
     });
   }
 
@@ -130,13 +152,24 @@ test.describe("canonical PostgreSQL dossiers", () => {
 
     await expect(page.getByTestId("impact-chain-baseline-irr")).toHaveText("13.3%");
     await expect(page.getByTestId("impact-chain-stress-irr")).toHaveText("9.1%");
+    await expect(page.getByTestId("financial-project-heading")).toContainText("Stargate Abilene");
+    await expect(page.getByTestId("financial-project-scenario-heading")).toContainText("Stargate Abilene");
+    const initialCounts = {
+      decisionGates: await page.getByTestId("financial-gap-counts").locator("[data-decision-gate-count]").getAttribute("data-decision-gate-count"),
+      financialDrivers: await page.getByTestId("financial-gap-counts").locator("[data-financial-driver-count]").getAttribute("data-financial-driver-count"),
+    };
 
     for (const tab of ["Overview", "Key Drivers", "Cash Flows", "Assumptions"]) {
       await page.getByRole("tab", { name: tab, exact: true }).click();
       await expect(page.getByRole("tab", { name: tab, exact: true })).toHaveAttribute("aria-selected", "true");
+      await expect(page.getByTestId("financial-gap-counts").locator("[data-decision-gate-count]")).toHaveAttribute("data-decision-gate-count", initialCounts.decisionGates ?? "");
+      await expect(page.getByTestId("financial-gap-counts").locator("[data-financial-driver-count]")).toHaveAttribute("data-financial-driver-count", initialCounts.financialDrivers ?? "");
     }
 
     await expect(page.getByTestId("conference-view-transmission")).toContainText("BLOCKED");
+    await page.getByTestId("tab-advisor").click();
+    await expect(page.getByTestId("advisor-gap-summary")).toHaveAttribute("data-decision-gate-count", initialCounts.decisionGates ?? "");
+    await expect(page.getByTestId("advisor-gap-summary")).toHaveAttribute("data-financial-driver-count", initialCounts.financialDrivers ?? "");
     expect(pageErrors.filter((message) => message !== "WebSocket closed without opened.")).toEqual([]);
   });
 });

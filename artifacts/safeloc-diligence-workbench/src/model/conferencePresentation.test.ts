@@ -40,10 +40,19 @@ test("financial advisor coverage uses the approved exact labels", () => {
   );
   assert.equal(
     generateAdvisorBrief(diligence({
+      evidence: {
+        gate: {
+          id: "gate",
+          label: "Water rights",
+          value: "Not established",
+          classification: "Missing Evidence",
+          impactRole: "Decision Gate",
+        },
+      },
       metrics: {
         projectIRR: 12,
         recommendationStatus: "Review",
-        unresolvedDecisionGateCount: 1,
+        unresolvedDecisionGateCount: 0,
         unresolvedFinancialDriverCount: 0,
       },
     })).coverageLabel,
@@ -207,4 +216,59 @@ test("advisor summaries do not promote generated project prose or attributed pas
   ]);
   assert.doesNotMatch(JSON.stringify(advisor.whatWeKnow), /480 MW|operating/i);
   assert.doesNotMatch(JSON.stringify(advisor.whatWeDoNotKnow), /480 MW|operating|generated/i);
+});
+
+test("Advisor Brief exposes non-overlapping shared evidence buckets and classifier-derived counts", () => {
+  const advisor = generateAdvisorBrief(diligence({
+    evidence: {
+      established: {
+        id: "established",
+        label: "Verified facility fact",
+        value: "Confirmed",
+        classification: "Verified Evidence",
+        impactRole: "Financial Driver",
+        sourceUrl: "https://example.com/verified",
+      },
+      reported: {
+        id: "reported",
+        label: "Management report",
+        value: "Reported",
+        classification: "Management Assertion",
+        impactRole: "Decision Gate",
+        sourceUrl: "https://example.com/reported",
+      },
+      open: {
+        id: "open",
+        label: "Water access",
+        value: "Not established",
+        classification: "Missing Evidence",
+        impactRole: "Decision Gate",
+      },
+      driver: {
+        id: "driver",
+        label: "Electricity cost",
+        value: "Not established",
+        classification: "Missing Evidence",
+        impactRole: "Financial Driver",
+      },
+    },
+    metrics: {
+      projectIRR: 12,
+      recommendationStatus: "Review",
+      unresolvedDecisionGateCount: 0,
+      unresolvedFinancialDriverCount: 0,
+    },
+  }));
+  const { established, reportedNotVerified, open } = advisor.evidenceBuckets;
+  const ids = [...established, ...reportedNotVerified, ...open];
+
+  assert.deepEqual(established, ["established"]);
+  assert.deepEqual(reportedNotVerified, ["reported"]);
+  assert.deepEqual(open, ["open", "driver"]);
+  assert.equal(new Set(ids).size, ids.length);
+  assert.deepEqual(advisor.gapSummary, {
+    unresolvedDecisionGates: 1,
+    unresolvedFinancialDrivers: 1,
+  });
+  assert.deepEqual(advisor.whatIsReportedNotVerified, ["Management report: Reported"]);
 });

@@ -43,8 +43,8 @@ function coverageLabel(
   if (isConferenceResearchIncomplete(diligence.project, diligence.evidence)) {
     return FINANCIAL_ADVISOR_COVERAGE_LABELS.incomplete;
   }
-  return diligence.metrics.unresolvedDecisionGateCount > 0 ||
-    diligence.metrics.unresolvedFinancialDriverCount > 0 ||
+  return summary.unresolvedDecisionGateCount > 0 ||
+    summary.unresolvedFinancialDriverCount > 0 ||
     summary.unresolved.length > 0
     ? FINANCIAL_ADVISOR_COVERAGE_LABELS.gaps
     : FINANCIAL_ADVISOR_COVERAGE_LABELS.reviewed;
@@ -55,11 +55,6 @@ export function generateAdvisorBrief(diligence: ReturnType<typeof useDiligence>)
   const relationship = getConferenceRelationship(diligence.project, diligence.originatingCompany);
   const dossier = diligence.project.canonicalDossier;
   const notModeled = diligence.financialModeling.status === "not-modeled";
-  const unresolved = Object.values(diligence.evidence).filter((item) =>
-    item.classification === "Missing Evidence" ||
-    item.coverageStatus === "partial" ||
-    item.coverageStatus === "conflicting"
-  );
   return {
     audience: "financial-advisor" as const,
     coverageLabel: coverageLabel(diligence, summary),
@@ -85,18 +80,21 @@ export function generateAdvisorBrief(diligence: ReturnType<typeof useDiligence>)
         : "Project-level synthetic diligence output; optional EIA sensitivities are not issuer returns or portfolio returns.",
     },
     gapSummary: {
-      unresolvedDecisionGates: dossier ? unresolved.length
-        : diligence.project.kind === "custom" && diligence.project.researchAudit?.categoryGaps
-          ? diligence.project.researchAudit.categoryGaps.length
-          : diligence.metrics.unresolvedDecisionGateCount,
-      unresolvedFinancialDrivers: dossier && notModeled
-        ? diligence.financialModeling.requiredInputs.length
-        : diligence.metrics.unresolvedFinancialDriverCount,
+      unresolvedDecisionGates: summary.unresolvedDecisionGateCount,
+      unresolvedFinancialDrivers: summary.unresolvedFinancialDriverCount,
     },
     whatWeKnow: summary.facts.map((item) => `${item.label}: ${String(item.value)}`),
-    whatWeDoNotKnow: unresolved.slice(0, 3).map((item) =>
+    whatIsReportedNotVerified: summary.reportedNotVerified.slice(0, 3).map((item) =>
+      `${item.label}: ${String(item.value)}`
+    ),
+    whatWeDoNotKnow: summary.unresolved.map((item) =>
       `${item.label}: Not established by a validated project-specific source.`
     ),
+    evidenceBuckets: {
+      established: summary.facts.map((item) => item.id),
+      reportedNotVerified: summary.reportedNotVerified.slice(0, 3).map((item) => item.id),
+      open: summary.unresolved.map((item) => item.id),
+    },
     whyItMatters: dossier ? [
       dossier.canonicalData.identity.scope,
       dossier.canonicalData.materiality.issuer,
@@ -167,8 +165,7 @@ export function generateAssetManagerBrief(diligence: ReturnType<typeof useDilige
       "What dated holding data and issuer disclosure would support a portfolio-materiality assessment?",
     ],
     disclosureRequests: dossier ? [
-      ...Object.values(diligence.evidence)
-        .filter((item) => item.classification === "Missing Evidence" || item.coverageStatus === "partial" || item.coverageStatus === "conflicting")
+      ...summary.open
         .map((item) => `${item.label}: ${item.conflictSummary ?? item.description}`),
       ...(diligence.financialModeling.status === "not-modeled" ? diligence.financialModeling.requiredInputs : []),
     ] : [

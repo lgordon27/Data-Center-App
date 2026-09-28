@@ -20,6 +20,7 @@ import {
 import { DrawerField, DrawerSection, useWorkbenchDrawer } from "@/components/ContextDrawer";
 import { useDiligence } from "@/context/DiligenceContext";
 import { formatImpactDelta } from "@/model/cashFlowEngine";
+import { classifyConferenceEvidence } from "@/model/conferenceEvidence";
 import { getEvidenceImpactRoleDefinition } from "@/data/evidenceImpactRoles";
 import { formatElectricityCostAttribution } from "@/data/sources";
 
@@ -53,10 +54,14 @@ function ProviderOverlayComparison({
   financialInputState,
   financialScenarios,
   projectKind,
+  projectName,
+  modeled,
 }: {
   financialInputState: ReturnType<typeof useDiligence>["financialInputState"];
   financialScenarios: ReturnType<typeof useDiligence>["financialScenarios"];
   projectKind: "curated" | "custom";
+  projectName: string;
+  modeled: boolean;
 }) {
   const isCustom = projectKind === "custom";
   const syntheticVerified = financialScenarios.scenarios["synthetic-verified"]!;
@@ -72,8 +77,8 @@ function ProviderOverlayComparison({
         ? "Not applicable to custom project"
         : "Embedded case baseline · no provider response";
   const scenarioCards = [
-    { label: "Synthetic underwriting baseline", scenario: syntheticVerified, role: "Primary benchmark" },
-    { label: "Synthetic current-evidence case", scenario: syntheticCurrent, role: "Primary recommendation" },
+    { label: "Synthetic underwriting baseline", scenario: syntheticVerified, role: modeled ? "Primary benchmark" : "Illustrative benchmark only" },
+    { label: "Synthetic current-evidence case", scenario: syntheticCurrent, role: modeled ? "Primary recommendation" : "Not a recommendation basis" },
     { label: "EIA verified sensitivity", scenario: eiaVerified, role: "Optional market sensitivity" },
     { label: "EIA current-evidence sensitivity", scenario: eiaCurrent, role: "Optional market sensitivity" },
   ];
@@ -93,7 +98,9 @@ function ProviderOverlayComparison({
       <p className="mt-2 max-w-3xl text-[11px] leading-5 text-[#344550]">
         {isCustom
           ? "The EIA electricity series remains separate market context; it does not replace custom-project research or change this synthetic scenario."
-          : "The synthetic current-evidence case remains the primary recommendation basis. EIA is an optional statewide industrial-market sensitivity—not a disclosed Stargate tariff, contracted project price, issuer return or portfolio return."}
+          : modeled
+            ? `The synthetic current-evidence case remains the primary recommendation basis for ${projectName}. EIA is an optional statewide industrial-market sensitivity—not a disclosed ${projectName} tariff, contracted project price, issuer return or portfolio return.`
+            : `EIA is optional statewide industrial-market context for ${projectName}, not a project tariff, contracted project price, issuer return or portfolio return. No primary recommendation basis is available.`}
       </p>
       <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {scenarioCards.map(({ label, scenario, role }) => (
@@ -226,6 +233,7 @@ function NextViewButton({ label, target, onClick }: { label: string; target: Fin
 
 export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
   const { evidence, hasChangedClassification, metrics, sourceStates, project, originatingCompany, financialInputState, financialScenarios, financialModeling } = useDiligence();
+  const conferenceEvidence = classifyConferenceEvidence(evidence, project);
   const [financialView, setFinancialView] = useState<FinancialView>("overview");
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const currentIRR = metrics.projectIRR;
@@ -282,6 +290,10 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
         <p className="mt-3 max-w-3xl text-xs leading-5 text-[#6f460e]">
           Retrieved research and explicit reviewer acceptance can update the evidence record only. They do not create approved transaction economics or authorize a project return; no custom-project IRR, cash flow, recommendation, or materiality calculation is presented.
         </p>
+        <div data-testid="financial-gap-counts" className="mt-4 grid gap-2 sm:grid-cols-2">
+          <div data-decision-gate-count={conferenceEvidence.unresolvedDecisionGateCount} className="rounded-lg border border-[#e3d4b6] bg-white px-3 py-2 text-[11px] text-[#805000]"><strong className="font-semibold">Unresolved decision gates:</strong> {conferenceEvidence.unresolvedDecisionGateCount}</div>
+          <div data-financial-driver-count={conferenceEvidence.unresolvedFinancialDriverCount} className="rounded-lg border border-[#f5ddd5] bg-white px-3 py-2 text-[11px] text-[#7f2635]"><strong className="font-semibold">Unresolved financial drivers:</strong> {conferenceEvidence.unresolvedFinancialDriverCount}</div>
+        </div>
         <div className="mt-4 rounded-lg border border-[#e3d4b6] bg-white p-4 text-xs leading-5 text-[#805000]">
           <strong>Required before modeling:</strong>
           <ul className="mt-2 list-disc space-y-1 pl-5">
@@ -316,7 +328,7 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
   return (
     <div data-testid="financial-transmission-model" className="min-w-0">
        <div className="mb-4 flex flex-col justify-between gap-3 md:flex-row md:items-end">
-         <div><SectionKicker>Illustrative project economics</SectionKicker><h2 className="text-[24px] font-semibold tracking-[-0.035em] text-[#122232]">Start with the project scenario.</h2><p className="mt-2 max-w-3xl text-[11px] leading-5 text-[#52616b]">These returns are synthetic project-scenario outputs—not issuer impacts, portfolio returns or reported transaction economics.</p></div>
+         <div><SectionKicker>Illustrative project economics</SectionKicker><h2 data-testid="financial-project-heading" className="text-[24px] font-semibold tracking-[-0.035em] text-[#122232]">Start with the {project.name} scenario.</h2><p className="mt-2 max-w-3xl text-[11px] leading-5 text-[#52616b]">These returns are synthetic project-scenario outputs—not issuer impacts, portfolio returns or reported transaction economics.</p></div>
         <div className="flex items-center gap-2 rounded-md border border-[#9bd8c5] bg-[#e0f4ed] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#0b7a63]"><Sparkles aria-hidden="true" className="h-3.5 w-3.5" /> Derived locally</div>
       </div>
        <div data-testid="financial-input-state" role="status" className="mb-4 rounded-lg border border-[#cbd8d4] bg-[#f9faf8] px-4 py-3 text-[11px] leading-5 text-[#52616b]">
@@ -324,11 +336,17 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
           Primary synthetic electricity input: ${financialScenarios.scenarios["synthetic-current"]!.inputs.appliedElectricityRate.toFixed(1)}/MWh.{" "}
           {optionalSensitivityStatus} Primary calculated {calculationTimestamp}.
        </div>
-       <ProviderOverlayComparison financialInputState={financialInputState} financialScenarios={financialScenarios} projectKind={project.kind} />
+      <ProviderOverlayComparison
+        financialInputState={financialInputState}
+        financialScenarios={financialScenarios}
+        projectKind={project.kind}
+        projectName={project.name}
+        modeled={financialModeling.status !== "not-modeled"}
+      />
       {!hasChangedClassification && <aside data-testid="materiality-classification-prompt" role="note" className="mb-4 flex items-start gap-3 rounded-lg border border-[#aac6f4] bg-[#eef5ff] px-4 py-3 text-[11px] leading-5 text-[#344550]"><Sparkles aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#255bb7]" /><p><strong className="font-semibold text-[#122232]">Change a classification</strong> to see the return, driver ranking, confidence and recommendation update.</p></aside>}
        <div data-testid="financial-gap-counts" className="mb-4 grid gap-2 sm:grid-cols-2">
-         <div className="rounded-lg border border-[#e3d4b6] bg-[#fffbf2] px-3 py-2 text-[11px] text-[#805000]"><strong className="font-semibold">Unresolved decision gates:</strong> {metrics.unresolvedDecisionGateCount}</div>
-         <div className="rounded-lg border border-[#f5ddd5] bg-[#fff3f4] px-3 py-2 text-[11px] text-[#7f2635]"><strong className="font-semibold">Unresolved financial drivers:</strong> {metrics.unresolvedFinancialDriverCount}</div>
+          <div data-decision-gate-count={conferenceEvidence.unresolvedDecisionGateCount} className="rounded-lg border border-[#e3d4b6] bg-[#fffbf2] px-3 py-2 text-[11px] text-[#805000]"><strong className="font-semibold">Unresolved decision gates:</strong> {conferenceEvidence.unresolvedDecisionGateCount}</div>
+          <div data-financial-driver-count={conferenceEvidence.unresolvedFinancialDriverCount} className="rounded-lg border border-[#f5ddd5] bg-[#fff3f4] px-3 py-2 text-[11px] text-[#7f2635]"><strong className="font-semibold">Unresolved financial drivers:</strong> {conferenceEvidence.unresolvedFinancialDriverCount}</div>
        </div>
        <div role="tablist" aria-label="Financial transmission views" className="sticky top-0 z-10 mb-4 flex gap-1 overflow-x-auto rounded-lg border border-[#d9e0e4] bg-[#f9faf8]/95 p-1.5 backdrop-blur-md">
         {FINANCIAL_VIEWS.map((item, index) => <button key={item.id} ref={(element) => { tabRefs.current[index] = element; }} id={`financial-tab-${item.id}`} data-testid={`financial-tab-${item.id}`} type="button" role="tab" aria-selected={financialView === item.id} aria-controls={`financial-panel-${item.id}`} tabIndex={financialView === item.id ? 0 : -1} onClick={() => setFinancialView(item.id)} onKeyDown={(event) => { if (event.key === "ArrowRight") { event.preventDefault(); moveTab(item.id, "next"); } else if (event.key === "ArrowLeft") { event.preventDefault(); moveTab(item.id, "previous"); } else if (event.key === "Home") { event.preventDefault(); moveTab(item.id, "first"); } else if (event.key === "End") { event.preventDefault(); moveTab(item.id, "last"); } }} className={`min-h-10 shrink-0 rounded-md px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#b9d43a] ${financialView === item.id ? "bg-[#122232] text-[#d4e86b]" : "text-[#52616b] hover:bg-white hover:text-[#122232]"}`}>{item.label}</button>)}
@@ -337,7 +355,7 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
       {metrics.mechanicalDisclaimer && <div data-testid="banner-mechanical-disclaimer" className="mb-4 flex items-start gap-3 rounded-xl border-2 border-[#ba2f45] bg-[#fff3f4] px-5 py-4 text-[#7f2635]"><TriangleAlert aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0" /><div><div className="font-mono text-[12px] font-bold tracking-[0.08em]">MECHANICAL OUTPUTS ONLY · 0% EVIDENCE CONFIDENCE</div><div className="mt-1 text-[11px] leading-5 text-[#96525d]">Returns are scenario mechanics, not investment-grade underwriting or a recommendation.</div></div></div>}
 
       {financialView === "overview" && <section id="financial-panel-overview" data-testid="panel-impact-chain" role="tabpanel" aria-labelledby="financial-tab-overview" tabIndex={0} className="rounded-xl border-2 border-[#122232] bg-[#122232] p-5 text-white md:p-6">
-        <div className="flex flex-col justify-between gap-3 border-b border-white/15 pb-4 md:flex-row md:items-end"><div><SectionKicker tone="lime" className="!text-[#d4e86b]">Primary synthetic case</SectionKicker><h3 className="text-[22px] font-semibold tracking-[-0.035em]">Synthetic underwriting baseline → synthetic current evidence</h3></div><span data-testid="impact-chain-evidence-gap" className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#f5ddd5]">{irrDelta === null ? "Difference unavailable" : `${formatPercentagePoints(Math.abs(irrDelta))} difference`}</span></div>
+        <div className="flex flex-col justify-between gap-3 border-b border-white/15 pb-4 md:flex-row md:items-end"><div><SectionKicker tone="lime" className="!text-[#d4e86b]">{financialModeling.status === "not-modeled" ? "Illustrative scenario" : "Primary synthetic case"}</SectionKicker><h3 data-testid="financial-project-scenario-heading" className="text-[22px] font-semibold tracking-[-0.035em]">{project.name}: Synthetic underwriting baseline → synthetic current evidence</h3></div><span data-testid="impact-chain-evidence-gap" className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#f5ddd5]">{irrDelta === null ? "Difference unavailable" : `${formatPercentagePoints(Math.abs(irrDelta))} difference`}</span></div>
         <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
            <div className="rounded-lg border border-[#b9d43a]/40 bg-[#b9d43a]/10 p-4"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#b9d43a]">Baseline return</div><div data-testid="impact-chain-baseline-irr" className="mt-1 font-mono text-3xl font-bold text-[#d4e86b]">{formatIRR(baseIRR)}</div>{baseIRRReason && <div className="mt-2 text-[9px] leading-4 text-[#f5ddd5]">{formatIRRReasonLabel(baseIRRReason)}</div>}</div>
            <div className="rounded-lg border border-[#f5ddd5]/40 bg-[#f5ddd5]/10 p-4"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#f5ddd5]">Current-evidence case</div><div data-testid="impact-chain-stress-irr" className="mt-1 font-mono text-3xl font-bold text-[#f5ddd5]">{formatIRR(currentIRR)}</div><div data-testid="text-current-irr-materiality" className="sr-only">{formatIRR(currentIRR)}</div>{currentIRRReason && <div className="mt-2 text-[9px] leading-4 text-[#f5ddd5]">{formatIRRReasonLabel(currentIRRReason)}</div>}</div>

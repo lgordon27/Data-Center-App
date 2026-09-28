@@ -147,6 +147,14 @@ export type CommunityDocumentationStatus = {
   sourceUrls: string[];
 };
 
+export type ConferenceEvidenceClassification = {
+  established: EvidenceItem[];
+  reportedNotVerified: EvidenceItem[];
+  open: EvidenceItem[];
+  unresolvedDecisionGateCount: number;
+  unresolvedFinancialDriverCount: number;
+};
+
 const NO_DOCUMENTATION = "No project-specific documentation found";
 
 function sourcePassage(source: NonNullable<EvidenceItem["sources"]>[number]) {
@@ -284,50 +292,106 @@ export function getCommunityDocumentation(
 
 function isSynthetic(item: EvidenceItem) {
   const text = [item.citation, item.description, item.sourceRole].join(" ").toLowerCase();
-  return item.claimIds.includes("synthetic-transaction") ||
+  return (item.claimIds ?? []).includes("synthetic-transaction") ||
     /\bsynthetic\b|\banalyst-selected\b|\bmodeled (?:fact|assumption|input|economics)\b/.test(text);
 }
 
 function hasCuratedSource(item: EvidenceItem) {
   if (validHttpUrl(item.sourceUrl)) return true;
   if ((item.sources ?? []).some((source) => validHttpUrl(source.url))) return true;
-  return item.claimIds.some((claimId) => getClaimSources(claimId).some((source) => validHttpUrl(source.url)));
+  return (item.claimIds ?? []).some((claimId) => getClaimSources(claimId).some((source) => validHttpUrl(source.url)));
 }
 
-function isConferenceFact(item: EvidenceItem, custom: boolean) {
-  if (item.classification !== "Verified Evidence" || isSynthetic(item)) return false;
-  return custom ? validatedResearchMaterials(item).length > 0 : hasCuratedSource(item);
+function hasEvidenceConflict(item: EvidenceItem) {
+  return item.coverageStatus === "partial" ||
+    item.coverageStatus === "conflicting" ||
+    (item.coverageStatus !== undefined && !["supported", "complete", "partial", "conflicting", "searched-no-support"].includes(item.coverageStatus)) ||
+    item.coverageStatus === "searched-no-support" ||
+    Boolean(item.conflictSummary?.trim()) ||
+    (item.sources ?? []).some((source) => source.relationship === "conflicting");
+}
+
+function hasUnclearApplicability(
+  item: EvidenceItem,
+  project: ProjectContext | undefined,
+  customResearch: boolean,
+) {
+  if (item.sourceRelevance === "related-context" || item.sourceRelevance === "unresolved") return true;
+  if ((item.sources ?? []).some((source) => source.exactProject === false)) return true;
+  if (project?.canonicalDossier) return item.sourceRelevance !== "exact-project";
+  if (customResearch) return supportedMappedMaterials(item).length === 0;
+  return false;
+}
+
+function isSourcedForConference(
+  item: EvidenceItem,
+  project: ProjectContext | undefined,
+  customResearch: boolean,
+) {
+  if (!hasCuratedSource(item)) return false;
+  if (hasEvidenceConflict(item) || hasUnclearApplicability(item, project, customResearch)) return false;
+  if (customResearch) return supportedMappedMaterials(item).length > 0;
+  return true;
+}
+
+function isAttributedReporting(item: EvidenceItem) {
+  return /\battributed (?:reporting|report)\b/i.test(
+    [item.sourceRole, item.citation, item.description].join(" "),
+  );
+}
+
+export function classifyConferenceEvidence(
+  evidence: Record<string, EvidenceItem>,
+  project?: ProjectContext,
+): ConferenceEvidenceClassification {
+  const established: EvidenceItem[] = [];
+  const reportedNotVerified: EvidenceItem[] = [];
+  const open: EvidenceItem[] = [];
+  const items = Object.values(evidence);
+  const customResearch = project?.kind === "custom" || (
+    project === undefined && items.some((item) =>
+      item.researchState !== undefined ||
+      item.semanticValidationStatus !== undefined ||
+      item.sourceValidation !== undefined
+    )
+  );
+
+  for (const item of items) {
+    const sourced = isSourcedForConference(item, project, customResearch) && !isSynthetic(item);
+    if (
+      item.classification === "Verified Evidence" &&
+      sourced &&
+      (!customResearch || validatedResearchMaterials(item).length > 0)
+    ) {
+      established.push(item);
+    } else if (
+      (item.classification === "Management Assertion" || isAttributedReporting(item)) &&
+      sourced
+    ) {
+      reportedNotVerified.push(item);
+    } else {
+      open.push(item);
+    }
+  }
+
+  return {
+    established,
+    reportedNotVerified,
+    open,
+    unresolvedDecisionGateCount: open.filter((item) => item.impactRole === "Decision Gate").length,
+    unresolvedFinancialDriverCount: open.filter((item) => item.impactRole === "Financial Driver").length,
+  };
 }
 
 export function getConferenceEvidenceSummary(
   evidence: Record<string, EvidenceItem>,
   project?: ProjectContext,
-): { facts: EvidenceItem[]; unresolved: EvidenceItem[] } {
-  const items = Object.values(evidence);
-  if (project?.canonicalDossier) {
-    const facts = items
-      .filter((item) => item.classification !== "Missing Evidence" && hasCuratedSource(item))
-      .slice(0, 3);
-    const factSet = new Set(facts);
-    return {
-      facts,
-      unresolved: items
-        .filter((item) => !factSet.has(item) && (
-          item.classification === "Missing Evidence" ||
-          item.coverageStatus === "partial" ||
-          item.coverageStatus === "conflicting"
-        ))
-        .slice(0, 3),
-    };
-  }
-  const custom = items.some((item) =>
-    item.researchState !== undefined || item.semanticValidationStatus !== undefined || item.sourceValidation !== undefined
-  );
-  const facts = items.filter((item) => isConferenceFact(item, custom)).slice(0, 3);
-  const factSet = new Set(facts);
+): ConferenceEvidenceClassification & { facts: EvidenceItem[]; unresolved: EvidenceItem[] } {
+  const classification = classifyConferenceEvidence(evidence, project);
   return {
-    facts,
-    unresolved: items.filter((item) => !factSet.has(item) && !isConferenceFact(item, custom)).slice(0, 3),
+    ...classification,
+    facts: classification.established.slice(0, 3),
+    unresolved: classification.open.slice(0, 3),
   };
 }
 

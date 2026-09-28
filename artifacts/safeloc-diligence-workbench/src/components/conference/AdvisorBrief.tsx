@@ -33,7 +33,7 @@ export function AdvisorBrief() {
         findings={diligence.project.retainedFindings}
         audit={diligence.project.retainedFindingAudit}
       />}
-      <div data-testid="advisor-gap-summary" className="grid gap-2 sm:grid-cols-2">
+      <div data-testid="advisor-gap-summary" data-decision-gate-count={brief.gapSummary.unresolvedDecisionGates} data-financial-driver-count={brief.gapSummary.unresolvedFinancialDrivers} className="grid gap-2 sm:grid-cols-2">
         <div className="rounded-lg border border-[#e3d4b6] bg-[#fffbf2] px-4 py-3 text-xs text-[#805000]"><strong className="font-semibold">Unresolved decision gates:</strong> {brief.gapSummary.unresolvedDecisionGates}</div>
         <div className="rounded-lg border border-[#f5ddd5] bg-[#fff3f4] px-4 py-3 text-xs text-[#7f2635]"><strong className="font-semibold">Unresolved financial drivers:</strong> {brief.gapSummary.unresolvedFinancialDrivers}</div>
       </div>
@@ -51,14 +51,14 @@ export function AdvisorBrief() {
         </section>
       )}
       <div className="grid gap-4 md:grid-cols-3">
-        <div className="rounded-xl border border-[#d9e0e4] bg-white p-4 shadow-sm">
+        <div data-testid="advisor-evidence-established" className="rounded-xl border border-[#d9e0e4] bg-white p-4 shadow-sm">
           <h3 className="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#122232] mb-4 flex items-center gap-2">
             <Info className="h-4 w-4 text-[#122232]" />
             What We Know
           </h3>
           <ul className="space-y-3">
             {brief.whatWeKnow.map((item, i) => (
-              <li key={i} className="text-[12px] text-[#122232] leading-tight flex gap-2">
+              <li key={brief.evidenceBuckets.established[i]} data-evidence-id={brief.evidenceBuckets.established[i]} className="text-[12px] text-[#122232] leading-tight flex gap-2">
                 <span className="text-[#d9e0e4] mt-0.5">•</span>
                 <span>{item}</span>
               </li>
@@ -67,14 +67,30 @@ export function AdvisorBrief() {
           {brief.whatWeKnow.length === 0 && <p className="text-xs leading-5 text-[#52616b]">No source-backed verified facts established. Review Project Reality for the retained research.</p>}
         </div>
         
-        <div className="rounded-xl border border-[#d9e0e4] bg-white p-4 shadow-sm">
+        <div data-testid="advisor-evidence-reported" className="rounded-xl border border-[#d9e0e4] bg-[#fffbf2] p-4 shadow-sm">
+          <h3 className="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#805000] mb-4 flex items-center gap-2">
+            <Info className="h-4 w-4 text-[#805000]" />
+            Reported, Not Verified
+          </h3>
+          <ul className="space-y-3">
+            {brief.whatIsReportedNotVerified.map((item, i) => (
+              <li key={brief.evidenceBuckets.reportedNotVerified[i]} data-evidence-id={brief.evidenceBuckets.reportedNotVerified[i]} className="text-[12px] text-[#52616b] leading-tight flex gap-2">
+                <span className="text-[#805000]/50 mt-0.5">•</span>
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+          {brief.whatIsReportedNotVerified.length === 0 && <p className="text-xs leading-5 text-[#52616b]">No sourced management assertions or attributed reports are recorded.</p>}
+        </div>
+
+        <div data-testid="advisor-evidence-open" className="rounded-xl border border-[#d9e0e4] bg-white p-4 shadow-sm">
           <h3 className="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#122232] mb-4 flex items-center gap-2">
             <HelpCircle className="h-4 w-4 text-[#ba2f45]" />
             What We Do Not Know
           </h3>
           <ul className="space-y-3">
             {brief.whatWeDoNotKnow.map((item, i) => (
-              <li key={i} className="text-[12px] text-[#52616b] leading-tight flex gap-2">
+              <li key={brief.evidenceBuckets.open[i]} data-evidence-id={brief.evidenceBuckets.open[i]} className="text-[12px] text-[#52616b] leading-tight flex gap-2">
                 <span className="text-[#ba2f45]/40 mt-0.5">•</span>
                 <span>{item}</span>
               </li>

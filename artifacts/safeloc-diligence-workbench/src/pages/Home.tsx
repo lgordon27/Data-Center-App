@@ -45,6 +45,7 @@ import {
   toProjectSelectionContext,
   type CompanyKey,
   type CompanyProject,
+  type ProjectSelectionContext,
 } from "@/data/companyExposure";
 import { ClaimCitation } from "@/components/ClaimCitation";
 import { CompanyProjectSelection } from "@/components/CompanyProjectSelection";
@@ -53,7 +54,6 @@ import { ProviderQueueSnapshot } from "@/components/ProviderQueueSnapshot";
 import { Footer } from "@/components/Footer";
 import { IRRReasonNote, formatIRR } from "@/components/Shell";
 import {
-  getCanonicalDossier,
   listCanonicalDossiers,
   type CanonicalDossierSummary,
 } from "@/services/canonicalDossierService";
@@ -1591,7 +1591,7 @@ export function LegacyCompanyExploration({ onNavigate }: { onNavigate?: (route: 
 }
 
 export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void } = {}) {
-  const { loadCanonicalDossier, setOriginatingCompany, setProjectSelection, originatingCompany } = useDiligence();
+  const { setOriginatingCompany, setProjectSelection, originatingCompany } = useDiligence();
   const initialCompany = COMPANY_PROFILES.some((profile) => profile.key === originatingCompany)
     ? originatingCompany as CompanyKey
     : null;
@@ -1644,8 +1644,9 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
     setSelectedCompany(initialCompany);
   }, [initialCompany]);
 
-  const openDossier = async (slug: string) => {
-    loadCanonicalDossier(await getCanonicalDossier(slug));
+  const openDossier = (slug: string, selection?: ProjectSelectionContext) => {
+    if (selection) setProjectSelection(selection);
+    else if (selectedCompany) setOriginatingCompany(selectedCompany);
     window.location.hash = `analysis/${slug}`;
   };
   const selectCompany = (company: CompanyKey) => {
@@ -1683,8 +1684,8 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
                 <h1 data-testid="home-hero-heading" className="max-w-3xl text-[40px] font-semibold leading-[0.98] tracking-[-0.055em] sm:text-[54px] lg:text-[62px]">
                    Review the evidence behind major AI data-center projects.
                 </h1>
-                <p className="mt-5 max-w-xl text-[15px] leading-6 text-[#c4d0d6] sm:text-[17px]">
-                   Open a PostgreSQL-backed reviewed dossier. Source evidence, modeled economics, and unresolved disclosure gaps remain separate.
+                 <p data-testid="home-product-definition" className="mt-5 max-w-xl text-[15px] leading-6 text-[#c4d0d6] sm:text-[17px]">
+                    SafeLoc searches public sources and returns sourced findings and open questions. Financial modeling uses only inputs you accept.
                 </p>
                 <button
                   data-testid="button-run-stargate"
@@ -1781,7 +1782,7 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
             onBack={() => setSelectedCompany(null)}
             onCurated={(project, company) => {
               const slug = canonicalSlugForProject(project);
-              if (slug) void openDossier(slug);
+              if (slug) openDossier(slug, toProjectSelectionContext(company, project));
             }}
             onResearch={(companyProject, company) => {
               const selection = toProjectSelectionContext(company, companyProject);

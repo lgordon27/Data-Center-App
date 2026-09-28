@@ -7,6 +7,24 @@ const DOSSIERS = [
 ] as const;
 
 test.describe("canonical PostgreSQL dossiers", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.route("**/api/eia/electricity", (route) => route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ diagnostics: { error: "deterministic embedded fallback" } }),
+    }));
+    await page.route("**/api/ercot-queue", (route) => route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ diagnostics: { error: "deterministic embedded fallback" } }),
+    }));
+    await page.route("**/api/directory**", (route) => route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ diagnostics: { error: "directory disabled for this test" } }),
+    }));
+  });
+
   for (const [slug, name, company, sourceTitle] of DOSSIERS) {
     test(`${name} loads in a fresh browser and traverses all four stages`, async ({ page }) => {
       await page.goto("/#analysis");
@@ -64,12 +82,40 @@ test.describe("canonical PostgreSQL dossiers", () => {
     await page.goto("/#analysis");
     const selector = page.getByTestId("canonical-dossier-select");
     await selector.selectOption("stargate-abilene");
+    await expect(page).toHaveURL(/#analysis\/stargate-abilene$/);
     await selector.selectOption("project-kilby");
+    await expect(page).toHaveURL(/#analysis\/project-kilby$/);
+    await page.reload();
+    await expect(page.getByTestId("conference-summary")).toContainText("Project Kilby");
+    await expect(page).toHaveURL(/#analysis\/project-kilby$/);
     await expect(page.getByTestId("market-selected-project-identity")).toContainText("Reeves County, West Texas");
     await expect(page.getByTestId("conference-view-market")).not.toContainText("Public location not disclosed");
-    await selector.selectOption("microsoft-el-mirage");
+    const refreshedSelector = page.getByTestId("canonical-dossier-select");
+    await refreshedSelector.selectOption("microsoft-el-mirage");
     await expect(page.getByTestId("conference-summary")).toContainText("CenterPoint Logistics Park");
     await expect(page.getByTestId("conference-view-market")).not.toContainText("Project Kilby appears in current market context");
+  });
+
+  test("ignores a dossier response after the URL changes to a different case", async ({ page }) => {
+    let stargateResponseReleased = false;
+    await page.route("**/api/dossiers/stargate-abilene", async (route) => {
+      const response = await route.fetch();
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      stargateResponseReleased = true;
+      await route.fulfill({ response });
+    });
+    const stargateRequest = page.waitForRequest((request) =>
+      request.url().endsWith("/api/dossiers/stargate-abilene"),
+    );
+
+    await page.goto("/#analysis/stargate-abilene");
+    await stargateRequest;
+    await page.evaluate(() => { window.location.hash = "analysis/project-kilby"; });
+
+    await expect(page).toHaveURL(/#analysis\/project-kilby$/);
+    await expect(page.getByTestId("conference-summary").locator("h1")).toHaveText("Project Kilby");
+    await expect.poll(() => stargateResponseReleased).toBe(true);
+    await expect(page.getByTestId("conference-summary").locator("h1")).toHaveText("Project Kilby");
   });
 
   test("Stargate canonical navigation renders every financial view without missing driver metadata", async ({ page }) => {

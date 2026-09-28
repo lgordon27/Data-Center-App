@@ -343,7 +343,10 @@ type DiligenceState = {
   setOriginatingCompany: (originatingCompany: CompanyKey | null) => void;
   setProjectSelection: (selection: ProjectSelectionContext | null) => void;
   loadCustomProject: (research: CustomResearchResponse, originatingCompany?: string | null, projectSelection?: ProjectSelectionContext | null) => void;
-  loadCanonicalDossier: (dossier: CanonicalDossierSummary) => void;
+  loadCanonicalDossier: (
+    dossier: CanonicalDossierSummary,
+    selection?: Partial<Pick<ProjectSelectionContext, "company" | "relationshipType">>,
+  ) => void;
   project: ProjectContext;
   originatingCompany: string | null;
   selectedProjectContext: ProjectSelectionContext | null;
@@ -1067,8 +1070,17 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     ));
   }, []);
 
-  const loadCanonicalDossier = useCallback((dossier: CanonicalDossierSummary) => {
-    const company = parseOriginatingCompany(dossier.canonicalData.originatingCompany);
+  const loadCanonicalDossier = useCallback((
+    dossier: CanonicalDossierSummary,
+    selectedContext?: Partial<Pick<ProjectSelectionContext, "company" | "relationshipType">>,
+  ) => {
+    const currentSelection = selectedProjectContextRef.current;
+    const selectedCompany = selectedContext?.company ?? originatingCompany ?? currentSelection?.company;
+    const company = parseOriginatingCompany(selectedCompany) ??
+      parseOriginatingCompany(dossier.canonicalData.originatingCompany);
+    const relationshipType = selectedContext?.relationshipType ??
+      (currentSelection?.company === company ? currentSelection.relationshipType : undefined) ??
+      dossier.canonicalData.relationshipType as ProjectSelectionContext["relationshipType"];
     const research = dossierToResearchResponse(dossier);
     const selection: ProjectSelectionContext | null = company ? {
       company,
@@ -1078,7 +1090,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       location: dossier.canonicalData.identity.location,
       capacityMW: dossier.canonicalData.identity.capacityMW ?? null,
       status: "Canonical dossier",
-      relationshipType: dossier.canonicalData.relationshipType as ProjectSelectionContext["relationshipType"],
+      relationshipType,
       evidenceState: "Source-backed",
       kind: "curated",
       sourceUrl: dossier.canonicalData.evidence[0]?.source.url ?? null,
@@ -1134,7 +1146,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       company,
       selection,
     ));
-  }, []);
+  }, [originatingCompany]);
 
   const saveScenario = (name: string): SaveScenarioResult => {
     const trimmedName = name.trim();

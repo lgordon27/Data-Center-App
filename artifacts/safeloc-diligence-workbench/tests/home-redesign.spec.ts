@@ -2,6 +2,21 @@ import { expect, test } from "@playwright/test";
 
 test.describe("compact conference Home", () => {
   test.beforeEach(async ({ page }) => {
+    await page.route("**/api/eia/electricity", (route) => route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ diagnostics: { error: "deterministic embedded fallback" } }),
+    }));
+    await page.route("**/api/ercot-queue", (route) => route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ diagnostics: { error: "deterministic embedded fallback" } }),
+    }));
+    await page.route("**/api/directory**", (route) => route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ diagnostics: { error: "directory disabled for this test" } }),
+    }));
     await page.goto("/#home");
   });
 
@@ -10,6 +25,9 @@ test.describe("compact conference Home", () => {
       "Review the evidence behind major AI data-center projects.",
     );
     await expect(page.getByText("Growth for Impact Conference · SafeLoc")).toBeVisible();
+    await expect(page.getByTestId("home-product-definition")).toHaveText(
+      "SafeLoc searches public sources and returns sourced findings and open questions. Financial modeling uses only inputs you accept.",
+    );
     await expect(page.getByTestId("button-run-stargate")).toHaveText(/Open Stargate Abilene/i);
     await expect(page.getByText(/Reviewed dossier · evidence as of Sep 30, 2025/i)).toBeVisible();
     await expect(page.getByTestId("home-dossier-stargate-abilene")).toBeVisible();
@@ -91,6 +109,17 @@ test.describe("compact conference Home", () => {
     await expect(page.getByTestId("market-company")).toContainText("Oracle");
     await expect(page.getByTestId("market-exposure-chain")).toBeVisible();
     await expect(page.getByTestId("market-relationship-evidence")).toBeVisible();
+  });
+
+  test("keeps the selected NVIDIA project relationship when opening the reviewed dossier", async ({ page }) => {
+    await page.getByTestId("company-card-nvidia").click();
+    await expect(page.getByTestId("company-exposure-view")).toBeVisible();
+    await page.getByTestId("company-project-open-curated-stargate-nvidia").click();
+
+    await expect(page).toHaveURL(/#analysis\/stargate-abilene$/);
+    await expect(page.getByTestId("conference-summary")).toContainText("Stargate Abilene");
+    await expect(page.getByTestId("market-company")).toHaveText("NVIDIA");
+    await expect(page.getByTestId("market-selected-project-identity")).toContainText("Supplier Relationship");
   });
 
   test("reveals and closes a supported company exploration", async ({ page }) => {

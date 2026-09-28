@@ -249,6 +249,18 @@ test.describe("current-session recovery and reset isolation", () => {
     await expect(page.getByTestId("materiality-classification-prompt")).toBeVisible();
   });
 
+  test("reset removes a pre-reset canonical dossier from the header", async ({ page }) => {
+    await page.goto("/#analysis/project-kilby");
+    await expect(page.getByTestId("conference-summary")).toContainText("Project Kilby");
+
+    await page.getByTestId("button-reset-default").click();
+    await page.getByTestId("button-confirm-reset-default").click();
+
+    await expect(page).toHaveURL(/#analysis$/);
+    await expect(page.getByTestId("conference-summary").locator("h1")).toHaveText("Stargate Abilene");
+    await expect(page.getByTestId("conference-research-status")).not.toHaveText("Canonical evidence review");
+  });
+
   test("captures a sanitized state that is identical after reset and immediate reload", async ({ page }) => {
     await expect(page.getByTestId("eia-loading")).toHaveCount(0);
     const initial = await captureReturnState(page);

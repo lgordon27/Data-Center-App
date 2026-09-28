@@ -14,7 +14,6 @@ import {
   fetchAllCompanyDirectoryFacilities,
   type DirectoryFacility,
 } from "@/services/directoryService";
-import { getCanonicalDossier } from "@/services/canonicalDossierService";
 
 function canonicalSlug(id: string, name: string) {
   if (id === "project-kilby" || id === "microsoft-el-mirage") return id;
@@ -22,7 +21,7 @@ function canonicalSlug(id: string, name: string) {
 }
 
 export function MarketExposure() {
-  const { project, originatingCompany, selectedProjectContext, resetToDefault, setOriginatingCompany, setProjectSelection, loadCanonicalDossier } = useDiligence();
+  const { project, originatingCompany, selectedProjectContext, setOriginatingCompany, setProjectSelection } = useDiligence();
   const [facilities, setFacilities] = useState<DirectoryFacility[]>([]);
   const [directoryStatus, setDirectoryStatus] = useState<"idle" | "loading" | "ready" | "unavailable">("idle");
   const relationship = getConferenceRelationship(project, originatingCompany);
@@ -99,7 +98,7 @@ export function MarketExposure() {
                {directoryStatus === "unavailable" && <p role="status" className="mt-2 text-xs text-[#805000]">Provider records are unavailable; reviewed records remain visible.</p>}
                {selectedProjectContext?.company === relationship.company.key && (
                  <p data-testid="market-selected-project-identity" className="mt-2 break-words text-xs font-semibold text-[#314207]">
-                   Selected facility: {selectedProjectContext.projectName} · {selectedProjectContext.location} · provider ID {selectedProjectContext.providerId ?? "not supplied"}
+                    Selected facility: {selectedProjectContext.projectName} · {selectedProjectContext.location} · selected relationship type {selectedProjectContext.relationshipType} · provider ID {selectedProjectContext.providerId ?? "not supplied"}
                  </p>
                )}
             </div>
@@ -112,10 +111,8 @@ export function MarketExposure() {
                   ? canonicalSlug(selectedProject.id, selectedProject.name)
                   : null;
                 if (dossierSlug) {
-                  void getCanonicalDossier(dossierSlug).then((dossier) => {
-                    loadCanonicalDossier(dossier);
-                    window.location.hash = `analysis/${dossierSlug}`;
-                  });
+                  setProjectSelection(selection);
+                  window.location.hash = `analysis/${dossierSlug}`;
                   return;
                 }
                 setProjectSelection(selection);

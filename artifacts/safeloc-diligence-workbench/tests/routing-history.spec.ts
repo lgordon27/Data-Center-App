@@ -17,6 +17,19 @@ async function expectNoHorizontalOverflow(page: Page) {
 }
 
 test.describe("hash routing and browser history", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.route("**/api/eia/electricity", (route) => route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ diagnostics: { error: "deterministic embedded fallback" } }),
+    }));
+    await page.route("**/api/ercot-queue", (route) => route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ diagnostics: { error: "deterministic embedded fallback" } }),
+    }));
+  });
+
   test("supports the current direct routes and normalizes invalid hashes", async ({ page }) => {
     for (const view of ["market", "reality", "transmission", "advisor"] as const) {
       await openAnalysisView(page, view);

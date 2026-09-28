@@ -99,6 +99,8 @@ function AppShell() {
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLElement>(null);
   const menuWasOpen = useRef(false);
+  const previousRoute = useRef(route);
+  const previousDossierSlug = useRef(diligence.project.canonicalDossier?.slug ?? null);
 
   useEffect(() => {
     const returnToCurated = () => {
@@ -123,18 +125,24 @@ function AppShell() {
       const next = routeFromHash(window.location.hash);
       if (!next) {
         window.history.replaceState(null, "", "#home");
+        setPendingDossierSlug(null);
         setRoute("home");
       } else {
         if (legacySectionRoutes[rawRoute]) {
           window.history.replaceState(null, "", "#analysis");
+          setPendingDossierSlug(null);
           setPendingSection(legacySectionRoutes[rawRoute]);
           setPendingTourSection(null);
         } else if (next === "analysis" && rawTourSection) {
           setPendingDossierSlug(rawTourSection);
-        } else if (next === "how-it-works" && rawTourSection) {
-          setPendingTourSection(rawTourSection);
-      } else {
-        setPendingTourSection(null);
+          setPendingTourSection(null);
+        } else {
+          setPendingDossierSlug(null);
+          if (next === "how-it-works" && rawTourSection) {
+            setPendingTourSection(rawTourSection);
+          } else {
+            setPendingTourSection(null);
+          }
         }
         setRoute(next);
       }
@@ -149,13 +157,28 @@ function AppShell() {
   useEffect(() => {
     if (!pendingDossierSlug) return;
     let active = true;
-    void getCanonicalDossier(pendingDossierSlug).then((dossier) => {
-      if (active) diligence.loadCanonicalDossier(dossier);
+    const requestedSlug = pendingDossierSlug;
+    void getCanonicalDossier(requestedSlug).then((dossier) => {
+      const routeSlug = window.location.hash.replace(/^#analysis\/?/, "");
+      if (active && routeSlug === requestedSlug) diligence.loadCanonicalDossier(dossier);
     }).finally(() => {
       if (active) setPendingDossierSlug(null);
     });
     return () => { active = false; };
   }, [pendingDossierSlug, diligence.loadCanonicalDossier]);
+
+  useEffect(() => {
+    const slug = diligence.project.canonicalDossier?.slug;
+    const routeChanged = previousRoute.current !== route;
+    const dossierChanged = previousDossierSlug.current !== (slug ?? null);
+    previousRoute.current = route;
+    previousDossierSlug.current = slug ?? null;
+    if (route !== "analysis" || pendingDossierSlug || pendingSection || !slug || (!routeChanged && !dossierChanged)) return;
+    const canonicalHash = `#analysis/${slug}`;
+    if (window.location.hash !== canonicalHash) {
+      window.history.replaceState(null, "", canonicalHash);
+    }
+  }, [route, pendingDossierSlug, pendingSection, diligence.project.canonicalDossier?.slug]);
 
   useEffect(() => {
     document.title = route === "home"
@@ -229,6 +252,7 @@ function AppShell() {
     diligence.resetToDefault("Oracle");
     setAnalysisEpoch((value) => value + 1);
     setPendingSection(null);
+    setPendingDossierSlug(null);
     setResetOpen(false);
     go("analysis");
   };

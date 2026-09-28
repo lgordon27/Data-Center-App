@@ -15,6 +15,14 @@ import type { ResearchRunAudit } from "./researchAuditRepository.js";
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
 const artifactDir = path.resolve(serverDir, "..");
+const researchAuditRepositoryAdapter = {
+  startRun: async (record: ResearchRunAudit) =>
+    (await getResearchAuditRepository()).startRun(record),
+  finishRun: async (record: ResearchRunAudit) =>
+    (await getResearchAuditRepository()).finishRun(record),
+  save: async (record: ResearchRunAudit) =>
+    (await getResearchAuditRepository()).save(record),
+};
 
 function readRuntimeConfig() {
   const rawPort = process.env.PORT;
@@ -70,8 +78,7 @@ export async function createApp(): Promise<Express> {
   });
   app.all("/api/research-project", async (request: Request, response: Response) => {
     await handleResearchProjectRequest(request, response, {
-      auditRepository: { save: async (record: ResearchRunAudit) =>
-        (await getResearchAuditRepository()).save(record) },
+      auditRepository: researchAuditRepositoryAdapter,
     });
   });
   app.all("/api/ercot-queue", async (request: Request, response: Response) => {

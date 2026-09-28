@@ -7,5 +7,6 @@ export const researchRunAudits = pgTable("research_run_audits", {
   researchStatus: text("research_status").notNull(),
   projectSummary: jsonb("project_summary").notNull(),
   audit: jsonb("audit").notNull(),
-  finishedAt: timestamp("finished_at", { withTimezone: true }).notNull().defaultNow(),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
 });

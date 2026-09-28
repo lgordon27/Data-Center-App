@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { EventEmitter } from "node:events";
 import test from "node:test";
 import { mkdtemp, readFile } from "node:fs/promises";
 import os from "node:os";
@@ -594,16 +596,22 @@ test("opens a public DataBank-style redirect with validated offline DNS and tran
     },
     transportImpl: async (url, _init, { address }) => {
       transportCalls.push({ url, address });
+      const withDnsSummary = (response) => {
+        Object.defineProperty(response, "dnsValidationTelemetry", {
+          value: address.validationTelemetry,
+        });
+        return response;
+      };
       if (url === initialUrl) {
-        return new Response(null, {
+        return withDnsSummary(new Response(null, {
           status: 302,
           headers: { location: finalUrl },
-        });
+        }));
       }
-      return new Response(
+      return withDnsSummary(new Response(
         "<html><body><h1>DataBank announces a 480 MW data center campus in South Dallas</h1><p>The public announcement describes the planned campus.</p></body></html>",
         { status: 200, headers: { "content-type": "text/html" } },
-      );
+      ));
     },
   });
 
@@ -620,6 +628,11 @@ test("opens a public DataBank-style redirect with validated offline DNS and tran
   assert.deepEqual(result.transportDiagnostic.redirectChain, [
     finalUrl,
   ]);
+  assert.ok(result.redirectHops.some((hop) => hop.status === 302));
+  assert.equal(result.fetchMetrics.responseStatus, 200);
+  assert.equal(result.fetchMetrics.contentType, "text/html");
+  assert.ok(result.fetchMetrics.bytesRead > 0);
+  assert.equal(result.fetchMetrics.dnsValidation.addressFamilyCounts.ipv4, 1);
 });
 
 test("blocks private and mixed-address redirect destinations before offline transport access", async () => {
@@ -1965,6 +1978,9 @@ test("keeps identity-discovery receipts in the audit without making identity met
     reusedFromCanonicalUrl: null,
     accessState: "accessible",
     accessOutcome: "retrieved",
+    redirectHops: [],
+    fetchMetrics: null,
+    transportDiagnostic: null,
     extractionMethod: null,
     extractionOutcome: null,
     contentHash: null,
@@ -4459,4 +4475,225 @@ test("HTTP client abort cancels a stalled document body and suppresses the respo
   assert.equal(aborted, true);
   assert.equal(bodyCancelled, true);
   assert.equal(response.body, "");
+});
+
+test("research audits retain ordered claim gates, provider retries, redirects, and fetch metrics", () => {
+  const url = "https://records.example.gov/grid/permit";
+  const passage = "The project requested an 80 MW grid connection in 2025.";
+  const source = {
+    url,
+    canonicalUrl: url,
+    originalUrl: url,
+    categoryIds: ["grid"],
+    sourceChannel: "public-records",
+    accessOutcome: {
+      state: "accessible",
+      reason: "retrieved",
+      passage,
+      redirectHops: [{
+        status: 302,
+        elapsedMs: 4,
+        dnsValidation: { answerCount: 2, addressFamilyCounts: { ipv4: 1, ipv6: 1, other: 0 }, rejectingRules: [] },
+      }],
+      fetchMetrics: {
+        elapsedMs: 17,
+        responseStatus: 200,
+        contentType: "text/html",
+        bytesRead: 93,
+        dnsValidation: { answerCount: 2, addressFamilyCounts: { ipv4: 1, ipv6: 1, other: 0 }, rejectingRules: [] },
+      },
+    },
+  };
+  const audit = buildResearchAudit({
+    project: { name: "Northstar Compute", location: "Texas" },
+    coverage: {
+      deadlineAt: "2026-09-28T12:01:15.000Z",
+      providerRequestCount: 1,
+      providerAttempts: [{
+        provider: "openai",
+        model: "gpt-4o",
+        requestState: "failed",
+        issuedAt: "2026-09-28T12:00:01.000Z",
+        finishedAt: "2026-09-28T12:00:02.000Z",
+        elapsedMs: 1_000,
+        status: 429,
+        retryAfter: "1s",
+        retryCount: 1,
+        inFlightAnalysisCountAtIssue: 1,
+        providerDiagnostic: { status: 429, errorType: "rate_limit_exceeded" },
+      }],
+      sourceAttemptRecords: [
+        { ...source, discoveryCandidateRank: 3 },
+        {
+          url: "https://records.example.gov/grid/second-permit",
+          discoveryCandidateRank: 4,
+          accessOutcome: { state: "not-attempted", reason: "physical-open-budget" },
+        },
+      ],
+    },
+    sources: [source],
+    evidence: [{
+      id: "electricity_cost",
+      sourceUrl: url,
+      claimPassage: passage,
+      facilityScope: "unknown",
+      phaseScope: "unknown",
+      claimTimePeriod: null,
+      eligibleForModel: false,
+      quarantineReasons: ["Exact facility phase is unresolved."],
+    }],
+    startedAt: "2026-09-28T12:00:00.000Z",
+    finishedAt: "2026-09-28T12:00:05.000Z",
+    runCorrelationId: "d760a1d5-00d8-4b65-a561-0d214f947070",
+  });
+
+  assert.equal(audit.deadlineAt, "2026-09-28T12:01:15.000Z");
+  assert.equal(audit.providerRequestBudget.attempts[0].status, 429);
+  assert.equal(audit.providerRequestBudget.attempts[0].retryAfter, "1s");
+  assert.equal(audit.providerRequestBudget.attempts[0].retryCount, 1);
+  const sourceAttempt = audit.sourceAttempts.find((attempt) => attempt.discoveryRank === 3);
+  assert.equal(sourceAttempt.fetchMetrics.responseStatus, 200);
+  assert.equal(sourceAttempt.fetchMetrics.bytesRead, 93);
+  assert.equal(sourceAttempt.redirectHops[0].status, 302);
+  assert.equal(sourceAttempt.redirectHops[0].dnsValidation.addressFamilyCounts.ipv6, 1);
+  const skippedAttempt = audit.sourceAttempts.find((attempt) => attempt.discoveryRank === 4);
+  assert.equal(skippedAttempt.state, "not-attempted");
+  assert.equal(skippedAttempt.reason, "physical-open-budget");
+  const review = audit.eligibilityReview.claims[0];
+  assert.equal(review.sourcePassage, passage);
+  assert.equal(review.sourcePassageHash, createHash("sha256").update(passage).digest("hex"));
+  assert.deepEqual(review.gates.slice(0, 3).map((gate) => gate.id), [
+    "source-passage-retained",
+    "claim-to-source-mapping",
+    "exact-project-identity",
+  ]);
+  assert.equal(review.firstFailedGate, review.gates.find((gate) => !gate.passed).id);
+});
+
+test("research refuses provider work when the audit start insert fails", async () => {
+  const response = responseRecorder();
+  let providerCalls = 0;
+  await handleResearchProjectRequest(request({
+    name: "Audit Gate Fixture",
+    location: "Texas",
+    forceRefresh: true,
+  }), response, {
+    apiKey: "offline-fixture-key",
+    googleApiKey: null,
+    googleDiscoveryImpl: async () => {
+      providerCalls += 1;
+      throw new Error("The provider must not be called.");
+    },
+    fetchImpl: async () => {
+      providerCalls += 1;
+      throw new Error("Network access must not be attempted.");
+    },
+    cache: createResearchProjectCache(),
+    auditRepository: {
+      async startRun() { throw new Error("offline audit storage failure"); },
+      async finishRun() { throw new Error("No started row should be finished."); },
+    },
+  });
+
+  assert.equal(response.statusCode, 503);
+  assert.equal(response.json().errorType, "audit-storage");
+  assert.match(response.json().error, /No research provider request was issued/);
+  assert.equal(providerCalls, 0);
+});
+
+test("research audit finalization waits for the response finish event", async () => {
+  const response = Object.assign(new EventEmitter(), responseRecorder());
+  response.writableEnded = false;
+  response.writableFinished = false;
+  let markEnded;
+  const ended = new Promise((resolve) => { markEnded = resolve; });
+  response.end = function end(body) {
+    this.body = body ?? "";
+    this.writableEnded = true;
+    markEnded();
+  };
+  let startedRecord;
+  let finishedRecord;
+  let markFinished;
+  const finished = new Promise((resolve) => { markFinished = resolve; });
+  const pending = handleResearchProjectRequest(request({
+    name: "Audit Lifecycle Fixture",
+    location: "Texas",
+    forceRefresh: true,
+  }), response, {
+    apiKey: null,
+    googleApiKey: null,
+    fetchImpl: async () => { throw new Error("No provider request is expected."); },
+    cache: createResearchProjectCache(),
+    auditRepository: {
+      async startRun(record) { startedRecord = record; },
+      async finishRun(record) {
+        assert.equal(response.writableFinished, true);
+        finishedRecord = record;
+        markFinished(record);
+      },
+    },
+  });
+
+  await ended;
+  assert.ok(startedRecord);
+  assert.equal(startedRecord.researchStatus, "running");
+  assert.ok(startedRecord.audit.deadlineAt);
+  assert.ok(startedRecord.audit.runtime.buildId);
+  assert.ok(startedRecord.audit.promptVersions.projectResearch);
+  assert.equal(finishedRecord, undefined);
+  response.writableFinished = true;
+  response.emit("finish");
+  await pending;
+  const saved = await finished;
+  assert.equal(saved.runId, startedRecord.runId);
+  assert.equal(saved.startedAt, startedRecord.startedAt);
+  assert.equal(saved.audit.responseStartedAt !== null, true);
+  assert.equal(saved.audit.responseFinishedAt !== null, true);
+});
+
+test("a client disconnect is captured and cancels an in-flight offline provider fixture", async () => {
+  const req = Object.assign(new EventEmitter(), request({
+    name: "Audit Disconnect Fixture",
+    location: "Texas",
+    forceRefresh: true,
+  }));
+  const response = Object.assign(new EventEmitter(), responseRecorder());
+  response.writableFinished = false;
+  response.destroyed = false;
+  let markProviderStarted;
+  const providerStarted = new Promise((resolve) => { markProviderStarted = resolve; });
+  let finishedRecord;
+  let markFinished;
+  const finished = new Promise((resolve) => { markFinished = resolve; });
+  const pending = handleResearchProjectRequest(req, response, {
+    apiKey: "offline-fixture-key",
+    googleApiKey: null,
+    googleDiscoveryImpl: async ({ signal }) => {
+      markProviderStarted();
+      return new Promise((_, reject) => {
+        signal.addEventListener("abort", () => reject(new Error("offline fixture aborted")), { once: true });
+      });
+    },
+    fetchImpl: async () => { throw new Error("No network request is expected."); },
+    cache: createResearchProjectCache(),
+    auditRepository: {
+      async startRun() {},
+      async finishRun(record) {
+        finishedRecord = record;
+        markFinished(record);
+      },
+    },
+  });
+
+  await providerStarted;
+  response.destroyed = true;
+  response.emit("close");
+  await pending;
+  const saved = await finished;
+  assert.equal(saved.researchStatus, "cancelled");
+  assert.equal(saved.audit.browserDisconnectedBeforeFinish, true);
+  assert.ok(saved.audit.clientDisconnectedAt);
+  assert.equal(saved.audit.responseStartedAt, null);
+  assert.equal(finishedRecord.runId, saved.runId);
 });

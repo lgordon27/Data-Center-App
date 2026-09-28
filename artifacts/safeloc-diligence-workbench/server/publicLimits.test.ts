@@ -85,7 +85,11 @@ test("daily spend reservations serialize against shared totals and settle provid
         return { rowCount: 1 };
       }
       row.reserved -= values[1] as number;
-      row.spent += values[2] as number;
+      if (sql.includes("spent_micro_usd = spent_micro_usd + $3")) {
+        row.spent += values[2] as number;
+      } else if (sql.includes("spent_micro_usd = spent_micro_usd + $2")) {
+        row.spent += values[1] as number;
+      }
       return { rowCount: 1 };
     },
   } as unknown as Pool;
@@ -106,8 +110,18 @@ test("daily spend reservations serialize against shared totals and settle provid
   assert.deepEqual(days.get("2026-09-28"), { spent: 3, reserved: 0 });
   assert.equal((await guard2.reserve(call)).allowed, false);
   current = new Date("2026-09-29T00:00:00Z");
-  assert.equal((await guard2.reserve(call)).allowed, true);
+  const nextDay = await guard2.reserve(call);
+  assert.equal(nextDay.allowed, true);
   assert.deepEqual(days.get("2026-09-29"), { spent: 0, reserved: 4 });
+  if (!nextDay.allowed) throw new Error("Expected next-day reservation");
+  await guard2.release(nextDay.reservation);
+  assert.deepEqual(days.get("2026-09-29"), { spent: 0, reserved: 0 });
+  const retried = await guard1.reserve(call);
+  assert.equal(retried.allowed, true);
+  if (!retried.allowed) throw new Error("Expected reservation after release");
+  await guard1.recordReserved(retried.reservation);
+  assert.deepEqual(days.get("2026-09-29"), { spent: 4, reserved: 0 });
+  assert.equal((await guard2.reserve(call)).allowed, false);
   assert.throws(() => createDailySpendGuard(pool, { capUsd: -1, prices: config.prices }));
   assert.throws(() => evidenceSpendConfig({ AI_EVIDENCE_DAILY_CAP_USD: "NaN" }));
   assert.throws(() => evidenceSpendConfig({ AI_EVIDENCE_OUTPUT_USD_PER_MILLION: "-1" }));

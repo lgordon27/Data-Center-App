@@ -81,6 +81,8 @@ export async function handleAnalyzeEvidenceRequest(
     fetchImpl = fetch,
     rateLimiter,
     spendGuard,
+    createAbortController = () => new AbortController(),
+    logger = console,
   } = {},
 ) {
   if (req.method !== "POST") {
@@ -139,10 +141,38 @@ export async function handleAnalyzeEvidenceRequest(
     sendJson(res, 503, { error: "AI analysis unavailable. Please classify manually." });
     return;
   }
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let timeout;
+  const logSettlementFailure = (action) => {
+    try {
+      logger?.error?.(`AI evidence spend ${action} failed.`);
+    } catch {
+      // Logging must not replace the provider response either.
+    }
+  };
+  const settleSafely = async (action, settle) => {
+    try {
+      await settle();
+    } catch {
+      // Keep a failed reservation in the daily reserved total: it is the safe
+      // outcome when the database cannot confirm a settlement.
+      logSettlementFailure(action);
+    }
+  };
+  const clearTimeoutSafely = () => {
+    if (timeout === undefined) return;
+    try {
+      clearTimeout(timeout);
+    } catch {
+      // Do not change the normal response for a local timer cleanup failure.
+    }
+  };
+
+  let controller;
+  let requestInit;
   try {
-    const response = await fetchImpl(OPENAI_CHAT_COMPLETIONS_URL, {
+    controller = createAbortController();
+    timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    requestInit = {
       method: "POST",
       headers: {
         accept: "application/json",
@@ -156,52 +186,83 @@ export async function handleAnalyzeEvidenceRequest(
         messages,
       }),
       signal: controller.signal,
-    });
+    };
+  } catch {
+    clearTimeoutSafely();
+    await settleSafely("release", () => spendGuard.release(reservation));
+    sendJson(res, 502, { error: "AI analysis upstream request failed." });
+    return;
+  }
 
-    const rawText = await response.text();
-    let body;
-    try {
-      body = JSON.parse(rawText);
-    } catch {
-      body = null;
-    }
-
-    if (!response.ok) {
-      // Do not proxy upstream error text: providers may include sensitive
-      // request metadata, credential hints, or implementation details.
-      sendJson(res, response.status, { error: "AI analysis unavailable. Please classify manually." });
-      return;
-    }
-
-    // Settle even malformed assessments: a successful provider response can still be billable.
-    await spendGuard.record(reservation, body?.usage);
-    const content = body?.choices?.[0]?.message?.content;
-    if (typeof content !== "string") {
-      sendJson(res, 502, { error: "AI analysis returned an invalid structured response." });
-      return;
-    }
-
-    let assessment;
-    try {
-      assessment = JSON.parse(content);
-    } catch {
-      sendJson(res, 502, { error: "AI analysis returned an invalid structured response." });
-      return;
-    }
-    if (!isRecord(assessment)) {
-      sendJson(res, 502, { error: "AI analysis returned an invalid structured response." });
-      return;
-    }
-    sendJson(res, 200, assessment);
+  let providerResponse;
+  try {
+    providerResponse = await fetchImpl(OPENAI_CHAT_COMPLETIONS_URL, requestInit);
   } catch (error) {
+    clearTimeoutSafely();
+    await settleSafely("full reservation charge", () => spendGuard.recordReserved(reservation));
     if (error instanceof Error && error.name === "AbortError") {
       sendJson(res, 504, { error: "AI analysis upstream request timed out." });
     } else {
       sendJson(res, 502, { error: "AI analysis upstream request failed." });
     }
-  } finally {
-    clearTimeout(timeout);
+    return;
   }
+  clearTimeoutSafely();
+
+  if (!providerResponse || typeof providerResponse.ok !== "boolean") {
+    await settleSafely("full reservation charge", () => spendGuard.recordReserved(reservation));
+    sendJson(res, 502, { error: "AI analysis upstream request failed." });
+    return;
+  }
+  if (!providerResponse.ok) {
+    // A returned HTTP error is an explicit provider rejection, so its
+    // reservation can be released. Never forward provider error details.
+    await settleSafely("release", () => spendGuard.release(reservation));
+    sendJson(res, providerResponse.status, { error: "AI analysis unavailable. Please classify manually." });
+    return;
+  }
+
+  let body;
+  try {
+    const rawText = await providerResponse.text();
+    try {
+      body = JSON.parse(rawText);
+    } catch {
+      body = null;
+    }
+  } catch {
+    await settleSafely("full reservation charge", () => spendGuard.recordReserved(reservation));
+    sendJson(res, 502, { error: "AI analysis returned an invalid structured response." });
+    return;
+  }
+
+  const usage = body?.usage;
+  if (isRecord(usage)
+    && Number.isSafeInteger(usage.prompt_tokens) && usage.prompt_tokens >= 0
+    && Number.isSafeInteger(usage.completion_tokens) && usage.completion_tokens >= 0) {
+    await settleSafely("usage recording", () => spendGuard.record(reservation, usage));
+  } else {
+    await settleSafely("full reservation charge", () => spendGuard.recordReserved(reservation));
+  }
+
+  const content = body?.choices?.[0]?.message?.content;
+  if (typeof content !== "string") {
+    sendJson(res, 502, { error: "AI analysis returned an invalid structured response." });
+    return;
+  }
+
+  let assessment;
+  try {
+    assessment = JSON.parse(content);
+  } catch {
+    sendJson(res, 502, { error: "AI analysis returned an invalid structured response." });
+    return;
+  }
+  if (!isRecord(assessment)) {
+    sendJson(res, 502, { error: "AI analysis returned an invalid structured response." });
+    return;
+  }
+  sendJson(res, 200, assessment);
 }
 
 export {

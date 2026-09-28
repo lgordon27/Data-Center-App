@@ -94,6 +94,10 @@ test.describe("compact conference Home", () => {
     await customTrigger.click();
     const dialog = page.getByTestId("custom-project-dialog");
     await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText(
+      "SafeLoc researches public sources and returns sourced findings and open questions. Financial modeling uses only inputs you accept.",
+    );
+    await expect(dialog).not.toContainText(/16 (evidence|modeled) inputs|16 evidence variables/i);
     await expect(dialog.getByText(/browser's local session/i)).toBeVisible();
     await expect(dialog.getByText(/local-server registry/i)).toBeVisible();
     await page.getByTestId("button-close-custom-project").click();

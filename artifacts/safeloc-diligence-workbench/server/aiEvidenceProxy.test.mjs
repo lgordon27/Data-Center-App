@@ -32,8 +32,39 @@ const allowedControls = {
     record: async (_reservation, usage) => {
       assert.deepEqual(usage, { prompt_tokens: 100, completion_tokens: 20 });
     },
+    recordReserved: async () => {},
+    release: async () => {},
   },
 };
+
+function createMemorySpendGuard(cap = 1, reservationAmount = 1) {
+  let spent = 0;
+  let reserved = 0;
+  return {
+    guard: {
+      reserve: async () => {
+        if (spent + reserved + reservationAmount > cap) return { allowed: false };
+        reserved += reservationAmount;
+        return {
+          allowed: true,
+          reservation: { day: "2026-09-28", amount: reservationAmount, model: AI_EVIDENCE_MODEL },
+        };
+      },
+      record: async (reservation, usage) => {
+        reserved -= reservation.amount;
+        spent += Math.ceil((usage.prompt_tokens + usage.completion_tokens) / 100);
+      },
+      recordReserved: async (reservation) => {
+        reserved -= reservation.amount;
+        spent += reservation.amount;
+      },
+      release: async (reservation) => {
+        reserved -= reservation.amount;
+      },
+    },
+    totals: () => ({ spent, reserved }),
+  };
+}
 
 function responseRecorder() {
   const headers = {};
@@ -158,8 +189,10 @@ test("keeps custom-project assessments separate from the curated Stargate record
 
 test("preserves upstream status without leaking provider error details", async () => {
   const response = responseRecorder();
+  const accounting = createMemorySpendGuard();
   await handleAnalyzeEvidenceRequest(requestWithBody(evidence), response, {
     ...allowedControls,
+    spendGuard: accounting.guard,
     apiKey: "server-secret-for-test",
     fetchImpl: async () => new Response(JSON.stringify({
       error: { message: "provider-internal detail server-secret-for-test" },
@@ -172,6 +205,139 @@ test("preserves upstream status without leaking provider error details", async (
   });
   assert.doesNotMatch(response.body, /server-secret-for-test/);
   assert.doesNotMatch(response.body, /provider-internal detail/);
+  assert.deepEqual(accounting.totals(), { spent: 0, reserved: 0 });
+});
+
+test("releases explicit provider errors so repeated rejections do not exhaust the spend cap", async () => {
+  const accounting = createMemorySpendGuard(1);
+  let calls = 0;
+  for (let index = 0; index < 4; index += 1) {
+    const response = responseRecorder();
+    await handleAnalyzeEvidenceRequest(requestWithBody(evidence), response, {
+      ...allowedControls,
+      spendGuard: accounting.guard,
+      apiKey: "server-secret-for-test",
+      fetchImpl: async () => {
+        calls += 1;
+        return new Response("provider rejection", { status: 429 });
+      },
+    });
+    assert.equal(response.statusCode, 429);
+  }
+  assert.equal(calls, 4);
+  assert.deepEqual(accounting.totals(), { spent: 0, reserved: 0 });
+});
+
+test("releases reservations when local request setup fails before invoking the provider", async () => {
+  const accounting = createMemorySpendGuard();
+  const response = responseRecorder();
+  let calls = 0;
+  await handleAnalyzeEvidenceRequest(requestWithBody(evidence), response, {
+    ...allowedControls,
+    spendGuard: accounting.guard,
+    apiKey: "server-secret-for-test",
+    createAbortController: () => { throw new Error("private setup detail"); },
+    fetchImpl: async () => {
+      calls += 1;
+      throw new Error("must not be invoked");
+    },
+  });
+  assert.equal(response.statusCode, 502);
+  assert.equal(calls, 0);
+  assert.deepEqual(accounting.totals(), { spent: 0, reserved: 0 });
+});
+
+test("charges the full reservation when the provider request outcome is ambiguous", async () => {
+  const accounting = createMemorySpendGuard();
+  const response = responseRecorder();
+  await handleAnalyzeEvidenceRequest(requestWithBody(evidence), response, {
+    ...allowedControls,
+    spendGuard: accounting.guard,
+    apiKey: "server-secret-for-test",
+    fetchImpl: async () => { throw new Error("network failure"); },
+  });
+  assert.equal(response.statusCode, 502);
+  assert.deepEqual(accounting.totals(), { spent: 1, reserved: 0 });
+});
+
+test("charges the full reservation when a successful response has no usable usage", async () => {
+  const accounting = createMemorySpendGuard();
+  const response = responseRecorder();
+  await handleAnalyzeEvidenceRequest(requestWithBody(evidence), response, {
+    ...allowedControls,
+    spendGuard: accounting.guard,
+    apiKey: "server-secret-for-test",
+    fetchImpl: async () => new Response(JSON.stringify({
+      choices: [{ message: { content: JSON.stringify({
+        classification: "Missing Evidence",
+        reasoning: "The citation does not establish the supplied value.",
+      }) } }],
+    }), { status: 200 }),
+  });
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(accounting.totals(), { spent: 1, reserved: 0 });
+});
+
+test("records actual usage on success and safely logs settlement failures", async () => {
+  const accounting = createMemorySpendGuard(10, 10);
+  const response = responseRecorder();
+  let logMessage = "";
+  await handleAnalyzeEvidenceRequest(requestWithBody(evidence), response, {
+    ...allowedControls,
+    spendGuard: accounting.guard,
+    apiKey: "server-secret-for-test",
+    logger: { error: (message) => { logMessage += message; } },
+    fetchImpl: async () => new Response(JSON.stringify({
+      usage: { prompt_tokens: 100, completion_tokens: 20 },
+      choices: [{ message: { content: JSON.stringify({
+        classification: "Missing Evidence",
+        reasoning: "The citation does not establish the supplied value.",
+      }) } }],
+    }), { status: 200 }),
+  });
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(accounting.totals(), { spent: 2, reserved: 0 });
+  assert.equal(logMessage, "");
+
+  const failedRecord = createMemorySpendGuard();
+  const recordResponse = responseRecorder();
+  const safeLogs = [];
+  await handleAnalyzeEvidenceRequest(requestWithBody(evidence), recordResponse, {
+    ...allowedControls,
+    spendGuard: {
+      ...failedRecord.guard,
+      record: async () => { throw new Error("provider payload and secret"); },
+    },
+    apiKey: "server-secret-for-test",
+    logger: { error: (message) => safeLogs.push(message) },
+    fetchImpl: async () => new Response(JSON.stringify({
+      usage: { prompt_tokens: 100, completion_tokens: 20 },
+      choices: [{ message: { content: JSON.stringify({
+        classification: "Missing Evidence",
+        reasoning: "The citation does not establish the supplied value.",
+      }) } }],
+    }), { status: 200 }),
+  });
+  assert.equal(recordResponse.statusCode, 200);
+  assert.deepEqual(failedRecord.totals(), { spent: 0, reserved: 1 });
+  assert.deepEqual(safeLogs, ["AI evidence spend usage recording failed."]);
+
+  const failedRelease = createMemorySpendGuard();
+  const errorResponse = responseRecorder();
+  await handleAnalyzeEvidenceRequest(requestWithBody(evidence), errorResponse, {
+    ...allowedControls,
+    spendGuard: {
+      ...failedRelease.guard,
+      release: async () => { throw new Error("provider error detail and secret"); },
+    },
+    apiKey: "server-secret-for-test",
+    logger: { error: (message) => safeLogs.push(message) },
+    fetchImpl: async () => new Response("provider error detail", { status: 503 }),
+  });
+  assert.equal(errorResponse.statusCode, 503);
+  assert.deepEqual(failedRelease.totals(), { spent: 0, reserved: 1 });
+  assert.equal(safeLogs.at(-1), "AI evidence spend release failed.");
+  assert.doesNotMatch(safeLogs.join(" "), /provider|secret|payload/i);
 });
 
 test("returns safe limit and capacity responses without paid calls", async () => {

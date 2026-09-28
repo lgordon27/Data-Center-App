@@ -92,6 +92,19 @@ export function createDailySpendGuard(pool: Pick<Pool, "query">, config: SpendCo
     }
   }
   const now = config.now ?? (() => new Date());
+  async function settleReservation(
+    reservation: { day: string; amount: number; model: string },
+    spentAmount: number,
+  ) {
+    const result = await pool.query(
+      `UPDATE public_provider_spend
+       SET reserved_micro_usd = reserved_micro_usd - $2,
+           spent_micro_usd = spent_micro_usd + $3
+       WHERE spend_day = $1 AND reserved_micro_usd >= $2`,
+      [reservation.day, reservation.amount, spentAmount],
+    );
+    if (result.rowCount !== 1) throw new Error("Provider spend reservation was not found.");
+  }
   return {
     async reserve({ model, inputTokenCeiling, outputTokenCeiling }: {
       model: string; inputTokenCeiling: number; outputTokenCeiling: number;
@@ -118,12 +131,17 @@ export function createDailySpendGuard(pool: Pick<Pool, "query">, config: SpendCo
       const price = config.prices[reservation.model];
       if (!price) throw new Error("No price configured for model.");
       const actual = tokensPrice(usage.prompt_tokens, usage.completion_tokens, price);
+      await settleReservation(reservation, actual);
+    },
+    async recordReserved(reservation: { day: string; amount: number; model: string }) {
+      await settleReservation(reservation, reservation.amount);
+    },
+    async release(reservation: { day: string; amount: number; model: string }) {
       const result = await pool.query(
         `UPDATE public_provider_spend
-         SET reserved_micro_usd = reserved_micro_usd - $2,
-             spent_micro_usd = spent_micro_usd + $3
+         SET reserved_micro_usd = reserved_micro_usd - $2
          WHERE spend_day = $1 AND reserved_micro_usd >= $2`,
-        [reservation.day, reservation.amount, actual],
+        [reservation.day, reservation.amount],
       );
       if (result.rowCount !== 1) throw new Error("Provider spend reservation was not found.");
     },

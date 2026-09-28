@@ -231,7 +231,7 @@ export function CustomProjectForm({ onStart, onSuccess, onResearchError, compact
       {!compact && submitButton}
       {compact && (
         <p id="home-analysis-subtitle" className="text-[10px] leading-4 text-[#9dafb8]">
-          AI researches public sources and classifies 16 evidence variables.
+          AI researches public sources and returns sourced findings and open questions. Financial modeling uses only inputs you accept.
         </p>
       )}
       {error && (
@@ -350,7 +350,7 @@ export function CustomProjectDialog({
           <div>
             <div className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-[#607500]">New analysis / AI research</div>
             <h2 id="custom-project-title" className="mt-2 text-[25px] font-semibold tracking-[-0.04em] text-[#122232]">Analyze a different project</h2>
-            <p className="mt-2 text-[12px] leading-5 text-[#63717a]">SafeLoc will research a high-level public-source summary and return the same 16 modeled evidence inputs used by the workbench.</p>
+            <p className="mt-2 text-[12px] leading-5 text-[#63717a]">SafeLoc researches public sources and returns sourced findings and open questions. Financial modeling uses only inputs you accept.</p>
           </div>
           <button data-testid="button-close-custom-project" type="button" onClick={onClose} autoFocus className="rounded-md px-2 py-1 text-xl leading-none text-[#52616b] hover:bg-[#e7ecef]" aria-label="Close custom project form">×</button>
         </div>

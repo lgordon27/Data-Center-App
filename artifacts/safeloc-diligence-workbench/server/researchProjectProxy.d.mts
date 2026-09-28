@@ -74,6 +74,14 @@ export declare function handleResearchProjectRequest(
     rateLimiter?: ReturnType<typeof createResearchProjectRateLimiter>;
     cache?: unknown;
     registry?: unknown;
+    auditRepository?: { save(record: {
+      runId: string;
+      projectName: string;
+      projectLocation: string;
+      researchStatus: string;
+      projectSummary: Record<string, unknown>;
+      audit: Record<string, unknown>;
+    }): Promise<void> };
     categoryIds?: string[] | null;
     researchTimeoutMs?: number;
     documentTimeoutMs?: number;

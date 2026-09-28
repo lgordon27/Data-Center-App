@@ -156,7 +156,8 @@ async function waitForResponse(url: string, child: ReturnType<typeof spawn>) {
 }
 
 async function waitForPreviewResponse(url: string, child: ReturnType<typeof spawn>, output: string[]) {
-  for (let attempt = 0; attempt < 40; attempt += 1) {
+  // Managed proxy registration may take longer than the Vite process itself.
+  for (let attempt = 0; attempt < 120; attempt += 1) {
     try {
       return await fetch(url);
     } catch (error) {

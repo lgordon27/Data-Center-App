@@ -290,8 +290,8 @@ function compressedTextPdf(text) {
   return Buffer.concat(chunks);
 }
 
-test("uses a 90-second server research budget", () => {
-  assert.equal(RESEARCH_PROJECT_TIMEOUT_MS, 90_000);
+test("reserves fifteen seconds between the server and browser deadlines", () => {
+  assert.equal(RESEARCH_PROJECT_TIMEOUT_MS, 75_000);
 });
 
 test("schedules protected source opportunities before generic context and reuses failed canonical receipts", () => {
@@ -714,6 +714,14 @@ test("replays a committed synthetic project-scope and rejected-DNS fixture offli
     fixture.documentAccess.candidate.expectedAnswerFamilyCounts);
   assert.equal(transportCalls, 0);
   assert.doesNotMatch(JSON.stringify(result), /93\.184\.216\.35|10\.0\.0\.7/);
+  const audit = buildResearchAudit({
+    project: { name: "Project Atlas", location: "Phoenix, Arizona" },
+    sources: [{ ...fixture.documentAccess.candidate, categoryIds: ["water"], accessOutcome: result }],
+  });
+  assert.ok(audit.dnsRejections.some((entry) => entry.categoryId === "water"
+    && entry.hostname === new URL(fixture.documentAccess.candidate.url).hostname
+    && entry.rule === fixture.documentAccess.candidate.expectedRejectingRule));
+  assert.doesNotMatch(JSON.stringify(audit.dnsRejections), /93\.184\.216\.35|10\.0\.0\.7/);
 });
 
 test("revalidates each redirect hop and blocks DNS rebinding without leaking resolver details", async () => {
@@ -823,7 +831,7 @@ test("preserves bounded sanitized document transport errors and cancellation sta
 });
 
 test("limits provider requests globally and records honest request telemetry", async () => {
-  const gate = createResearchProviderGate({ limit: 2 });
+  const gate = createResearchProviderGate();
   let active = 0;
   let peak = 0;
   const fetchImpl = async () => {
@@ -852,7 +860,7 @@ test("limits provider requests globally and records honest request telemetry", a
     },
     gate,
   )));
-  assert.equal(peak, 2);
+  assert.equal(peak, 1);
   assert.equal(gate.snapshot().active, 0);
   assert.ok(calls.some((call) => call.coverage.providerAttempt.queueWaitMs > 0));
   assert.equal(calls[4].coverage.providerAttempt.attemptType, "repair");
@@ -1282,12 +1290,18 @@ test("actual request workflow returns retrieved receipts as HTTP 200 partial aft
   const directory = await mkdtemp(path.join(os.tmpdir(), "research-partial-429-"));
   const candidate = { ...fixture.accessibleReceipt, excerpt: fixture.accessibleReceipt.passage };
   const response = responseRecorder();
+  let persisted;
+  const saved = new Promise((resolve) => { persisted = resolve; });
   await handleResearchProjectRequest(request({
     ...fixture.project,
     forceRefresh: true,
   }), response, {
     apiKey: "synthetic-test-key",
     cache: createResearchProjectCache({ directory }),
+    auditRepository: { save: async (record) => {
+      assert.ok(response.body, "the HTTP response must precede the database write");
+      persisted(record);
+    } },
     rateLimiter: { allow: () => ({ allowed: true, retryAfterSeconds: 0 }) },
     categoryIds: ["water"],
     googleDiscoveryImpl: completedGoogleDiscovery([candidate]),
@@ -1300,10 +1314,17 @@ test("actual request workflow returns retrieved receipts as HTTP 200 partial aft
     }),
   });
   const payload = response.json();
+  const record = await saved;
   const receipt = payload.sourceLedger.find((source) => source.originalUrl === candidate.url);
   const water = payload.researchAudit.categories.find((category) => category.categoryId === "water");
   assert.equal(response.statusCode, 200);
   assert.equal(payload.researchStatus, "partial");
+  assert.equal(payload.projectSummary.capacityMW, null);
+  assert.equal(payload.projectSummary.capacityProvenance, "unknown");
+  assert.equal(record.researchStatus, "partial");
+  assert.equal(record.projectSummary.capacityMW, null);
+  assert.equal(record.projectSummary.capacityProvenance, "unknown");
+  assert.equal(record.audit.runCorrelationId, payload.researchAudit.runCorrelationId);
   assert.equal(payload.researchOutcome.eligibleEvidenceCount, 0);
   assert.ok(receipt, "the accessible source is retained in the source ledger");
   assert.equal(receipt.date ?? receipt.publishedAt, fixture.accessibleReceipt.date);
@@ -1314,6 +1335,57 @@ test("actual request workflow returns retrieved receipts as HTTP 200 partial aft
     document.accessState === "accessible" && document.retainedPassage === fixture.accessibleReceipt.passage));
   assert.ok(payload.researchAudit.providerLimitations.some((limitation) => /structured category analysis failed/i.test(limitation)));
   assert.ok(payload.evidence.filter((item) => item.id.startsWith("water_")).every((item) => item.eligibleForModel === false));
+});
+
+test("retries a category HTTP 429 with Retry-After once only when the deadline allows it", async () => {
+  const fixture = JSON.parse(await readFile(new URL("./fixtures/research-partial-receipts.json", import.meta.url), "utf8"));
+  const candidate = { ...fixture.accessibleReceipt, categoryIds: ["water"], excerpt: fixture.accessibleReceipt.passage };
+  const buildOptions = async (fetchImpl, researchTimeoutMs) => ({
+    apiKey: "synthetic-test-key",
+    cache: createResearchProjectCache({ directory: await mkdtemp(path.join(os.tmpdir(), "research-429-retry-")) }),
+    registry: { retain: async () => {} },
+    rateLimiter: { allow: () => ({ allowed: true, retryAfterSeconds: 0 }) },
+    categoryIds: ["water"],
+    allowGoogleFallback: false,
+    allowCorrectiveRetries: false,
+    researchTimeoutMs,
+    analysisReserveMs: 0,
+    documentTimeoutMs: 100,
+    googleDiscoveryImpl: completedGoogleDiscovery([candidate]),
+    documentFetchImpl: async () => new Response(`<html><body>${fixture.accessibleReceipt.passage}</body></html>`, {
+      status: 200, headers: { "content-type": "text/html" },
+    }),
+    fetchImpl,
+  });
+  const limited = () => new Response(JSON.stringify({
+    error: { code: "rate_limit_exceeded", type: "rate_limit_error", message: "Synthetic pressure" },
+  }), { status: 429, headers: { "retry-after": "0.02" } });
+  let calls = 0;
+  const successful = responseRecorder();
+  await handleResearchProjectRequest(request({ ...fixture.project, forceRefresh: true }), successful,
+    await buildOptions(async () => {
+      calls += 1;
+      return calls === 1 ? limited() : singleCallResponse(validResearchResponse());
+    }, 4_000));
+  assert.ok(calls >= 2, "the 429 is followed by one bounded retry; later supplemental analysis is separate");
+  assert.equal(successful.statusCode, 200);
+  assert.equal(successful.json().researchAudit.providerAttempts.filter((attempt) =>
+    attempt.categoryId === "water" && attempt.status === 429).length, 1);
+  assert.equal(successful.json().researchAudit.providerAttempts[0].providerDiagnostic.rateLimit.retryAfter, "0.02");
+
+  calls = 0;
+  const tooLate = responseRecorder();
+  await handleResearchProjectRequest(request({ ...fixture.project, forceRefresh: true }), tooLate,
+    await buildOptions(async () => {
+      calls += 1;
+      return new Response(JSON.stringify({
+        error: { code: "rate_limit_exceeded", type: "rate_limit_error", message: "Synthetic pressure" },
+      }), { status: 429, headers: { "retry-after": "0.5" } });
+    }, 250));
+  assert.equal(calls, 1);
+  assert.equal(tooLate.statusCode, 200);
+  assert.equal(tooLate.json().researchStatus, "partial");
+  assert.equal(tooLate.json().researchAudit.categories.find((category) => category.categoryId === "water").analysisState, "not-analyzed-429");
 });
 
 test("actual validated workflow retains receipts after total category-analysis failure", async () => {
@@ -3793,15 +3865,24 @@ test("retains and validates mapped sources from later categories after final con
   assert.ok(body.sourceLedger?.some((source) => source.originalUrl?.includes("/electricity/source-")));
 });
 
-test("returns exactly 16 normalized evidence items and safely falls back for invalid capacity", () => {
+test("returns 16 normalized items without inventing custom capacity on either parse", () => {
   const response = parseResearchResponse({
     ...validResearchResponse(),
     projectSummary: { ...validResearchResponse().projectSummary, capacityMW: Number.NaN },
   });
   assert.equal(response.evidence.length, 16);
   assert.deepEqual(response.evidence.map((item) => item.id), RESEARCH_EVIDENCE_IDS);
-  assert.equal(response.projectSummary.capacityMW, DEFAULT_RESEARCH_CAPACITY_MW);
-  assert.equal(response.projectSummary.capacityProvenance, "standardized-default");
+  assert.equal(response.projectSummary.capacityMW, null);
+  assert.equal(response.projectSummary.capacityProvenance, "unknown");
+  const secondParse = parseResearchResponse(response);
+  assert.equal(secondParse.projectSummary.capacityMW, null);
+  assert.equal(secondParse.projectSummary.capacityProvenance, "unknown");
+  const oldFallback = parseResearchResponse({
+    ...validResearchResponse(),
+    projectSummary: { ...validResearchResponse().projectSummary, capacityMW: 1_200, capacityProvenance: "standardized-default" },
+  });
+  assert.equal(oldFallback.projectSummary.capacityMW, null);
+  assert.equal(oldFallback.projectSummary.capacityProvenance, "unknown");
   const reportedCapacity = parseResearchResponse({
     ...validResearchResponse(),
     projectSummary: { ...validResearchResponse().projectSummary, capacityMW: 600 },
@@ -4135,10 +4216,16 @@ test("returns specific safe quota, authentication, parse, and timeout errors", a
   const cache = createResearchProjectCache({ directory: await mkdtemp(path.join(os.tmpdir(), "safeloc-research-errors-")) });
   const rateLimiter = createResearchProjectRateLimiter({ limit: 10, windowMs: 60_000 });
   const providerResponse = responseRecorder();
+  let persistedFailure;
+  const savedFailure = new Promise((resolve) => { persistedFailure = resolve; });
   await handleResearchProjectRequest(request({ name: "Project Atlas", location: "Texas" }), providerResponse, {
     apiKey: "server-secret-for-test",
     cache,
     rateLimiter,
+    auditRepository: { save: async (record) => {
+      assert.ok(providerResponse.body, "failed-run audit persistence must not hold the response open");
+      persistedFailure(record);
+    } },
     fetchImpl: async () => new Response(JSON.stringify({
       error: {
         message: "Billing allocation reached.",
@@ -4148,6 +4235,10 @@ test("returns specific safe quota, authentication, parse, and timeout errors", a
     }), { status: 429, headers: { "content-type": "application/json" } }),
   });
   assert.equal(providerResponse.statusCode, 429);
+  const failedRecord = await savedFailure;
+  assert.equal(failedRecord.researchStatus, "failed");
+  assert.equal(failedRecord.audit.terminalState, "incomplete-technical-limitation");
+  assert.ok(Array.isArray(failedRecord.audit.providerAttempts));
   assert.match(providerResponse.body, /insufficient quota or a billing limit/i);
   assert.equal(providerResponse.json().errorType, "quota-exhausted");
   assert.equal(providerResponse.json().providerDiagnostic.errorCode, "insufficient_quota");
@@ -4255,6 +4346,9 @@ test("HTTP research deadline aborts a stalled provider and returns a typed timeo
     excerpt: fixture.accessibleReceipt.passage,
   };
   const response = responseRecorder();
+  let persisted;
+  const saved = new Promise((resolve) => { persisted = resolve; });
+  const startedAt = Date.now();
   let providerSignal;
   await handleResearchProjectRequest(request({ ...fixture.project, forceRefresh: true }), response, {
     apiKey: "synthetic-test-key",
@@ -4262,6 +4356,10 @@ test("HTTP research deadline aborts a stalled provider and returns a typed timeo
       directory: await mkdtemp(path.join(os.tmpdir(), "safeloc-handler-deadline-")),
     }),
     registry: { retain: async () => {} },
+    auditRepository: { save: async (record) => {
+      assert.ok(response.body, "the partial response must precede persistence");
+      persisted(record);
+    } },
     rateLimiter: { allow: () => ({ allowed: true, retryAfterSeconds: 0 }) },
     categoryIds: ["water"],
     allowGoogleFallback: false,
@@ -4283,8 +4381,11 @@ test("HTTP research deadline aborts a stalled provider and returns a typed timeo
     }),
   });
   const payload = response.json();
+  const record = await saved;
   assert.equal(response.statusCode, 200);
   assert.equal(payload.researchStatus, "partial");
+  assert.ok(Date.now() - startedAt < 90_000);
+  assert.equal(record.researchStatus, "partial");
   assert.equal(payload.researchError.type, "timeout");
   assert.equal(providerSignal?.aborted, true);
 });

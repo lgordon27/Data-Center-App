@@ -9,6 +9,9 @@ import { handleDirectoryRequest, handleDirectoryStatsRequest } from "./computeAt
 import { handleReleaseDocumentRequest, handleVersionRequest } from "./version.mjs";
 import { handleProjectResearchRegistryRequest } from "./projectResearchRegistry.mjs";
 import { handleDossiersRequest, handleDossierRequest } from "./dossierApi.js";
+import { handleResearchAuditDownload } from "./researchAuditApi.js";
+import { getResearchAuditRepository } from "./researchAuditRepository.js";
+import type { ResearchRunAudit } from "./researchAuditRepository.js";
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
 const artifactDir = path.resolve(serverDir, "..");
@@ -52,6 +55,9 @@ export async function createApp(): Promise<Express> {
   app.get("/api/version", handleVersionRequest);
   app.get("/api/dossiers", handleDossiersRequest);
   app.get("/api/dossiers/:slug", handleDossierRequest);
+  app.get("/api/research-audits/:runId", async (request: Request, response: Response) => {
+    await handleResearchAuditDownload(request, response);
+  });
   app.get("/api/project-research", async (request: Request, response: Response) => {
     await handleProjectResearchRegistryRequest(request, response);
   });
@@ -63,7 +69,10 @@ export async function createApp(): Promise<Express> {
     await handleAnalyzeEvidenceRequest(request, response);
   });
   app.all("/api/research-project", async (request: Request, response: Response) => {
-    await handleResearchProjectRequest(request, response);
+    await handleResearchProjectRequest(request, response, {
+      auditRepository: { save: async (record: ResearchRunAudit) =>
+        (await getResearchAuditRepository()).save(record) },
+    });
   });
   app.all("/api/ercot-queue", async (request: Request, response: Response) => {
     await handleErcotQueueRequest(request, response);

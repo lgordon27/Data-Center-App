@@ -7,4 +7,4 @@ The preview startup check must validate the artifact registration and then exerc
 
 **Why:** The local Express/Vite server can return the correct SPA shell while an invalid artifact path or port prevents the Replit preview router from forwarding requests.
 
-**How to apply:** Keep the check close to the artifact's startup/production validation and make its errors identify the invalid path or port registration directly.
+**How to apply:** Keep the check close to the artifact's startup/production validation and make its errors identify the invalid path or port registration directly. Allow a separate, realistic warmup window for the managed proxy: startup may exceed four seconds even when the child process remains healthy. A short proxy-readiness timeout creates intermittent false failures; do not loosen the route assertions themselves.

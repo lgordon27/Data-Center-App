@@ -37,8 +37,9 @@ const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const RESEARCH_PROJECT_MODEL = "gpt-4o";
 const RESEARCH_PROJECT_MAX_TOKENS = 8_000;
 const RESEARCH_CATEGORY_MAX_TOKENS = 3_500;
-const RESEARCH_PROVIDER_MAX_CONCURRENCY = 2;
-const RESEARCH_PROJECT_TIMEOUT_MS = 90_000;
+const RESEARCH_PROVIDER_MAX_CONCURRENCY = 1;
+// The browser retains its 90s limit; leave room for partial serialization and delivery.
+const RESEARCH_PROJECT_TIMEOUT_MS = 75_000;
 const DEFAULT_PROVIDER_RATE_LIMIT_PRESSURE_MS = 1_000;
 const RESEARCH_PROJECT_MAX_TOOL_CALLS = 32;
 const RESEARCH_POLICY_VERSION = 2;
@@ -368,7 +369,7 @@ function buildResearchResponseSchema(evidenceIds = RESEARCH_EVIDENCE_IDS) {
           location: { type: "string", minLength: 1 },
           description: { type: "string", minLength: 1 },
           capacityMW: { anyOf: [{ type: "number" }, { type: "null" }] },
-          capacityProvenance: { type: "string", enum: ["ai-reported", "directory-reported", "standardized-default"] },
+          capacityProvenance: { type: "string", enum: ["ai-reported", "directory-reported", "unknown"] },
         },
         required: ["name", "location", "description", "capacityMW", "capacityProvenance"],
       },
@@ -1626,6 +1627,14 @@ function categorySourceMatches(category, source) {
 function categoryOpenedDocuments(sources = [], category = null) {
   return sources.map((source) => {
     const outcome = source.accessOutcome ?? {};
+    const diagnostic = outcome.transportDiagnostic;
+    let rejectedHostname = null;
+    if (diagnostic?.stage === "dns-validation") {
+      try {
+        const hostname = new URL(outcome.resolvedUrl ?? source.resolvedUrl ?? source.url).hostname;
+        if (!isIP(hostname)) rejectedHostname = hostname;
+      } catch { /* No validated hostname to retain. */ }
+    }
     const reusedReceipt = source.documentAccessReused === true || outcome.reused === true;
     const referringUrls = [...new Set([
       ...(Array.isArray(outcome.referringUrls) ? outcome.referringUrls : []),
@@ -1647,6 +1656,13 @@ function categoryOpenedDocuments(sources = [], category = null) {
         : null,
       accessState: outcome.state ?? "blocked",
       accessOutcome: outcome.reason ?? "not-attempted",
+      ...(diagnostic?.stage === "dns-validation" ? {
+        dnsRejection: {
+          hostname: rejectedHostname,
+          rule: diagnostic.addressValidationRule ?? "unknown",
+          rejectingRules: diagnostic.addressValidationTelemetry?.rejectingRules ?? [],
+        },
+      } : {}),
       extractionMethod: outcome.extractionMethod ?? null,
       extractionOutcome: outcome.extractionOutcome ?? null,
       contentHash: outcome.contentHash ?? null,
@@ -1768,6 +1784,7 @@ function buildResearchAudit({
            : [category.categoryId],
       providerFailure: supplied.providerFailure ?? null,
       providerFailureType: supplied.providerFailureType ?? null,
+      analysisState: supplied.analysisState ?? null,
       providerRequestCount: counts.issuedProviderRequests,
       providerAttempts: Array.isArray(supplied.providerAttempts) ? supplied.providerAttempts.slice(0, 3) : [],
       sourceChannelTelemetry,
@@ -1833,6 +1850,12 @@ function buildResearchAudit({
       : 0,
     providerRequestCount: Number.isInteger(coverage.providerRequestCount) ? coverage.providerRequestCount : 0,
     providerAttempts: Array.isArray(coverage.providerAttempts) ? coverage.providerAttempts.slice(0, RESEARCH_RUN_BUDGET.maxProviderRequests) : [],
+    inFlightAnalysisCount: Number.isInteger(coverage.inFlightAnalysisCount) ? coverage.inFlightAnalysisCount : 0,
+    peakInFlightAnalysisCount: Number.isInteger(coverage.peakInFlightAnalysisCount) ? coverage.peakInFlightAnalysisCount : 0,
+    phaseTiming: isRecord(coverage.phaseTiming) ? coverage.phaseTiming : null,
+    dnsRejections: categories.flatMap((category) => category.openedDocuments
+      .filter((document) => document.dnsRejection)
+      .map((document) => ({ categoryId: category.categoryId, ...document.dnsRejection }))),
     physicalOpenBudget: RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens,
     physicalOpensUsed: Number.isInteger(coverage.physicalOpensUsed) ? coverage.physicalOpensUsed : 0,
     physicalOpensRemaining: Math.max(0, RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens - (Number.isInteger(coverage.physicalOpensUsed) ? coverage.physicalOpensUsed : 0)),
@@ -1985,6 +2008,7 @@ async function orchestrateCategoryResearch(project, {
       if (concurrent) providerRequests += primaryRequestCost;
       else providerRequests += Math.max(0, primaryRequestCost - 1 - primaryAdditionalRequestsAuthorized);
       execution.providerRequestCount += primaryRequestCost;
+      if (primary?.analysisState) execution.analysisState = primary.analysisState;
       execution.providerAttempts.push(...(Array.isArray(primary?.providerAttempts) ? primary.providerAttempts : []));
       execution.discoveryAttempts.push(...(Array.isArray(primary?.discoveryAttempts) ? primary.discoveryAttempts : []));
       execution.authorityRecords.push(...(Array.isArray(primary?.authorityRecords) ? primary.authorityRecords : []));
@@ -2147,7 +2171,10 @@ async function orchestrateCategoryResearch(project, {
       state = categoryCandidates.length
         ? "Partial"
         : failure.type === "timeout" ? "Timed out" : "Provider failure";
-      execution.followUpSkipReason = error?.name === "AbortError" ? "deadline" : "provider-failure";
+      execution.followUpSkipReason = error?.retrySkippedForDeadline
+        ? "provider-429-deadline"
+        : error?.name === "AbortError" ? "deadline" : "provider-failure";
+      if (error?.retrySkippedForDeadline) execution.analysisState = "not-analyzed-429";
     }
     categoryExecutions[category.categoryId] = {
       ...(categoryExecutions[category.categoryId] ?? {}),
@@ -2424,10 +2451,10 @@ function createPartialResearchBody(project, categoryResults = []) {
         name: project.name,
         location: project.location,
         description: "Research returned partial or invalid category data. Valid findings are retained and unsupported items remain Missing Evidence.",
-        capacityMW: normalizeReportedCapacityMW(project.knownData?.capacity) ?? DEFAULT_RESEARCH_CAPACITY_MW,
+        capacityMW: normalizeReportedCapacityMW(project.knownData?.capacity),
         capacityProvenance: normalizeReportedCapacityMW(project.knownData?.capacity) !== null
           ? "directory-reported"
-          : "standardized-default",
+          : "unknown",
       };
   const evidenceById = new Map(
     categoryResults.flatMap((result) =>
@@ -2445,13 +2472,14 @@ function createPartialResearchBody(project, categoryResults = []) {
         8_000,
       ),
       capacityMW: normalizeReportedCapacityMW(project.knownData?.capacity)
-        ?? normalizeReportedCapacityMW(projectSummary.capacityMW)
-        ?? DEFAULT_RESEARCH_CAPACITY_MW,
+        ?? (["unknown", "standardized-default"].includes(projectSummary.capacityProvenance)
+          ? null : normalizeReportedCapacityMW(projectSummary.capacityMW)),
       capacityProvenance: normalizeReportedCapacityMW(project.knownData?.capacity) !== null
         ? "directory-reported"
-        : normalizeReportedCapacityMW(projectSummary.capacityMW) !== null
+        : !["unknown", "standardized-default"].includes(projectSummary.capacityProvenance)
+          && normalizeReportedCapacityMW(projectSummary.capacityMW) !== null
           ? "ai-reported"
-          : "standardized-default",
+          : "unknown",
     },
     evidence: RESEARCH_EVIDENCE_IDS.map((id) => evidenceById.get(id) ?? missingResearchEvidence(id)),
   };
@@ -2471,15 +2499,18 @@ function parseResearchResponse(
   }
 
   const summary = body.projectSummary;
-  const reportedCapacityMW = normalizeReportedCapacityMW(summary.capacityMW);
+  // A second parse must not promote an earlier synthetic fallback into a
+  // provider claim. Only a numeric provider value can become ai-reported.
+  const reportedCapacityMW = ["unknown", "standardized-default"].includes(summary.capacityProvenance)
+    ? null : normalizeReportedCapacityMW(summary.capacityMW);
   const summaryFields = {
     name: nonEmptyString(summary.name, "projectSummary.name", 160),
     location: nonEmptyString(summary.location, "projectSummary.location", 160),
     description: nonEmptyString(summary.description, "projectSummary.description", 8_000),
-    capacityMW: normalizeReportedCapacityMW(knownData?.capacity) ?? reportedCapacityMW ?? DEFAULT_RESEARCH_CAPACITY_MW,
+    capacityMW: normalizeReportedCapacityMW(knownData?.capacity) ?? reportedCapacityMW,
     capacityProvenance: normalizeReportedCapacityMW(knownData?.capacity) !== null
       ? "directory-reported"
-      : reportedCapacityMW === null ? "standardized-default" : "ai-reported",
+      : reportedCapacityMW === null ? "unknown" : "ai-reported",
   };
 
   const rawEvidenceCandidates = Array.isArray(body.evidence)
@@ -4515,6 +4546,7 @@ async function runValidatedResearch(project, {
     .map((category) => category.categoryId);
   const openedGoogleDocuments = [];
   const retainedDocumentReceipts = [];
+  const documentAuditReceipts = [];
   const prefetchGoogleGroundedSources = async (candidates) => {
     const boundedCandidates = (Array.isArray(candidates) ? candidates : [])
       .slice(0, RESEARCH_RUN_BUDGET.maxTotalCandidates);
@@ -4605,6 +4637,7 @@ async function runValidatedResearch(project, {
         ...(accessOutcome.passage ? { excerpt: accessOutcome.passage, claimPassage: accessOutcome.passage } : {}),
       };
       openedGoogleDocuments.push(openedSource);
+      documentAuditReceipts.push(openedSource);
       if (accessOutcome.state === "accessible" && accessOutcome.passage) retainedDocumentReceipts.push(openedSource);
     }));
     return openedGoogleDocuments;
@@ -4679,11 +4712,34 @@ async function runValidatedResearch(project, {
   }
   let fallbackProjectRequest = null;
   let fallbackRequestConsumed = false;
+  let fallbackRequestCost = 0;
+  const retry429Once = async (issue, reserve) => {
+    try {
+      return await issue();
+    } catch (error) {
+      const retryAfter = error?.providerDiagnostic?.rateLimit?.retryAfter;
+      const delayMs = parseRateLimitDurationMs(retryAfter);
+      if (error?.upstreamStatus !== 429 || !retryAfter || delayMs <= 0 || controller.signal.aborted) throw error;
+      const waitMs = Math.max(delayMs, researchProviderGate.snapshot().blockedUntil - Date.now());
+      // Reserve time for a response, not just for starting the retry.
+      if (Date.now() + waitMs + 1_000 >= runStartedAtMs + researchTimeoutMs) {
+        error.retrySkippedForDeadline = true;
+        throw error;
+      }
+      if (reserve?.() !== true) throw error;
+      await awaitWithResearchSignal(new Promise((resolve) => setTimeout(resolve, waitMs)), controller.signal);
+      if (Date.now() + 1_000 >= runStartedAtMs + researchTimeoutMs) {
+        error.retrySkippedForDeadline = true;
+        throw error;
+      }
+      return issue();
+    }
+  };
   try {
     phaseTiming.orchestrationStartedAt = new Date().toISOString();
     phaseTiming.orchestrationBudgetMs = Math.max(
       0,
-      RESEARCH_PROJECT_TIMEOUT_MS - (Date.now() - runStartedAtMs),
+      researchTimeoutMs - (Date.now() - runStartedAtMs),
     );
     const orchestration = await orchestrateCategoryResearch(project, {
       budget: {
@@ -4758,7 +4814,9 @@ async function runValidatedResearch(project, {
               throw validationError;
             }
             if (!fallbackProjectRequest) {
-              fallbackProjectRequest = researchProjectWithWebSearch(
+              fallbackProjectRequest = retry429Once(() => {
+                fallbackRequestCost += 1;
+                return researchProjectWithWebSearch(
                 project,
                 apiKey,
                 fetchImpl,
@@ -4774,13 +4832,14 @@ async function runValidatedResearch(project, {
                   maxToolCalls: RESEARCH_PROJECT_MAX_TOOL_CALLS,
                 },
                 researchProviderGate,
-              );
+                );
+              }, authorizeAdditionalProviderRequest);
             }
             try {
               const result = await fallbackProjectRequest;
               if (!fallbackRequestConsumed) {
                 fallbackRequestConsumed = true;
-                providerRequestCount += 1;
+                providerRequestCount += fallbackRequestCost;
               }
               observedToolCallCount += Number.isInteger(result.coverage?.toolCallCount) ? result.coverage.toolCallCount : 0;
               if (result.coverage?.providerAttempt && !providerAttempts.includes(result.coverage.providerAttempt)) {
@@ -4790,7 +4849,7 @@ async function runValidatedResearch(project, {
             } catch (error) {
               if (!fallbackRequestConsumed) {
                 fallbackRequestConsumed = true;
-                providerRequestCount += 1;
+                providerRequestCount += fallbackRequestCost;
               }
               observedToolCallCount += Number.isInteger(error?.toolCallCount) ? error.toolCallCount : 0;
               if (error?.providerAttempt) providerAttempts.push(error.providerAttempt);
@@ -4799,15 +4858,24 @@ async function runValidatedResearch(project, {
               throw error;
             }
           }
-          providerRequestCount += 1;
+          const issue = async () => {
+            providerRequestCount += 1;
+            try {
+              return await researchProjectWithWebSearch(project, apiKey, fetchImpl, controller.signal, requestOptions);
+            } catch (error) {
+              observedToolCallCount += Number.isInteger(error?.toolCallCount) ? error.toolCallCount : 0;
+              if (error?.providerAttempt) providerAttempts.push(error.providerAttempt);
+              error.providerRequestCount = providerRequestCount;
+              error.providerAttempts = [...providerAttempts];
+              throw error;
+            }
+          };
           try {
-            const result = await researchProjectWithWebSearch(project, apiKey, fetchImpl, controller.signal, requestOptions);
+            const result = await retry429Once(issue, authorizeAdditionalProviderRequest);
             observedToolCallCount += Number.isInteger(result.coverage?.toolCallCount) ? result.coverage.toolCallCount : 0;
             if (result.coverage?.providerAttempt) providerAttempts.push(result.coverage.providerAttempt);
             return result;
           } catch (error) {
-            observedToolCallCount += Number.isInteger(error?.toolCallCount) ? error.toolCallCount : 0;
-            if (error?.providerAttempt) providerAttempts.push(error.providerAttempt);
             error.providerRequestCount = providerRequestCount;
             error.providerAttempts = [...providerAttempts];
             throw error;
@@ -4882,6 +4950,7 @@ async function runValidatedResearch(project, {
                     `Structured category analysis failed (${classifyResearchFailure(error).type}); retrieved passages were retained with Missing Evidence pending analysis.`,
                   ],
                   analysisFailureType: classifyResearchFailure(error).type,
+                  analysisState: error?.retrySkippedForDeadline ? "not-analyzed-429" : null,
                   activeCategoryId: categoryId,
                   noUsableGroundedPassages: false,
                   toolCallCount: observedToolCallCount,
@@ -5151,6 +5220,7 @@ async function runValidatedResearch(project, {
              ...((accessOutcome.passage ?? source.excerpt) ? { claimPassage: accessOutcome.passage ?? source.excerpt } : {}),
           };
           accessedSources.push(accessedSource);
+          documentAuditReceipts.push(accessedSource);
           if (accessOutcome.state === "accessible" && accessOutcome.passage) retainedDocumentReceipts.push(accessedSource);
         }
         const eligibleCount = accessedSources.filter((source) => source.accessOutcome?.state === "accessible").length;
@@ -5164,8 +5234,12 @@ async function runValidatedResearch(project, {
                && typeof source.accessOutcome?.passage === "string"
                && source.accessOutcome.passage.trim())
              && !controller.signal.aborted
+             && Date.now() + 1_000 < runStartedAtMs + researchTimeoutMs
+             && authorizeAdditionalProviderRequest?.() === true
            ) {
-             const supplementalAnalysis = await researchProjectWithWebSearch(
+             const supplementalAnalysis = await retry429Once(() => {
+               providerRequestCount += 1;
+               return researchProjectWithWebSearch(
                project,
                apiKey,
                fetchImpl,
@@ -5176,9 +5250,9 @@ async function runValidatedResearch(project, {
                  groundedSources: accessedSources,
                },
                researchProviderGate,
-             );
+               );
+             }, authorizeAdditionalProviderRequest);
              categoryResult = supplementalAnalysis;
-             providerRequestCount += 1;
              if (supplementalAnalysis.coverage?.providerAttempt) providerAttempts.push(supplementalAnalysis.coverage.providerAttempt);
            }
            const normalizedCategoryResearch = containResearchResult(parseResearchResponse(
@@ -5210,6 +5284,7 @@ async function runValidatedResearch(project, {
           observedQueries,
           toolCallCount: categoryResult.coverage?.toolCallCount ?? 0,
            providerRequestCount,
+          analysisState: categoryResult.coverage?.analysisState ?? null,
           providerAttempts,
           discoveryAttempts,
           authorityRecords,
@@ -5463,18 +5538,36 @@ async function runValidatedResearch(project, {
       throw structuredError;
     }
   } catch (error) {
+    const attempts = analysisTracker.attempts.slice(0, RESEARCH_RUN_BUDGET.maxProviderRequests);
     if (externalSignal?.aborted) {
       const cancelled = new Error("Project research was cancelled.");
       cancelled.name = "ResearchCancelledError";
       cancelled.researchErrorType = "cancelled";
-      cancelled.providerAttempts = analysisTracker.attempts.slice(0, RESEARCH_RUN_BUDGET.maxProviderRequests);
+      cancelled.providerAttempts = attempts;
       cancelled.inFlightAnalysisCount = analysisTracker.inFlight;
       const latestDiagnostic = [...analysisTracker.attempts].reverse()
         .find((attempt) => attempt?.providerDiagnostic)?.providerDiagnostic;
       if (latestDiagnostic) cancelled.providerDiagnostic = latestDiagnostic;
-      throw cancelled;
+      error = cancelled;
     }
     if (error && !error.researchErrorType) error.researchErrorType = classifyResearchFailure(error).type;
+    phaseTiming.totalElapsedMs = Math.max(0, Date.now() - runStartedAtMs);
+    error.researchAudit = buildResearchAudit({
+      project,
+      sources: documentAuditReceipts,
+      coverage: {
+        providerAttempts: attempts,
+        providerRequestCount: attempts.filter((attempt) => attempt.issuedAt).length,
+        inFlightAnalysisCount: analysisTracker.inFlight,
+        peakInFlightAnalysisCount: analysisTracker.peak,
+        phaseTiming,
+        terminalState: RESEARCH_OUTCOMES.TECHNICAL,
+        terminalReasonCodes: [error.researchErrorType],
+      },
+      runCorrelationId,
+      startedAt: phaseTiming.runStartedAt,
+      finishedAt: new Date().toISOString(),
+    });
     throw error;
   } finally {
     clearTimeout(timeout);
@@ -5500,6 +5593,7 @@ export async function handleResearchProjectRequest(
     rateLimiter = defaultRateLimiter,
     cache = defaultResearchProjectCache,
     registry = defaultProjectResearchRegistry,
+    auditRepository = null,
     categoryIds = null,
     researchTimeoutMs = RESEARCH_PROJECT_TIMEOUT_MS,
     documentTimeoutMs = RESEARCH_DOCUMENT_TIMEOUT_MS,
@@ -5577,35 +5671,71 @@ export async function handleResearchProjectRequest(
     maxConcurrentDocumentOpens,
     dnsLookup,
     signal: foreground ? requestController.signal : undefined,
-  }).then(async (result) => {
-    // Registry retention is deliberately best-effort: a local persistence
-    // problem must never turn a valid research response into a provider error.
-    await registry.retain(project, result, {
-      runId: result?.researchAudit?.runCorrelationId ?? result?.researchCoverage?.runCorrelationId ?? null,
-    }).catch((error) => {
-      console.warn("[research-project] Registry retention failed:", error instanceof Error ? error.message : "unknown error");
-    });
-    return result;
   }));
+  // Called only after res.end. Storage failures cannot turn a partial result
+  // into an HTTP timeout, and both foreground and background failures are kept.
+  const retainRun = (result, error = null) => {
+    const audit = result?.researchAudit ?? error?.researchAudit ?? {
+      version: RESEARCH_CATEGORY_AUDIT_VERSION,
+      policyVersion: RESEARCH_POLICY_VERSION,
+      runCorrelationId: randomUUID(),
+      startedAt: new Date().toISOString(),
+      finishedAt: new Date().toISOString(),
+      terminalState: RESEARCH_OUTCOMES.TECHNICAL,
+      terminalReasonCodes: [classifyResearchFailure(error).type],
+      providerAttempts: error?.providerAttempts ?? (error?.providerAttempt ? [error.providerAttempt] : []),
+      inFlightAnalysisCount: error?.inFlightAnalysisCount ?? 0,
+      categories: [],
+      phaseTiming: null,
+    };
+    const status = result?.researchStatus ?? (error?.researchErrorType === "cancelled" ? "cancelled" : "failed");
+    const capacityMW = result?.projectSummary?.capacityMW ?? normalizeReportedCapacityMW(project.knownData?.capacity);
+    const projectSummary = result?.projectSummary ?? {
+      name: project.name,
+      location: project.location,
+      capacityMW,
+      capacityProvenance: capacityMW === null ? "unknown" : "directory-reported",
+    };
+    if (result) {
+      void Promise.resolve().then(() => registry.retain(project, result, { runId: audit.runCorrelationId }))
+        .catch((failure) => console.warn("[research-project] Registry retention failed:", failure instanceof Error ? failure.message : "unknown error"));
+    }
+    if (auditRepository) {
+      void Promise.resolve().then(() => auditRepository.save({
+        runId: audit.runCorrelationId,
+        projectName: project.name,
+        projectLocation: project.location,
+        researchStatus: status,
+        projectSummary,
+        audit,
+      })).catch((failure) => console.warn("[research-project] Audit persistence failed:", failure instanceof Error ? failure.message : "unknown error"));
+    }
+  };
   if (!project.forceRefresh && containedRetained && !retainedNeedsRevalidation && retainedState === "stale") {
     const background = refresh(false);
-    void background.promise.catch((error) => {
-      console.error("[research-project] Background refresh failed:", classifyResearchFailure(error).type);
-    });
     req.removeListener?.("aborted", onRequestAborted);
     sendJson(res, 200, withCacheMetadata(containedRetained, cacheMetadata(key, containedRetained, "stale", "running")));
+    void background.promise.then((entry) => retainRun(entry.result), (error) => {
+      retainRun(null, error);
+      console.error("[research-project] Background refresh failed:", classifyResearchFailure(error).type);
+    });
     return;
   }
 
   try {
     const { promise } = refresh();
     const entry = await promise;
-    if (res.writableEnded || res.destroyed) return;
-    sendJson(res, 200, withCacheMetadata(entry, cacheMetadata(key, entry, "updated")));
+    if (!res.writableEnded && !res.destroyed) {
+      sendJson(res, 200, withCacheMetadata(entry, cacheMetadata(key, entry, "updated")));
+    }
+    retainRun(entry.result);
   } catch (error) {
     const failure = classifyResearchFailure(error);
     console.error("[research-project] Request failed:", failure.type);
-    if (res.writableEnded || res.destroyed) return;
+    if (res.writableEnded || res.destroyed) {
+      retainRun(null, error);
+      return;
+    }
     if (containedRetained) {
       sendJson(res, 200, withCacheMetadata(containedRetained, cacheMetadata(key, containedRetained, "stale", "failed", {
         providerAvailable: false,
@@ -5616,6 +5746,7 @@ export async function handleResearchProjectRequest(
         inFlightAnalysisCount: failure.inFlightAnalysisCount
           ?? error?.providerAttempt?.inFlightAnalysisCount,
       })));
+      retainRun(null, error);
       return;
     }
     if (failure.type === "request-limit" && error?.retryAfterSeconds) {
@@ -5646,6 +5777,7 @@ export async function handleResearchProjectRequest(
           }
         : {}),
     });
+    retainRun(null, error);
   } finally {
     req.removeListener?.("aborted", onRequestAborted);
   }

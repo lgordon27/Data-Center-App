@@ -12,6 +12,7 @@ import { handleDossiersRequest, handleDossierRequest } from "./dossierApi.js";
 import { handleResearchAuditDownload } from "./researchAuditApi.js";
 import { getResearchAuditRepository } from "./researchAuditRepository.js";
 import type { ResearchRunAudit } from "./researchAuditRepository.js";
+import { createPublicRateLimiter, createDailySpendGuard, evidenceSpendConfig } from "./publicLimits.js";
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
 const artifactDir = path.resolve(serverDir, "..");
@@ -23,6 +24,23 @@ const researchAuditRepositoryAdapter = {
   save: async (record: ResearchRunAudit) =>
     (await getResearchAuditRepository()).save(record),
 };
+let publicControls: Promise<{
+  rateLimiter: ReturnType<typeof createPublicRateLimiter>;
+  spendGuard: ReturnType<typeof createDailySpendGuard>;
+}> | undefined;
+function getPublicControls() {
+  return publicControls ??= (async () => {
+    if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required for public safety controls.");
+    const { pool } = await import("./db.js");
+    return {
+      rateLimiter: createPublicRateLimiter(pool),
+      spendGuard: createDailySpendGuard(pool, evidenceSpendConfig()),
+    };
+  })().catch(error => {
+    publicControls = undefined;
+    throw error;
+  });
+}
 
 function readRuntimeConfig() {
   const rawPort = process.env.PORT;
@@ -59,6 +77,7 @@ export async function createApp(): Promise<Express> {
   readRuntimeConfig();
   const app = express();
   app.disable("x-powered-by");
+  app.set("trust proxy", 1);
   app.use(express.json());
   app.get("/api/version", handleVersionRequest);
   app.get("/api/dossiers", handleDossiersRequest);
@@ -74,7 +93,11 @@ export async function createApp(): Promise<Express> {
   });
   app.get("/release.json", handleReleaseDocumentRequest);
   app.all("/api/analyze-evidence", async (request: Request, response: Response) => {
-    await handleAnalyzeEvidenceRequest(request, response);
+    try {
+      await handleAnalyzeEvidenceRequest(request, response, await getPublicControls());
+    } catch {
+      response.status(503).json({ error: "AI analysis unavailable. Please classify manually." });
+    }
   });
   app.all("/api/research-project", async (request: Request, response: Response) => {
     await handleResearchProjectRequest(request, response, {

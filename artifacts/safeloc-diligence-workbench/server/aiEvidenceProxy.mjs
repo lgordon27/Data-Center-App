@@ -9,9 +9,7 @@ import {
   buildAIEvidenceTemporalInstruction,
 } from "../src/data/aiEvidenceTemporal.mjs";
 
-// Server-side abuse guard: one client IP may start at most 30 provider-backed
-// assessments in a rolling 60-second window. This is intentionally above the
-// current sequential batch size while bounding duplicate/public requests.
+// One client IP may start at most 30 assessments in a rolling 60-second window.
 const AI_EVIDENCE_REQUEST_LIMIT = 30;
 const AI_EVIDENCE_REQUEST_WINDOW_MS = 60_000;
 const AI_EVIDENCE_RATE_LIMIT_MESSAGE =
@@ -75,59 +73,14 @@ async function readRequestBody(req) {
   }
 }
 
-function requestClientKey(req) {
-  if (typeof req?.ip === "string" && req.ip.trim()) return req.ip.trim();
-  if (typeof req?.socket?.remoteAddress === "string" && req.socket.remoteAddress.trim()) {
-    return req.socket.remoteAddress.trim();
-  }
-  return "unknown";
-}
-
-export function createAIEvidenceRateLimiter({
-  limit = AI_EVIDENCE_REQUEST_LIMIT,
-  windowMs = AI_EVIDENCE_REQUEST_WINDOW_MS,
-  now = () => Date.now(),
-} = {}) {
-  const requestTimesByClient = new Map();
-
-  return {
-    allow(req) {
-      const currentTime = now();
-      const clientKey = requestClientKey(req);
-      for (const [key, requestTimes] of requestTimesByClient) {
-        if (requestTimes.every((requestTime) => currentTime - requestTime >= windowMs)) {
-          requestTimesByClient.delete(key);
-        }
-      }
-      const recentRequests = (requestTimesByClient.get(clientKey) ?? []).filter(
-        (requestTime) => currentTime - requestTime < windowMs,
-      );
-
-      if (recentRequests.length >= limit) {
-        requestTimesByClient.set(clientKey, recentRequests);
-        const retryAfterSeconds = Math.max(
-          1,
-          Math.ceil((recentRequests[0] + windowMs - currentTime) / 1000),
-        );
-        return { allowed: false, retryAfterSeconds };
-      }
-
-      recentRequests.push(currentTime);
-      requestTimesByClient.set(clientKey, recentRequests);
-      return { allowed: true, retryAfterSeconds: 0 };
-    },
-  };
-}
-
-const defaultRateLimiter = createAIEvidenceRateLimiter();
-
 export async function handleAnalyzeEvidenceRequest(
   req,
   res,
   {
     apiKey = process.env.OPENAI_API_KEY,
     fetchImpl = fetch,
-    rateLimiter = defaultRateLimiter,
+    rateLimiter,
+    spendGuard,
   } = {},
 ) {
   if (req.method !== "POST") {
@@ -148,13 +101,44 @@ export async function handleAnalyzeEvidenceRequest(
     return;
   }
 
-  const rateLimit = rateLimiter.allow(req);
+  if (!rateLimiter || !spendGuard) {
+    sendJson(res, 503, { error: "AI analysis unavailable. Please classify manually." });
+    return;
+  }
+  let rateLimit;
+  try {
+    rateLimit = await rateLimiter.allow(req);
+  } catch {
+    sendJson(res, 503, { error: "AI analysis unavailable. Please classify manually." });
+    return;
+  }
   if (!rateLimit.allowed) {
     res.setHeader("retry-after", String(rateLimit.retryAfterSeconds));
     sendJson(res, 429, { error: AI_EVIDENCE_RATE_LIMIT_MESSAGE });
     return;
   }
 
+  const messages = [
+    { role: "system", content: buildAIEvidenceSystemPrompt(evidence) },
+    { role: "user", content: buildAIEvidencePrompt(evidence) },
+  ];
+  let reservation;
+  try {
+    // UTF-8 bytes bound token count for supplied text; include ample framing overhead.
+    const spend = await spendGuard.reserve({
+      model: AI_EVIDENCE_MODEL,
+      inputTokenCeiling: Buffer.byteLength(JSON.stringify(messages), "utf8") + 1024,
+      outputTokenCeiling: AI_EVIDENCE_MAX_TOKENS,
+    });
+    if (!spend.allowed) {
+      sendJson(res, 429, { error: "Daily research capacity reached. Please try again tomorrow." });
+      return;
+    }
+    reservation = spend.reservation;
+  } catch {
+    sendJson(res, 503, { error: "AI analysis unavailable. Please classify manually." });
+    return;
+  }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
@@ -169,10 +153,7 @@ export async function handleAnalyzeEvidenceRequest(
         model: AI_EVIDENCE_MODEL,
         max_tokens: AI_EVIDENCE_MAX_TOKENS,
         response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: buildAIEvidenceSystemPrompt(evidence) },
-          { role: "user", content: buildAIEvidencePrompt(evidence) },
-        ],
+        messages,
       }),
       signal: controller.signal,
     });
@@ -192,6 +173,8 @@ export async function handleAnalyzeEvidenceRequest(
       return;
     }
 
+    // Settle even malformed assessments: a successful provider response can still be billable.
+    await spendGuard.record(reservation, body?.usage);
     const content = body?.choices?.[0]?.message?.content;
     if (typeof content !== "string") {
       sendJson(res, 502, { error: "AI analysis returned an invalid structured response." });

@@ -32,3 +32,4 @@
 - [Offline document transport fixtures](offline-document-transport-fixtures.md) — security fixtures must validate every hop before a mocked transport can return a document.
 - [Exact GitHub object publication](exact-github-object-publication.md) — connector-based publication must preserve raw Git bytes and verify every object hash before moving a ref.
 - [Single-shot live research](single-shot-live-research.md) — browser validation runs must disable client retries, corrective provider retries, and web-search fallback without weakening offline fixtures.
+- [Conservative provider spend reservations](provider-spend-reservations.md) — reserve worst-case daily capacity before paid calls; uncertain provider failures retain capacity until the UTC day ends.

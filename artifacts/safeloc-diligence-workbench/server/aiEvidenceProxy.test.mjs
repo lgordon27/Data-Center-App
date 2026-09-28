@@ -9,7 +9,6 @@ import {
   OPENAI_CHAT_COMPLETIONS_URL,
   buildAIEvidencePrompt,
   buildAIEvidenceSystemPrompt,
-  createAIEvidenceRateLimiter,
   handleAnalyzeEvidenceRequest,
 } from "./aiEvidenceProxy.mjs";
 import {
@@ -25,6 +24,15 @@ const evidence = {
   projectName: "Stargate Abilene",
   projectLocation: "Taylor County, Texas",
   projectKind: "curated",
+};
+const allowedControls = {
+  rateLimiter: { allow: async () => ({ allowed: true, retryAfterSeconds: 0 }) },
+  spendGuard: {
+    reserve: async () => ({ allowed: true, reservation: { day: "2026-09-28", amount: 1, model: AI_EVIDENCE_MODEL } }),
+    record: async (_reservation, usage) => {
+      assert.deepEqual(usage, { prompt_tokens: 100, completion_tokens: 20 });
+    },
+  },
 };
 
 function responseRecorder() {
@@ -53,6 +61,7 @@ test("returns the exact missing-key response without calling OpenAI", async () =
   const response = responseRecorder();
   let calls = 0;
   await handleAnalyzeEvidenceRequest(requestWithBody(evidence), response, {
+    ...allowedControls,
     apiKey: "",
     fetchImpl: async () => {
       calls += 1;
@@ -72,11 +81,13 @@ test("sends the exact OpenAI contract and returns parsed assessment JSON", async
   let requestUrl;
   let requestInit;
   await handleAnalyzeEvidenceRequest(requestWithBody(evidence), response, {
+    ...allowedControls,
     apiKey: "server-secret-for-test",
     fetchImpl: async (url, init) => {
       requestUrl = url;
       requestInit = init;
       return new Response(JSON.stringify({
+        usage: { prompt_tokens: 100, completion_tokens: 20 },
         choices: [{
           message: {
             content: JSON.stringify({
@@ -148,6 +159,7 @@ test("keeps custom-project assessments separate from the curated Stargate record
 test("preserves upstream status without leaking provider error details", async () => {
   const response = responseRecorder();
   await handleAnalyzeEvidenceRequest(requestWithBody(evidence), response, {
+    ...allowedControls,
     apiKey: "server-secret-for-test",
     fetchImpl: async () => new Response(JSON.stringify({
       error: { message: "provider-internal detail server-secret-for-test" },
@@ -162,17 +174,12 @@ test("preserves upstream status without leaking provider error details", async (
   assert.doesNotMatch(response.body, /provider-internal detail/);
 });
 
-test("bounds requests per client and returns a safe manual-review fallback", async () => {
-  let now = 100_000;
-  const rateLimiter = createAIEvidenceRateLimiter({
-    limit: 2,
-    windowMs: 60_000,
-    now: () => now,
-  });
+test("returns safe limit and capacity responses without paid calls", async () => {
   let calls = 0;
   const options = {
+    ...allowedControls,
     apiKey: "server-secret-for-test",
-    rateLimiter,
+    rateLimiter: { allow: async () => ({ allowed: false, retryAfterSeconds: 37 }) },
     fetchImpl: async () => {
       calls += 1;
       return new Response(JSON.stringify({
@@ -184,27 +191,26 @@ test("bounds requests per client and returns a safe manual-review fallback", asy
     },
   };
 
-  await handleAnalyzeEvidenceRequest(requestWithBody(evidence), responseRecorder(), options);
-  await handleAnalyzeEvidenceRequest(requestWithBody(evidence), responseRecorder(), options);
   const limitedResponse = responseRecorder();
   await handleAnalyzeEvidenceRequest(requestWithBody(evidence), limitedResponse, options);
 
-  assert.equal(calls, 2);
+  assert.equal(calls, 0);
   assert.equal(limitedResponse.statusCode, 429);
-  assert.equal(limitedResponse.headers["retry-after"], "60");
+  assert.equal(limitedResponse.headers["retry-after"], "37");
   assert.deepEqual(limitedResponse.json(), { error: AI_EVIDENCE_RATE_LIMIT_MESSAGE });
   assert.doesNotMatch(limitedResponse.body, /server-secret-for-test|provider/i);
 
-  const otherClientResponse = responseRecorder();
-  await handleAnalyzeEvidenceRequest(requestWithBody(evidence, "POST", "198.51.100.11"), otherClientResponse, options);
-  assert.equal(otherClientResponse.statusCode, 200);
-  assert.equal(calls, 3);
-
-  now += 60_000;
-  const resetResponse = responseRecorder();
-  await handleAnalyzeEvidenceRequest(requestWithBody(evidence), resetResponse, options);
-  assert.equal(resetResponse.statusCode, 200);
-  assert.equal(calls, 4);
+  const capacityResponse = responseRecorder();
+  await handleAnalyzeEvidenceRequest(requestWithBody(evidence), capacityResponse, {
+    ...options,
+    rateLimiter: allowedControls.rateLimiter,
+    spendGuard: { reserve: async () => ({ allowed: false }) },
+  });
+  assert.equal(capacityResponse.statusCode, 429);
+  assert.deepEqual(capacityResponse.json(), {
+    error: "Daily research capacity reached. Please try again tomorrow.",
+  });
+  assert.equal(calls, 0);
 });
 
 test("rejects methods and malformed evidence before an upstream request", async () => {

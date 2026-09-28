@@ -1,0 +1,494 @@
+const STATES = [
+  ["Alabama", "AL"], ["Alaska", "AK"], ["Arizona", "AZ"], ["Arkansas", "AR"],
+  ["California", "CA"], ["Colorado", "CO"], ["Connecticut", "CT"], ["Delaware", "DE"],
+  ["Florida", "FL"], ["Georgia", "GA"], ["Hawaii", "HI"], ["Idaho", "ID"],
+  ["Illinois", "IL"], ["Indiana", "IN"], ["Iowa", "IA"], ["Kansas", "KS"],
+  ["Kentucky", "KY"], ["Louisiana", "LA"], ["Maine", "ME"], ["Maryland", "MD"],
+  ["Massachusetts", "MA"], ["Michigan", "MI"], ["Minnesota", "MN"], ["Mississippi", "MS"],
+  ["Missouri", "MO"], ["Montana", "MT"], ["Nebraska", "NE"], ["Nevada", "NV"],
+  ["New Hampshire", "NH"], ["New Jersey", "NJ"], ["New Mexico", "NM"], ["New York", "NY"],
+  ["North Carolina", "NC"], ["North Dakota", "ND"], ["Ohio", "OH"], ["Oklahoma", "OK"],
+  ["Oregon", "OR"], ["Pennsylvania", "PA"], ["Rhode Island", "RI"], ["South Carolina", "SC"],
+  ["South Dakota", "SD"], ["Tennessee", "TN"], ["Texas", "TX"], ["Utah", "UT"],
+  ["Vermont", "VT"], ["Virginia", "VA"], ["Washington", "WA"], ["West Virginia", "WV"],
+  ["Wisconsin", "WI"], ["Wyoming", "WY"],
+];
+
+const STATE_BY_CODE = new Map(STATES.map(([name, code]) => [code, name]));
+const STATE_BY_NORMALIZED_NAME = new Map(STATES.map(([name]) => [normalizeWords(name), name]));
+const GENERIC_PROJECT_TOKENS = new Set([
+  "project", "the", "data", "center", "centre", "campus", "facility", "site",
+]);
+
+function normalizeWords(value) {
+  return String(value ?? "")
+    .toLocaleLowerCase()
+    .replace(/[’‘`]/g, "'")
+    .replace(/['’]s\b/g, "")
+    .replace(/s'\b/g, "s")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizeQuote(value) {
+  return String(value ?? "")
+    .replace(/[\u2018\u2019\u201A\u201B\u2032\u2035]/g, "'")
+    .replace(/[\u201C\u201D\u201E\u201F\u2033\u2036]/g, '"')
+    .replace(/[\u2010-\u2015\u2212]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Checks whether the exact quotation occurs in the captured document text.
+ * Only whitespace, straight/curly quote marks, and common dash variants vary.
+ */
+export function verifyQuote(documentText, quote) {
+  const normalizedDocument = normalizeQuote(documentText);
+  const normalizedQuote = normalizeQuote(quote);
+  return Boolean(normalizedQuote) && normalizedDocument.includes(normalizedQuote);
+}
+
+function canonicalState(value) {
+  const normalized = normalizeWords(value);
+  if (normalized === "district of columbia" || normalized === "dc" || normalized === "d c") {
+    return "District of Columbia";
+  }
+  return STATE_BY_NORMALIZED_NAME.get(normalized)
+    ?? STATE_BY_CODE.get(normalized.toUpperCase())
+    ?? null;
+}
+
+function statePatternValues() {
+  return [
+    ...STATES.flatMap(([name, code]) => [name, code]),
+    "District of Columbia",
+    "D.C.",
+  ].sort((left, right) => right.length - left.length);
+}
+
+const CAPITALIZED_WORD = "[A-Z][\\p{L}\\p{M}.'’\\-]*";
+const PLACE_NAME = `${CAPITALIZED_WORD}(?:\\s+${CAPITALIZED_WORD}){0,3}`;
+const STATE_VALUE_PATTERN = statePatternValues().map(escapeRegExp).join("|");
+
+function isWashingtonException(text, start, end) {
+  const before = text.slice(Math.max(0, start - 30), start);
+  const after = text.slice(end, Math.min(text.length, end + 45));
+  return /\bWashington\s*$/i.test(before) && /^\s*,?\s*(?:D\s*\.?\s*C\.?|District\s+of\s+Columbia)\b/i.test(after)
+    || /^\s*County\b/i.test(after);
+}
+
+function detailedLocations(text) {
+  const input = typeof text === "string" ? text : "";
+  const found = [];
+  const occupiedStateRanges = [];
+
+  const dcPattern = new RegExp(
+    `\\b(?<city>Washington)\\s*,?\\s*(?<state>D\\s*\\.?\\s*C\\.?|District\\s+of\\s+Columbia)\\b`,
+    "gi",
+  );
+  for (const match of input.matchAll(dcPattern)) {
+    const start = match.index;
+    const end = start + match[0].length;
+    found.push({
+      location: { city: match.groups.city, state: "District of Columbia" },
+      start,
+      end,
+      stateStart: start + match[0].indexOf(match.groups.state),
+      stateEnd: end,
+    });
+    occupiedStateRanges.push([start, end]);
+  }
+
+  const pairPattern = new RegExp(
+    `\\b(?<place>${PLACE_NAME})\\s*,\\s*(?<state>${STATE_VALUE_PATTERN})\\b`,
+    "gu",
+  );
+  for (const match of input.matchAll(pairPattern)) {
+    const state = canonicalState(match.groups.state);
+    if (!state) continue;
+    const start = match.index;
+    const end = start + match[0].length;
+    const place = match.groups.place.trim();
+    const county = /\bCounty$/i.test(place) ? place : null;
+    const location = county ? { county, state } : { city: place, state };
+
+    if (county) {
+      const before = input.slice(Math.max(0, start - 80), start);
+      const cityMatch = before.match(new RegExp(`(?<city>${PLACE_NAME})\\s*,\\s*$`, "u"));
+      if (cityMatch && !/\b(?:County|Project|Campus|Facility|Center|Site)$/i.test(cityMatch.groups.city)) {
+        location.city = cityMatch.groups.city.trim();
+      }
+    }
+
+    found.push({
+      location,
+      start: location.city && county
+        ? start - input.slice(Math.max(0, start - 80), start).length + input.slice(Math.max(0, start - 80), start).lastIndexOf(location.city)
+        : start,
+      end,
+      stateStart: start + match[0].lastIndexOf(match.groups.state),
+      stateEnd: end,
+    });
+    occupiedStateRanges.push([start + match[0].lastIndexOf(match.groups.state), end]);
+  }
+
+  const abbreviationPairPattern = new RegExp(
+    `\\b(?<place>${PLACE_NAME})\\s+(?<state>${STATES.map(([, code]) => code).join("|")})(?=$|[\\s.,;)])`,
+    "gu",
+  );
+  for (const match of input.matchAll(abbreviationPairPattern)) {
+    const start = match.index;
+    const end = start + match[0].length;
+    const stateStart = start + match[0].lastIndexOf(match.groups.state);
+    if (occupiedStateRanges.some(([rangeStart, rangeEnd]) => stateStart < rangeEnd && end > rangeStart)) continue;
+    const place = match.groups.place.trim();
+    const county = /\bCounty$/i.test(place) ? place : null;
+    found.push({
+      location: county
+        ? { county, state: canonicalState(match.groups.state) }
+        : { city: place, state: canonicalState(match.groups.state) },
+      start,
+      end,
+      stateStart,
+      stateEnd: end,
+    });
+    occupiedStateRanges.push([stateStart, end]);
+  }
+
+  const countyPattern = new RegExp(`\\b(?<county>${PLACE_NAME}\\s+County)\\b`, "gu");
+  for (const match of input.matchAll(countyPattern)) {
+    const alreadyFound = found.some((item) =>
+      item.location.county
+      && item.location.county.toLocaleLowerCase() === match.groups.county.toLocaleLowerCase()
+      && item.start <= match.index
+      && item.end >= match.index + match[0].length);
+    if (!alreadyFound) {
+      found.push({
+        location: { county: match.groups.county.trim() },
+        start: match.index,
+        end: match.index + match[0].length,
+      });
+    }
+  }
+
+  const fullStateNames = STATES.map(([name]) => name)
+    .concat("District of Columbia")
+    .sort((left, right) => right.length - left.length);
+  for (const name of fullStateNames) {
+    const pattern = new RegExp(`\\b${escapeRegExp(name)}\\b`, "gi");
+    for (const match of input.matchAll(pattern)) {
+      const start = match.index;
+      const end = start + match[0].length;
+      if (occupiedStateRanges.some(([rangeStart, rangeEnd]) => start < rangeEnd && end > rangeStart)) continue;
+      if (name === "Washington" && isWashingtonException(input, start, end)) continue;
+      found.push({ location: { state: canonicalState(name) }, start, end });
+      occupiedStateRanges.push([start, end]);
+    }
+  }
+
+  // A city before a county is part of the same location phrase, for example
+  // "Irving, Dallas County, Texas".
+  const cityBeforeCountyPattern = new RegExp(
+    `\\b(?:located\\s+in|based\\s+in|situated\\s+in|campus\\s+in|site\\s+in|facility\\s+in|in|at|near)\\s+(?<city>${PLACE_NAME})\\s*,\\s*(?=${PLACE_NAME}\\s+County\\b)`,
+    "gu",
+  );
+  for (const match of input.matchAll(cityBeforeCountyPattern)) {
+    const city = match.groups.city.trim();
+    const end = match.index + match[0].length;
+    if (found.some((item) =>
+      item.location.county
+      && item.location.city?.toLocaleLowerCase() === city.toLocaleLowerCase()
+      && Math.abs(item.start - match.index) < 100)) continue;
+    found.push({
+      location: { city },
+      start: match.index + match[0].indexOf(city),
+      end,
+    });
+  }
+
+  // Uppercase state abbreviations are recognized by themselves only when
+  // introduced as a location, avoiding accidental matches of words like "in".
+  const abbreviationPattern = new RegExp(
+    `\\b(?:in|at|near|within|of)\\s+(?<state>${STATES.map(([, code]) => code).join("|")})\\b`,
+    "g",
+  );
+  for (const match of input.matchAll(abbreviationPattern)) {
+    const code = match.groups.state;
+    const state = STATE_BY_CODE.get(code);
+    const start = match.index + match[0].lastIndexOf(code);
+    const end = start + code.length;
+    if (occupiedStateRanges.some(([rangeStart, rangeEnd]) => start < rangeEnd && end > rangeStart)) continue;
+    found.push({ location: { state }, start, end });
+  }
+
+  const unique = new Map();
+  for (const item of found) {
+    const key = `${item.location.city ?? ""}|${item.location.county ?? ""}|${item.location.state ?? ""}`;
+    const previous = unique.get(key);
+    if (!previous || item.start < previous.start) unique.set(key, item);
+  }
+  return [...unique.values()].sort((left, right) => left.start - right.start);
+}
+
+/**
+ * Extracts simple U.S. city/state, county/state, and standalone state mentions.
+ * State names are canonicalized; Washington County and Washington, D.C. are
+ * not misreported as the state of Washington.
+ */
+export function parseLocations(text) {
+  return detailedLocations(text).map(({ location }) => ({ ...location }));
+}
+
+function collectStrings(value) {
+  if (typeof value === "string" && value.trim()) return [value.trim()];
+  if (Array.isArray(value)) return value.flatMap(collectStrings);
+  return [];
+}
+
+function identityVariants(project) {
+  const knownData = project?.knownData ?? {};
+  const values = [
+    ...collectStrings(project?.name ?? project?.projectName).map((value) => ({ value, kind: "name" })),
+    ...collectStrings(project?.aliases).map((value) => ({ value, kind: "alias" })),
+    ...collectStrings(knownData.aliases).map((value) => ({ value, kind: "alias" })),
+    ...collectStrings(project?.operator ?? knownData.operator).map((value) => ({ value, kind: "operator" })),
+  ];
+  const unique = new Map();
+  for (const { value, kind } of values) {
+    const tokens = normalizeWords(value).split(" ").filter(Boolean);
+    if (!tokens.length) continue;
+    const matchingTokens = tokens.filter((token) => !GENERIC_PROJECT_TOKENS.has(token));
+    const anchors = matchingTokens.length ? matchingTokens : tokens;
+    const key = `${kind}|${anchors.slice().sort().join(" ")}`;
+    if (!unique.has(key)) unique.set(key, { label: value, kind, tokens, matchingTokens: anchors });
+  }
+  return [...unique.values()];
+}
+
+function tokenSpans(text) {
+  const spans = [];
+  const pattern = /[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)?/gu;
+  for (const match of text.matchAll(pattern)) {
+    const value = normalizeWords(match[0]);
+    if (value) spans.push({ value, start: match.index, end: match.index + match[0].length });
+  }
+  return spans;
+}
+
+function findVariantMatches(text, variants) {
+  const words = tokenSpans(text);
+  const matches = [];
+  for (const variant of variants) {
+    const variantTokens = variant.matchingTokens ?? variant.tokens;
+    const required = new Map();
+    for (const token of variantTokens) required.set(token, (required.get(token) ?? 0) + 1);
+    const requiredTokens = new Set(required.keys());
+    for (let startIndex = 0; startIndex < words.length; startIndex += 1) {
+      if (!requiredTokens.has(words[startIndex].value)) continue;
+      const counts = new Map();
+      const limit = Math.min(words.length, startIndex + Math.max(variantTokens.length * 5, 12));
+      for (let endIndex = startIndex; endIndex < limit; endIndex += 1) {
+        const token = words[endIndex].value;
+        counts.set(token, (counts.get(token) ?? 0) + 1);
+        if ([...required].every(([key, count]) => (counts.get(key) ?? 0) >= count)) {
+          const requiredSpans = words
+            .slice(startIndex, endIndex + 1)
+            .map((word, offset) => requiredTokens.has(word.value) ? startIndex + offset : -1)
+            .filter((index) => index >= 0);
+          matches.push({
+            variant,
+            start: words[requiredSpans[0]].start,
+            end: words[requiredSpans.at(-1)].end,
+            tokenSpan: requiredSpans.at(-1) - requiredSpans[0] + 1,
+          });
+          break;
+        }
+      }
+    }
+  }
+  return matches.sort((left, right) => left.start - right.start || left.tokenSpan - right.tokenSpan);
+}
+
+function isNegatedProjectReference(text, match) {
+  const prefix = text.slice(Math.max(0, match.start - 60), match.start);
+  return /\b(?:no|not|without)\s+(?:any\s+)?(?:connection|relationship|relation|association|affiliation)\s+to\s+(?:the\s+)?(?:project\s+)?$/i.test(prefix);
+}
+
+function splitSubjectFragments(text) {
+  const sentenceParts = String(text ?? "")
+    .replace(/\bD\.C\./gi, "DC")
+    .split(/(?<=[.!?])\s+|[;\n]+/)
+    .filter(Boolean);
+  const comparisonPattern = /\b(?:compared\s+(?:with|to)|versus|vs\.?|unlike|whereas|while|in\s+contrast\s+to|as\s+opposed\s+to|rather\s+than|alongside)\b|\bbut\b/gi;
+  const fragments = [];
+  for (const sentence of sentenceParts) {
+    let start = 0;
+    for (const match of sentence.matchAll(comparisonPattern)) {
+      if (match.index > start) fragments.push(sentence.slice(start, match.index).trim());
+      start = match.index + match[0].length;
+    }
+    if (start < sentence.length) fragments.push(sentence.slice(start).trim());
+  }
+
+  return fragments
+    .flatMap((fragment) => fragment.split(
+      /\band\s+(?:(?:a|an|another|the\s+other|separate|different|unrelated)\s+)(?:(?:[a-z-]+\s+){0,3})(?:project|facility|campus|site|data\s+center|cryptocurrency|crypto(?:currency)?(?:\s+mining)?\s+facility)\b/gi,
+    ))
+    .map((fragment) => fragment.trim())
+    .filter(Boolean);
+}
+
+function removeAdministrativeLocations(text) {
+  return text
+    .replace(
+      /\b(?:(?:its|their|the)\s+)?(?:operator|company|owner|developer|sponsor)(?:['’]s)?\s+(?:headquarters?|HQ|home office)\b[^.;]*/gi,
+      "",
+    )
+    .replace(/\b(?:headquartered|headquarters?)\s+(?:is|are|was|were)?\s*(?:located\s+)?in\b[^.;]*/gi, "");
+}
+
+function hasLocationConnector(text, location) {
+  const prefix = text.slice(Math.max(0, location.start - 110), location.start);
+  return /\b(?:located|based|situated|sited)\s+(?:in|at|near|within)\s*$/i.test(prefix)
+    || /\b(?:campus|site|facility|project|data\s+center|data\s+centre|center|headquarters?)\s+(?:is|was|will\s+be|are|were)?\s*(?:located\s+|based\s+|situated\s+)?(?:in|at|near|within)\s*$/i.test(prefix)
+    || /\b(?:in|at|near|within)\s*$/i.test(prefix);
+}
+
+function requestedLocation(project) {
+  const knownData = project?.knownData ?? {};
+  const parsed = detailedLocations(project?.location ?? "").map((item) => item.location);
+  const firstParsed = parsed.find((item) => item.city || item.county || item.state) ?? {};
+  const city = project?.city ?? knownData.city ?? firstParsed.city ?? null;
+  let county = project?.county ?? knownData.county ?? firstParsed.county ?? null;
+  if (county && !/\bCounty\b/i.test(county)) county = `${county.trim()} County`;
+  const state = canonicalState(project?.state ?? knownData.state ?? firstParsed.state ?? "");
+  return {
+    city: typeof city === "string" && city.trim() ? city.trim() : null,
+    county: typeof county === "string" && county.trim() ? county.trim() : null,
+    state,
+  };
+}
+
+function compareLocation(expected, actual) {
+  const conflicts = [];
+  const matches = [];
+  if (expected.city && actual.city) {
+    if (normalizeWords(expected.city) === normalizeWords(actual.city)) matches.push("city");
+    else conflicts.push(`city ${actual.city} differs from ${expected.city}`);
+  }
+  if (expected.county && actual.county) {
+    if (normalizeWords(expected.county) === normalizeWords(actual.county)) matches.push("county");
+    else conflicts.push(`county ${actual.county} differs from ${expected.county}`);
+  }
+  if (expected.state && actual.state) {
+    if (expected.state === actual.state) matches.push("state");
+    else conflicts.push(`state ${actual.state} differs from ${expected.state}`);
+  }
+  return { conflicts, matches };
+}
+
+function formatExpectedLocation(location) {
+  return [location.city, location.county, location.state].filter(Boolean).join(", ");
+}
+
+/**
+ * Classifies whether a passage refers to the requested project.
+ *
+ * @returns {{ verdict: "exact-project" | "ambiguous" | "unrelated", reason: string }}
+ */
+export function matchProject(passage, project = {}) {
+  const text = typeof passage === "string" ? passage : "";
+  const variants = identityVariants(project);
+  const expectedLocation = requestedLocation(project);
+  const expectedLocationText = formatExpectedLocation(expectedLocation);
+  if (!text.trim() || !variants.length) {
+    return {
+      verdict: "ambiguous",
+      reason: "The passage or requested project identity is missing, so the project cannot be assessed.",
+    };
+  }
+
+  const fragments = splitSubjectFragments(text);
+  const identified = [];
+  const allAttachedLocations = [];
+  for (const fragment of fragments) {
+    const identityMatches = findVariantMatches(fragment, variants)
+      .filter((match) => !isNegatedProjectReference(fragment, match));
+    const cleaned = removeAdministrativeLocations(fragment);
+    const attached = detailedLocations(cleaned).filter((location) => hasLocationConnector(cleaned, location));
+    allAttachedLocations.push(...attached.map((item) => item.location));
+    if (identityMatches.length) {
+      identified.push({ fragment: cleaned, identityMatches, attached });
+    }
+  }
+
+  for (const subject of identified) {
+    const nameMatch = subject.identityMatches.some((match) => match.variant.kind !== "operator");
+    const subjectLocations = subject.attached
+      .filter((location) => subject.identityMatches.some((match) =>
+        location.start >= match.start - 18 || match.start - location.start <= 28))
+      .map((item) => item.location);
+
+    const comparisons = subjectLocations.map((location) => compareLocation(expectedLocation, location));
+    const conflict = comparisons.find((comparison) => comparison.conflicts.length);
+    if (conflict) {
+      return {
+        verdict: "unrelated",
+        reason: `The named project is associated with ${conflict.conflicts.join(" and ")}, not the requested location${expectedLocationText ? ` (${expectedLocationText})` : ""}.`,
+      };
+    }
+
+    const confirmedDimensions = [...new Set(comparisons.flatMap((comparison) => comparison.matches))];
+    const hasRequestedLocation = Boolean(expectedLocation.city || expectedLocation.county || expectedLocation.state);
+    if ((!hasRequestedLocation && nameMatch) || confirmedDimensions.length) {
+      const basis = nameMatch ? "project name or alias" : "operator";
+      const locationNote = confirmedDimensions.length
+        ? `; ${confirmedDimensions.join(" and ")} match${confirmedDimensions.length === 1 ? "es" : ""} the requested location`
+        : "";
+      return {
+        verdict: "exact-project",
+        reason: `The passage identifies the requested project by its ${basis}${locationNote}.`,
+      };
+    }
+  }
+
+  const requestedTokens = [
+    expectedLocation.city,
+    expectedLocation.county,
+    expectedLocation.state,
+  ].filter(Boolean);
+  if (identified.length) {
+    return {
+      verdict: "ambiguous",
+      reason: `The passage mentions the requested project, but does not establish its requested location${expectedLocationText ? ` (${expectedLocationText})` : ""}.`,
+    };
+  }
+
+  const locationConflict = allAttachedLocations
+    .map((location) => compareLocation(expectedLocation, location))
+    .find((comparison) => comparison.conflicts.length);
+  if (locationConflict && requestedTokens.length) {
+    return {
+      verdict: "unrelated",
+      reason: `The passage's project location conflicts with the requested location${expectedLocationText ? ` (${expectedLocationText})` : ""}: ${locationConflict.conflicts.join(" and ")}.`,
+    };
+  }
+
+  const passageHasProjectSubject = /\b(?:project|facility|campus|site|data\s+center|data\s+centre|crypto(?:currency)?|mining)\b/i.test(text);
+  if (passageHasProjectSubject) {
+    return {
+      verdict: "unrelated",
+      reason: "The passage describes a project or facility but does not identify it by the requested name, alias, or operator.",
+    };
+  }
+  return {
+    verdict: "ambiguous",
+    reason: "The passage does not provide enough project-specific context to determine whether it refers to the requested project.",
+  };
+}

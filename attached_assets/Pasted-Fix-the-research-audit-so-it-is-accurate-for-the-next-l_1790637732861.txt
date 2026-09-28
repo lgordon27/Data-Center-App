@@ -1,0 +1,14 @@
+Fix the research audit so it is accurate for the next live run. Only edit: server/researchProjectProxy.mjs, server/researchAuditApi.ts, server/researchAuditRepository.ts, src/data/sourceValidationPolicy.mjs, and their tests. If you need any other file, stop and report. Do not change SSRF, DNS, or redirect rules. No paid calls. Do not deploy. Keep changes minimal; do not refactor unrelated code.
+
+1. One source of truth for claim eligibility. Today buildClaimEligibilityReviews (around line 1800 in researchProjectProxy.mjs) rebuilds its own gate list after the fact, and its scope gate requires phaseScope "exact-phase" (around line 1809), while the real policy in src/data/sourceValidationPolicy.mjs (around line 235) also accepts "all-phases" and "not-applicable".
+- In sourceValidationPolicy.mjs, let the real eligibility function optionally return an ordered trace of the checks it actually ran: check name, pass/fail, reason, and the first failing check. Do not change any eligibility rule or outcome.
+- In researchProjectProxy.mjs, remove the rebuilt gate logic and save the trace returned by the real policy instead.
+Tests: a campus-wide claim with phaseScope "not-applicable" that the policy accepts shows every check passing in the audit; a rejected claim shows the same first failing check the policy used; eligibility outcomes for existing test cases are unchanged.
+
+2. Audit finalization. If finishRun fails after the response, retry once. If both attempts fail, make one best-effort attempt to mark the row "finalization-failed". If storage is still unavailable, write a structured server error log containing the run ID and the failure state.
+Tests: first attempt fails and the retry succeeds; both fail but the finalization-failed marker is saved; storage is fully unavailable and the structured error log is written.
+
+3. Rate-limit owner authentication attempts. In researchAuditApi.ts, apply the rate limit before checking the token, so failed token guesses are also limited.
+Test: repeated requests with a wrong token get 429 after the limit.
+
+Report: files changed, and test and TypeScript results.

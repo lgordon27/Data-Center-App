@@ -10,13 +10,35 @@ const STATE_DOMAIN_REGISTRY = Object.freeze({
     { name: "Texas Water Development Board", domain: "twdb.texas.gov", categories: ["water", "climate-operational-hazard"] },
     { name: "Public Utility Commission of Texas", domain: "puc.texas.gov", categories: ["grid", "electricity"] },
     { name: "Electric Reliability Council of Texas", domain: "ercot.com", categories: ["grid", "electricity"] },
+    { name: "Texas Department of Licensing and Regulation", domain: "tdlr.texas.gov", categories: ["construction-capital", "permitting-community"] },
   ]),
   Arizona: Object.freeze([
     { name: "Arizona Department of Environmental Quality", domain: "azdeq.gov", categories: ["water", "permitting-community", "climate-operational-hazard"] },
     { name: "Arizona Department of Water Resources", domain: "azwater.gov", categories: ["water", "climate-operational-hazard"] },
     { name: "Arizona Corporation Commission", domain: "azcc.gov", categories: ["grid", "electricity"] },
   ]),
+  Virginia: Object.freeze([
+    { name: "Virginia Department of Environmental Quality", domain: "deq.virginia.gov", categories: ["water", "permitting-community", "climate-operational-hazard"] },
+    { name: "Virginia State Corporation Commission", domain: "scc.virginia.gov", categories: ["grid", "electricity"] },
+  ]),
+  Georgia: Object.freeze([
+    { name: "Georgia Environmental Protection Division", domain: "epd.georgia.gov", categories: ["water", "permitting-community", "climate-operational-hazard"] },
+    { name: "Georgia Public Service Commission", domain: "psc.ga.gov", categories: ["grid", "electricity"] },
+  ]),
+  Ohio: Object.freeze([
+    { name: "Ohio Environmental Protection Agency", domain: "epa.ohio.gov", categories: ["water", "permitting-community", "climate-operational-hazard"] },
+    { name: "Public Utilities Commission of Ohio", domain: "puco.ohio.gov", categories: ["grid", "electricity"] },
+    { name: "Ohio Department of Natural Resources", domain: "ohiodnr.gov", categories: ["water", "climate-operational-hazard"] },
+  ]),
 });
+
+const STATE_ALIASES = Object.freeze([
+  { state: "Texas", aliases: ["Texas", "TX"] },
+  { state: "Arizona", aliases: ["Arizona", "AZ"] },
+  { state: "Virginia", aliases: ["Virginia", "VA"] },
+  { state: "Georgia", aliases: ["Georgia", "GA"] },
+  { state: "Ohio", aliases: ["Ohio", "OH"] },
+]);
 
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -74,8 +96,9 @@ function inferState(identity, knownData) {
     knownData?.state,
     knownData?.location,
   ].filter((value) => typeof value === "string").join(" ");
-  if (/\btexas\b|\bTX\b/i.test(raw)) return "Texas";
-  if (/\barizona\b|\bAZ\b/i.test(raw)) return "Arizona";
+  for (const { state, aliases } of STATE_ALIASES) {
+    if (aliases.some((alias) => new RegExp(`\\b${alias}\\b`, "i").test(raw))) return state;
+  }
   return null;
 }
 
@@ -285,7 +308,7 @@ function authorityRecords(knownData, state, category, discoveredAt, declaredFami
 
 /**
  * Discovers possible exact-project pages only within explicitly declared official
- * domains and the bounded Texas/Arizona registry. Results are routing metadata,
+ * domains and the bounded state-domain registry. Results are routing metadata,
  * never evidence for a project claim.
  */
 export async function discoverOfficialSources({

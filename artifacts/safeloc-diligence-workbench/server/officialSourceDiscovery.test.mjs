@@ -208,3 +208,114 @@ test("official discovery cancels a stalled streamed body on client abort", async
   assert.equal(result.attempts[0].status, "aborted");
   assert.equal(bodyCancelled, true);
 });
+
+async function discoverRegistryAuthorities(state, category = null, maxAttempts = 1) {
+  const fetched = [];
+  const result = await discoverOfficialSources({
+    projectIdentity: { name: "Project Atlas", state },
+    category,
+    maxAttempts,
+    fetchImpl: async (url) => {
+      fetched.push(url);
+      return response("");
+    },
+  });
+  return {
+    authorities: result.authorities
+      .filter((authority) => authority.sourceChannel === "verified-state-domain-registry")
+      .map(({ name, domain }) => ({ name, domain })),
+    fetched,
+  };
+}
+
+test("recognizes full state names and postal codes while preserving Texas and Arizona agencies", async () => {
+  const cases = [
+    {
+      aliases: ["Texas", "TX"],
+      expected: [
+        { name: "Texas Commission on Environmental Quality", domain: "tceq.texas.gov" },
+        { name: "Texas Water Development Board", domain: "twdb.texas.gov" },
+        { name: "Public Utility Commission of Texas", domain: "puc.texas.gov" },
+        { name: "Electric Reliability Council of Texas", domain: "ercot.com" },
+        { name: "Texas Department of Licensing and Regulation", domain: "tdlr.texas.gov" },
+      ],
+    },
+    {
+      aliases: ["Arizona", "AZ"],
+      expected: [
+        { name: "Arizona Department of Environmental Quality", domain: "azdeq.gov" },
+        { name: "Arizona Department of Water Resources", domain: "azwater.gov" },
+        { name: "Arizona Corporation Commission", domain: "azcc.gov" },
+      ],
+    },
+    {
+      aliases: ["Virginia", "VA"],
+      expected: [
+        { name: "Virginia Department of Environmental Quality", domain: "deq.virginia.gov" },
+        { name: "Virginia State Corporation Commission", domain: "scc.virginia.gov" },
+      ],
+    },
+    {
+      aliases: ["Georgia", "GA"],
+      expected: [
+        { name: "Georgia Environmental Protection Division", domain: "epd.georgia.gov" },
+        { name: "Georgia Public Service Commission", domain: "psc.ga.gov" },
+      ],
+    },
+    {
+      aliases: ["Ohio", "OH"],
+      expected: [
+        { name: "Ohio Environmental Protection Agency", domain: "epa.ohio.gov" },
+        { name: "Public Utilities Commission of Ohio", domain: "puco.ohio.gov" },
+        { name: "Ohio Department of Natural Resources", domain: "ohiodnr.gov" },
+      ],
+    },
+  ];
+
+  for (const { aliases, expected } of cases) {
+    for (const alias of aliases) {
+      const result = await discoverRegistryAuthorities(alias);
+      assert.deepEqual(result.authorities, expected, `registry for ${alias}`);
+      assert.equal(result.fetched.length, 1, `injected fetch used for ${alias}`);
+      assert.equal(new URL(result.fetched[0]).hostname, expected[0].domain, `first registry domain fetched for ${alias}`);
+    }
+  }
+});
+
+test("filters new state agencies by their assigned discovery categories", async () => {
+  const cases = [
+    ["TX", "construction-capital", ["tdlr.texas.gov"]],
+    ["Texas", "permitting-community", ["tceq.texas.gov", "tdlr.texas.gov"]],
+    ["VA", "water", ["deq.virginia.gov"]],
+    ["Virginia", "permitting-community", ["deq.virginia.gov"]],
+    ["Virginia", "climate-operational-hazard", ["deq.virginia.gov"]],
+    ["Virginia", "grid", ["scc.virginia.gov"]],
+    ["VA", "electricity", ["scc.virginia.gov"]],
+    ["GA", "water", ["epd.georgia.gov"]],
+    ["Georgia", "permitting-community", ["epd.georgia.gov"]],
+    ["Georgia", "climate-operational-hazard", ["epd.georgia.gov"]],
+    ["Georgia", "grid", ["psc.ga.gov"]],
+    ["GA", "electricity", ["psc.ga.gov"]],
+    ["OH", "water", ["epa.ohio.gov", "ohiodnr.gov"]],
+    ["Ohio", "permitting-community", ["epa.ohio.gov"]],
+    ["Ohio", "climate-operational-hazard", ["epa.ohio.gov", "ohiodnr.gov"]],
+    ["Ohio", "grid", ["puco.ohio.gov"]],
+    ["OH", "electricity", ["puco.ohio.gov"]],
+  ];
+
+  for (const [state, category, expectedDomains] of cases) {
+    const result = await discoverRegistryAuthorities(state, category, 0);
+    assert.deepEqual(
+      result.authorities.map((authority) => authority.domain),
+      expectedDomains,
+      `${category} authorities for ${state}`,
+    );
+    assert.deepEqual(result.fetched, []);
+  }
+});
+
+test("unknown states do not add state-registry authorities or trigger registry fetches", async () => {
+  const result = await discoverRegistryAuthorities("Nevada");
+  assert.deepEqual(result.authorities, []);
+  assert.deepEqual(result.fetched, []);
+});

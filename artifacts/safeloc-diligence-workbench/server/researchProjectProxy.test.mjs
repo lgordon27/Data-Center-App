@@ -360,6 +360,28 @@ function compressedTextPdf(text) {
   return Buffer.concat(chunks);
 }
 
+const substantiveHtmlPassage = [
+  "The county filing describes a data center campus and the planned infrastructure work.",
+  "The applicant submitted an interconnection request, a construction schedule, and a capacity estimate.",
+  "Public comments address local services, land use, equipment deliveries, and the timing of utility upgrades.",
+  "The record identifies the reviewing agencies and summarizes the next steps before construction can begin.",
+].join(" ");
+
+function htmlDocumentResponse(body) {
+  return new Response(`<html><body><main><article><h1>Public project record</h1><p>${body}</p></article></main></body></html>`, {
+    status: 200,
+    headers: { "content-type": "text/html" },
+  });
+}
+
+function substantiveHtmlResponse(body, url = "offline-fixture") {
+  const digest = createHash("sha256").update(`${url}\0${body}`).digest("hex");
+  const distinctRecordDetails = Array.from({ length: 16 }, (_, index) =>
+    `record${digest.slice(index * 4, index * 4 + 4)} agency${digest.slice(63 - index * 4, 67 - index * 4)} section${index + 1}`)
+    .join(". ");
+  return htmlDocumentResponse(`${body} ${substantiveHtmlPassage} ${distinctRecordDetails}`);
+}
+
 test("reserves fifteen seconds between the server and browser deadlines", () => {
   assert.equal(RESEARCH_PROJECT_TIMEOUT_MS, 75_000);
 });
@@ -606,10 +628,7 @@ test("rejects unsafe, blocked, scanned, and unsupported documents explicitly", (
 
 test("reads bounded HTML and text PDFs while recording retrieval limitations", async () => {
   const html = await accessResearchDocument({ url: "https://example.gov/atlas", accessStatus: "open" }, {
-    fetchImpl: async () => new Response("<html><body><h1>Project Atlas</h1><p>Permit record.</p></body></html>", {
-      status: 200,
-      headers: { "content-type": "text/html" },
-    }),
+    fetchImpl: async () => htmlDocumentResponse(`Project Atlas Permit record. ${substantiveHtmlPassage}`),
     now: () => "2026-09-08T12:00:00.000Z",
   });
   assert.equal(html.state, "accessible");
@@ -648,6 +667,55 @@ test("reads bounded HTML and text PDFs while recording retrieval limitations", a
   assert.match(xml.passage, /Project Atlas Approved/);
 });
 
+test("rejects fetched verification walls and thin HTML with explicit access reasons", async () => {
+  const cases = [
+    ["<main><h1>Verify you are human</h1><p>Complete the security check before continuing.</p></main>", "blocked-or-shell", "bot-verification-page"],
+    ["<main><p>Enable JavaScript and cookies to continue.</p></main>", "blocked-or-shell", "javascript-required-shell"],
+    ["<main><h1>Sign in to continue reading</h1></main>", "blocked-or-shell", "login-or-paywall-shell"],
+    ["<main><h1>Subscribe to continue reading</h1></main>", "blocked-or-shell", "login-or-paywall-shell"],
+    ["<main><h1>Project Atlas</h1><p>Permit status: pending.</p></main>", "low-content", "genuine-prose-below-300-characters"],
+  ];
+  for (const [html, state, reason] of cases) {
+    const result = await accessResearchDocument({ url: "https://example.gov/page", accessStatus: "open" }, {
+      fetchImpl: async () => new Response(html, {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      }),
+    });
+    assert.equal(result.state, state);
+    assert.equal(result.reason, reason);
+    assert.equal(result.passage, null);
+    assert.equal(result.fetchMetrics.responseStatus, 200);
+  }
+});
+
+test("retains one article and rejects near-identical text from another URL on the same site", async () => {
+  const tracker = new Map();
+  let fetchCount = 0;
+  const fetchImpl = async () => {
+    fetchCount += 1;
+    return htmlDocumentResponse(substantiveHtmlPassage);
+  };
+  const first = await accessResearchDocument({ url: "https://www.records.example.gov/article/one", accessStatus: "open" }, {
+    fetchImpl,
+    siteBoilerplateTracker: tracker,
+  });
+  const repeated = await accessResearchDocument({ url: "https://records.example.gov/article/two", accessStatus: "open" }, {
+    fetchImpl,
+    siteBoilerplateTracker: tracker,
+  });
+  assert.equal(first.state, "accessible");
+  assert.equal(repeated.state, "site-boilerplate");
+  assert.equal(repeated.reason, "near-identical-article-already-retained-on-site");
+  assert.equal(repeated.passage, null);
+  const otherSite = await accessResearchDocument(
+    { url: "https://other.example.gov/article/three", accessStatus: "open" },
+    { fetchImpl, siteBoilerplateTracker: tracker },
+  );
+  assert.equal(otherSite.state, "accessible", "identical prose from another site is not same-site boilerplate");
+  assert.equal(fetchCount, 3, "duplicate classification adds no request beyond one fetch per explicit candidate");
+});
+
 test("opens a public DataBank-style redirect with validated offline DNS and transport fixtures", async () => {
   const initialUrl = "https://grounding.fixture/citation";
   const finalUrl = "https://www.databank.com/resources/press-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas/";
@@ -677,7 +745,7 @@ test("opens a public DataBank-style redirect with validated offline DNS and tran
         }));
       }
       return withDnsSummary(new Response(
-        "<html><body><h1>DataBank announces a 480 MW data center campus in South Dallas</h1><p>The public announcement describes the planned campus.</p></body></html>",
+        `<html><body><main><article><h1>DataBank announces a 480 MW data center campus in South Dallas</h1><p>The public announcement describes the planned campus. ${substantiveHtmlPassage}</p></article></main></body></html>`,
         { status: 200, headers: { "content-type": "text/html" } },
       ));
     },
@@ -1305,10 +1373,7 @@ test("counts zero-provider official discovery and candidate access under one phy
     documentFetchImpl: async (url) => {
       documentRequests += 1;
       if (url === "https://operator.example/projects/wintersburg-313") {
-        return new Response("<html><body><h1>Wintersburg 313</h1><p>Official project record.</p></body></html>", {
-          status: 200,
-          headers: { "content-type": "text/html" },
-        });
+        return substantiveHtmlResponse("Wintersburg 313 Official project record.", url);
       }
       return new Response("Not found", { status: 404, headers: { "content-type": "text/plain" } });
     },
@@ -1354,10 +1419,7 @@ test("keeps SEC connector failure diagnostic without starving category research"
       title: "Atlas capital update",
       snippet: "Project Atlas construction capital update.",
     }]),
-    documentFetchImpl: async () => new Response("<html><body>Project Atlas construction capital update.</body></html>", {
-      status: 200,
-      headers: { "content-type": "text/html" },
-    }),
+    documentFetchImpl: async (url) => substantiveHtmlResponse("Project Atlas construction capital update.", url),
   });
   const category = result.researchAudit.categories.find((item) => item.categoryId === "construction-capital");
   assert.equal(connectorCalls, 1);
@@ -1389,10 +1451,7 @@ test("actual request workflow returns retrieved receipts as HTTP 200 partial aft
     fetchImpl: async () => new Response(JSON.stringify({
       error: { message: "synthetic rate limit", type: "rate_limit_error", code: "rate_limit_exceeded" },
     }), { status: fixture.providerFailures[0].httpStatus }),
-    documentFetchImpl: async () => new Response(`<html><body>${fixture.accessibleReceipt.passage}</body></html>`, {
-      status: 200,
-      headers: { "content-type": "text/html" },
-    }),
+    documentFetchImpl: async (url) => substantiveHtmlResponse(fixture.accessibleReceipt.passage, url),
   });
   const payload = response.json();
   const record = await saved;
@@ -1410,10 +1469,10 @@ test("actual request workflow returns retrieved receipts as HTTP 200 partial aft
   assert.ok(receipt, "the accessible source is retained in the source ledger");
   assert.equal(receipt.date ?? receipt.publishedAt, fixture.accessibleReceipt.date);
   assert.equal(receipt.accessOutcome.state, "accessible");
-  assert.equal(receipt.accessOutcome.passage, fixture.accessibleReceipt.passage);
+  assert.ok(receipt.accessOutcome.passage.includes(fixture.accessibleReceipt.passage));
   assert.equal(receipt.accessOutcome.physicalOpenIndex, 1);
   assert.ok(water.openedDocuments.some((document) =>
-    document.accessState === "accessible" && document.retainedPassage === fixture.accessibleReceipt.passage));
+    document.accessState === "accessible" && document.retainedPassage.includes(fixture.accessibleReceipt.passage)));
   assert.ok(payload.researchAudit.providerLimitations.some((limitation) => /structured category analysis failed/i.test(limitation)));
   assert.ok(payload.evidence.filter((item) => item.id.startsWith("water_")).every((item) => item.eligibleForModel === false));
 });
@@ -1433,9 +1492,7 @@ test("retries a category HTTP 429 with Retry-After once only when the deadline a
     analysisReserveMs: 0,
     documentTimeoutMs: 100,
     googleDiscoveryImpl: completedGoogleDiscovery([candidate]),
-    documentFetchImpl: async () => new Response(`<html><body>${fixture.accessibleReceipt.passage}</body></html>`, {
-      status: 200, headers: { "content-type": "text/html" },
-    }),
+    documentFetchImpl: async (url) => substantiveHtmlResponse(fixture.accessibleReceipt.passage, url),
     fetchImpl,
   });
   const limited = () => new Response(JSON.stringify({
@@ -1481,16 +1538,13 @@ test("actual validated workflow retains receipts after total category-analysis f
     fetchImpl: async () => new Response(JSON.stringify({
       error: { message: "synthetic provider unavailable", type: "server_error" },
     }), { status: fixture.providerFailures[1].httpStatus }),
-    documentFetchImpl: async () => new Response(`<html><body>${fixture.accessibleReceipt.passage}</body></html>`, {
-      status: 200,
-      headers: { "content-type": "text/html" },
-    }),
+    documentFetchImpl: async (url) => substantiveHtmlResponse(fixture.accessibleReceipt.passage, url),
   });
   const receipt = result.sourceLedger.find((source) => source.originalUrl === candidate.url);
   assert.equal(result.researchStatus, "partial");
   assert.equal(result.researchOutcome.eligibleEvidenceCount, 0);
   assert.equal(receipt.accessOutcome.state, "accessible");
-  assert.equal(receipt.accessOutcome.passage, fixture.accessibleReceipt.passage);
+  assert.ok(receipt.accessOutcome.passage.includes(fixture.accessibleReceipt.passage));
   assert.equal(receipt.date ?? receipt.publishedAt, fixture.accessibleReceipt.date);
   assert.equal(result.researchAudit.categories.find((item) => item.categoryId === "water").openedDocuments[0].accessOutcome, "retrieved");
   assert.ok(result.evidence.every((item) => item.eligibleForModel === false));
@@ -1531,10 +1585,7 @@ test("parallel bounded document access lets a fast receipt survive a slow-docume
         });
       }
       activeFetches -= 1;
-      return new Response(`<html><body>${fixture.accessibleReceipt.passage}</body></html>`, {
-        status: 200,
-        headers: { "content-type": "text/html" },
-      });
+      return substantiveHtmlResponse(fixture.accessibleReceipt.passage, url);
     },
     researchTimeoutMs: 1_000,
     documentTimeoutMs: 35,
@@ -1544,7 +1595,7 @@ test("parallel bounded document access lets a fast receipt survive a slow-docume
   const elapsed = Date.now() - started;
   const fastReceipt = result.sourceLedger.find((source) => source.originalUrl === fastCandidate.url);
   assert.equal(fastReceipt.accessOutcome.state, "accessible");
-  assert.equal(fastReceipt.accessOutcome.passage, fixture.accessibleReceipt.passage);
+  assert.ok(fastReceipt.accessOutcome.passage.includes(fixture.accessibleReceipt.passage));
   assert.ok(elapsed < 700, `bounded slow document monopolized the run (${elapsed}ms)`);
   assert.equal(peakFetches, 2);
   assert.equal(slowAborted, true);
@@ -1567,10 +1618,7 @@ test("deadline finalizes retained passages as a partial response after retrieval
         reject(Object.assign(new Error("synthetic analysis deadline"), { name: "AbortError" }));
       }, { once: true });
     }),
-    documentFetchImpl: async () => new Response(`<html><body>${fixture.accessibleReceipt.passage}</body></html>`, {
-      status: 200,
-      headers: { "content-type": "text/html" },
-    }),
+    documentFetchImpl: async (url) => substantiveHtmlResponse(fixture.accessibleReceipt.passage, url),
     researchTimeoutMs: 80,
     documentTimeoutMs: 40,
     analysisReserveMs: 10,
@@ -1581,9 +1629,9 @@ test("deadline finalizes retained passages as a partial response after retrieval
   assert.equal(result.researchStatus, "partial");
   assert.equal(result.researchOutcome.eligibleEvidenceCount, 0);
   assert.equal(receipt.accessOutcome.state, "accessible");
-  assert.equal(receipt.accessOutcome.passage, fixture.accessibleReceipt.passage);
+  assert.ok(receipt.accessOutcome.passage.includes(fixture.accessibleReceipt.passage));
   assert.equal(receipt.date ?? receipt.publishedAt, fixture.accessibleReceipt.date);
-  assert.ok(water.openedDocuments.some((document) => document.retainedPassage === fixture.accessibleReceipt.passage));
+  assert.ok(water.openedDocuments.some((document) => document.retainedPassage.includes(fixture.accessibleReceipt.passage)));
   assert.ok(result.researchAudit.terminalReasonCodes.includes("deadline"));
   assert.ok(elapsed < 600, `deadline did not promptly finalize the partial result (${elapsed}ms)`);
 });
@@ -1615,10 +1663,7 @@ test("identity workflow ignores provider exactProject when location conflicts or
       fetchImpl: async () => new Response(JSON.stringify({
         error: { message: "synthetic provider unavailable", type: "server_error" },
       }), { status: 503 }),
-      documentFetchImpl: async () => new Response(`<html><body>${identityCase.passage}</body></html>`, {
-        status: 200,
-        headers: { "content-type": "text/html" },
-      }),
+      documentFetchImpl: async () => substantiveHtmlResponse(identityCase.passage, candidate.url),
     });
     const identity = result.researchAudit.categories.find((item) => item.categoryId === "project-identity");
     assert.equal(identity.stageCounts.allEvidenceEligible, identityCase.expectedExactProject, identityCase.name);
@@ -1853,12 +1898,9 @@ test("enforces the 24-document ceiling in a provider and document fixture", asyn
       }));
       return singleCallResponse(validResearchResponse(), sources);
     },
-    documentFetchImpl: async () => {
+    documentFetchImpl: async (url) => {
       documentCalls += 1;
-      return new Response("<html><body>Project Rainier fixture passage.</body></html>", {
-        status: 200,
-        headers: { "content-type": "text/html" },
-      });
+      return substantiveHtmlResponse("Project Rainier fixture passage.", url);
     },
   });
   const payload = response.json();
@@ -2110,10 +2152,7 @@ test("serves fresh cached research without another provider call", async () => {
       providerCalls += 1;
       return singleCallResponse();
     },
-    documentFetchImpl: async () => new Response("<html><body>Project Atlas public filing.</body></html>", {
-      status: 200,
-      headers: { "content-type": "text/html" },
-    }),
+    documentFetchImpl: async (url) => substantiveHtmlResponse("Project Atlas public filing.", url),
   };
   const first = responseRecorder();
   await handleResearchProjectRequest(request({ name: "Cached Atlas", location: "Texas" }), first, options);
@@ -2334,10 +2373,7 @@ test("exposes observable completion status for a background stale refresh", asyn
     apiKey: "server-secret-for-test",
     cache,
     fetchImpl: async () => singleCallResponse(),
-    documentFetchImpl: async () => new Response("<html><body>Project Atlas public filing.</body></html>", {
-      status: 200,
-      headers: { "content-type": "text/html" },
-    }),
+    documentFetchImpl: async (url) => substantiveHtmlResponse("Project Atlas public filing.", url),
   });
   assert.equal(stale.json().researchCache.refreshStatus, "running");
   let status;
@@ -2671,10 +2707,7 @@ test("reuses provider-declared canonical receipts across concurrent categories w
       documentCalls += 1;
       openedUrls.push(String(url));
       await new Promise((resolve) => setTimeout(resolve, 2));
-      return new Response("<html><body>Project Atlas fixture passage.</body></html>", {
-        status: 200,
-        headers: { "content-type": "text/html" },
-      });
+      return substantiveHtmlResponse("Project Atlas fixture passage.", url);
     },
   });
 
@@ -2924,10 +2957,7 @@ test("counts failed document receipts once before limiting later concurrent cate
           headers: { "content-type": "text/plain" },
         });
       }
-      return new Response("<html><body>Project Atlas fixture passage.</body></html>", {
-        status: 200,
-        headers: { "content-type": "text/html" },
-      });
+      return substantiveHtmlResponse("Project Atlas fixture passage.", url);
     },
     categoryIds: categoryLabels.map(([categoryId]) => categoryId),
   });
@@ -3243,9 +3273,9 @@ test("physically accesses a structured research URL before normal source evaluat
       }],
       usage: { input_tokens: 100, output_tokens: 100, total_tokens: 200 },
     }), { status: 200, headers: { "content-type": "application/json" } }),
-    documentFetchImpl: async () => new Response(
-      "<html><body>Wintersburg 313 construction is scheduled for completion in six months.</body></html>",
-      { status: 200, headers: { "content-type": "text/html" } },
+    documentFetchImpl: async (url) => substantiveHtmlResponse(
+      "Wintersburg 313 construction is scheduled for completion in six months.",
+      url,
     ),
     categoryIds: ["permitting-community"],
   });
@@ -3255,7 +3285,7 @@ test("physically accesses a structured research URL before normal source evaluat
   assert.equal(response.statusCode, 200);
   assert.equal(source.accessOutcome.state, "accessible");
   assert.equal(source.accessOutcome.physicalOpenIndex, 1);
-  assert.equal(source.accessOutcome.passage, "Wintersburg 313 construction is scheduled for completion in six months.");
+  assert.ok(source.accessOutcome.passage.includes("Wintersburg 313 construction is scheduled for completion in six months."));
   assert.equal(category.openedDocuments[0].attempted, true);
   assert.equal(category.openedDocuments[0].accessState, "accessible");
   const evidence = payload.evidence.find((item) => item.id === "permitting_timeline");
@@ -3548,10 +3578,7 @@ test("carries a generic first-party disclosure from normalized URL through visib
     }]),
     documentFetchImpl: async (url) => {
       assert.equal(url, disclosureUrl);
-      return new Response(`<html><body><h1>Project Atlas disclosure</h1><p>${passage}</p></body></html>`, {
-        status: 200,
-        headers: { "content-type": "text/html" },
-      });
+      return substantiveHtmlResponse(`Project Atlas disclosure ${passage}`, url);
     },
   });
   const record = result.evidence.find((item) => item.id === "grid_interconnection");
@@ -3764,12 +3791,9 @@ test("uses the bounded OpenAI fallback with scoped strict schemas after Google i
       researched.evidence[1].value = "Company-reported cooling arrangement";
       return singleCallResponse(researched);
     },
-    documentFetchImpl: async () => new Response(
-      `<html><body>Atlas Compute operates Project Atlas in Taylor County, Texas. ${retrievedSource.claimPassage}</body></html>`,
-      {
-        status: 200,
-        headers: { "content-type": "text/html" },
-      },
+    documentFetchImpl: async (url) => substantiveHtmlResponse(
+      `Atlas Compute operates Project Atlas in Taylor County, Texas. ${retrievedSource.claimPassage}`,
+      url,
     ),
   });
   assert.equal(response.statusCode, 200);
@@ -3863,9 +3887,9 @@ test("uses a dedicated non-evidence schema for project identity discovery", asyn
         categoryIds: ["project-identity"],
       }]);
     },
-    documentFetchImpl: async () => new Response(
-      "<html><body>Meta will develop the Meta El Paso Data Center in El Paso County, Texas.</body></html>",
-      { status: 200, headers: { "content-type": "text/html" } },
+    documentFetchImpl: async (url) => substantiveHtmlResponse(
+      "Meta will develop the Meta El Paso Data Center in El Paso County, Texas.",
+      url,
     ),
   });
 
@@ -3909,12 +3933,9 @@ test("enforces per-category and run-wide candidate caps before document access",
     apiKey: "server-secret-for-test",
     cache: createResearchProjectCache({ directory }),
     fetchImpl: async () => singleCallResponse(validResearchResponse(), candidates),
-    documentFetchImpl: async () => {
+    documentFetchImpl: async (url) => {
       documentFetches += 1;
-      return new Response("<html><body>Project Atlas filing passage.</body></html>", {
-        status: 200,
-        headers: { "content-type": "text/html" },
-      });
+      return substantiveHtmlResponse("Project Atlas filing passage.", url);
     },
   });
   assert.equal(response.statusCode, 200);
@@ -4012,10 +4033,10 @@ test("retains and validates mapped sources from later categories after final con
           claimSupport: [],
         }));
     },
-    documentFetchImpl: async () => new Response("<html><body>Project Atlas is located in Taylor County, Texas; the filing reports 42 for the exact project.</body></html>", {
-      status: 200,
-      headers: { "content-type": "text/html" },
-    }),
+    documentFetchImpl: async (url) => substantiveHtmlResponse(
+      "Project Atlas is located in Taylor County, Texas; the filing reports 42 for the exact project.",
+      url,
+    ),
   });
   const body = response.json();
   assert.equal(response.statusCode, 200);
@@ -4647,10 +4668,7 @@ test("HTTP research records an independent provider failure for every category w
       providerCalls += 1;
       return new Response(JSON.stringify({ error: { message: "synthetic provider unavailable" } }), { status: 503 });
     },
-    documentFetchImpl: async () => new Response(
-      `<html><body>${fixture.accessibleReceipt.passage}</body></html>`,
-      { status: 200, headers: { "content-type": "text/html" } },
-    ),
+    documentFetchImpl: async (url) => substantiveHtmlResponse(fixture.accessibleReceipt.passage, url),
   });
   const payload = response.json();
   assert.equal(response.statusCode, 200);
@@ -4695,10 +4713,7 @@ test("HTTP research deadline aborts a stalled provider and returns a typed timeo
     documentTimeoutMs: 10,
     googleDiscoveryImpl: completedGoogleDiscovery([candidate]),
     secConnector: { search: async () => ({ attempts: [], candidates: [] }) },
-    documentFetchImpl: async () => new Response(
-      `<html><body>${fixture.accessibleReceipt.passage}</body></html>`,
-      { status: 200, headers: { "content-type": "text/html" } },
-    ),
+    documentFetchImpl: async (url) => substantiveHtmlResponse(fixture.accessibleReceipt.passage, url),
     fetchImpl: async (_url, init) => new Promise((_resolve, reject) => {
       providerSignal = init.signal;
       const fail = () => reject(Object.assign(new Error("synthetic deadline"), { name: "AbortError" }));
@@ -4979,6 +4994,21 @@ test("research audits retain policy checks, provider retries, redirects, and fet
           discoveryCandidateRank: 4,
           accessOutcome: { state: "not-attempted", reason: "physical-open-budget" },
         },
+        {
+          url: "https://records.example.gov/grid/verification",
+          discoveryCandidateRank: 5,
+          accessOutcome: { state: "blocked-or-shell", reason: "bot-verification-page" },
+        },
+        {
+          url: "https://records.example.gov/grid/thin",
+          discoveryCandidateRank: 6,
+          accessOutcome: { state: "low-content", reason: "genuine-prose-below-300-characters" },
+        },
+        {
+          url: "https://records.example.gov/grid/repeated",
+          discoveryCandidateRank: 7,
+          accessOutcome: { state: "site-boilerplate", reason: "near-identical-article-already-retained-on-site" },
+        },
       ],
     },
     sources: [source],
@@ -5015,6 +5045,8 @@ test("research audits retain policy checks, provider retries, redirects, and fet
   assert.equal(audit.providerRequestBudget.attempts[0].retryAfter, "1s");
   assert.equal(audit.providerRequestBudget.attempts[0].retryCount, 1);
   const sourceAttempt = audit.sourceAttempts.find((attempt) => attempt.discoveryRank === 3);
+  assert.equal(sourceAttempt.state, "accessible");
+  assert.equal(sourceAttempt.reason, "retrieved");
   assert.equal(sourceAttempt.fetchMetrics.responseStatus, 200);
   assert.equal(sourceAttempt.fetchMetrics.bytesRead, 93);
   assert.equal(sourceAttempt.redirectHops[0].status, 302);
@@ -5023,6 +5055,15 @@ test("research audits retain policy checks, provider retries, redirects, and fet
   assert.equal(skippedAttempt.state, "not-attempted");
   assert.ok(audit.eligibilityReview.claims[0].gates.some((gate) => gate.passed === false));
   assert.equal(skippedAttempt.reason, "physical-open-budget");
+  for (const [rank, state, reason] of [
+    [5, "blocked-or-shell", "bot-verification-page"],
+    [6, "low-content", "genuine-prose-below-300-characters"],
+    [7, "site-boilerplate", "near-identical-article-already-retained-on-site"],
+  ]) {
+    const attempt = audit.sourceAttempts.find((item) => item.discoveryRank === rank);
+    assert.equal(attempt.state, state);
+    assert.equal(attempt.reason, reason);
+  }
   const review = audit.eligibilityReview.claims[0];
   assert.equal(review.sourcePassage, passage);
   assert.equal(review.sourcePassageHash, createHash("sha256").update(passage).digest("hex"));

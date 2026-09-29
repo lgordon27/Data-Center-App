@@ -85,6 +85,7 @@ const RESEARCH_DOCUMENT_MAX_REDIRECTS = 3;
 const RESEARCH_DOCUMENT_TIMEOUT_MS = 12_000;
 const RESEARCH_DOCUMENT_ANALYSIS_RESERVE_MS = 20_000;
 const RESEARCH_DOCUMENT_MAX_CONCURRENCY = 4;
+const NON_RETAINED_DOCUMENT_OUTCOMES = new Set(["blocked-or-shell", "low-content", "site-boilerplate"]);
 const SEC_CONNECTOR_CACHE = new Map();
 const RESEARCH_CATEGORY_STATES = Object.freeze([
   "Complete",
@@ -1146,6 +1147,35 @@ function buildCategoryFollowUpQuery(project, category, unresolvedEvidenceIds = [
   return buildCategoryQuery(project, category, "follow-up", evidenceId);
 }
 
+function registerOrFindSiteBoilerplate(tracker, sourceUrl, passage) {
+  let host;
+  try {
+    host = new URL(sourceUrl).hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+  const words = String(passage).toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}'’\-]*/gu) ?? [];
+  const shingles = new Set();
+  for (let index = 0; index <= words.length - 5; index += 1) {
+    shingles.add(words.slice(index, index + 5).join(" "));
+  }
+  if (shingles.size < 10) return null;
+  const existing = tracker.get(host) ?? [];
+  for (const prior of existing) {
+    const lengthRatio = Math.min(shingles.size, prior.shingles.size) / Math.max(shingles.size, prior.shingles.size);
+    if (lengthRatio < 0.85) continue;
+    const smaller = shingles.size <= prior.shingles.size ? shingles : prior.shingles;
+    const larger = smaller === shingles ? prior.shingles : shingles;
+    let overlap = 0;
+    for (const shingle of smaller) if (larger.has(shingle)) overlap += 1;
+    if (overlap / smaller.size >= 0.9) {
+      return "near-identical-article-already-retained-on-site";
+    }
+  }
+  if (existing.length < 80) tracker.set(host, [...existing, { shingles }]);
+  return null;
+}
+
 function evaluateResearchDocumentAccess(candidate = {}) {
   const rawUrls = [candidate.originalUrl ?? candidate.url, candidate.resolvedUrl ?? candidate.finalUrl ?? candidate.url];
   for (const rawUrl of rawUrls) {
@@ -1340,6 +1370,7 @@ async function accessResearchDocument(candidate = {}, {
   dnsLookup = dns.lookup,
   transportImpl = null,
   ocrImpl,
+  siteBoilerplateTracker = null,
 } = {}) {
   const documentStartedAtMs = Date.now();
   throwIfResearchCancelled(signal);
@@ -1595,13 +1626,21 @@ async function accessResearchDocument(candidate = {}, {
     }, { ocrImpl });
     throwIfResearchCancelled(signal);
     const passage = extraction.passage;
-    if (!passage) {
+    const siteDuplicateReason = format === "html" && passage && siteBoilerplateTracker instanceof Map
+      ? registerOrFindSiteBoilerplate(siteBoilerplateTracker, currentUrl, passage)
+      : null;
+    const rejectedOutcome = ["blocked-or-shell", "low-content"].includes(extraction.outcome)
+      ? extraction.outcome
+      : siteDuplicateReason ? "site-boilerplate" : null;
+    if (rejectedOutcome || !passage) {
       return {
         ...initial,
-        state: "unsupported",
-        reason: extraction.outcome === "underlying-document"
-          ? "underlying-document"
-          : format === "text-pdf" ? "scanned-pdf" : extraction.outcome === "malformed" ? "malformed-document" : "empty-passage",
+        state: rejectedOutcome ?? "unsupported",
+        reason: rejectedOutcome
+          ? extraction.reason ?? siteDuplicateReason
+          : extraction.outcome === "underlying-document"
+            ? "underlying-document"
+            : format === "text-pdf" ? "scanned-pdf" : extraction.outcome === "malformed" ? "malformed-document" : "empty-passage",
         format,
         resolvedUrl: currentUrl,
         canonicalUrl: canonicalizeSourceUrl(currentUrl),
@@ -1612,7 +1651,7 @@ async function accessResearchDocument(candidate = {}, {
         retrievalTime: now(),
         contentHash: extraction.contentHash,
         extractionMethod: extraction.extractionMethod,
-        extractionOutcome: extraction.outcome,
+        extractionOutcome: rejectedOutcome ?? extraction.outcome,
         underlyingDocumentUrl: extraction.underlyingDocumentUrl,
         candidateLinks: extraction.candidateLinks,
         transportDiagnostic: buildTransportDiagnostic({
@@ -1623,7 +1662,10 @@ async function accessResearchDocument(candidate = {}, {
           response,
           redirectChain,
         }),
-        extractionLimitations: extraction.limitations,
+        extractionLimitations: [
+          ...extraction.limitations,
+          ...(siteDuplicateReason ? ["Near-identical article text was already retained from another URL on this site."] : []),
+        ],
       };
     }
     return {
@@ -4812,6 +4854,7 @@ async function runValidatedResearch(project, {
       }
     });
   };
+  const siteBoilerplateTracker = new Map();
   const openDocumentWithBudget = async (source) => {
     try {
       return await withDocumentOpenBudget((openSignal) => accessResearchDocument(source, {
@@ -4819,6 +4862,7 @@ async function runValidatedResearch(project, {
         dnsLookup,
         signal: openSignal,
         ocrImpl,
+        siteBoilerplateTracker,
       }));
     } catch (error) {
       if (error?.name !== "ResearchBudgetExceededError") throw error;
@@ -4946,6 +4990,7 @@ async function runValidatedResearch(project, {
         accessibilityState: accessOutcome.state,
         parsingState: accessOutcome.state === "accessible" ? "parsed" : "failed",
         ...(accessOutcome.passage ? { excerpt: accessOutcome.passage, claimPassage: accessOutcome.passage } : {}),
+        ...(NON_RETAINED_DOCUMENT_OUTCOMES.has(accessOutcome.state) ? { excerpt: null, claimPassage: null } : {}),
       };
       openedGoogleDocuments.push(openedSource);
       documentAuditReceipts.push(openedSource);
@@ -5527,8 +5572,12 @@ async function runValidatedResearch(project, {
             documentReferringUrls: accessOutcome.referringUrls ?? [originalUrl].filter(Boolean),
             accessibilityState: accessOutcome.state,
             parsingState: accessOutcome.state === "accessible" ? "parsed" : "failed",
-            ...(accessOutcome.passage ? { excerpt: accessOutcome.passage } : {}),
-             ...((accessOutcome.passage ?? source.excerpt) ? { claimPassage: accessOutcome.passage ?? source.excerpt } : {}),
+            ...(NON_RETAINED_DOCUMENT_OUTCOMES.has(accessOutcome.state)
+              ? { excerpt: null, claimPassage: null }
+              : {
+                ...(accessOutcome.passage ? { excerpt: accessOutcome.passage } : {}),
+                ...((accessOutcome.passage ?? source.excerpt) ? { claimPassage: accessOutcome.passage ?? source.excerpt } : {}),
+              }),
           };
           accessedSources.push(accessedSource);
           documentAuditReceipts.push(accessedSource);

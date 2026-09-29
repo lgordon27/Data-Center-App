@@ -8,6 +8,7 @@ export const RESEARCH_EXTRACTION_LIMITS = Object.freeze({
   maxIndexEntryChars: 240,
   maxCandidateLinks: 12,
   maxMarkupChars: 250_000,
+  minHtmlProseChars: 300,
   maxJsonNodes: 2_000,
   maxPdfStreams: 80,
   maxPdfInflatedBytes: 500_000,
@@ -63,6 +64,96 @@ function safeDocumentUrl(value, sourceUrl) {
   }
 }
 
+const NON_PROSE_HTML_BLOCKS = /^(?:share|share this|share this article|share this story|share on social media|print|email|copy|copy link|read more|subscribe|sign in|log in|login|advertisement|related articles|follow us|privacy policy|terms of service|cookie settings|accept cookies|manage preferences)$/i;
+
+function blockText(value) {
+  return cleanText(decodeEntities(String(value).replace(/<[^>]*>/g, " ")));
+}
+
+function matchingElementContent(markup, tagName, contentStart) {
+  const tags = new RegExp(`<\\/?${tagName}\\b[^>]*>`, "gi");
+  tags.lastIndex = contentStart;
+  let depth = 1;
+  let match;
+  while ((match = tags.exec(markup))) {
+    if (/^<\//.test(match[0])) {
+      depth -= 1;
+      if (depth === 0) return markup.slice(contentStart, match.index);
+    } else if (!/\/>$/.test(match[0])) {
+      depth += 1;
+    }
+  }
+  return null;
+}
+
+function preferredArticleBodies(markup) {
+  const found = [];
+  const elements = /<(div|section|article)\b[^>]*>/gi;
+  let match;
+  while ((match = elements.exec(markup))) {
+    const openingTag = match[0];
+    const tagName = match[1];
+    const itemProp = openingTag.match(/\bitemprop\s*=\s*["']([^"']+)["']/i)?.[1] ?? "";
+    const classOrId = openingTag.match(/\b(?:class|id)\s*=\s*["']([^"']+)["']/i)?.[1] ?? "";
+    const articleBody = /\barticlebody\b/i.test(itemProp)
+      || /(?:article|story|entry|post)[\s_-]*(?:body|content|text)|(?:entry|post)[\s_-]*content|field--name-body|node__content/i.test(classOrId);
+    if (!articleBody || /\/>$/.test(openingTag)) continue;
+    const contentStart = elements.lastIndex;
+    const content = matchingElementContent(markup, tagName, contentStart);
+    if (content) found.push(content);
+  }
+  return found.sort((left, right) => right.length - left.length).slice(0, 1);
+}
+
+function proseTextFromHtml(source) {
+  const lines = String(source)
+    .replace(/<br\b[^>]*>/gi, "\n")
+    .replace(/<\/(?:p|div|section|article|h[1-6]|li|tr)\s*>/gi, "\n")
+    .split(/\n+/)
+    .map(blockText)
+    .filter((line) => line && !NON_PROSE_HTML_BLOCKS.test(line))
+    .filter((line) => !/^(?:share|print|email|copy link|read more|subscribe|sign in|log in|follow us)[.!?]?$/i.test(line));
+  const uniqueLines = [];
+  const seen = new Set();
+  for (const line of lines) {
+    const key = line.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    uniqueLines.push(line);
+  }
+  return cleanText(uniqueLines.join(" ")
+    .replace(/\b([\p{L}\p{N}][\p{L}\p{N}'’\-]*)(?:\s+\1\b){2,}/giu, "$1"));
+}
+
+function genuineProseChars(text) {
+  const tokens = String(text).match(/[\p{L}\p{N}][\p{L}\p{N}'’\-]*/gu) ?? [];
+  const charCount = (String(text).match(/[\p{L}\p{N}]/gu) ?? []).length;
+  if (!tokens.length) return 0;
+  const uniqueRatio = new Set(tokens.map((token) => token.toLowerCase())).size / tokens.length;
+  // Repeated status text and token spam should not pass merely by being long.
+  return Math.floor(uniqueRatio < 0.2 ? charCount * uniqueRatio / 0.2 : charCount);
+}
+
+function htmlShellReason(text, sourceUrl) {
+  const normalized = String(text ?? "").toLowerCase();
+  if (/\b(?:verify you are human|verify that you are human|human verification|checking your browser|checking if the site connection is secure|unusual traffic from your (?:computer )?network|are you a robot|complete the security check|captcha)\b/.test(normalized)) {
+    return "bot-verification-page";
+  }
+  if (/\b(?:enable|turn on) javascript(?: and cookies)? to (?:continue|proceed|access|view|use)\b|\bjavascript is (?:required|disabled|not enabled)\b|\bthis (?:site|page|application) requires javascript\b/.test(normalized)) {
+    return "javascript-required-shell";
+  }
+  if (/\b(?:sign in|log in|register) to (?:continue|read|view|access)\b|\bsubscribe to (?:continue|read|view)\b|\bsubscription required\b|\bmembers[- ]only content\b|\bthis content is for subscribers\b|\bplease subscribe to read\b/.test(normalized)) {
+    return "login-or-paywall-shell";
+  }
+  try {
+    if (/\/(?:login|log-in|signin|sign-in|subscribe|subscription)(?:\/|$)/i.test(new URL(sourceUrl).pathname)
+      && genuineProseChars(text) < 600) return "login-or-paywall-shell";
+  } catch {
+    // URL validation is handled by the document access boundary.
+  }
+  return null;
+}
+
 function htmlAdapter(raw, sourceUrl, limits) {
   const markup = raw.slice(0, limits.maxMarkupChars);
   const withoutExecutable = markup
@@ -97,11 +188,13 @@ function htmlAdapter(raw, sourceUrl, limits) {
   }
   const withoutBoilerplate = withoutExecutable
     .replace(/<(nav|header|footer|aside)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, " ")
-    .replace(/<(?:div|section)\b[^>]*(?:id|class)\s*=\s*["'][^"']*(?:banner|cookie|consent|navigation|navbar|menu|breadcrumb)[^"']*["'][^>]*>[\s\S]*?<\/(?:div|section)\s*>/gi, " ");
+    .replace(/<(?:div|section)\b[^>]*(?:id|class|role)\s*=\s*["'][^"']*(?:banner|cookie|consent|navigation|navbar|menu|breadcrumb|share|social|related|recommend|sidebar|toolbar|top-bar|primary-nav|advert)[^"']*["'][^>]*>[\s\S]*?<\/(?:div|section)\s*>/gi, " ");
+  const articleBodyContainers = preferredArticleBodies(withoutBoilerplate);
   const mainContainers = [...withoutBoilerplate.matchAll(/<main\b[^>]*>([\s\S]*?)<\/main\s*>/gi)].map((match) => match[1]);
   const articleContainers = [...withoutBoilerplate.matchAll(/<article\b[^>]*>([\s\S]*?)<\/article\s*>/gi)].map((match) => match[1]);
   const sectionContainers = [...withoutBoilerplate.matchAll(/<section\b[^>]*>([\s\S]*?)<\/section\s*>/gi)].map((match) => match[1]);
-  const contentContainers = mainContainers.length ? mainContainers
+  const contentContainers = articleBodyContainers.length ? articleBodyContainers
+    : mainContainers.length ? mainContainers
     : articleContainers.length ? articleContainers
       : sectionContainers;
   const titleText = [...withoutBoilerplate.matchAll(/<title\b[^>]*>([\s\S]*?)<\/title\s*>/gi)]
@@ -115,8 +208,15 @@ function htmlAdapter(raw, sourceUrl, limits) {
   const textSource = contentContainers.length
     ? `${titleText.join(" ")} ${contentContainers.join(" ")}`
     : withoutBoilerplate;
-  const text = cleanText(decodeEntities(textSource.replace(/<[^>]+>/g, " ")));
-  return { text, index: makeIndex(headings, limits), candidates };
+  const text = proseTextFromHtml(textSource);
+  const shellScanText = proseTextFromHtml(withoutBoilerplate);
+  return {
+    text,
+    shellReason: htmlShellReason(text || shellScanText, sourceUrl),
+    genuineProseChars: genuineProseChars(text),
+    index: makeIndex(headings, limits),
+    candidates,
+  };
 }
 
 function jsonAdapter(raw, limits) {
@@ -266,6 +366,22 @@ export async function extractResearchDocument(input, options = {}) {
   if (adapted.truncated) result.limitations.push("Structured input exceeded the bounded node index.");
   if (adapted.arcgis) result.limitations.push("ArcGIS feature attributes were extracted without geometry.");
   const text = cleanText(adapted.text);
+  if (kind === "html") {
+    const shellReason = adapted.shellReason
+      ?? htmlShellReason(text, input?.sourceUrl);
+    if (shellReason && !(shellReason === "javascript-required-shell" && result.candidateLinks.length && !text)) {
+      result.outcome = "blocked-or-shell";
+      result.reason = shellReason;
+      result.limitations.push(`HTML was not retained because it is a ${shellReason.replaceAll("-", " ")}.`);
+      return result;
+    }
+    if (adapted.genuineProseChars < limits.minHtmlProseChars && !(result.candidateLinks.length && !text)) {
+      result.outcome = "low-content";
+      result.reason = `genuine-prose-below-${limits.minHtmlProseChars}-characters`;
+      result.limitations.push(`HTML contains only ${adapted.genuineProseChars} genuine prose characters after removing page chrome; at least ${limits.minHtmlProseChars} are required.`);
+      return result;
+    }
+  }
   if (text.length > limits.maxPassageChars) result.limitations.push(`Passage truncated to ${limits.maxPassageChars} characters.`);
   result.passage = text.slice(0, limits.maxPassageChars);
 

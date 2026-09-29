@@ -14,14 +14,21 @@ function textPdf(text) {
   ]);
 }
 
+const substantialArticle = [
+  "The utility filing describes a new data center campus planned for the county.",
+  "Project documents identify the interconnection request and the facilities expected to serve the site.",
+  "County staff reviewed the application, public comments, construction schedule, and related infrastructure plans.",
+  "The report also summarizes the applicant's development timeline, expected capacity, and the agencies responsible for review.",
+].join(" ");
+
 test("extracts bounded HTML without executing script", async () => {
   globalThis.__extractionScriptRan = false;
   const result = await extractResearchDocument({
-    bytes: "<title>Atlas</title><script>globalThis.__extractionScriptRan=true</script><h1>Permit</h1><p>Approved.</p>",
+    bytes: `<title>Atlas</title><script>globalThis.__extractionScriptRan=true</script><main><h1>Permit</h1><p>${substantialArticle}</p></main>`,
     contentType: "text/html",
   });
   assert.equal(result.outcome, "extracted");
-  assert.equal(result.passage, "Atlas Permit Approved.");
+  assert.match(result.passage, /^Atlas Permit The utility filing describes/);
   assert.deepEqual(result.index, ["Atlas", "Permit"]);
   assert.equal(globalThis.__extractionScriptRan, false);
   assert.match(result.contentHash, /^[a-f0-9]{64}$/);
@@ -30,12 +37,64 @@ test("extracts bounded HTML without executing script", async () => {
 test("prioritizes article facts over long navigation and boilerplate text", async () => {
   const navigation = `<nav><h2>${"Navigation links and cookie settings. ".repeat(180)}</h2>${"Footer links. ".repeat(180)}</nav>`;
   const result = await extractResearchDocument({
-    bytes: `<header>${navigation}</header><main><h1>Project Atlas</h1><p>The Texas facility received a 240 MW interconnection approval.</p></main><footer>${"Footer links. ".repeat(400)}</footer>`,
+    bytes: `<header>${navigation}</header><main><h1>Project Atlas</h1><p>The Texas facility received a 240 MW interconnection approval. ${substantialArticle}</p></main><footer>${"Footer links. ".repeat(400)}</footer>`,
     contentType: "text/html",
   });
   assert.ok(result.passage.length <= 4_000);
   assert.match(result.passage, /240 MW interconnection approval/);
   assert.doesNotMatch(result.passage, /Navigation links|Footer links|cookie settings/);
+});
+
+test("removes news navigation and ETDatacenters-style share chrome while keeping article prose", async () => {
+  const news = await extractResearchDocument({
+    bytes: `<nav>Home News Analysis Contact</nav><header>Market News</header><main><article><h1>County approves infrastructure plan</h1><p>${substantialArticle}</p></article></main><footer>About us Privacy Terms</footer>`,
+    contentType: "text/html",
+  });
+  assert.equal(news.outcome, "extracted");
+  assert.match(news.passage, /County approves infrastructure plan/);
+  assert.match(news.passage, /public comments/);
+  assert.doesNotMatch(news.passage, /Home News Analysis|Market News|About us/);
+
+  const etDatacenters = await extractResearchDocument({
+    bytes: `<div class="site-header"><nav>Home Data Centers News</nav></div><div class="entry-content"><h1>New campus receives approval</h1><div class="article-body"><p>${substantialArticle}</p><p>Officials said the approved work will proceed under the published schedule.</p></div><div class="share-buttons">Share this article Print Email</div></div><div class="site-footer">Contact Privacy</div>`,
+    contentType: "text/html",
+    sourceUrl: "https://etdatacenters.example/news/campus",
+  });
+  assert.equal(etDatacenters.outcome, "extracted");
+  assert.match(etDatacenters.passage, /utility filing describes a new data center campus/);
+  assert.doesNotMatch(etDatacenters.passage, /Home Data Centers|Share this article|Print Email|Contact Privacy/);
+});
+
+test("classifies verification, JavaScript, login, and paywall shells before retaining text", async () => {
+  const cases = [
+    ["<main><h1>Verify you are human</h1><p>Complete the security check before continuing.</p></main>", "bot-verification-page"],
+    ["<main><p>Enable JavaScript and cookies to continue.</p></main>", "javascript-required-shell"],
+    ["<main><h1>Sign in to continue reading</h1><form><button>Sign in</button></form></main>", "login-or-paywall-shell"],
+    ["<main><h1>Subscribe to continue reading</h1><p>This article is for subscribers.</p></main>", "login-or-paywall-shell"],
+  ];
+  for (const [html, reason] of cases) {
+    const result = await extractResearchDocument({ bytes: html, contentType: "text/html" });
+    assert.equal(result.outcome, "blocked-or-shell");
+    assert.equal(result.reason, reason);
+    assert.equal(result.passage, "");
+  }
+});
+
+test("rejects low-prose pages and repeated status tokens", async () => {
+  const navigationHeavy = await extractResearchDocument({
+    bytes: `<nav>${"Home Projects News Contact ".repeat(100)}</nav><main><h1>Project Atlas</h1><p>Permit details are not available.</p></main>`,
+    contentType: "text/html",
+  });
+  assert.equal(navigationHeavy.outcome, "low-content");
+  assert.equal(navigationHeavy.reason, "genuine-prose-below-300-characters");
+  assert.equal(navigationHeavy.passage, "");
+
+  const repeatedTokens = await extractResearchDocument({
+    bytes: `<main><p>${"Loading ".repeat(120)}</p></main>`,
+    contentType: "text/html",
+  });
+  assert.equal(repeatedTokens.outcome, "low-content");
+  assert.equal(repeatedTokens.passage, "");
 });
 
 test("extracts plain text, generic JSON, and bounded indexes", async () => {
@@ -106,7 +165,8 @@ test("discovers only safe explicit underlying document URLs from JavaScript shel
     contentType: "text/html",
     sourceUrl: "https://records.example.gov/",
   });
-  assert.equal(unsafe.outcome, "empty");
+  assert.equal(unsafe.outcome, "low-content");
+  assert.match(unsafe.reason, /genuine-prose-below/);
   assert.equal(unsafe.underlyingDocumentUrl, null);
 });
 
@@ -122,7 +182,7 @@ test("enforces input, passage, index, and candidate-link bounds", async () => {
   const bounded = await extractResearchDocument({
     bytes: `<h1>${"x".repeat(20)}</h1>${Array.from({ length: 10 }, (_, index) => `<a rel="document" href="https://example.gov/${index}.pdf">d</a>`).join("")}`,
     contentType: "text/html",
-  }, { limits: { maxPassageChars: 10, maxIndexEntries: 1, maxIndexEntryChars: 5, maxCandidateLinks: 2 } });
+  }, { limits: { minHtmlProseChars: 0, maxPassageChars: 10, maxIndexEntries: 1, maxIndexEntryChars: 5, maxCandidateLinks: 2 } });
   assert.equal(bounded.passage.length, 10);
   assert.deepEqual(bounded.index, ["xxxxx"]);
   assert.equal(bounded.candidateLinks.length, 2);

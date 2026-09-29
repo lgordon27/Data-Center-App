@@ -2555,13 +2555,15 @@ function containResearchRecord(item) {
       ? "Evidence passed semantic validation."
       : semantic.quarantineReasons.join("; ") || "Semantic validation rejected this evidence item.",
   };
+  const policyChecks = researchEligibility.checkTrace?.checks ?? [];
   const eligibilityChecks = [
-    ...(researchEligibility.checkTrace?.checks ?? []),
+    ...policyChecks,
     semanticCheck,
   ];
-  let firstFailure = researchEligibility.checkTrace?.firstFailure
-    ?? eligibilityChecks.find((check) => check.passed === false)
-    ?? null;
+  const earlierFailure = policyChecks.find((check) => check.passed === false) ?? null;
+  let firstFailure = earlierFailure
+    ? researchEligibility.checkTrace?.firstFailure ?? { id: earlierFailure.id, reason: earlierFailure.reason }
+    : null;
   if (!firstFailure && !semanticCheck.passed) {
     firstFailure = { id: semanticCheck.id, reason: semanticCheck.reason };
   }
@@ -2578,7 +2580,7 @@ function containResearchRecord(item) {
       reason: "Rejected without a recorded check",
     };
     eligibilityChecks.push(finalEligibilityCheck);
-    firstFailure ??= { id: finalEligibilityCheck.id, reason: finalEligibilityCheck.reason };
+    firstFailure = { id: finalEligibilityCheck.id, reason: finalEligibilityCheck.reason };
   }
   const eligibilityTrace = {
     ...researchEligibility.checkTrace,

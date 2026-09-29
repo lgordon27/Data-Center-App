@@ -4595,6 +4595,11 @@ test("claim audit reviews reuse the policy trace for not-applicable phase scope 
     sources: [source],
   };
   const acceptedEvidence = containResearchResult({ evidence: [claim] }).evidence;
+  const acceptedTrace = acceptedEvidence[0].sourceValidation.eligibilityTrace;
+  const acceptedSemanticCheck = acceptedTrace.checks.at(-1);
+  assert.equal(acceptedSemanticCheck.id, "semantic-validation");
+  assert.equal(acceptedSemanticCheck.passed, true);
+  assert.ok(acceptedSemanticCheck.reason);
   const acceptedAudit = buildResearchAudit({
     project: { name: "Northstar Campus", location: "Texas" },
     evidence: acceptedEvidence,
@@ -4606,6 +4611,43 @@ test("claim audit reviews reuse the policy trace for not-applicable phase scope 
   assert.ok(acceptedReview.gates.every((check) => check.passed && check.reason));
   assert.equal(acceptedReview.firstFailure, null);
   assert.equal(acceptedReview.firstFailedGate, null);
+
+  const assertSemanticRejectionTrace = (record) => {
+    const trace = record.sourceValidation.eligibilityTrace;
+    const semanticCheck = trace.checks.at(-1);
+    assert.equal(record.eligibleForModel, false);
+    assert.equal(semanticCheck.id, "semantic-validation");
+    assert.equal(semanticCheck.passed, false);
+    assert.ok(semanticCheck.reason);
+    assert.ok(trace.checks.slice(0, -1).every((check) => check.passed));
+    assert.equal(trace.firstFailure.id, "semantic-validation");
+    assert.equal(trace.firstFailure.reason, semanticCheck.reason);
+    assert.ok(record.quarantineReasons.some((reason) => semanticCheck.reason.includes(reason)));
+  };
+  const incompatibleUnit = containResearchResult({
+    evidence: [{ ...claim, unit: "MW" }],
+  }).evidence[0];
+  assertSemanticRejectionTrace(incompatibleUnit);
+  const incompatibleAudit = buildResearchAudit({
+    project: { name: "Northstar Campus", location: "Texas" },
+    evidence: [incompatibleUnit],
+    sources: [source],
+  });
+  const incompatibleReview = incompatibleAudit.eligibilityReview.claims[0];
+  assert.ok(incompatibleReview.gates.some((gate) => gate.id === "semantic-validation" && !gate.passed));
+  assert.equal(incompatibleReview.firstFailedGate, "semantic-validation");
+
+  const invalidValue = containResearchResult({
+    evidence: [{ ...claim, value: "not-a-number", numericValue: "not-a-number" }],
+  }).evidence[0];
+  assertSemanticRejectionTrace(invalidValue);
+
+  const missingValueClaim = { ...claim };
+  delete missingValueClaim.value;
+  delete missingValueClaim.numericValue;
+  delete missingValueClaim.rawValue;
+  const missingValue = containResearchResult({ evidence: [missingValueClaim] }).evidence[0];
+  assertSemanticRejectionTrace(missingValue);
 
   const rejectedPolicyInput = { ...policyInput, claimMappings: [] };
   const rejectedDecision = evaluateResearchEvidenceEligibility(rejectedPolicyInput);
@@ -4692,6 +4734,19 @@ test("research audits retain policy checks, provider retries, redirects, and fet
       claimTimePeriod: null,
       eligibleForModel: false,
       quarantineReasons: ["Exact facility phase is unresolved."],
+      sourceValidation: {
+        eligibilityTrace: {
+          checks: [{
+            id: "phase-scope",
+            passed: false,
+            reason: "Exact facility phase is unresolved.",
+          }],
+          firstFailure: {
+            id: "phase-scope",
+            reason: "Exact facility phase is unresolved.",
+          },
+        },
+      },
     }],
     startedAt: "2026-09-28T12:00:00.000Z",
     finishedAt: "2026-09-28T12:00:05.000Z",
@@ -4709,12 +4764,21 @@ test("research audits retain policy checks, provider retries, redirects, and fet
   assert.equal(sourceAttempt.redirectHops[0].dnsValidation.addressFamilyCounts.ipv6, 1);
   const skippedAttempt = audit.sourceAttempts.find((attempt) => attempt.discoveryRank === 4);
   assert.equal(skippedAttempt.state, "not-attempted");
+  assert.ok(audit.eligibilityReview.claims[0].gates.some((gate) => gate.passed === false));
   assert.equal(skippedAttempt.reason, "physical-open-budget");
   const review = audit.eligibilityReview.claims[0];
   assert.equal(review.sourcePassage, passage);
   assert.equal(review.sourcePassageHash, createHash("sha256").update(passage).digest("hex"));
-  assert.deepEqual(review.gates, []);
-  assert.equal(review.firstFailedGate, null);
+  assert.deepEqual(review.gates, [{
+    id: "phase-scope",
+    passed: false,
+    reason: "Exact facility phase is unresolved.",
+  }]);
+  assert.deepEqual(review.firstFailure, {
+    id: "phase-scope",
+    reason: "Exact facility phase is unresolved.",
+  });
+  assert.equal(review.firstFailedGate, "phase-scope");
 });
 
 test("research refuses provider work when the audit start insert fails", async () => {

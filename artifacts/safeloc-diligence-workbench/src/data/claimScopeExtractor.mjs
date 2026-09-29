@@ -93,8 +93,12 @@ function phaseNamesIn(text) {
 }
 
 function namedBuildingIn(text) {
-  const match = text.match(/\b(?:the\s+)?(first|second|third|fourth|fifth|last|final|initial)\s+building\b/i);
-  return match ? `${match[1].toLowerCase()} building` : null;
+  const named = text.match(/\b(?:the\s+)?(first|second|third|fourth|fifth|last|final|initial)\s+building\b/i);
+  if (named) return `${named[1].toLowerCase()} building`;
+  const group = text.match(/\bfirst\s+(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d{1,2})\s+buildings?\b/i);
+  if (!group) return null;
+  const count = /^\d+$/.test(group[1]) ? Number(group[1]) : NUMBER_WORDS[group[1].toLowerCase()];
+  return `first ${count} buildings`;
 }
 
 function buildingIdentifiers(text) {
@@ -114,7 +118,7 @@ function extractPeriod(text) {
   const normalized = text.replace(/\s+/g, " ");
   const monthDate = "(January|February|March|April|May|June|July|August|September|October|November|December)\\s+(\\d{1,2}),?\\s+(20\\d{2})";
   const eventDate = normalized.match(new RegExp(`\\b(?:disclos(?:ed|ure)|announc(?:ed|ement)|report(?:ed)?|publish(?:ed|ication)|press release|filing|statement|dated)\\b[^.]{0,60}?\\b${monthDate}\\b`, "i"))
-    ?? normalized.match(new RegExp(`^on\\s+${monthDate}\\b[^.]{0,100}\\b(?:disclos(?:ed|ure)|announc(?:ed|ement)|report(?:ed)?|publish(?:ed|ication)|issued|said)\\b`, "i"));
+    ?? normalized.match(new RegExp(`^on\\s+${monthDate}\\b[^.]{0,100}\\b(?:clos(?:ed|ure)|disclos(?:ed|ure)|announc(?:ed|ement)|report(?:ed)?|publish(?:ed|ication)|issued|said)\\b`, "i"));
   if (eventDate) {
     const month = new Date(`${eventDate[1]} 1, 2000`).getMonth() + 1;
     return `${eventDate[3]}-${String(month).padStart(2, "0")}-${String(eventDate[2]).padStart(2, "0")}`;
@@ -138,9 +142,9 @@ function deriveScope(text) {
   const namedBuilding = namedBuildingIn(text);
   const buildingIds = buildingIdentifiers(text);
   const count = buildingCount(text);
-  const isExactPhase = Boolean(phaseName || namedBuilding);
+  const isExactPhase = Boolean(phaseName || namedBuilding || buildingIds.length);
   const explicitProject = /\b(?:project|campus|site)\b/.test(normalized);
-  const projectTotal = /\b(?:all phases|across (?:all )?\w+ phases|(?:entire|whole|full|complete) campus|campus[- ]wide|project[- ]wide|campus total|total campus|total project|project(?:'s)? total capacity|project capacity|full[- ]build|full build[- ]out|fully built|ultimate build(?:out)?|at completion|when complete)\b/i.test(text);
+  const projectTotal = /\b(?:all phases|across (?:all )?\w+ phases|(?:entire|whole|full|complete) campus|campus[- ]wide|project[- ]wide|campus total|total campus|total project|project(?:'s)? total capacity|project capacity|full[- ]build|full build[- ]out|fully built|ultimate build(?:out)?|at completion|when complete|eventually host)\b/i.test(text);
   const explicitFacility = /\b(?:facility|building|data center|data centre)\b/i.test(text);
 
   if (phaseNames.length > 1) {

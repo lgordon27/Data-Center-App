@@ -65,6 +65,44 @@ test("binds the complete Red Oak passage's capacity and phase claims to their ow
   assert.equal(operatingYear.claimTimePeriod, null);
 });
 
+test("classifies the literal Red Oak building-group and eventual full-build claims", () => {
+  const claimPassage = "The DataBank Red Oak data center campus is a 292-acre, eight-building hyperscale development located 20 miles south of Dallas in Red Oak, Texas. On April 21, 2026, DataBank closed a $2 billion construction loan, the largest in company history, to fund the first three buildings (DFW9, DFW10, and DFW11), which together total 600,000 square feet and 180 megawatts of power. The 292-acre site will eventually host eight buildings delivering 480 MW of total IT load.";
+
+  const fullBuild = extractClaimScopeFromPassage({
+    claimPassage,
+    claimValue: 480,
+    unit: "MW",
+  });
+  assert.deepEqual(fullBuild, {
+    facilityScope: "project",
+    phaseScope: "all-phases",
+    claimTimePeriod: null,
+    phaseIdentity: null,
+  });
+  assert.doesNotMatch(JSON.stringify(fullBuild), /DFW9|DFW10|DFW11/);
+
+  assert.deepEqual(extractClaimScopeFromPassage({
+    claimPassage,
+    claimValue: "180 megawatts",
+    unit: "MW",
+  }), {
+    facilityScope: "project",
+    phaseScope: "exact-phase",
+    claimTimePeriod: "2026-04-21",
+    phaseIdentity: "first 3 buildings; DFW9/DFW10/DFW11; 3 buildings",
+  });
+
+  const firstThreeBuildings = extractClaimScopeFromPassage({
+    claimPassage: "The Red Oak campus will initially serve the first three buildings with 180 MW of power.",
+    claimValue: 180,
+    unit: "MW",
+  });
+  assert.equal(firstThreeBuildings.facilityScope, "project");
+  assert.equal(firstThreeBuildings.phaseScope, "exact-phase");
+  assert.match(firstThreeBuildings.phaseIdentity, /first 3 buildings/i);
+  assert.match(firstThreeBuildings.phaseIdentity, /3 buildings/);
+});
+
 test("recognizes common power wording, formatted values, and project-wide scope in one sentence", () => {
   const cases = [
     ["The Red Oak campus has 180 megawatts of power.", 180, "MW"],

@@ -18,11 +18,12 @@ import {
   type Screen,
 } from "@/components/Shell";
 import { DrawerField, DrawerSection, useWorkbenchDrawer } from "@/components/ContextDrawer";
-import { useDiligence } from "@/context/DiligenceContext";
+import { useDiligence, type EvidenceItem } from "@/context/DiligenceContext";
 import { formatImpactDelta } from "@/model/cashFlowEngine";
 import { classifyConferenceEvidence } from "@/model/conferenceEvidence";
 import { getEvidenceImpactRoleDefinition } from "@/data/evidenceImpactRoles";
 import { formatElectricityCostAttribution } from "@/data/sources";
+import { CAPACITY_MW_MAX, type CapacityScope } from "@/model/assumptionBinding";
 
 function reviewActionLabel(kind: "manual" | "ai" | undefined, reviewKind?: string) {
   if (reviewKind === "ai-accepted") return "AI-suggested, accepted by analyst";
@@ -48,6 +49,31 @@ function formatDriverValue(value: number, unit: string) {
 function formatCoverage(year: { activeMonths: number; debtService: number; dscr: number | null }) {
   if (year.activeMonths === 0 && year.debtService > 0) return "Pre-op";
   return year.dscr === null || !Number.isFinite(year.dscr) ? "—" : `${year.dscr.toFixed(2)}x`;
+}
+
+function formatCapacityScope(scope: CapacityScope) {
+  if (scope.kind === "campus") return `Campus${scope.campusId ? ` · ${scope.campusId}` : ""}`;
+  if (scope.kind === "phase") return `Phase ${scope.phaseId} · ${scope.buildingCount} buildings`;
+  return `Building ${scope.buildingId}`;
+}
+
+function ModelInputProvenance({ item, inputId, sourceClassification }: { item: EvidenceItem | undefined; inputId?: string; sourceClassification?: string }) {
+  const isDossierEvidence = item?.origin === "dossier";
+  const classification = isDossierEvidence
+    ? item.classification
+    : sourceClassification ?? item?.classification ?? "No dossier evidence";
+  const visibleClassification = !isDossierEvidence && classification === "Verified Evidence"
+    ? "Not verified in dossier"
+    : classification;
+  return (
+    <div data-testid={`model-input-provenance-${inputId ?? item?.id ?? "unknown"}`} className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[8px] leading-3 text-[#60707d]">
+      <span className={`font-semibold ${isDossierEvidence ? "text-[#0b7a63]" : "text-[#805000]"}`}>
+        {isDossierEvidence ? "Dossier evidence" : "Synthetic default — not dossier evidence"}
+      </span>
+      {item?.sessionOverride && <span className="rounded-full bg-[#fff0d6] px-1.5 py-0.5 font-bold text-[#a65a00]">Session override</span>}
+      <span>Source classification: {visibleClassification}</span>
+    </div>
+  );
 }
 
 function ProviderOverlayComparison({
@@ -77,10 +103,10 @@ function ProviderOverlayComparison({
         ? "Not applicable to custom project"
         : "Embedded case baseline · no provider response";
   const scenarioCards = [
-    { label: "Synthetic underwriting baseline", scenario: syntheticVerified, role: modeled ? "Primary benchmark" : "Illustrative benchmark only" },
-    { label: "Synthetic current-evidence case", scenario: syntheticCurrent, role: modeled ? "Primary recommendation" : "Not a recommendation basis" },
-    { label: "EIA verified sensitivity", scenario: eiaVerified, role: "Optional market sensitivity" },
-    { label: "EIA current-evidence sensitivity", scenario: eiaCurrent, role: "Optional market sensitivity" },
+    { label: "Synthetic underwriting baseline", scenario: syntheticVerified, role: isCustom && modeled ? "Illustrative — not project economics" : modeled ? "Primary benchmark" : "Illustrative benchmark only" },
+    { label: "Synthetic current-evidence case", scenario: syntheticCurrent, role: isCustom && modeled ? "Illustrative — not project economics" : modeled ? "Primary recommendation" : "Not a recommendation basis" },
+    { label: "EIA verified sensitivity", scenario: eiaVerified, role: isCustom && modeled ? "Illustrative — not project economics" : "Optional market sensitivity" },
+    { label: "EIA current-evidence sensitivity", scenario: eiaCurrent, role: isCustom && modeled ? "Illustrative — not project economics" : "Optional market sensitivity" },
   ];
   return (
     <section data-testid="provider-overlay-comparison" className="mb-4 rounded-xl border border-[#aac6f4] bg-[#eef5ff] p-4 md:p-5">
@@ -232,9 +258,27 @@ function NextViewButton({ label, target, onClick }: { label: string; target: Fin
 }
 
 export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Screen) => void }) {
-  const { evidence, hasChangedClassification, metrics, sourceStates, project, originatingCompany, financialInputState, financialScenarios, financialModeling } = useDiligence();
+  const {
+    evidence,
+    hasChangedClassification,
+    metrics,
+    sourceStates,
+    project,
+    originatingCompany,
+    financialInputState,
+    financialScenarios,
+    financialModeling,
+    capacityClaimCandidate,
+    acceptCapacityClaim,
+    rejectCapacityClaim,
+    illustrativeCapacityMW,
+    setIllustrativeCapacityMW,
+    capacityExplanation,
+    capacityDecisionTrail,
+  } = useDiligence();
   const conferenceEvidence = classifyConferenceEvidence(evidence, project);
   const [financialView, setFinancialView] = useState<FinancialView>("overview");
+  const [capacityInputError, setCapacityInputError] = useState<string | null>(null);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const currentIRR = metrics.projectIRR;
   const baseIRR = metrics.baseIRR ?? null;
@@ -280,6 +324,19 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
     : metrics.recommendationStatus === "CONDITIONAL"
       ? "Proceed only with explicit conditions around the unresolved evidence and modeled treatments."
       : "Resolve material evidence gaps before using the output as an investment conclusion.";
+  const updateIllustrativeCapacity = (rawValue: string) => {
+    if (!rawValue.trim()) {
+      setCapacityInputError(null);
+      setIllustrativeCapacityMW(null);
+      return;
+    }
+    const value = Number(rawValue);
+    if (!Number.isFinite(value) || value <= 0 || value > CAPACITY_MW_MAX || !setIllustrativeCapacityMW(value)) {
+      setCapacityInputError(`Enter a capacity greater than 0 and no more than ${CAPACITY_MW_MAX.toLocaleString("en-US")} MW.`);
+      return;
+    }
+    setCapacityInputError(null);
+  };
 
   if (project.kind === "custom" && financialModeling.status === "not-modeled") {
     return (
@@ -299,6 +356,39 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
           <ul className="mt-2 list-disc space-y-1 pl-5">
             {financialModeling.requiredInputs.map((input) => <li key={input}>{input}</li>)}
           </ul>
+        </div>
+        {capacityClaimCandidate && <section data-testid="financial-capacity-candidate" className="mt-4 rounded-lg border border-[#aac6f4] bg-white p-4 text-xs leading-5 text-[#344550]">
+          <h3 className="font-semibold text-[#122232]">Qualifying capacity candidate</h3>
+          <p className="mt-2"><strong>Claim:</strong> {capacityClaimCandidate.claim.value} {capacityClaimCandidate.claim.unit} {capacityClaimCandidate.claim.powerMeasure}</p>
+          <p><strong>Scope:</strong> {formatCapacityScope(capacityClaimCandidate.claim.scope)}</p>
+          <p><strong>Date:</strong> {capacityClaimCandidate.claim.sourceDate}</p>
+          <p><strong>Source:</strong> <a className="text-[#255bb7] underline" href={capacityClaimCandidate.claim.sourceUrl} target="_blank" rel="noopener noreferrer">{capacityClaimCandidate.claim.sourceTitle}</a></p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button data-testid="financial-capacity-accept" type="button" onClick={acceptCapacityClaim} className="min-h-10 rounded-md bg-[#0b7a63] px-3 font-semibold text-white">Accept candidate</button>
+            <button data-testid="financial-capacity-reject" type="button" onClick={rejectCapacityClaim} className="min-h-10 rounded-md border border-[#ba2f45] px-3 font-semibold text-[#ba2f45]">Reject candidate</button>
+          </div>
+        </section>}
+        <div className="mt-4 rounded-lg border border-[#e3d4b6] bg-white p-4">
+          <label htmlFor="financial-illustrative-capacity" className="block text-xs font-semibold text-[#122232]">Illustrative capacity (MW)</label>
+          <p className="mt-1 text-[11px] leading-5 text-[#60707d]">A reviewer-entered scenario input only. Leaving this blank keeps custom-project capacity unset.</p>
+          <input
+            id="financial-illustrative-capacity"
+            data-testid="input-financial-illustrative-capacity"
+            aria-label="Illustrative capacity (MW)"
+            type="number"
+            min="0.1"
+            max={CAPACITY_MW_MAX}
+            step="0.1"
+            value={illustrativeCapacityMW ?? ""}
+            onChange={(event) => updateIllustrativeCapacity(event.currentTarget.value)}
+            className="mt-2 min-h-10 w-full max-w-xs rounded-md border border-[#cbd8d4] px-3 text-sm"
+          />
+          {capacityInputError && <p role="alert" className="mt-2 text-xs text-[#ba2f45]">{capacityInputError}</p>}
+          <p data-testid="financial-capacity-review-status" role="status" className="mt-2 text-[10px] text-[#60707d]">
+            {capacityDecisionTrail.length
+              ? `Latest capacity review: ${capacityDecisionTrail[capacityDecisionTrail.length - 1].action}.`
+              : "No capacity candidate decision recorded."}
+          </p>
         </div>
         <button type="button" onClick={() => onNavigate("evidence")} className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-md bg-[#122232] px-4 text-xs font-semibold text-[#d4e86b]">
           Review evidence <ArrowRight aria-hidden="true" className="h-4 w-4" />
@@ -343,6 +433,7 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
         projectName={project.name}
         modeled={financialModeling.status !== "not-modeled"}
       />
+      {project.kind === "custom" && financialModeling.status === "modeled" && <div data-testid="custom-illustrative-boundary" role="note" className="mb-4 rounded-lg border-2 border-[#f1cb8b] bg-[#fff8e9] px-4 py-3 text-xs font-bold text-[#805000]">Illustrative — not project economics. Every displayed return and cash-flow output for this custom project uses synthetic transaction assumptions.</div>}
       {!hasChangedClassification && <aside data-testid="materiality-classification-prompt" role="note" className="mb-4 flex items-start gap-3 rounded-lg border border-[#aac6f4] bg-[#eef5ff] px-4 py-3 text-[11px] leading-5 text-[#344550]"><Sparkles aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[#255bb7]" /><p><strong className="font-semibold text-[#122232]">Change a classification</strong> to see the return, driver ranking, confidence and recommendation update.</p></aside>}
        <div data-testid="financial-gap-counts" className="mb-4 grid gap-2 sm:grid-cols-2">
           <div data-decision-gate-count={conferenceEvidence.unresolvedDecisionGateCount} className="rounded-lg border border-[#e3d4b6] bg-[#fffbf2] px-3 py-2 text-[11px] text-[#805000]"><strong className="font-semibold">Unresolved decision gates:</strong> {conferenceEvidence.unresolvedDecisionGateCount}</div>
@@ -362,6 +453,19 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
           <div className="rounded-lg border border-white/10 bg-white/5 p-4"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#9dafb8]">Difference</div><div className="mt-1 font-mono text-2xl font-bold">{formatPercentagePoints(irrDelta, { signed: true })}</div></div>
           <div className="rounded-lg border border-white/10 bg-white/5 p-4"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#9dafb8]">Recommendation context</div><div className="mt-1 text-sm font-semibold text-[#d4e86b]">{metrics.recommendationStatus}</div><p className="mt-2 text-[10px] leading-4 text-[#c4d0d6]">{recommendationCopy}</p></div>
         </div>
+        {project.kind === "custom" && financialModeling.status === "modeled" && <section data-testid="custom-capacity-explanation" className="mt-4 rounded-lg border border-[#f1cb8b]/50 bg-white p-4 text-[#122232]">
+          <h4 className="text-xs font-bold">Capacity inputs behind this illustrative scenario</h4>
+          <p className="mt-1 text-[10px] leading-4 text-[#52616b]">{financialModeling.reason}</p>
+          <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+            {capacityExplanation.map((item) => <li key={`${item.input}-${item.classification}`} data-testid={`capacity-explanation-${item.input.replaceAll(" ", "-")}`} className="rounded-md border border-[#e5eae8] bg-[#f9faf8] p-3 text-[10px] leading-4">
+              <strong className="block text-[#122232]">{item.input}</strong>
+              <span className="mt-1 inline-block rounded-full bg-[#eef5ff] px-2 py-0.5 text-[9px] font-semibold text-[#255bb7]">
+                {item.input === "illustrative capacity" ? "Illustrative · " : ""}{item.classification}
+              </span>
+              <p className="mt-1 break-words text-[#52616b]">{item.detail}</p>
+            </li>)}
+          </ul>
+        </section>}
          {(baseIRRReason !== null || currentIRRReason !== null) && <div className="mt-3 space-y-2"><IRRReasonNote reason={baseIRRReason} testId="materiality-baseline-irr-reason" tone="dark" /><IRRReasonNote reason={currentIRRReason} testId="materiality-current-irr-reason" tone="dark" /></div>}
         {metrics.lastChange && metrics.lastChange.from !== metrics.lastChange.to && <div className="mt-3 rounded-lg border border-[#f5ddd5]/30 bg-[#f5ddd5]/10 px-3 py-2 font-mono text-[10px] text-[#f5ddd5]">{formatPercentagePoints(metrics.lastChange.delta, { signed: true })} since reclassification</div>}
         <div data-testid="transmission-pathway" className="mt-5 grid gap-2 md:grid-cols-4">
@@ -385,10 +489,10 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
               const differsFromModel = attribution.modeledClassification !== attribution.currentClassification;
               return <article key={attribution.id} data-testid={`impact-chain-row-${attribution.id}`} className="grid gap-3 py-4 lg:grid-cols-[2rem_1.2fr_0.7fr_0.8fr_1.5fr_auto] lg:items-center">
                 <div className="font-mono text-[10px] font-bold text-[#607500]">{String(index + 1).padStart(2, "0")}</div>
-                <div data-testid={`row-materiality-${attribution.id}`}><h4 className="text-[12px] font-semibold text-[#122232]">{attribution.label}</h4><p className="mt-1 text-[9px] leading-4 text-[#52616b]">{metrics.lineItems[attribution.id].driver}</p><div className="mt-1 font-mono text-[9px] text-[#60707d]">Raw {attribution.rawValue} {attribution.rawUnit} · applied {formatDriverValue(attribution.appliedValue, attribution.appliedUnit)}</div><div className="mt-1 text-[8px] leading-3 text-[#7d898f]">Provenance: {attribution.provenance}</div></div>
+                <div data-testid={`row-materiality-${attribution.id}`}><h4 className="text-[12px] font-semibold text-[#122232]">{attribution.label}</h4><p className="mt-1 text-[9px] leading-4 text-[#52616b]">{metrics.lineItems[attribution.id].driver}</p><div className="mt-1 font-mono text-[9px] text-[#60707d]">Raw {attribution.rawValue} {attribution.rawUnit} · applied {formatDriverValue(attribution.appliedValue, attribution.appliedUnit)}</div><div className="mt-1 text-[8px] leading-3 text-[#7d898f]">Provenance: {attribution.provenance}</div><ModelInputProvenance item={evidence[attribution.id]} inputId={attribution.id} sourceClassification={attribution.currentClassification} /></div>
                 <div><div className="text-[8px] font-bold uppercase tracking-[0.1em] text-[#7d898f]">Direction</div><div className={`mt-1 text-[11px] font-semibold ${effect < 0 ? "text-[#ba2f45]" : "text-[#0b7a63]"}`}>{effect < 0 ? "Lower return" : "Higher return"}</div></div>
                 <div><div className="text-[8px] font-bold uppercase tracking-[0.1em] text-[#7d898f]">Magnitude</div><div data-testid={`impact-chain-sensitivity-${attribution.id}`} className="mt-1 font-mono text-[11px] font-bold">{formatImpactDelta(effect)}</div><div data-testid={`materiality-impact-${attribution.id}`} className="sr-only">{formatImpactDelta(effect)}</div><div data-testid={`materiality-explanation-${attribution.id}`} className="sr-only">{metrics.lineItems[attribution.id]?.impactExplanation}</div></div>
-                <div data-testid={`driver-treatment-${attribution.id}`}><div className="text-[8px] font-bold uppercase tracking-[0.1em] text-[#7d898f]">Evidence / treatment</div><p className="mt-1 text-[9px] font-semibold text-[#344550]">Evidence: {attribution.currentClassification}</p>{differsFromModel && <p className="mt-1 text-[9px] font-semibold text-[#7a5313]">Modeled as: {attribution.modeledClassification}</p>}<p className="mt-1 text-[9px] leading-4 text-[#52616b]"><strong>Reason:</strong> {metrics.lineItems[attribution.id]?.impactExplanation}</p><p className="mt-1 text-[9px] leading-4 text-[#52616b]">{attribution.currentTreatment}</p><span data-testid={`impact-chain-classification-${attribution.id}`} className="sr-only">{attribution.currentClassification}</span></div>
+                <div data-testid={`driver-treatment-${attribution.id}`}><div className="text-[8px] font-bold uppercase tracking-[0.1em] text-[#7d898f]">Evidence / treatment</div><p className="mt-1 text-[9px] font-semibold text-[#344550]">Source classification: {evidence[attribution.id]?.origin === "dossier" ? evidence[attribution.id].classification : attribution.currentClassification === "Verified Evidence" ? "Not verified in dossier" : attribution.currentClassification}</p>{evidence[attribution.id]?.origin === "dossier" && differsFromModel && <p className="mt-1 text-[9px] font-semibold text-[#7a5313]">Modeled as: {attribution.modeledClassification}</p>}<p className="mt-1 text-[9px] leading-4 text-[#52616b]"><strong>Reason:</strong> {metrics.lineItems[attribution.id]?.impactExplanation}</p><p className="mt-1 text-[9px] leading-4 text-[#52616b]">{attribution.currentTreatment}</p><span data-testid={`impact-chain-classification-${attribution.id}`} className="sr-only">{evidence[attribution.id]?.origin === "dossier" ? evidence[attribution.id].classification : attribution.currentClassification === "Verified Evidence" ? "Not verified in dossier" : attribution.currentClassification}</span></div>
                 <EvidenceTraceButton inputId={attribution.id} testId={`button-trace-impact-chain-${attribution.id}`} context="row" />
               </article>;
             })}
@@ -396,7 +500,7 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
           {additionalAttributions.length > 0 && <details data-testid="disclosure-additional-minor-effects" className="mt-4 rounded-lg border border-[#d9e0e4] bg-[#f7faf8]"><summary className="cursor-pointer list-none px-4 py-3 text-[11px] font-semibold text-[#52616b] [&::-webkit-details-marker]:hidden">Additional minor effects <span className="font-normal">({additionalAttributions.length})</span><ChevronDown aria-hidden="true" className="ml-2 inline h-4 w-4" /></summary><div className="divide-y divide-[#e5eae8] border-t border-[#d9e0e4] px-4">{additionalAttributions.map((attribution) => {
             const effect = attribution.singleInputSensitivityIRR ?? 0;
             const differsFromModel = attribution.modeledClassification !== attribution.currentClassification;
-            return <article key={attribution.id} data-testid={`minor-impact-row-${attribution.id}`} className="grid gap-2 py-3 sm:grid-cols-[1fr_1fr_auto] sm:items-center"><div data-testid={`row-materiality-${attribution.id}`}><h4 className="text-[10px] font-semibold text-[#122232]">{attribution.label}</h4><p className="mt-1 font-mono text-[9px] text-[#60707d]">Raw {attribution.rawValue} {attribution.rawUnit} · applied {formatDriverValue(attribution.appliedValue, attribution.appliedUnit)}</p><p className="mt-1 text-[9px] text-[#60707d]">{effect === 0 ? "No adjustment at current classification" : `${formatImpactDelta(effect)} · nonzero, below prominent-display materiality`}</p><p className="mt-1 text-[8px] leading-3 text-[#7d898f]">Provenance: {attribution.provenance}</p></div><div data-testid={`driver-treatment-${attribution.id}`}><p className="text-[9px] font-semibold text-[#344550]">Evidence: {attribution.currentClassification}</p>{differsFromModel && <p className="mt-1 text-[9px] font-semibold text-[#7a5313]">Modeled as: {attribution.modeledClassification}</p>}<p className="mt-1 text-[9px] leading-4 text-[#52616b]"><strong>Reason:</strong> {metrics.lineItems[attribution.id]?.impactExplanation}</p><p className="mt-1 text-[9px] leading-4 text-[#52616b]">{attribution.currentTreatment}</p></div><EvidenceTraceButton inputId={attribution.id} testId={`button-trace-minor-${attribution.id}`} context="row" /></article>;
+            return <article key={attribution.id} data-testid={`minor-impact-row-${attribution.id}`} className="grid gap-2 py-3 sm:grid-cols-[1fr_1fr_auto] sm:items-center"><div data-testid={`row-materiality-${attribution.id}`}><h4 className="text-[10px] font-semibold text-[#122232]">{attribution.label}</h4><p className="mt-1 font-mono text-[9px] text-[#60707d]">Raw {attribution.rawValue} {attribution.rawUnit} · applied {formatDriverValue(attribution.appliedValue, attribution.appliedUnit)}</p><p className="mt-1 text-[9px] text-[#60707d]">{effect === 0 ? "No adjustment at current classification" : `${formatImpactDelta(effect)} · nonzero, below prominent-display materiality`}</p><p className="mt-1 text-[8px] leading-3 text-[#7d898f]">Provenance: {attribution.provenance}</p><ModelInputProvenance item={evidence[attribution.id]} inputId={attribution.id} sourceClassification={attribution.currentClassification} /></div><div data-testid={`driver-treatment-${attribution.id}`}><p className="text-[9px] font-semibold text-[#344550]">Source classification: {evidence[attribution.id]?.origin === "dossier" ? evidence[attribution.id].classification : attribution.currentClassification === "Verified Evidence" ? "Not verified in dossier" : attribution.currentClassification}</p>{evidence[attribution.id]?.origin === "dossier" && differsFromModel && <p className="mt-1 text-[9px] font-semibold text-[#7a5313]">Modeled as: {attribution.modeledClassification}</p>}<p className="mt-1 text-[9px] leading-4 text-[#52616b]"><strong>Reason:</strong> {metrics.lineItems[attribution.id]?.impactExplanation}</p><p className="mt-1 text-[9px] leading-4 text-[#52616b]">{attribution.currentTreatment}</p></div><EvidenceTraceButton inputId={attribution.id} testId={`button-trace-minor-${attribution.id}`} context="row" /></article>;
           })}</div></details>}
         </div>
         <section id="financial-panel-waterfall" data-testid="panel-irr-waterfall" className="rounded-xl border-2 border-[#122232] bg-[#122232] p-5 text-white md:p-6">
@@ -414,6 +518,19 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
       </section>}
 
       {financialView === "assumptions" && <section id="financial-panel-assumptions" data-testid="financial-panel-assumptions" role="tabpanel" aria-labelledby="financial-tab-assumptions" tabIndex={0} className="space-y-4">
+        <section data-testid="model-input-provenance-list" className="rounded-xl border border-[#d9e0e4] bg-white p-5">
+          <SectionKicker>Evidence-to-model inputs</SectionKicker>
+          <h3 className="text-[19px] font-semibold text-[#122232]">What informs this model?</h3>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {Object.values(evidence).map((item) => <article key={item.id} data-testid={`model-input-assumption-${item.id}`} className="rounded-lg border border-[#e5eae8] bg-[#f9faf8] p-3">
+              <h4 className="text-[11px] font-semibold text-[#122232]">{item.label}</h4>
+              <p className="mt-1 text-[10px] text-[#52616b]">Input: {item.value}{item.unit ? ` ${item.unit}` : ""}</p>
+              <ModelInputProvenance item={item} />
+              <p className="mt-1 text-[9px] leading-4 text-[#60707d]">{item.sourceRole}</p>
+              {item.sourceUrl && <a className="mt-1 inline-block max-w-full break-all text-[9px] text-[#255bb7] underline" href={item.sourceUrl} target="_blank" rel="noopener noreferrer">{item.sourceTitle ?? item.sourceUrl}</a>}
+            </article>)}
+          </div>
+        </section>
         <div className="rounded-xl border border-[#f1cb8b] bg-[#fff8e9] p-5"><SectionKicker>Model boundary</SectionKicker><h3 className="text-[19px] font-semibold text-[#122232]">Synthetic assumptions stay separate from public evidence.</h3><p className="mt-2 text-[11px] leading-5 text-[#6f460e]">Entry value, lease rate, CAPEX, debt, downtime cost and terminal multiple are representative underwriting inputs—not reported {project.name} transaction terms. Public-source research does not activate project economics without the explicit opt-in shown before this model.</p><p data-testid="model-electricity-attribution" className="mt-3 rounded-md border border-[#e3d4b6] bg-white px-3 py-2 font-mono text-[11px] font-bold text-[#344550]">{formatElectricityCostAttribution(metrics.assumptions.electricityRate, metrics.attribution.electricity_cost.sourceId === "eia" ? sourceStates.eia : { ...sourceStates.eia, status: "embedded", dataOrigin: "embedded", timestamp: undefined })}</p></div>
         <details id="materiality-full-model" data-testid="disclosure-full-model-detail" className="rounded-xl border border-[#d9e0e4] bg-white"><summary className="flex min-h-12 cursor-pointer list-none items-center justify-between px-5 py-4 text-[11px] font-bold uppercase tracking-[0.12em] [&::-webkit-details-marker]:hidden">Transaction and return assumptions <ChevronDown aria-hidden="true" className="h-4 w-4" /></summary><div className="border-t border-[#d9e0e4] p-5"><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{[
           ["Revenue build", `${formatCurrency(metrics.assumptions.annualRevenueAtFullUtilization)} full run-rate`, `${metrics.assumptions.capacityMW} MW × $${metrics.assumptions.leaseRatePerKwMonth} / kW-mo · ${metrics.assumptions.revenueDelayMonths} mo delay`],

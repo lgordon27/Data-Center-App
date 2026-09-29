@@ -156,7 +156,7 @@ test.describe("analysis conference", () => {
 
     if (viewport?.width === 1440) {
       const briefHeight = await brief.evaluate((element) => element.getBoundingClientRect().height);
-      expect(briefHeight).toBeLessThanOrEqual((viewport?.height ?? 900) * 1.1);
+      expect(briefHeight).toBeLessThanOrEqual(990);
     }
   });
 

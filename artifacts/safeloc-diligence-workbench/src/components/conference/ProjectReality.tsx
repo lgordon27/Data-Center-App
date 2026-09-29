@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { ChevronDown, ExternalLink } from "lucide-react";
 import { useDiligence, type EvidenceItem } from "@/context/DiligenceContext";
 import { ClaimCitation } from "@/components/ClaimCitation";
@@ -5,6 +6,7 @@ import { RetainedResearchFindings } from "@/components/RetainedResearchFindings"
 import { ClassificationBadge } from "@/components/Shell";
 import { EvidenceRoom } from "@/pages/EvidenceRoom";
 import { getCommunityDocumentation, getConferenceEvidenceSummary } from "@/model/conferenceEvidence";
+import { CAPACITY_MW_MAX } from "@/model/assumptionBinding";
 
 const categories = [
   { name: "Power", ids: ["grid_interconnection", "electricity_cost", "electricity_escalation", "backup_power_capacity", "renewable_percentage"] },
@@ -23,15 +25,80 @@ export function EvidenceCitations({ item }: { item: EvidenceItem }) {
 export function ProjectReality({ evidenceOpen, onEvidenceOpenChange, onNavigate }: {
   evidenceOpen: boolean; onEvidenceOpenChange: (open: boolean) => void; onNavigate: (screen: string) => void;
 }) {
-  const { evidence, project } = useDiligence();
+  const {
+    evidence,
+    project,
+    capacityClaimCandidate,
+    acceptCapacityClaim,
+    rejectCapacityClaim,
+    illustrativeCapacityMW,
+    setIllustrativeCapacityMW,
+    capacityDecisionTrail,
+  } = useDiligence();
+  const [capacityInputError, setCapacityInputError] = useState<string | null>(null);
   const evidenceSummary = getConferenceEvidenceSummary(evidence, project);
   const facts = evidenceSummary.facts;
   const reportedNotVerified = evidenceSummary.reportedNotVerified.slice(0, 3);
   const unresolved = evidenceSummary.unresolved;
   const community = getCommunityDocumentation(evidence, project);
+  const updateIllustrativeCapacity = (rawValue: string) => {
+    if (!rawValue.trim()) {
+      setCapacityInputError(null);
+      setIllustrativeCapacityMW(null);
+      return;
+    }
+    const value = Number(rawValue);
+    if (!Number.isFinite(value) || value <= 0 || value > CAPACITY_MW_MAX || !setIllustrativeCapacityMW(value)) {
+      setCapacityInputError(`Enter a capacity greater than 0 and no more than ${CAPACITY_MW_MAX.toLocaleString("en-US")} MW.`);
+      return;
+    }
+    setCapacityInputError(null);
+  };
   return (
     <section data-testid="conference-view-reality" className="space-y-5">
       <div><p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#607500]">02 / Check the physical reality</p><h2 className="mt-2 text-2xl font-semibold tracking-tight">What is established—and what is still open?</h2><p className="mt-2 text-xs text-[#60707d]">{project.name} · Public facts and unresolved terms</p></div>
+      {project.kind === "custom" && <section data-testid="reality-capacity-review" className="rounded-xl border border-[#aac6f4] bg-white p-5">
+        <h3 className="font-semibold text-[#122232]">Capacity review · illustrative modeling only</h3>
+        {capacityClaimCandidate ? <>
+          <p className="mt-2 text-xs leading-5 text-[#52616b]">A qualifying candidate is available for explicit reviewer acceptance. A candidate alone does not create a model input.</p>
+          <div data-testid="reality-capacity-candidate" className="mt-3 rounded-lg border border-[#d9e0e4] bg-[#f9faf8] p-3 text-xs leading-5">
+            <p><strong>Capacity:</strong> {capacityClaimCandidate.claim.value} {capacityClaimCandidate.claim.unit} {capacityClaimCandidate.claim.powerMeasure}</p>
+            <p><strong>Scope:</strong> {capacityClaimCandidate.claim.scope.kind === "campus"
+              ? `Campus${capacityClaimCandidate.claim.scope.campusId ? ` · ${capacityClaimCandidate.claim.scope.campusId}` : ""}`
+              : capacityClaimCandidate.claim.scope.kind === "phase"
+                ? `Phase ${capacityClaimCandidate.claim.scope.phaseId} · ${capacityClaimCandidate.claim.scope.buildingCount} buildings`
+                : `Building ${capacityClaimCandidate.claim.scope.buildingId}`}</p>
+            <p><strong>Date:</strong> {capacityClaimCandidate.claim.sourceDate}</p>
+            <p><strong>Source:</strong> <a href={capacityClaimCandidate.claim.sourceUrl} target="_blank" rel="noopener noreferrer" className="break-all text-[#255bb7] underline">{capacityClaimCandidate.claim.sourceTitle}</a></p>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button data-testid="reality-capacity-accept" type="button" onClick={acceptCapacityClaim} className="min-h-10 rounded-md bg-[#0b7a63] px-3 text-xs font-semibold text-white">Accept candidate</button>
+            <button data-testid="reality-capacity-reject" type="button" onClick={rejectCapacityClaim} className="min-h-10 rounded-md border border-[#ba2f45] px-3 text-xs font-semibold text-[#ba2f45]">Reject candidate</button>
+          </div>
+        </> : <p className="mt-2 text-xs leading-5 text-[#60707d]">No qualifying whole-campus capacity candidate is available. You can still enter an explicitly illustrative scenario input below.</p>}
+        <div className="mt-4 border-t border-[#e5eae8] pt-4">
+          <label htmlFor="reality-illustrative-capacity" className="block text-xs font-semibold text-[#122232]">Illustrative capacity (MW)</label>
+          <p className="mt-1 text-[11px] leading-5 text-[#60707d]">This analyst-entered scenario value is not sourced project capacity. Clear it to leave capacity unset.</p>
+          <input
+            id="reality-illustrative-capacity"
+            data-testid="input-reality-illustrative-capacity"
+            aria-label="Illustrative capacity (MW)"
+            type="number"
+            min="0.1"
+            max={CAPACITY_MW_MAX}
+            step="0.1"
+            value={illustrativeCapacityMW ?? ""}
+            onChange={(event) => updateIllustrativeCapacity(event.currentTarget.value)}
+            className="mt-2 min-h-10 w-full max-w-xs rounded-md border border-[#cbd8d4] px-3 text-sm"
+          />
+          {capacityInputError && <p role="alert" className="mt-2 text-xs text-[#ba2f45]">{capacityInputError}</p>}
+          <p data-testid="reality-capacity-review-status" role="status" className="mt-2 text-[10px] text-[#60707d]">
+            {capacityDecisionTrail.length
+              ? `Latest capacity review: ${capacityDecisionTrail[capacityDecisionTrail.length - 1].action}.`
+              : "No capacity candidate decision recorded."}
+          </p>
+        </div>
+      </section>}
       {project.replay?.mode === "offline-saved-response" && <div data-testid="offline-replay-label" className="rounded-lg border border-[#f1cb8b] bg-[#fff8e9] px-4 py-3 text-xs text-[#6f460e]"><strong>Offline replay of saved research</strong> · No live provider request was made. The original run remains partial, and retained passages are untrusted research material until scoped below.</div>}
       {project.kind === "custom" && <RetainedResearchFindings
         findings={project.retainedFindings}

@@ -22,11 +22,12 @@ export function AdvisorBrief() {
   const assetManagerBrief = generateAssetManagerBrief(diligence);
 
   return (
-    <div data-testid="conference-view-advisor" className="space-y-4">
+    <div data-testid="conference-view-advisor" className="space-y-2">
       <div><p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#607500]">04 / Turn evidence into audience outputs</p><h2 className="mt-2 text-2xl font-semibold tracking-tight">Advisor Brief</h2><p className="mt-1 text-xs text-[#52616b]">Evidence as of {formatAsOfDate(brief.evidenceAsOf)}</p></div>
       <div data-testid="financial-advisor-coverage" className="rounded-lg border border-[#aac6f4] bg-[#eef5ff] px-4 py-3 text-xs text-[#122232]">
         <strong>{brief.coverageLabel}</strong> · No buy/sell recommendation. Project sensitivity is not an issuer, fund, or portfolio return.
       </div>
+      {diligence.project.kind === "custom" && diligence.financialModeling.status === "modeled" && <div data-testid="advisor-illustrative-boundary" role="note" className="rounded-lg border border-[#f1cb8b] bg-[#fff8e9] px-4 py-2 text-xs font-semibold text-[#805000]">Illustrative — not project economics. Any return in this brief is a synthetic scenario output, not reported project economics.</div>}
       {diligence.project.replay?.mode === "offline-saved-response" && <div data-testid="advisor-offline-replay-label" className="rounded-lg border border-[#f1cb8b] bg-[#fff8e9] px-4 py-3 text-xs text-[#6f460e]"><strong>Offline replay of saved research</strong> · No live provider request was made. Partial-run limitations and zero financial eligibility remain in force.</div>}
       {diligence.project.kind === "custom" && <RetainedResearchFindings
         testId="advisor-retained-research"
@@ -51,61 +52,61 @@ export function AdvisorBrief() {
         </section>
       )}
       <div className="grid gap-4 md:grid-cols-3">
-        <div data-testid="advisor-evidence-established" className="rounded-xl border border-[#d9e0e4] bg-white p-4 shadow-sm">
-          <h3 className="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#122232] mb-4 flex items-center gap-2">
-            <Info className="h-4 w-4 text-[#122232]" />
+        <div data-testid="advisor-evidence-established" className="rounded-xl border border-[#d9e0e4] bg-white p-3 shadow-sm">
+          <h3 className="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#122232] mb-2 flex items-center gap-1.5">
+            <Info className="h-3.5 w-3.5 text-[#122232]" />
             What We Know
           </h3>
-          <ul className="space-y-3">
+          <ul className="space-y-1.5">
             {brief.whatWeKnow.map((item, i) => (
-              <li key={brief.evidenceBuckets.established[i]} data-evidence-id={brief.evidenceBuckets.established[i]} className="text-[12px] text-[#122232] leading-tight flex gap-2">
+              <li key={brief.evidenceBuckets.established[i]} data-evidence-id={brief.evidenceBuckets.established[i]} className="text-[10px] text-[#122232] leading-snug flex gap-1.5">
                 <span className="text-[#d9e0e4] mt-0.5">•</span>
                 <span>{item}</span>
               </li>
             ))}
           </ul>
-          {brief.whatWeKnow.length === 0 && <p className="text-xs leading-5 text-[#52616b]">No source-backed verified facts established. Review Project Reality for the retained research.</p>}
+          {brief.whatWeKnow.length === 0 && <p className="text-[10px] leading-4 text-[#52616b]">No source-backed verified facts established. Review Project Reality for the retained research.</p>}
         </div>
         
-        <div data-testid="advisor-evidence-reported" className="rounded-xl border border-[#d9e0e4] bg-[#fffbf2] p-4 shadow-sm">
-          <h3 className="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#805000] mb-4 flex items-center gap-2">
-            <Info className="h-4 w-4 text-[#805000]" />
+        <div data-testid="advisor-evidence-reported" className="rounded-xl border border-[#d9e0e4] bg-[#fffbf2] p-3 shadow-sm">
+          <h3 className="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#805000] mb-2 flex items-center gap-1.5">
+            <Info className="h-3.5 w-3.5 text-[#805000]" />
             Reported, Not Verified
           </h3>
-          <ul className="space-y-3">
+          <ul className="space-y-1.5">
             {brief.whatIsReportedNotVerified.map((item, i) => (
-              <li key={brief.evidenceBuckets.reportedNotVerified[i]} data-evidence-id={brief.evidenceBuckets.reportedNotVerified[i]} className="text-[12px] text-[#52616b] leading-tight flex gap-2">
+              <li key={brief.evidenceBuckets.reportedNotVerified[i]} data-evidence-id={brief.evidenceBuckets.reportedNotVerified[i]} className="text-[10px] text-[#52616b] leading-snug flex gap-1.5">
                 <span className="text-[#805000]/50 mt-0.5">•</span>
                 <span>{item}</span>
               </li>
             ))}
           </ul>
-          {brief.whatIsReportedNotVerified.length === 0 && <p className="text-xs leading-5 text-[#52616b]">No sourced management assertions or attributed reports are recorded.</p>}
+          {brief.whatIsReportedNotVerified.length === 0 && <p className="text-[10px] leading-4 text-[#52616b]">No sourced management assertions or attributed reports are recorded.</p>}
         </div>
 
-        <div data-testid="advisor-evidence-open" className="rounded-xl border border-[#d9e0e4] bg-white p-4 shadow-sm">
-          <h3 className="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#122232] mb-4 flex items-center gap-2">
-            <HelpCircle className="h-4 w-4 text-[#ba2f45]" />
+        <div data-testid="advisor-evidence-open" className="rounded-xl border border-[#d9e0e4] bg-white p-3 shadow-sm">
+          <h3 className="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#122232] mb-2 flex items-center gap-1.5">
+            <HelpCircle className="h-3.5 w-3.5 text-[#ba2f45]" />
             What We Do Not Know
           </h3>
-          <ul className="space-y-3">
+          <ul className="space-y-1.5">
             {brief.whatWeDoNotKnow.map((item, i) => (
-              <li key={brief.evidenceBuckets.open[i]} data-evidence-id={brief.evidenceBuckets.open[i]} className="text-[12px] text-[#52616b] leading-tight flex gap-2">
+              <li key={brief.evidenceBuckets.open[i]} data-evidence-id={brief.evidenceBuckets.open[i]} className="text-[10px] text-[#52616b] leading-snug flex gap-1.5">
                 <span className="text-[#ba2f45]/40 mt-0.5">•</span>
                 <span>{item}</span>
               </li>
             ))}
           </ul>
-          {brief.whatWeDoNotKnow.length === 0 && <p className="text-xs leading-5 text-[#52616b]">No unresolved items in the available record; portfolio dependence still requires confirmation.</p>}
+          {brief.whatWeDoNotKnow.length === 0 && <p className="text-[10px] leading-4 text-[#52616b]">No unresolved items in the available record; portfolio dependence still requires confirmation.</p>}
         </div>
       <div className="rounded-xl border border-[#d9e0e4] bg-[#f9faf8] p-4 shadow-sm">
-        <h3 className="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#122232] mb-4 flex items-center gap-2">
-          <AlertCircle className="h-4 w-4 text-[#ba2f45]" />
+        <h3 className="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#122232] mb-2 flex items-center gap-1.5">
+          <AlertCircle className="h-3.5 w-3.5 text-[#ba2f45]" />
           Why It Could Matter
         </h3>
-        <ul className="space-y-3">
+        <ul className="space-y-1.5">
           {brief.whyItMatters.map((item, i) => (
-            <li key={i} className="text-[13px] text-[#122232] font-medium leading-tight flex gap-2">
+            <li key={i} className="text-[11px] text-[#122232] font-medium leading-snug flex gap-1.5">
               <span className="text-[#ba2f45] mt-0.5">•</span>
               <span>{item}</span>
             </li>
@@ -114,7 +115,7 @@ export function AdvisorBrief() {
       </div>
       </div>
 
-      <div className="grid gap-4 rounded-xl border border-[#122232] bg-[#122232] p-4 text-white shadow-sm md:grid-cols-[0.85fr_1.15fr]">
+      <div className="grid gap-3 rounded-xl border border-[#122232] bg-[#122232] p-3 text-white shadow-sm md:grid-cols-[0.85fr_1.15fr]">
         <h3 className="flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#d4e86b] md:col-span-2">
           <Lightbulb className="h-4 w-4" />
           Manager Engagement
@@ -122,7 +123,7 @@ export function AdvisorBrief() {
         
         <div>
           <div className="text-[10px] uppercase tracking-[0.1em] text-white/50 mb-2 font-mono">Suggested Action</div>
-          <div data-testid="advisor-recommended-action" className="flex items-start gap-3 bg-[#0a1b2a] p-4 rounded-lg border border-white/10">
+            <div data-testid="advisor-recommended-action" className="flex items-start gap-3 bg-[#0a1b2a] p-3 rounded-lg border border-white/10">
             <ArrowRight className="h-5 w-5 text-[#d4e86b] shrink-0 mt-0.5" />
             <div>
               <div className="font-bold text-[13px] text-white mb-1">{brief.action.label}</div>
@@ -133,9 +134,9 @@ export function AdvisorBrief() {
 
         <div>
           <div className="text-[10px] uppercase tracking-[0.1em] text-white/50 mb-2 font-mono">Questions for the Manager</div>
-          <ul className="space-y-2">
+          <ul className="space-y-1.5">
             {brief.questions.slice(0, 3).map((item, i) => (
-              <li key={i} data-testid={`advisor-manager-question-${i}`} className="flex gap-3 rounded-md bg-[#1a2e3f] p-2.5 text-[12px] leading-snug text-white">
+              <li key={i} data-testid={`advisor-manager-question-${i}`} className="flex gap-3 rounded-md bg-[#1a2e3f] p-2 text-[12px] leading-snug text-white">
                 <span className="font-mono text-[#d4e86b] font-bold">{i + 1}.</span>
                 <span>{item}</span>
               </li>

@@ -311,7 +311,7 @@ export function ProgressNav({ current, onNavigate }: { current: Screen; onNaviga
 }
 
 export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, onDirectory, onWorkbench, route, sessionRestored, mobileOpen, menuButtonRef }: { onMenu: () => void; onReset: () => void; onHome: () => void; onHowItWorks: () => void; onValueChain: () => void; onDirectory: () => void; onWorkbench: () => void; onAnalyzeCustom?: () => void; route: AppRoute; sessionRestored: boolean; mobileOpen: boolean; menuButtonRef: RefObject<HTMLButtonElement | null> }) {
-  const { sessionMigrated, project, loadCustomProject } = useDiligence();
+  const { sessionMigrated, project, selectedProjectContext, loadCustomProject } = useDiligence();
   const researchPresentation = getResearchStatusPresentation({
     outcome: project.researchOutcome,
     researchMode: project.researchMode,
@@ -327,6 +327,14 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
   const activeResearchSelection = useRef<{ company: CompanyKey | null; selection: ProjectSelectionContext | null } | null>(null);
   const previousRoute = useRef(route);
   const isHome = route === "home";
+  const canonicalIdentity = project.canonicalDossier?.canonicalData.identity;
+  const projectName = project.canonicalDossier?.name ?? project.name;
+  const projectLocation = canonicalIdentity?.location ?? project.location;
+  const projectOperator = canonicalIdentity
+    ? canonicalIdentity.operator
+    : selectedProjectContext?.projectName === projectName
+      ? selectedProjectContext.operator
+      : undefined;
   const openCustomProject = (event?: Event) => {
     dialogReturnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const detail = event instanceof CustomEvent ? event.detail as { name?: string; location?: string; knownData?: KnownProjectData; company?: CompanyKey | null; selection?: ProjectSelectionContext | null } : undefined;
@@ -380,7 +388,7 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
         <div className={`hidden flex-1 items-center justify-center lg:flex ${isHome ? "opacity-0" : ""}`} aria-hidden={isHome}>
           <div className="text-center">
               <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-[#b9d43a]">{project.kind === "custom" ? `Custom research Beta · ${researchPresentation.proposalReview ? "proposal review" : researchPresentation.label.replace(/^Research /, "").toLowerCase()}` : project.canonicalDossier ? "Maintainer-reviewed canonical dossier" : "Curated starting case"}</div>
-              <div className="mt-1 text-[10px] text-[#96a4ad]">{project.name} / {project.location} · Evidence before conclusion</div>
+              <div data-testid="header-project-identity" className="mt-1 text-[10px] text-[#96a4ad]">{projectName}{projectOperator ? ` · ${projectOperator}` : ""} / {projectLocation} · Evidence before conclusion</div>
           </div>
         </div>
         <div className="flex items-center gap-1 sm:gap-2">

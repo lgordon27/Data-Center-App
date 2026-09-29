@@ -1,3 +1,5 @@
+import { matchProject } from "./researchClaimVerifier.mjs";
+
 const STATES = [
   ["Alabama", "AL"], ["Alaska", "AK"], ["Arizona", "AZ"], ["Arkansas", "AR"],
   ["California", "CA"], ["Colorado", "CO"], ["Connecticut", "CT"], ["Delaware", "DE"],
@@ -118,75 +120,6 @@ function operatorsConflict(expected, actuals) {
  * not substitutes for identity text in the retained passage.
  */
 export function assessResearchProjectIdentity(passage, candidate = {}, identity = {}) {
-  const text = typeof passage === "string" ? passage : "";
-  const names = [
-    ...(typeof identity?.name === "string" ? [identity.name] : []),
-    ...(Array.isArray(identity?.knownData?.aliases)
-      ? identity.knownData.aliases.filter((alias) => typeof alias === "string")
-      : []),
-  ].map(normalize).filter(Boolean);
-  const sentences = text.split(/(?<=[.!?])\s+|\n+/).filter(Boolean);
-  const namedSentences = sentences.filter((sentence) => sentenceContainsIdentity(sentence, names));
-  const hasIdentityName = namedSentences.length > 0;
-  if (!hasIdentityName) return candidate?.exactProject === true ? "ambiguous" : "unrelated";
-
-  const requestedState = stateIn(identity?.knownData?.state)
-    ?? (typeof identity?.location === "string"
-      ? statesIn(identity.location).sort((left, right) => right.length - left.length)[0]
-      : undefined);
-  const city = requestedCity(identity);
-  const county = requestedCounty(identity);
-  const operator = typeof identity?.knownData?.operator === "string"
-    ? identity.knownData.operator.trim()
-    : "";
-  const subjects = projectSubjectFragments(sentences, names);
-  const subjectText = subjects.join(" ");
-  const namedSentenceIndexes = sentences
-    .map((sentence, index) => sentenceContainsIdentity(sentence, names) ? index : -1)
-    .filter((index) => index >= 0);
-  const operatorContext = operator
-    ? sentences.filter((sentence, index) =>
-      namedSentenceIndexes.some((namedIndex) => Math.abs(index - namedIndex) <= 1)
-      && normalize(sentence).includes(normalize(operator))
-      && /\b(?:operat|own|develop|sponsor|manag|headquarters?|HQ|home office)\w*\b/i.test(sentence)).join(" ")
-    : "";
-
-  const mentionedStates = statesIn(subjectText);
-  const stateMatches = Boolean(requestedState && mentionedStates.includes(requestedState));
-  const { pairs, cities } = locationAssertions(subjectText);
-  const normalizedCity = normalize(city);
-  const exactPairs = pairs.filter((pair) =>
-    (!normalizedCity || pair.city === normalizedCity)
-    && (!requestedState || pair.state === requestedState));
-  const conflictingPairs = pairs.filter((pair) =>
-    (normalizedCity && pair.city !== normalizedCity)
-    || (requestedState && pair.state !== requestedState));
-  const cityMatches = Boolean(normalizedCity && (
-    cities.includes(normalizedCity) || pairs.some((pair) => pair.city === normalizedCity)
-  ));
-  const countyMatches = Boolean(county && normalize(subjectText).includes(normalize(county)));
-  const countyAssertions = subjectText.match(/\b[A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*){0,2}\s+County\b/g) ?? [];
-  const hasAlternativeCounty = Boolean(countyAssertions.length
-    && county
-    && !countyAssertions.some((assertion) => normalize(assertion) === normalize(county)));
-  const operatorText = `${subjectText} ${operatorContext}`;
-  const operatorMatches = Boolean(operator && normalize(operatorText).includes(normalize(operator)));
-  const operatorConflicts = operatorAssertions(operatorText);
-
-  if (conflictingPairs.length && !exactPairs.length) return "unrelated";
-  if (requestedState && mentionedStates.length && !stateMatches) return "unrelated";
-  if (city && cities.length && !cityMatches) return "unrelated";
-  if (hasAlternativeCounty) return "unrelated";
-  if (operator && operatorsConflict(operator, operatorConflicts)) return "unrelated";
-
-  const hasIdentityDetail = Boolean(requestedState || city || county || operator);
-  const candidateIdentityConfirmed = candidate?.exactProject === true || candidate?.entityMatch === "exact";
-  const locationMatches = (!requestedState || stateMatches)
-    && (!city || cityMatches)
-    && (!county || countyMatches);
-  if (candidateIdentityConfirmed && hasIdentityDetail && locationMatches
-    && (!operator || operatorMatches || operatorConflicts.length === 0)) {
-    return "exact-project";
-  }
-  return "ambiguous";
+  void candidate;
+  return matchProject(passage, identity).verdict;
 }

@@ -144,7 +144,6 @@ function sourceFromUrlCitation(annotation, queries) {
     sourceChannel: "google-grounded-search",
     origin: "google-grounded-search",
     discoveryOnly: true,
-    exactProject: false,
     referringQueries: [...new Set(queries)].slice(0, 12),
     ...categoryIdsForCitation(annotation),
     relevanceNote: "Google grounding discovered this URL; generated summaries and snippets are not evidence.",

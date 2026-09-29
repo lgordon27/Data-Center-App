@@ -238,7 +238,7 @@ function validResearchResponse() {
       modelReportedConfidence: index === 0 ? 74 : null,
       ...(index === 1 ? { sourceUrl: "https://example.com/atlas/source" } : {}),
       ...(index === 0 ? { numericValue: 42 } : {}),
-      claimPassage: "A public source excerpt about Project Atlas reports 42 and 365 and behind-the-meter generation.",
+      claimPassage: "A public source excerpt about Project Atlas in Taylor County, Texas reports 42 and 365 and behind-the-meter generation.",
       facilityScope: "exact-project",
       phaseScope: "exact-phase",
       claimTimePeriod: "2026",
@@ -252,8 +252,8 @@ const retrievedSource = {
   url: "https://example.com/atlas/source",
   title: "Project Atlas public filing",
   date: "2026-06-01",
-  excerpt: "A public source excerpt about Project Atlas reports 42 and 365 and behind-the-meter generation.",
-  claimPassage: "A public source excerpt about Project Atlas reports 42 and 365 and behind-the-meter generation.",
+  excerpt: "A public source excerpt about Project Atlas in Taylor County, Texas reports 42 and 365 and behind-the-meter generation.",
+  claimPassage: "A public source excerpt about Project Atlas in Taylor County, Texas reports 42 and 365 and behind-the-meter generation.",
   claimSupport: RESEARCH_EVIDENCE_IDS.map((evidenceId) => ({
     evidenceId,
     values: evidenceId === "electricity_cost" ? [42, "Not disclosed"]
@@ -3000,6 +3000,73 @@ test("unrelated secondary URLs cannot authorize Verified Evidence or model impac
   assert.equal(record.numericValue, undefined);
 });
 
+test("production mappings use retained passage identity for unassessed Google sources", () => {
+  const projectKnownData = {
+    aliases: ["Red Oak"],
+    operator: "DataBank",
+    city: "Red Oak",
+    state: "Texas",
+  };
+  const passage = "DataBank's Red Oak campus is located in Red Oak, Texas. The filing reports an interconnection interval of 365 days.";
+  const evaluate = ({ retainedPassage = passage, operator = "DataBank" } = {}) => {
+    const body = validResearchResponse();
+    body.projectSummary = {
+      ...body.projectSummary,
+      name: "Red Oak Campus",
+      location: "Red Oak, Texas",
+    };
+    const item = body.evidence.find((candidate) => candidate.id === "grid_interconnection");
+    const url = "https://records.example.test/databank/red-oak";
+    Object.assign(item, {
+      value: 365,
+      numericValue: 365,
+      unit: "days",
+      classification: "Management Assertion",
+      sourceUrl: url,
+      sourceUrls: [url],
+      coverageStatus: "supported",
+      claimPassage: passage,
+      description: "The filing reports the project interconnection interval.",
+      facilityScope: "exact-project",
+      phaseScope: "exact-phase",
+      claimTimePeriod: "2026",
+    });
+    const source = {
+      url,
+      title: "Google-discovered public source",
+      origin: "google-grounded-search",
+      sourceChannel: "google-grounded-search",
+      discoveryOnly: true,
+      sourceClass: "primary-company",
+      excerpt: retainedPassage ?? "",
+      claimSupport: [{ evidenceId: "grid_interconnection", values: [365] }],
+      facilityScope: "exact-project",
+      phaseScope: "exact-phase",
+      timePeriod: "2026",
+      accessOutcome: { state: "accessible", passage: retainedPassage ?? null },
+    };
+    assert.equal(Object.hasOwn(source, "exactProject"), false);
+    const parsed = parseResearchResponse(body, [source], null, null, {
+      ...projectKnownData,
+      operator,
+    });
+    return parsed.evidence.find((candidate) => candidate.id === "grid_interconnection");
+  };
+
+  const matching = evaluate();
+  assert.equal(matching.claimMappings[0].entityScope, "project");
+  assert.equal(matching.claimMappings[0].supportStatus, "supported");
+  assert.equal(matching.sources[0].exactProject, true);
+
+  const noPassage = evaluate({ retainedPassage: null });
+  assert.equal(noPassage.claimMappings[0].entityScope, "related");
+  assert.equal(noPassage.claimMappings[0].supportStatus, "context-only");
+
+  const operatorConflict = evaluate({ operator: "Compass" });
+  assert.equal(operatorConflict.claimMappings[0].entityScope, "related");
+  assert.equal(operatorConflict.claimMappings[0].supportStatus, "context-only");
+});
+
 test("project-specific sources with irrelevant passages or unknown scope remain ineligible", () => {
   const body = validResearchResponse();
   const timeline = body.evidence.find((item) => item.id === "grid_interconnection");
@@ -3358,7 +3425,7 @@ test("resolves a redirected Arizona source from provider URL through physical ac
     sourceUrl: originalUrl,
     sourceUrls: [originalUrl],
     citation: `Arizona Corporation Commission decision: ${originalUrl}`,
-    claimPassage: "Project Atlas filing reports 365 exact project.",
+    claimPassage: "Project Atlas is located in Phoenix, Maricopa County, Arizona. The filing reports 365 for the exact project.",
     description: "The decision establishes the project-specific interconnection timeline.",
     claimTimePeriod: "2026",
   });
@@ -3368,8 +3435,8 @@ test("resolves a redirected Arizona source from provider URL through physical ac
     resolvedUrl: finalUrl,
     canonicalUrl: finalUrl,
     title: "Project Atlas Arizona Corporation Commission decision",
-    excerpt: "Project Atlas filing reports 365 exact project.",
-    claimPassage: "Project Atlas filing reports 365 exact project.",
+    excerpt: "Project Atlas is located in Phoenix, Maricopa County, Arizona. The filing reports 365 for the exact project.",
+    claimPassage: "Project Atlas is located in Phoenix, Maricopa County, Arizona. The filing reports 365 for the exact project.",
     claimSupport: [{ evidenceId: "grid_interconnection", values: [365] }],
     sourceClass: "primary-government",
     exactProject: true,
@@ -3382,7 +3449,7 @@ test("resolves a redirected Arizona source from provider URL through physical ac
       originalUrl,
       resolvedUrl: finalUrl,
       canonicalUrl: finalUrl,
-      passage: "Project Atlas filing reports 365 exact project.",
+      passage: "Project Atlas is located in Phoenix, Maricopa County, Arizona. The filing reports 365 for the exact project.",
       physicalOpenIndex: 1,
     },
   };
@@ -3546,7 +3613,7 @@ test("uses an explicit directory alias for exact-project identity without loose 
     sourceUrl,
     sourceUrls: [sourceUrl],
     citation: `The Phoenix campus reports 12 Mgal/year of cooling water use: ${sourceUrl}`,
-    claimPassage: "The Phoenix campus reports 12 Mgal/year of cooling water use.",
+    claimPassage: "Aligned Phoenix Campus in Phoenix, Maricopa County, Arizona reports 12 Mgal/year of cooling water use.",
     description: "The Phoenix campus reports 12 Mgal/year of cooling water use.",
     facilityScope: "exact-project",
     phaseScope: "not-applicable",
@@ -3556,8 +3623,8 @@ test("uses an explicit directory alias for exact-project identity without loose 
     ...retrievedSource,
     url: sourceUrl,
     title: "Retrieved public source",
-    excerpt: "The Phoenix campus reports 12 Mgal/year of cooling water use.",
-    claimPassage: "The Phoenix campus reports 12 Mgal/year of cooling water use.",
+    excerpt: "Aligned Phoenix Campus in Phoenix, Maricopa County, Arizona reports 12 Mgal/year of cooling water use.",
+    claimPassage: "Aligned Phoenix Campus in Phoenix, Maricopa County, Arizona reports 12 Mgal/year of cooling water use.",
     claimSupport: [{ evidenceId: "water_consumption", values: [12] }],
     sourceClass: "secondary-reporting",
     facilityScope: "exact-project",
@@ -3565,7 +3632,7 @@ test("uses an explicit directory alias for exact-project identity without loose 
     timePeriod: "2026",
     accessOutcome: {
       state: "accessible",
-      passage: "The Phoenix campus reports 12 Mgal/year of cooling water use.",
+      passage: "Aligned Phoenix Campus in Phoenix, Maricopa County, Arizona reports 12 Mgal/year of cooling water use.",
     },
   };
   const parsed = parseResearchResponse(body, [source], null, null, {
@@ -3587,10 +3654,10 @@ test("does not let an accessible sibling source authorize a blocked mapped claim
   const accessibleSibling = {
     ...retrievedSource,
     url: "https://example.com/atlas/unrelated",
-    claimPassage: "A different public fact about Project Atlas.",
-    excerpt: "A different public fact about Project Atlas.",
+    claimPassage: "A different public fact about Project Atlas in Taylor County, Texas.",
+    excerpt: "A different public fact about Project Atlas in Taylor County, Texas.",
     claimSupport: [],
-    accessOutcome: { state: "accessible", passage: "A different public fact about Project Atlas." },
+    accessOutcome: { state: "accessible", passage: "A different public fact about Project Atlas in Taylor County, Texas." },
   };
   const research = validResearchResponse();
   const gridRecord = research.evidence.find((item) => item.id === "grid_interconnection");
@@ -3606,7 +3673,10 @@ test("does not let an accessible sibling source authorize a blocked mapped claim
   const parsed = parseResearchResponse(research, [blocked, accessibleSibling]);
   const record = parsed.evidence.find((item) => item.id === "grid_interconnection");
   assert.equal(record.eligibleForModel, false);
-  assert.ok(record.quarantineReasons.some((reason) => /source named|inaccessible|mapped claim/i.test(reason)));
+  assert.ok(record.claimMappings.some((mapping) =>
+    mapping.sourceId === blocked.url && mapping.supportStatus === "context-only"));
+  assert.ok(record.claimMappings.some((mapping) =>
+    mapping.sourceId === accessibleSibling.url && mapping.supportStatus === "missing-passage"));
 });
 
 test("rejects malformed custom research requests before calling OpenAI", async () => {
@@ -3678,7 +3748,7 @@ test("uses the bounded OpenAI fallback with scoped strict schemas after Google i
       researched.evidence[1].value = "Company-reported cooling arrangement";
       return singleCallResponse(researched);
     },
-    documentFetchImpl: async () => new Response("<html><body>Project Atlas public filing.</body></html>", {
+    documentFetchImpl: async () => new Response(`<html><body>${retrievedSource.claimPassage}</body></html>`, {
       status: 200,
       headers: { "content-type": "text/html" },
     }),
@@ -3798,7 +3868,10 @@ test("retains blocked access receipts and prevents blocked passages from becomin
   });
   const body = response.json();
   assert.equal(response.statusCode, 200);
-  assert.ok(body.evidence[0].sources.every((source) => source.accessOutcome?.state === "blocked"));
+  assert.ok(body.researchAudit.candidateLineage.some((candidate) =>
+    candidate.accessOutcome?.state === "blocked"));
+  assert.ok(body.evidence.every((item) => !item.sources?.some((source) =>
+    source.accessOutcome?.state === "blocked")));
   assert.ok(body.evidence.every((item) => item.eligibleForModel !== true));
   assert.ok(body.researchAudit.categories.every((category) => category.stageCounts.accessed === 0));
   assert.ok(body.researchAudit.categories.some((category) => category.state === "No eligible evidence" || category.state === "Partial"));
@@ -3862,8 +3935,8 @@ test("retains and validates mapped sources from later categories after final con
       ...retrievedSource,
       url: `https://example.gov/${label.toLowerCase().replaceAll(" ", "-")}/source-${index + 1}`,
       title: `Project Atlas ${label} filing`,
-      excerpt: "Project Atlas filing reports 42 exact project.",
-      claimPassage: "Project Atlas filing reports 42 exact project.",
+      excerpt: "Project Atlas is located in Taylor County, Texas; the filing reports 42 for the exact project.",
+      claimPassage: "Project Atlas is located in Taylor County, Texas; the filing reports 42 for the exact project.",
       claimSupport: evidenceId ? [{ evidenceId, values: [42] }] : [],
       searchDomain: categoryIdByLabel[label],
       exactProject: true,
@@ -3896,7 +3969,7 @@ test("retains and validates mapped sources from later categories after final con
           sourceUrl,
           sourceUrls: [sourceUrl],
           coverageStatus: "supported",
-          claimPassage: "Project Atlas filing reports 42 exact project.",
+          claimPassage: "Project Atlas is located in Taylor County, Texas; the filing reports 42 for the exact project.",
           description: "The filing reports a project-specific value.",
           claimTimePeriod: "2026",
         });
@@ -3905,8 +3978,8 @@ test("retains and validates mapped sources from later categories after final con
         ...retrievedSource,
         url: sourceUrl,
         title: `Project Atlas ${label} filing`,
-        excerpt: "Project Atlas filing reports 42 exact project.",
-        claimPassage: "Project Atlas filing reports 42 exact project.",
+        excerpt: "Project Atlas is located in Taylor County, Texas; the filing reports 42 for the exact project.",
+        claimPassage: "Project Atlas is located in Taylor County, Texas; the filing reports 42 for the exact project.",
         claimSupport: evidenceId ? [{ evidenceId, values: [42] }] : [],
         facilityScope: "exact-project",
         phaseScope: "exact-phase",
@@ -3920,7 +3993,7 @@ test("retains and validates mapped sources from later categories after final con
           claimSupport: [],
         }));
     },
-    documentFetchImpl: async () => new Response("<html><body>Project Atlas filing reports 42 exact project.</body></html>", {
+    documentFetchImpl: async () => new Response("<html><body>Project Atlas is located in Taylor County, Texas; the filing reports 42 for the exact project.</body></html>", {
       status: 200,
       headers: { "content-type": "text/html" },
     }),
@@ -3976,8 +4049,14 @@ test("Red Oak passage scope is merged before proxy claim mapping", () => {
     sourceTimePeriod = null,
   }) => {
     const body = validResearchResponse();
+    body.projectSummary = {
+      ...body.projectSummary,
+      name: "Red Oak Campus",
+      location: "Red Oak, Texas",
+    };
     const item = body.evidence.find((candidate) => candidate.id === "grid_interconnection");
     const url = `https://records.example.test/redoak/${value}`;
+    const retainedPassage = `${passage} The Red Oak campus is located in Red Oak, Texas.`;
     Object.assign(item, {
       value,
       numericValue: value,
@@ -3986,7 +4065,7 @@ test("Red Oak passage scope is merged before proxy claim mapping", () => {
       sourceUrl: url,
       sourceUrls: [url],
       coverageStatus: "supported",
-      claimPassage: passage,
+      claimPassage: retainedPassage,
       facilityScope: aiFacilityScope,
       phaseScope: aiPhaseScope,
       claimTimePeriod: aiClaimTimePeriod,
@@ -3995,8 +4074,8 @@ test("Red Oak passage scope is merged before proxy claim mapping", () => {
       ...retrievedSource,
       url,
       title: "Red Oak capacity disclosure",
-      excerpt: passage,
-      claimPassage: passage,
+      excerpt: retainedPassage,
+      claimPassage: retainedPassage,
       sourceClass: "primary-government",
       exactProject: true,
       claimSupport: [{ evidenceId: "grid_interconnection", values: [value] }],
@@ -4083,7 +4162,7 @@ test("Project Kilby preserves supported power, grid, and water classifications f
     {
       url: "https://www.sec.gov/Archives/edgar/data/kilby/8-k",
       title: "Chevron 8-K project disclosure",
-      excerpt: "The filing describes Project Kilby power plans.",
+      excerpt: "The filing describes Project Kilby power plans in Reeves County, Texas and reports a 48 USD/MWh facility tariff.",
       sourceClass: "primary-government",
       searchDomain: "project-identity",
       exactProject: true,
@@ -4095,7 +4174,7 @@ test("Project Kilby preserves supported power, grid, and water classifications f
     {
       url: "https://www.ercot.com/gridinfo/project-kilby",
       title: "ERCOT Project Kilby grid record",
-      excerpt: "The facility is described as behind-the-meter generation and not dependent on a new ERCOT interconnection.",
+      excerpt: "Project Kilby is located in Reeves County, Texas; the facility is behind-the-meter generation and does not depend on a new ERCOT interconnection.",
       sourceClass: "primary-government",
       searchDomain: "power-grid",
       exactProject: true,
@@ -4107,7 +4186,7 @@ test("Project Kilby preserves supported power, grid, and water classifications f
     {
       url: "https://www.texaspacific.com/project-kilby-water",
       title: "Texas Pacific Land water disclosure",
-      excerpt: "The project plans to use brackish groundwater.",
+      excerpt: "Project Kilby is located in Reeves County, Texas and plans to use brackish groundwater.",
       sourceClass: "primary-company",
       searchDomain: "water-environment",
       exactProject: true,
@@ -4307,14 +4386,14 @@ test("ranks a project-specific regulatory decision ahead of trade reporting and 
     {
       url: "https://datacenter.example.com/project-atlas",
       title: "Project Atlas compliance coverage",
-      excerpt: "Trade reporting summarizes environmental questions.",
+      excerpt: "Trade reporting summarizes environmental questions at Project Atlas in Taylor County, Texas.",
       sourceClass: "secondary-reporting",
       searchDomain: "water-environment",
     },
     {
       url: "https://dnr.alaska.gov/mlw/decision/project-atlas",
       title: "Alaska DNR final decision for Project Atlas",
-      excerpt: "Final agency decision for the exact Project Atlas site.",
+      excerpt: "Final agency decision for the exact Project Atlas site in Taylor County, Texas.",
       sourceClass: "primary-government",
       searchDomain: "water-environment",
     },
@@ -4639,7 +4718,7 @@ test("HTTP client abort cancels a stalled document body and suppresses the respo
 
 test("claim audit reviews reuse the policy trace for not-applicable phase scope and rejection", () => {
   const url = "https://records.example.test/northstar/electricity";
-  const passage = "Northstar Campus pays a facility electricity cost of 42 USD/MWh.";
+  const passage = "Northstar Campus is located in Texas and pays a facility electricity cost of 42 USD/MWh.";
   const source = {
     url,
     canonicalUrl: url,

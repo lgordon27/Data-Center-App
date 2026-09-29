@@ -51,7 +51,8 @@ function normalizeQuote(value) {
 export function verifyQuote(documentText, quote) {
   const normalizedDocument = normalizeQuote(documentText);
   const normalizedQuote = normalizeQuote(quote);
-  return Boolean(normalizedQuote) && normalizedDocument.includes(normalizedQuote);
+  const wordCount = normalizedQuote.match(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)?/gu)?.length ?? 0;
+  return wordCount >= 8 && normalizedQuote.length >= 40 && normalizedDocument.includes(normalizedQuote);
 }
 
 function canonicalState(value) {
@@ -306,6 +307,8 @@ function findVariantMatches(text, variants) {
             start: words[requiredSpans[0]].start,
             end: words[requiredSpans.at(-1)].end,
             tokenSpan: requiredSpans.at(-1) - requiredSpans[0] + 1,
+            matchedTokenCount: requiredTokens.size,
+            requiredTokenCount: requiredTokens.size,
           });
           break;
         }
@@ -313,6 +316,63 @@ function findVariantMatches(text, variants) {
     }
   }
   return matches.sort((left, right) => left.start - right.start || left.tokenSpan - right.tokenSpan);
+}
+
+function findNameMatches(text, variants) {
+  const nameVariants = variants.filter((variant) => variant.kind !== "operator");
+  const words = tokenSpans(text);
+  const matches = findVariantMatches(text, nameVariants);
+  for (const variant of nameVariants) {
+    const requiredTokens = [...new Set(variant.matchingTokens ?? variant.tokens)];
+    if (!requiredTokens.length) continue;
+    const minimumMatches = Math.min(2, requiredTokens.length);
+    const windowSize = Math.min(words.length, Math.max(requiredTokens.length * 5, 12));
+    for (let startIndex = 0; startIndex < words.length; startIndex += 1) {
+      const endLimit = Math.min(words.length, startIndex + windowSize);
+      const matchedIndexes = [];
+      const seenTokens = new Set();
+      for (let index = startIndex; index < endLimit; index += 1) {
+        if (requiredTokens.includes(words[index].value) && !seenTokens.has(words[index].value)) {
+          seenTokens.add(words[index].value);
+          matchedIndexes.push(index);
+        }
+      }
+      if (matchedIndexes.length < minimumMatches) continue;
+      matches.push({
+        variant,
+        start: words[matchedIndexes[0]].start,
+        end: words[matchedIndexes.at(-1)].end,
+        tokenSpan: matchedIndexes.at(-1) - matchedIndexes[0] + 1,
+        matchedTokenCount: matchedIndexes.length,
+        requiredTokenCount: requiredTokens.length,
+      });
+      break;
+    }
+  }
+  return matches.sort((left, right) => left.start - right.start || left.tokenSpan - right.tokenSpan);
+}
+
+function assertedOperators(text) {
+  const patterns = [
+    /\b(?:operated|owned|developed|sponsored|managed|run|built)\s+(?:and\s+(?:operated|managed|run)\s+)?by\s+([A-Z][A-Za-z0-9&.'’'-]*(?:\s+[A-Z][A-Za-z0-9&.'’'-]*){0,4})/g,
+    /\b([A-Z][A-Za-z0-9&.'’'-]*(?:\s+[A-Z][A-Za-z0-9&.'’'-]*){0,3})\s+(?:operates|owns|develops|sponsors|manages|runs)\b/g,
+    /\b(?:operator|owner|developer|sponsor)\s*(?:is|:|[-–—])\s*([A-Z][A-Za-z0-9&.'’'-]*(?:\s+[A-Z][A-Za-z0-9&.'’'-]*){0,4})/gi,
+    /\b([A-Z][A-Za-z0-9&.'’'-]*(?:\s+[A-Z][A-Za-z0-9&.'’'-]*){0,2})['’]s\b/g,
+  ];
+  return patterns.flatMap((pattern) =>
+    [...text.matchAll(pattern)].map((match) => normalizeWords(match[1])));
+}
+
+function operatorConflicts(expected, actuals) {
+  const ignored = new Set([
+    "the", "and", "company", "operator", "owner", "developer", "sponsor",
+    "inc", "llc", "ltd", "corporation", "corp", "group",
+  ]);
+  const expectedTokens = normalizeWords(expected).split(" ").filter((token) => token && !ignored.has(token));
+  return expectedTokens.length > 0 && actuals.some((actual) => {
+    const actualTokens = actual.split(" ").filter((token) => token && !ignored.has(token));
+    return actualTokens.length > 0 && !expectedTokens.some((token) => actualTokens.includes(token));
+  });
 }
 
 function isNegatedProjectReference(text, match) {
@@ -356,6 +416,7 @@ function removeAdministrativeLocations(text) {
 function hasLocationConnector(text, location) {
   const prefix = text.slice(Math.max(0, location.start - 110), location.start);
   return /\b(?:located|based|situated|sited)\s+(?:in|at|near|within)\s*$/i.test(prefix)
+    || /\bplanned\s+for\s*$/i.test(prefix)
     || /\b(?:campus|site|facility|project|data\s+center|data\s+centre|center|headquarters?)\s+(?:is|was|will\s+be|are|were)?\s*(?:located\s+|based\s+|situated\s+)?(?:in|at|near|within)\s*$/i.test(prefix)
     || /\b(?:in|at|near|within)\s*$/i.test(prefix);
 }
@@ -418,7 +479,7 @@ export function matchProject(passage, project = {}) {
   const identified = [];
   const allAttachedLocations = [];
   for (const fragment of fragments) {
-    const identityMatches = findVariantMatches(fragment, variants)
+    const identityMatches = findNameMatches(fragment, variants)
       .filter((match) => !isNegatedProjectReference(fragment, match));
     const cleaned = removeAdministrativeLocations(fragment);
     const attached = detailedLocations(cleaned).filter((location) => hasLocationConnector(cleaned, location));
@@ -430,6 +491,8 @@ export function matchProject(passage, project = {}) {
 
   for (const subject of identified) {
     const nameMatch = subject.identityMatches.some((match) => match.variant.kind !== "operator");
+    const strongNameMatch = subject.identityMatches.some((match) =>
+      match.variant.kind !== "operator" && match.matchedTokenCount >= 2);
     const subjectLocations = subject.attached
       .filter((location) => subject.identityMatches.some((match) =>
         location.start >= match.start - 18 || match.start - location.start <= 28))
@@ -446,8 +509,21 @@ export function matchProject(passage, project = {}) {
 
     const confirmedDimensions = [...new Set(comparisons.flatMap((comparison) => comparison.matches))];
     const hasRequestedLocation = Boolean(expectedLocation.city || expectedLocation.county || expectedLocation.state);
-    if ((!hasRequestedLocation && nameMatch) || confirmedDimensions.length) {
-      const basis = nameMatch ? "project name or alias" : "operator";
+    const expectedOperator = project?.operator ?? project?.knownData?.operator ?? "";
+    const operatorEvidence = assertedOperators(subject.fragment);
+    if (expectedOperator && operatorConflicts(expectedOperator, operatorEvidence)) {
+      return {
+        verdict: "unrelated",
+        reason: `The named project has an operator or developer that conflicts with the requested operator (${expectedOperator}).`,
+      };
+    }
+    const operatorMatches = Boolean(expectedOperator
+      && normalizeWords(subject.fragment).includes(normalizeWords(expectedOperator)));
+    const identityContextMatches = hasRequestedLocation
+      ? confirmedDimensions.length > 0
+      : expectedOperator ? operatorMatches : strongNameMatch;
+    if (nameMatch && identityContextMatches) {
+      const basis = "project name or alias";
       const locationNote = confirmedDimensions.length
         ? `; ${confirmedDimensions.join(" and ")} match${confirmedDimensions.length === 1 ? "es" : ""} the requested location`
         : "";

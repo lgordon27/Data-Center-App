@@ -18,6 +18,7 @@ import {
   summarizeResearchAudit,
   summarizeSourceCoverage,
 } from "./researchProjectService";
+import { buildClaimPassageMappings } from "@/data/sourceValidationPolicy.mjs";
 
 test("uses the persisted terminal outcome for status and gates proposal review on visible proposals", () => {
   const incomplete = getResearchStatusPresentation({
@@ -259,8 +260,8 @@ test("preserves eligible server evidence through client parsing", () => {
     publishedAt: "2026-06-01",
     accessedAt: "2026-08-30",
     accessStatus: "open" as const,
-    excerpt: "The Atlas facility electricity cost is 48 USD/MWh.",
-    claimPassage: "The Atlas facility electricity cost is 48 USD/MWh.",
+    excerpt: "Aster Northstar Campus, operated by Northstar Infrastructure, is located in Cedar County, Iowa. Its facility electricity cost is 48 USD/MWh.",
+    claimPassage: "Aster Northstar Campus, operated by Northstar Infrastructure, is located in Cedar County, Iowa. Its facility electricity cost is 48 USD/MWh.",
     sourceClass: "primary-company" as const,
     searchDomain: "electricity",
     relationship: "primary" as const,
@@ -387,7 +388,7 @@ test("projects retained passages and non-evidence access receipts into category 
   assert.equal(traces.find((trace) => trace.accessState === "unsupported")?.accessReason, "scanned-pdf");
 });
 
-test("containment rejects residential tariffs and preserves raw incompatible units", () => {
+test("containment rejects residential tariffs and converts a retained project-matched duration", () => {
   const contained = containCustomResearchEvidence({
     id: "electricity_cost",
     label: "Electricity Cost",
@@ -425,6 +426,39 @@ test("containment rejects residential tariffs and preserves raw incompatible uni
   assert.equal(contained.rawValue, 7.3);
   assert.equal(contained.rawUnit, "cents/kWh");
   assert.match(contained.quarantineReasons?.join(" ") ?? "", /residential|incompatible/i);
+  const durationPassage = "Project Grid is located in Hays County, Texas. The interconnection timeline is 365 days.";
+  const durationSource = {
+    url: "https://example.com/grid",
+    title: "Project filing",
+    publisher: "example.com",
+    publishedAt: null,
+    accessedAt: null,
+    accessStatus: "open",
+    excerpt: durationPassage,
+    claimPassage: durationPassage,
+    sourceClass: "primary-government",
+    searchDomain: "project-identity",
+    relationship: "primary",
+    exactProject: true,
+    claimSupport: [{ evidenceId: "grid_interconnection", value: "365 days" }],
+    facilityScope: "exact-project",
+    phaseScope: "exact-phase",
+    timePeriod: "2026",
+  };
+  const durationClaim = {
+    description: "The Project Grid interconnection timeline is 365 days.",
+    value: 365,
+    numericValue: 365,
+    sourceRelevance: "exact-project",
+  };
+  const durationMappings = buildClaimPassageMappings({
+    id: "grid_interconnection",
+    sources: [durationSource],
+    project: { name: "Project Grid", location: "Hays County, Texas" },
+    claim: durationClaim,
+    coverageStatus: "supported",
+  });
+  assert.equal(durationMappings[0].supportStatus, "supported");
   const duration = containCustomResearchEvidence({
     id: "grid_interconnection",
     label: "Grid Interconnection Timeline",
@@ -435,24 +469,8 @@ test("containment rejects residential tariffs and preserves raw incompatible uni
     citation: "Exact project filing",
     description: "Exact project timeline.",
     sourceRole: "AI-researched",
-    sources: [{
-      url: "https://example.com/grid",
-      title: "Project filing",
-      publisher: "example.com",
-      publishedAt: null,
-      accessedAt: null,
-      accessStatus: "open",
-      excerpt: "365 days",
-      claimPassage: "365 days",
-      sourceClass: "primary-government",
-      searchDomain: "project-identity",
-      relationship: "primary",
-      exactProject: true,
-      claimSupport: [{ evidenceId: "grid_interconnection", value: "365 days" }],
-      facilityScope: "exact-project",
-      phaseScope: "exact-phase",
-      timePeriod: "2026",
-    }],
+    sources: [durationSource],
+    claimMappings: durationMappings,
     sourceSupportConfidence: 94,
   });
   assert.equal(duration.eligibleForModel, true);

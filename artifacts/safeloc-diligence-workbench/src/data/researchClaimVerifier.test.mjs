@@ -9,11 +9,20 @@ test("verifies an exact quote and allows only requested typographic normalizatio
     '"The first phase is now operating - with 24,000 GPUs."',
   ), true);
   assert.equal(verifyQuote(
-    "A report says ‘the site is ready’.",
-    "'the site is ready'",
+    "A report says ‘the site is ready for service with all required permits’.",
+    "'the site is ready for service with all required permits'",
   ), true);
   assert.equal(verifyQuote("The site is operating at 100 MW.", "The site is operating at 101 MW."), false);
   assert.equal(verifyQuote("The site is operating at 100 MW.", ""), false);
+  assert.equal(verifyQuote(
+    "Infrastructure modernization accelerated through regional development initiatives.",
+    "Infrastructure modernization accelerated through regional development initiatives",
+  ), false, "seven words are below the minimum even when the character count is long enough");
+  assert.equal(verifyQuote(
+    "Site has 480 MW now across Phase One.",
+    "Site has 480 MW now across Phase One",
+  ), false, "eight words are still below the 40-character minimum");
+  assert.equal(verifyQuote("The filing lists 480 MW of capacity across all phases.", "480 MW"), false);
 });
 
 test("parses city/state, county/state, multiword states, and Washington exceptions", () => {
@@ -107,6 +116,73 @@ test("matches the Stargate Abilene description when the project name spans the s
   assert.equal(result.verdict, "exact-project");
 });
 
+test("matches DataBank Red Oak full and directory names from passage text", () => {
+  const project = {
+    name: "DataBank Red Oak Data Center",
+    aliases: ["Red Oak Campus"],
+    operator: "DataBank",
+    location: "Red Oak, Texas",
+    knownData: {
+      operator: "DataBank",
+      aliases: ["Red Oak Campus"],
+      city: "Red Oak",
+      state: "Texas",
+    },
+  };
+  assert.equal(
+    matchProject(
+      "DataBank's Red Oak campus is located in Red Oak, Texas, and the operator expects phased development.",
+      project,
+    ).verdict,
+    "exact-project",
+  );
+  assert.equal(
+    matchProject(
+      "Directory listing: Red Oak Campus in Red Oak, TX; developer: DataBank.",
+      project,
+    ).verdict,
+    "exact-project",
+  );
+});
+
+test("rejects a Compass identity conflict and a Red Oak passage in Iowa", () => {
+  const compassProject = {
+    name: "Red Oak Campus",
+    operator: "Compass",
+    location: "Red Oak, Texas",
+    knownData: { operator: "Compass", city: "Red Oak", state: "Texas" },
+  };
+  assert.equal(
+    matchProject(
+      "DataBank's Red Oak campus is located in Red Oak, Texas, and DataBank is the developer.",
+      compassProject,
+    ).verdict,
+    "unrelated",
+  );
+  assert.equal(
+    matchProject(
+      "The Red Oak campus is located in Red Oak, Iowa, and DataBank operates the facility.",
+      {
+        name: "Red Oak Campus",
+        operator: "DataBank",
+        location: "Red Oak, Texas",
+        knownData: { operator: "DataBank", city: "Red Oak", state: "Texas" },
+      },
+    ).verdict,
+    "unrelated",
+  );
+});
+
+test("a one-word alias without operator or requested location remains ambiguous", () => {
+  assert.equal(
+    matchProject(
+      "Project Cedar is preparing its next development phase.",
+      { name: "Project Cedar", aliases: ["Cedar"] },
+    ).verdict,
+    "ambiguous",
+  );
+});
+
 test("returns unrelated when a named project has a conflicting attached location", () => {
   const result = matchProject(
     "Project Atlas is located in Houston, Harris County, Texas.",
@@ -114,6 +190,18 @@ test("returns unrelated when a named project has a conflicting attached location
   );
   assert.equal(result.verdict, "unrelated");
   assert.match(result.reason, /Houston|Harris County/i);
+});
+
+test("treats a project planned for a conflicting location as unrelated", () => {
+  const result = matchProject(
+    "Aster Northstar Campus is planned for Dayton, Ohio and is unrelated to the Iowa development.",
+    {
+      name: "Aster Northstar Campus",
+      location: "Cedar County, Iowa",
+      knownData: { operator: "Northstar Infrastructure", state: "Iowa" },
+    },
+  );
+  assert.equal(result.verdict, "unrelated");
 });
 
 test("returns ambiguous when the project name appears without requested location evidence", () => {

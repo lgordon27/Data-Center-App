@@ -263,6 +263,7 @@ test("parses successful Interactions search steps and deduplicates URL-citation 
   assert.equal(result.candidates[0].discoveryOnly, true);
   assert.equal(result.candidates[0].claimCited, false);
   assert.equal(result.candidates[0].excerpt, "");
+  assert.equal(Object.hasOwn(result.candidates[0], "exactProject"), false);
   assert.ok(result.candidates[0].referringQueries.includes("Project Atlas Taylor County permit"));
   assert.equal(result.groundingMetadataPresent, true);
   assert.equal(result.groundingSearchExecuted, true);

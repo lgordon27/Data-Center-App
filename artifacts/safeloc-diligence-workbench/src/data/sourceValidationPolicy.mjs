@@ -2,6 +2,7 @@ import {
   evaluateEvidenceSourceEligibility,
   getEvidenceSemanticDefinition,
 } from "./evidenceSemanticPolicy.mjs";
+import { matchProject } from "./researchClaimVerifier.mjs";
 
 export const SOURCE_VALIDATION_POLICY_VERSION = 1;
 
@@ -126,36 +127,12 @@ function isPrimarySource(source) {
   return ["primary-government", "primary-utility", "primary-company"].includes(source?.sourceClass);
 }
 
-function sourceIdentityTokens(value) {
-  return normalizeText(value)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .split(/\s+/)
-    .filter((token) => token.length > 2 && !["the", "and", "for", "project", "data", "center"].includes(token));
-}
-
-export function isSourceProjectSpecific(source, project = {}, assertedRelevance) {
-  if (source?.exactProject === true || source?.entityMatch === "exact") return true;
-  if (source?.exactProject === false || source?.entityMatch === "related" || assertedRelevance === "related-context") return false;
-  // A passage can mention a project while explicitly describing a regional,
-  // adjacent, or unrelated record. Identity inference is therefore limited
-  // to document metadata; a provider may still assert an exact entity match
-  // explicitly when it has established one.
-  const sourceIdentityTokenList = sourceIdentityTokens(`${source?.title ?? ""} ${source?.url ?? ""} ${source?.resolvedUrl ?? ""}`);
-  const sourceTokens = new Set([
-    ...sourceIdentityTokenList,
-    ...sourceIdentityTokenList
-      .filter((token) => token.endsWith("dc") && token.length > 4)
-      .map((token) => token.slice(0, -2)),
-  ]);
-  const identityLabels = [
-    project?.name,
-    ...(Array.isArray(project?.knownData?.aliases) ? project.knownData.aliases : []),
-  ];
-  return identityLabels.some((label) => {
-    const labelTokens = sourceIdentityTokens(label);
-    return labelTokens.length > 0 && labelTokens.every((token) => sourceTokens.has(token));
-  });
+export function isSourceProjectSpecific(source, project = {}) {
+  const passage = source?.accessOutcome
+    ? source.accessOutcome.state === "accessible" ? source.accessOutcome.passage : ""
+    : source?.excerpt;
+  if (typeof passage !== "string" || !passage.trim()) return false;
+  return matchProject(passage, project).verdict === "exact-project";
 }
 
 function capturedPassage(source, index) {

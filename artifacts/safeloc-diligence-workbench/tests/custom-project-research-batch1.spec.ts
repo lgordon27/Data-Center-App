@@ -77,6 +77,15 @@ function incompleteResearch(name: string, location: string) {
   };
 }
 
+async function openManualResearchForm(page: import("@playwright/test").Page) {
+  const homePaths = page.getByTestId("home-explore-panel");
+  if (await homePaths.count() && await homePaths.getAttribute("open") === null) {
+    await homePaths.locator(":scope > summary").click();
+  }
+  await page.getByTestId("button-analyze-another-project").click();
+  await expect(page.getByTestId("custom-project-dialog")).toBeVisible();
+}
+
 test.describe("Batch 1 custom-project research lifecycle", () => {
   test.beforeEach(async ({ page }) => {
     await page.route("**/api/directory**", (route) => route.fulfill({
@@ -108,6 +117,7 @@ test.describe("Batch 1 custom-project research lifecycle", () => {
     await expect(page.getByTestId("custom-project-dialog")).toBeVisible();
     await expect(page.getByTestId("input-custom-project-name")).toHaveValue("GW Ranch");
     await expect(page.getByTestId("input-custom-project-location")).toHaveValue("Pecos County, Texas");
+    await expect(page.getByTestId("input-custom-project-operator")).toHaveValue("GW Ranch Compute");
 
     await page.getByTestId("button-submit-custom-project").click();
     await expect.poll(() => requestBody).toMatchObject({
@@ -123,6 +133,57 @@ test.describe("Batch 1 custom-project research lifecycle", () => {
     await expect(page).toHaveURL(/#analysis$/);
     await expect(page.getByTestId("conference-research-status")).toContainText("Research incomplete · technical limitation");
     await expect(page.getByTestId("conference-summary")).toContainText("No company selected");
+  });
+
+  test("submits a manually entered operator with custom research", async ({ page }) => {
+    let requestBody: { name: string; location: string; knownData?: Record<string, unknown> } | null = null;
+    await page.route("**/api/research-project", async (route) => {
+      const request = route.request().postDataJSON() as typeof requestBody;
+      requestBody = request;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(incompleteResearch(request!.name, request!.location)),
+      });
+    });
+
+    await page.goto("/");
+    await openManualResearchForm(page);
+    const form = page.getByTestId("custom-project-form");
+    await form.getByTestId("input-custom-project-name").fill("DataBank Phoenix Campus");
+    await form.getByTestId("input-custom-project-location").fill("Phoenix, Arizona");
+    await form.getByTestId("input-custom-project-operator").fill("DataBank");
+    await form.getByTestId("button-submit-custom-project").click();
+
+    await expect.poll(() => requestBody).toMatchObject({
+      name: "DataBank Phoenix Campus",
+      location: "Phoenix, Arizona",
+      knownData: { operator: "DataBank" },
+    });
+  });
+
+  test("does not infer an operator when the optional field is empty", async ({ page }) => {
+    let requestBody: { name: string; location: string; knownData?: Record<string, unknown> } | null = null;
+    await page.route("**/api/research-project", async (route) => {
+      const request = route.request().postDataJSON() as typeof requestBody;
+      requestBody = request;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(incompleteResearch(request!.name, request!.location)),
+      });
+    });
+
+    await page.goto("/");
+    await openManualResearchForm(page);
+    const form = page.getByTestId("custom-project-form");
+    await form.getByTestId("input-custom-project-name").fill("DataBank Phoenix Campus");
+    await form.getByTestId("input-custom-project-location").fill("Phoenix, Arizona");
+    await expect(form.getByTestId("input-custom-project-operator")).toHaveValue("");
+    await form.getByTestId("button-submit-custom-project").click();
+
+    await expect.poll(() => requestBody).not.toBeNull();
+    expect(requestBody?.knownData?.operator).toBeUndefined();
   });
 
   test("keeps technical limitation status consistent with zero proposals after reload and route changes", async ({ page }) => {

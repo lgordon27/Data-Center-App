@@ -92,6 +92,7 @@ type CustomProjectFormProps = {
 export function CustomProjectForm({ onStart, onSuccess, onResearchError, compact = false, initialValues, onReturnToCurated }: CustomProjectFormProps) {
   const [name, setName] = useState(initialValues?.name ?? "");
   const [location, setLocation] = useState(initialValues?.location ?? "");
+  const [operator, setOperator] = useState(initialValues?.knownData?.operator ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<ResearchProgress>("researching");
@@ -103,9 +104,13 @@ export function CustomProjectForm({ onStart, onSuccess, onResearchError, compact
   const handedOff = useRef(false);
 
   useEffect(() => {
-    if (!initialValues) return;
+    if (!initialValues) {
+      setOperator("");
+      return;
+    }
     setName(initialValues.name);
     setLocation(initialValues.location);
+    setOperator(initialValues.knownData?.operator ?? "");
     setError(null);
     setFallbackAvailable(false);
   }, [initialValues]);
@@ -129,7 +134,12 @@ export function CustomProjectForm({ onStart, onSuccess, onResearchError, compact
     const controller = new AbortController();
     const generation = requestGeneration.current + 1;
     const requestKey = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const provisional = createProvisionalResearch(name.trim(), location.trim(), initialValues?.knownData);
+    const knownData: KnownProjectData = initialValues?.knownData ? { ...initialValues.knownData } : {};
+    const enteredOperator = operator.trim();
+    if (enteredOperator) knownData.operator = enteredOperator;
+    else delete knownData.operator;
+    const researchKnownData = Object.keys(knownData).length > 0 ? knownData : undefined;
+    const provisional = createProvisionalResearch(name.trim(), location.trim(), researchKnownData);
     requestGeneration.current = generation;
     requestController.current = controller;
     cancelRequested.current = false;
@@ -140,7 +150,7 @@ export function CustomProjectForm({ onStart, onSuccess, onResearchError, compact
     });
     try {
       const result = await researchProject(name.trim(), location.trim(), {
-        knownData: initialValues?.knownData,
+        knownData: researchKnownData,
         onProgress: setProgress,
         signal: controller.signal,
       });
@@ -186,6 +196,22 @@ export function CustomProjectForm({ onStart, onSuccess, onResearchError, compact
       <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" />
     </button>
   );
+  const operatorField = (
+    <label className="block">
+      <span className={compact ? "font-mono text-[9px] font-bold uppercase tracking-[0.15em] text-[#9dafb8]" : "font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#52616b]"}>
+        Operator or developer
+      </span>
+      <input
+        data-testid="input-custom-project-operator"
+        value={operator ?? ""}
+        onChange={(event) => setOperator(event.target.value)}
+        disabled={busy}
+        maxLength={160}
+        placeholder="Optional — enter a known operator"
+        className={inputClass}
+      />
+    </label>
+  );
 
   return (
     <form
@@ -226,8 +252,10 @@ export function CustomProjectForm({ onStart, onSuccess, onResearchError, compact
             className={inputClass}
           />
         </label>
+        {!compact && operatorField}
         {compact && submitButton}
       </div>
+      {compact && operatorField}
       {!compact && submitButton}
       {compact && (
         <p id="home-analysis-subtitle" className="text-[10px] leading-4 text-[#9dafb8]">
@@ -264,7 +292,17 @@ export function CustomProjectForm({ onStart, onSuccess, onResearchError, compact
               <button
                 data-testid={compact ? "home-custom-analysis-fallback" : "custom-project-fallback"}
                 type="button"
-                onClick={() => onSuccess(createDefaultAssumptionResearch(name, location, initialValues?.knownData), "fallback")}
+                onClick={() => {
+                  const knownData: KnownProjectData = initialValues?.knownData ? { ...initialValues.knownData } : {};
+                  const enteredOperator = operator.trim();
+                  if (enteredOperator) knownData.operator = enteredOperator;
+                  else delete knownData.operator;
+                  onSuccess(createDefaultAssumptionResearch(
+                    name,
+                    location,
+                    Object.keys(knownData).length > 0 ? knownData : undefined,
+                  ), "fallback");
+                }}
                 className="min-h-10 rounded-md border border-current px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.08em]"
               >
                 Continue with synthetic assumptions

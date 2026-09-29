@@ -145,6 +145,57 @@ test("matches DataBank Red Oak full and directory names from passage text", () =
   );
 });
 
+test("keeps Red Oak operator attribution sentence-local and follows the subject possessive", () => {
+  const project = {
+    name: "Red Oak Campus",
+    operator: "DataBank",
+    city: "Red Oak",
+    county: "Ellis County",
+    state: "Texas",
+  };
+
+  for (const passage of [
+    "DataBank closed a $2 billion construction loan to fund its 300-acre Red Oak campus in Red Oak, Ellis County, Texas.",
+    "DataBank secured financing for the company's 300-acre Red Oak campus in Red Oak, Ellis County, Texas.",
+    "DataBank funded construction of their 300-acre Red Oak campus in Red Oak, Ellis County, Texas.",
+  ]) {
+    assert.equal(matchProject(passage, project).verdict, "exact-project", passage);
+  }
+
+  assert.equal(
+    matchProject(
+      "Compass Datacenters acquired land for its Red Oak campus in Red Oak, Ellis County, Texas.",
+      project,
+    ).verdict,
+    "unrelated",
+    "a different sentence subject is a conflicting operator even when the verb is not an operator verb",
+  );
+  assert.equal(
+    matchProject(
+      "According to a report from DataBank, Compass Datacenters acquired land for its Red Oak campus in Red Oak, Ellis County, Texas.",
+      project,
+    ).verdict,
+    "unrelated",
+    "a report source does not replace the different company subject",
+  );
+  assert.equal(
+    matchProject(
+      "Red Oak Campus is located in Red Oak, Ellis County, Texas. DataBank operates the facility.",
+      project,
+    ).verdict,
+    "ambiguous",
+    "a later sentence cannot attribute the preceding generic project mention to DataBank",
+  );
+  assert.equal(
+    matchProject(
+      "DataBank provided financing for the Red Oak campus in Red Oak, Ellis County, Texas.",
+      project,
+    ).verdict,
+    "ambiguous",
+    "financing a project does not establish that DataBank operates it",
+  );
+});
+
 test("recognizes an operator directly before a facility name and in the full requested name", () => {
   const location = {
     city: "Red Oak",
@@ -264,12 +315,20 @@ test("requires expected-operator attribution unless the requested project name i
     "Different Operator operates Aster Northstar Campus in Cedar County, Iowa.",
     "Aster Northstar Campus in Cedar County, Iowa is owned by Different Operator.",
     "Different Operator is constructing Aster Northstar Campus in Cedar County, Iowa.",
-    "Aster Northstar Campus is located in Cedar County, Iowa. Different Operator operates the facility.",
   ]) {
     const result = matchProject(passage, project);
     assert.equal(result.verdict, "unrelated", passage);
     assert.match(result.reason, /operator|developer/i);
   }
+
+  assert.equal(
+    matchProject(
+      "Aster Northstar Campus is located in Cedar County, Iowa. Different Operator operates the facility.",
+      project,
+    ).verdict,
+    "exact-project",
+    "a different operator in a later sentence does not contradict the distinctive project mention",
+  );
 
   for (const passage of [
     "Northstar Infrastructure develops Aster Northstar Campus in Cedar County, Iowa.",

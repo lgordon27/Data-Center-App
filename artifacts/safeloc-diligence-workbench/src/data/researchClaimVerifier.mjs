@@ -410,6 +410,37 @@ function assertedOperators(text, identityMatches = [], expectedOperator = "") {
   const actors = patterns.flatMap((pattern) =>
     [...text.matchAll(pattern)].map((match) => normalizeWords(match[1])));
 
+  const sentenceSubjectForProject = (position) => {
+    const priorSentences = [...text.slice(0, position).matchAll(/[.!?]\s+/gu)];
+    const sentenceStart = priorSentences.length
+      ? priorSentences.at(-1).index + priorSentences.at(-1)[0].length
+      : 0;
+    let prefix = text.slice(sentenceStart, position);
+    if (!/\b(?:its|their|the\s+company['’]s)\s+(?:[\p{L}\p{N}-]+\s+){0,5}$/iu.test(prefix)) {
+      return null;
+    }
+
+    // A reporting clause can introduce a different company subject. Prefer
+    // that local subject to the source or publisher named in the main clause.
+    const reportingClause = /\b(?:says?|said|reports?|reported|states?|stated|indicates?|indicated|notes?|noted|claims?|claimed|writes?|wrote)\s+(?:that\s+)?/giu;
+    let reportingMatch;
+    let localClauseStart = -1;
+    while ((reportingMatch = reportingClause.exec(prefix))) {
+      localClauseStart = reportingMatch.index + reportingMatch[0].length;
+    }
+    if (localClauseStart >= 0) prefix = prefix.slice(localClauseStart);
+    prefix = prefix
+      .replace(/^\s*(?:according\s+to|per)\b[^,]{1,120},\s*/iu, "")
+      .replace(/^\s*(?:on|in|at|after|before|following)\s+[^,]{1,60},\s*/iu, "");
+
+    const subjectPattern = new RegExp(
+      `(?:^|,\\s*)(?:[Tt]he\\s+|[Aa]n?\\s+)?(${directCompanyName})(?:,\\s+[^,]{1,80},)?\\s+(?=(?:is|was|are|were|has|have|had|will|would|may|might|can|could|does|did)\\b|[a-z][a-z'’-]*(?:s|ed)\\b)`,
+      "u",
+    );
+    const subject = prefix.match(subjectPattern);
+    return subject ? normalizeWords(subject[1]) : null;
+  };
+
   // A company possessive is attribution only when it directly modifies a
   // matched project name or alias. A possessive elsewhere in a passage (for
   // example, a report publisher's filing) is not operator evidence.
@@ -423,6 +454,13 @@ function assertedOperators(text, identityMatches = [], expectedOperator = "") {
     const prefix = text.slice(0, identityMatch.start);
     const possessive = prefix.match(possessivePattern);
     if (possessive) actors.push(normalizeWords(possessive[1]));
+
+    // A sentence-subject company can own the project referred to as "its",
+    // "their", or "the company's" without being repeated beside the name.
+    if (identityMatch.variant.kind !== "operator") {
+      const sentenceSubject = sentenceSubjectForProject(identityMatch.start);
+      if (sentenceSubject) actors.push(sentenceSubject);
+    }
 
     // Some source passages put the operator directly before the project or
     // facility name without a possessive or an attribution verb.
@@ -488,27 +526,31 @@ function splitSubjectFragments(text) {
   const sentenceParts = String(text ?? "")
     .replace(/\bD\.C\./gi, "DC")
     .replace(
-      /[;.!?]\s*(?=(?:operator|owner|developer|builder|constructor|construction\s+(?:company|contractor|manager))\s*(?:is|:|[-–—])|[A-Z][\p{L}\p{N}&.'’'-]*(?:\s+[A-Z][\p{L}\p{N}&.'’'-]*){0,4}\s+(?:[Ii]s\s+)?(?:[Tt]he\s+)?(?:[Oo]perator|[Oo]wner|[Dd]eveloper|[Bb]uilder|[Cc]onstructor|[Cc]onstruction\s+(?:[Cc]ompany|[Cc]ontractor|[Mm]anager)))/gu,
+      /;\s*(?=(?:operator|owner|developer|builder|constructor|construction\s+(?:company|contractor|manager))\s*(?:is|:|[-–—])|[A-Z][\p{L}\p{N}&.'’'-]*(?:\s+[A-Z][\p{L}\p{N}&.'’'-]*){0,4}\s+(?:[Ii]s\s+)?(?:[Tt]he\s+)?(?:[Oo]perator|[Oo]wner|[Dd]eveloper|[Bb]uilder|[Cc]onstructor|[Cc]onstruction\s+(?:[Cc]ompany|[Cc]ontractor|[Mm]anager)))/gu,
       ", ",
     )
-    .split(/(?<=[.!?])\s+|[;\n]+/)
+    .split(/(?<=[.!?])\s+|\n+/)
     .filter(Boolean);
   const comparisonPattern = /\b(?:compared\s+(?:with|to)|versus|vs\.?|unlike|whereas|while|in\s+contrast\s+to|as\s+opposed\s+to|rather\s+than|alongside)\b|\bbut\b/gi;
   const fragments = [];
-  for (const sentence of sentenceParts) {
-    let start = 0;
-    for (const match of sentence.matchAll(comparisonPattern)) {
-      if (match.index > start) fragments.push(sentence.slice(start, match.index).trim());
-      start = match.index + match[0].length;
+  for (const [sentenceIndex, sentence] of sentenceParts.entries()) {
+    for (const clause of sentence.split(/[;]+/)) {
+      let start = 0;
+      for (const match of clause.matchAll(comparisonPattern)) {
+        if (match.index > start) {
+          fragments.push({ text: clause.slice(start, match.index).trim(), sentenceIndex });
+        }
+        start = match.index + match[0].length;
+      }
+      if (start < clause.length) {
+        fragments.push({ text: clause.slice(start).trim(), sentenceIndex });
+      }
     }
-    if (start < sentence.length) fragments.push(sentence.slice(start).trim());
   }
 
-  return fragments
-    .flatMap((fragment) => fragment.split(
-      /\band\s+(?:(?:a|an|another|the\s+other|separate|different|unrelated)\s+)(?:(?:[a-z-]+\s+){0,3})(?:project|facility|campus|site|data\s+center|cryptocurrency|crypto(?:currency)?(?:\s+mining)?\s+facility)\b/gi,
-    ))
-    .map((fragment) => fragment.trim())
+  return fragments.flatMap(({ text: fragment, sentenceIndex }) => fragment.split(
+    /\band\s+(?:(?:a|an|another|the\s+other|separate|different|unrelated)\s+)(?:(?:[a-z-]+\s+){0,3})(?:project|facility|campus|site|data\s+center|cryptocurrency|crypto(?:currency)?(?:\s+mining)?\s+facility)\b/gi,
+  ).map((text) => ({ text: text.trim(), sentenceIndex })))
     .filter(Boolean);
 }
 
@@ -588,14 +630,14 @@ export function matchProject(passage, project = {}) {
   const fragments = splitSubjectFragments(text);
   const identified = [];
   const allAttachedLocations = [];
-  for (const [fragmentIndex, fragment] of fragments.entries()) {
+  for (const [fragmentIndex, { text: fragment, sentenceIndex }] of fragments.entries()) {
     const identityMatches = findNameMatches(fragment, variants)
       .filter((match) => !isNegatedProjectReference(fragment, match));
     const cleaned = removeAdministrativeLocations(fragment);
     const attached = detailedLocations(cleaned).filter((location) => hasLocationConnector(cleaned, location));
     allAttachedLocations.push(...attached.map((item) => item.location));
     if (identityMatches.length) {
-      identified.push({ fragment: cleaned, identityMatches, attached, fragmentIndex });
+      identified.push({ fragment: cleaned, identityMatches, attached, fragmentIndex, sentenceIndex });
     }
   }
 
@@ -625,8 +667,10 @@ export function matchProject(passage, project = {}) {
       expectedOperator,
     );
     const adjacentFragment = fragments[subject.fragmentIndex + 1];
-    const adjacentOperatorEvidence = adjacentFragment && isProjectOperatorAttributionFragment(adjacentFragment)
-      ? assertedOperators(adjacentFragment, [], expectedOperator)
+    const adjacentOperatorEvidence = adjacentFragment
+      && adjacentFragment.sentenceIndex === subject.sentenceIndex
+      && isProjectOperatorAttributionFragment(adjacentFragment.text)
+      ? assertedOperators(adjacentFragment.text, [], expectedOperator)
       : [];
     const operatorEvidence = [...localOperatorEvidence, ...adjacentOperatorEvidence];
     if (expectedOperator && operatorConflicts(expectedOperator, operatorEvidence)) {
@@ -670,8 +714,10 @@ export function matchProject(passage, project = {}) {
         expectedOperator,
       );
       const adjacentFragment = fragments[subject.fragmentIndex + 1];
-      const adjacentEvidence = adjacentFragment && isProjectOperatorAttributionFragment(adjacentFragment)
-        ? assertedOperators(adjacentFragment, [], expectedOperator)
+      const adjacentEvidence = adjacentFragment
+        && adjacentFragment.sentenceIndex === subject.sentenceIndex
+        && isProjectOperatorAttributionFragment(adjacentFragment.text)
+        ? assertedOperators(adjacentFragment.text, [], expectedOperator)
         : [];
       const evidence = [...localEvidence, ...adjacentEvidence];
       return expectedOperator && evidence.some((actual) => operatorsMatch(expectedOperator, actual));

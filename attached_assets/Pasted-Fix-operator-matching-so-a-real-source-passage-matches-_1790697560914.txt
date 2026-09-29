@@ -1,0 +1,21 @@
+Fix operator matching so a real source passage matches its project. Only edit src/data/researchClaimVerifier.mjs and src/data/researchClaimVerifier.test.mjs. If you need another file, stop and report. No paid calls. Do not deploy. Keep changes minimal; do not rename, reformat, or refactor code outside this task.
+
+Problem: when an operator is supplied, matchProject requires the passage to attribute the project to that operator, but it only recognizes forms like "developed by X" or "X's". It does not recognize the operator used as part of the project name. This real source passage currently returns ambiguous:
+"The DataBank Red Oak data center campus is a 292-acre, eight-building hyperscale development located 20 miles south of Dallas in Red Oak, Texas. On April 21, 2026, DataBank closed a $2 billion construction loan, the largest in company history, to fund the first three buildings (DFW9, DFW10, and DFW11), which together total 600,000 square feet and 180 megawatts of power. The 292-acre site will eventually host eight buildings delivering 480 MW of total IT load."
+
+1. Treat the operator's name immediately before the project name or facility noun as operator attribution ("The DataBank Red Oak data center campus", "the DataBank Red Oak campus"), the same as "DataBank's Red Oak campus".
+2. When the requested project name itself contains the operator (for example "DataBank Red Oak Data Center Campus"), a passage containing that name, allowing for case and "data center" wording, establishes both name and operator.
+3. Distinctive names. When an operator is supplied but the passage names no operator: if the project name is distinctive, a name match plus matching location may be exact-project; if the name is generic, stay ambiguous. Decide mechanically: remove generic words (project, campus, facility, site, data, center, datacenter, hyperscale, park) and any words that repeat the requested city, county or state. If meaningful words remain ("Kilby", "Stargate"), the name is distinctive; if none remain ("Red Oak Campus" in Red Oak), it is generic. Do not hard-code project names.
+4. Keep: an explicitly different attributed operator or developer is always unrelated, even for a distinctive name.
+
+Tests, using the passage above:
+- Requested "Red Oak Campus", operator DataBank, Red Oak, Ellis County, Texas → exact-project.
+- Requested "DataBank Red Oak Data Center Campus", operator DataBank, same location → exact-project.
+- Requested "Red Oak Campus", operator Compass → unrelated.
+Other tests:
+- "Compass Datacenters is developing the Red Oak Campus in Red Oak, Texas, a 300 MW project." requested operator DataBank → unrelated.
+- "The Red Oak Campus in Red Oak, Texas will add 300 MW of capacity next year." requested "Red Oak Campus", operator DataBank → ambiguous (generic name, no operator).
+- "Project Kilby in Reeves County, Texas will be powered by on-site generation." requested "Project Kilby", operator Chevron, Reeves County, Texas → exact-project (distinctive name).
+- "CyrusOne is building Project Kilby in Reeves County, Texas." requested operator Chevron → unrelated.
+All existing tests pass.
+Report files changed and test results.

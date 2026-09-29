@@ -164,4 +164,57 @@ test.describe("AI evidence classification", () => {
     await expect(marker.locator("time")).toHaveAttribute("datetime", storedReview.reviewedAt);
     await expect(row.getByTestId("ai-assessment-water_rights")).not.toBeVisible();
   });
+
+  test("keeps canonical AI suggestions advisory until Accept or Override", async ({ page }) => {
+    let requests = 0;
+    await page.route("**/api/analyze-evidence", async (route) => {
+      requests += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(responseFor("Missing Evidence", "The supplied record does not establish this input.")),
+      });
+    });
+    await page.goto("/#analysis/stargate-abilene");
+    await expect(page.getByTestId("conference-research-status")).toHaveText("Canonical evidence review");
+    await page.getByTestId("tab-reality").click();
+    await page.getByTestId("button-detailed-evidence").click();
+    const row = page.getByTestId("row-evidence-permitting_timeline");
+    const select = row.getByTestId("select-classification-permitting_timeline");
+    await expect(select).toBeEnabled();
+    await expect(row.getByTestId("button-analyze-ai-permitting_timeline")).toBeEnabled();
+    const baseline = await select.inputValue();
+    expect(baseline).not.toBe("Missing Evidence");
+    const before = await page.evaluate(() => {
+      const session = JSON.parse(localStorage.getItem("safeloc:diligence:current-session:v1") ?? "{}");
+      return { overrides: session.canonicalReview.overrides, model: session.modelEvidence.permitting_timeline.classification };
+    });
+
+    await row.getByTestId("button-analyze-ai-permitting_timeline").click();
+    await expect(row.getByTestId("ai-assessment-permitting_timeline")).toContainText("Suggestion, not a determination");
+    await expect(row.getByTestId("button-accept-ai-permitting_timeline")).toHaveText("Accept downgrade");
+    await expect(select).toHaveValue(baseline);
+    const afterSuggestion = await page.evaluate(() => {
+      const session = JSON.parse(localStorage.getItem("safeloc:diligence:current-session:v1") ?? "{}");
+      return { overrides: session.canonicalReview.overrides, model: session.modelEvidence.permitting_timeline.classification };
+    });
+    expect(afterSuggestion).toEqual(before);
+
+    await row.getByTestId("button-override-ai-permitting_timeline").click();
+    await expect(select).toHaveValue(baseline);
+    await expect(row.getByTestId("review-marker-permitting_timeline")).toContainText("AI-suggested, overridden by analyst");
+    await expect(row.getByTestId("session-override-permitting_timeline")).toHaveCount(0);
+    await row.getByTestId("button-analyze-ai-permitting_timeline").click();
+    await expect(row.getByTestId("button-accept-ai-permitting_timeline")).toHaveText("Accept downgrade");
+    await row.getByTestId("button-accept-ai-permitting_timeline").click();
+    await expect(select).toHaveValue("Missing Evidence");
+    await expect(row.getByTestId("review-marker-permitting_timeline")).toContainText("AI-suggested, accepted by analyst");
+    await expect(row.getByTestId("session-override-permitting_timeline")).toContainText(`dossier baseline: ${baseline}`);
+    const afterAccept = await page.evaluate(() => {
+      const session = JSON.parse(localStorage.getItem("safeloc:diligence:current-session:v1") ?? "{}");
+      return { override: session.canonicalReview.overrides.permitting_timeline, model: session.modelEvidence.permitting_timeline.classification };
+    });
+    expect(afterAccept).toEqual({ override: "Missing Evidence", model: "Missing Evidence" });
+    expect(requests).toBe(2);
+  });
 });

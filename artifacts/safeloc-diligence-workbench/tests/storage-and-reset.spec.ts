@@ -387,6 +387,71 @@ test.describe("current-session recovery and reset isolation", () => {
     expect(afterReloadReset.classifications[review.id]).toBe(review.baselineClassification);
   });
 
+  test("Stargate gate review changes posture without moving returns, while a driver changes returns; reset restores both", async ({ page }) => {
+    await page.goto("/#analysis/stargate-abilene");
+    await expect(page.getByTestId("conference-summary").locator("h1")).toHaveText("Stargate Abilene");
+    const canonicalResponse = await page.request.get("/api/dossiers/stargate-abilene");
+    expect(canonicalResponse.ok()).toBeTruthy();
+    const canonicalBefore = await canonicalResponse.json();
+    const baseline = await page.evaluate((key) => {
+      const review = JSON.parse(localStorage.getItem(key) ?? "{}").canonicalReview;
+      return review.baselineEvidence;
+    }, currentSessionKey);
+    expect(baseline.water_rights.classification).toBe("Missing Evidence");
+
+    const posture = async () => {
+      const recommendation = await page.getByTestId("conference-primary-case").textContent();
+      await openFinancialTransmission(page);
+      // Model decision gates count classifications; the separate conference
+      // source bucket can remain open until source support is validated.
+      const gateCount = Number((await page.getByTestId("live-material-gaps").textContent())?.match(/Unresolved decision gates: (\d+)/)?.[1]);
+      const confidence = await page.getByTestId("live-confidence").textContent();
+      await page.getByTestId("financial-tab-cash-flows").click();
+      const irr = await page.getByTestId("metric-project-irr").textContent();
+      const npv = await page.getByTestId("metric-npv").textContent();
+      return { recommendation, gateCount, irr, npv, confidence };
+    };
+    const before = await posture();
+    await openProjectRealityEvidenceReview(page);
+    const water = page.getByTestId("row-evidence-water_rights");
+    await water.getByTestId("select-classification-water_rights").selectOption("Verified Evidence");
+    await expect(water.getByTestId("session-override-water_rights")).toContainText("Session override · dossier baseline: Missing Evidence");
+    const gateChanged = await posture();
+    expect(gateChanged.gateCount).toBe(before.gateCount - 1);
+    expect(gateChanged.confidence).not.toBe(before.confidence);
+    expect(gateChanged.recommendation).not.toBe(before.recommendation);
+    expect(gateChanged.irr).toBe(before.irr);
+    expect(gateChanged.npv).toBe(before.npv);
+
+    await openProjectRealityEvidenceReview(page);
+    const power = page.getByTestId("row-evidence-permitting_timeline");
+    const powerBaseline = await power.getByTestId("select-classification-permitting_timeline").inputValue();
+    await power.getByTestId("select-classification-permitting_timeline").selectOption(
+      powerBaseline === "Missing Evidence" ? "Verified Evidence" : "Missing Evidence",
+    );
+    await expect(power.getByTestId("session-override-permitting_timeline")).toContainText(`dossier baseline: ${powerBaseline}`);
+    const driverChanged = await posture();
+    expect(driverChanged.irr === gateChanged.irr && driverChanged.npv === gateChanged.npv).toBe(false);
+
+    await page.reload();
+    await openProjectRealityEvidenceReview(page);
+    await expect(page.getByTestId("session-override-water_rights")).toContainText("dossier baseline: Missing Evidence");
+    await expect(page.getByTestId("session-override-permitting_timeline")).toContainText(`dossier baseline: ${powerBaseline}`);
+    await page.getByTestId("button-reset-default").click();
+    await page.getByTestId("button-confirm-reset-default").click();
+    const afterReset = await posture();
+    expect(afterReset).toEqual(before);
+    await openProjectRealityEvidenceReview(page);
+    await expect(page.getByTestId("select-classification-water_rights")).toHaveValue("Missing Evidence");
+    await expect(page.getByTestId("select-classification-permitting_timeline")).toHaveValue(powerBaseline);
+    await expect(page.getByTestId("session-override-water_rights")).toHaveCount(0);
+    await expect(page.getByTestId("session-override-permitting_timeline")).toHaveCount(0);
+    const resetReview = await page.evaluate((key) => JSON.parse(localStorage.getItem(key) ?? "{}").canonicalReview, currentSessionKey);
+    expect(resetReview.baselineEvidence).toEqual(baseline);
+    expect(resetReview.overrides).toEqual({});
+    expect(await (await page.request.get("/api/dossiers/stargate-abilene")).json()).toEqual(canonicalBefore);
+  });
+
   test("unknown custom capacity stays null through model construction and sanitized export", async ({ page }) => {
     const projectKey = "example custom data center|arlington, texas";
     await seedCustomResearchSession(page, null);

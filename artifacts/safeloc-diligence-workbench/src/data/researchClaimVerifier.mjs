@@ -19,6 +19,10 @@ const STATE_BY_NORMALIZED_NAME = new Map(STATES.map(([name]) => [normalizeWords(
 const GENERIC_PROJECT_TOKENS = new Set([
   "project", "the", "data", "center", "centre", "campus", "facility", "site",
 ]);
+const GENERIC_DISTINCTIVENESS_TOKENS = new Set([
+  "project", "campus", "facility", "site", "data", "center", "datacenter",
+  "hyperscale", "park",
+]);
 
 function normalizeWords(value) {
   return String(value ?? "")
@@ -272,6 +276,17 @@ function identityVariants(project) {
   return [...unique.values()];
 }
 
+function distinctiveProjectNameTokens(project, location) {
+  const name = collectStrings(project?.name ?? project?.projectName)[0] ?? "";
+  const locationTokens = [
+    location.city,
+    location.county,
+    location.state,
+  ].flatMap((value) => normalizeWords(value).split(" ").filter(Boolean));
+  const excluded = new Set([...GENERIC_DISTINCTIVENESS_TOKENS, ...locationTokens]);
+  return normalizeWords(name).split(" ").filter((token) => token && !excluded.has(token));
+}
+
 function tokenSpans(text) {
   const spans = [];
   const pattern = /[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)?/gu;
@@ -352,8 +367,20 @@ function findNameMatches(text, variants) {
   return matches.sort((left, right) => left.start - right.start || left.tokenSpan - right.tokenSpan);
 }
 
-function assertedOperators(text, identityMatches = []) {
+function nameMatchContainsTokens(text, matches, requiredTokens) {
+  if (!requiredTokens.length) return false;
+  const words = tokenSpans(text);
+  return matches.some((match) => {
+    const matchedTokens = new Set(words
+      .filter((word) => word.start >= match.start && word.end <= match.end)
+      .map((word) => word.value));
+    return requiredTokens.every((token) => matchedTokens.has(token));
+  });
+}
+
+function assertedOperators(text, identityMatches = [], expectedOperator = "") {
   const companyName = "[A-Z][\\p{L}\\p{N}&.'’'-]*(?:\\s+[A-Z][\\p{L}\\p{N}&.'’'-]*){0,4}";
+  const directCompanyName = "[A-Z][\\p{L}\\p{N}&.\\-]*(?:['’][A-Z][\\p{L}\\p{N}&.\\-]*)*(?:\\s+[A-Z][\\p{L}\\p{N}&.\\-]*(?:['’][A-Z][\\p{L}\\p{N}&.\\-]*)*){0,4}";
   const patterns = [
     new RegExp(
       `\\b(?:(?:is|was|has\\s+been|will\\s+be|is\\s+being|was\\s+being)\\s+)?(?:operated|owned|developed|sponsored|managed|run|built|constructed)\\s+by\\s+(${companyName})`,
@@ -388,11 +415,43 @@ function assertedOperators(text, identityMatches = []) {
   // example, a report publisher's filing) is not operator evidence.
   const possessivePattern = new RegExp(`(?:^|\\s)(${companyName})['’]s\\s*$`, "u");
   for (const identityMatch of identityMatches) {
+    const variantTokens = identityMatch.variant.matchingTokens ?? identityMatch.variant.tokens;
+    const previousWord = tokenSpans(text)
+      .filter((word) => word.end <= identityMatch.start)
+      .at(-1);
+    const startsAtName = !previousWord || !variantTokens.includes(previousWord.value);
     const prefix = text.slice(0, identityMatch.start);
     const possessive = prefix.match(possessivePattern);
     if (possessive) actors.push(normalizeWords(possessive[1]));
+
+    // Some source passages put the operator directly before the project or
+    // facility name without a possessive or an attribution verb.
+    const directAttribution = startsAtName && prefix.match(
+      new RegExp(
+        `(?:^|\\s)(${directCompanyName})(?:['’]s)?\\s+(?:(?:[Tt]he|[Aa]|[Aa]n)\\s+)?(?:[Pp]roject|[Ff]acility|[Ss]ite|[Cc]ampus|[Dd]ata\\s+[Cc]enter|[Dd]atacenter|[Hh]yperscale|[Pp]ark)?\\s*$`,
+        "u",
+      ),
+    );
+    if (directAttribution) {
+      const candidateTokens = normalizeWords(directAttribution[1]).split(" ").filter(Boolean);
+      while (candidateTokens.length && GENERIC_PROJECT_TOKENS.has(candidateTokens.at(-1))) {
+        candidateTokens.pop();
+      }
+      if (candidateTokens.length) actors.push(candidateTokens.join(" "));
+    }
+
+    // A matched requested full name that includes its operator establishes
+    // both parts of the identity, even if the passage uses no attribution verb.
+    const operatorTokensInName = operatorTokens(expectedOperator);
+    if (startsAtName
+      && identityMatch.variant.kind === "name"
+      && operatorTokensInName.length
+      && operatorTokensInName.every((token) => identityMatch.variant.tokens.includes(token))
+      && nameMatchContainsTokens(text, [identityMatch], operatorTokensInName)) {
+      actors.push(expectedOperator);
+    }
   }
-  return [...new Set(actors.filter(Boolean))];
+  return [...new Set(actors.filter((actor) => operatorTokens(actor).length > 0))];
 }
 
 function operatorTokens(value) {
@@ -518,6 +577,7 @@ export function matchProject(passage, project = {}) {
   const expectedLocation = requestedLocation(project);
   const expectedLocationText = formatExpectedLocation(expectedLocation);
   const expectedOperator = project?.operator ?? project?.knownData?.operator ?? "";
+  const distinctiveNameTokens = distinctiveProjectNameTokens(project, expectedLocation);
   if (!text.trim() || !variants.length) {
     return {
       verdict: "ambiguous",
@@ -559,10 +619,14 @@ export function matchProject(passage, project = {}) {
 
     const confirmedDimensions = [...new Set(comparisons.flatMap((comparison) => comparison.matches))];
     const hasRequestedLocation = Boolean(expectedLocation.city || expectedLocation.county || expectedLocation.state);
-    const localOperatorEvidence = assertedOperators(subject.fragment, subject.identityMatches);
+    const localOperatorEvidence = assertedOperators(
+      subject.fragment,
+      subject.identityMatches,
+      expectedOperator,
+    );
     const adjacentFragment = fragments[subject.fragmentIndex + 1];
     const adjacentOperatorEvidence = adjacentFragment && isProjectOperatorAttributionFragment(adjacentFragment)
-      ? assertedOperators(adjacentFragment)
+      ? assertedOperators(adjacentFragment, [], expectedOperator)
       : [];
     const operatorEvidence = [...localOperatorEvidence, ...adjacentOperatorEvidence];
     if (expectedOperator && operatorConflicts(expectedOperator, operatorEvidence)) {
@@ -573,9 +637,14 @@ export function matchProject(passage, project = {}) {
     }
     const operatorMatches = Boolean(expectedOperator
       && operatorEvidence.some((actual) => operatorsMatch(expectedOperator, actual)));
-    const identityContextMatches = expectedOperator
-      ? operatorMatches && (!hasRequestedLocation || confirmedDimensions.length > 0)
-      : hasRequestedLocation ? confirmedDimensions.length > 0 : strongNameMatch;
+    const distinctiveNameMatch = nameMatchContainsTokens(
+      subject.fragment,
+      subject.identityMatches.filter((match) => match.variant.kind === "name"),
+      distinctiveNameTokens,
+    );
+    const identityContextMatches = hasRequestedLocation
+      ? confirmedDimensions.length > 0 && (operatorMatches || distinctiveNameMatch)
+      : expectedOperator ? operatorMatches : strongNameMatch;
     if (nameMatch && identityContextMatches) {
       const basis = "project name or alias";
       const locationNote = confirmedDimensions.length
@@ -595,10 +664,14 @@ export function matchProject(passage, project = {}) {
   ].filter(Boolean);
   if (identified.length) {
     const hasOperatorAttribution = identified.some((subject) => {
-      const localEvidence = assertedOperators(subject.fragment, subject.identityMatches);
+      const localEvidence = assertedOperators(
+        subject.fragment,
+        subject.identityMatches,
+        expectedOperator,
+      );
       const adjacentFragment = fragments[subject.fragmentIndex + 1];
       const adjacentEvidence = adjacentFragment && isProjectOperatorAttributionFragment(adjacentFragment)
-        ? assertedOperators(adjacentFragment)
+        ? assertedOperators(adjacentFragment, [], expectedOperator)
         : [];
       const evidence = [...localEvidence, ...adjacentEvidence];
       return expectedOperator && evidence.some((actual) => operatorsMatch(expectedOperator, actual));

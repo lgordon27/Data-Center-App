@@ -141,13 +141,15 @@ test("server identity agrees with retained-passage applicability and ignores HQ 
   ), texasProject), true);
   assert.equal(sourceEstablishesProjectIdentity(source(
     "Project Atlas is located in Irving, Dallas County, Texas, compared with a similar project in Richmond, Virginia.",
-  ), texasProject), false);
+  ), texasProject), true,
+  "the distinctive requested name and matching Irving location establish identity without operator attribution");
   assert.equal(sourceEstablishesProjectIdentity(source(
     "Project Atlas is located in Houston, Harris County, Texas.",
   ), texasProject), false);
   assert.equal(sourceEstablishesProjectIdentity(source(
     "Project Atlas is located in Irving, Dallas County, Texas and is operated by Different Operator.",
-  ), texasProject), false);
+  ), texasProject), false,
+  "an explicit operator conflict remains unrelated even when the distinctive name and location match");
 
   assert.equal(sourceEstablishesProjectIdentity(source(
     "Atlas Compute Campus is located in Morgantown, Monongalia County, WV.",
@@ -161,7 +163,8 @@ test("server identity agrees with retained-passage applicability and ignores HQ 
       county: "Monongalia County",
       state: "WV",
     },
-  }), false);
+  }), true,
+  "the operator immediately before the matched facility name establishes attribution at the matching location");
 });
 
 function responseRecorder() {
@@ -3019,7 +3022,7 @@ test("production mappings use retained passage identity for unassessed Google so
     city: "Red Oak",
     state: "Texas",
   };
-  const passage = "DataBank's Red Oak campus is located in Red Oak, Texas. The filing reports an interconnection interval of 365 days.";
+  const passage = "The DataBank Red Oak data center campus is located in Red Oak, Texas. The filing reports an interconnection interval of 365 days.";
   const evaluate = ({ retainedPassage = passage, operator = "DataBank" } = {}) => {
     const body = validResearchResponse();
     body.projectSummary = {
@@ -3068,7 +3071,8 @@ test("production mappings use retained passage identity for unassessed Google so
   const matching = evaluate();
   assert.equal(matching.claimMappings[0].entityScope, "project");
   assert.equal(matching.claimMappings[0].supportStatus, "supported");
-  assert.equal(matching.sources[0].exactProject, true);
+  assert.equal(matching.sources[0].exactProject, true,
+    "DataBank directly before the project name establishes operator attribution without a possessive");
 
   const noPassage = evaluate({ retainedPassage: null });
   assert.equal(noPassage.claimMappings[0].entityScope, "related");
@@ -4071,7 +4075,7 @@ test("Red Oak passage scope is merged before proxy claim mapping", () => {
     };
     const item = body.evidence.find((candidate) => candidate.id === "grid_interconnection");
     const url = `https://records.example.test/redoak/${value}`;
-    const retainedPassage = `${passage} The Red Oak campus is located in Red Oak, Texas.`;
+    const retainedPassage = `${passage} The DataBank Red Oak data center campus is located in Red Oak, Texas.`;
     Object.assign(item, {
       value,
       numericValue: value,
@@ -4097,7 +4101,12 @@ test("Red Oak passage scope is merged before proxy claim mapping", () => {
       facilityScope: sourceFacilityScope,
       phaseScope: sourcePhaseScope,
       timePeriod: sourceTimePeriod,
-    }, retainedPassage)]);
+    }, retainedPassage)], null, null, {
+      aliases: ["Red Oak"],
+      operator: "DataBank",
+      city: "Red Oak",
+      state: "Texas",
+    });
     const evidence = parsed.evidence.find((candidate) => candidate.id === "grid_interconnection");
     return { evidence, mapping: evidence.claimMappings[0] };
   };
@@ -4163,6 +4172,51 @@ test("Red Oak passage scope is merged before proxy claim mapping", () => {
   assert.equal(noScope.evidence.phaseScope, "unknown");
   assert.equal(noScope.mapping.phaseScope, "unknown");
   assert.equal(noScope.mapping.supportStatus, "scope-unknown");
+});
+
+test("generic Red Oak passage without operator attribution remains context-only", () => {
+  const body = validResearchResponse();
+  body.projectSummary = {
+    ...body.projectSummary,
+    name: "Red Oak Campus",
+    location: "Red Oak, Texas",
+  };
+  const item = body.evidence.find((candidate) => candidate.id === "grid_interconnection");
+  const value = 480;
+  const url = "https://records.example.test/redoak/generic-campus";
+  const passage = "Red Oak campus has a total capacity of 480 MW across all phases. The Red Oak campus is located in Red Oak, Texas.";
+  Object.assign(item, {
+    value,
+    numericValue: value,
+    unit: "MW",
+    classification: "Management Assertion",
+    sourceUrl: url,
+    sourceUrls: [url],
+    coverageStatus: "supported",
+    claimPassage: passage,
+    facilityScope: "project",
+    phaseScope: "all-phases",
+    claimTimePeriod: null,
+  });
+  const parsed = parseResearchResponse(body, [withRetrievedPassage({
+    ...retrievedSource,
+    url,
+    title: "Generic Red Oak capacity disclosure",
+    excerpt: passage,
+    claimPassage: passage,
+    sourceClass: "primary-government",
+    exactProject: true,
+    claimSupport: [{ evidenceId: "grid_interconnection", values: [value] }],
+    facilityScope: "project",
+    phaseScope: "all-phases",
+  }, passage)], null, null, {
+    aliases: ["Red Oak"],
+    operator: "DataBank",
+    city: "Red Oak",
+    state: "Texas",
+  });
+  const evidence = parsed.evidence.find((candidate) => candidate.id === "grid_interconnection");
+  assert.equal(evidence.claimMappings[0].supportStatus, "context-only");
 });
 
 test("Project Kilby preserves supported power, grid, and water classifications from validated sources", () => {

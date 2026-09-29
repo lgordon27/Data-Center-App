@@ -79,9 +79,9 @@ test("ignores an Atlanta comparison when the requested project is located in Tex
 
 test("does not confuse Washington County with the state of Washington", () => {
   const result = matchProject(
-    "The Washington County campus is in West Virginia.",
+    "The Aster Washington County campus is in West Virginia.",
     {
-      name: "Washington County Campus",
+      name: "Aster Washington County Campus",
       county: "Washington County",
       state: "West Virginia",
     },
@@ -145,7 +145,111 @@ test("matches DataBank Red Oak full and directory names from passage text", () =
   );
 });
 
-test("requires expected-operator attribution and recognizes subject-led development and construction", () => {
+test("recognizes an operator directly before a facility name and in the full requested name", () => {
+  const location = {
+    city: "Red Oak",
+    county: "Ellis County",
+    state: "Texas",
+  };
+  const shortNameProject = {
+    name: "Red Oak Campus",
+    operator: "DataBank",
+    ...location,
+  };
+
+  assert.equal(
+    matchProject(
+      "DataBank Red Oak Campus is located in Red Oak, Ellis County, Texas.",
+      shortNameProject,
+    ).verdict,
+    "exact-project",
+  );
+  assert.equal(
+    matchProject(
+      "DATABANK Red Oak data center campus is located in Red Oak, Ellis County, Texas.",
+      shortNameProject,
+    ).verdict,
+    "exact-project",
+  );
+  assert.equal(
+    matchProject(
+      "Red Oak Campus is located in Red Oak, Ellis County, Texas.",
+      shortNameProject,
+    ).verdict,
+    "ambiguous",
+    "generic requested names remain ambiguous without operator attribution",
+  );
+
+  assert.equal(
+    matchProject(
+      "DATABANK Red Oak Campus is located in Red Oak, Ellis County, Texas.",
+      {
+        name: "DataBank Red Oak Data Center Campus",
+        operator: "DataBank",
+        ...location,
+      },
+    ).verdict,
+    "exact-project",
+    "the matched full requested name can establish its embedded operator",
+  );
+  assert.equal(
+    matchProject(
+      "Other Operator Red Oak Campus is located in Red Oak, Ellis County, Texas.",
+      shortNameProject,
+    ).verdict,
+    "unrelated",
+    "a conflicting operator immediately before the facility name remains a conflict",
+  );
+  assert.equal(
+    matchProject(
+      "DataBank Red Oak Campus is located in Red Oak, Ellis County, Texas; the developer is Other Developer.",
+      shortNameProject,
+    ).verdict,
+    "unrelated",
+    "explicit conflicting developer attribution outranks the name-based operator match",
+  );
+});
+
+test("a distinctive requested name can match its location without operator attribution", () => {
+  const project = {
+    name: "Project Kilby",
+    operator: "DataBank",
+    city: "Abilene",
+    county: "Taylor County",
+    state: "Texas",
+  };
+
+  assert.equal(
+    matchProject(
+      "Project Kilby campus is located in Abilene, Taylor County, Texas.",
+      project,
+    ).verdict,
+    "exact-project",
+  );
+  assert.equal(
+    matchProject(
+      "DataBank Project Kilby is located in Abilene, Taylor County, Texas.",
+      project,
+    ).verdict,
+    "exact-project",
+  );
+  assert.equal(
+    matchProject(
+      "Project Kilby campus is located in El Paso, Texas.",
+      project,
+    ).verdict,
+    "unrelated",
+  );
+  assert.equal(
+    matchProject(
+      "Other Operator develops Project Kilby in Abilene, Taylor County, Texas.",
+      project,
+    ).verdict,
+    "unrelated",
+  );
+});
+
+test("requires expected-operator attribution unless the requested project name is distinctive", () => {
   const project = {
     name: "Aster Northstar Campus",
     operator: "Northstar Infrastructure",
@@ -185,8 +289,8 @@ test("requires expected-operator attribution and recognizes subject-led developm
       "Aster Northstar Campus is located in Cedar County, Iowa.",
       project,
     ).verdict,
-    "ambiguous",
-    "name and location without operator attribution cannot establish identity when an operator is expected",
+    "exact-project",
+    "a distinctive requested name and matching location can establish identity without operator attribution",
   );
 });
 

@@ -158,8 +158,10 @@ function customResponse() {
 
 function acceptanceResponse() {
   const response: any = customResponse();
+  response.projectSummary.location = "Irving, Dallas County, Texas";
   const configureProposal = (id: string, value: number, unit: string, claim: string) => {
     const item = response.evidence.find((candidate: { id: string }) => candidate.id === id);
+    const retrievedPassage = `Project Atlas is located in Irving, Dallas County, Texas. ${claim}`;
     Object.assign(item, {
       value,
       rawValue: value,
@@ -185,7 +187,7 @@ function acceptanceResponse() {
           publisher: "example.com",
           accessedAt: "2026-09-10",
           accessStatus: "open",
-          excerpt: "This exact-project passage is accessible but does not support the displayed electricity claim.",
+          excerpt: "This passage is accessible but does not identify Project Atlas or support the displayed electricity claim.",
           sourceClass: "reviewer-submitted",
           searchDomain: "power-grid",
           relationship: "corroborating",
@@ -200,7 +202,7 @@ function acceptanceResponse() {
             format: "html",
             resolvedUrl: `https://example.com/unmapped/${id}`,
             canonicalUrl: `https://example.com/unmapped/${id}`,
-            passage: "This exact-project passage is accessible but does not support the displayed electricity claim.",
+            passage: "This passage is accessible but does not identify Project Atlas or support the displayed electricity claim.",
             pageOrSection: "Context",
             extractionLimitations: [],
           },
@@ -213,7 +215,7 @@ function acceptanceResponse() {
         publisher: "ercot.com",
         accessedAt: "2026-09-10",
         accessStatus: "open",
-        excerpt: claim,
+        excerpt: retrievedPassage,
         claimPassage: claim,
         sourceClass: "primary-government",
         searchDomain: "power-grid",
@@ -230,7 +232,7 @@ function acceptanceResponse() {
           format: "html",
           resolvedUrl: `https://ercot.com/project-atlas/${id}`,
           canonicalUrl: `https://ercot.com/project-atlas/${id}`,
-          passage: claim,
+          passage: retrievedPassage,
           pageOrSection: "Tariff schedule",
           extractionLimitations: [],
         },
@@ -391,9 +393,33 @@ test.describe("custom project research", () => {
       const response = customResponse();
       response.projectSummary.name = request.name;
       response.projectSummary.location = request.location;
-      if (request.forceRefresh) response.researchCache.state = "updated";
+      const electricity = response.evidence.find((item) => item.id === "electricity_cost")!;
+      const electricityPassage = `${request.name} is located in ${request.location}. The facility electricity cost is 48 USD/MWh.`;
+      const electricitySource = electricity.sources?.[0] as Record<string, any> | undefined;
+      if (electricitySource) {
+        Object.assign(electricitySource, {
+          excerpt: electricityPassage,
+          claimPassage: electricityPassage,
+          accessOutcome: {
+            state: "accessible",
+            reason: "open",
+            format: "html",
+            passage: electricityPassage,
+          },
+        });
+      }
+      Object.assign(electricity, {
+        sourceRelevance: "exact-project",
+        coverageStatus: "supported",
+      });
+      electricity.claimPassage = electricityPassage;
+      if (request.forceRefresh) {
+        response.researchCache.state = "updated";
+        electricity.classification = "Verified Evidence";
+      }
       if (request.focusIds?.length) {
         const grid = response.evidence.find((item) => item.id === "grid_interconnection")!;
+        const gridPassage = `${request.name} is located in ${request.location}. The facility will use behind-the-meter generation.`;
         grid.value = "Behind-the-meter generation";
         grid.classification = "Verified Evidence";
         grid.citation = "A project-specific filing describes the behind-the-meter arrangement.";
@@ -405,6 +431,7 @@ test.describe("custom project research", () => {
           sourcePublishedAt: "2026-07-01",
           sourceAccessedAt: "2026-09-03",
           sourceAccessStatus: "open",
+          sourceRelevance: "exact-project",
           coverageStatus: "supported",
           sourceSupportConfidence: 94,
           sources: [{
@@ -414,8 +441,14 @@ test.describe("custom project research", () => {
             publishedAt: "2026-07-01",
             accessedAt: "2026-09-03",
             accessStatus: "open",
-            excerpt: "Project Atlas uses behind-the-meter generation.",
-             claimPassage: "Project Atlas uses behind-the-meter generation.",
+            excerpt: gridPassage,
+            claimPassage: gridPassage,
+            accessOutcome: {
+              state: "accessible",
+              reason: "open",
+              format: "html",
+              passage: gridPassage,
+            },
             sourceClass: "primary-government",
             searchDomain: "power-grid",
             relationship: "primary",
@@ -425,7 +458,7 @@ test.describe("custom project research", () => {
             phaseScope: "exact-phase",
             timePeriod: "2026",
           }],
-           claimPassage: "Project Atlas uses behind-the-meter generation.",
+            claimPassage: gridPassage,
            facilityScope: "exact-project",
            phaseScope: "exact-phase",
            claimTimePeriod: "2026",
@@ -779,6 +812,8 @@ test.describe("custom project research", () => {
     expect(persisted.customResearch.modelEvidence.renewable_percentage.acceptedForModel).toBe(false);
     await page.goto("/#evidence");
     await expect(page.getByTestId("research-handoff-proposals")).toContainText("1 pending · 1 accepted · 1 overridden · 1 rejected · 1 unresolved");
+    await expect(page.getByTestId("button-accept-source-proposal-renewable_percentage")).toHaveCount(0);
+    await expect(page.getByTestId("button-override-source-proposal-renewable_percentage")).toHaveCount(0);
   });
 
   test("keeps reviewer source corrections behind the disclosure", async ({ page }) => {
@@ -828,7 +863,7 @@ test.describe("custom project research", () => {
     await expect(page.getByTestId("source-research-summary")).toContainText("new source-backed proposal");
   });
 
-  test("researches unresolved inputs and stages a source-backed proposal for human acceptance", async ({ page }) => {
+  test("keeps semantically incompatible research leads out of proposal review and model evidence", async ({ page }) => {
     const assessmentRequests: Array<{
       projectName: string;
       projectLocation: string;
@@ -915,18 +950,15 @@ test.describe("custom project research", () => {
     expect(assessmentRequests).toHaveLength(0);
     expect(researchRequests[1].focusIds).toContain("grid_interconnection");
     expect(researchRequests[1].focusIds).toContain("water_consumption");
-    await expect(page.getByTestId("source-research-summary")).toContainText("new source-backed proposal");
-    await expect(page.getByTestId("row-evidence-grid_interconnection")).toHaveAttribute("open", "");
-    await expect(page.getByTestId("source-research-proposal-grid_interconnection")).toContainText("Behind-the-meter generation");
-    await expect(page.getByTestId("proposal-model-confidence-grid_interconnection")).toContainText("self-reported, not verified probability");
-    await expect(page.getByTestId("proposal-support-confidence-grid_interconnection")).toContainText("Validated source support");
-    await expect(page.getByTestId("select-classification-grid_interconnection")).toHaveValue("Missing Evidence");
-    await page.getByTestId("button-accept-source-proposal-grid_interconnection").click();
-    await expect(page.getByTestId("model-confidence-grid_interconnection")).toContainText("76%");
-    await expect(page.getByTestId("select-classification-grid_interconnection")).toHaveValue("Missing Evidence");
-    await expect(page.getByTestId("research-state-grid_interconnection")).toContainText("Unverified lead · quarantined");
-    await expect(page.getByTestId("ai-decision-history")).toContainText("Accepted by human");
-    await expect(page.getByTestId("ai-decision-history")).toContainText("grid interconnection");
+    await expect(page.getByTestId("source-research-status")).toContainText("no new project-specific source passed validation");
+    await expect(page.getByTestId("source-research-summary")).toHaveCount(0);
+    await expect(page.getByTestId("button-accept-source-proposal-grid_interconnection")).toHaveCount(0);
+    await expect(page.getByTestId("button-override-source-proposal-grid_interconnection")).toHaveCount(0);
+    const persisted = await page.evaluate(() =>
+      JSON.parse(window.localStorage.getItem("safeloc:diligence:current-session:v1") ?? "{}"),
+    );
+    expect(persisted.customResearch.modelEvidence.grid_interconnection.acceptedForModel).toBe(false);
+    expect(persisted.customResearch.researchProposalDispositions.grid_interconnection).toBeUndefined();
   });
 
   test("labels the standardized capacity fallback when research returns no usable capacity", async ({ page }) => {

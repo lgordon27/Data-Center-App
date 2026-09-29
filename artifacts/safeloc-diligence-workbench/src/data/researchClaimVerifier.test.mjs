@@ -70,7 +70,7 @@ test("keeps an unrelated Iowa crypto facility from creating a false project matc
 
 test("ignores an Atlanta comparison when the requested project is located in Texas", () => {
   const result = matchProject(
-    "Project Atlas is located in Irving, Dallas County, Texas, compared with a similar data center in Atlanta, Georgia.",
+    "Project Atlas is located in Irving, Dallas County, Texas, and Atlas Compute operates the facility, compared with a similar data center in Atlanta, Georgia.",
     scenarioProjects.texas,
   );
   assert.equal(result.verdict, "exact-project");
@@ -142,6 +142,51 @@ test("matches DataBank Red Oak full and directory names from passage text", () =
       project,
     ).verdict,
     "exact-project",
+  );
+});
+
+test("requires expected-operator attribution and recognizes subject-led development and construction", () => {
+  const project = {
+    name: "Aster Northstar Campus",
+    operator: "Northstar Infrastructure",
+    location: "Cedar County, Iowa",
+    knownData: { operator: "Northstar Infrastructure", county: "Cedar County", state: "Iowa" },
+  };
+  for (const passage of [
+    "Different Operator develops Aster Northstar Campus in Cedar County, Iowa.",
+    "Different Operator will develop Aster Northstar Campus in Cedar County, Iowa.",
+    "Different Operator intends to construct Aster Northstar Campus in Cedar County, Iowa.",
+    "Northstar Energy develops Aster Northstar Campus in Cedar County, Iowa.",
+    "Different Operator operates Aster Northstar Campus in Cedar County, Iowa.",
+    "Aster Northstar Campus in Cedar County, Iowa is owned by Different Operator.",
+    "Different Operator is constructing Aster Northstar Campus in Cedar County, Iowa.",
+    "Aster Northstar Campus is located in Cedar County, Iowa. Different Operator operates the facility.",
+  ]) {
+    const result = matchProject(passage, project);
+    assert.equal(result.verdict, "unrelated", passage);
+    assert.match(result.reason, /operator|developer/i);
+  }
+
+  for (const passage of [
+    "Northstar Infrastructure develops Aster Northstar Campus in Cedar County, Iowa.",
+    "Northstar Infrastructure will develop Aster Northstar Campus in Cedar County, Iowa.",
+    "Aster Northstar Campus in Cedar County, Iowa is operated by Northstar Infrastructure.",
+    "Aster Northstar Campus is located in Cedar County, Iowa. Northstar Infrastructure operates the facility.",
+  ]) {
+    const result = matchProject(passage, {
+      ...project,
+      operator: "Northstar Infrastructure",
+    });
+    assert.equal(result.verdict, "exact-project", passage);
+  }
+
+  assert.equal(
+    matchProject(
+      "Aster Northstar Campus is located in Cedar County, Iowa.",
+      project,
+    ).verdict,
+    "ambiguous",
+    "name and location without operator attribution cannot establish identity when an operator is expected",
   );
 });
 

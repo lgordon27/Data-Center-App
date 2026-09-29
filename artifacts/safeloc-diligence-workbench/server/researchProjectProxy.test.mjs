@@ -141,7 +141,7 @@ test("server identity agrees with retained-passage applicability and ignores HQ 
   ), texasProject), true);
   assert.equal(sourceEstablishesProjectIdentity(source(
     "Project Atlas is located in Irving, Dallas County, Texas, compared with a similar project in Richmond, Virginia.",
-  ), texasProject), true);
+  ), texasProject), false);
   assert.equal(sourceEstablishesProjectIdentity(source(
     "Project Atlas is located in Houston, Harris County, Texas.",
   ), texasProject), false);
@@ -161,7 +161,7 @@ test("server identity agrees with retained-passage applicability and ignores HQ 
       county: "Monongalia County",
       state: "WV",
     },
-  }), true);
+  }), false);
 });
 
 function responseRecorder() {
@@ -264,6 +264,18 @@ const retrievedSource = {
   phaseScope: "exact-phase",
   timePeriod: "2026",
 };
+
+function withRetrievedPassage(source, passage = source?.excerpt ?? source?.claimPassage, physicalOpenIndex = 1) {
+  return {
+    ...source,
+    accessOutcome: {
+      state: "accessible",
+      reason: "retrieved",
+      passage,
+      physicalOpenIndex,
+    },
+  };
+}
 
 function singleCallResponse(research = validResearchResponse(), sources = [retrievedSource]) {
   return new Response(JSON.stringify({
@@ -3343,10 +3355,10 @@ test("normalizes model-reported confidence without deriving it from source suppo
   delete body.evidence[0].sourceUrl;
   body.evidence[1].modelReportedConfidence = null;
   body.evidence[1].value = "Company-reported cooling arrangement";
-  const result = parseResearchResponse(body, [{
+  const result = parseResearchResponse(body, [withRetrievedPassage({
     ...retrievedSource,
     sourceClass: "primary-government",
-  }]);
+  })]);
   assert.equal(result.evidence[0].modelReportedConfidence, 88);
   assert.equal(result.evidence[0].sourceSupportConfidence, 0);
   assert.equal("modelReportedConfidence" in result.evidence[1], false);
@@ -3391,10 +3403,10 @@ test("maps only validated claim URLs and attaches auditable source metadata", ()
     sourceRelevanceNote: "The filing names Project Atlas and its facility location.",
     classificationReason: "A public filing directly names the project.",
   };
-  const parsed = parseResearchResponse(research, [{
+  const parsed = parseResearchResponse(research, [withRetrievedPassage({
     ...retrievedSource,
     sourceClass: "primary-government",
-  }], "2026-09-03", {
+  })], "2026-09-03", {
     searchTerms: ["Project Atlas electricity tariff filing"],
     observedQueriesByEvidence: {
       electricity_cost: ["Project Atlas electricity tariff filing"],
@@ -3473,7 +3485,7 @@ test("resolves a redirected Arizona source from provider URL through physical ac
 
 test("carries a generic first-party disclosure from normalized URL through visible proposal handoff", async () => {
   const disclosureUrl = "https://developer.example/disclosures/atlas-campus?utm_source=provider";
-  const passage = "Atlas Compute identifies Project Atlas in Taylor County, Texas, describes the 600 MW campus on 400 acres, and reports a 365-day interconnection timeline, $42/MWh electricity cost, 6% annual electricity escalation, and 25% renewable procurement for its 2026 construction phase.";
+  const passage = "Atlas Compute develops Project Atlas in Taylor County, Texas, describing the 600 MW campus on 400 acres and reporting a 365-day interconnection timeline, $42/MWh electricity cost, 6% annual electricity escalation, and 25% renewable procurement for its 2026 construction phase.";
   const research = validResearchResponse();
   for (const item of research.evidence) {
     delete item.sourceUrl;
@@ -3748,10 +3760,13 @@ test("uses the bounded OpenAI fallback with scoped strict schemas after Google i
       researched.evidence[1].value = "Company-reported cooling arrangement";
       return singleCallResponse(researched);
     },
-    documentFetchImpl: async () => new Response(`<html><body>${retrievedSource.claimPassage}</body></html>`, {
-      status: 200,
-      headers: { "content-type": "text/html" },
-    }),
+    documentFetchImpl: async () => new Response(
+      `<html><body>Atlas Compute operates Project Atlas in Taylor County, Texas. ${retrievedSource.claimPassage}</body></html>`,
+      {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      },
+    ),
   });
   assert.equal(response.statusCode, 200);
   assert.equal(providerCalls, 1);
@@ -4070,7 +4085,7 @@ test("Red Oak passage scope is merged before proxy claim mapping", () => {
       phaseScope: aiPhaseScope,
       claimTimePeriod: aiClaimTimePeriod,
     });
-    const parsed = parseResearchResponse(body, [{
+    const parsed = parseResearchResponse(body, [withRetrievedPassage({
       ...retrievedSource,
       url,
       title: "Red Oak capacity disclosure",
@@ -4082,7 +4097,7 @@ test("Red Oak passage scope is merged before proxy claim mapping", () => {
       facilityScope: sourceFacilityScope,
       phaseScope: sourcePhaseScope,
       timePeriod: sourceTimePeriod,
-    }]);
+    }, retainedPassage)]);
     const evidence = parsed.evidence.find((candidate) => candidate.id === "grid_interconnection");
     return { evidence, mapping: evidence.claimMappings[0] };
   };
@@ -4195,7 +4210,7 @@ test("Project Kilby preserves supported power, grid, and water classifications f
       phaseScope: "exact-phase",
       timePeriod: "2026",
     },
-  ];
+  ].map((source, index) => withRetrievedPassage(source, source.excerpt, index + 1));
   const power = body.evidence.find((item) => item.id === "electricity_cost");
   power.classification = "Management Assertion";
   power.value = 48;
@@ -4268,8 +4283,9 @@ test("recontains converted research from raw fields without double conversion", 
   timeline.sourceUrl = retrievedSource.url;
   timeline.sourceUrls = [retrievedSource.url];
   timeline.citation = `Project milestone: ${retrievedSource.url}`;
-  const first = parseResearchResponse(body, [retrievedSource]);
-  const second = parseResearchResponse(first, [retrievedSource]);
+  const source = withRetrievedPassage(retrievedSource);
+  const first = parseResearchResponse(body, [source]);
+  const second = parseResearchResponse(first, [source]);
   const firstTimeline = first.evidence.find((item) => item.id === "grid_interconnection");
   const secondTimeline = second.evidence.find((item) => item.id === "grid_interconnection");
   assert.equal(firstTimeline.normalizedUnit, "months");
@@ -4301,7 +4317,8 @@ test("keeps a complete response when missing-evidence narrative fields are empty
 });
 
 test("only exposes direct links that are safe and present in the retrieved source packet", () => {
-  const parsed = parseResearchResponse(validResearchResponse(), [retrievedSource], "2026-08-30");
+  const source = withRetrievedPassage(retrievedSource);
+  const parsed = parseResearchResponse(validResearchResponse(), [source], "2026-08-30");
   assert.equal(parsed.evidence[0].sourceUrl, retrievedSource.url);
   assert.equal(parsed.evidence[1].sourceUrl, retrievedSource.url);
   assert.equal(parsed.evidence[0].sourceTitle, retrievedSource.title);
@@ -4313,7 +4330,7 @@ test("only exposes direct links that are safe and present in the retrieved sourc
   const untrusted = validResearchResponse();
   untrusted.evidence[0].sourceUrl = "javascript:alert(1)";
   untrusted.evidence[1].sourceUrl = "https://example.com/not-in-packet";
-  const untrustedParsed = parseResearchResponse(untrusted, [retrievedSource]);
+  const untrustedParsed = parseResearchResponse(untrusted, [source]);
   assert.equal(untrustedParsed.evidence[0].sourceUrl, retrievedSource.url);
   assert.equal(untrustedParsed.evidence[1].sourceUrl, retrievedSource.url);
 
@@ -4397,7 +4414,7 @@ test("ranks a project-specific regulatory decision ahead of trade reporting and 
       sourceClass: "primary-government",
       searchDomain: "water-environment",
     },
-  ]);
+  ].map((source, index) => withRetrievedPassage(source, source.excerpt, index + 1)));
   const record = result.evidence.find((item) => item.id === "carbon_compliance");
   assert.equal(record.sourceUrl, "https://dnr.alaska.gov/mlw/decision/project-atlas");
   assert.equal(record.sources.length, 2);

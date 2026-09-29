@@ -563,6 +563,8 @@ function EvidenceRow({
   const { sourceStates, project, applyEvidenceCorrection } = useDiligence();
   const source = item.sourceId ? sourceStates[item.sourceId] : null;
   const providerSource = item.providerSourceId ? sourceStates[item.providerSourceId] : null;
+  const canReviewProposal = sourceProposal?.eligibleForModel === true
+    && (proposalDisposition === undefined || proposalDisposition === "pending");
   const [open, setOpen] = useState(false);
   const [correctionOpen, setCorrectionOpen] = useState(false);
   const [correctionUrl, setCorrectionUrl] = useState("");
@@ -798,7 +800,9 @@ function EvidenceRow({
                      <span data-testid={`source-research-proposal-${item.id}`} className="mt-3 block rounded-lg border border-[#8dc8e8] bg-[#eef8fc] p-3">
                         <span className="flex flex-wrap items-center justify-between gap-2 font-mono text-[8px] font-bold uppercase tracking-[0.1em] text-[#255bb7]">
                           <span>New source found · review required</span>
-                          {proposalDisposition && <span data-testid={`proposal-disposition-${item.id}`} className="rounded-full bg-white px-2 py-1 text-[#52616b]">{proposalDisposition}</span>}
+                          <span data-testid={`proposal-disposition-${item.id}`} className="rounded-full bg-white px-2 py-1 text-[#52616b]">
+                            {proposalDisposition ?? (sourceProposal.eligibleForModel ? "pending" : "not eligible")}
+                          </span>
                         </span>
                        <span className="mt-2 block text-[10px] font-semibold text-[#243844]">{sourceProposal.value} · {sourceProposal.unit}</span>
                        <span className="mt-1 block text-[9px] leading-4 text-[#52616b]">{sourceProposal.description}</span>
@@ -814,12 +818,12 @@ function EvidenceRow({
                          Open {sourceProposal.sourceTitle ?? "retrieved source"}<ExternalLink aria-hidden="true" className="h-3 w-3" />
                        </a>
                        <span className="mt-3 flex flex-wrap gap-2">
-                           {proposalDisposition === "pending" && <button data-testid={`button-accept-source-proposal-${item.id}`} type="button" onClick={() => onAcceptSourceProposal(sourceProposal)} className="rounded bg-[#08644f] px-3 py-2 font-mono text-[8px] font-bold uppercase text-white">Accept source and finding</button>}
-                           {proposalDisposition === "pending" && <button data-testid={`button-override-source-proposal-${item.id}`} type="button" onClick={() => setProposalOverrideOpen((open) => !open)} className="rounded border border-[#255bb7] bg-white px-3 py-2 font-mono text-[8px] font-bold uppercase text-[#255bb7]">Override</button>}
-                          {proposalDisposition === "pending" && <button data-testid={`button-reject-source-proposal-${item.id}`} type="button" onClick={() => onRejectSourceProposal(item.id)} className="rounded border border-[#9aaec0] bg-white px-3 py-2 font-mono text-[8px] font-bold uppercase text-[#52616b]">Reject</button>}
-                          {proposalDisposition === "pending" && <button data-testid={`button-unresolve-source-proposal-${item.id}`} type="button" onClick={() => onMarkSourceUnresolved(item.id)} className="rounded border border-[#efabb8] bg-[#fff3f4] px-3 py-2 font-mono text-[8px] font-bold uppercase text-[#ba2f45]">Leave unresolved</button>}
+                            {canReviewProposal && <button data-testid={`button-accept-source-proposal-${item.id}`} type="button" onClick={() => onAcceptSourceProposal(sourceProposal)} className="rounded bg-[#08644f] px-3 py-2 font-mono text-[8px] font-bold uppercase text-white">Accept source and finding</button>}
+                            {canReviewProposal && <button data-testid={`button-override-source-proposal-${item.id}`} type="button" onClick={() => setProposalOverrideOpen((open) => !open)} className="rounded border border-[#255bb7] bg-white px-3 py-2 font-mono text-[8px] font-bold uppercase text-[#255bb7]">Override</button>}
+                           {canReviewProposal && <button data-testid={`button-reject-source-proposal-${item.id}`} type="button" onClick={() => onRejectSourceProposal(item.id)} className="rounded border border-[#9aaec0] bg-white px-3 py-2 font-mono text-[8px] font-bold uppercase text-[#52616b]">Reject</button>}
+                           {canReviewProposal && <button data-testid={`button-unresolve-source-proposal-${item.id}`} type="button" onClick={() => onMarkSourceUnresolved(item.id)} className="rounded border border-[#efabb8] bg-[#fff3f4] px-3 py-2 font-mono text-[8px] font-bold uppercase text-[#ba2f45]">Leave unresolved</button>}
                        </span>
-                        {proposalOverrideOpen && proposalDisposition === "pending" && (
+                         {proposalOverrideOpen && canReviewProposal && (
                           <span data-testid={`source-proposal-override-${item.id}`} className="mt-3 block rounded border border-[#b9d43a] bg-[#f8fbe8] p-3">
                             <span className="block font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#607500]">Human source-proposal override</span>
                             <span className="mt-2 grid gap-2 sm:grid-cols-2">
@@ -1065,6 +1069,9 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
   const [decisionHistory, setDecisionHistory] = useState<DecisionHistoryEntry[]>(getDecisionHistory);
   const isSourceResearchBusy = sourceResearchProgress !== null;
   const isAnalysisBusy = activeAnalysisId !== null || batchProgress !== null || isSourceResearchBusy;
+  const eligiblePendingSourceProposals = Object.entries(sourceProposals).filter(([id, proposal]) =>
+    proposal.eligibleForModel === true
+    && (sourceProposalDispositions[id] ?? "pending") === "pending");
   useEffect(() => {
     if (sourceResearchProjectKeyRef.current === sourceResearchProjectKey) return undefined;
     sourceResearchProjectKeyRef.current = sourceResearchProjectKey;
@@ -1269,7 +1276,7 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
       setSearchCoverage(result.researchCoverage);
       const proposals = Object.fromEntries(
         result.evidence
-          .filter((item) => focusIds.includes(item.id) && Boolean(item.sourceUrl))
+          .filter((item) => focusIds.includes(item.id) && item.eligibleForModel === true && Boolean(item.sourceUrl))
           .map((item) => [item.id, item]),
       );
       const nextProposals = { ...sourceProposals, ...proposals };
@@ -1301,7 +1308,8 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
   };
 
   const acceptSourceProposal = (proposal: CustomEvidenceRecord) => {
-    if (!proposal.sourceUrl) return;
+    if (!proposal.eligibleForModel || !proposal.sourceUrl
+      || (sourceProposalDispositions[proposal.id] && sourceProposalDispositions[proposal.id] !== "pending")) return;
     const accepted = applyEvidenceCorrection(proposal.id, {
       value: String(proposal.value),
       claim: `${proposal.description} ${proposal.citation}`.trim(),
@@ -1328,6 +1336,8 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
     classification: Classification,
     rationale: string,
   ) => {
+    if (!proposal.eligibleForModel
+      || (sourceProposalDispositions[proposal.id] && sourceProposalDispositions[proposal.id] !== "pending")) return;
     const applied = applyResearchProposalOverride(proposal.id, proposal, { value, classification, rationale });
     if (!applied) {
       setSourceResearchError("The override failed source or semantic validation; no model input was changed.");
@@ -1377,18 +1387,22 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
   };
 
   const rejectSourceProposal = (id: string) => {
+    if (!sourceProposals[id]?.eligibleForModel
+      || (sourceProposalDispositions[id] && sourceProposalDispositions[id] !== "pending")) return;
     commitResearchReview(sourceProposals, { ...sourceProposalDispositions, [id]: "rejected" }, sourceProposalOverrides);
     logSessionAction("Focused source research, human-rejected", id);
   };
 
   const markSourceUnresolved = (id: string) => {
+    if (!sourceProposals[id]?.eligibleForModel
+      || (sourceProposalDispositions[id] && sourceProposalDispositions[id] !== "pending")) return;
     commitResearchReview(sourceProposals, { ...sourceProposalDispositions, [id]: "unresolved" }, sourceProposalOverrides);
     logSessionAction("Focused source research, left unresolved", id);
   };
 
   const reviewResearchFindings = () => {
     setActiveFilter("all");
-    const firstId = Object.keys(sourceProposals).find((id) => sourceProposalDispositions[id] === "pending") ?? Object.keys(sourceProposals)[0];
+    const firstId = eligiblePendingSourceProposals[0]?.[0];
     if (firstId) {
       window.setTimeout(() => document.getElementById(`evidence-item-${firstId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 0);
     }
@@ -1477,7 +1491,8 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
           researchOutcome={project.researchOutcome}
           researchMode={project.researchMode}
           evidence={items}
-          proposals={sourceProposals}
+          proposals={Object.fromEntries(Object.entries(sourceProposals)
+            .filter(([, proposal]) => proposal.eligibleForModel === true))}
           dispositions={sourceProposalDispositions}
           audit={project.researchAudit}
           researchCache={project.researchCache}
@@ -1504,16 +1519,15 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
       {customProject && Object.keys(sourceProposals).length > 0 && (
         <aside data-testid="source-research-summary" role="status" className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#8dc8e8] bg-[#eef8fc] px-4 py-3 text-[10px] text-[#255bb7]">
           <span>Found {Object.keys(sourceProposals).length} new source-backed proposal{Object.keys(sourceProposals).length === 1 ? "" : "s"}. Open each highlighted input to review it.</span>
-          <button
+          {eligiblePendingSourceProposals.length > 0 && <button
             data-testid="button-accept-all-source-proposals"
             type="button"
-            onClick={() => Object.entries(sourceProposals)
-              .filter(([id]) => (sourceProposalDispositions[id] ?? "pending") === "pending")
+            onClick={() => eligiblePendingSourceProposals
               .forEach(([, proposal]) => acceptSourceProposal(proposal))}
             className="rounded bg-[#08644f] px-3 py-2 font-mono text-[8px] font-bold uppercase text-white"
           >
             Accept all supported findings
-          </button>
+          </button>}
         </aside>
       )}
       <aside data-testid="ai-evidence-time-contract" role="note" className="mb-5 rounded-lg border border-[#cbd8d4] bg-[#f4f8f5] px-4 py-3 md:px-5">

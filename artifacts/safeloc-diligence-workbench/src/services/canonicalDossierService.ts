@@ -45,7 +45,7 @@ type CanonicalDossierData = {
     location: string;
     operator: string;
     scope: string;
-    capacityMW?: number;
+    capacityMW?: number | null;
     capacityProvenance?: string;
   };
   originatingCompany: string | null;
@@ -206,15 +206,17 @@ export function dossierToResearchResponse(
   dossier: CanonicalDossierSummary,
 ): CustomResearchResponse {
   const evidence = dossier.canonicalData.evidence.map(toEvidence);
+  const capacityMW = dossier.canonicalData.identity.capacityMW;
+  const hasDirectoryCapacity = typeof capacityMW === "number" && Number.isFinite(capacityMW);
   return {
     projectSummary: {
       name: dossier.name,
       location: dossier.canonicalData.identity.location,
       description: dossier.canonicalData.identity.scope,
-      capacityMW: dossier.canonicalData.identity.capacityMW ?? 1_200,
-      capacityProvenance: dossier.canonicalData.identity.capacityMW
+      capacityMW: hasDirectoryCapacity ? capacityMW : null,
+      capacityProvenance: hasDirectoryCapacity
         ? "directory-reported"
-        : "standardized-default",
+        : "unknown",
     },
     researchMode: "ai-researched",
     researchStatus: "completed",

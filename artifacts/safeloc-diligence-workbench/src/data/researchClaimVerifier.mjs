@@ -352,27 +352,72 @@ function findNameMatches(text, variants) {
   return matches.sort((left, right) => left.start - right.start || left.tokenSpan - right.tokenSpan);
 }
 
-function assertedOperators(text) {
+function assertedOperators(text, identityMatches = []) {
+  const companyName = "[A-Z][\\p{L}\\p{N}&.'’'-]*(?:\\s+[A-Z][\\p{L}\\p{N}&.'’'-]*){0,4}";
   const patterns = [
-    /\b(?:operated|owned|developed|sponsored|managed|run|built)\s+(?:and\s+(?:operated|managed|run)\s+)?by\s+([A-Z][A-Za-z0-9&.'’'-]*(?:\s+[A-Z][A-Za-z0-9&.'’'-]*){0,4})/g,
-    /\b([A-Z][A-Za-z0-9&.'’'-]*(?:\s+[A-Z][A-Za-z0-9&.'’'-]*){0,3})\s+(?:operates|owns|develops|sponsors|manages|runs)\b/g,
-    /\b(?:operator|owner|developer|sponsor)\s*(?:is|:|[-–—])\s*([A-Z][A-Za-z0-9&.'’'-]*(?:\s+[A-Z][A-Za-z0-9&.'’'-]*){0,4})/gi,
-    /\b([A-Z][A-Za-z0-9&.'’'-]*(?:\s+[A-Z][A-Za-z0-9&.'’'-]*){0,2})['’]s\b/g,
+    new RegExp(
+      `\\b(?:(?:is|was|has\\s+been|will\\s+be|is\\s+being|was\\s+being)\\s+)?(?:operated|owned|developed|sponsored|managed|run|built|constructed)\\s+by\\s+(${companyName})`,
+      "gu",
+    ),
+    new RegExp(
+      `\\b(${companyName})\\s+(?:(?:operates|owns|develops|sponsors|manages|runs|builds|built|constructs|constructed)|(?:(?:has|had)\\s+)?(?:operated|owned|developed|sponsored|managed|run|built|constructed))\\b`,
+      "gu",
+    ),
+    new RegExp(
+      `\\b(${companyName})\\s+(?:(?:(?:will|would|may|might|can|could)\\s+)|(?:(?:plans?|intends?)\\s+to\\s+))?(?:operate|own|develop|sponsor|manage|run|build|construct)\\b`,
+      "gu",
+    ),
+    new RegExp(
+      `\\b(${companyName})\\s+(?:(?:is|was|will\\s+be|has\\s+been|is\\s+currently)\\s+)?(?:operating|owning|developing|sponsoring|managing|running|building|constructing)\\b`,
+      "gu",
+    ),
+    new RegExp(
+      `\\b(?:[Oo]perator|[Oo]wner|[Dd]eveloper|[Bb]uilder|[Cc]onstructor|[Cc]onstruction\\s+(?:[Cc]ompany|[Cc]ontractor|[Mm]anager))\\s*(?:[Ii]s|:|[-–—])\\s*(${companyName})`,
+      "gu",
+    ),
+    new RegExp(
+      `\\b(${companyName})\\s+(?:[Ii]s\\s+)?(?:[Tt]he\\s+)?(?:[Oo]perator|[Oo]wner|[Dd]eveloper|[Bb]uilder|[Cc]onstructor|[Cc]onstruction\\s+(?:[Cc]ompany|[Cc]ontractor|[Mm]anager))\\b`,
+      "gu",
+    ),
   ];
-  return patterns.flatMap((pattern) =>
+  const actors = patterns.flatMap((pattern) =>
     [...text.matchAll(pattern)].map((match) => normalizeWords(match[1])));
+
+  // A company possessive is attribution only when it directly modifies a
+  // matched project name or alias. A possessive elsewhere in a passage (for
+  // example, a report publisher's filing) is not operator evidence.
+  const possessivePattern = new RegExp(`(?:^|\\s)(${companyName})['’]s\\s*$`, "u");
+  for (const identityMatch of identityMatches) {
+    const prefix = text.slice(0, identityMatch.start);
+    const possessive = prefix.match(possessivePattern);
+    if (possessive) actors.push(normalizeWords(possessive[1]));
+  }
+  return [...new Set(actors.filter(Boolean))];
+}
+
+function operatorTokens(value) {
+  const ignored = new Set([
+    "the", "company", "inc", "llc", "ltd", "limited", "corporation", "corp", "co",
+  ]);
+  return normalizeWords(value).split(" ").filter((token) => token && !ignored.has(token));
+}
+
+function operatorsMatch(expected, actual) {
+  const expectedTokens = operatorTokens(expected);
+  const actualTokens = operatorTokens(actual);
+  return expectedTokens.length > 0
+    && expectedTokens.length === actualTokens.length
+    && expectedTokens.every((token, index) => token === actualTokens[index]);
 }
 
 function operatorConflicts(expected, actuals) {
-  const ignored = new Set([
-    "the", "and", "company", "operator", "owner", "developer", "sponsor",
-    "inc", "llc", "ltd", "corporation", "corp", "group",
-  ]);
-  const expectedTokens = normalizeWords(expected).split(" ").filter((token) => token && !ignored.has(token));
-  return expectedTokens.length > 0 && actuals.some((actual) => {
-    const actualTokens = actual.split(" ").filter((token) => token && !ignored.has(token));
-    return actualTokens.length > 0 && !expectedTokens.some((token) => actualTokens.includes(token));
-  });
+  return operatorTokens(expected).length > 0
+    && actuals.some((actual) => !operatorsMatch(expected, actual));
+}
+
+function isProjectOperatorAttributionFragment(text) {
+  return /\b(?:the|this|its|that)\s+(?:project|facility|site|campus|data\s+center|plant|phase)\b|\b(?:operator|owner|developer|builder|constructor|construction\s+(?:company|contractor|manager))\b/i
+    .test(text);
 }
 
 function isNegatedProjectReference(text, match) {
@@ -383,6 +428,10 @@ function isNegatedProjectReference(text, match) {
 function splitSubjectFragments(text) {
   const sentenceParts = String(text ?? "")
     .replace(/\bD\.C\./gi, "DC")
+    .replace(
+      /[;.!?]\s*(?=(?:operator|owner|developer|builder|constructor|construction\s+(?:company|contractor|manager))\s*(?:is|:|[-–—])|[A-Z][\p{L}\p{N}&.'’'-]*(?:\s+[A-Z][\p{L}\p{N}&.'’'-]*){0,4}\s+(?:[Ii]s\s+)?(?:[Tt]he\s+)?(?:[Oo]perator|[Oo]wner|[Dd]eveloper|[Bb]uilder|[Cc]onstructor|[Cc]onstruction\s+(?:[Cc]ompany|[Cc]ontractor|[Mm]anager)))/gu,
+      ", ",
+    )
     .split(/(?<=[.!?])\s+|[;\n]+/)
     .filter(Boolean);
   const comparisonPattern = /\b(?:compared\s+(?:with|to)|versus|vs\.?|unlike|whereas|while|in\s+contrast\s+to|as\s+opposed\s+to|rather\s+than|alongside)\b|\bbut\b/gi;
@@ -468,6 +517,7 @@ export function matchProject(passage, project = {}) {
   const variants = identityVariants(project);
   const expectedLocation = requestedLocation(project);
   const expectedLocationText = formatExpectedLocation(expectedLocation);
+  const expectedOperator = project?.operator ?? project?.knownData?.operator ?? "";
   if (!text.trim() || !variants.length) {
     return {
       verdict: "ambiguous",
@@ -478,14 +528,14 @@ export function matchProject(passage, project = {}) {
   const fragments = splitSubjectFragments(text);
   const identified = [];
   const allAttachedLocations = [];
-  for (const fragment of fragments) {
+  for (const [fragmentIndex, fragment] of fragments.entries()) {
     const identityMatches = findNameMatches(fragment, variants)
       .filter((match) => !isNegatedProjectReference(fragment, match));
     const cleaned = removeAdministrativeLocations(fragment);
     const attached = detailedLocations(cleaned).filter((location) => hasLocationConnector(cleaned, location));
     allAttachedLocations.push(...attached.map((item) => item.location));
     if (identityMatches.length) {
-      identified.push({ fragment: cleaned, identityMatches, attached });
+      identified.push({ fragment: cleaned, identityMatches, attached, fragmentIndex });
     }
   }
 
@@ -509,8 +559,12 @@ export function matchProject(passage, project = {}) {
 
     const confirmedDimensions = [...new Set(comparisons.flatMap((comparison) => comparison.matches))];
     const hasRequestedLocation = Boolean(expectedLocation.city || expectedLocation.county || expectedLocation.state);
-    const expectedOperator = project?.operator ?? project?.knownData?.operator ?? "";
-    const operatorEvidence = assertedOperators(subject.fragment);
+    const localOperatorEvidence = assertedOperators(subject.fragment, subject.identityMatches);
+    const adjacentFragment = fragments[subject.fragmentIndex + 1];
+    const adjacentOperatorEvidence = adjacentFragment && isProjectOperatorAttributionFragment(adjacentFragment)
+      ? assertedOperators(adjacentFragment)
+      : [];
+    const operatorEvidence = [...localOperatorEvidence, ...adjacentOperatorEvidence];
     if (expectedOperator && operatorConflicts(expectedOperator, operatorEvidence)) {
       return {
         verdict: "unrelated",
@@ -518,10 +572,10 @@ export function matchProject(passage, project = {}) {
       };
     }
     const operatorMatches = Boolean(expectedOperator
-      && normalizeWords(subject.fragment).includes(normalizeWords(expectedOperator)));
-    const identityContextMatches = hasRequestedLocation
-      ? confirmedDimensions.length > 0
-      : expectedOperator ? operatorMatches : strongNameMatch;
+      && operatorEvidence.some((actual) => operatorsMatch(expectedOperator, actual)));
+    const identityContextMatches = expectedOperator
+      ? operatorMatches && (!hasRequestedLocation || confirmedDimensions.length > 0)
+      : hasRequestedLocation ? confirmedDimensions.length > 0 : strongNameMatch;
     if (nameMatch && identityContextMatches) {
       const basis = "project name or alias";
       const locationNote = confirmedDimensions.length
@@ -540,9 +594,20 @@ export function matchProject(passage, project = {}) {
     expectedLocation.state,
   ].filter(Boolean);
   if (identified.length) {
+    const hasOperatorAttribution = identified.some((subject) => {
+      const localEvidence = assertedOperators(subject.fragment, subject.identityMatches);
+      const adjacentFragment = fragments[subject.fragmentIndex + 1];
+      const adjacentEvidence = adjacentFragment && isProjectOperatorAttributionFragment(adjacentFragment)
+        ? assertedOperators(adjacentFragment)
+        : [];
+      const evidence = [...localEvidence, ...adjacentEvidence];
+      return expectedOperator && evidence.some((actual) => operatorsMatch(expectedOperator, actual));
+    });
     return {
       verdict: "ambiguous",
-      reason: `The passage mentions the requested project, but does not establish its requested location${expectedLocationText ? ` (${expectedLocationText})` : ""}.`,
+      reason: expectedOperator && !hasOperatorAttribution
+        ? `The passage mentions the requested project, but does not establish attribution to the requested operator (${expectedOperator}).`
+        : `The passage mentions the requested project, but does not establish its requested location${expectedLocationText ? ` (${expectedLocationText})` : ""}.`,
     };
   }
 

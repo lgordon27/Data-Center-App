@@ -18,7 +18,10 @@ import {
   summarizeResearchAudit,
   summarizeSourceCoverage,
 } from "./researchProjectService";
-import { buildClaimPassageMappings } from "@/data/sourceValidationPolicy.mjs";
+import {
+  buildClaimPassageMappings,
+  isSourceProjectSpecific,
+} from "@/data/sourceValidationPolicy.mjs";
 
 test("uses the persisted terminal outcome for status and gates proposal review on visible proposals", () => {
   const incomplete = getResearchStatusPresentation({
@@ -174,7 +177,7 @@ test("repairs retained applicability from source name, aliases, operator, city, 
   assert.equal(texasWithVirginiaHq[0]?.applicability, "exact-project");
 
   const exactWestVirginia = deriveRetainedResearchFindings([retainedPassage(
-    "Atlas Compute Campus is located in Morgantown, Monongalia County, West Virginia.",
+    "Atlas Compute Campus is located near Morgantown, Monongalia County, West Virginia, where Atlas Compute operates the site.",
   )], {
     name: "Project Atlas",
     location: "Morgantown, Monongalia County, West Virginia",
@@ -199,7 +202,7 @@ test("repairs retained applicability from source name, aliases, operator, city, 
   assert.equal(sameNameDifferentTexasCity.length, 0);
 
   const comparisonDoesNotReplaceProjectLocation = deriveRetainedResearchFindings([retainedPassage(
-    "Project Atlas is located in Irving, Dallas County, Texas, compared with a similar project in Richmond, Virginia.",
+    "Project Atlas is located in Irving, Dallas County, Texas, and Atlas Compute operates the facility, compared with a similar project in Richmond, Virginia.",
   )], identity);
   assert.equal(comparisonDoesNotReplaceProjectLocation[0]?.applicability, "exact-project");
 
@@ -213,6 +216,49 @@ test("repairs retained applicability from source name, aliases, operator, city, 
   )], { name: "Project Atlas", location: "Texas" });
   assert.equal(missingDetails[0]?.assessment, "ambiguous-unresolved");
   assert.equal(missingDetails[0]?.applicability, "ambiguous");
+});
+
+test("only accessible retrieved passages decide project identity", () => {
+  const identity = {
+    name: "Project Atlas",
+    location: "Irving, Dallas County, Texas",
+    knownData: {
+      operator: "Atlas Compute",
+      city: "Irving",
+      county: "Dallas County",
+      state: "Texas",
+    },
+  };
+  const passage = "Project Atlas is located in Irving, Dallas County, Texas. Atlas Compute is the developer.";
+  assert.equal(isSourceProjectSpecific({
+    accessOutcome: { state: "accessible", passage },
+    excerpt: "A contradictory snippet without any project details.",
+    exactProject: false,
+    sourceRelevance: "related-context",
+  }, identity), true, "provider labels and excerpts cannot demote a retrieved exact match");
+
+  assert.equal(isSourceProjectSpecific({
+    accessOutcome: { state: "accessible", passage: "Project Atlas is located in Houston, Harris County, Texas. Atlas Compute is the developer." },
+    excerpt: passage,
+    exactProject: true,
+    sourceRelevance: "exact-project",
+  }, identity), false, "provider labels and excerpts cannot promote a conflicting retrieved passage");
+  assert.equal(isSourceProjectSpecific({
+    accessOutcome: { state: "blocked", passage },
+    excerpt: passage,
+    exactProject: true,
+    sourceRelevance: "exact-project",
+  }, identity), false, "an inaccessible retrieval cannot be replaced by its excerpt");
+  assert.equal(isSourceProjectSpecific({
+    excerpt: passage,
+    exactProject: true,
+    sourceRelevance: "exact-project",
+  }, identity), false, "a snippet without a physical retrieval receipt cannot establish identity");
+  assert.equal(isSourceProjectSpecific({
+    accessOutcome: { state: "accessible", passage: "  " },
+    excerpt: passage,
+    exactProject: true,
+  }, identity), false, "an empty retrieved passage cannot fall back to excerpt text");
 });
 
 test("ranks all retained passages before cap and audits cap discards", () => {
@@ -269,6 +315,12 @@ test("preserves eligible server evidence through client parsing", () => {
     facilityScope: "exact-facility",
     phaseScope: "not-applicable",
     timePeriod: "2026",
+    accessOutcome: {
+      state: "accessible",
+      reason: "open",
+      format: "html",
+      passage: "Aster Northstar Campus, operated by Northstar Infrastructure, is located in Cedar County, Iowa. Its facility electricity cost is 48 USD/MWh.",
+    },
   };
   const valid = structuredClone(response);
   valid.evidence[0] = {
@@ -444,6 +496,7 @@ test("containment rejects residential tariffs and converts a retained project-ma
     facilityScope: "exact-project",
     phaseScope: "exact-phase",
     timePeriod: "2026",
+    accessOutcome: { state: "accessible", passage: durationPassage },
   };
   const durationClaim = {
     description: "The Project Grid interconnection timeline is 365 days.",

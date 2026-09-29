@@ -128,9 +128,9 @@ function isPrimarySource(source) {
 }
 
 export function isSourceProjectSpecific(source, project = {}) {
-  const passage = source?.accessOutcome
-    ? source.accessOutcome.state === "accessible" ? source.accessOutcome.passage : ""
-    : source?.excerpt;
+  const passage = source?.accessOutcome?.state === "accessible"
+    ? source.accessOutcome.passage
+    : "";
   if (typeof passage !== "string" || !passage.trim()) return false;
   return matchProject(passage, project).verdict === "exact-project";
 }

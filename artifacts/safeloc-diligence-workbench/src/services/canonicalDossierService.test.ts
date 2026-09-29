@@ -55,6 +55,8 @@ test("canonical projection preserves reviewed passages, dates, conflicts, and mo
 
   const response = dossierToResearchResponse(dossier);
   const item = response.evidence[0];
+  assert.equal(response.projectSummary.capacityMW, 250);
+  assert.equal(response.projectSummary.capacityProvenance, "directory-reported");
   assert.equal(item.sources?.[0]?.claimPassage, dossier.canonicalData.evidence[0].source.exactPassage);
   assert.equal(item.sources?.[0]?.accessOutcome?.passage, dossier.canonicalData.evidence[0].source.exactPassage);
   assert.equal(item.sourcePublishedAt, "2026-06-22");
@@ -63,4 +65,15 @@ test("canonical projection preserves reviewed passages, dates, conflicts, and mo
   assert.equal(item.researchState, "accepted");
   assert.equal(item.eligibleForModel, false);
   assert.equal(item.acceptedForModel, false);
+
+  const unknownCapacityDossier = structuredClone(dossier);
+  unknownCapacityDossier.canonicalData.identity.capacityMW = null;
+  const unknownCapacity = dossierToResearchResponse(unknownCapacityDossier);
+  assert.equal(unknownCapacity.projectSummary.capacityMW, null);
+  assert.equal(unknownCapacity.projectSummary.capacityProvenance, "unknown");
+
+  delete unknownCapacityDossier.canonicalData.identity.capacityMW;
+  const omittedCapacity = dossierToResearchResponse(unknownCapacityDossier);
+  assert.equal(omittedCapacity.projectSummary.capacityMW, null);
+  assert.equal(omittedCapacity.projectSummary.capacityProvenance, "unknown");
 });

@@ -5964,6 +5964,7 @@ export async function handleResearchProjectRequest(
   const sendTrackedJson = (status, body) => {
     attachResponseLifecycle();
     responseDelivery.responseStartedAt = new Date().toISOString();
+    if (runContext?.auditRowPersisted) res.setHeader("X-SafeLoc-Research-Run-Id", runContext.runId);
     sendJson(res, status, body);
     if (!responseLifecycleAttached) {
       responseDelivery.responseFinishedAt = new Date().toISOString();

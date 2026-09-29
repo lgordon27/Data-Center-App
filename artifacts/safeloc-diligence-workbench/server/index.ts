@@ -1,4 +1,4 @@
-import express, { type Express, type Request, type Response } from "express";
+import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { handleErcotQueueRequest } from "./ercotProxy.mjs";
@@ -73,12 +73,45 @@ function rejectUnknownApiRoute(request: Request, response: Response, next: () =>
   response.status(404).json({ status: "error", message: "API route not found" });
 }
 
+export type ScopedApiAccessLog = {
+  method: string;
+  path: string;
+  status: number;
+  durationMs: number;
+  researchRunId: string | null;
+};
+
+export function createScopedApiRequestLogger(
+  write: (entry: ScopedApiAccessLog) => void = (entry) => console.info("SafeLoc API access", entry),
+) {
+  return (request: Request, response: Response, next: NextFunction) => {
+    const startedAt = Date.now();
+    let logged = false;
+    const logRequest = () => {
+      if (logged) return;
+      logged = true;
+      const runId = response.getHeader("X-SafeLoc-Research-Run-Id");
+      write({
+        method: request.method,
+        path: request.path,
+        status: response.statusCode,
+        durationMs: Math.max(0, Date.now() - startedAt),
+        researchRunId: typeof runId === "string" ? runId : null,
+      });
+    };
+    response.once("finish", logRequest);
+    response.once("close", logRequest);
+    next();
+  };
+}
+
 export async function createApp(): Promise<Express> {
   readRuntimeConfig();
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", 1);
   app.use(express.json());
+  const logScopedApiRequest = createScopedApiRequestLogger();
   app.get("/api/version", handleVersionRequest);
   app.get("/api/dossiers", handleDossiersRequest);
   app.get("/api/dossiers/:slug", handleDossierRequest);
@@ -92,14 +125,14 @@ export async function createApp(): Promise<Express> {
     await handleProjectResearchRegistryRequest(request, response);
   });
   app.get("/release.json", handleReleaseDocumentRequest);
-  app.all("/api/analyze-evidence", async (request: Request, response: Response) => {
+  app.all("/api/analyze-evidence", logScopedApiRequest, async (request: Request, response: Response) => {
     try {
       await handleAnalyzeEvidenceRequest(request, response, await getPublicControls());
     } catch {
       response.status(503).json({ error: "AI analysis unavailable. Please classify manually." });
     }
   });
-  app.all("/api/research-project", async (request: Request, response: Response) => {
+  app.all("/api/research-project", logScopedApiRequest, async (request: Request, response: Response) => {
     await handleResearchProjectRequest(request, response, {
       auditRepository: researchAuditRepositoryAdapter,
     });
@@ -138,6 +171,8 @@ export async function createApp(): Promise<Express> {
 
 async function start() {
   const { port } = readRuntimeConfig();
+  const { logDatabaseStartupDiagnostics } = await import("./db.js");
+  await logDatabaseStartupDiagnostics();
   const app = await createApp();
   const server = app.listen(port, "0.0.0.0");
   const shutdown = () => server.close();

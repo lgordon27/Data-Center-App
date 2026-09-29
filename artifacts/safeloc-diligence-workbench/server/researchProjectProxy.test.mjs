@@ -4920,6 +4920,8 @@ test("research audit finalization waits for the response finish event", async ()
   await ended;
   assert.ok(startedRecord);
   assert.equal(startedRecord.researchStatus, "running");
+  assert.equal(response.headers["x-safeloc-research-run-id"], startedRecord.runId);
+  assert.equal(response.json().runId, undefined);
   assert.ok(startedRecord.audit.deadlineAt);
   assert.ok(startedRecord.audit.runtime.buildId);
   assert.ok(startedRecord.audit.promptVersions.projectResearch);
@@ -4932,6 +4934,23 @@ test("research audit finalization waits for the response finish event", async ()
   assert.equal(saved.startedAt, startedRecord.startedAt);
   assert.equal(saved.audit.responseStartedAt !== null, true);
   assert.equal(saved.audit.responseFinishedAt !== null, true);
+});
+
+test("research responses without a persisted run do not invent a run-ID header", async () => {
+  const cache = createResearchProjectCache();
+  const cacheResponse = responseRecorder();
+  await handleResearchProjectRequest({
+    method: "GET",
+    url: `/api/research-project?cacheKey=${"a".repeat(64)}`,
+  }, cacheResponse, { cache });
+  assert.equal(cacheResponse.statusCode, 200);
+  assert.equal(cacheResponse.headers["x-safeloc-research-run-id"], undefined);
+
+  const methodResponse = responseRecorder();
+  await handleResearchProjectRequest(request({}, "PATCH"), methodResponse, { cache });
+  assert.equal(methodResponse.statusCode, 405);
+  assert.equal(methodResponse.headers["x-safeloc-research-run-id"], undefined);
+  assert.deepEqual(methodResponse.json(), { error: "Method not allowed" });
 });
 
 test("a client disconnect is captured and cancels an in-flight offline provider fixture", async () => {

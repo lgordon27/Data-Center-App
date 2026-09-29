@@ -1,0 +1,23 @@
+Fix project identity so a source's passage can establish that it is about the requested project. Only edit: server/googleGroundedDiscovery.mjs, src/data/sourceValidationPolicy.mjs, src/data/researchIdentity.mjs, src/data/researchClaimVerifier.mjs, and their tests. If you need any other file, stop and report. Do not change SSRF, DNS, or redirect rules. No paid calls. Do not deploy. Keep changes minimal; do not rename, reformat, or refactor code outside this task.
+
+Problem: googleGroundedDiscovery.mjs (around line 147) sets exactProject: false on every Google-discovered citation. sourceValidationPolicy.mjs (around line 139) treats exactProject === false as not project-specific, and researchIdentity.mjs (around line 183) requires exactProject === true to reach exact-project. So a Google source can never be exact-project, whatever its passage says.
+
+1. In googleGroundedDiscovery.mjs, stop asserting exactProject: false. Leave identity unassessed at discovery time.
+2. In researchIdentity.mjs and sourceValidationPolicy.mjs, decide identity from the retained passage using matchProject from src/data/researchClaimVerifier.mjs. A source is exact-project only when matchProject returns exact-project for its retained passage. An unassessed label alone neither accepts nor rejects a source. A source with no retained passage stays not project-specific.
+3. Identity must combine operator, city/county/state and the key words of the project name, because facility-directory names are often generic (for example "Red Oak Campus"). Do not require the exact name string.
+4. Operator conflicts win. When an expected operator is supplied and the passage explicitly identifies a different operator or developer for the project it describes, return unrelated, even if a generic name token and the location match. A generic name such as "Red Oak Campus" plus Red Oak, Texas is not enough to overcome an operator conflict.
+5. Harden researchClaimVerifier.mjs: verifyQuote rejects quotes shorter than 8 words or 40 characters; a one-word or common-word alias alone is not enough for exact-project without the operator or the city/county.
+
+Verifier tests:
+- Requested "DataBank Red Oak Data Center Campus", operator DataBank, Red Oak, Ellis County, Texas; passage "The DataBank Red Oak data center campus is a 292-acre, eight-building hyperscale development located 20 miles south of Dallas in Red Oak, Texas" → exact-project.
+- Requested "Red Oak Campus" (directory name), operator DataBank, same location, same passage → exact-project.
+- Requested "Red Oak Campus", operator Compass, same location, same passage → unrelated (operator conflict).
+- A Red Oak, Iowa passage → unrelated.
+- verifyQuote with "480 MW" → false.
+- A one-word alias match without operator or location → not exact-project.
+Policy-level tests (production eligibility path, not just the verifier):
+- An unassessed Google-discovered source with the matching DataBank passage becomes project-specific.
+- The same source without a retained passage stays not project-specific.
+- A Compass-requested project with the DataBank passage stays not project-specific.
+Existing tests pass, or are updated only where they asserted the old exactProject:false behavior; list each changed test and why.
+Report files changed and test and TypeScript results.

@@ -1,0 +1,12 @@
+Fix database setup and make every research run visible in the logs. Only edit: server/db.ts, server/index.ts, their tests, and in server/researchProjectProxy.mjs only one line per response that sets a non-secret response header X-SafeLoc-Research-Run-Id with the audit run ID. If you need any other change, stop and report. Do not patch or parse res.end or response bodies. Do not print or log any secret values or IP addresses. No paid calls. Do not deploy. Keep changes minimal; do not rename, reformat, or refactor code outside this task.
+
+Context: in production, "Analyze All with AI" returns "AI analysis unavailable" because the tables from migration 0004_public_safety_controls.sql do not exist. 0004 was never applied to the development database, so Publish never synced it to production.
+
+1. Apply migration 0004 to the development database. Confirm the development schema contains every table and column from migrations 0001 through 0004, including the research_run_audits lifecycle columns from 0003. List what you found.
+2. At server startup, log one line identifying the connected database without secrets: SELECT current_database(), plus the first 8 characters of a SHA-256 hash of the database host name. Also log whether each required table from migrations 0001–0004 exists, and warn clearly if any is missing.
+3. In server/index.ts, log requests to /api/research-project and /api/analyze-evidence only: method, path, response status, duration, and the X-SafeLoc-Research-Run-Id header value when present. No request bodies, no other headers, no IP addresses.
+4. Report the development database's current_database() value and host hash.
+5. Report the current HEAD commit, whether it is pushed to GitHub, and what commit 4993c19 (currently published) contains relative to 0fa2087.
+
+Tests: the startup check reports missing tables; the request log never includes bodies, other headers, or IP addresses; the run ID header is set on research responses. Run the full offline suite and TypeScript check.
+Report files changed, the schema you found, and test results.

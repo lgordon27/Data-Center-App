@@ -1,0 +1,13 @@
+Make claim scope and time period come from the passage when the AI leaves them unknown. Only create new files src/data/claimScopeExtractor.mjs and its test, and edit server/researchProjectProxy.mjs only where source metadata (facilityScope, phaseScope, timePeriod) is assembled before claim mapping. If you need any other file, stop and report. Do not change eligibility rules. No paid calls. Do not deploy. Keep changes minimal; do not rename, reformat, or refactor code outside this task.
+
+Problem: facilityScope, phaseScope and timePeriod come only from the AI's structured output. When it returns "unknown", claim mapping rejects the claim (wrong-entity-scope, wrong-phase-or-facility, missing-time-scope) even when the passage states the scope plainly.
+
+1. Create claimScopeExtractor.mjs. Given a passage and a claimed value (for example 480 MW), find the sentence containing that value and return:
+- facilityScope "project" when the sentence ties the value to the whole campus, site or project ("The 292-acre site will eventually host eight buildings delivering 480 MW of total IT load").
+- phaseScope "exact-phase" with the named buildings or phase when the sentence ties the value to specific buildings or a phase ("the first three buildings (DFW9, DFW10, and DFW11), which together total 600,000 square feet and 180 megawatts"); "all-phases" for full-build or campus totals.
+- timePeriod from an explicit date or year in the same or adjacent sentence, otherwise null.
+- "unknown" for anything it cannot establish.
+2. In researchProjectProxy.mjs, use the extractor only to fill fields the AI left unknown or null. Never override a value the AI provided. Never apply a phase figure to the campus, or a campus figure to a phase.
+
+Tests with the Red Oak passage: 480 MW → project scope, all-phases; 180 MW → exact-phase for DFW9–DFW11; a passage with no scope language → unknown; a phase figure is never labeled campus scope. All existing tests pass.
+Report files changed and test and TypeScript results.

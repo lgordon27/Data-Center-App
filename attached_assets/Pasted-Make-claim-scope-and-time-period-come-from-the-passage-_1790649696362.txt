@@ -1,0 +1,17 @@
+Make claim scope and time period come from the passage, without trusting AI scope blindly. Only create src/data/claimScopeExtractor.mjs and its test, and edit server/researchProjectProxy.mjs only where source metadata (facilityScope, phaseScope, timePeriod) is assembled before claim mapping, plus server/researchProjectProxy.test.mjs. If you need any other file, stop and report. Do not change eligibility rules. No paid calls. Do not deploy. Keep changes minimal; do not rename, reformat, or refactor code outside this task.
+
+Problem: facilityScope, phaseScope and timePeriod come only from the AI's structured output. When it returns "unknown", claim mapping rejects the claim (wrong-entity-scope, wrong-phase-or-facility, missing-time-scope) even when the passage states the scope plainly. When the AI states a scope, nothing checks it against the passage.
+
+1. Create claimScopeExtractor.mjs. Given a passage and a claimed value (for example 480 MW), find the sentence containing that value and return:
+- facilityScope "project" when the sentence ties the value to the whole campus, site or project ("The 292-acre site will eventually host eight buildings delivering 480 MW of total IT load").
+- phaseScope "exact-phase" when the sentence ties the value to specific buildings or a phase, together with the phase identity: named building IDs (for example DFW9, DFW10, DFW11), building count (3), or a named phase. "all-phases" for full-build or campus totals.
+- timePeriod only from a date or year in the same sentence, or in an adjacent sentence that explicitly refers to the same claim, facility or phase. Do not borrow an unrelated nearby date: in the Red Oak passage, "April 21, 2026" refers to the construction loan for the first three buildings and must not become the date of the 480 MW full-build claim.
+- "unknown" for anything it cannot establish.
+2. In researchProjectProxy.mjs, combine the extractor with the AI's metadata this way:
+- Extractor establishes scope, AI agrees or says unknown → use the extractor's result, including phase identity.
+- Extractor says unknown → keep the AI's value as today.
+- Both known and they conflict → set that scope field to unknown so existing eligibility rules reject the claim. Never choose one silently.
+- Never apply a phase figure to the campus, or a campus figure to a phase.
+
+Tests with the Red Oak passage: 480 MW → project scope, all-phases, timePeriod null; 180 MW → exact-phase with buildings DFW9, DFW10, DFW11 and count 3; the AI claiming 180 MW is campus-wide → scope becomes unknown (conflict), not campus; a passage with no scope language → unknown. A proxy-level test confirms these values reach claim mapping. All existing tests pass.
+Report files changed and test and TypeScript results.

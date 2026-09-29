@@ -19,6 +19,7 @@ import {
   isSourceProjectSpecific,
   sourceUrlAliases,
 } from "../src/data/sourceValidationPolicy.mjs";
+import { extractClaimScopeFromPassage } from "../src/data/claimScopeExtractor.mjs";
 import { assessResearchProjectIdentity } from "../src/data/researchIdentity.mjs";
 import { defaultProjectResearchRegistry } from "./projectResearchRegistry.mjs";
 import { discoverOfficialSources } from "./officialSourceDiscovery.mjs";
@@ -495,6 +496,49 @@ function isExplicitUnknownValue(value) {
   return /^(unknown|not disclosed|not publicly available|not available|unavailable|undisclosed|no data|no public data|not established|n\/a|na)$/i.test(
     value.trim().replace(/[.!]+$/, ""),
   );
+}
+
+function scopeValueIsKnown(value) {
+  return typeof value === "string"
+    && value.trim() !== ""
+    && !/^(?:unknown|n\/a|na|not applicable|not disclosed|not established)$/i.test(value.trim());
+}
+
+function normalizedScopeValue(field, value) {
+  if (field === "facilityScope") {
+    const normalized = value.trim().toLowerCase();
+    return ["exact-project", "project"].includes(normalized) ? "project"
+      : ["exact-facility", "facility"].includes(normalized) ? "facility"
+        : normalized;
+  }
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function mergeClaimScopeMetadata(item, sourceMetadata, extracted) {
+  const merged = {};
+  const conflicts = new Set();
+  const fields = [
+    ["facilityScope", "unknown"],
+    ["phaseScope", "unknown"],
+    ["claimTimePeriod", null],
+    ["phaseIdentity", null],
+  ];
+  for (const [field, unknownValue] of fields) {
+    const sourceField = field === "claimTimePeriod" ? "timePeriod" : field;
+    const candidates = [item?.[field], sourceMetadata?.[sourceField], extracted?.[field]]
+      .filter(scopeValueIsKnown);
+    const distinctValues = new Set(candidates.map((value) => normalizedScopeValue(field, value)));
+    if (distinctValues.size > 1) {
+      conflicts.add(field);
+      merged[field] = unknownValue;
+      continue;
+    }
+    merged[field] = candidates[0] ?? unknownValue;
+  }
+  if (conflicts.has("facilityScope") || conflicts.has("phaseScope")) {
+    merged.phaseIdentity = null;
+  }
+  return merged;
 }
 
 function safePublicSourceUrl(value) {
@@ -2812,10 +2856,17 @@ function parseResearchResponse(
       })
       .slice(0, 4);
     const sourceUrl = validatedSources[0]?.canonicalUrl ?? null;
+    const extractedClaimScope = extractClaimScopeFromPassage({
+      claimPassage: item.claimPassage,
+      claimValue: item.value,
+      numericValue: item.numericValue,
+      unit: item.unit,
+    });
     const supportingSources = validatedSources.map((metadata) => {
       const jurisdictionExcluded = isJurisdictionallyExcludedSource(metadata, summary);
       const exactProject = !jurisdictionExcluded
         && isExactProjectSource(metadata, { ...summary, knownData }, item.sourceRelevance);
+      const claimScope = mergeClaimScopeMetadata(item, metadata, extractedClaimScope);
       const resolvedUrl = canonicalizeSourceUrl(
         metadata?.accessOutcome?.canonicalUrl
           ?? metadata?.accessOutcome?.resolvedUrl
@@ -2854,9 +2905,8 @@ function parseResearchResponse(
          supportedEvidenceIds: Array.isArray(metadata?.supportedEvidenceIds) ? metadata.supportedEvidenceIds : [],
          claimSupport: metadata?.claimSupport ?? null,
          claimPassage: item.claimPassage,
-         facilityScope: item.facilityScope ?? metadata?.facilityScope ?? "unknown",
-         phaseScope: item.phaseScope ?? metadata?.phaseScope ?? "unknown",
-         timePeriod: item.claimTimePeriod ?? metadata?.timePeriod ?? null,
+         ...claimScope,
+         timePeriod: claimScope.claimTimePeriod,
          relevanceNote: stringOrFallback(
            jurisdictionExcluded
              ? "ERCOT is not a project-evidence authority for a non-Texas project."
@@ -2883,12 +2933,21 @@ function parseResearchResponse(
       },
       coverageStatus: item.coverageStatus,
       conflictSummary: item.conflictSummary,
-    });
+    }).map((mapping) => ({
+      ...mapping,
+      phaseIdentity: supportingSources.find((source) => source.canonicalUrl === mapping.sourceId)?.phaseIdentity ?? null,
+    }));
     const claimSupportedSources = supportingSources.filter((source) =>
       claimMappings.some((mapping) =>
         mapping.sourceId === source.canonicalUrl && mapping.supportStatus === "supported"));
     const supportedByRetrievedSource = supportingSources.length > 0;
     const claimSupported = claimSupportedSources.length > 0;
+    const primaryClaimScope = supportingSources[0] ?? {
+      facilityScope: item.facilityScope ?? "unknown",
+      phaseScope: item.phaseScope ?? "unknown",
+      claimTimePeriod: item.claimTimePeriod ?? null,
+      phaseIdentity: item.phaseIdentity ?? null,
+    };
     const rawClassification = nonEmptyString(item.classification, `evidence[${index}].classification`, 60);
     if (!VALID_CLASSIFICATIONS.includes(rawClassification)) {
       throw new Error(`Research evidence record ${id} has an invalid classification.`);
@@ -2927,6 +2986,11 @@ function parseResearchResponse(
           ? `No validated claim support for this claim.${sourceMismatchNote} ${citation}`
           : `No validated source match for this claim.${sourceMismatchNote} ${citation}`,
       description: stringOrFallback(item.description, "The searched public record did not establish a facility-level value.", 2_000),
+      claimPassage: typeof item.claimPassage === "string" ? item.claimPassage : null,
+      facilityScope: primaryClaimScope.facilityScope,
+      phaseScope: primaryClaimScope.phaseScope,
+      claimTimePeriod: primaryClaimScope.claimTimePeriod,
+      phaseIdentity: primaryClaimScope.phaseIdentity,
       sourceRole: stringOrFallback(item.sourceRole, "AI-researched public-source review", 200),
       coverageStatus: supportedByRetrievedSource && ["supported", "partial", "conflicting"].includes(item.coverageStatus)
         ? item.coverageStatus

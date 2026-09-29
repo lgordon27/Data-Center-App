@@ -3964,6 +3964,113 @@ test("returns 16 normalized items without inventing custom capacity on either pa
   }
 });
 
+test("Red Oak passage scope is merged before proxy claim mapping", () => {
+  const mapRedOakClaim = ({
+    value,
+    passage,
+    aiFacilityScope = "unknown",
+    aiPhaseScope = "unknown",
+    aiClaimTimePeriod = null,
+    sourceFacilityScope = "unknown",
+    sourcePhaseScope = "unknown",
+    sourceTimePeriod = null,
+  }) => {
+    const body = validResearchResponse();
+    const item = body.evidence.find((candidate) => candidate.id === "grid_interconnection");
+    const url = `https://records.example.test/redoak/${value}`;
+    Object.assign(item, {
+      value,
+      numericValue: value,
+      unit: "MW",
+      classification: "Management Assertion",
+      sourceUrl: url,
+      sourceUrls: [url],
+      coverageStatus: "supported",
+      claimPassage: passage,
+      facilityScope: aiFacilityScope,
+      phaseScope: aiPhaseScope,
+      claimTimePeriod: aiClaimTimePeriod,
+    });
+    const parsed = parseResearchResponse(body, [{
+      ...retrievedSource,
+      url,
+      title: "Red Oak capacity disclosure",
+      excerpt: passage,
+      claimPassage: passage,
+      sourceClass: "primary-government",
+      exactProject: true,
+      claimSupport: [{ evidenceId: "grid_interconnection", values: [value] }],
+      facilityScope: sourceFacilityScope,
+      phaseScope: sourcePhaseScope,
+      timePeriod: sourceTimePeriod,
+    }]);
+    const evidence = parsed.evidence.find((candidate) => candidate.id === "grid_interconnection");
+    return { evidence, mapping: evidence.claimMappings[0] };
+  };
+
+  const campusTotal = mapRedOakClaim({
+    value: 480,
+    passage: "Red Oak campus has a total capacity of 480 MW across all phases. Phase One, comprising DFW9, DFW10, and DFW11, has 180 MW across three buildings.",
+  });
+  assert.equal(campusTotal.evidence.facilityScope, "project");
+  assert.equal(campusTotal.evidence.phaseScope, "all-phases");
+  assert.equal(campusTotal.evidence.claimTimePeriod, null);
+  assert.equal(campusTotal.mapping.facilityScope, "project");
+  assert.equal(campusTotal.mapping.phaseScope, "all-phases");
+  assert.equal(campusTotal.mapping.timePeriod, null);
+  assert.equal(campusTotal.mapping.supportStatus, "scope-unknown");
+
+  const conflictingFacilityScope = mapRedOakClaim({
+    value: 480,
+    passage: "Red Oak campus has a total capacity of 480 MW across all phases.",
+    aiFacilityScope: "exact-facility",
+  });
+  assert.equal(conflictingFacilityScope.evidence.facilityScope, "unknown");
+  assert.equal(conflictingFacilityScope.mapping.facilityScope, "unknown");
+
+  const conflictingPeriod = mapRedOakClaim({
+    value: 480,
+    passage: "As of 2026, Red Oak campus has a total capacity of 480 MW across all phases.",
+    aiClaimTimePeriod: "2025",
+    sourceTimePeriod: "2025",
+  });
+  assert.equal(conflictingPeriod.evidence.claimTimePeriod, null);
+  assert.equal(conflictingPeriod.mapping.timePeriod, null);
+  assert.equal(conflictingPeriod.mapping.supportStatus, "scope-unknown");
+
+  const exactPhase = mapRedOakClaim({
+    value: 180,
+    passage: "Red Oak campus totals 480 MW. Phase One, comprising DFW9, DFW10, and DFW11, has 180 MW across three buildings.",
+    aiClaimTimePeriod: "2026",
+  });
+  assert.equal(exactPhase.evidence.phaseScope, "exact-phase");
+  assert.match(exactPhase.evidence.phaseIdentity, /DFW9\/DFW10\/DFW11/);
+  assert.match(exactPhase.mapping.phaseIdentity, /3 buildings/);
+  assert.equal(exactPhase.mapping.timePeriod, "2026");
+  assert.equal(exactPhase.mapping.supportStatus, "supported");
+
+  const campusWideAiClaimForPhaseValue = mapRedOakClaim({
+    value: 180,
+    passage: "Red Oak campus totals 480 MW. Phase One, comprising DFW9, DFW10, and DFW11, has 180 MW across three buildings.",
+    aiFacilityScope: "exact-project",
+    aiPhaseScope: "all-phases",
+    aiClaimTimePeriod: "2026",
+  });
+  assert.equal(campusWideAiClaimForPhaseValue.evidence.phaseScope, "unknown");
+  assert.equal(campusWideAiClaimForPhaseValue.evidence.phaseIdentity, null);
+  assert.equal(campusWideAiClaimForPhaseValue.mapping.phaseScope, "unknown");
+  assert.equal(campusWideAiClaimForPhaseValue.mapping.supportStatus, "scope-unknown");
+
+  const noScope = mapRedOakClaim({
+    value: 180,
+    passage: "The filing lists an approved load of 180 MW.",
+  });
+  assert.equal(noScope.evidence.facilityScope, "unknown");
+  assert.equal(noScope.evidence.phaseScope, "unknown");
+  assert.equal(noScope.mapping.phaseScope, "unknown");
+  assert.equal(noScope.mapping.supportStatus, "scope-unknown");
+});
+
 test("Project Kilby preserves supported power, grid, and water classifications from validated sources", () => {
   const body = validResearchResponse();
   body.projectSummary = {

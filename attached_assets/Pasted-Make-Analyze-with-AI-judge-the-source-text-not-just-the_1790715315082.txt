@@ -1,0 +1,12 @@
+Make "Analyze with AI" judge the source text, not just the citation title. Only edit src/services/aiEvidenceService.ts, server/aiEvidenceProxy.mjs, and their tests. Do not edit EvidenceRoom.tsx or DiligenceContext.tsx. If you need another file, stop and report. No paid calls; stub the provider in tests. Do not deploy. Keep changes minimal; do not rename, reformat, or refactor code outside this task.
+
+Today aiEvidenceService.ts (around line 118) sends only the variable name, value and citation string, and the prompt in aiEvidenceProxy.mjs (around line 61) asks whether "this citation supports this value". With only a headline, the model almost always returns Missing Evidence. For example, it says the Crusoe release does not confirm Stargate Abilene, although the release text says "The first phase of Stargate's flagship data center campus in Abilene, Texas, is now up and running."
+
+1. Send the item's retained source passage or exact quote with the request (from the evidence item or dossier record fields that already hold it), limited to about 2,000 characters around the relevant claim.
+2. Change the prompt to: "Assess whether this passage from the cited source supports this value for this exact project," including the passage. Keep all existing rules: no web search, no facts from other projects, similarly named facilities are not the same project, statewide or regional context is not facility-level proof.
+3. If no passage is available, say so in the prompt and in the result ("No source text available; classification based on citation only"), and never recommend a downgrade from an existing sourced classification on that basis alone.
+4. When the AI suggests a lower classification than the current one, label the suggestion "Downgrade suggested", so a reviewer notices before accepting.
+5. Update the spend estimate for the longer input.
+
+Tests (provider stubbed): the request includes the passage; the prompt contains it; with no passage the result carries the "citation only" note and cannot recommend a downgrade; a downgrade suggestion is labeled; the spend reservation reflects the longer input; the text is capped at about 2,000 characters.
+Report files changed and test results.

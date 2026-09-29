@@ -2,6 +2,7 @@ import type { Classification, EvidenceItem, ProjectContext } from "@/context/Dil
 
 export const AI_EVIDENCE_ENDPOINT = "/api/analyze-evidence";
 export const AI_EVIDENCE_TIMEOUT_MS = 10_000;
+const AI_EVIDENCE_SOURCE_TEXT_LIMIT = 2_000;
 
 export type AIEvidenceSuccess = {
   status: "success";
@@ -63,6 +64,45 @@ function stripMarkdownFence(value: string) {
     .trim();
 }
 
+type AIEvidenceItem = Pick<EvidenceItem, "label" | "value" | "citation"> &
+  Partial<Pick<EvidenceItem, "classification" | "sources" | "claimMappings" | "sourceValidation">>;
+
+function retainedSourceText(item: AIEvidenceItem): string | undefined {
+  const sources = (item.sources ?? [])
+    .filter((source) =>
+      typeof source.claimPassage === "string" &&
+      source.claimPassage.trim() &&
+      source.claimCited !== false &&
+      source.exactProject !== false &&
+      source.relationship !== "conflicting",
+    )
+    .sort((left, right) => {
+      const score = (source: NonNullable<EvidenceItem["sources"]>[number]) =>
+        Number(source.claimCited === true) * 4 +
+        Number(source.exactProject === true) * 2 +
+        Number(source.relationship === "primary");
+      return score(right) - score(left);
+    });
+  const claimPassage = sources[0]?.claimPassage?.trim();
+  if (claimPassage) return claimPassage.slice(0, AI_EVIDENCE_SOURCE_TEXT_LIMIT);
+
+  const mappings = [...(item.claimMappings ?? []), ...(item.sourceValidation?.claimMappings ?? [])];
+  const exactQuotation = mappings.find((mapping) =>
+    mapping.supportStatus === "supported" &&
+    mapping.contradictionStatus === "none" &&
+    typeof mapping.exactQuotation === "string" &&
+    mapping.exactQuotation.trim(),
+  )?.exactQuotation?.trim();
+  if (exactQuotation) return exactQuotation.slice(0, AI_EVIDENCE_SOURCE_TEXT_LIMIT);
+
+  const retainedPassage = (item.sources ?? []).find((source) =>
+    source.accessOutcome?.state === "accessible" &&
+    typeof source.accessOutcome.passage === "string" &&
+    source.accessOutcome.passage.trim(),
+  )?.accessOutcome?.passage?.trim();
+  return retainedPassage?.slice(0, AI_EVIDENCE_SOURCE_TEXT_LIMIT);
+}
+
 function parseAssessment(rawText: string): AIEvidenceResult {
   const candidateText = stripMarkdownFence(rawText);
   let parsed: unknown;
@@ -101,12 +141,13 @@ function parseAssessment(rawText: string): AIEvidenceResult {
 }
 
 export async function analyzeEvidence(
-  item: Pick<EvidenceItem, "label" | "value" | "citation">,
+  item: AIEvidenceItem,
   project: Pick<ProjectContext, "name" | "location" | "kind">,
   fetchImpl: typeof fetch = fetch,
 ): Promise<AIEvidenceResult> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), AI_EVIDENCE_TIMEOUT_MS);
+  const sourceText = retainedSourceText(item);
 
   try {
     const response = await fetchImpl(AI_EVIDENCE_ENDPOINT, {
@@ -119,6 +160,8 @@ export async function analyzeEvidence(
         name: item.label,
         value: String(item.value),
         source: item.citation,
+        ...(sourceText ? { sourceText } : {}),
+        ...(item.classification ? { existingClassification: item.classification } : {}),
         projectName: project.name,
         projectLocation: project.location,
         projectKind: project.kind,

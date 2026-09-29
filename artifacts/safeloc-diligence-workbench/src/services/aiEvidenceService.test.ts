@@ -52,6 +52,98 @@ test("sends the same-origin evidence contract and normalizes a valid assessment"
   });
 });
 
+test("forwards claim-specific retained text and prefers it to a broader retained passage", async () => {
+  let request: Request | undefined;
+  await analyzeEvidence({
+    ...item,
+    classification: "Management Assertion",
+    sources: [{
+      url: "https://example.gov/source",
+      title: "Source",
+      publisher: "Publisher",
+      publishedAt: null,
+      accessedAt: null,
+      accessStatus: "accessible",
+      excerpt: "Search-result summary that is not retained source text.",
+      claimPassage: "Exact retained passage for annual cooling water.",
+      claimCited: true,
+      exactProject: true,
+      sourceClass: "primary-government",
+      searchDomain: "water",
+      relationship: "primary",
+      accessOutcome: {
+        state: "accessible",
+        reason: "Retrieved",
+        passage: "Longer surrounding retained document passage.",
+      },
+    }],
+  }, project, async (input, init) => {
+    request = new Request(new URL(String(input), "http://localhost"), init);
+    return proxyResponse(JSON.stringify({
+      classification: "Management Assertion",
+      reasoning: "The cited source is a company statement.",
+    }));
+  });
+
+  assert.deepEqual(await request!.json(), {
+    name: item.label,
+    value: item.value,
+    source: item.citation,
+    sourceText: "Exact retained passage for annual cooling water.",
+    existingClassification: "Management Assertion",
+    projectName: project.name,
+    projectLocation: project.location,
+    projectKind: project.kind,
+  });
+});
+
+test("uses a supported exact quote when no claim passage is retained and caps text at 2,000 characters", async () => {
+  let request: Request | undefined;
+  await analyzeEvidence({
+    ...item,
+    claimMappings: [{
+      id: "water-claim",
+      sourceId: "public-filing",
+      passageId: "water-passage",
+      variable: "Annual Cooling Water",
+      claimText: "The filing reports the water measure.",
+      entityScope: "project",
+      facilityScope: "facility",
+      phaseScope: "current",
+      timePeriod: null,
+      sourceType: "primary-company",
+      contradictionStatus: "none",
+      supportStatus: "supported",
+      exactQuotation: "Q".repeat(2_200),
+      rejectionCodes: [],
+    }],
+  }, project, async (input, init) => {
+    request = new Request(new URL(String(input), "http://localhost"), init);
+    return proxyResponse(JSON.stringify({
+      classification: "Verified Evidence",
+      reasoning: "The exact project passage states the value.",
+    }));
+  });
+
+  const body = await request!.json() as { sourceText?: string };
+  assert.equal(body.sourceText?.length, 2_000);
+  assert.equal(body.sourceText, "Q".repeat(2_000));
+});
+
+test("omits source text rather than inventing a passage when none is retained", async () => {
+  let request: Request | undefined;
+  await analyzeEvidence(item, project, async (input, init) => {
+    request = new Request(new URL(String(input), "http://localhost"), init);
+    return proxyResponse(JSON.stringify({
+      classification: "Missing Evidence",
+      reasoning: "The citation does not establish the value.",
+    }));
+  });
+
+  const body = await request!.json() as Record<string, unknown>;
+  assert.equal(Object.hasOwn(body, "sourceText"), false);
+});
+
 test("returns raw text for non-JSON and structurally invalid responses", async () => {
   const rawText = "I would review this manually.";
   const nonJson = await analyzeEvidence(item, project, async () => new Response(rawText, { status: 200 }));

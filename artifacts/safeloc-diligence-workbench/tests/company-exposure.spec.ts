@@ -294,8 +294,23 @@ test.describe("stock-first company exposure flow", () => {
     await page.getByTestId("button-reset-default").click();
     await page.getByTestId("button-confirm-reset-default").click();
     await page.goto("/#analysis");
+    await expect(page).toHaveURL(/#analysis$/);
     await expect(page.getByTestId("market-company")).toHaveText("Oracle");
-    await expect(page.getByTestId("market-holding-state-oracle")).toContainText("Source-backed");
+    await expect(page.getByTestId("market-selected-project-identity")).toContainText("Stargate Abilene");
+    await expect(page.getByTestId("market-selected-project-identity")).toContainText("Sourced Indirect Role");
+    await expect(page.getByTestId("market-holding-states")).toHaveCount(0);
+  });
+
+  test("keeps NVIDIA selected when opening the Stargate Abilene reviewed dossier from Home", async ({ page }) => {
+    await page.goto("/#home");
+    await page.getByTestId("company-card-nvidia").click();
+    await expect(page.getByTestId("company-exposure-view")).toBeVisible();
+    await page.getByTestId("company-project-open-curated-stargate-nvidia").click();
+
+    await expect(page).toHaveURL(/#analysis\/stargate-abilene$/);
+    await expect(page.getByTestId("conference-summary")).toContainText("Stargate Abilene");
+    await expect(page.getByTestId("market-company")).toHaveText("NVIDIA");
+    await expect(page.getByTestId("market-selected-project-identity")).toContainText("Stargate Abilene");
   });
 
   test("opens a directory facility in the shared prefilled research dialog", async ({ page }) => {

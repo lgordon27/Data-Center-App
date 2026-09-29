@@ -2,10 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  MODEL_LEASE_RATE_PER_KW_MONTH,
+  MODEL_UTILIZATION_RAMP,
+} from "./cashFlowEngine";
+import {
   CAPACITY_MW_MAX,
   bindCapacityAssumption,
   explainCapacityAssumptions,
+  qualifyCapacityClaimCandidate,
   type CapacityAssumptionBindingInput,
+  type CapacityClaimCandidateFinding,
   type CapacityClaim,
   type CapacityScope,
 } from "./assumptionBinding";
@@ -185,8 +191,6 @@ test("explanation classifies every supplied source and analyst assumption", () =
   const input: CapacityAssumptionBindingInput = {
     claim: claim({ powerMeasure: "utility-interconnection" }),
     scenarioScope: campusScope,
-    utilization: 0.9,
-    pricePerKwMonth: 185,
     rampTiming: { rampStartMonth: 0, stabilizedAtMonth: 24 },
     utilityToItFactor: 0.75,
     illustrativeCapacityMW: 900,
@@ -198,8 +202,8 @@ test("explanation classifies every supplied source and analyst assumption", () =
     [
       ["capacity claim", "Sourced (source, date, accepted by user)"],
       ["scenario scope", "Analyst assumption"],
-      ["utilization", "Analyst assumption"],
-      ["price per kW-month", "Analyst assumption"],
+      ["lease rate per kW-month", "Model constant"],
+      ["utilization ramp", "Model constant"],
       ["ramp timing", "Analyst assumption"],
       ["utility-to-IT conversion factor", "Analyst assumption"],
       ["illustrative capacity", "Analyst assumption"],
@@ -208,4 +212,59 @@ test("explanation classifies every supplied source and analyst assumption", () =
   assert.match(explanation[0]?.detail ?? "", /Project capacity announcement/);
   assert.match(explanation[0]?.detail ?? "", /2026-09-01/);
   assert.match(explanation[0]?.detail ?? "", /accepted by user/);
+  assert.equal(
+    explanation.find((item) => item.input === "lease rate per kW-month")?.detail,
+    String(MODEL_LEASE_RATE_PER_KW_MONTH),
+  );
+  assert.equal(
+    explanation.find((item) => item.input === "utilization ramp")?.detail,
+    MODEL_UTILIZATION_RAMP.join(", "),
+  );
+});
+
+test("only one resolved, exact-project, whole-campus IT capacity finding qualifies", () => {
+  const finding: CapacityClaimCandidateFinding = {
+    id: "finding-capacity",
+    assessment: "source-supported",
+    applicability: "exact-project",
+    financialProposalEligibility: "eligible",
+    projectScope: "Source passage identifies the submitted project name and requested location.",
+    powerClaimState: "resolved",
+    powerClaim: {
+      quantity: "180 MW",
+      measure: "IT capacity",
+      status: "operating",
+      phaseScope: null,
+      facilityScope: "campus",
+    },
+    reportingDate: "2026-09-01",
+    accessedAt: "2026-09-02",
+    sourceTitle: "Project capacity announcement",
+    sourceUrl: "https://example.com/capacity",
+  };
+
+  const candidate = qualifyCapacityClaimCandidate([finding], campusScope);
+  assert.equal(candidate?.findingId, "finding-capacity");
+  assert.equal(candidate?.claim.scope.kind, "campus");
+  assert.equal(candidate?.claim.humanAccepted, false);
+  assert.equal(candidate?.claim.value, 180);
+  assert.equal(candidate?.claim.unit, "MW");
+
+  for (const invalid of [
+    { ...finding, applicability: "ambiguous" as const },
+    { ...finding, assessment: "ambiguous-unresolved" as const },
+    { ...finding, financialProposalEligibility: "unresolved" as const },
+    { ...finding, projectScope: "Related project, location not resolved." },
+    { ...finding, powerClaimState: "unresolved" as const },
+    { ...finding, powerClaim: { ...finding.powerClaim!, phaseScope: "phase-one" } },
+    { ...finding, powerClaim: { ...finding.powerClaim!, facilityScope: "building" } },
+    { ...finding, powerClaim: { ...finding.powerClaim!, measure: "utility interconnection" } },
+  ]) {
+    assert.equal(qualifyCapacityClaimCandidate([invalid], campusScope), null);
+  }
+  assert.equal(qualifyCapacityClaimCandidate([finding, { ...finding, id: "duplicate" }], campusScope), null);
+  assert.equal(
+    qualifyCapacityClaimCandidate([finding], { kind: "campus", campusId: "different-campus" })?.claim.scope.campusId,
+    "different-campus",
+  );
 });

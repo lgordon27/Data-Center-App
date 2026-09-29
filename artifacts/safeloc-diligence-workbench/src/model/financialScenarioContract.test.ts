@@ -1,9 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { INITIAL_EVIDENCE } from "@/context/DiligenceContext";
+import {
+  APPROVED_DOSSIER_SCENARIOS,
+  INITIAL_EVIDENCE,
+  buildDossierModelEvidence,
+  reviewCapacityClaim,
+  reviewIllustrativeCapacity,
+} from "@/context/DiligenceContext";
 import { createEiaFallback, type EiaElectricityData } from "@/services/eiaService";
 import type { EvidenceRecord } from "./cashFlowEngine";
+import type { CapacityClaimCandidate } from "./assumptionBinding";
 import {
   buildFinancialScenarioMatrix,
   type FinancialProviderState,
@@ -189,4 +196,98 @@ test("provider lifecycle states never hide or replace the synthetic primary case
     assert.equal(Boolean(matrix.scenarios["eia-verified"]), providerAvailable);
   }
   assert.equal(primaryFingerprints.size, 1, "provider lifecycle must not change the primary scenario fingerprint");
+});
+
+test("dossier classifications overlay provenance without replacing typed model inputs", () => {
+  const baselineEvidence = INITIAL_EVIDENCE.electricity_cost;
+  const modelEvidence = buildDossierModelEvidence({
+    electricity_cost: {
+      ...baselineEvidence,
+      value: "Dossier narrative value",
+      numericValue: 999,
+      unit: "Dossier narrative unit",
+      classification: "Verified Evidence",
+      citation: "Dossier source citation",
+      description: "Dossier source provenance.",
+    },
+  });
+  const electricity = modelEvidence.electricity_cost;
+  assert.equal(electricity.value, baselineEvidence.value);
+  assert.equal(electricity.numericValue, baselineEvidence.numericValue);
+  assert.equal(electricity.unit, baselineEvidence.unit);
+  assert.equal(electricity.classification, "Verified Evidence");
+  assert.equal(electricity.citation, "Dossier source citation");
+  assert.equal(electricity.origin, "dossier");
+  assert.equal(electricity.baselineClassification, "Verified Evidence");
+  assert.equal(modelEvidence.water_consumption.origin, "synthetic-default");
+
+  const classificationCounts = (evidence: Record<string, { classification: string }>) =>
+    Object.values(evidence).reduce<Record<string, number>>((counts, item) => {
+      counts[item.classification] = (counts[item.classification] ?? 0) + 1;
+      return counts;
+    }, {});
+  const defaultCounts = classificationCounts(INITIAL_EVIDENCE);
+  const dossierCounts = classificationCounts(modelEvidence);
+  assert.equal(dossierCounts["Verified Evidence"], (defaultCounts["Verified Evidence"] ?? 0) + 1);
+  assert.equal(dossierCounts["User Assumption"], (defaultCounts["User Assumption"] ?? 0) - 1);
+
+  const eiaData = createEiaFallback();
+  const makeMatrix = (syntheticEvidence: EvidenceRecord) => buildFinancialScenarioMatrix({
+    syntheticEvidence,
+    providerEvidence: null,
+    eiaData,
+    providerState: "unavailable",
+    capacityMW: 1_200,
+  });
+  const defaultCurrent = makeMatrix(INITIAL_EVIDENCE).scenarios["synthetic-current"]!;
+  const dossierCurrent = makeMatrix(modelEvidence).scenarios["synthetic-current"]!;
+  assert.notEqual(dossierCurrent.returns.confidenceScore, defaultCurrent.returns.confidenceScore);
+});
+
+test("null capacity produces no scenarios and the approved dossier set stays explicit", () => {
+  const matrix = buildFinancialScenarioMatrix({
+    syntheticEvidence: INITIAL_EVIDENCE,
+    providerEvidence: providerEvidence(),
+    eiaData: providerData("live"),
+    providerState: "live",
+    capacityMW: null,
+  });
+  assert.deepEqual(matrix.scenarios, {
+    "synthetic-verified": null,
+    "synthetic-current": null,
+    "eia-verified": null,
+    "eia-current": null,
+  });
+  assert.deepEqual(Object.keys(APPROVED_DOSSIER_SCENARIOS), ["stargate-abilene"]);
+});
+
+test("capacity review accept and reject actions preserve an auditable decision trail", () => {
+  const candidate: CapacityClaimCandidate = {
+    findingId: "finding-1",
+    claim: {
+      value: 180,
+      unit: "MW",
+      powerMeasure: "it-capacity",
+      scope: { kind: "campus", campusId: "custom-campus" },
+      status: "current",
+      sourceTitle: "Capacity release",
+      sourceUrl: "https://example.com/capacity",
+      sourceDate: "2026-09-01",
+      humanAccepted: false,
+    },
+  };
+  const accepted = reviewCapacityClaim(null, "custom-project|west texas", candidate, "accepted", "2026-09-02T10:00:00.000Z");
+  assert.equal(accepted.acceptedClaim?.humanAccepted, true);
+  assert.equal(accepted.acceptedFindingId, "finding-1");
+  assert.deepEqual(accepted.trail.map(({ action, findingId }) => [action, findingId]), [["accepted", "finding-1"]]);
+
+  const rejected = reviewCapacityClaim(accepted, "custom-project|west texas", candidate, "rejected", "2026-09-03T10:00:00.000Z");
+  assert.equal(rejected.acceptedClaim, null);
+  assert.equal(rejected.acceptedFindingId, null);
+  assert.deepEqual(rejected.trail.map(({ action }) => action), ["accepted", "rejected"]);
+
+  const illustrative = reviewIllustrativeCapacity(rejected, "custom-project|west texas", 700, "2026-09-04T10:00:00.000Z");
+  assert.equal(illustrative.decision, "rejected");
+  assert.equal(illustrative.illustrativeCapacityMW, 700);
+  assert.deepEqual(illustrative.trail.map(({ action }) => action), ["accepted", "rejected", "illustrative-set"]);
 });

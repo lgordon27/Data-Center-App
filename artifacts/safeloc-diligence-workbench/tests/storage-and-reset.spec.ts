@@ -6,8 +6,13 @@ const scenariosKey = "safeloc:diligence:scenarios:v1";
 const evidenceTipDismissedKey = "safeloc:diligence:evidence-room-tip-dismissed:v1";
 
 type ReturnCapture = {
+  project: { kind: string; capacityMW: number | null };
   classifications: Record<string, string>;
-  modelInputs: { fingerprint: string };
+  modelInputs: {
+    fingerprint: string;
+    assumptions: { capacityMW: number | null };
+    evidence: Record<string, Record<string, unknown>>;
+  };
   release: {
     fingerprint: string;
     identity: null | { assets: Array<{ file: string; hash: string }> };
@@ -50,6 +55,55 @@ async function openFinancialTransmission(page: import("@playwright/test").Page) 
   const stressTest = page.getByRole("button", { name: /Illustrative Project Stress Test/i });
   if (await stressTest.getAttribute("aria-expanded") === "false") await stressTest.click();
   await expect(stressTest).toHaveAttribute("aria-expanded", "true");
+}
+
+async function seedCustomResearchSession(
+  page: import("@playwright/test").Page,
+  capacityReview: unknown,
+) {
+  const modelEvidence = (await captureReturnState(page)).modelInputs.evidence;
+  await page.evaluate(({ key, capacityReview, modelEvidence }) => {
+    const session = JSON.parse(window.localStorage.getItem(key) ?? "{}");
+    const project = {
+      kind: "custom",
+      name: "Example Custom Data Center",
+      location: "Arlington, Texas",
+      description: "Local-only test fixture.",
+      capacityMW: 1_200,
+      capacityProvenance: "directory-reported",
+      retainedFindings: [{
+        id: "finding-it-capacity",
+        assessment: "source-supported",
+        applicability: "exact-project",
+        financialProposalEligibility: "eligible",
+        projectScope: "Source passage identifies the submitted project name and requested location.",
+        powerClaimState: "resolved",
+        powerClaim: {
+          quantity: "180 MW",
+          measure: "IT capacity",
+          status: "operating",
+          phaseScope: null,
+          facilityScope: "campus",
+        },
+        reportingDate: "2026-09-01",
+        accessedAt: "2026-09-02",
+        sourceTitle: "Example capacity announcement",
+        sourceUrl: "https://example.com/capacity",
+        passage: "Example Custom Data Center in Arlington has 180 MW of IT capacity.",
+      }],
+    };
+    session.customResearch = {
+      project,
+      evidence: modelEvidence,
+      modelEvidence,
+      researchProposals: {},
+      researchProposalDispositions: {},
+      researchProposalOverrides: {},
+    };
+    if (capacityReview === null) delete session.capacityReview;
+    else session.capacityReview = capacityReview;
+    window.localStorage.setItem(key, JSON.stringify(session));
+  }, { key: currentSessionKey, capacityReview, modelEvidence });
 }
 
 test.describe("current-session recovery and reset isolation", () => {
@@ -249,7 +303,7 @@ test.describe("current-session recovery and reset isolation", () => {
     await expect(page.getByTestId("materiality-classification-prompt")).toBeVisible();
   });
 
-  test("reset removes a pre-reset canonical dossier from the header", async ({ page }) => {
+  test("reset keeps the selected canonical dossier identity", async ({ page }) => {
     await page.goto("/#analysis/project-kilby");
     await expect(page.getByTestId("conference-summary")).toContainText("Project Kilby");
 
@@ -257,8 +311,161 @@ test.describe("current-session recovery and reset isolation", () => {
     await page.getByTestId("button-confirm-reset-default").click();
 
     await expect(page).toHaveURL(/#analysis$/);
-    await expect(page.getByTestId("conference-summary").locator("h1")).toHaveText("Stargate Abilene");
-    await expect(page.getByTestId("conference-research-status")).not.toHaveText("Canonical evidence review");
+    await expect(page.getByTestId("conference-summary").locator("h1")).toHaveText("Project Kilby");
+    await expect(page.getByTestId("conference-research-status")).toHaveText("Canonical evidence review");
+    await page.reload();
+    await expect(page.getByTestId("conference-summary").locator("h1")).toHaveText("Project Kilby");
+    await expect(page.getByTestId("conference-research-status")).toHaveText("Canonical evidence review");
+  });
+
+  test("restores dossier review overrides after reload and resets only to its immutable baseline", async ({ page }) => {
+    await page.goto("/#analysis/project-kilby");
+    await expect(page.getByTestId("conference-summary")).toContainText("Project Kilby");
+    const beforeResponse = await page.request.get("/api/dossiers/project-kilby");
+    expect(beforeResponse.ok()).toBeTruthy();
+    const dossierBefore = await beforeResponse.json();
+    const review = await page.evaluate((key) => {
+      const session = JSON.parse(window.localStorage.getItem(key) ?? "{}");
+      const canonicalReview = session.canonicalReview;
+      if (!canonicalReview || canonicalReview.slug !== "project-kilby") {
+        throw new Error("Canonical dossier baseline was not persisted.");
+      }
+      const id = Object.keys(canonicalReview.baselineEvidence)[0];
+      const baselineClassification = canonicalReview.baselineEvidence[id].classification;
+      const override = baselineClassification === "Verified Evidence" ? "Missing Evidence" : "Verified Evidence";
+      const reviewedAt = "2026-09-20T10:00:00.000Z";
+      canonicalReview.overrides = { [id]: override };
+      canonicalReview.reviewMetadata = { [id]: { kind: "manual", reviewedAt } };
+      session.hasChangedClassification = true;
+      session.decisionHistory = [{
+        kind: "manual",
+        itemId: id,
+        previousClassification: baselineClassification,
+        resultingClassification: override,
+        recordedAt: reviewedAt,
+      }];
+      window.localStorage.setItem(key, JSON.stringify(session));
+      return { id, baselineClassification, override, reviewedAt, baselineEvidence: canonicalReview.baselineEvidence };
+    }, currentSessionKey);
+
+    await page.reload();
+    await expect(page).toHaveURL(/#analysis\/project-kilby$/);
+    await expect(page.getByTestId("conference-summary")).toContainText("Project Kilby");
+    await page.waitForFunction(() => typeof (window as any).__safelocCaptureReturnDiscrepancyState === "function");
+    const afterReload = await captureReturnState(page);
+    expect(afterReload.classifications[review.id]).toBe(review.override);
+    const restoredSession = await page.evaluate((key) => JSON.parse(window.localStorage.getItem(key) ?? "{}"), currentSessionKey);
+    expect(restoredSession.canonicalReview.slug).toBe("project-kilby");
+    expect(restoredSession.canonicalReview.baselineEvidence).toEqual(review.baselineEvidence);
+    expect(restoredSession.canonicalReview.overrides[review.id]).toBe(review.override);
+    expect(restoredSession.decisionHistory).toContainEqual(expect.objectContaining({
+      itemId: review.id,
+      resultingClassification: review.override,
+      recordedAt: review.reviewedAt,
+    }));
+
+    await page.getByTestId("button-reset-default").click();
+    await page.getByTestId("button-confirm-reset-default").click();
+    await expect(page).toHaveURL(/#analysis$/);
+    await expect(page.getByTestId("conference-summary").locator("h1")).toHaveText("Project Kilby");
+    const afterReset = await captureReturnState(page);
+    expect(afterReset.classifications[review.id]).toBe(review.baselineClassification);
+    const resetSession = await page.evaluate((key) => JSON.parse(window.localStorage.getItem(key) ?? "{}"), currentSessionKey);
+    expect(resetSession.canonicalReview.slug).toBe("project-kilby");
+    expect(resetSession.canonicalReview.overrides).toEqual({});
+    expect(resetSession.canonicalReview.baselineEvidence).toEqual(review.baselineEvidence);
+    expect(resetSession.classifications[review.id]).toBe(review.baselineClassification);
+    expect(resetSession.modelEvidence[review.id]?.origin).toBe("dossier");
+    expect(resetSession.modelEvidence[review.id]?.classification).toBe(review.baselineClassification);
+    expect(resetSession.decisionHistory).toEqual([]);
+
+    const afterResponse = await page.request.get("/api/dossiers/project-kilby");
+    expect(await afterResponse.json()).toEqual(dossierBefore);
+    await page.reload();
+    await expect(page.getByTestId("conference-summary").locator("h1")).toHaveText("Project Kilby");
+    const afterReloadReset = await captureReturnState(page);
+    expect(afterReloadReset.classifications[review.id]).toBe(review.baselineClassification);
+  });
+
+  test("unknown custom capacity stays null through model construction and sanitized export", async ({ page }) => {
+    const projectKey = "example custom data center|arlington, texas";
+    await seedCustomResearchSession(page, null);
+    const fixtureShape = await page.evaluate((key) => {
+      const session = JSON.parse(window.localStorage.getItem(key) ?? "{}");
+      return {
+        evidenceCount: Object.keys(session.customResearch?.evidence ?? {}).length,
+        modelEvidenceCount: Object.keys(session.customResearch?.modelEvidence ?? {}).length,
+      };
+    }, currentSessionKey);
+    expect(fixtureShape.evidenceCount).toBe(16);
+    expect(fixtureShape.modelEvidenceCount).toBe(16);
+    await page.reload();
+    await page.waitForFunction(() => typeof (window as any).__safelocCaptureReturnDiscrepancyState === "function");
+
+    const unknown = await captureReturnState(page);
+    expect(unknown.project.kind).toBe("custom");
+    expect(unknown.project.capacityMW).toBeNull();
+    expect(unknown.modelInputs.assumptions.capacityMW).toBeNull();
+    expect(unknown.financialScenarios.scenarios).toEqual({
+      "synthetic-verified": null,
+      "synthetic-current": null,
+      "eia-verified": null,
+      "eia-current": null,
+    });
+
+    const acceptedClaim = {
+      value: 180,
+      unit: "MW",
+      powerMeasure: "it-capacity",
+      scope: { kind: "campus", campusId: "Example Custom Data Center" },
+      status: "current",
+      sourceTitle: "Example capacity announcement",
+      sourceUrl: "https://example.com/capacity",
+      sourceDate: "2026-09-01",
+      humanAccepted: true,
+    };
+    await seedCustomResearchSession(page, {
+      projectKey,
+      decision: "accepted",
+      acceptedFindingId: "finding-it-capacity",
+      acceptedClaim,
+      illustrativeCapacityMW: null,
+      trail: [{ action: "accepted", findingId: "finding-it-capacity", recordedAt: "2026-09-03T10:00:00.000Z" }],
+    });
+    await page.reload();
+    await page.waitForFunction(() => typeof (window as any).__safelocCaptureReturnDiscrepancyState === "function");
+    const accepted = await captureReturnState(page);
+    expect(accepted.project.capacityMW).toBe(180);
+    expect(accepted.modelInputs.assumptions.capacityMW).toBe(180);
+    expect(accepted.financialScenarios.scenarios["synthetic-current"]).not.toBeNull();
+
+    await seedCustomResearchSession(page, {
+      projectKey,
+      decision: "rejected",
+      acceptedFindingId: null,
+      acceptedClaim: null,
+      illustrativeCapacityMW: null,
+      trail: [{ action: "rejected", findingId: "finding-it-capacity", recordedAt: "2026-09-04T10:00:00.000Z" }],
+    });
+    await page.reload();
+    await page.waitForFunction(() => typeof (window as any).__safelocCaptureReturnDiscrepancyState === "function");
+    const rejected = await captureReturnState(page);
+    expect(rejected.project.capacityMW).toBeNull();
+    expect(rejected.modelInputs.assumptions.capacityMW).toBeNull();
+
+    await seedCustomResearchSession(page, {
+      projectKey,
+      decision: null,
+      acceptedFindingId: null,
+      acceptedClaim: null,
+      illustrativeCapacityMW: 700,
+      trail: [{ action: "illustrative-set", findingId: null, recordedAt: "2026-09-05T10:00:00.000Z" }],
+    });
+    await page.reload();
+    await page.waitForFunction(() => typeof (window as any).__safelocCaptureReturnDiscrepancyState === "function");
+    const illustrative = await captureReturnState(page);
+    expect(illustrative.project.capacityMW).toBe(700);
+    expect(illustrative.modelInputs.assumptions.capacityMW).toBe(700);
   });
 
   test("captures a sanitized state that is identical after reset and immediate reload", async ({ page }) => {

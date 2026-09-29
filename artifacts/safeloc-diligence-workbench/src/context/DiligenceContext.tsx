@@ -7,8 +7,19 @@ import {
   DEFAULT_CAPACITY_MW,
   type IRRReason,
   type IRRStatus,
+  type CashFlowModel,
+  type ModelAssumptions,
   type QualitativeEvidenceValue,
 } from '@/model/cashFlowEngine';
+import {
+  CAPACITY_MW_MAX,
+  bindCapacityAssumption,
+  qualifyCapacityClaimCandidate,
+  type CapacityBindingResult,
+  type CapacityClaim,
+  type CapacityClaimCandidate,
+  type CapacityScope,
+} from "@/model/assumptionBinding";
 import {
   buildFinancialScenarioMatrix,
   type FinancialScenarioMatrix,
@@ -38,6 +49,7 @@ import {
   clearSessionActions,
   logSessionAction,
   recordManualClassificationChange,
+  recordAIDecision,
   getDecisionHistory,
   restoreDecisionHistory,
   type DecisionHistoryEntry,
@@ -102,6 +114,9 @@ export type EvidenceItem = {
   impactRole: ImpactRole;
   review?: EvidenceReview;
   modelClassification?: Classification;
+  origin?: "dossier" | "synthetic-default";
+  baselineClassification?: Classification;
+  sessionOverride?: boolean;
   citation: string;
   description: string;
   sourceUrl?: string;
@@ -170,6 +185,50 @@ export type FinancialMetrics = Omit<ReturnType<typeof calculateCashFlowModel>, '
   lastChange: { from: number; to: number; delta: number } | null;
 };
 
+function unmodeledMetrics(lastChange: FinancialMetrics["lastChange"]): FinancialMetrics {
+  const model = {
+    projectIRR: null,
+    projectIRRStatus: "not-meaningful",
+    projectIRRReason: "invalid-input",
+    moic: 0,
+    cashOnCash: 0,
+    initialInvestedEquity: 0,
+    cashOnCashDenominator: 0,
+    annualPreTaxEquityCashFlow: 0,
+    dscrMeaningfulYears: [],
+    returnSensitivity: [],
+    payback: null,
+    npv: 0,
+    confidenceScore: 0,
+    revenueDelayMonths: 0,
+    incrementalCapex: 0,
+    opexChange: 0,
+    recommendationBlocked: true,
+    recommendationStatus: "BLOCKED",
+    missingMaterialCount: 0,
+    unresolvedDecisionGateCount: 0,
+    unresolvedFinancialDriverCount: 0,
+    materialUnverifiedCount: 0,
+    totalDistributions: 0,
+    equityInvested: 0,
+    terminalValue: 0,
+    schedule: [],
+    assumptions: {
+      capacityMW: null,
+      leaseRatePerKwMonth: null,
+      utilizationRamp: [],
+    } as unknown as ModelAssumptions,
+    lineItems: {},
+    attribution: {},
+    waterfall: [],
+    waterfallClosureDelta: null,
+    waterfallReconciles: false,
+    mechanicalDisclaimer: true,
+    baseIRR: null,
+  } as unknown as CashFlowModel;
+  return { ...model, lastChange } as FinancialMetrics;
+}
+
 export type FinancialInputState = {
   phase: "updating" | "settled";
   basis: "live" | "cached" | "fallback" | "custom";
@@ -206,8 +265,8 @@ export function buildFinancialInputState({
   matrix: FinancialScenarioMatrix;
   eiaData: EiaElectricityData;
 }): FinancialInputState {
-  const syntheticBaseline = matrix.scenarios["synthetic-verified"]!;
-  const syntheticCurrent = matrix.scenarios["synthetic-current"]!;
+  const syntheticBaseline = matrix.scenarios["synthetic-verified"];
+  const syntheticCurrent = matrix.scenarios["synthetic-current"];
   const providerBaseline = matrix.scenarios["eia-verified"];
   const providerCurrent = matrix.scenarios["eia-current"];
   if (projectKind === "custom") {
@@ -219,13 +278,13 @@ export function buildFinancialInputState({
       electricityRate: null,
       electricityPeriod: null,
       sourceUpdatedAt: null,
-      syntheticElectricityRate: syntheticCurrent.inputs.appliedElectricityRate,
-      syntheticBaselineIRR: syntheticBaseline.returns.projectIRR,
-      syntheticBaselineIRRStatus: syntheticBaseline.returns.projectIRRStatus,
-      syntheticBaselineIRRReason: syntheticBaseline.returns.projectIRRReason,
-      syntheticCurrentIRR: syntheticCurrent.returns.projectIRR,
-      syntheticCurrentIRRStatus: syntheticCurrent.returns.projectIRRStatus,
-      syntheticCurrentIRRReason: syntheticCurrent.returns.projectIRRReason,
+      syntheticElectricityRate: syntheticCurrent?.inputs.appliedElectricityRate ?? null,
+      syntheticBaselineIRR: syntheticBaseline?.returns.projectIRR ?? null,
+      syntheticBaselineIRRStatus: syntheticBaseline?.returns.projectIRRStatus ?? "not-meaningful",
+      syntheticBaselineIRRReason: syntheticBaseline?.returns.projectIRRReason ?? "invalid-input",
+      syntheticCurrentIRR: syntheticCurrent?.returns.projectIRR ?? null,
+      syntheticCurrentIRRStatus: syntheticCurrent?.returns.projectIRRStatus ?? "not-meaningful",
+      syntheticCurrentIRRReason: syntheticCurrent?.returns.projectIRRReason ?? "invalid-input",
       providerBaselineIRR: null,
       providerBaselineIRRStatus: null,
       providerBaselineIRRReason: null,
@@ -247,20 +306,20 @@ export function buildFinancialInputState({
     electricityRate: eiaData.latestPrice,
     electricityPeriod: eiaData.latestPricePeriod ?? null,
     sourceUpdatedAt: eiaData.sourceUpdatedAt ?? null,
-    syntheticElectricityRate: syntheticCurrent.inputs.appliedElectricityRate,
-    syntheticBaselineIRR: syntheticBaseline.returns.projectIRR,
-    syntheticBaselineIRRStatus: syntheticBaseline.returns.projectIRRStatus,
-    syntheticBaselineIRRReason: syntheticBaseline.returns.projectIRRReason,
-    syntheticCurrentIRR: syntheticCurrent.returns.projectIRR,
-    syntheticCurrentIRRStatus: syntheticCurrent.returns.projectIRRStatus,
-    syntheticCurrentIRRReason: syntheticCurrent.returns.projectIRRReason,
+    syntheticElectricityRate: syntheticCurrent?.inputs.appliedElectricityRate ?? null,
+    syntheticBaselineIRR: syntheticBaseline?.returns.projectIRR ?? null,
+    syntheticBaselineIRRStatus: syntheticBaseline?.returns.projectIRRStatus ?? "not-meaningful",
+    syntheticBaselineIRRReason: syntheticBaseline?.returns.projectIRRReason ?? "invalid-input",
+    syntheticCurrentIRR: syntheticCurrent?.returns.projectIRR ?? null,
+    syntheticCurrentIRRStatus: syntheticCurrent?.returns.projectIRRStatus ?? "not-meaningful",
+    syntheticCurrentIRRReason: syntheticCurrent?.returns.projectIRRReason ?? "invalid-input",
     providerBaselineIRR: providerBaseline?.returns.projectIRR ?? null,
     providerBaselineIRRStatus: providerBaseline?.returns.projectIRRStatus ?? null,
     providerBaselineIRRReason: providerBaseline?.returns.projectIRRReason ?? null,
     providerOverlayIRR: providerCurrent?.returns.projectIRR ?? null,
     providerOverlayIRRStatus: providerCurrent?.returns.projectIRRStatus ?? null,
     providerOverlayIRRReason: providerCurrent?.returns.projectIRRReason ?? null,
-    providerOverlayDeltaIRR: providerCurrent?.returns.projectIRR === null || providerCurrent?.returns.projectIRR === undefined || syntheticCurrent.returns.projectIRR === null
+    providerOverlayDeltaIRR: providerCurrent?.returns.projectIRR === null || providerCurrent?.returns.projectIRR === undefined || syntheticCurrent?.returns.projectIRR === null || syntheticCurrent?.returns.projectIRR === undefined
       ? null
       : providerCurrent.returns.projectIRR - syntheticCurrent.returns.projectIRR,
     calculatedAt: eiaLoading ? null : new Date().toISOString(),
@@ -280,7 +339,7 @@ export type ScenarioMetrics = {
 export type FinancialModelingState =
   | {
       status: "modeled";
-      label: "Audited Stargate synthetic project model";
+      label: "Audited Stargate synthetic project model" | "Capacity-based synthetic project model";
       reason: string;
       requiredInputs: [];
     }
@@ -313,6 +372,112 @@ export type ProjectContext = Omit<CustomResearchResponse["projectSummary"], "cap
   kind: "curated" | "custom";
   canonicalDossier?: CanonicalDossierSummary;
 };
+
+export const APPROVED_DOSSIER_SCENARIOS = {
+  "stargate-abilene": {
+    capacityMW: DEFAULT_CAPACITY_MW,
+    scope: { kind: "campus", campusId: "stargate-abilene" },
+  },
+} as const;
+
+function capacityProjectKey(project: Pick<ProjectContext, "name" | "location">): string {
+  return `${project.name.trim().toLocaleLowerCase()}|${project.location.trim().toLocaleLowerCase()}`;
+}
+
+function approvedScenarioBinding(
+  slug: keyof typeof APPROVED_DOSSIER_SCENARIOS | "default-stargate",
+): CapacityBindingResult {
+  const approved = slug === "default-stargate"
+    ? APPROVED_DOSSIER_SCENARIOS["stargate-abilene"]
+    : APPROVED_DOSSIER_SCENARIOS[slug];
+  const base = bindCapacityAssumption({ scenarioScope: approved.scope });
+  return {
+    ...base,
+    modelInput: { capacityMW: approved.capacityMW },
+    binding: {
+      kind: "approved-scenario",
+      reason: `The ${slug === "default-stargate" ? "default Stargate" : slug} case is on the approved dossier scenario list.`,
+    },
+  };
+}
+
+type PersistedCanonicalReview = {
+  slug: string;
+  project?: {
+    kind: "curated";
+    name: string;
+    location: string;
+    description: string;
+    capacityMW: number | null;
+    canonicalDossier: CanonicalDossierSummary;
+  };
+  baselineEvidence: Record<string, EvidenceItem>;
+  overrides: Record<string, Classification>;
+  reviewMetadata: Record<string, EvidenceReview>;
+};
+
+export type CapacityReviewTrailEntry = {
+  action: "accepted" | "rejected" | "illustrative-set" | "illustrative-cleared";
+  findingId: string | null;
+  recordedAt: string;
+};
+
+export type CapacityReviewState = {
+  projectKey: string;
+  decision: "accepted" | "rejected" | null;
+  acceptedFindingId: string | null;
+  acceptedClaim: CapacityClaim | null;
+  illustrativeCapacityMW: number | null;
+  trail: CapacityReviewTrailEntry[];
+};
+
+export function reviewCapacityClaim(
+  current: CapacityReviewState | null,
+  projectKey: string,
+  candidate: CapacityClaimCandidate,
+  action: "accepted" | "rejected",
+  recordedAt: string,
+): CapacityReviewState {
+  const previous = current?.projectKey === projectKey ? current : null;
+  return {
+    projectKey,
+    decision: action,
+    acceptedFindingId: action === "accepted" ? candidate.findingId : null,
+    acceptedClaim: action === "accepted"
+      ? { ...candidate.claim, humanAccepted: true }
+      : null,
+    illustrativeCapacityMW: previous?.illustrativeCapacityMW ?? null,
+    trail: [
+      ...(previous?.trail ?? []),
+      { action, findingId: candidate.findingId, recordedAt },
+    ],
+  };
+}
+
+export function reviewIllustrativeCapacity(
+  current: CapacityReviewState | null,
+  projectKey: string,
+  valueOrNull: number | null,
+  recordedAt: string,
+): CapacityReviewState {
+  const previous = current?.projectKey === projectKey ? current : null;
+  return {
+    projectKey,
+    decision: previous?.decision ?? null,
+    acceptedFindingId: previous?.acceptedFindingId ?? null,
+    acceptedClaim: previous?.acceptedClaim ?? null,
+    illustrativeCapacityMW: valueOrNull,
+    trail: [
+      ...(previous?.trail ?? []),
+      {
+        action: valueOrNull === null ? "illustrative-cleared" : "illustrative-set",
+        findingId: null,
+        recordedAt,
+      },
+    ],
+  };
+}
+
 type DiligenceState = {
   evidence: Record<string, EvidenceItem>;
   researchEvidence?: Record<string, EvidenceItem>;
@@ -370,6 +535,14 @@ type DiligenceState = {
     humanStatus?: CommunityHumanStatus,
     reviewerNote?: string,
   ) => boolean;
+  capacityClaimCandidate: CapacityClaimCandidate | null;
+  acceptCapacityClaim: () => boolean;
+  rejectCapacityClaim: () => boolean;
+  illustrativeCapacityMW: number | null;
+  setIllustrativeCapacityMW: (valueOrNull: number | null) => boolean;
+  capacityBinding: CapacityBindingResult;
+  capacityExplanation: CapacityBindingResult["explanation"];
+  capacityDecisionTrail: CapacityReviewTrailEntry[];
 };
 
 export const CURRENT_SESSION_STORAGE_KEY = 'safeloc:diligence:current-session:v1';
@@ -454,7 +627,7 @@ assertEvidenceImpactRoleCoverage(Object.keys(INITIAL_EVIDENCE_SOURCE));
 export const INITIAL_EVIDENCE: Record<string, EvidenceItem> = Object.fromEntries(
   Object.entries(INITIAL_EVIDENCE_SOURCE).map(([id, item]) => [
     id,
-    { ...item, impactRole: getEvidenceImpactRole(id) },
+    { ...item, impactRole: getEvidenceImpactRole(id), origin: "synthetic-default" as const },
   ]),
 );
 
@@ -484,6 +657,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState({
     evidence: initialSession.evidence,
     modelEvidence: initialSession.modelEvidence,
+    canonicalBaseline: initialSession.canonicalBaseline,
     hasChangedClassification: initialSession.hasChangedClassification,
     lastChange: null as FinancialMetrics['lastChange'],
   });
@@ -491,6 +665,9 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   stateRef.current = state;
   const [sessionRestored, setSessionRestored] = useState(initialSession.restored);
   const [sessionMigrated] = useState(initialSession.migrated);
+  const [capacityReview, setCapacityReview] = useState<CapacityReviewState | null>(initialSession.capacityReview);
+  const capacityReviewRef = useRef<CapacityReviewState | null>(capacityReview);
+  capacityReviewRef.current = capacityReview;
   const [project, setProject] = useState<ProjectContext>({
     ...(initialSession.project ?? {
       kind: "curated" as const,
@@ -534,21 +711,68 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         : eiaData.error
           ? "unavailable" as const
           : "embedded" as const;
+  const scenarioScope = useMemo<CapacityScope>(() => ({
+    kind: "campus",
+    campusId: project.canonicalDossier?.slug ?? project.name,
+  }), [project.canonicalDossier?.slug, project.name]);
+  const capacityClaimCandidate = useMemo(() => (
+    project.kind === "custom"
+      ? qualifyCapacityClaimCandidate(project.retainedFindings ?? [], scenarioScope)
+      : null
+  ), [project.kind, project.retainedFindings, scenarioScope]);
+  const matchingCapacityReview = capacityReview?.projectKey === capacityProjectKey(project)
+    ? capacityReview
+    : null;
+  const acceptedCapacityClaim = matchingCapacityReview?.decision === "accepted" &&
+    matchingCapacityReview.acceptedClaim?.humanAccepted &&
+    capacityClaimCandidate?.findingId === matchingCapacityReview.acceptedFindingId
+      ? matchingCapacityReview.acceptedClaim
+      : null;
+  const illustrativeCapacityMW = project.kind === "custom"
+    ? matchingCapacityReview?.illustrativeCapacityMW ?? null
+    : null;
+  const capacityBinding = useMemo<CapacityBindingResult>(() => {
+    if (project.kind === "curated" && !project.canonicalDossier) {
+      return approvedScenarioBinding("default-stargate");
+    }
+    if (project.canonicalDossier) {
+      const approvedSlug = project.canonicalDossier.slug as keyof typeof APPROVED_DOSSIER_SCENARIOS;
+      if (Object.prototype.hasOwnProperty.call(APPROVED_DOSSIER_SCENARIOS, approvedSlug)) {
+        return approvedScenarioBinding(approvedSlug);
+      }
+    }
+    return bindCapacityAssumption({
+      claim: acceptedCapacityClaim ?? capacityClaimCandidate?.claim ?? null,
+      scenarioScope,
+      illustrativeCapacityMW: illustrativeCapacityMW ?? undefined,
+    });
+  }, [
+    acceptedCapacityClaim,
+    capacityClaimCandidate,
+    illustrativeCapacityMW,
+    project.canonicalDossier,
+    project.kind,
+    scenarioScope,
+  ]);
   const financialModeling = useMemo<FinancialModelingState>(() => {
-    if (
-      (project.kind === "curated" && !project.canonicalDossier) ||
-      project.canonicalDossier?.slug === "stargate-abilene"
-    ) {
+    if (capacityBinding.modelInput.capacityMW !== null) {
+      const isApprovedDossier = project.kind === "curated";
       return {
         status: "modeled",
-        label: "Audited Stargate synthetic project model",
-        reason: "The audited Stargate synthetic transaction contract is available for this case.",
+        label: isApprovedDossier
+          ? "Audited Stargate synthetic project model"
+          : "Capacity-based synthetic project model",
+        reason: isApprovedDossier
+          ? "The dossier is on the approved scenario list; the audited Stargate synthetic transaction contract is available for this case."
+          : capacityBinding.binding.reason,
         requiredInputs: [],
       };
     }
     const reason = project.canonicalDossier
-      ? "This reviewed dossier establishes project evidence and relationships, but it does not contain an approved transaction-level financial scenario."
-      : "Custom research remains model-neutral until validated project economics are explicitly reviewed and accepted.";
+      ? "This dossier is not on the approved financial scenario list; its disclosed capacity does not substitute for an approved model input."
+      : project.kind === "custom"
+        ? "Custom research remains not modeled until a qualified capacity claim is accepted or illustrative capacity is entered."
+        : capacityBinding.binding.reason;
     return {
       status: "not-modeled",
       label: "Not modeled",
@@ -560,7 +784,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         "Construction schedule, capital costs, and financing assumptions",
       ],
     };
-  }, [project.canonicalDossier?.slug, project.kind]);
+  }, [capacityBinding, project.canonicalDossier, project.kind]);
   const providerModelEvidence = useMemo(
     () => project.kind === "curated" && eiaData.dataOrigin === "provider"
       ? applyEiaEvidence(state.modelEvidence, eiaData)
@@ -573,9 +797,9 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       providerEvidence: providerModelEvidence as EvidenceRecord | null,
       eiaData,
       providerState,
-      capacityMW: project.capacityMW ?? DEFAULT_CAPACITY_MW,
+      capacityMW: capacityBinding.modelInput.capacityMW,
     }),
-    [eiaData, project.capacityMW, providerModelEvidence, providerState, state.modelEvidence],
+    [capacityBinding.modelInput.capacityMW, eiaData, providerModelEvidence, providerState, state.modelEvidence],
   );
 
   const financialInputState = useMemo<FinancialInputState>(() => {
@@ -621,22 +845,28 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     source: "manual" | "ai" = "manual",
     reviewKind: EvidenceReviewKind = source === "ai" ? "ai-accepted" : "manual",
   ) => {
-    if (project.canonicalDossier) return false;
     const currentState = stateRef.current;
     const previous = currentState.evidence[id]?.classification;
     if (!previous || !isClassification(classification)) return false;
     const classificationChanged = previous !== classification;
     if (!classificationChanged && reviewKind === "manual") return false;
-    const settledForFinancialCalculation = project.kind === "curated";
+    const modelCapacity = capacityBinding.modelInput.capacityMW;
+    const settledForFinancialCalculation = project.kind === "curated" && modelCapacity !== null;
 
     const previousIrr = classificationChanged && settledForFinancialCalculation
-      ? calculateCashFlowModel(currentState.modelEvidence as EvidenceRecord, project.capacityMW ?? DEFAULT_CAPACITY_MW).projectIRR
+      ? calculateCashFlowModel(currentState.modelEvidence as EvidenceRecord, modelCapacity).projectIRR
       : null;
     const nextEvidence = {
       ...currentState.evidence,
       [id]: {
         ...currentState.evidence[id],
         ...(classificationChanged ? { classification } : {}),
+        ...(project.canonicalDossier ? {
+          baselineClassification: currentState.canonicalBaseline?.[id]?.classification ?? currentState.evidence[id].baselineClassification,
+          sessionOverride: classificationChanged
+            ? classification !== (currentState.canonicalBaseline?.[id]?.classification ?? currentState.evidence[id].baselineClassification)
+            : currentState.evidence[id].sessionOverride,
+        } : {}),
         review: {
           kind: reviewKind,
           reviewedAt: new Date().toISOString(),
@@ -644,16 +874,37 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         },
       },
     };
+    const nextModelEvidence = project.kind === "custom"
+      ? currentState.modelEvidence
+      : classificationChanged
+        ? {
+            ...currentState.modelEvidence,
+            ...(currentState.modelEvidence[id]
+              ? {
+                  [id]: {
+                    ...currentState.modelEvidence[id],
+                    classification,
+                    ...(project.canonicalDossier ? {
+                      baselineClassification: currentState.canonicalBaseline?.[id]?.classification,
+                      sessionOverride: classification !== currentState.canonicalBaseline?.[id]?.classification,
+                    } : {}),
+                  },
+                }
+              : {}),
+          }
+        : currentState.modelEvidence;
     const nextIrr = classificationChanged && settledForFinancialCalculation
-      ? calculateCashFlowModel(
-        (project.kind === "custom" ? currentState.modelEvidence : nextEvidence) as EvidenceRecord,
-        project.capacityMW ?? DEFAULT_CAPACITY_MW,
-      ).projectIRR
+      ? calculateCashFlowModel(nextModelEvidence as EvidenceRecord, modelCapacity!).projectIRR
       : null;
     const nextState = {
       evidence: nextEvidence,
-      modelEvidence: project.kind === "custom" ? currentState.modelEvidence : nextEvidence,
-      hasChangedClassification: classificationChanged ? true : currentState.hasChangedClassification,
+      modelEvidence: nextModelEvidence,
+      canonicalBaseline: currentState.canonicalBaseline,
+      hasChangedClassification: project.canonicalDossier
+        ? Object.entries(nextEvidence).some(([evidenceId, item]) =>
+            item.classification !== currentState.canonicalBaseline?.[evidenceId]?.classification,
+          )
+        : classificationChanged ? true : currentState.hasChangedClassification,
       lastChange: classificationChanged && settledForFinancialCalculation
         ? {
           from: previousIrr ?? 0,
@@ -666,18 +917,31 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     setState(nextState);
     if (source === "manual" && classificationChanged) {
       recordManualClassificationChange(id, previous, classification);
+    } else if (source === "ai" && classificationChanged) {
+      recordAIDecision(
+        id,
+        classification,
+        project.canonicalDossier
+          ? "Accepted AI-proposed classification as a session override; the dossier baseline remains unchanged."
+          : "Accepted AI-proposed classification for this session.",
+        "accepted",
+        classification,
+      );
     }
-    if (project.kind === "curated") {
+    if (project.kind === "curated" || project.kind === "custom") {
       writeStorage(CURRENT_SESSION_STORAGE_KEY, createSessionPayload(
         nextEvidence,
         nextState.hasChangedClassification,
         nextState.modelEvidence,
         originatingCompany,
         selectedProjectContextRef.current,
+        project.kind === "custom" ? customResearchSnapshot(project, nextState) : undefined,
+        project.canonicalDossier ? createCanonicalReviewSnapshot(project, nextState) : undefined,
+        capacityReviewRef.current,
       ));
     }
     return true;
-  }, [originatingCompany, project]);
+  }, [capacityBinding.modelInput.capacityMW, originatingCompany, project]);
 
   const clearLastChange = useCallback(() => {
     const nextState = { ...stateRef.current, lastChange: null };
@@ -700,6 +964,9 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         currentState.modelEvidence,
         company,
         nextSelection,
+        undefined,
+        createCanonicalReviewSnapshot(project, currentState),
+        capacityReviewRef.current,
       ));
     }
   }, [project.kind]);
@@ -716,8 +983,11 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       currentState.modelEvidence,
       nextCompany,
       selection,
+      customResearchSnapshot(project, currentState),
+      createCanonicalReviewSnapshot(project, currentState),
+      capacityReviewRef.current,
     ));
-  }, [originatingCompany]);
+  }, [originatingCompany, project]);
 
   const applyEvidenceCorrection = useCallback((id: string, correction: EvidenceCorrection) => {
     if (project.kind !== "custom") return false;
@@ -813,6 +1083,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     const nextState = {
       evidence: nextEvidence,
       modelEvidence: nextModelEvidence,
+      canonicalBaseline: currentState.canonicalBaseline,
       hasChangedClassification: true,
       lastChange: null,
     };
@@ -882,6 +1153,8 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         researchProposalDispositions: dispositions,
         researchProposalOverrides: overrides,
       },
+      undefined,
+      capacityReviewRef.current,
     ));
   }, [originatingCompany, project]);
 
@@ -911,10 +1184,50 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   }, [communityReview, project]);
 
   const resetToDefault = useCallback((company: string | null = "Oracle") => {
+    const currentState = stateRef.current;
+    if (project.canonicalDossier && currentState.canonicalBaseline) {
+      const baselineEvidence = cloneEvidence(currentState.canonicalBaseline);
+      const nextState = {
+        evidence: withDossierReviewState(baselineEvidence),
+        modelEvidence: buildDossierModelEvidence(baselineEvidence),
+        canonicalBaseline: baselineEvidence,
+        hasChangedClassification: false,
+        lastChange: null as FinancialMetrics["lastChange"],
+      };
+      stateRef.current = nextState;
+      setState(nextState);
+      const nextCompany = selectedProjectContextRef.current?.company ??
+        originatingCompany ??
+        parseOriginatingCompany(company);
+      setOriginatingCompanyState(nextCompany);
+      const dossierCommunityProject: CommunityProjectInput = {
+        kind: "curated",
+        name: project.name,
+        location: project.location,
+      };
+      const nextCommunityReview = createCommunityReview(dossierCommunityProject);
+      setCommunityReview(nextCommunityReview);
+      writeCommunityReview(nextCommunityReview, dossierCommunityProject);
+      clearDecisionHistory();
+      clearSessionActions();
+      writeStorage(CURRENT_SESSION_STORAGE_KEY, createSessionPayload(
+        nextState.evidence,
+        false,
+        nextState.modelEvidence,
+        nextCompany,
+        selectedProjectContextRef.current,
+        undefined,
+        createCanonicalReviewSnapshot(project, nextState),
+        capacityReviewRef.current,
+      ));
+      return;
+    }
     const nextCompany = parseOriginatingCompany(company);
-    const nextState = { evidence: cloneEvidence(INITIAL_EVIDENCE), modelEvidence: cloneEvidence(INITIAL_EVIDENCE), hasChangedClassification: false, lastChange: null };
+    const nextState = { evidence: cloneEvidence(INITIAL_EVIDENCE), modelEvidence: cloneEvidence(INITIAL_EVIDENCE), canonicalBaseline: null, hasChangedClassification: false, lastChange: null };
     stateRef.current = nextState;
     setState(nextState);
+    capacityReviewRef.current = null;
+    setCapacityReview(null);
     setProject({
       kind: "curated",
       name: "Stargate Abilene",
@@ -957,7 +1270,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       nextCompany,
       nextSelection,
     ));
-  }, []);
+  }, [originatingCompany, project]);
 
   const loadCustomProject = useCallback((research: CustomResearchResponse, company: string | null = null, projectSelection?: ProjectSelectionContext | null) => {
     const researchById = new Map(research.evidence.map((item) => [item.id, item]));
@@ -1002,7 +1315,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         },
       ]),
     ) as Record<string, EvidenceItem>;
-    const nextState = { evidence: customEvidence, modelEvidence: containedModelEvidence, hasChangedClassification: false, lastChange: null as FinancialMetrics["lastChange"] };
+    const nextState = { evidence: customEvidence, modelEvidence: containedModelEvidence, canonicalBaseline: null, hasChangedClassification: false, lastChange: null as FinancialMetrics["lastChange"] };
     stateRef.current = nextState;
     setState(nextState);
     const researchProposals = Object.fromEntries(
@@ -1035,6 +1348,16 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       retainedFindingAudit: research.retainedFindingAudit,
       replay: research.replay,
     };
+    const nextCapacityReview: CapacityReviewState = {
+      projectKey: capacityProjectKey(nextProject),
+      decision: null,
+      acceptedFindingId: null,
+      acceptedClaim: null,
+      illustrativeCapacityMW: null,
+      trail: [],
+    };
+    capacityReviewRef.current = nextCapacityReview;
+    setCapacityReview(nextCapacityReview);
     setProject(nextProject);
     const customCommunityProject: CommunityProjectInput = {
       kind: "custom",
@@ -1067,6 +1390,8 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         researchProposalDispositions,
         researchProposalOverrides: {},
       },
+      undefined,
+      nextCapacityReview,
     ));
   }, []);
 
@@ -1074,6 +1399,12 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     dossier: CanonicalDossierSummary,
     selectedContext?: Partial<Pick<ProjectSelectionContext, "company" | "relationshipType">>,
   ) => {
+    const currentState = stateRef.current;
+    const currentDossierSnapshot = project.canonicalDossier?.slug === dossier.slug
+      ? createCanonicalReviewSnapshot(project, currentState)
+      : undefined;
+    const savedSnapshot = currentDossierSnapshot ??
+      (initialSession.canonicalReview?.slug === dossier.slug ? initialSession.canonicalReview : undefined);
     const currentSelection = selectedProjectContextRef.current;
     const selectedCompany = selectedContext?.company ?? originatingCompany ?? currentSelection?.company;
     const company = parseOriginatingCompany(selectedCompany) ??
@@ -1104,23 +1435,38 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         sourceId: null,
         providerSourceId: null,
         claimIds: [],
+        origin: "dossier" as const,
+        baselineClassification: item.classification,
+        sessionOverride: false,
       },
     ])) as Record<string, EvidenceItem>;
+    const baselineEvidence = savedSnapshot
+      ? cloneEvidence(savedSnapshot.baselineEvidence)
+      : canonicalEvidence;
+    const overrides = savedSnapshot?.overrides ?? {};
+    const evidence = withDossierReviewState(
+      baselineEvidence,
+      overrides,
+      savedSnapshot?.reviewMetadata ?? {},
+    );
     const nextState = {
-      evidence: canonicalEvidence,
-      modelEvidence: cloneEvidence(INITIAL_EVIDENCE),
-      hasChangedClassification: false,
+      evidence,
+      modelEvidence: buildDossierModelEvidence(baselineEvidence, overrides),
+      canonicalBaseline: baselineEvidence,
+      hasChangedClassification: Object.keys(overrides).length > 0,
       lastChange: null as FinancialMetrics["lastChange"],
     };
+    capacityReviewRef.current = null;
+    setCapacityReview(null);
     const nextProject: ProjectContext = {
       kind: "curated",
       name: dossier.name,
       location: dossier.canonicalData.identity.location,
       description: dossier.canonicalData.identity.scope,
-      capacityMW: dossier.canonicalData.identity.capacityMW ?? DEFAULT_CAPACITY_MW,
+      capacityMW: dossier.canonicalData.identity.capacityMW ?? null,
       capacityProvenance: dossier.canonicalData.identity.capacityMW
         ? "directory-reported"
-        : "standardized-default",
+        : "unknown",
       canonicalDossier: dossier,
       canonicalProvenance: research.canonicalProvenance,
     };
@@ -1137,21 +1483,28 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     });
     setCommunityReview(nextCommunityReview);
     writeCommunityReview(nextCommunityReview, nextProject);
-    clearDecisionHistory();
-    clearSessionActions();
+    if (savedSnapshot) {
+      restoreDecisionHistory(initialSession.decisionHistory ?? []);
+    } else {
+      clearDecisionHistory();
+      clearSessionActions();
+    }
     writeStorage(CURRENT_SESSION_STORAGE_KEY, createSessionPayload(
       nextState.evidence,
-      false,
+      nextState.hasChangedClassification,
       nextState.modelEvidence,
       company,
       selection,
+      undefined,
+      createCanonicalReviewSnapshot(nextProject, nextState),
     ));
-  }, [originatingCompany]);
+  }, [initialSession.canonicalReview, initialSession.decisionHistory, originatingCompany, project]);
 
   const saveScenario = (name: string): SaveScenarioResult => {
     const trimmedName = name.trim();
     if (!trimmedName) return { ok: false, reason: 'empty-name' };
     if (project.kind === "custom") return { ok: false, reason: 'custom-project' };
+    if (!financialScenarios.scenarios["synthetic-current"]) return { ok: false, reason: 'not-modeled' };
     if (scenarios.length >= 5) return { ok: false, reason: 'capacity' };
     if (scenarios.some((scenario) => scenario.name.toLowerCase() === trimmedName.toLowerCase())) {
       return { ok: false, reason: 'duplicate-name' };
@@ -1220,12 +1573,17 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   };
 
   const metrics = useMemo(
-    () => ({
-      ...financialScenarios.scenarios["synthetic-current"]!.model,
-      baseIRR: financialScenarios.scenarios["synthetic-verified"]!.returns.projectIRR,
-      baseModel: financialScenarios.scenarios["synthetic-verified"]!.model,
-      lastChange: state.lastChange,
-    }),
+    () => {
+      const current = financialScenarios.scenarios["synthetic-current"];
+      const baseline = financialScenarios.scenarios["synthetic-verified"];
+      if (!current) return unmodeledMetrics(state.lastChange);
+      return {
+        ...current.model,
+        baseIRR: baseline?.returns.projectIRR ?? null,
+        baseModel: baseline?.model ?? current.model,
+        lastChange: state.lastChange,
+      } as FinancialMetrics;
+    },
     [financialScenarios, state.lastChange],
   );
 
@@ -1288,9 +1646,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
           kind: project.kind,
           name: project.name,
           location: project.location,
-       // Custom projects remain Not modeled. This capacity is only the unchanged
-       // internal synthetic-matrix default required by the shared scenario type.
-       capacityMW: project.capacityMW ?? DEFAULT_CAPACITY_MW,
+          capacityMW: capacityBinding.modelInput.capacityMW as number,
           description: project.description,
         },
         originatingCompany,
@@ -1331,6 +1687,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     ercotQueue,
     financialInputState,
     financialScenarios,
+    capacityBinding,
     metrics,
     originatingCompany,
     project,
@@ -1340,9 +1697,71 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   ]);
 
   const communityUnresolvedCount = countUnresolvedCommunityTerms(communityReview.terms);
+  const persistCapacityReview = useCallback((nextReview: CapacityReviewState) => {
+    capacityReviewRef.current = nextReview;
+    setCapacityReview(nextReview);
+    const currentState = stateRef.current;
+    writeStorage(CURRENT_SESSION_STORAGE_KEY, createSessionPayload(
+      currentState.evidence,
+      currentState.hasChangedClassification,
+      currentState.modelEvidence,
+      originatingCompany,
+      selectedProjectContextRef.current,
+      customResearchSnapshot(project, currentState),
+      createCanonicalReviewSnapshot(project, currentState),
+      nextReview,
+    ));
+  }, [originatingCompany, project]);
+  const acceptCapacityClaim = useCallback(() => {
+    if (project.kind !== "custom" || !capacityClaimCandidate) return false;
+    const current = capacityReviewRef.current;
+    const reviewedAt = new Date().toISOString();
+    const nextReview = reviewCapacityClaim(
+      current,
+      capacityProjectKey(project),
+      capacityClaimCandidate,
+      "accepted",
+      reviewedAt,
+    );
+    logSessionAction("Capacity claim accepted", capacityClaimCandidate.findingId);
+    persistCapacityReview(nextReview);
+    return true;
+  }, [capacityClaimCandidate, persistCapacityReview, project]);
+  const rejectCapacityClaim = useCallback(() => {
+    if (project.kind !== "custom" || !capacityClaimCandidate) return false;
+    const current = capacityReviewRef.current;
+    const reviewedAt = new Date().toISOString();
+    const nextReview = reviewCapacityClaim(
+      current,
+      capacityProjectKey(project),
+      capacityClaimCandidate,
+      "rejected",
+      reviewedAt,
+    );
+    logSessionAction("Capacity claim rejected", capacityClaimCandidate.findingId);
+    persistCapacityReview(nextReview);
+    return true;
+  }, [capacityClaimCandidate, persistCapacityReview, project]);
+  const setIllustrativeCapacityMW = useCallback((valueOrNull: number | null) => {
+    if (
+      project.kind !== "custom" ||
+      (valueOrNull !== null && (!Number.isFinite(valueOrNull) || valueOrNull <= 0 || valueOrNull > CAPACITY_MW_MAX))
+    ) return false;
+    const current = capacityReviewRef.current;
+    const reviewedAt = new Date().toISOString();
+    const nextReview = reviewIllustrativeCapacity(
+      current,
+      capacityProjectKey(project),
+      valueOrNull,
+      reviewedAt,
+    );
+    logSessionAction(valueOrNull === null ? "Illustrative capacity cleared" : "Illustrative capacity set", project.name);
+    persistCapacityReview(nextReview);
+    return true;
+  }, [persistCapacityReview, project]);
 
   return (
-    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, researchEvidence: project.kind === "custom" ? state.evidence : effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, applyEvidenceCorrection, applyResearchProposalOverride, persistResearchReview, clearLastChange, metrics, financialInputState, financialScenarios, financialModeling, resetToDefault, setOriginatingCompany, setProjectSelection, loadCustomProject, loadCanonicalDossier, project, originatingCompany, selectedProjectContext, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading, downloadReturnDiscrepancyRecord, communityReview, communityUnresolvedCount, reviewCommunityTerm }}>
+    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, researchEvidence: project.kind === "custom" ? state.evidence : effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, applyEvidenceCorrection, applyResearchProposalOverride, persistResearchReview, clearLastChange, metrics, financialInputState, financialScenarios, financialModeling, resetToDefault, setOriginatingCompany, setProjectSelection, loadCustomProject, loadCanonicalDossier, project, originatingCompany, selectedProjectContext, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading, downloadReturnDiscrepancyRecord, communityReview, communityUnresolvedCount, reviewCommunityTerm, capacityClaimCandidate, acceptCapacityClaim, rejectCapacityClaim, illustrativeCapacityMW, setIllustrativeCapacityMW, capacityBinding, capacityExplanation: capacityBinding.explanation, capacityDecisionTrail: matchingCapacityReview?.trail ?? [] }}>
       {children}
     </DiligenceContext.Provider>
   );
@@ -1391,7 +1810,7 @@ function isFiniteNumber(value: unknown): value is number {
 
 export type SaveScenarioResult =
   | { ok: true; scenario: SavedScenario }
-  | { ok: false; reason: 'empty-name' | 'duplicate-name' | 'capacity' | 'custom-project' };
+  | { ok: false; reason: 'empty-name' | 'duplicate-name' | 'capacity' | 'custom-project' | 'not-modeled' };
 
 export type RenameScenarioResult =
   | { ok: true; scenario: SavedScenario }
@@ -1400,6 +1819,109 @@ function cloneEvidence(source: Record<string, EvidenceItem>) {
   return Object.fromEntries(
     Object.entries(source).map(([id, item]) => [id, { ...item }]),
   ) as Record<string, EvidenceItem>;
+}
+
+export function buildDossierModelEvidence(
+  dossierEvidence: Record<string, EvidenceItem>,
+  overrides: Record<string, Classification> = {},
+): Record<string, EvidenceItem> {
+  const modelEvidence = cloneEvidence(INITIAL_EVIDENCE);
+  for (const [id, dossierItem] of Object.entries(dossierEvidence)) {
+    const existing = modelEvidence[id];
+    if (!existing) continue;
+    modelEvidence[id] = {
+      ...existing,
+      classification: overrides[id] ?? dossierItem.classification,
+      baselineClassification: dossierItem.classification,
+      sessionOverride: (overrides[id] ?? dossierItem.classification) !== dossierItem.classification,
+      citation: dossierItem.citation,
+      description: dossierItem.description,
+      sourceUrl: dossierItem.sourceUrl,
+      sourceTitle: dossierItem.sourceTitle,
+      sourcePublisher: dossierItem.sourcePublisher,
+      sourcePublishedAt: dossierItem.sourcePublishedAt,
+      sourceAccessedAt: dossierItem.sourceAccessedAt,
+      sourceAccessStatus: dossierItem.sourceAccessStatus,
+      sourceRole: dossierItem.sourceRole,
+      sources: dossierItem.sources,
+      coverageStatus: dossierItem.coverageStatus,
+      conflictSummary: dossierItem.conflictSummary,
+      classificationReason: dossierItem.classificationReason,
+      sourceRelevanceNote: dossierItem.sourceRelevanceNote,
+      sourceRelevance: dossierItem.sourceRelevance,
+      origin: "dossier",
+    };
+  }
+  for (const [id, item] of Object.entries(modelEvidence)) {
+    if (item.origin !== "dossier") modelEvidence[id] = { ...item, origin: "synthetic-default" };
+  }
+  return modelEvidence;
+}
+
+function withDossierReviewState(
+  baseline: Record<string, EvidenceItem>,
+  overrides: Record<string, Classification> = {},
+  reviewMetadata: Record<string, EvidenceReview> = {},
+): Record<string, EvidenceItem> {
+  const evidence = cloneEvidence(baseline);
+  for (const [id, item] of Object.entries(evidence)) {
+    const baselineClassification = baseline[id].classification;
+    const classification = overrides[id] ?? baselineClassification;
+    evidence[id] = {
+      ...item,
+      classification,
+      baselineClassification,
+      sessionOverride: classification !== baselineClassification,
+      ...(reviewMetadata[id] ? { review: reviewMetadata[id] } : { review: undefined }),
+    };
+  }
+  return evidence;
+}
+
+function createCanonicalReviewSnapshot(
+  project: ProjectContext,
+  state: {
+    evidence: Record<string, EvidenceItem>;
+    canonicalBaseline: Record<string, EvidenceItem> | null;
+  },
+): PersistedCanonicalReview | undefined {
+  const baselineEvidence = state.canonicalBaseline;
+  const dossier = project.canonicalDossier;
+  if (!dossier || !baselineEvidence) return undefined;
+  const overrides = Object.fromEntries(
+    Object.entries(state.evidence)
+      .filter(([id, item]) => item.classification !== baselineEvidence[id]?.classification)
+      .map(([id, item]) => [id, item.classification]),
+  );
+  return {
+    slug: dossier.slug,
+    project: {
+      kind: "curated",
+      name: project.name,
+      location: project.location,
+      description: project.description,
+      capacityMW: project.capacityMW ?? null,
+      canonicalDossier: dossier,
+    },
+    baselineEvidence: cloneEvidence(baselineEvidence),
+    overrides,
+    reviewMetadata: getReviewMetadata(state.evidence),
+  };
+}
+
+function customResearchSnapshot(
+  project: ProjectContext,
+  state: { evidence: Record<string, EvidenceItem>; modelEvidence: Record<string, EvidenceItem> },
+): PersistedCustomResearch | undefined {
+  if (project.kind !== "custom") return undefined;
+  return {
+    project,
+    evidence: state.evidence,
+    modelEvidence: state.modelEvidence,
+    researchProposals: project.researchProposals ?? {},
+    researchProposalDispositions: project.researchProposalDispositions ?? {},
+    researchProposalOverrides: project.researchProposalOverrides ?? {},
+  };
 }
 
 function loadScenarios(): SavedScenario[] {
@@ -1570,6 +2092,8 @@ type SessionPayload = {
   originatingCompany?: CompanyKey | null;
   selectedProjectContext?: ProjectSelectionContext | null;
   customResearch?: PersistedCustomResearch;
+  canonicalReview?: PersistedCanonicalReview;
+  capacityReview?: CapacityReviewState | null;
 };
 
 type PersistedCustomResearch = {
@@ -1588,6 +2112,8 @@ function createSessionPayload(
   originatingCompany: CompanyKey | null = null,
   selectedProjectContext: ProjectSelectionContext | null = null,
   customResearch?: PersistedCustomResearch,
+  canonicalReview?: PersistedCanonicalReview,
+  capacityReview?: CapacityReviewState | null,
 ): SessionPayload {
   return {
     version: SESSION_STORAGE_VERSION,
@@ -1603,6 +2129,8 @@ function createSessionPayload(
     originatingCompany,
     selectedProjectContext,
     ...(customResearch ? { customResearch } : {}),
+    ...(canonicalReview ? { canonicalReview } : {}),
+    ...(capacityReview ? { capacityReview } : {}),
   };
 }
 
@@ -1709,6 +2237,166 @@ function parseClassificationOverrides(value: unknown): Record<string, Classifica
   return overrides as Record<string, Classification>;
 }
 
+function parseCanonicalReview(value: unknown): PersistedCanonicalReview | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  if (typeof candidate.slug !== "string" || !candidate.slug.trim()) return null;
+  if (!candidate.baselineEvidence || typeof candidate.baselineEvidence !== "object" || Array.isArray(candidate.baselineEvidence)) return null;
+  const rawBaseline = candidate.baselineEvidence as Record<string, unknown>;
+  const baselineEntries = Object.entries(rawBaseline);
+  if (
+    baselineEntries.length === 0 ||
+    baselineEntries.some(([id, item]) => (
+      !Object.prototype.hasOwnProperty.call(INITIAL_EVIDENCE, id) ||
+      !item ||
+      typeof item !== "object" ||
+      Array.isArray(item) ||
+      !isClassification((item as Partial<EvidenceItem>).classification) ||
+      (typeof (item as Partial<EvidenceItem>).value !== "string" && typeof (item as Partial<EvidenceItem>).value !== "number") ||
+      typeof (item as Partial<EvidenceItem>).unit !== "string"
+    ))
+  ) return null;
+  const baselineEvidence = Object.fromEntries(
+    baselineEntries.map(([id, item]) => [id, {
+      ...(item as EvidenceItem),
+      origin: "dossier" as const,
+      baselineClassification: (item as EvidenceItem).classification,
+      sessionOverride: false,
+    }]),
+  ) as Record<string, EvidenceItem>;
+  const rawOverrides = parseClassificationOverrides(candidate.overrides ?? {});
+  if (!rawOverrides || Object.keys(rawOverrides).some((id) => !baselineEvidence[id])) return null;
+  const reviewMetadata = parseReviewMetadata(candidate.reviewMetadata ?? {});
+  let project: PersistedCanonicalReview["project"];
+  if (candidate.project && typeof candidate.project === "object" && !Array.isArray(candidate.project)) {
+    const projectRecord = candidate.project as Record<string, unknown>;
+    const rawDossier = projectRecord.canonicalDossier;
+    if (
+      projectRecord.kind !== "curated" ||
+      typeof projectRecord.name !== "string" ||
+      typeof projectRecord.location !== "string" ||
+      typeof projectRecord.description !== "string" ||
+      (projectRecord.capacityMW !== null &&
+        (typeof projectRecord.capacityMW !== "number" || !Number.isFinite(projectRecord.capacityMW))) ||
+      !rawDossier ||
+      typeof rawDossier !== "object" ||
+      Array.isArray(rawDossier)
+    ) return null;
+    const dossier = rawDossier as Record<string, unknown>;
+    if (
+      dossier.slug !== candidate.slug ||
+      typeof dossier.name !== "string" ||
+      typeof dossier.version !== "string" ||
+      typeof dossier.coverageState !== "string" ||
+      (dossier.asOfDate !== null && typeof dossier.asOfDate !== "string") ||
+      !dossier.canonicalData ||
+      typeof dossier.canonicalData !== "object" ||
+      Array.isArray(dossier.canonicalData)
+    ) return null;
+    project = {
+      kind: "curated",
+      name: projectRecord.name,
+      location: projectRecord.location,
+      description: projectRecord.description,
+      capacityMW: projectRecord.capacityMW as number | null,
+      canonicalDossier: dossier as unknown as CanonicalDossierSummary,
+    };
+  }
+  return {
+    slug: candidate.slug,
+    project,
+    baselineEvidence,
+    overrides: rawOverrides,
+    reviewMetadata: Object.fromEntries(
+      Object.entries(reviewMetadata).filter(([id]) => Boolean(baselineEvidence[id])),
+    ),
+  };
+}
+
+function parseCapacityScope(value: unknown): CapacityScope | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  if (candidate.kind === "campus") {
+    return typeof candidate.campusId === "string" && candidate.campusId.length
+      ? { kind: "campus", campusId: candidate.campusId }
+      : { kind: "campus" };
+  }
+  if (candidate.kind === "phase" && typeof candidate.phaseId === "string" && Number.isInteger(candidate.buildingCount) && Number(candidate.buildingCount) > 0) {
+    return { kind: "phase", phaseId: candidate.phaseId, buildingCount: Number(candidate.buildingCount) };
+  }
+  if (candidate.kind === "building" && typeof candidate.buildingId === "string" && candidate.buildingId.length) {
+    return { kind: "building", buildingId: candidate.buildingId };
+  }
+  return null;
+}
+
+function parseCapacityClaim(value: unknown): CapacityClaim | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  const scope = parseCapacityScope(candidate.scope);
+  if (
+    !isFiniteNumber(candidate.value) ||
+    !["kW", "MW", "GW"].includes(String(candidate.unit)) ||
+    !["it-capacity", "utility-interconnection"].includes(String(candidate.powerMeasure)) ||
+    !scope ||
+    !["current", "superseded", "withdrawn"].includes(String(candidate.status)) ||
+    typeof candidate.sourceTitle !== "string" ||
+    typeof candidate.sourceUrl !== "string" ||
+    typeof candidate.sourceDate !== "string" ||
+    typeof candidate.humanAccepted !== "boolean"
+  ) return null;
+  return {
+    value: candidate.value,
+    unit: candidate.unit as CapacityClaim["unit"],
+    powerMeasure: candidate.powerMeasure as CapacityClaim["powerMeasure"],
+    scope,
+    status: candidate.status as CapacityClaim["status"],
+    sourceTitle: candidate.sourceTitle,
+    sourceUrl: candidate.sourceUrl,
+    sourceDate: candidate.sourceDate,
+    humanAccepted: candidate.humanAccepted,
+  };
+}
+
+function parseCapacityReview(value: unknown): CapacityReviewState | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  if (
+    typeof candidate.projectKey !== "string" ||
+    !candidate.projectKey ||
+    (candidate.decision !== null && candidate.decision !== "accepted" && candidate.decision !== "rejected") ||
+      (candidate.illustrativeCapacityMW !== null &&
+      (!isFiniteNumber(candidate.illustrativeCapacityMW) || candidate.illustrativeCapacityMW <= 0 || candidate.illustrativeCapacityMW > CAPACITY_MW_MAX)) ||
+    (candidate.acceptedFindingId !== null && typeof candidate.acceptedFindingId !== "string") ||
+    !Array.isArray(candidate.trail)
+  ) return null;
+  const acceptedClaim = candidate.acceptedClaim === null ? null : parseCapacityClaim(candidate.acceptedClaim);
+  if (candidate.acceptedClaim !== null && (!acceptedClaim || !acceptedClaim.humanAccepted)) return null;
+  const trail = candidate.trail.flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const entry = item as Record<string, unknown>;
+    if (
+      !["accepted", "rejected", "illustrative-set", "illustrative-cleared"].includes(String(entry.action)) ||
+      (entry.findingId !== null && typeof entry.findingId !== "string") ||
+      typeof entry.recordedAt !== "string" ||
+      !Number.isFinite(new Date(entry.recordedAt).getTime())
+    ) return [];
+    return [{
+      action: entry.action as CapacityReviewTrailEntry["action"],
+      findingId: entry.findingId as string | null,
+      recordedAt: entry.recordedAt,
+    }];
+  });
+  return {
+    projectKey: candidate.projectKey,
+    decision: candidate.decision as CapacityReviewState["decision"],
+    acceptedFindingId: candidate.acceptedFindingId as string | null,
+    acceptedClaim,
+    illustrativeCapacityMW: candidate.illustrativeCapacityMW as number | null,
+    trail,
+  };
+}
+
 function applyClassificationOverrides(
   overrides: Record<string, Classification>,
 ): Record<string, EvidenceItem> {
@@ -1807,12 +2495,47 @@ function parsePersistedCustomResearch(value: unknown): PersistedCustomResearch |
   };
 }
 
-function loadCurrentSession() {
+type LoadedSession = {
+  evidence: Record<string, EvidenceItem>;
+  modelEvidence: Record<string, EvidenceItem>;
+  canonicalBaseline: Record<string, EvidenceItem> | null;
+  hasChangedClassification: boolean;
+  originatingCompany: CompanyKey | null;
+  selectedProjectContext: ProjectSelectionContext | null;
+  customResearch: PersistedCustomResearch | null;
+  canonicalReview: PersistedCanonicalReview | null;
+  capacityReview: CapacityReviewState | null;
+  decisionHistory: DecisionHistoryEntry[];
+  project: ProjectContext | null;
+  restored: boolean;
+  migrated: boolean;
+};
+
+function emptyLoadedSession(overrides: Partial<LoadedSession> = {}): LoadedSession {
+  const evidence = cloneEvidence(INITIAL_EVIDENCE);
+  return {
+    evidence,
+    modelEvidence: cloneEvidence(evidence),
+    canonicalBaseline: null,
+    hasChangedClassification: false,
+    originatingCompany: null,
+    selectedProjectContext: null,
+    customResearch: null,
+    canonicalReview: null,
+    capacityReview: null,
+    decisionHistory: [],
+    project: null,
+    restored: false,
+    migrated: false,
+    ...overrides,
+  };
+}
+
+function loadCurrentSession(): LoadedSession {
   const raw = readStorage(CURRENT_SESSION_STORAGE_KEY);
   if (!raw) {
     restoreDecisionHistory([]);
-    const evidence = cloneEvidence(INITIAL_EVIDENCE);
-    return { evidence, modelEvidence: evidence, hasChangedClassification: false, originatingCompany: null, selectedProjectContext: null, customResearch: null, project: null, restored: false, migrated: false };
+    return emptyLoadedSession();
   }
 
   try {
@@ -1820,17 +2543,50 @@ function loadCurrentSession() {
     const parsedRecord = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
       ? parsed as Record<string, unknown>
       : null;
+    const canonicalReview = parseCanonicalReview(parsedRecord?.canonicalReview);
+    const capacityReview = parseCapacityReview(parsedRecord?.capacityReview);
+    const decisionHistory = parseDecisionHistory(parsedRecord?.decisionHistory);
     const persistedCustomResearch = parsedRecord ? parsePersistedCustomResearch(parsedRecord.customResearch) : null;
     if (persistedCustomResearch) {
-      restoreDecisionHistory(parseDecisionHistory(parsedRecord?.decisionHistory));
+      const projectCapacityReview = capacityReview?.projectKey === capacityProjectKey(persistedCustomResearch.project)
+        ? capacityReview
+        : null;
+      restoreDecisionHistory(decisionHistory);
       return {
         evidence: persistedCustomResearch.evidence,
         modelEvidence: persistedCustomResearch.modelEvidence,
+        canonicalBaseline: null,
         hasChangedClassification: true,
         originatingCompany: parseOriginatingCompany(parsedRecord?.originatingCompany),
         selectedProjectContext: parseProjectSelectionContext(parsedRecord?.selectedProjectContext),
         customResearch: persistedCustomResearch,
+        canonicalReview: null,
+        capacityReview: projectCapacityReview,
+        decisionHistory,
         project: persistedCustomResearch.project,
+        restored: true,
+        migrated: false,
+      };
+    }
+    if (canonicalReview?.project) {
+      const evidence = withDossierReviewState(
+        canonicalReview.baselineEvidence,
+        canonicalReview.overrides,
+        canonicalReview.reviewMetadata,
+      );
+      restoreDecisionHistory(decisionHistory);
+      return {
+        evidence,
+        modelEvidence: buildDossierModelEvidence(canonicalReview.baselineEvidence, canonicalReview.overrides),
+        canonicalBaseline: cloneEvidence(canonicalReview.baselineEvidence),
+        hasChangedClassification: Object.keys(canonicalReview.overrides).length > 0,
+        originatingCompany: parseOriginatingCompany(parsedRecord?.originatingCompany),
+        selectedProjectContext: parseProjectSelectionContext(parsedRecord?.selectedProjectContext),
+        customResearch: null,
+        canonicalReview,
+        capacityReview: null,
+        decisionHistory,
+        project: canonicalReview.project,
         restored: true,
         migrated: false,
       };
@@ -1840,8 +2596,15 @@ function loadCurrentSession() {
         ? (parsed as { classifications?: unknown }).classifications
         : parsed;
     if (!classifications || typeof classifications !== 'object' || Array.isArray(classifications)) {
-      const evidence = cloneEvidence(INITIAL_EVIDENCE);
-      return { evidence, modelEvidence: evidence, hasChangedClassification: false, originatingCompany: null, selectedProjectContext: null, customResearch: null, project: null, restored: false, migrated: false };
+      restoreDecisionHistory(decisionHistory);
+      return emptyLoadedSession({
+        canonicalReview,
+        capacityReview: null,
+        decisionHistory,
+        originatingCompany: parseOriginatingCompany(parsedRecord?.originatingCompany),
+        selectedProjectContext: parseProjectSelectionContext(parsedRecord?.selectedProjectContext),
+        restored: Boolean(canonicalReview),
+      });
     }
 
     const entries = Object.entries(classifications);
@@ -1851,13 +2614,20 @@ function loadCurrentSession() {
       expectedIds.some((id) => !Object.prototype.hasOwnProperty.call(classifications, id)) ||
       entries.some(([, value]) => !isClassification(value))
     ) {
-      const evidence = cloneEvidence(INITIAL_EVIDENCE);
-      return { evidence, modelEvidence: evidence, hasChangedClassification: false, originatingCompany: null, selectedProjectContext: null, customResearch: null, project: null, restored: false, migrated: false };
+      restoreDecisionHistory(decisionHistory);
+      return emptyLoadedSession({
+        canonicalReview,
+        capacityReview: null,
+        decisionHistory,
+        originatingCompany: parseOriginatingCompany(parsedRecord?.originatingCompany),
+        selectedProjectContext: parseProjectSelectionContext(parsedRecord?.selectedProjectContext),
+        restored: Boolean(canonicalReview),
+      });
     }
 
     const storedOverrides = parsedRecord ? parseClassificationOverrides(parsedRecord.overrides) : null;
     const storedReviewMetadata = parsedRecord ? parseReviewMetadata(parsedRecord.reviewMetadata) : {};
-    const storedDecisionHistory = parsedRecord ? parseDecisionHistory(parsedRecord.decisionHistory) : [];
+    const storedDecisionHistory = decisionHistory;
     restoreDecisionHistory(storedDecisionHistory);
     const isCurrentProvenance = parsedRecord?.canonicalProvenanceVersion === CURRENT_PROVENANCE_VERSION;
     let evidence: Record<string, EvidenceItem>;
@@ -1899,23 +2669,29 @@ function loadCurrentSession() {
         modelEvidence,
         parseOriginatingCompany(parsedRecord?.originatingCompany),
         parseProjectSelectionContext(parsedRecord?.selectedProjectContext),
+        undefined,
+        canonicalReview ?? undefined,
+        capacityReview,
       ));
     }
     return {
       evidence,
       modelEvidence,
+      canonicalBaseline: null,
       hasChangedClassification,
       originatingCompany: parseOriginatingCompany(parsedRecord?.originatingCompany),
       selectedProjectContext: parseProjectSelectionContext(parsedRecord?.selectedProjectContext),
       customResearch: null,
+      canonicalReview,
+      capacityReview: null,
+      decisionHistory,
       project: null,
       restored: true,
       migrated,
     };
   } catch {
     restoreDecisionHistory([]);
-    const evidence = cloneEvidence(INITIAL_EVIDENCE);
-    return { evidence, modelEvidence: evidence, hasChangedClassification: false, originatingCompany: null, selectedProjectContext: null, customResearch: null, project: null, restored: false, migrated: false };
+    return emptyLoadedSession();
   }
 }
 

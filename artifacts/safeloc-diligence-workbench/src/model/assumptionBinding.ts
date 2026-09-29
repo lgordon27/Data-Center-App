@@ -1,7 +1,9 @@
-/**
- * Positive capacity limits used by the financial model's capacityMW input.
- * Kept local so this standalone utility does not import or alter the cash-flow engine.
- */
+import {
+  MODEL_LEASE_RATE_PER_KW_MONTH,
+  MODEL_UTILIZATION_RAMP,
+} from "@/model/cashFlowEngine";
+
+/** Positive capacity limits used by the financial model's capacityMW input. */
 export const CAPACITY_MW_MAX = 10_000;
 
 export type CapacityUnit = "kW" | "MW" | "GW";
@@ -25,6 +27,31 @@ export type CapacityClaim = {
   humanAccepted: boolean;
 };
 
+export type CapacityClaimCandidateFinding = {
+  id: string;
+  assessment: "source-supported" | "attributed-report" | "ambiguous-unresolved";
+  applicability: "exact-project" | "ambiguous";
+  financialProposalEligibility: "eligible" | "ineligible" | "unresolved";
+  projectScope: string;
+  powerClaimState: "resolved" | "unresolved" | "not-present";
+  powerClaim: {
+    quantity: string;
+    measure: string;
+    status: "operating" | "planned" | "unknown";
+    phaseScope: string | null;
+    facilityScope: string | null;
+  } | null;
+  reportingDate: string | null;
+  accessedAt: string | null;
+  sourceTitle: string;
+  sourceUrl: string;
+};
+
+export type CapacityClaimCandidate = {
+  findingId: string;
+  claim: CapacityClaim;
+};
+
 export type CapacityRampTiming = {
   rampStartMonth: number;
   stabilizedAtMonth: number;
@@ -33,8 +60,6 @@ export type CapacityRampTiming = {
 export type CapacityAssumptionBindingInput = {
   claim?: CapacityClaim | null;
   scenarioScope: CapacityScope;
-  utilization?: number;
-  pricePerKwMonth?: number;
   rampTiming?: CapacityRampTiming;
   /** Analyst-supplied fraction converting utility interconnection MW to IT MW. */
   utilityToItFactor?: number;
@@ -44,7 +69,8 @@ export type CapacityAssumptionBindingInput = {
 
 export type CapacityProvenanceClassification =
   | "Sourced (source, date, accepted by user)"
-  | "Analyst assumption";
+  | "Analyst assumption"
+  | "Model constant";
 
 export type CapacityAssumptionExplanationItem = {
   input: string;
@@ -52,7 +78,7 @@ export type CapacityAssumptionExplanationItem = {
   detail: string;
 };
 
-export type CapacityBindingKind = "sourced" | "illustrative" | "unknown";
+export type CapacityBindingKind = "approved-scenario" | "sourced" | "illustrative" | "unknown";
 
 export type CapacityBindingResult = {
   /** `null` is intentional: callers must not substitute the engine's default capacity. */
@@ -102,6 +128,70 @@ function toMegawatts(value: number, unit: CapacityUnit): number {
 
 function isValidCapacityMW(value: number): boolean {
   return Number.isFinite(value) && value > 0 && value <= CAPACITY_MW_MAX;
+}
+
+function parseCapacityQuantity(quantity: string): { value: number; unit: CapacityUnit } | null {
+  const match = quantity.trim().match(/^(\d+(?:\.\d+)?)\s*(kW|MW|GW)$/i);
+  if (!match) return null;
+  const value = Number(match[1]);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  const unit = match[2].toUpperCase();
+  return { value, unit: unit === "KW" ? "kW" : unit === "GW" ? "GW" : "MW" };
+}
+
+function validHttpSource(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Qualify one unambiguous, resolved whole-project IT capacity finding.
+ * Other power measures and narrower or unclear scopes remain research-only.
+ */
+export function qualifyCapacityClaimCandidate(
+  findings: readonly CapacityClaimCandidateFinding[],
+  scenarioScope: CapacityScope,
+): CapacityClaimCandidate | null {
+  if (scenarioScope.kind !== "campus" || !scenarioScope.campusId) return null;
+  const candidates: CapacityClaimCandidate[] = [];
+  for (const finding of findings) {
+    if (
+      finding.assessment === "ambiguous-unresolved" ||
+      finding.applicability !== "exact-project" ||
+      finding.financialProposalEligibility !== "eligible" ||
+      finding.projectScope !== "Source passage identifies the submitted project name and requested location." ||
+      finding.powerClaimState !== "resolved" ||
+      !finding.powerClaim ||
+      finding.powerClaim.status === "unknown" ||
+      finding.powerClaim.phaseScope !== null ||
+      !["campus", "site", "facility", "project"].includes(finding.powerClaim.facilityScope ?? "") ||
+      !/\b(?:IT|information technology|computing)\s+(?:load|capacity)\b/i.test(finding.powerClaim.measure) ||
+      !finding.sourceTitle.trim() ||
+      !validHttpSource(finding.sourceUrl)
+    ) continue;
+
+    const quantity = parseCapacityQuantity(finding.powerClaim.quantity);
+    const sourceDate = finding.reportingDate ?? finding.accessedAt;
+    if (!quantity || !sourceDate || !/^\d{4}-\d{2}-\d{2}$/.test(sourceDate)) continue;
+    const claim: CapacityClaim = {
+      ...quantity,
+      powerMeasure: "it-capacity",
+      scope: { ...scenarioScope },
+      status: "current",
+      sourceTitle: finding.sourceTitle,
+      sourceUrl: finding.sourceUrl,
+      sourceDate,
+      humanAccepted: false,
+    };
+    if (scopesMatch(claim.scope, scenarioScope)) {
+      candidates.push({ findingId: finding.id, claim });
+    }
+  }
+  return candidates.length === 1 ? candidates[0] : null;
 }
 
 function resolveClaim(input: CapacityAssumptionBindingInput): ClaimResolution {
@@ -199,20 +289,16 @@ export function explainCapacityAssumptions(
     detail: formatScope(input.scenarioScope),
   });
 
-  if (input.utilization !== undefined) {
-    explanation.push({
-      input: "utilization",
-      classification: "Analyst assumption",
-      detail: `${input.utilization}`,
-    });
-  }
-  if (input.pricePerKwMonth !== undefined) {
-    explanation.push({
-      input: "price per kW-month",
-      classification: "Analyst assumption",
-      detail: `${input.pricePerKwMonth}`,
-    });
-  }
+  explanation.push({
+    input: "lease rate per kW-month",
+    classification: "Model constant",
+    detail: `${MODEL_LEASE_RATE_PER_KW_MONTH}`,
+  });
+  explanation.push({
+    input: "utilization ramp",
+    classification: "Model constant",
+    detail: MODEL_UTILIZATION_RAMP.join(", "),
+  });
   if (input.rampTiming !== undefined) {
     explanation.push({
       input: "ramp timing",

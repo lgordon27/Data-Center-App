@@ -34,6 +34,7 @@ export type EvidenceRecord = Record<
     value: string | number;
     classification: Classification;
      modelClassification?: Classification;
+     origin?: "dossier" | "synthetic-default";
     numericValue?: number;
     qualitativeValue?: QualitativeEvidenceValue;
     sourceSupportConfidence?: number;
@@ -323,8 +324,10 @@ export const DEFAULT_CAPACITY_MW = 1_200;
 export const MAX_CAPACITY_MW = 10_000;
 /** IRR is displayed to one decimal place; this is the maximum closure error in percentage points. */
 export const WATERFALL_RECONCILIATION_TOLERANCE = 0.05;
-const LEASE_RATE_PER_KW_MONTH = 185;
-const UTILIZATION_RAMP = [0.6, 0.8, 0.92, 0.92, 0.92];
+export const MODEL_LEASE_RATE_PER_KW_MONTH = 185;
+export const MODEL_UTILIZATION_RAMP = [0.6, 0.8, 0.92, 0.92, 0.92] as const;
+const LEASE_RATE_PER_KW_MONTH = MODEL_LEASE_RATE_PER_KW_MONTH;
+const UTILIZATION_RAMP = MODEL_UTILIZATION_RAMP;
 const HOURS_PER_YEAR = 8_760;
 const WATER_COST_PER_GALLON = 0.015;
 const MAINTENANCE_RATE = 0.045;
@@ -977,7 +980,7 @@ function runModel(
     capacityMW,
     leaseRatePerKwMonth: LEASE_RATE_PER_KW_MONTH,
     annualRevenueAtFullUtilization,
-    utilizationRamp: UTILIZATION_RAMP,
+    utilizationRamp: [...UTILIZATION_RAMP],
     electricityRate,
     electricityEscalationRate,
     annualCoolingWaterMgal,

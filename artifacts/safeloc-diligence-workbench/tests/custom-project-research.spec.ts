@@ -1063,7 +1063,7 @@ test.describe("custom project research", () => {
     await expect(page.getByTestId("custom-research-banner")).toHaveCount(0);
   });
 
-  test("contains a no-origin Research Incomplete project until scenario analysis is explicitly requested", async ({ page }) => {
+  test("keeps a no-origin Research Incomplete project unmodeled when capacity is unknown", async ({ page }) => {
     await page.goto("/");
     await openCustomProjectDialog(page);
     await page.getByTestId("input-custom-project-name").fill("Project Atlas");
@@ -1085,9 +1085,31 @@ test.describe("custom project research", () => {
 
     await page.getByTestId("button-opt-in-scenario").click();
     await expect(page.getByTestId("conference-view-transmission")).toBeVisible();
-    await expect(page.getByTestId("banner-mechanical-disclaimer")).toContainText(
-      /scenario mechanics|synthetic/i,
+    const notModeled = page.getByTestId("custom-project-not-modeled");
+    await expect(notModeled).toBeVisible();
+    await expect(notModeled).toContainText(
+      "Custom research remains not modeled until a qualified capacity claim is accepted or illustrative capacity is entered.",
     );
-    await expect(page.locator('[data-testid="financial-transmission-model"], [data-testid="financial-inputs-updating"]')).toBeVisible();
+    await expect(page.getByTestId("financial-transmission-model")).toHaveCount(0);
+
+    const captured = await page.evaluate(async () => {
+      const capture = (window as Window & {
+        __safelocCaptureReturnDiscrepancyState?: () => Promise<{
+          project: { capacityMW: number | null };
+          modelInputs: { assumptions: { capacityMW: number | null } };
+          financialScenarios: { scenarios: Record<string, unknown> };
+        }>;
+      }).__safelocCaptureReturnDiscrepancyState;
+      if (!capture) throw new Error("Return discrepancy capture hook is unavailable.");
+      return capture();
+    });
+    expect(captured.project.capacityMW).toBeNull();
+    expect(captured.modelInputs.assumptions.capacityMW).toBeNull();
+    expect(captured.financialScenarios.scenarios).toEqual({
+      "synthetic-verified": null,
+      "synthetic-current": null,
+      "eia-verified": null,
+      "eia-current": null,
+    });
   });
 });

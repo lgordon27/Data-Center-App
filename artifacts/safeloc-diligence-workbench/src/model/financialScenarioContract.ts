@@ -219,8 +219,22 @@ export function buildFinancialScenarioMatrix({
   providerEvidence: EvidenceRecord | null;
   eiaData: EiaElectricityData;
   providerState: FinancialProviderState;
-  capacityMW: number;
+  capacityMW: number | null;
 }): FinancialScenarioMatrix {
+  if (capacityMW === null || !Number.isFinite(capacityMW) || capacityMW <= 0) {
+    return {
+      modelContractVersion: FINANCIAL_MODEL_CONTRACT_VERSION,
+      primaryScenarioId: "synthetic-current",
+      providerState,
+      scenarios: {
+        "synthetic-verified": null,
+        "synthetic-current": null,
+        "eia-verified": null,
+        "eia-current": null,
+      },
+    };
+  }
+
   const synthetic = calculateCashFlowModel(syntheticEvidence, capacityMW);
   const syntheticVerifiedModel = synthetic.baseModel ?? synthetic;
   const syntheticVerified = snapshot({

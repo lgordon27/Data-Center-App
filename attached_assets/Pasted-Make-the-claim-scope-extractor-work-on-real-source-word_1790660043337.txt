@@ -1,0 +1,16 @@
+Make the claim scope extractor work on real source wording. Only edit src/data/claimScopeExtractor.mjs and src/data/claimScopeExtractor.test.mjs. If you need another file, stop and report. No paid calls. Do not deploy. Keep changes minimal; do not rename, reformat, or refactor code outside this task.
+
+Problem: on the real Red Oak source text, the extractor misses scope. Test with this exact full passage, containing both values:
+"DataBank's Red Oak campus is a 292-acre, eight-building hyperscale development located 20 miles south of Dallas in Red Oak, Texas. On April 21, 2026, DataBank closed a $2 billion construction loan to fund the first three buildings (DFW9, DFW10, and DFW11), which together total 600,000 square feet and 180 megawatts of power. The 292-acre site will eventually host eight buildings delivering 480 MW of total IT load."
+
+Required results from extractClaimScopeFromPassage, each run against the full passage:
+- 480 MW: "The 292-acre site will eventually host eight buildings delivering 480 MW of total IT load" describes the full build of the named site, so facilityScope "project", phaseScope "all-phases", phaseIdentity null, claimTimePeriod null.
+- 180 megawatts: "the first three buildings (DFW9, DFW10, and DFW11), which together total … 180 megawatts of power" is a bounded building group, so phaseScope "exact-phase", phaseIdentity with buildings DFW9, DFW10, DFW11 and count 3. claimTimePeriod "2026-04-21" is allowed only because the same sentence ties that date to those buildings; label it as a disclosure or event date, not an operating date.
+
+Rules:
+- Building or phase identity comes only from the same sentence as the claimed value. The DFW9–DFW11 IDs must never attach to the 480 MW claim or any other number in the passage.
+- Match real wording: "megawatts of power", "MW of IT load", "MW of total IT load", "MW of critical IT load", "MW of capacity", "gigawatt", numbers with or without commas or decimals, and value phrases separated from their scope words within the same sentence.
+- Keep: conflicting scope stays unknown; a phase figure is never labeled campus scope; a date is never borrowed from a sentence about a different claim.
+
+Also add these cases, each with the expected result stated in the test: "a 1.2-gigawatt campus" (project scope); "Phase 1 will deliver 200 MW" (exact-phase, Phase 1); "the first building, with 60 MW of critical IT load" (exact-phase, one building).
+Report test results.

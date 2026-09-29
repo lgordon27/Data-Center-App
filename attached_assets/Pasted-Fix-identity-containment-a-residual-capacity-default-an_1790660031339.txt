@@ -1,0 +1,27 @@
+Fix identity containment, a residual capacity default, and two failing browser tests. Only edit: src/data/researchClaimVerifier.mjs, src/data/researchIdentity.mjs, src/data/sourceValidationPolicy.mjs, src/services/researchProjectService.ts, src/services/canonicalDossierService.ts, the component that renders the proposal accept/override control, and the tests for these. Do not edit claimScopeExtractor.mjs, FinancialTransmission.tsx, FinancialMateriality.tsx, ProjectReality.tsx, AdvisorBrief.tsx, Shell.tsx, or any server file. If you need another file, stop and report. No paid calls. Do not deploy. Keep changes minimal; do not rename, reformat, or refactor code outside this task.
+
+1. Operator conflict bug. matchProject returns exact-project when an operator is supplied and the passage names a different developer, because assertedOperators only recognizes some attribution patterns (for example "developed by X") and misses subject-led forms. Requested "Red Oak Campus", operator DataBank, Red Oak, Ellis County, Texas:
+- "Compass Datacenters is developing the Red Oak Campus in Red Oak, Texas, a 300 MW project." → must be unrelated (currently exact-project)
+- "CyrusOne is building a Red Oak campus in Red Oak, Texas with 300 MW." → must be unrelated (currently exact-project)
+Rules:
+- When an operator is supplied and the passage attributes the project it describes to a different company as operator, developer, owner or builder (including subject-led forms such as "X is developing", "X is building", "X's campus", "X plans"), return unrelated.
+- When an operator is supplied and the passage names no operator at all, a generic name plus location is ambiguous, not exact-project.
+- Do not hard-code company names; detect the company named as the subject's operator or developer from the sentence.
+- Keep: the DataBank passage with operator DataBank → exact-project; the DataBank passage with operator Compass → unrelated.
+
+2. Identity only from retrieved text. In isSourceProjectSpecific, use only a physically retrieved passage: accessOutcome.state === "accessible" with a non-empty accessOutcome.passage. Never decide identity from source.excerpt, search snippets, or provider-written text. Provider relevance labels (exactProject, entityMatch, related-context) are advisory only: they can neither promote a source to exact-project nor override the retrieved-passage verdict. Do not restore related-context as a hard veto.
+
+3. In canonicalDossierService.ts (around line 214), a dossier with unknown capacity becomes 1,200 MW labeled "standardized-default". Change it so unknown capacity stays null with provenance "unknown". Keep a known dossier capacity as "directory-reported".
+
+4. Investigate the failing browser tests "Batch 5 handoff proposal count" and "Proposal-disposition acceptance control" (desktop and mobile). Find the cause and the commit that introduced it. If they expect the old identity behavior, update them to the new rules and explain each change. If the control is broken, fix it: a human must be able to accept or override every eligible pending proposal, and the decision must be recorded. Ineligible, ambiguous, context-only or quarantined findings must not receive any action that can move model evidence. Never weaken identity rules to pass a test.
+
+Tests:
+- Both conflict examples → unrelated.
+- A retrieved passage with the generic name and matching location but no operator attribution, when operator DataBank was supplied → ambiguous.
+- The existing DataBank and Compass cases unchanged.
+- A source with only a snippet or excerpt containing the full requested name and location, and no accessible retrieved passage → not project-specific.
+- Provider labels cannot promote or demote the retrieved-passage verdict.
+- A canonical dossier with unknown capacity → capacityMW null, provenance "unknown".
+- The two browser tests pass for the right reason; ineligible findings show no model-moving action.
+Run the full offline suite, TypeScript check, and full Playwright suite; list remaining failures, noting whether each fails on main.
+Report the cause of each failure, files changed, and test results.

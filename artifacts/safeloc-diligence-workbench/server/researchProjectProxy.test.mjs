@@ -386,6 +386,98 @@ test("reserves fifteen seconds between the server and browser deadlines", () => 
   assert.equal(RESEARCH_PROJECT_TIMEOUT_MS, 75_000);
 });
 
+test("retains a completed primary category result when its follow-up is cancelled at the deadline", async () => {
+  const deadlineState = { expired: false };
+  const controller = new AbortController();
+  const primaryResponseId = "resp_primary_retained";
+  const run = await orchestrateCategoryResearch(
+    { name: "Red Oak Campus", location: "Red Oak, Texas" },
+    {
+      categoryIds: ["grid"],
+      concurrent: false,
+      signal: controller.signal,
+      deadlineState,
+      budget: {
+        ...RESEARCH_RUN_BUDGET,
+        deadlineMs: 60_000,
+        maxProviderRequests: 4,
+        maxFollowUps: 1,
+        maxFollowUpsPerCategory: 1,
+      },
+      retrieveCategory: async ({ attempt }) => {
+        if (attempt === "primary") {
+          return {
+            providerRequestCount: 1,
+            providerAttempts: [{
+              provider: "openai",
+              model: "gpt-4o",
+              attemptType: "primary",
+              requestState: "completed",
+              outcome: "completed",
+              status: 200,
+              providerResponseId: primaryResponseId,
+              structuredResponseSummary: {
+                evidenceCount: 1,
+                nonMissingClassificationCount: 1,
+                sourceLinkedClaimCount: 1,
+                evidenceIds: ["grid_interconnection"],
+                identityAssessmentPresent: false,
+              },
+            }],
+            categoryResult: {
+              categoryId: "grid",
+              research: {
+                projectSummary: {
+                  name: "Red Oak Campus",
+                  location: "Red Oak, Texas",
+                  description: "Offline regression fixture.",
+                  capacityMW: null,
+                  capacityProvenance: "unknown",
+                },
+                evidence: [],
+              },
+              sources: [],
+              coverage: { providerResponseId: primaryResponseId },
+            },
+            candidates: [],
+            observedQueries: ["Red Oak Campus grid"],
+            resolvedEvidenceIds: [],
+            unresolvedEvidenceIds: ["grid_interconnection"],
+            gapDrivenFollowUp: true,
+            categoryResolved: false,
+            toolCallCount: 0,
+          };
+        }
+        deadlineState.expired = true;
+        const error = new Error("follow-up cancelled before issue");
+        error.name = "ResearchCancelledError";
+        error.researchErrorType = "timeout";
+        error.providerRequestCount = 1;
+        error.providerAttempts = [{
+          provider: "openai",
+          model: "gpt-4o",
+          attemptType: "follow-up",
+          requestState: "cancelled-before-issue",
+          outcome: "cancelled-before-issue",
+          status: null,
+          providerResponseId: null,
+        }];
+        throw error;
+      },
+    },
+  );
+
+  assert.equal(run.categoryResults.length, 1);
+  assert.equal(run.categoryResults[0].coverage.providerResponseId, primaryResponseId);
+  assert.equal(run.lastError, null, "an optional follow-up deadline must not erase a completed primary result");
+  assert.equal(run.categoryExecutions.grid.state, "No eligible evidence");
+  assert.equal(run.categoryExecutions.grid.followUpFailureType, "deadline");
+  assert.equal(run.categoryExecutions.grid.followUpSkipReason, "deadline");
+  assert.equal(run.categoryExecutions.grid.providerAttempts.length, 2);
+  assert.equal(run.categoryExecutions.grid.providerAttempts[0].providerResponseId, primaryResponseId);
+  assert.equal(run.categoryExecutions.grid.providerAttempts[1].requestState, "cancelled-before-issue");
+});
+
 test("schedules protected source opportunities before generic context and reuses failed canonical receipts", () => {
   const scheduler = createPhysicalOpenScheduler({ maxPhysicalOpens: 24 });
   assert.equal(PROTECTED_SOURCE_OPPORTUNITIES.length, 9);

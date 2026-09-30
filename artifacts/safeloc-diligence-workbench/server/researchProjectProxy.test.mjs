@@ -1340,6 +1340,134 @@ test("bounds category retrieval, allows one gap follow-up, and preserves provide
   assert.ok(calls.includes("grid:follow-up"));
 });
 
+test("retains HTTP 200 primary research when the deadline cancels a queued follow-up before issue", async () => {
+  const project = { name: "Project Atlas", location: "Taylor County, Texas" };
+  const grid = buildResearchCategoryPlan(project).categories.find((category) => category.categoryId === "grid");
+  const controller = new AbortController();
+  const deadlineState = { expired: false };
+  let gateCalls = 0;
+  let followUpQueued = false;
+  let fetchCalls = 0;
+  const providerGate = {
+    run(operation, { signal, onStart } = {}) {
+      gateCalls += 1;
+      if (gateCalls === 1) {
+        onStart?.();
+        return operation();
+      }
+      followUpQueued = true;
+      return new Promise((resolve, reject) => {
+        const cancelBeforeIssue = () => {
+          const error = new Error("The overall research deadline expired while the request was queued.");
+          error.name = "ResearchCancelledError";
+          error.researchErrorType = "cancelled";
+          reject(error);
+        };
+        if (signal?.aborted) cancelBeforeIssue();
+        else signal?.addEventListener("abort", cancelBeforeIssue, { once: true });
+      });
+    },
+  };
+  const fetchImpl = async () => {
+    fetchCalls += 1;
+    const body = await singleCallResponse(validResearchResponse()).json();
+    body.id = "resp_fixture_primary_grid";
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  const retainedSource = withRetrievedPassage(retrievedSource);
+  const orchestration = await orchestrateCategoryResearch(project, {
+    categoryIds: ["grid"],
+    signal: controller.signal,
+    deadlineState,
+    retrieveCategory: async ({ categoryId, query, attempt }) => {
+      const responsePromise = researchProjectWithWebSearch(
+        project,
+        "fixture-provider-token",
+        fetchImpl,
+        controller.signal,
+        {
+          categoryId,
+          evidenceIds: grid.evidenceIds,
+          query,
+          attempt,
+          maxToolCalls: 1,
+        },
+        providerGate,
+      );
+      if (attempt === "follow-up") {
+        await Promise.resolve();
+        assert.equal(followUpQueued, true, "the follow-up should enter the provider queue before the deadline");
+        deadlineState.expired = true;
+        controller.abort();
+        return responsePromise;
+      }
+      const response = await responsePromise;
+      return {
+        ...response,
+        categoryResult: {
+          categoryId,
+          research: response.research,
+          rawResearch: response.research,
+          sources: [retainedSource],
+          coverage: response.coverage,
+        },
+        candidates: [],
+        providerAttempts: [response.coverage.providerAttempt],
+        providerRequestCount: 1,
+        observedQueries: [query],
+        gapDrivenFollowUp: true,
+        unresolvedEvidenceIds: grid.evidenceIds,
+      };
+    },
+  });
+
+  assert.equal(fetchCalls, 1, "the cancelled queued follow-up must not issue an HTTP request");
+  assert.equal(orchestration.categoryResults.length, 1, "the successful primary result must survive orchestration");
+  assert.equal(orchestration.providerRequests, 1, "only the issued primary request counts as a provider request");
+  const execution = orchestration.categoryExecutions.grid;
+  assert.equal(execution.primaryAnalysisCompleted, true);
+  assert.equal(execution.followUpAttemptState, "cancelled-before-issue");
+  assert.equal(execution.followUpCancellationReason, "deadline");
+  assert.equal(execution.issuedFollowUpQuery, null);
+  assert.equal(execution.followUpCount, 0);
+
+  const mergedResearch = mergeCategoryResearchResults(project, orchestration.categoryResults);
+  assert.equal(mergedResearch.projectSummary.name, "Project Atlas");
+  const validatedResearch = parseResearchResponse(
+    mergedResearch,
+    [retainedSource],
+    "2026-09-30",
+    { categoryExecutions: orchestration.categoryExecutions },
+    null,
+  );
+  assert.ok(validatedResearch.evidence.some((item) => item.id === "grid_interconnection"));
+
+  const audit = buildResearchAudit({
+    project,
+    coverage: {
+      categoryExecutions: orchestration.categoryExecutions,
+      providerAttempts: execution.providerAttempts,
+      providerRequestCount: orchestration.providerRequests,
+      terminalReasonCodes: ["deadline"],
+      providerResponseIds: execution.providerAttempts.map((attempt) => attempt.providerResponseId),
+    },
+    sources: [retainedSource],
+    evidence: validatedResearch.evidence,
+  });
+  assert.deepEqual(audit.providerResponseIds, ["resp_fixture_primary_grid"]);
+  assert.equal(audit.providerRequestCount, 1);
+  assert.equal(audit.providerAttemptCount, 2);
+  assert.equal(audit.providerRequestBudget.issued, 1);
+  const gridAudit = audit.categories.find((category) => category.categoryId === "grid");
+  assert.equal(gridAudit.primaryAnalysisCompleted, true);
+  assert.equal(gridAudit.followUpAttemptState, "cancelled-before-issue");
+  assert.equal(gridAudit.followUpCancellationReason, "deadline");
+  assert.equal(gridAudit.followUpCount, 0);
+});
+
 test("counts zero-provider official discovery and candidate access under one physical-open budget", async () => {
   const research = validResearchResponse();
   for (const item of research.evidence) {

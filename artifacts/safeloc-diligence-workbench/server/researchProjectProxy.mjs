@@ -60,6 +60,8 @@ const RESEARCH_RUN_BUDGET = Object.freeze({
   maxToolCalls: RESEARCH_PROJECT_MAX_TOOL_CALLS,
   maxPhysicalDocumentOpens: 24,
 });
+const MAX_RESEARCH_PROVIDER_ATTEMPT_RECORDS = 64;
+const MAX_RESEARCH_PROVIDER_RESPONSE_IDS = RESEARCH_RUN_BUDGET.maxProviderRequests;
 export const PROTECTED_SOURCE_OPPORTUNITIES = Object.freeze([
   "exact-project-identity",
   "company-developer",
@@ -1287,6 +1289,126 @@ function sanitizeTransportText(value, maxLength = 240) {
     .slice(0, maxLength);
 }
 
+function normalizeProviderResponseId(value) {
+  if (typeof value !== "string") return null;
+  const normalized = sanitizeTransportText(value, 180);
+  return /^[A-Za-z0-9._-]{1,180}$/.test(normalized) ? normalized : null;
+}
+
+function structuredEvidenceRecords(research) {
+  const evidence = research?.evidence;
+  if (Array.isArray(evidence)) return evidence.filter(isRecord).slice(0, RESEARCH_EVIDENCE_IDS.length);
+  if (isRecord(evidence)) return Object.values(evidence).filter(isRecord).slice(0, RESEARCH_EVIDENCE_IDS.length);
+  return [];
+}
+
+function countStructuredResearchClaims(research) {
+  const unavailable = /^(?:not disclosed|not established|not available|unavailable|unknown|missing evidence|n\/a|none|null)[.!]?$/i;
+  return structuredEvidenceRecords(research).filter((item) => {
+    if (typeof item.numericValue === "number" && Number.isFinite(item.numericValue)) return true;
+    return [item.value, item.qualitativeValue].some((value) => (
+      (typeof value === "string" && value.trim().length > 0 && !unavailable.test(value.trim()))
+      || typeof value === "number" && Number.isFinite(value)
+      || typeof value === "boolean"
+    ));
+  }).length;
+}
+
+function createStructuredResponseDiagnostic(research, {
+  outcome = "validated",
+  validationErrorType = null,
+} = {}) {
+  const evidenceRecords = structuredEvidenceRecords(research);
+  const claimCount = countStructuredResearchClaims(research);
+  if (outcome === "unparseable" || outcome === "no-structured-output") {
+    return {
+      state: outcome,
+      evidenceRecordCount: null,
+      returnedClaimCount: null,
+      rejectedClaimCount: null,
+      validationErrorType: null,
+    };
+  }
+  const rejected = outcome === "rejected";
+  const receivedOnly = outcome === "received";
+  return {
+    state: rejected
+      ? claimCount > 0 ? "claims-rejected" : "zero-claims-rejected"
+      : receivedOnly
+        ? claimCount > 0 ? "claims-received" : "zero-claims-received"
+        : claimCount > 0 ? "claims-validated" : "zero-claims",
+    evidenceRecordCount: Math.min(RESEARCH_EVIDENCE_IDS.length, evidenceRecords.length),
+    returnedClaimCount: Math.min(RESEARCH_EVIDENCE_IDS.length, claimCount),
+    rejectedClaimCount: rejected ? Math.min(RESEARCH_EVIDENCE_IDS.length, claimCount) : 0,
+    validationErrorType: rejected && ["malformed-response", "claim-validation", "schema-validation"].includes(validationErrorType)
+      ? validationErrorType
+      : null,
+  };
+}
+
+function sanitizeStructuredResponseDiagnostic(diagnostic) {
+  if (!isRecord(diagnostic)) return null;
+  const state = [
+    "claims-validated",
+    "zero-claims",
+    "claims-received",
+    "zero-claims-received",
+    "claims-rejected",
+    "zero-claims-rejected",
+    "unparseable",
+    "no-structured-output",
+  ].includes(diagnostic.state) ? diagnostic.state : null;
+  if (!state) return null;
+  const boundedCount = (value) => Number.isInteger(value)
+    ? Math.min(RESEARCH_EVIDENCE_IDS.length, Math.max(0, value))
+    : null;
+  return {
+    state,
+    evidenceRecordCount: boundedCount(diagnostic.evidenceRecordCount),
+    returnedClaimCount: boundedCount(diagnostic.returnedClaimCount),
+    rejectedClaimCount: boundedCount(diagnostic.rejectedClaimCount),
+    validationErrorType: ["malformed-response", "claim-validation", "schema-validation"].includes(diagnostic.validationErrorType)
+      ? diagnostic.validationErrorType
+      : null,
+  };
+}
+
+function sanitizeProviderAttemptForAudit(attempt) {
+  if (!isRecord(attempt)) return attempt;
+  return {
+    ...attempt,
+    providerResponseId: normalizeProviderResponseId(attempt.providerResponseId),
+    ...(attempt.structuredResponseDiagnostic
+      ? { structuredResponseDiagnostic: sanitizeStructuredResponseDiagnostic(attempt.structuredResponseDiagnostic) }
+      : {}),
+    ...(attempt.cancellationReason
+      ? { cancellationReason: ["deadline", "requesting-client-cancelled"].includes(attempt.cancellationReason)
+        ? attempt.cancellationReason
+        : null }
+      : {}),
+  };
+}
+
+function collectProviderAttempts(error) {
+  const attempts = [
+    ...(Array.isArray(error?.providerAttempts) ? error.providerAttempts : []),
+    ...(isRecord(error?.providerAttempt) ? [error.providerAttempt] : []),
+    ...(Array.isArray(error?.coverage?.providerAttempts) ? error.coverage.providerAttempts : []),
+    ...(isRecord(error?.coverage?.providerAttempt) ? [error.coverage.providerAttempt] : []),
+    ...(Array.isArray(error?.categoryResult?.coverage?.providerAttempts)
+      ? error.categoryResult.coverage.providerAttempts
+      : []),
+    ...(isRecord(error?.categoryResult?.coverage?.providerAttempt)
+      ? [error.categoryResult.coverage.providerAttempt]
+      : []),
+  ];
+  return [...new Set(attempts)];
+}
+
+function issuedProviderAttemptCount(attempts) {
+  return attempts.filter((attempt) => typeof attempt?.issuedAt === "string" && attempt.issuedAt.length > 0).length;
+}
+
 function transportErrorDetails(error) {
   const cause = error?.cause;
   const safeCode = (value) => typeof value === "string" && /^[A-Za-z0-9_.-]{1,80}$/.test(value)
@@ -1928,8 +2050,13 @@ function buildResearchAudit({
   const executions = isRecord(coverage.categoryExecutions) ? coverage.categoryExecutions : {};
   const eligibilityReviews = buildClaimEligibilityReviews(evidence, sources);
   const providerAttempts = Array.isArray(coverage.providerAttempts)
-    ? coverage.providerAttempts.slice(0, RESEARCH_RUN_BUDGET.maxProviderRequests)
+    ? coverage.providerAttempts.slice(0, MAX_RESEARCH_PROVIDER_ATTEMPT_RECORDS).map(sanitizeProviderAttemptForAudit)
     : [];
+  const providerResponseIds = [...new Set([
+    ...(Array.isArray(coverage.providerResponseIds) ? coverage.providerResponseIds : []),
+    ...providerAttempts.map((attempt) => attempt?.providerResponseId),
+    responseId,
+  ].map(normalizeProviderResponseId).filter(Boolean))].slice(0, MAX_RESEARCH_PROVIDER_RESPONSE_IDS);
   const sourceAttemptRecords = [
     ...(Array.isArray(coverage.sourceAttemptRecords) ? coverage.sourceAttemptRecords : []),
     ...sources,
@@ -1956,7 +2083,7 @@ function buildResearchAudit({
       : null;
     const state = explicitFailureState ?? (
       counts.allEvidenceEligible ? "Complete"
-        : counts.claimMapped > 0 || counts.retainedCandidates > 0 ? "Partial"
+        : supplied.primaryAnalysisCompleted === true || counts.claimMapped > 0 || counts.retainedCandidates > 0 ? "Partial"
           : executedQueries.length || primaryWasIssued ? "No eligible evidence"
             : "Not searched"
     );
@@ -1980,6 +2107,16 @@ function buildResearchAudit({
       optionalFollowUpQuery: supplied.optionalFollowUpQuery ?? category.optionalFollowUpQuery,
       plannedFollowUpQuery: category.plannedFollowUpQuery,
       issuedFollowUpQuery: typeof supplied.issuedFollowUpQuery === "string" ? supplied.issuedFollowUpQuery : null,
+      followUpAttemptState: [
+        "queued",
+        "completed",
+        "failed",
+        "issued",
+        "cancelled-before-issue",
+      ].includes(supplied.followUpAttemptState) ? supplied.followUpAttemptState : null,
+      followUpCancellationReason: ["deadline", "requesting-client-cancelled"].includes(supplied.followUpCancellationReason)
+        ? supplied.followUpCancellationReason
+        : null,
       providerObservedFollowUpQueries: normalizeSearchTerms(supplied.providerObservedFollowUpQueries, 8),
       followUpExecutedQuery: typeof supplied.followUpExecutedQuery === "string" ? supplied.followUpExecutedQuery : null,
       followUpCount: Number.isInteger(supplied.followUpCount) ? Math.max(0, supplied.followUpCount) : (supplied.followUpExecutedQuery ? 1 : 0),
@@ -2012,8 +2149,11 @@ function buildResearchAudit({
       providerFailure: supplied.providerFailure ?? null,
       providerFailureType: supplied.providerFailureType ?? null,
       analysisState: supplied.analysisState ?? null,
+      primaryAnalysisCompleted: supplied.primaryAnalysisCompleted === true,
       providerRequestCount: counts.issuedProviderRequests,
-      providerAttempts: Array.isArray(supplied.providerAttempts) ? supplied.providerAttempts.slice(0, 3) : [],
+      providerAttempts: Array.isArray(supplied.providerAttempts)
+        ? supplied.providerAttempts.slice(0, 8).map(sanitizeProviderAttemptForAudit)
+        : [],
       sourceChannelTelemetry,
       noReturnCounts: {
         total: noReturnEntries.length,
@@ -2080,12 +2220,12 @@ function buildResearchAudit({
         model: coverage.discoveryModel ?? null,
       },
     },
-    providerResponseId: responseId ?? coverage.providerResponseIds?.[0] ?? null,
+    providerResponseId: providerResponseIds[0] ?? null,
     terminalState: coverage.terminalState ?? null,
     terminalReasonCodes: Array.isArray(coverage.terminalReasonCodes) ? coverage.terminalReasonCodes.slice(0, 16) : [],
     identityPhysicalOpenOpportunityReserved: coverage.identityPhysicalOpenOpportunityReserved === true,
     runCorrelationId,
-    providerResponseIds: Array.isArray(coverage.providerResponseIds) ? coverage.providerResponseIds.filter(Boolean).slice(0, 16) : [],
+    providerResponseIds,
     startedAt,
     deadlineAt: coverage.deadlineAt ?? null,
     finishedAt,
@@ -2094,13 +2234,16 @@ function buildResearchAudit({
     toolCallCount: Number.isInteger(coverage.toolCallCount)
       ? Math.min(RESEARCH_RUN_BUDGET.maxToolCalls, Math.max(0, coverage.toolCallCount))
       : 0,
-    providerRequestCount: Number.isInteger(coverage.providerRequestCount) ? coverage.providerRequestCount : 0,
+    providerRequestCount: Number.isInteger(coverage.providerRequestCount)
+      ? Math.min(RESEARCH_RUN_BUDGET.maxProviderRequests, Math.max(0, coverage.providerRequestCount))
+      : issuedProviderAttemptCount(providerAttempts),
+    providerAttemptCount: providerAttempts.length,
     providerAttempts,
     providerRequestBudget: {
       maximum: RESEARCH_RUN_BUDGET.maxProviderRequests,
       issued: Number.isInteger(coverage.providerRequestCount)
-        ? coverage.providerRequestCount
-        : providerAttempts.filter((attempt) => attempt?.issuedAt).length,
+        ? Math.min(RESEARCH_RUN_BUDGET.maxProviderRequests, Math.max(0, coverage.providerRequestCount))
+        : issuedProviderAttemptCount(providerAttempts),
       attempts: providerAttempts.map((attempt, index) => ({
         index: index + 1,
         provider: attempt?.provider ?? null,
@@ -2252,9 +2395,11 @@ async function orchestrateCategoryResearch(project, {
     const executedQueries = [];
     let categoryCandidates = [];
     let followUpWasRun = false;
+    let queuedFollowUpQuery = null;
     let primaryAdditionalRequestsAuthorized = 0;
     let state = "No eligible evidence";
     let providerFailure = null;
+    let cancellationToRethrow = null;
     const categoryResolvedEvidenceIds = new Set();
     const execution = {
       issuedPrimaryQuery: category.requestedPrimaryQuery,
@@ -2263,10 +2408,14 @@ async function orchestrateCategoryResearch(project, {
       providerObservedFollowUpQueries: [],
       followUpTriggerEvidenceIds: [],
       followUpSkipReason: null,
+      followUpAttemptState: null,
+      followUpCancellationReason: null,
       returnedDomains: [],
       openedDocuments: [],
       providerRequestCount: 0,
       providerFailureType: null,
+      primaryAnalysisCompleted: false,
+      followUpCount: 0,
       providerAttempts: [],
       discoveryAttempts: [],
       authorityRecords: [],
@@ -2296,12 +2445,15 @@ async function orchestrateCategoryResearch(project, {
       else providerRequests += Math.max(0, primaryRequestCost - 1 - primaryAdditionalRequestsAuthorized);
       execution.providerRequestCount += primaryRequestCost;
       if (primary?.analysisState) execution.analysisState = primary.analysisState;
-      execution.providerAttempts.push(...(Array.isArray(primary?.providerAttempts) ? primary.providerAttempts : []));
+      const primaryAttempts = collectProviderAttempts(primary);
+      execution.providerAttempts.push(...primaryAttempts);
+      execution.primaryAnalysisCompleted = primaryAttempts.some((attempt) =>
+        attempt?.requestState === "completed" || attempt?.outcome === "completed");
       execution.discoveryAttempts.push(...(Array.isArray(primary?.discoveryAttempts) ? primary.discoveryAttempts : []));
       execution.authorityRecords.push(...(Array.isArray(primary?.authorityRecords) ? primary.authorityRecords : []));
       execution.secConnectorAttempts.push(...(Array.isArray(primary?.secConnectorAttempts) ? primary.secConnectorAttempts : []));
       execution.sourceChannelTelemetry.push(...(Array.isArray(primary?.sourceChannelTelemetry) ? primary.sourceChannelTelemetry : []));
-      if (signal?.aborted) {
+      if (signal?.aborted && !deadlineState.expired) {
         const error = new Error("Project research was cancelled.");
         error.name = "ResearchCancelledError";
         error.researchErrorType = "cancelled";
@@ -2345,7 +2497,9 @@ async function orchestrateCategoryResearch(project, {
          && providerRequests < budget.maxProviderRequests
          && additionalRequestAvailable
         && !physicalOpenBudgetExceeded
-        && now() - startedAtMs < budget.deadlineMs) {
+         && !deadlineState.expired
+         && !signal?.aborted
+         && now() - startedAtMs < budget.deadlineMs) {
         followUps += 1;
         followUpWasRun = true;
         if (concurrent && !authorizeAdditionalRequest()) {
@@ -2360,10 +2514,11 @@ async function orchestrateCategoryResearch(project, {
         }
         providerRequests += 1;
         execution.providerRequestCount += 1;
-        execution.issuedFollowUpQuery = primary?.followUpQuery ?? category.optionalFollowUpQuery;
+        queuedFollowUpQuery = primary?.followUpQuery ?? category.optionalFollowUpQuery;
+        execution.followUpAttemptState = "queued";
         const followUp = await retrieveCategory({
           categoryId: category.categoryId,
-          query: execution.issuedFollowUpQuery,
+          query: queuedFollowUpQuery,
           attempt: "follow-up",
           remainingMs: Math.max(0, budget.deadlineMs - (now() - startedAtMs)),
           remainingToolCalls: Math.max(0, budget.maxToolCalls - toolCalls),
@@ -2373,12 +2528,15 @@ async function orchestrateCategoryResearch(project, {
            : 1;
         providerRequests += followUpRequestCost - 1;
         execution.providerRequestCount += followUpRequestCost - 1;
-        execution.providerAttempts.push(...(Array.isArray(followUp?.providerAttempts) ? followUp.providerAttempts : []));
+        const followUpAttempts = collectProviderAttempts(followUp);
+        execution.providerAttempts.push(...followUpAttempts);
+        execution.issuedFollowUpQuery = queuedFollowUpQuery;
+        execution.followUpAttemptState = "completed";
         execution.discoveryAttempts.push(...(Array.isArray(followUp?.discoveryAttempts) ? followUp.discoveryAttempts : []));
         execution.authorityRecords.push(...(Array.isArray(followUp?.authorityRecords) ? followUp.authorityRecords : []));
         execution.secConnectorAttempts.push(...(Array.isArray(followUp?.secConnectorAttempts) ? followUp.secConnectorAttempts : []));
         execution.sourceChannelTelemetry.push(...(Array.isArray(followUp?.sourceChannelTelemetry) ? followUp.sourceChannelTelemetry : []));
-        if (signal?.aborted) {
+        if (signal?.aborted && !deadlineState.expired) {
           const error = new Error("Project research was cancelled.");
           error.name = "ResearchCancelledError";
           error.researchErrorType = "cancelled";
@@ -2399,6 +2557,7 @@ async function orchestrateCategoryResearch(project, {
           followUpExecutedQuery: followUpObservedQueries[0] ?? null,
           followUpCount: 1,
         };
+        execution.followUpCount = 1;
         execution.returnedDomains = categoryReturnedDomains(categoryCandidates);
         execution.openedDocuments = categoryOpenedDocuments(categoryCandidates);
         execution.accessLimitations = [...new Set(categoryCandidates.flatMap((source) => source.accessOutcome?.extractionLimitations ?? []))].slice(0, 8);
@@ -2408,7 +2567,9 @@ async function orchestrateCategoryResearch(project, {
         });
         execution.followUpSkipReason = followUp?.categoryResolved === true ? null : "category-follow-up-limit";
       } else {
-          execution.followUpSkipReason = physicalOpenBudgetExceeded
+          execution.followUpSkipReason = deadlineState.expired || now() - startedAtMs >= budget.deadlineMs
+            ? "deadline"
+            : physicalOpenBudgetExceeded
             ? "physical-open-budget"
             : globalEarlyStop
           ? "early-stop"
@@ -2416,9 +2577,7 @@ async function orchestrateCategoryResearch(project, {
             ? "evidence-resolved"
             : toolCalls >= budget.maxToolCalls || primary?.toolCallBudgetExceeded
               ? "tool-call-budget"
-              : now() - startedAtMs >= budget.deadlineMs
-                ? "deadline"
-                : providerRequests >= budget.maxProviderRequests
+              : providerRequests >= budget.maxProviderRequests
                   ? "provider-request-budget"
                   : followUps >= budget.maxFollowUps
                     ? "provider-request-budget"
@@ -2435,32 +2594,78 @@ async function orchestrateCategoryResearch(project, {
            ? "Complete"
            : categoryCandidates.length ? "Partial" : "No eligible evidence";
        }
+       if (execution.primaryAnalysisCompleted && !primaryCategoryResolved && deadlineState.expired) {
+         state = "Partial";
+       }
     } catch (error) {
-      if ((signal?.aborted && !deadlineState.expired) || (error?.name === "ResearchCancelledError" && !deadlineState.expired)) throw error;
-      if (Number.isInteger(error?.providerRequestCount)) {
-        const alreadyCounted = followUpWasRun
-          ? 1
-          : concurrent ? 0 : 1 + primaryAdditionalRequestsAuthorized;
-        const cost = Math.max(1, error.providerRequestCount);
-        providerRequests += Math.max(0, cost - alreadyCounted);
-        execution.providerRequestCount += followUpWasRun ? Math.max(0, cost - 1) : cost;
-      } else if (concurrent && execution.providerRequestCount === 0) {
-        // A rejected prefetched primary still consumed one provider opportunity
-        // even when the adapter could not attach structured cost telemetry.
-        providerRequests += 1;
-        execution.providerRequestCount = 1;
+      const errorAttempts = collectProviderAttempts(error);
+      const cancellationError = error?.name === "ResearchCancelledError"
+        || error?.name === "AbortError"
+        || error?.researchErrorType === "cancelled";
+      const deadlineCancellation = cancellationError && deadlineState.expired;
+      const clientCancellation = cancellationError && signal?.aborted && !deadlineState.expired;
+      const actualRequestCost = errorAttempts.length
+        ? issuedProviderAttemptCount(errorAttempts)
+        : Number.isInteger(error?.providerRequestCount)
+          ? Math.max(0, error.providerRequestCount)
+          : (followUpWasRun ? 1 : 1 + primaryAdditionalRequestsAuthorized);
+      const reservedProviderRequests = (followUpWasRun ? 1 : concurrent ? 0 : 1)
+        + primaryAdditionalRequestsAuthorized;
+      providerRequests = Math.max(0, providerRequests + actualRequestCost - reservedProviderRequests);
+      execution.providerRequestCount = Math.max(
+        0,
+        execution.providerRequestCount - (followUpWasRun ? 1 : 0) + actualRequestCost,
+      );
+      for (const attempt of errorAttempts) {
+        if (deadlineCancellation && String(attempt?.requestState ?? "").startsWith("cancelled")) {
+          attempt.failureClassification = "timeout";
+          attempt.cancellationReason = "deadline";
+        } else if (clientCancellation && String(attempt?.requestState ?? "").startsWith("cancelled")) {
+          attempt.cancellationReason = "requesting-client-cancelled";
+        }
+        if (!execution.providerAttempts.includes(attempt)) execution.providerAttempts.push(attempt);
+      }
+      if (followUpWasRun) {
+        const followUpAttempt = [...errorAttempts].reverse().find((attempt) =>
+          attempt?.attemptType === "follow-up" || !attempt?.attemptType);
+        const followUpWasIssued = errorAttempts.some((attempt) =>
+          (attempt?.attemptType === "follow-up" || !attempt?.attemptType)
+          && typeof attempt?.issuedAt === "string"
+          && attempt.issuedAt.length > 0);
+        execution.followUpCount = followUpWasIssued ? 1 : 0;
+        if (!followUpWasIssued) followUps = Math.max(0, followUps - 1);
+        execution.issuedFollowUpQuery = followUpWasIssued ? queuedFollowUpQuery : null;
+        execution.followUpAttemptState = followUpAttempt?.requestState
+          ?? (followUpWasIssued ? "failed" : "cancelled-before-issue");
+        if (execution.followUpAttemptState === "cancelled-before-issue") {
+          execution.followUpCancellationReason = deadlineCancellation
+            ? "deadline"
+            : clientCancellation ? "requesting-client-cancelled" : null;
+        }
+      }
+      if (deadlineCancellation) {
+        error.researchErrorType = "deadline";
+        error.deadlineExpired = true;
       }
       lastError = error;
       const failure = classifyResearchFailure(error);
       execution.providerFailureType = failure.type === "timeout" ? "deadline" : failure.type;
-      execution.providerAttempts.push(...(Array.isArray(error?.providerAttempts) ? error.providerAttempts : []));
       providerFailure = failure.type === "timeout" ? null : failure.message;
-      state = categoryCandidates.length
+      state = execution.primaryAnalysisCompleted && followUpWasRun
         ? "Partial"
-        : failure.type === "timeout" ? "Timed out" : "Provider failure";
+        : categoryCandidates.length
+          ? "Partial"
+          : failure.type === "timeout" ? "Timed out" : "Provider failure";
       execution.followUpSkipReason = error?.retrySkippedForDeadline
         ? "provider-429-deadline"
-        : error?.name === "AbortError" ? "deadline" : "provider-failure";
+        : deadlineCancellation || failure.type === "timeout"
+          ? "deadline"
+          : failure.type === "provider-request-budget"
+            ? "provider-request-budget"
+            : clientCancellation
+              ? "requesting-client-cancelled"
+              : "provider-failure";
+      if (clientCancellation) cancellationToRethrow = error;
       if (error?.retrySkippedForDeadline) execution.analysisState = "not-analyzed-429";
     }
     categoryExecutions[category.categoryId] = {
@@ -2471,6 +2676,11 @@ async function orchestrateCategoryResearch(project, {
       providerFailure,
       unresolvedGaps: category.evidenceIds.filter((id) => !categoryResolvedEvidenceIds.has(id)),
     };
+    if (cancellationToRethrow) {
+      cancellationToRethrow.partialCategoryResults = categoryResults;
+      cancellationToRethrow.partialCategoryExecutions = categoryExecutions;
+      throw cancellationToRethrow;
+    }
     if (concurrent && category.categoryId === "project-identity") {
       prefetchPrimaryCategories(categories.filter((candidate) => candidate.categoryId !== "project-identity"));
     }
@@ -4191,17 +4401,22 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
     const parseError = new Error("Project research provider returned invalid JSON.");
     parseError.name = "ResearchParseError";
     const finishedAtMs = Date.now();
+    const structuredResponseDiagnostic = createStructuredResponseDiagnostic(null, { outcome: "unparseable" });
     Object.assign(providerAttempt, {
       requestState: "failed",
       finishedAt: new Date(finishedAtMs).toISOString(),
       elapsedMs: issuedAtMs === null ? null : Math.max(0, finishedAtMs - issuedAtMs),
       status: response.status,
       outcome: "failed",
+      structuredResponseDiagnostic,
     });
+    parseError.structuredResponseDiagnostic = structuredResponseDiagnostic;
     parseError.providerAttempt = providerAttempt;
     throw parseError;
   }
   const content = extractResponseOutputText(body);
+  const providerResponseId = normalizeProviderResponseId(body?.id);
+  providerAttempt.providerResponseId = providerResponseId;
   if (!content) {
     const parseError = new Error("Project research provider returned no JSON output.");
     parseError.name = "ResearchParseError";
@@ -4213,6 +4428,7 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
       status: response.status,
       outcome: "failed",
       usage: normalizeProviderUsage(body.usage),
+      structuredResponseDiagnostic: createStructuredResponseDiagnostic(null, { outcome: "no-structured-output" }),
     });
     parseError.providerAttempt = providerAttempt;
     throw parseError;
@@ -4225,7 +4441,7 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
     parseError.message = "Project research provider returned malformed result JSON.";
     parseError.name = "ResearchParseError";
     parseError.finishReason = providerFinishReason(body);
-    parseError.providerResponseId = typeof body.id === "string" ? body.id : null;
+    parseError.providerResponseId = providerResponseId;
     parseError.toolCallCount = countWebSearchCalls(body);
     const finishedAtMs = Date.now();
     Object.assign(providerAttempt, {
@@ -4235,6 +4451,7 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
       status: response.status,
       outcome: "failed",
       usage: normalizeProviderUsage(body.usage),
+      structuredResponseDiagnostic: createStructuredResponseDiagnostic(null, { outcome: "unparseable" }),
     });
     parseError.providerAttempt = providerAttempt;
     logProviderDiagnostic(parseError, {
@@ -4243,6 +4460,7 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
     });
     throw parseError;
   }
+  providerAttempt.structuredResponseDiagnostic = createStructuredResponseDiagnostic(research, { outcome: "received" });
   if (identityOnly) {
     research = {
       projectSummary: research.projectSummary,
@@ -4302,7 +4520,7 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
       model: RESEARCH_PROJECT_MODEL,
       webSearchEnabled,
       googleGroundedSourceCount: categoryGroundedSources.length,
-      providerResponseId: typeof body.id === "string" ? body.id : null,
+      providerResponseId,
       activeCategoryId: activeCategory?.categoryId ?? null,
       executedQuery: activeCategory?.query ?? null,
       startedAt,
@@ -4373,6 +4591,15 @@ function classifyResearchFailure(error) {
       status: 503,
       type: "audit-storage",
       message: "Research audit storage is unavailable. No research provider request was issued.",
+    };
+  }
+  if (error?.name === "ResearchDeadlineError" || error?.researchErrorType === "deadline") {
+    return {
+      status: 504,
+      type: "timeout",
+      message: "Project research reached the overall run deadline; completed findings were retained.",
+      ...(error?.providerDiagnostic ? { providerDiagnostic: error.providerDiagnostic } : {}),
+      ...(Array.isArray(error?.providerAttempts) ? { providerAttempts: error.providerAttempts } : {}),
     };
   }
   if (error?.name === "ResearchCancelledError" || error?.researchErrorType === "cancelled") {
@@ -4612,14 +4839,24 @@ function classifyCanonicalResearchOutcome(eligibleEvidenceCount, technicalReason
 function technicalReasonCodesForRun({ orchestration, deadlineState }) {
   const reasons = new Set();
   if (deadlineState.expired) reasons.add("deadline");
-  if (orchestration.lastError) reasons.add(classifyResearchFailure(orchestration.lastError).type);
+  if (orchestration.lastError) {
+    const failureType = classifyResearchFailure(orchestration.lastError).type;
+    reasons.add(failureType === "timeout"
+      ? "deadline"
+      : failureType === "cancelled" ? "requesting-client-cancelled" : failureType);
+  }
   if (orchestration.toolCallBudgetExceeded) reasons.add("tool-call-budget");
   if (orchestration.physicalOpenBudgetExceeded) reasons.add("physical-open-budget");
   for (const execution of Object.values(orchestration.categoryExecutions)) {
     if (execution?.state === "Provider failure") reasons.add(execution.providerFailureType || "provider-failure");
+    if (execution?.providerFailureType) {
+      reasons.add(execution.providerFailureType === "timeout"
+        ? "deadline"
+        : execution.providerFailureType === "cancelled" ? "requesting-client-cancelled" : execution.providerFailureType);
+    }
     if (execution?.state === "Timed out") reasons.add("deadline");
     if (execution?.state === "Not searched") reasons.add(execution.followUpSkipReason || "required-discovery-not-searched");
-    if (["physical-open-budget", "tool-call-budget", "provider-request-budget", "deadline", "provider-failure"].includes(execution?.followUpSkipReason)) {
+    if (["physical-open-budget", "tool-call-budget", "provider-request-budget", "deadline", "provider-failure", "requesting-client-cancelled"].includes(execution?.followUpSkipReason)) {
       reasons.add(execution.followUpSkipReason);
     }
   }
@@ -5238,6 +5475,19 @@ async function runValidatedResearch(project, {
           }
         };
         const validateCategoryResult = (result) => {
+          const providerAttemptsForResult = [
+            ...(Array.isArray(result.coverage?.providerAttempts) ? result.coverage.providerAttempts : []),
+            ...(isRecord(result.coverage?.providerAttempt) ? [result.coverage.providerAttempt] : []),
+          ];
+          const setStructuredDiagnostic = (outcome, validationErrorType = null) => {
+            const diagnostic = createStructuredResponseDiagnostic(result.research, {
+              outcome,
+              validationErrorType,
+            });
+            for (const providerAttempt of providerAttemptsForResult) {
+              if (isRecord(providerAttempt)) providerAttempt.structuredResponseDiagnostic = diagnostic;
+            }
+          };
           try {
             parseResearchResponse(
               result.research,
@@ -5247,11 +5497,13 @@ async function runValidatedResearch(project, {
               project.knownData ?? null,
               category?.evidenceIds ?? [],
             );
+            setStructuredDiagnostic("validated");
           } catch (error) {
             if (error instanceof Error) {
               error.name = "ResearchParseError";
               error.researchErrorType = "malformed-response";
             }
+            setStructuredDiagnostic("rejected", "malformed-response");
             throw error;
           }
         };
@@ -5738,17 +5990,47 @@ async function runValidatedResearch(project, {
       ? mergeCategoryResearchResults(project, orchestration.categoryResults)
       : createPartialResearchBody(project);
     if (!mergedResearch) throw new Error("Category research did not return a complete structured response.");
+    const categoryExecutions = Object.values(orchestration.categoryExecutions);
     const categoryFailureObserved = orchestration.lastError
-      || Object.values(orchestration.categoryExecutions).some((execution) =>
-        ["Provider failure", "Timed out"].includes(execution?.state));
+      || categoryExecutions.some((execution) =>
+        ["Provider failure", "Timed out"].includes(execution?.state)
+        || Boolean(execution?.providerFailureType));
+    const deadlineCancelledOptionalFollowUp = categoryExecutions.some((execution) =>
+      execution?.followUpCancellationReason === "deadline");
+    const clientCancelledOptionalFollowUp = categoryExecutions.some((execution) =>
+      execution?.followUpCancellationReason === "requesting-client-cancelled");
+    const optionalFollowUpFailureAfterPrimary = categoryExecutions.some((execution) =>
+      execution?.primaryAnalysisCompleted === true
+      && execution?.followUpAttemptState === "failed");
     const technicalReasonCodes = technicalReasonCodesForRun({ orchestration, deadlineState });
     const terminalState = technicalReasonCodes.length
       ? RESEARCH_OUTCOMES.TECHNICAL
       : RESEARCH_OUTCOMES.NO_ELIGIBLE;
     const researchStatus = terminalState === RESEARCH_OUTCOMES.TECHNICAL ? "partial" : "completed";
+    const providerAttemptsForRun = [...new Set([
+      ...(googleDiscovery.providerAttempt ? [googleDiscovery.providerAttempt] : []),
+      ...analysisTracker.attempts,
+      ...Object.values(orchestration.categoryExecutions).flatMap((execution) => execution?.providerAttempts ?? []),
+    ])].slice(0, MAX_RESEARCH_PROVIDER_ATTEMPT_RECORDS);
+    const providerResponseIds = [...new Set([
+      ...orchestration.categoryResults.map((category) => category.coverage?.providerResponseId),
+      ...providerAttemptsForRun.map((attempt) => attempt?.providerResponseId),
+    ].map(normalizeProviderResponseId).filter(Boolean))].slice(0, MAX_RESEARCH_PROVIDER_RESPONSE_IDS);
     const providerLimitations = [
       ...orchestration.categoryResults.flatMap((category) => category.coverage?.providerLimitations ?? []),
-       ...(categoryFailureObserved
+      ...(deadlineCancelledOptionalFollowUp
+        ? ["The overall run deadline cancelled an optional follow-up before it was issued; the completed primary result was retained."]
+        : []),
+      ...(clientCancelledOptionalFollowUp
+        ? ["The requesting client cancelled an optional follow-up before it was issued; the completed primary result was retained."]
+        : []),
+      ...(optionalFollowUpFailureAfterPrimary
+        ? ["An optional follow-up failed after primary analysis completed; primary findings were retained and unresolved evidence remains Missing Evidence."]
+        : []),
+      ...(categoryFailureObserved
+        && !deadlineCancelledOptionalFollowUp
+        && !clientCancelledOptionalFollowUp
+        && !optionalFollowUpFailureAfterPrimary
         ? ["One or more category responses were invalid or unavailable; affected evidence remains Missing Evidence."]
         : []),
     ].slice(0, 12);
@@ -5775,11 +6057,8 @@ async function runValidatedResearch(project, {
         physicalOpensUsed,
         physicalOpensRemaining: Math.max(0, RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens - physicalOpensUsed),
         physicalOpenBudgetExceeded: orchestration.physicalOpenBudgetExceeded,
-        providerRequestCount: orchestration.providerRequests + googleRequestCount,
-        providerAttempts: [
-          ...(googleDiscovery.providerAttempt ? [googleDiscovery.providerAttempt] : []),
-          ...Object.values(orchestration.categoryExecutions).flatMap((execution) => execution?.providerAttempts ?? []),
-        ],
+        providerRequestCount: issuedProviderAttemptCount(providerAttemptsForRun),
+        providerAttempts: providerAttemptsForRun,
         inFlightAnalysisCount: analysisTracker.inFlight,
         peakInFlightAnalysisCount: analysisTracker.peak,
         followUpCount: orchestration.followUps,
@@ -5787,7 +6066,7 @@ async function runValidatedResearch(project, {
         followUpLimitPerCategory: orchestration.followUpLimitPerCategory,
         sourcePriorityApplied: sourcePriorityApplied(project),
         toolCallBudgetExceeded: orchestration.toolCallBudgetExceeded,
-        providerResponseIds: orchestration.categoryResults.map((category) => category.coverage?.providerResponseId).filter(Boolean),
+        providerResponseIds,
         categoryExecutions: orchestration.categoryExecutions,
         providerLimitations,
         discoveryProvider: "google-gemini-grounding",
@@ -5902,8 +6181,9 @@ async function runValidatedResearch(project, {
       throw structuredError;
     }
   } catch (error) {
-    const attempts = analysisTracker.attempts.slice(0, RESEARCH_RUN_BUDGET.maxProviderRequests);
-    if (externalSignal?.aborted) {
+    const attempts = analysisTracker.attempts.slice(0, MAX_RESEARCH_PROVIDER_ATTEMPT_RECORDS);
+    const requestingClientCancelled = externalSignal?.aborted === true;
+    if (requestingClientCancelled) {
       const cancelled = new Error("Project research was cancelled.");
       cancelled.name = "ResearchCancelledError";
       cancelled.researchErrorType = "cancelled";
@@ -5913,22 +6193,41 @@ async function runValidatedResearch(project, {
         .find((attempt) => attempt?.providerDiagnostic)?.providerDiagnostic;
       if (latestDiagnostic) cancelled.providerDiagnostic = latestDiagnostic;
       error = cancelled;
+    } else if (
+      deadlineState.expired
+      && (error?.name === "ResearchCancelledError" || error?.researchErrorType === "cancelled" || error?.name === "AbortError")
+    ) {
+      error.name = "ResearchDeadlineError";
+      error.researchErrorType = "deadline";
+      error.deadlineExpired = true;
+    }
+    for (const attempt of attempts) {
+      if (!String(attempt?.requestState ?? "").startsWith("cancelled")) continue;
+      attempt.cancellationReason = requestingClientCancelled ? "requesting-client-cancelled" : deadlineState.expired ? "deadline" : null;
+      if (attempt.cancellationReason === "deadline") attempt.failureClassification = "timeout";
     }
     if (error && !error.researchErrorType) error.researchErrorType = classifyResearchFailure(error).type;
     phaseTiming.totalElapsedMs = Math.max(0, Date.now() - runStartedAtMs);
+    const terminalReasonCodes = requestingClientCancelled
+      ? ["requesting-client-cancelled"]
+      : [...new Set([
+        ...(deadlineState.expired ? ["deadline"] : []),
+        error.researchErrorType,
+      ])];
     error.researchAudit = buildResearchAudit({
       project,
       sources: documentAuditReceipts,
       coverage: {
         providerAttempts: attempts,
-        providerRequestCount: attempts.filter((attempt) => attempt.issuedAt).length,
+        providerRequestCount: issuedProviderAttemptCount(attempts),
+        categoryExecutions: error.partialCategoryExecutions ?? {},
         inFlightAnalysisCount: analysisTracker.inFlight,
         peakInFlightAnalysisCount: analysisTracker.peak,
         sourceAttemptRecords: documentAuditReceipts.slice(0, RESEARCH_RUN_BUDGET.maxTotalCandidates),
         deadlineAt: auditDeadlineAt,
         phaseTiming,
         terminalState: RESEARCH_OUTCOMES.TECHNICAL,
-        terminalReasonCodes: [error.researchErrorType],
+        terminalReasonCodes,
       },
       runCorrelationId,
       startedAt: phaseTiming.runStartedAt,

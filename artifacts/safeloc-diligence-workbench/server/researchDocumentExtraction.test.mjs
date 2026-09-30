@@ -7,6 +7,11 @@ import {
   normalizePublicationDate,
 } from "./researchDocumentExtraction.mjs";
 
+const redOakQualityFixtures = JSON.parse(readFileSync(
+  new URL("./fixtures/red-oak-quality.json", import.meta.url),
+  "utf8",
+));
+
 function textPdf(text) {
   const stream = deflateSync(Buffer.from(`BT (${text}) Tj ET`));
   return Buffer.concat([
@@ -140,6 +145,31 @@ test("classifies verification, JavaScript, login, and paywall shells before reta
   }
 });
 
+test("rejects the retained CivicEngage application-error page despite its page chrome", async () => {
+  const result = await extractResearchDocument({
+    bytes: `<html><body><main><h1>Ellis County Archive</h1><p>${redOakQualityFixtures.civicEngagePassage}</p></main></body></html>`,
+    contentType: "text/html",
+    sourceUrl: "http://www.elliscountytx.gov/ArchiveCenter/ViewFile/Item/4224",
+  });
+  assert.equal(result.outcome, "blocked-or-shell");
+  assert.equal(result.reason, "application-error-page");
+  assert.equal(result.passage, "");
+});
+
+test("rejects the retained control-heavy PDF text without retaining or normalizing its receipt passage", async () => {
+  const escaped = redOakQualityFixtures.corruptedPdfPassage
+    .replaceAll("\\", "\\\\")
+    .replaceAll("(", "\\(")
+    .replaceAll(")", "\\)");
+  const result = await extractResearchDocument({
+    bytes: Buffer.from(`%PDF-1.4\nBT (${escaped}) Tj ET`),
+    contentType: "application/pdf",
+  });
+  assert.equal(result.outcome, "low-content");
+  assert.equal(result.reason, "control-heavy-content");
+  assert.equal(result.passage, "");
+});
+
 test("rejects low-prose pages and repeated status tokens", async () => {
   const navigationHeavy = await extractResearchDocument({
     bytes: `<nav>${"Home Projects News Contact ".repeat(100)}</nav><main><h1>Project Atlas</h1><p>Permit details are not available.</p></main>`,
@@ -155,6 +185,31 @@ test("rejects low-prose pages and repeated status tokens", async () => {
   });
   assert.equal(repeatedTokens.outcome, "low-content");
   assert.equal(repeatedTokens.passage, "");
+});
+
+test("rejects pure navigation and status chrome without rejecting short legitimate prose", async () => {
+  const navigation = await extractResearchDocument({
+    bytes: "<main><p>Home Projects News Contact Privacy Terms About Us</p></main>",
+    contentType: "text/html",
+  });
+  assert.equal(navigation.outcome, "low-content");
+  assert.equal(navigation.reason, "navigation-only-content");
+  assert.equal(navigation.passage, "");
+
+  const status = await extractResearchDocument({
+    bytes: "Loading... Please wait.",
+    contentType: "text/plain",
+  });
+  assert.equal(status.outcome, "low-content");
+  assert.equal(status.reason, "status-only-content");
+  assert.equal(status.passage, "");
+
+  const legitimate = await extractResearchDocument({
+    bytes: "Project Atlas proposes a new water plan.",
+    contentType: "text/plain",
+  });
+  assert.equal(legitimate.outcome, "extracted");
+  assert.match(legitimate.passage, /proposes a new water plan/);
 });
 
 test("extracts plain text, generic JSON, and bounded indexes", async () => {

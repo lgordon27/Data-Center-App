@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { inflateSync } from "node:zlib";
+import { researchContentRejectionReason } from "../src/data/researchContentQuality.mjs";
 
 export const RESEARCH_EXTRACTION_LIMITS = Object.freeze({
   maxInputBytes: 2_000_000,
@@ -294,6 +295,9 @@ function genuineProseChars(text) {
 
 function htmlShellReason(text, sourceUrl) {
   const normalized = String(text ?? "").toLowerCase();
+  if (/\ban error has occurred in this application\b/.test(normalized)) {
+    return "application-error-page";
+  }
   if (/\b(?:verify you are human|verify that you are human|human verification|checking your browser|checking if the site connection is secure|unusual traffic from your (?:computer )?network|are you a robot|complete the security check|captcha)\b/.test(normalized)) {
     return "bot-verification-page";
   }
@@ -538,6 +542,20 @@ export async function extractResearchDocument(input, options = {}) {
   if (adapted.truncated) result.limitations.push("Structured input exceeded the bounded node index.");
   if (adapted.arcgis) result.limitations.push("ArcGIS feature attributes were extracted without geometry.");
   const text = cleanText(adapted.text);
+  const contentRejectionReason = researchContentRejectionReason(text);
+  if (contentRejectionReason) {
+    result.outcome = [
+      "application-error-page",
+      "bot-verification-page",
+      "javascript-required-shell",
+      "login-or-paywall-shell",
+    ].includes(contentRejectionReason)
+      ? "blocked-or-shell"
+      : "low-content";
+    result.reason = contentRejectionReason;
+    result.limitations.push(`Document content was not retained because it matched ${contentRejectionReason}.`);
+    return result;
+  }
   if (kind === "html") {
     const shellReason = adapted.shellReason
       ?? htmlShellReason(text, input?.sourceUrl);

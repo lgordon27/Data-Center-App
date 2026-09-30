@@ -28,3 +28,17 @@ mtime_ms = 1789089318371
 storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:f36c34ed-5536-4eff-ae57-d0f347f2e42e/3a4305f9-fdcb-4776-8d95-70ed40fab057/a04f5b9d-b5c2-4594-b79e-9a0839bb5615"
 storage_version_token = "1789089323988655"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "8R-fuFjyGQ-mpr-Ick7CW"
+uri = "file://docs/red-oak-record-diagnosis.md"
+type = "text"
+title = "Red Oak pipeline diagnosis"
+description = "Run provenance limits, both capacity traces, the numbered 24-slot ledger, response IDs, minimal fixes, and validation results."
+logical_id = "ce2b9752-3ae9-4886-af90-7861c17d0e5c"
+content_hash = "sha256:96a649bdb94d100bdc43a7833e7f4254891b86dd189ec2e547a0be25556a97e0"
+size = 38558
+mtime_ms = 1790808038651
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:f36c34ed-5536-4eff-ae57-d0f347f2e42e/ce2b9752-3ae9-4886-af90-7861c17d0e5c/a4133651-7d8c-421a-bee3-87c7aaf4d244"
+storage_version_token = "1790808099587866"
+content_type = "text/markdown"

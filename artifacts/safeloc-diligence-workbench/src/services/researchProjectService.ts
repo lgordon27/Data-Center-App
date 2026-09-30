@@ -10,6 +10,10 @@ import {
   buildClaimPassageMappings,
   evaluateResearchEvidenceEligibility,
 } from "@/data/sourceValidationPolicy.mjs";
+import {
+  hasUsableResearchPassage,
+  researchContentRejectionReason,
+} from "@/data/researchContentQuality.mjs";
 import { assessResearchProjectIdentity } from "@/data/researchIdentity.mjs";
 
 function normalizeIdentityText(value: string): string {
@@ -279,6 +283,8 @@ export type RetainedPowerClaim = {
 };
 export type RetainedResearchFindingAudit = {
   accessiblePassagesReviewed: number;
+  qualityExcludedCount: number;
+  qualityExclusionReasons: Array<{ reason: string; count: number }>;
   sourceSupportedCount: number;
   attributedReportCount: number;
   ambiguousUnresolvedCount: number;
@@ -877,6 +883,8 @@ function deriveRetainedResearchFindingReport(sourceLedger: unknown, identity: Re
   const findings: RetainedResearchFinding[] = [];
   const audit: RetainedResearchFindingAudit = {
     accessiblePassagesReviewed: 0,
+    qualityExcludedCount: 0,
+    qualityExclusionReasons: [],
     sourceSupportedCount: 0,
     attributedReportCount: 0,
     ambiguousUnresolvedCount: 0,
@@ -891,6 +899,7 @@ function deriveRetainedResearchFindingReport(sourceLedger: unknown, identity: Re
   if (!Array.isArray(sourceLedger)) return { findings, audit };
 
   const seenPassages = new Set<string>();
+  const qualityExclusionCounts = new Map<string, number>();
   for (const candidate of sourceLedger) {
     if (!isRecord(candidate) || !isRecord(candidate.accessOutcome) || candidate.accessOutcome.state !== "accessible") {
       audit.inaccessibleExcludedCount += 1;
@@ -899,6 +908,16 @@ function deriveRetainedResearchFindingReport(sourceLedger: unknown, identity: Re
     const passage = isNonEmptyString(candidate.accessOutcome.passage) ? candidate.accessOutcome.passage : "";
     const sourceUrl = safeLedgerUrl(candidate);
     if (!passage.trim() || !sourceUrl) {
+      audit.inaccessibleExcludedCount += 1;
+      continue;
+    }
+    const qualityReason = researchContentRejectionReason(passage);
+    if (qualityReason) {
+      audit.qualityExcludedCount += 1;
+      qualityExclusionCounts.set(qualityReason, (qualityExclusionCounts.get(qualityReason) ?? 0) + 1);
+      continue;
+    }
+    if (!hasUsableResearchPassage(passage)) {
       audit.inaccessibleExcludedCount += 1;
       continue;
     }
@@ -996,6 +1015,9 @@ function deriveRetainedResearchFindingReport(sourceLedger: unknown, identity: Re
   audit.totalFindingCount = findings.length;
   audit.shownFindingCount = Math.min(findings.length, 8);
   audit.capDiscardCount = Math.max(0, findings.length - audit.shownFindingCount);
+  audit.qualityExclusionReasons = [...qualityExclusionCounts]
+    .map(([reason, count]) => ({ reason, count }))
+    .sort((left, right) => left.reason.localeCompare(right.reason));
   return { findings: findings.slice(0, audit.shownFindingCount), audit };
 }
 
@@ -1156,6 +1178,10 @@ function parseSource(value: unknown): ResearchEvidenceSource | null {
   if (!isRecord(value)) return null;
   const url = safePublicSourceUrl(value.url);
   if (!url || !isNonEmptyString(value.title) || !isNonEmptyString(value.publisher) || !isNonEmptyString(value.excerpt)) return null;
+  if (!hasUsableResearchPassage(value.excerpt)
+    || (isNonEmptyString(value.claimPassage) && !hasUsableResearchPassage(value.claimPassage))
+    || (isRecord(value.accessOutcome) && isNonEmptyString(value.accessOutcome.passage)
+      && !hasUsableResearchPassage(value.accessOutcome.passage))) return null;
   const sourceClass = ["primary-government", "primary-utility", "primary-company", "secondary-reporting", "reviewer-submitted"].includes(String(value.sourceClass))
     ? value.sourceClass as ResearchEvidenceSource["sourceClass"]
     : "secondary-reporting";

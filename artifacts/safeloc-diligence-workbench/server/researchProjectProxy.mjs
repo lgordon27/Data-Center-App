@@ -20,6 +20,10 @@ import {
   sourceUrlAliases,
 } from "../src/data/sourceValidationPolicy.mjs";
 import { extractClaimScopeFromPassage } from "../src/data/claimScopeExtractor.mjs";
+import {
+  hasUsableResearchPassage,
+  researchContentRejectionReason,
+} from "../src/data/researchContentQuality.mjs";
 import { assessResearchProjectIdentity } from "../src/data/researchIdentity.mjs";
 import { defaultProjectResearchRegistry } from "./projectResearchRegistry.mjs";
 import { discoverOfficialSources } from "./officialSourceDiscovery.mjs";
@@ -1933,8 +1937,11 @@ function categorySourceMatchesForAnalysis(category, source) {
 
 function hasRetrievedPassage(source) {
   return source?.accessOutcome?.state === "accessible"
-    && typeof source.accessOutcome.passage === "string"
-    && source.accessOutcome.passage.trim().length > 0;
+    && hasUsableResearchPassage(source.accessOutcome.passage);
+}
+
+export function selectResearchPassagesForStructuredAnalysis(sources = []) {
+  return (Array.isArray(sources) ? sources : []).filter(hasRetrievedPassage);
 }
 
 function passageShingles(passage) {
@@ -2939,12 +2946,27 @@ function defaultClassificationReason(classification, supportedByRetrievedSource,
 
 function containResearchRecord(item) {
   const reasons = [];
-  const sources = Array.isArray(item.sources) ? item.sources : [];
-  const hasSource = Boolean(item.sourceUrl) || sources.length > 0;
+  const originalSources = Array.isArray(item.sources) ? item.sources : [];
+  const sourceQualityReasons = (source) => [
+    source?.excerpt,
+    source?.claimPassage,
+    source?.accessOutcome?.passage,
+  ].map(researchContentRejectionReason).filter(Boolean);
+  const excludedSourceQualityReasons = [...new Set(originalSources.flatMap(sourceQualityReasons))];
+  const sources = originalSources.filter((source) => sourceQualityReasons(source).length === 0);
+  const claimPassageQualityReason = researchContentRejectionReason(item.claimPassage);
+  const contentQualityReasons = [...new Set([
+    ...(claimPassageQualityReason ? [claimPassageQualityReason] : []),
+    ...(originalSources.length > 0 && sources.length === 0 ? excludedSourceQualityReasons : []),
+  ])];
+  const contentQualityExcluded = contentQualityReasons.length > 0;
+  const sourceUrl = contentQualityExcluded ? null : item.sourceUrl;
+  const hasSource = Boolean(item.sourceUrl) || originalSources.length > 0;
+  reasons.push(...contentQualityReasons.map((reason) => `Source passage excluded by content-quality check: ${reason}.`));
   const sourceEligibility = evaluateEvidenceSourceEligibility({
     id: item.id,
     sources,
-    sourceUrl: item.sourceUrl,
+    sourceUrl,
     classification: item.classification,
     sourceSupportConfidence: item.sourceSupportConfidence,
     coverageStatus: item.coverageStatus,
@@ -2953,7 +2975,7 @@ function containResearchRecord(item) {
   const researchEligibility = evaluateResearchEvidenceEligibility({
     id: item.id,
     sources,
-    sourceUrl: item.sourceUrl,
+    sourceUrl,
     sourceRelevance: item.sourceRelevance,
     sourceSupportConfidence: item.sourceSupportConfidence,
     classification: item.classification,
@@ -2974,7 +2996,7 @@ function containResearchRecord(item) {
     description: item.description,
     citation: item.citation,
     sourceContext: sources.flatMap((source) => [source.title, source.excerpt]).join(" "),
-    explicitZero: item.explicitZero === true || (rawValue === 0 && Boolean(item.sourceUrl)),
+    explicitZero: item.explicitZero === true || (rawValue === 0 && Boolean(sourceUrl)),
   });
   reasons.push(...semantic.quarantineReasons);
   const semanticCheck = {
@@ -2985,13 +3007,19 @@ function containResearchRecord(item) {
       : semantic.quarantineReasons.join("; ") || "Semantic validation rejected this evidence item.",
   };
   const policyChecks = researchEligibility.checkTrace?.checks ?? [];
+  const contentQualityChecks = contentQualityReasons.map((reason) => ({
+    id: "content-quality",
+    passed: false,
+    reason: `Source passage excluded by content-quality check: ${reason}.`,
+  }));
   const eligibilityChecks = [
+    ...contentQualityChecks,
     ...policyChecks,
     semanticCheck,
   ];
-  const earlierFailure = policyChecks.find((check) => check.passed === false) ?? null;
+  const earlierFailure = contentQualityChecks[0] ?? policyChecks.find((check) => check.passed === false) ?? null;
   let firstFailure = earlierFailure
-    ? researchEligibility.checkTrace?.firstFailure ?? { id: earlierFailure.id, reason: earlierFailure.reason }
+    ? { id: earlierFailure.id, reason: earlierFailure.reason }
     : null;
   if (!firstFailure && !semanticCheck.passed) {
     firstFailure = { id: semanticCheck.id, reason: semanticCheck.reason };
@@ -3018,6 +3046,8 @@ function containResearchRecord(item) {
   };
   return {
     ...item,
+    ...(Array.isArray(item.sources) ? { sources } : {}),
+    ...(contentQualityExcluded ? { sourceUrl: null, sourceUrls: [] } : {}),
     rawValue: item.rawValue ?? item.value,
     rawUnit: item.rawUnit ?? item.unit,
     rawText: item.rawText ?? String(item.value ?? ""),
@@ -3037,9 +3067,11 @@ function containResearchRecord(item) {
     quarantineReasons: [...new Set(reasons)],
     sourceValidation: {
       policyVersion: SOURCE_VALIDATION_POLICY_VERSION,
-      state: researchEligibility.state,
-      rejectionCodes: researchEligibility.rejectionCodes,
-      claimMappings: item.claimMappings ?? [],
+      state: contentQualityExcluded ? "rejected" : researchEligibility.state,
+      rejectionCodes: contentQualityExcluded
+        ? [...new Set(["content-quality-excluded", ...researchEligibility.rejectionCodes])]
+        : researchEligibility.rejectionCodes,
+      claimMappings: contentQualityExcluded ? [] : item.claimMappings ?? [],
       eligibilityTrace,
     },
   };
@@ -5519,7 +5551,7 @@ async function runValidatedResearch(project, {
       };
       openedGoogleDocuments.push(openedSource);
       documentAuditReceipts.push(openedSource);
-      if (accessOutcome.state === "accessible" && accessOutcome.passage) retainedDocumentReceipts.push(openedSource);
+      if (hasRetrievedPassage(openedSource)) retainedDocumentReceipts.push(openedSource);
     }));
     return openedGoogleDocuments;
   };
@@ -5653,10 +5685,7 @@ async function runValidatedResearch(project, {
           const groundedMode = googleDiscovery.status === "completed";
           const fallbackMode = !groundedMode;
            const usableGroundedSources = groundedMode
-             ? googleDiscovery.candidates.filter((source) =>
-               source?.accessOutcome?.state === "accessible"
-               && typeof source.accessOutcome?.passage === "string"
-               && source.accessOutcome.passage.trim())
+             ? selectResearchPassagesForStructuredAnalysis(googleDiscovery.candidates)
              : [];
            const categoryUsableGroundedSources = usableGroundedSources.filter((source) =>
               categorySourceMatchesForAnalysis(activeCategory, source));
@@ -5828,9 +5857,7 @@ async function runValidatedResearch(project, {
             const retainedGroundedSources = googleDiscovery.status === "completed"
               ? googleDiscovery.candidates.filter((source) =>
                 categorySourceMatches(activeCategory, source)
-                && source?.accessOutcome?.state === "accessible"
-                && typeof source.accessOutcome?.passage === "string"
-                && source.accessOutcome.passage.trim())
+                && hasRetrievedPassage(source))
               : [];
             if (retainedGroundedSources.length && !externalSignal?.aborted) {
               categoryResult = {
@@ -6122,7 +6149,7 @@ async function runValidatedResearch(project, {
           };
           accessedSources.push(accessedSource);
           documentAuditReceipts.push(accessedSource);
-          if (accessOutcome.state === "accessible" && accessOutcome.passage) retainedDocumentReceipts.push(accessedSource);
+          if (hasRetrievedPassage(accessedSource)) retainedDocumentReceipts.push(accessedSource);
         }
         const eligibleCount = accessedSources.filter((source) => source.accessOutcome?.state === "accessible").length;
         const observedQueries = normalizeSearchTerms(
@@ -6130,10 +6157,7 @@ async function runValidatedResearch(project, {
           RESEARCH_PROJECT_MAX_TOOL_CALLS,
         );
            if (categoryResult.coverage?.noUsableGroundedPassages
-             && accessedSources.some((source) =>
-               source.accessOutcome?.state === "accessible"
-               && typeof source.accessOutcome?.passage === "string"
-               && source.accessOutcome.passage.trim())
+             && accessedSources.some(hasRetrievedPassage)
              && !controller.signal.aborted
              && Date.now() + 1_000 < runStartedAtMs + researchTimeoutMs
              && authorizeAdditionalProviderRequest?.() === true
@@ -6217,9 +6241,7 @@ async function runValidatedResearch(project, {
         sourceChannel: accessOutcome?.sourceChannel ?? "document-access",
         accessOutcome,
       })),
-    ].filter((source, index, sources) => source?.accessOutcome?.state === "accessible"
-      && typeof source.accessOutcome.passage === "string"
-      && source.accessOutcome.passage.trim()
+    ].filter((source, index, sources) => hasRetrievedPassage(source)
       && sources.findIndex((candidate) => canonicalizeSourceUrl(
         candidate.canonicalUrl ?? candidate.url ?? candidate.accessOutcome?.canonicalUrl,
       ) === canonicalizeSourceUrl(source.canonicalUrl ?? source.url ?? source.accessOutcome?.canonicalUrl)) === index);

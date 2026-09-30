@@ -95,6 +95,10 @@ const response = JSON.parse(readFileSync(
   new URL("../../tests/fixtures/research-project-synthetic.json", import.meta.url),
   "utf8",
 ));
+const redOakQualityFixtures = JSON.parse(readFileSync(
+  new URL("../../server/fixtures/red-oak-quality.json", import.meta.url),
+  "utf8",
+)) as { civicEngagePassage: string; corruptedPdfPassage: string };
 
 test("accepts the exact 16-item custom research contract", () => {
   const parsed = parseResponse(response);
@@ -154,6 +158,90 @@ test("retains exact scoped passages and separates project support, attributed re
   assert.doesNotMatch(parsed.projectSummary.description, /480 MW|2028/);
   assert.equal(parsed.researchStatus, "partial");
   assert.equal(parsed.researchMode, "partial-public-source");
+});
+
+test("excludes old saved application errors and shell/navigation passages with an explicit quality audit", () => {
+  const identity = { name: "Red Oak Campus", location: "Red Oak, Ellis County, Texas" };
+  const oldSavedSources = [
+    {
+      title: "Ellis County archive",
+      url: "http://www.elliscountytx.gov/ArchiveCenter/ViewFile/Item/4224",
+      sourceClass: "primary-government",
+      accessOutcome: { state: "accessible", reason: "retrieved", passage: redOakQualityFixtures.civicEngagePassage },
+    },
+    {
+      title: "DFW-11 case study",
+      url: "https://checkmarkpro.com/assets/Case-Study-DataBank-DFW-11.pdf",
+      sourceClass: "secondary-reporting",
+      accessOutcome: { state: "accessible", reason: "retrieved", passage: redOakQualityFixtures.corruptedPdfPassage },
+    },
+    {
+      title: "Verification page",
+      url: "https://records.example.gov/verify",
+      sourceClass: "primary-government",
+      accessOutcome: { state: "accessible", reason: "retrieved", passage: "Verify you are human. Complete the security check before continuing." },
+    },
+    {
+      title: "JavaScript gate",
+      url: "https://records.example.gov/javascript",
+      sourceClass: "primary-government",
+      accessOutcome: { state: "accessible", reason: "retrieved", passage: "Enable JavaScript and cookies to continue." },
+    },
+    {
+      title: "Login gate",
+      url: "https://records.example.gov/login",
+      sourceClass: "primary-government",
+      accessOutcome: { state: "accessible", reason: "retrieved", passage: "Sign in to continue reading." },
+    },
+    {
+      title: "Navigation only",
+      url: "https://records.example.gov/navigation",
+      sourceClass: "primary-government",
+      accessOutcome: { state: "accessible", reason: "retrieved", passage: "Home Projects News Contact Privacy Terms About Us" },
+    },
+    {
+      title: "Status only",
+      url: "https://records.example.gov/status",
+      sourceClass: "primary-government",
+      accessOutcome: { state: "accessible", reason: "retrieved", passage: "Loading... Please wait." },
+    },
+  ];
+  const savedReceipts = structuredClone(oldSavedSources);
+  assert.deepEqual(deriveRetainedResearchFindings(oldSavedSources, identity), []);
+  assert.deepEqual(oldSavedSources, savedReceipts, "client normalization must not rewrite historical access receipts");
+
+  const parsedLegacyReport = parseResponse({ ...response, sourceLedger: oldSavedSources }, identity);
+  assert.equal(parsedLegacyReport.retainedFindings?.length, 0);
+  assert.equal(parsedLegacyReport.retainedFindingAudit?.inaccessibleExcludedCount, 0);
+  assert.equal(parsedLegacyReport.retainedFindingAudit?.qualityExcludedCount, oldSavedSources.length);
+  assert.deepEqual(
+    parsedLegacyReport.retainedFindingAudit?.qualityExclusionReasons,
+    [
+      { reason: "application-error-page", count: 1 },
+      { reason: "bot-verification-page", count: 1 },
+      { reason: "control-heavy-content", count: 1 },
+      { reason: "javascript-required-shell", count: 1 },
+      { reason: "login-or-paywall-shell", count: 1 },
+      { reason: "navigation-only-content", count: 1 },
+      { reason: "status-only-content", count: 1 },
+    ],
+  );
+
+  const cachedResponse = structuredClone(response);
+  cachedResponse.evidence[0].sources = [{
+    url: "http://www.elliscountytx.gov/ArchiveCenter/ViewFile/Item/4224",
+    title: "Ellis County archive",
+    publisher: "Ellis County",
+    excerpt: redOakQualityFixtures.civicEngagePassage,
+    sourceClass: "primary-government",
+    accessOutcome: {
+      state: "accessible",
+      reason: "retrieved",
+      passage: redOakQualityFixtures.civicEngagePassage,
+    },
+  }];
+  const parsedCachedResponse = parseResponse(cachedResponse, identity);
+  assert.equal(parsedCachedResponse.evidence[0]?.sources?.length ?? 0, 0);
 });
 
 test("keeps extracted publication dates separate from retrieval time, evidence eligibility, and model inputs", () => {

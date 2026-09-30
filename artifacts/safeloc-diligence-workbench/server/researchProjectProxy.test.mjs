@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import { mkdtemp, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -57,6 +58,7 @@ import {
   createPhysicalOpenScheduler,
   sourceEstablishesProjectIdentity,
   PROTECTED_SOURCE_OPPORTUNITIES,
+  selectResearchPassagesForStructuredAnalysis,
 } from "./researchProjectProxy.mjs";
 import {
   buildClaimPassageMappings,
@@ -67,6 +69,11 @@ import {
   createResearchProjectCache,
   researchProjectCacheKey,
 } from "./researchProjectCache.mjs";
+
+const redOakQualityFixtures = JSON.parse(readFileSync(
+  new URL("./fixtures/red-oak-quality.json", import.meta.url),
+  "utf8",
+));
 
 function assertRejectedEvidenceHasFailedTrace(result) {
   for (const item of result?.evidence ?? []) {
@@ -384,6 +391,73 @@ function substantiveHtmlResponse(body, url = "offline-fixture") {
 
 test("reserves fifteen seconds between the server and browser deadlines", () => {
   assert.equal(RESEARCH_PROJECT_TIMEOUT_MS, 75_000);
+});
+
+test("excludes old saved CivicEngage and corrupted passages before structured analysis without changing receipts", () => {
+  const unusablePassages = [
+    redOakQualityFixtures.civicEngagePassage,
+    redOakQualityFixtures.corruptedPdfPassage,
+    "Verify you are human. Complete the security check before continuing.",
+    "Enable JavaScript and cookies to continue.",
+    "Sign in to continue reading.",
+    "Home Projects News Contact Privacy Terms About Us",
+    "Loading... Please wait.",
+  ];
+  const receipts = unusablePassages.map((passage, index) => ({
+    url: `https://records.example.gov/source-${index}`,
+    accessOutcome: { state: "accessible", reason: "retrieved", passage },
+  }));
+  receipts.push(
+    {
+      url: "https://records.example.gov/short-legitimate",
+      accessOutcome: { state: "accessible", reason: "retrieved", passage: "Project Atlas proposes a new water plan." },
+    },
+    {
+      url: "https://records.example.gov/project",
+      accessOutcome: { state: "accessible", reason: "retrieved", passage: "A captured project passage with supported public-record facts." },
+    },
+  );
+  const before = structuredClone(receipts);
+  assert.deepEqual(selectResearchPassagesForStructuredAnalysis(receipts), receipts.slice(-2));
+  assert.deepEqual(receipts, before, "quality filtering must not mutate immutable access receipts");
+});
+
+test("grounded orchestration does not issue a structured prompt when document access yields the retained CivicEngage error page", async () => {
+  const fixture = JSON.parse(await readFile(
+    new URL("./fixtures/research-partial-receipts.json", import.meta.url),
+    "utf8",
+  ));
+  const { passage: _existingPassage, ...candidateBase } = fixture.accessibleReceipt;
+  const candidate = {
+    ...candidateBase,
+    excerpt: redOakQualityFixtures.civicEngagePassage,
+    categoryIds: ["water"],
+  };
+  let structuredProviderCalls = 0;
+  const result = await runValidatedResearch(fixture.project, {
+    apiKey: "synthetic-test-key",
+    req: request({}),
+    rateLimiter: { allow: () => ({ allowed: true, retryAfterSeconds: 0 }) },
+    categoryIds: ["water"],
+    allowGoogleFallback: false,
+    googleDiscoveryImpl: completedGoogleDiscovery([candidate]),
+    documentFetchImpl: async (url) => new Response(
+      `<html><body><main><h1>Ellis County Archive</h1><p>${redOakQualityFixtures.civicEngagePassage}</p></main></body></html>`,
+      { status: 200, headers: { "content-type": "text/html" } },
+    ),
+    fetchImpl: async () => {
+      structuredProviderCalls += 1;
+      throw new Error("The structured provider must not be called for an unusable retained passage.");
+    },
+  });
+
+  const receipt = result.sourceLedger.find((source) => source.originalUrl === candidate.url);
+  assert.equal(structuredProviderCalls, 0);
+  assert.equal(receipt?.accessOutcome.state, "blocked-or-shell");
+  assert.equal(receipt?.accessOutcome.reason, "application-error-page");
+  assert.equal(receipt?.accessOutcome.passage, null);
+  assert.ok(result.researchAudit.providerLimitations.some((limitation) =>
+    /no usable retained Google-grounded passage/i.test(limitation)));
 });
 
 test("schedules protected source opportunities before generic context and reuses failed canonical receipts", () => {
@@ -5260,6 +5334,47 @@ test("HTTP client abort cancels a stalled document body and suppresses the respo
   assert.equal(aborted, true);
   assert.equal(bodyCancelled, true);
   assert.equal(response.body, "");
+});
+
+test("cached evidence with only a mapped navigation passage is quarantined at server containment", () => {
+  const url = "https://records.example.test/atlas/navigation-only";
+  const navigation = "Home Projects News Contact Privacy Terms About Us";
+  const source = {
+    ...categorySource(url),
+    excerpt: navigation,
+    claimPassage: navigation,
+    accessOutcome: { state: "accessible", reason: "retrieved", passage: navigation },
+  };
+  const evidence = categoryMappedResearch("electricity_cost", url, 42).evidence.find((item) =>
+    item.id === "electricity_cost");
+  Object.assign(evidence, {
+    classification: "Management Assertion",
+    coverageStatus: "supported",
+    sourceRelevance: "exact-project",
+    sourceSupportConfidence: 95,
+    claimPassage: navigation,
+    sources: [source],
+    claimMappings: buildClaimPassageMappings({
+      id: "electricity_cost",
+      sources: [source],
+      project: { name: "Project Atlas", location: "Phoenix, Arizona" },
+      claim: {
+        value: 42,
+        unit: "$/MWh",
+        claimPassage: navigation,
+        facilityScope: "exact-project",
+        phaseScope: "exact-phase",
+        claimTimePeriod: "2026",
+      },
+    }),
+  });
+
+  const contained = containResearchResult({ evidence: [evidence] }).evidence[0];
+  assert.equal(contained.eligibleForModel, false);
+  assert.deepEqual(contained.sources, []);
+  assert.ok(contained.quarantineReasons.some((reason) => /navigation-only-content/.test(reason)));
+  assert.equal(contained.sourceValidation.eligibilityTrace.checks[0].id, "content-quality");
+  assert.equal(contained.sourceValidation.eligibilityTrace.checks[0].passed, false);
 });
 
 test("claim audit reviews reuse the policy trace for not-applicable phase scope and rejection", () => {

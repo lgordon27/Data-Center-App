@@ -65,6 +65,7 @@ import {
   containCustomResearchEvidence,
 } from "@/services/researchProjectService";
 import type { ClaimId, PublicAccessStatus } from "@/data/claimSources";
+import { researchContentRejectionReason } from "@/data/researchContentQuality.mjs";
 import {
   assertEvidenceImpactRoleCoverage,
   getEvidenceImpactRole,
@@ -2453,10 +2454,16 @@ function parsePersistedCustomResearch(value: unknown): PersistedCustomResearch |
     && Number.isFinite(projectRecord.capacityMW)
     ? projectRecord.capacityMW
     : null;
+  const qualityExclusionCounts = new Map<string, number>();
   const retainedFindings = Array.isArray(projectRecord.retainedFindings)
     ? projectRecord.retainedFindings.flatMap((candidate) => {
       if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return [];
       const finding = candidate as Record<string, unknown>;
+      const qualityReason = researchContentRejectionReason(finding.passage);
+      if (qualityReason) {
+        qualityExclusionCounts.set(qualityReason, (qualityExclusionCounts.get(qualityReason) ?? 0) + 1);
+        return [];
+      }
       if (
         !["source-supported", "attributed-report", "ambiguous-unresolved"].includes(String(finding.assessment))
         || !["exact-project", "ambiguous"].includes(String(finding.applicability))
@@ -2478,12 +2485,49 @@ function parsePersistedCustomResearch(value: unknown): PersistedCustomResearch |
       }];
     })
     : [];
+  const existingRetainedAudit = projectRecord.retainedFindingAudit
+    && typeof projectRecord.retainedFindingAudit === "object"
+    && !Array.isArray(projectRecord.retainedFindingAudit)
+    ? projectRecord.retainedFindingAudit as Record<string, unknown>
+    : {};
+  const mergedQualityExclusionCounts = new Map<string, number>();
+  if (Array.isArray(existingRetainedAudit.qualityExclusionReasons)) {
+    for (const entry of existingRetainedAudit.qualityExclusionReasons) {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+      const reasonRecord = entry as Record<string, unknown>;
+      if (
+        typeof reasonRecord.reason === "string"
+        && typeof reasonRecord.count === "number"
+        && Number.isFinite(reasonRecord.count)
+        && reasonRecord.count > 0
+      ) {
+        mergedQualityExclusionCounts.set(reasonRecord.reason, (mergedQualityExclusionCounts.get(reasonRecord.reason) ?? 0) + reasonRecord.count);
+      }
+    }
+  }
+  for (const [reason, count] of qualityExclusionCounts) {
+    mergedQualityExclusionCounts.set(reason, (mergedQualityExclusionCounts.get(reason) ?? 0) + count);
+  }
+  const addedQualityExcludedCount = [...qualityExclusionCounts.values()].reduce((total, count) => total + count, 0);
+  const existingQualityExcludedCount = typeof existingRetainedAudit.qualityExcludedCount === "number"
+    && Number.isFinite(existingRetainedAudit.qualityExcludedCount)
+    && existingRetainedAudit.qualityExcludedCount > 0
+    ? existingRetainedAudit.qualityExcludedCount
+    : 0;
+  const retainedFindingAudit = {
+    ...existingRetainedAudit,
+    qualityExcludedCount: existingQualityExcludedCount + addedQualityExcludedCount,
+    qualityExclusionReasons: [...mergedQualityExclusionCounts]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([reason, count]) => ({ reason, count })),
+  };
   const safeProject = {
     ...projectRecord,
     description: "Generated project-summary prose is withheld. Review the accessible, attributed source passages and claim-level evidence separately.",
     capacityMW: persistedCapacity,
     capacityProvenance: persistedCapacity === null ? "unknown" : "directory-reported",
     retainedFindings,
+    retainedFindingAudit,
   } as unknown as ProjectContext;
   return {
     project: safeProject,
@@ -2531,7 +2575,7 @@ function emptyLoadedSession(overrides: Partial<LoadedSession> = {}): LoadedSessi
   };
 }
 
-function loadCurrentSession(): LoadedSession {
+export function loadCurrentSession(): LoadedSession {
   const raw = readStorage(CURRENT_SESSION_STORAGE_KEY);
   if (!raw) {
     restoreDecisionHistory([]);

@@ -476,6 +476,22 @@ test("retains a completed primary category result when its follow-up is cancelle
   assert.equal(run.categoryExecutions.grid.providerAttempts.length, 2);
   assert.equal(run.categoryExecutions.grid.providerAttempts[0].providerResponseId, primaryResponseId);
   assert.equal(run.categoryExecutions.grid.providerAttempts[1].requestState, "cancelled-before-issue");
+
+  const audit = buildResearchAudit({
+    project: { name: "Red Oak Campus", location: "Red Oak, Texas" },
+    coverage: {
+      providerRequestCount: 2,
+      providerAttempts: run.categoryExecutions.grid.providerAttempts,
+    },
+  });
+  assert.equal(audit.providerRequestBudget.attempts[0].providerResponseId, primaryResponseId);
+  assert.deepEqual(audit.providerRequestBudget.attempts[0].structuredResponseSummary, {
+    evidenceCount: 1,
+    nonMissingClassificationCount: 1,
+    sourceLinkedClaimCount: 1,
+    evidenceIds: ["grid_interconnection"],
+    identityAssessmentPresent: false,
+  });
 });
 
 test("schedules protected source opportunities before generic context and reuses failed canonical receipts", () => {

@@ -1,0 +1,26 @@
+Focused SafeLoc source-metadata repair: extract defensible publication dates
+Work only on document/source metadata extraction and its deterministic propagation into existing reporting-date fields. Do not modify research orchestration, provider scheduling, DNS/SSRF behavior, financial-model binding, deployment, or production data. Do not run live research.
+Current issue: retrieved articles can visibly contain a publication date, but retained findings may show “Reporting date not reported.” Retrieval/access time must never be substituted for the source publication/reporting date.
+Implement deterministic publication-date extraction with this priority:
+1. explicit semantic metadata such as article:published_time;
+2. JSON-LD datePublished;
+3. clearly identified visible article publication lines such as “Published”, “Published On”, or equivalent;
+4. existing provider/source metadata when available;
+5. otherwise null.
+Requirements:
+- normalize valid public dates into the existing source/reporting-date representation;
+- preserve the extraction basis/provenance so the application can distinguish source-publication date from other dates;
+- never use access/retrieval time as publication date or claim as-of date;
+- do not infer a date from copyright years, navigation, unrelated event dates, or arbitrary numbers;
+- fail closed to null when ambiguous;
+- do not change evidence eligibility rules other than allowing existing time-scope logic to consume genuinely extracted publication metadata where already appropriate.
+Add deterministic offline fixtures for:
+- article:published_time;
+- JSON-LD datePublished;
+- visible “Published On Apr 23, 2026” style text;
+- conflicting/ambiguous dates that must remain unresolved;
+- no publication date;
+- proof that retrieval time is not used as fallback.
+Run relevant deterministic tests, full offline suite, typecheck, and production build. Do not run live research.
+Report extraction priority, fields populated, tests, full suite result, typecheck, build, and anything unresolved.
+Stop after this metadata repair.

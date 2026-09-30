@@ -1,0 +1,38 @@
+Focused SafeLoc research performance repair: reduce category prompt payload using relevant, deduplicated passages
+Work only on the existing custom-project research pipeline. Do not change DNS/SSRF behavior, provider concurrency, deadline budgeting, retry policy, model-binding rules, deployment, or production data. Do not run live provider research.
+Current observation: category structured-analysis requests can receive roughly 50 KB / 11k input tokens because many retrieved passages are repeated or irrelevant to that category.
+Implement a deterministic preprocessing step so each research category receives a bounded set of relevant, deduplicated retrieved passages while preserving full provenance.
+Requirements:
+1. Deduplicate substantially identical passages before structured category analysis.
+2. Select passages based on the active category and its evidence IDs rather than sending the same broad corpus to every category.
+3. Preserve, for every supplied passage:
+   - canonical/source URL
+   - source identity
+   - retrieval/access receipt association
+   - publication/reporting metadata already available
+   - exact passage text used by the structured analyzer
+4. Never merge text from different sources into a synthetic passage.
+5. Never summarize or rewrite source text before claim validation. The model must continue receiving attributable retrieved passages.
+6. A duplicate may be omitted from the provider prompt but must not disappear from the run audit/source-access record.
+7. Do not weaken exact-project identity, claim-to-passage mapping, facility/phase scope, time scope, source eligibility, or human acceptance rules.
+8. Add deterministic offline tests proving:
+   - repeated passages are collapsed for provider input;
+   - unique relevant passages remain;
+   - unrelated category passages are excluded from that category prompt;
+   - source/provenance records remain available even when a duplicate is not re-sent;
+   - no evidence becomes eligible merely because of this preprocessing.
+9. Add bounded telemetry showing, per category:
+   - candidate passage count before filtering;
+   - unique passage count after deduplication;
+   - passage count supplied to structured analysis;
+   - approximate/request-body byte reduction where already measurable.
+Run the full deterministic offline suite, typecheck, and production build. Do not run live research.
+When finished, report:
+- files/areas changed
+- before/after passage counts from fixtures
+- whether provider request size was reduced in deterministic tests
+- full offline test result
+- typecheck result
+- build result
+- any existing failures that remain unchanged
+Do not begin discovery-budget, retry, or concurrency changes. Stop after this task.

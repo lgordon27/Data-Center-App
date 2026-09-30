@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { deflateSync } from "node:zlib";
-import { extractResearchDocument } from "./researchDocumentExtraction.mjs";
+import {
+  extractResearchDocument,
+  normalizePublicationDate,
+} from "./researchDocumentExtraction.mjs";
 
 function textPdf(text) {
   const stream = deflateSync(Buffer.from(`BT (${text}) Tj ET`));
@@ -20,6 +24,62 @@ const substantialArticle = [
   "County staff reviewed the application, public comments, construction schedule, and related infrastructure plans.",
   "The report also summarizes the applicant's development timeline, expected capacity, and the agencies responsible for review.",
 ].join(" ");
+const publicationFixtures = JSON.parse(readFileSync(
+  new URL("./fixtures/research-partial-receipts.json", import.meta.url),
+  "utf8",
+)).publicationDateFixtures;
+
+test("extracts publication dates by deterministic metadata precedence", async () => {
+  const semantic = await extractResearchDocument({
+    bytes: `${publicationFixtures.semantic.markup}${publicationFixtures.jsonLd.markup}<main><article><h1>Project Atlas record</h1><p>${publicationFixtures.visiblePublicationLine.line.replace("Apr 23", "Apr 25")}</p><p>${substantialArticle}</p></article></main>`,
+    contentType: "text/html",
+  });
+  assert.equal(semantic.publicationDate, publicationFixtures.semantic.date);
+  assert.equal(semantic.publicationDateBasis, publicationFixtures.semantic.basis);
+  assert.equal(semantic.publicationDateStatus, "resolved");
+
+  const jsonLd = await extractResearchDocument({
+    bytes: `${publicationFixtures.jsonLd.markup}<main><article><p>${publicationFixtures.visiblePublicationLine.line.replace("Apr 23", "Apr 26")}</p><p>${substantialArticle}</p></article></main>`,
+    contentType: "text/html",
+  });
+  assert.equal(jsonLd.publicationDate, publicationFixtures.jsonLd.date);
+  assert.equal(jsonLd.publicationDateBasis, publicationFixtures.jsonLd.basis);
+});
+
+test("extracts only clearly labeled visible article publication lines", async () => {
+  const visible = await extractResearchDocument({
+    bytes: `<nav><p>${publicationFixtures.visiblePublicationLine.line.replace("Apr 23", "Apr 20")}</p><p>Events: May 2, 2026</p></nav><main><article><h1>Project Atlas record</h1><p>${publicationFixtures.visiblePublicationLine.line}</p><p>${substantialArticle}</p><p>Copyright © 2026. The public hearing is scheduled for May 8, 2026.</p></article></main>`,
+    contentType: "text/html",
+  });
+  assert.equal(visible.publicationDate, publicationFixtures.visiblePublicationLine.date);
+  assert.equal(visible.publicationDateBasis, publicationFixtures.visiblePublicationLine.basis);
+  assert.doesNotMatch(visible.passage, /Published On Apr/);
+});
+
+test("fails closed on conflicting publication candidates and rejects unrelated or invalid dates", async () => {
+  const conflict = await extractResearchDocument({
+    bytes: `${publicationFixtures.conflictingSemantic.markup}${publicationFixtures.jsonLd.markup}<main><article><p>${substantialArticle}</p></article></main>`,
+    contentType: "text/html",
+  });
+  assert.equal(conflict.publicationDate, publicationFixtures.conflictingSemantic.date);
+  assert.equal(conflict.publicationDateStatus, publicationFixtures.conflictingSemantic.status);
+
+  const visibleConflict = await extractResearchDocument({
+    bytes: `<main><article><p>Published: Apr 23, 2026</p><p>Publication Date: Apr 24, 2026</p><p>${substantialArticle}</p></article></main>`,
+    contentType: "text/html",
+  });
+  assert.equal(visibleConflict.publicationDate, null);
+  assert.equal(visibleConflict.publicationDateStatus, "ambiguous");
+
+  const unrelatedDates = await extractResearchDocument({
+    bytes: `<nav><p>${publicationFixtures.visiblePublicationLine.line}</p></nav><main><article><p>${publicationFixtures.noPublicationDate.unrelatedLines}</p><p>${substantialArticle}</p></article></main>`,
+    contentType: "text/html",
+  });
+  assert.equal(unrelatedDates.publicationDate, publicationFixtures.noPublicationDate.date);
+  assert.equal(unrelatedDates.publicationDateStatus, publicationFixtures.noPublicationDate.status);
+  assert.equal(normalizePublicationDate("2026-02-30"), null);
+  assert.equal(normalizePublicationDate("2026-04-23T25:00:00Z"), null);
+});
 
 test("extracts bounded HTML without executing script", async () => {
   globalThis.__extractionScriptRan = false;

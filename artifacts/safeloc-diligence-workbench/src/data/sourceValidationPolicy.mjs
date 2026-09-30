@@ -412,11 +412,16 @@ export function createSourceLedger(candidates = [], { maxRetained = 10 } = {}) {
       searchDomain: candidate?.searchDomain ?? "project-identity",
       accessStatus: candidate?.accessStatus ?? "not provided",
       contentType: candidate?.contentType ?? null,
+      dateBasis: candidate?.dateBasis ?? candidate?.publishedAtBasis ?? null,
+      publishedAtBasis: candidate?.publishedAtBasis ?? candidate?.dateBasis ?? null,
+      publicationDateStatus: candidate?.publicationDateStatus ?? null,
+      providerPublicationDateStatus: candidate?.providerPublicationDateStatus ?? null,
       discoveryOnly: candidate?.discoveryOnly === true,
       extractionMethod: candidate?.extractionMethod ?? candidate?.accessOutcome?.extractionMethod ?? null,
       extractionOutcome: candidate?.extractionOutcome ?? candidate?.accessOutcome?.extractionOutcome ?? null,
       contentHash: candidate?.contentHash ?? candidate?.accessOutcome?.contentHash ?? null,
       date: candidate?.date ?? candidate?.publishedAt ?? candidate?.published_date ?? null,
+      publishedAt: candidate?.publishedAt ?? candidate?.date ?? candidate?.published_date ?? null,
       categoryIds: Array.isArray(candidate?.categoryIds)
         ? [...new Set(candidate.categoryIds.filter((value) => typeof value === "string" && value.trim()).map((value) => value.trim()))].slice(0, 12)
         : [],

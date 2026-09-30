@@ -126,9 +126,10 @@ test("retains exact scoped passages and separates project support, attributed re
   assert.equal(phaseFinding?.financialProposalEligibility, "unresolved");
   assert.match(phaseFinding?.statement ?? "", /The Phase One utility interconnection was announced at 180 MW/);
   assert.equal(phaseFinding?.reportingDate, "2025-03-18");
-  assert.equal(phaseFinding?.reportingDateBasis, "retrieved-source-metadata");
+  assert.equal(phaseFinding?.reportingDateBasis, "provider-source-metadata");
   assert.equal(phaseFinding?.accessedAt, "2026-03-04");
   assert.equal(phaseFinding?.accessedAtBasis, "retrieval-time");
+  assert.equal(parsed.evidence[0].sourcePublishedAtBasis, "provider-source-metadata");
 
   const itLoadFinding = findings.find((finding) => finding.powerMeasure === "IT load/capacity");
   assert.equal(itLoadFinding?.assessment, "attributed-report");
@@ -153,6 +154,79 @@ test("retains exact scoped passages and separates project support, attributed re
   assert.doesNotMatch(parsed.projectSummary.description, /480 MW|2028/);
   assert.equal(parsed.researchStatus, "partial");
   assert.equal(parsed.researchMode, "partial-public-source");
+});
+
+test("keeps extracted publication dates separate from retrieval time, evidence eligibility, and model inputs", () => {
+  const options = {
+    name: "Aster Northstar Campus",
+    location: "Cedar County, Iowa",
+    knownData: { operator: "Northstar Infrastructure", state: "Iowa" },
+  };
+  const baseline = parseResponse(response, options);
+  const withExtractedDate = parseResponse({
+    ...response,
+    evidence: response.evidence.map((item: Record<string, unknown>, index: number) => index === 0
+      ? {
+          ...item,
+          sourcePublishedAt: "2026-04-23",
+          sourcePublishedAtBasis: "semantic-metadata",
+        }
+      : item),
+    sourceLedger: response.sourceLedger.map((source: Record<string, unknown>, index: number) => index === 0
+      ? {
+          ...source,
+          date: "2026-04-23",
+          dateBasis: "semantic-metadata",
+          publicationDateStatus: "resolved",
+          accessOutcome: {
+            ...(source.accessOutcome as Record<string, unknown>),
+            publicationDate: "2026-04-23",
+            publicationDateBasis: "semantic-metadata",
+            publicationDateStatus: "resolved",
+          },
+        }
+      : source),
+  }, options);
+  const datedFinding = withExtractedDate.retainedFindings?.find((finding) => finding.assessment === "source-supported");
+  assert.equal(datedFinding?.reportingDate, "2026-04-23");
+  assert.equal(datedFinding?.reportingDateBasis, "semantic-metadata");
+  assert.equal(datedFinding?.accessedAt, "2026-03-04");
+  assert.deepEqual(withExtractedDate.acceptedModelInputs, baseline.acceptedModelInputs);
+  assert.deepEqual(withExtractedDate.eligibleEvidence, baseline.eligibleEvidence);
+  assert.deepEqual(withExtractedDate.researchOutcome, baseline.researchOutcome);
+
+  const retrievalOnly = parseResponse({
+    ...response,
+    sourceLedger: response.sourceLedger.map((source: Record<string, unknown>, index: number) => index === 0
+      ? {
+          ...source,
+          date: null,
+          dateBasis: "not-reported",
+          publicationDateStatus: "absent",
+          accessOutcome: {
+            ...(source.accessOutcome as Record<string, unknown>),
+            publicationDate: null,
+            publicationDateBasis: null,
+            publicationDateStatus: "absent",
+            retrievalTime: "2026-03-04T12:30:00.000Z",
+          },
+        }
+      : source),
+  }, options);
+  const retrievalOnlyFinding = retrievalOnly.retainedFindings?.find((finding) => finding.assessment === "source-supported");
+  assert.equal(retrievalOnlyFinding?.reportingDate, null);
+  assert.equal(retrievalOnlyFinding?.reportingDateBasis, "not-reported");
+  assert.equal(retrievalOnlyFinding?.accessedAt, "2026-03-04");
+
+  const ambiguous = parseResponse({
+    ...response,
+    sourceLedger: response.sourceLedger.map((source: Record<string, unknown>, index: number) => index === 0
+      ? { ...source, date: null, dateBasis: "ambiguous-publication-metadata", publicationDateStatus: "ambiguous" }
+      : source),
+  }, options);
+  const ambiguousFinding = ambiguous.retainedFindings?.find((finding) => finding.assessment === "source-supported");
+  assert.equal(ambiguousFinding?.reportingDate, null);
+  assert.equal(ambiguousFinding?.reportingDateBasis, "ambiguous-publication-metadata");
 });
 
 function retainedPassage(passage: string, exactProject = true, sourceClass = "primary-government") {

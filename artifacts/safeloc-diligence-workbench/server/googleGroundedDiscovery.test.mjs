@@ -21,6 +21,17 @@ const project = {
   knownData: { operator: "Atlas Compute", aliases: ["Atlas"] },
 };
 
+const neutralArticleContext = [
+  "This page is a synthetic document used to validate bounded HTML retrieval in an offline test.",
+  "It is not a real public record and does not describe facility operations, contracts, regulatory decisions, or financial performance.",
+  "The remaining text exists only to provide enough neutral article body for the extraction threshold while preserving the short routing-control passage exactly.",
+  "No additional project identity, date, capacity, schedule, or operating claim should be inferred from this test content.",
+].join(" ");
+
+function offlineArticle(passage) {
+  return `<html><body><main><article><p>${passage}</p><p>${neutralArticleContext}</p></article></main></body></html>`;
+}
+
 const CATEGORY_EVIDENCE_IDS = Object.freeze({
   grid: ["grid_interconnection", "electricity_cost", "electricity_escalation", "renewable_percentage"],
   electricity: ["electricity_cost", "electricity_escalation", "renewable_percentage", "carbon_compliance"],
@@ -394,7 +405,7 @@ test("keeps unlabeled grounded passages in the audit without sending them to eve
     documentFetchImpl: async (url) => {
       assert.equal(String(url), sourceUrl);
       documentCalls += 1;
-      return new Response(`<html><body><p>${passage}</p></body></html>`, {
+      return new Response(offlineArticle(passage), {
         status: 200,
         headers: { "content-type": "text/html" },
       });
@@ -453,7 +464,7 @@ test("keeps mixed and recognized citation labels scoped through availability and
         return structuredResponseForCategory(categoryId, passage, sourceUrl);
       },
       documentFetchImpl: async (url) => new Response(
-        String(url) === sourceUrl ? `<html><body><p>${passage}</p></body></html>` : "not found",
+        String(url) === sourceUrl ? offlineArticle(passage) : "not found",
         {
           status: String(url) === sourceUrl ? 200 : 404,
           headers: { "content-type": "text/html" },
@@ -787,7 +798,7 @@ test("runs one Google discovery request before structured extraction without Ope
     },
     documentFetchImpl: async () => {
       documentCalls += 1;
-      return new Response(`<html><body><p>${passage}</p></body></html>`, {
+      return new Response(offlineArticle("Project Atlas public filing identifies the project."), {
         status: 200,
         headers: { "content-type": "text/html" },
       });

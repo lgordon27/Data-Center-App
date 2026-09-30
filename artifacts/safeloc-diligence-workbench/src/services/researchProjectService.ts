@@ -50,6 +50,7 @@ export type CustomEvidenceRecord = Pick<
   EvidenceItem,
   "id" | "label" | "value" | "unit" | "classification" | "citation" | "description" | "sourceRole" | "sourceUrl" | "sourceTitle" | "sourcePublisher" | "sourcePublishedAt" | "sourceAccessedAt" | "sourceAccessStatus"
 > & {
+  sourcePublishedAtBasis?: PublicationDateBasis;
   numericValue?: number;
   qualitativeValue?: EvidenceItem["qualitativeValue"];
   sourceSupportConfidence?: number;
@@ -88,11 +89,23 @@ export type CustomEvidenceRecord = Pick<
 export type ResearchEvidenceState = "retrieved-lead" | "eligible-evidence" | "proposed" | "accepted" | "quarantined";
 
 export type ResearchCoverageStatus = "supported" | "searched-no-support" | "partial" | "conflicting";
+export type PublicationDateBasis =
+  | "semantic-metadata"
+  | "json-ld-date-published"
+  | "visible-publication-line"
+  | "provider-source-metadata"
+  | "ambiguous-publication-metadata"
+  | "not-reported";
+export type ExtractedPublicationDateBasis = Extract<
+  PublicationDateBasis,
+  "semantic-metadata" | "json-ld-date-published" | "visible-publication-line"
+>;
 export type ResearchEvidenceSource = {
   url: string;
   title: string;
   publisher: string;
   publishedAt: string | null;
+  publishedAtBasis?: PublicationDateBasis;
   accessedAt: string | null;
   accessStatus: EvidenceItem["sourceAccessStatus"];
   excerpt: string;
@@ -117,6 +130,9 @@ export type ResearchEvidenceSource = {
     resolvedUrl?: string | null;
     canonicalUrl?: string | null;
     retrievalTime?: string | null;
+    publicationDate?: string | null;
+    publicationDateBasis?: ExtractedPublicationDateBasis | null;
+    publicationDateStatus?: "resolved" | "ambiguous" | "absent";
     passage?: string | null;
     pageOrSection?: string | number | null;
     extractionLimitations?: string[];
@@ -244,7 +260,7 @@ export type RetainedResearchFinding = {
   powerClaimState: "resolved" | "unresolved" | "not-present";
   powerClaim: RetainedPowerClaim | null;
   reportingDate: string | null;
-  reportingDateBasis: "retrieved-source-metadata" | "not-reported";
+  reportingDateBasis: PublicationDateBasis;
   accessedAt: string | null;
   accessedAtBasis: "retrieval-time" | "not-recorded";
   sourceTitle: string;
@@ -909,9 +925,24 @@ function deriveRetainedResearchFindingReport(sourceLedger: unknown, identity: Re
     const reportingDate = optionalDate(candidate.date)
       ?? optionalDate(candidate.publishedAt)
       ?? optionalDate(candidate.sourcePublishedAt)
+      ?? optionalDate(candidate.accessOutcome.publicationDate)
       ?? null;
-    const accessedAt = optionalDate(candidate.accessedAt)
-      ?? optionalDate(candidate.accessOutcome.retrievalTime)
+    const rawReportingDateBasis = optionalPublicationDateBasis(
+      candidate.publishedAtBasis
+        ?? candidate.dateBasis
+        ?? candidate.sourcePublishedAtBasis
+        ?? candidate.accessOutcome.publicationDateBasis,
+    );
+    const ambiguousPublicationDate = candidate.publicationDateStatus === "ambiguous"
+      || candidate.accessOutcome.publicationDateStatus === "ambiguous"
+      || rawReportingDateBasis === "ambiguous-publication-metadata";
+    const reportingDateBasis: PublicationDateBasis = reportingDate
+      ? rawReportingDateBasis && rawReportingDateBasis !== "ambiguous-publication-metadata" && rawReportingDateBasis !== "not-reported"
+        ? rawReportingDateBasis
+        : "provider-source-metadata"
+      : ambiguousPublicationDate ? "ambiguous-publication-metadata" : "not-reported";
+    const accessedAt = optionalDate(candidate.accessOutcome.retrievalTime)
+      ?? optionalDate(candidate.accessedAt)
       ?? null;
     const sourceScope = [
       isNonEmptyString(candidate.facilityScope) ? `Facility scope assessment: ${candidate.facilityScope}.` : null,
@@ -939,7 +970,7 @@ function deriveRetainedResearchFindingReport(sourceLedger: unknown, identity: Re
       powerClaimState,
       powerClaim,
       reportingDate,
-      reportingDateBasis: reportingDate ? "retrieved-source-metadata" : "not-reported",
+      reportingDateBasis,
       accessedAt,
       accessedAtBasis: accessedAt ? "retrieval-time" : "not-recorded",
       sourceTitle: title,
@@ -1000,11 +1031,42 @@ function optionalDate(value: unknown): string | null | undefined {
   if (value === null) return null;
   if (!isNonEmptyString(value)) return undefined;
   const date = value.trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    return Number.isFinite(Date.parse(`${date}T00:00:00.000Z`)) ? date : undefined;
-  }
+  const isoDate = date.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!isoDate) return undefined;
+  const year = Number(isoDate[1]);
+  const month = Number(isoDate[2]);
+  const day = Number(isoDate[3]);
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (year < 1 || month < 1 || month > 12 || day < 1 || day > daysInMonth[month - 1]) return undefined;
+  if (date.length === 10) return date;
   if (!/^\d{4}-\d{2}-\d{2}T/.test(date) || !Number.isFinite(Date.parse(date))) return undefined;
-  return new Date(date).toISOString().slice(0, 10);
+  return isoDate[0];
+}
+
+const PUBLICATION_DATE_BASES = new Set<PublicationDateBasis>([
+  "semantic-metadata",
+  "json-ld-date-published",
+  "visible-publication-line",
+  "provider-source-metadata",
+  "ambiguous-publication-metadata",
+  "not-reported",
+]);
+
+function optionalPublicationDateBasis(value: unknown): PublicationDateBasis | undefined {
+  return typeof value === "string" && PUBLICATION_DATE_BASES.has(value as PublicationDateBasis)
+    ? value as PublicationDateBasis
+    : undefined;
+}
+
+function isExtractedPublicationDateBasis(value: unknown): value is ExtractedPublicationDateBasis {
+  return value === "semantic-metadata"
+    || value === "json-ld-date-published"
+    || value === "visible-publication-line";
+}
+
+function optionalPublicationDateStatus(value: unknown): "resolved" | "ambiguous" | "absent" | undefined {
+  return value === "resolved" || value === "ambiguous" || value === "absent" ? value : undefined;
 }
 
 function normalizeReportedCapacityMW(value: unknown): number | null {
@@ -1101,6 +1163,7 @@ function parseSource(value: unknown): ResearchEvidenceSource | null {
     ? value.relationship as ResearchEvidenceSource["relationship"]
     : "corroborating";
   const rawAccessOutcome = isRecord(value.accessOutcome) ? value.accessOutcome : null;
+  const accessPublicationDateStatus = optionalPublicationDateStatus(rawAccessOutcome?.publicationDateStatus);
   const accessOutcome = rawAccessOutcome && ["accessible", "blocked", "unsupported", "not-attempted"].includes(String(rawAccessOutcome.state)) && isNonEmptyString(rawAccessOutcome.reason)
     ? {
         state: rawAccessOutcome.state as NonNullable<ResearchEvidenceSource["accessOutcome"]>["state"],
@@ -1109,6 +1172,13 @@ function parseSource(value: unknown): ResearchEvidenceSource | null {
          ...(safePublicSourceUrl(rawAccessOutcome.resolvedUrl) ? { resolvedUrl: safePublicSourceUrl(rawAccessOutcome.resolvedUrl) } : {}),
          ...(safePublicSourceUrl(rawAccessOutcome.canonicalUrl) ? { canonicalUrl: safePublicSourceUrl(rawAccessOutcome.canonicalUrl) } : {}),
         ...(optionalDate(rawAccessOutcome.retrievalTime) ? { retrievalTime: optionalDate(rawAccessOutcome.retrievalTime) } : {}),
+         ...(optionalDate(rawAccessOutcome.publicationDate) ? { publicationDate: optionalDate(rawAccessOutcome.publicationDate) } : {}),
+          ...(isExtractedPublicationDateBasis(rawAccessOutcome.publicationDateBasis)
+            ? { publicationDateBasis: rawAccessOutcome.publicationDateBasis }
+           : {}),
+          ...(accessPublicationDateStatus
+            ? { publicationDateStatus: accessPublicationDateStatus }
+           : {}),
         ...(isNonEmptyString(rawAccessOutcome.passage) ? { passage: rawAccessOutcome.passage } : {}),
         ...(typeof rawAccessOutcome.pageOrSection === "number" || isNonEmptyString(rawAccessOutcome.pageOrSection) ? { pageOrSection: rawAccessOutcome.pageOrSection } : {}),
         ...(Array.isArray(rawAccessOutcome.extractionLimitations) ? { extractionLimitations: rawAccessOutcome.extractionLimitations.filter(isNonEmptyString) } : {}),
@@ -1126,6 +1196,9 @@ function parseSource(value: unknown): ResearchEvidenceSource | null {
     title: value.title.trim(),
     publisher: value.publisher.trim(),
     publishedAt: optionalDate(value.publishedAt) ?? null,
+    ...(optionalPublicationDateBasis(value.publishedAtBasis)
+      ? { publishedAtBasis: optionalPublicationDateBasis(value.publishedAtBasis) }
+      : {}),
     accessedAt: optionalDate(value.accessedAt) ?? null,
     accessStatus: ["open", "paywall", "registration", "not provided"].includes(String(value.accessStatus))
       ? value.accessStatus as EvidenceItem["sourceAccessStatus"]
@@ -1698,6 +1771,9 @@ function parseResponse(value: unknown, identity: ResearchIdentity = {}): CustomR
         sourceTitle: optionalString(candidate.sourceTitle),
         sourcePublisher: optionalString(candidate.sourcePublisher),
         sourcePublishedAt: optionalDate(candidate.sourcePublishedAt),
+        ...(optionalPublicationDateBasis(candidate.sourcePublishedAtBasis)
+          ? { sourcePublishedAtBasis: optionalPublicationDateBasis(candidate.sourcePublishedAtBasis) }
+          : {}),
         sourceAccessedAt: optionalDate(candidate.sourceAccessedAt),
         sourceAccessStatus: accessStatus ?? "not provided",
       } : {}),

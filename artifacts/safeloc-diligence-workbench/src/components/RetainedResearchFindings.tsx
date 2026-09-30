@@ -15,6 +15,15 @@ const eligibilityLabel: Record<RetainedResearchFinding["financialProposalEligibi
   unresolved: "Financial eligibility unresolved",
 };
 
+const reportingDateBasisLabel: Record<RetainedResearchFinding["reportingDateBasis"], string> = {
+  "semantic-metadata": "article publication metadata",
+  "json-ld-date-published": "JSON-LD datePublished",
+  "visible-publication-line": "visible publication line",
+  "provider-source-metadata": "provider/source metadata",
+  "ambiguous-publication-metadata": "ambiguous publication metadata",
+  "not-reported": "not reported",
+};
+
 export function RetainedResearchFindings({
   findings,
   audit,
@@ -64,7 +73,7 @@ export function RetainedResearchFindings({
                     : ""}
               </p>
               <p className="mt-1 text-[#60707d]">
-                Reporting date: {finding.reportingDate ?? "not reported"} ({finding.reportingDateBasis}) · Accessed: {finding.accessedAt ?? "not recorded"} ({finding.accessedAtBasis})
+                Source publication date: {finding.reportingDate ?? "not reported"} ({reportingDateBasisLabel[finding.reportingDateBasis]}) · Accessed: {finding.accessedAt ?? "not recorded"} (retrieval time)
               </p>
               <blockquote className="mt-2 whitespace-pre-wrap border-l-2 border-[#aac6f4] pl-3 text-[#344550]">
                 <span className="sr-only">Exact retained source passage: </span>{finding.passage}

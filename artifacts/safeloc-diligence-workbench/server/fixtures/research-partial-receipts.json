@@ -19,6 +19,33 @@
     "sourceChannel": "synthetic-public-record",
     "passage": "Project Atlas in Phoenix, Arizona has a documented water planning record dated March 14, 2026."
   },
+  "publicationDateFixtures": {
+    "semantic": {
+      "markup": "<meta property=\"article:published_time\" content=\"2026-04-23T09:30:00-05:00\">",
+      "date": "2026-04-23",
+      "basis": "semantic-metadata"
+    },
+    "jsonLd": {
+      "markup": "<script type=\"application/ld+json\">{\"@type\":\"NewsArticle\",\"datePublished\":\"2026-04-24\",\"dateModified\":\"2026-04-28\"}</script>",
+      "date": "2026-04-24",
+      "basis": "json-ld-date-published"
+    },
+    "visiblePublicationLine": {
+      "line": "Published On Apr 23, 2026",
+      "date": "2026-04-23",
+      "basis": "visible-publication-line"
+    },
+    "conflictingSemantic": {
+      "markup": "<meta property=\"article:published_time\" content=\"2026-04-23\"><meta property=\"article:published_time\" content=\"2026-04-24\">",
+      "date": null,
+      "status": "ambiguous"
+    },
+    "noPublicationDate": {
+      "unrelatedLines": "Copyright © 2026. A public hearing was held May 8, 2026.",
+      "date": null,
+      "status": "absent"
+    }
+  },
   "providerFailures": [
     {
       "httpStatus": 429,

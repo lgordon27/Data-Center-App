@@ -1910,8 +1910,65 @@ test("actual validated workflow retains receipts after total category-analysis f
   assert.equal(receipt.accessOutcome.state, "accessible");
   assert.ok(receipt.accessOutcome.passage.includes(fixture.accessibleReceipt.passage));
   assert.equal(receipt.date ?? receipt.publishedAt, fixture.accessibleReceipt.date);
+  assert.equal(receipt.dateBasis, "provider-source-metadata");
   assert.equal(result.researchAudit.categories.find((item) => item.categoryId === "water").openedDocuments[0].accessOutcome, "retrieved");
   assert.ok(result.evidence.every((item) => item.eligibleForModel === false));
+});
+
+test("carries extracted publication metadata through access receipts ahead of provider dates", async () => {
+  const fixture = JSON.parse(await readFile(new URL("./fixtures/research-partial-receipts.json", import.meta.url), "utf8"));
+  const candidate = { ...fixture.accessibleReceipt, excerpt: fixture.accessibleReceipt.passage };
+  const result = await runValidatedResearch(fixture.project, {
+    apiKey: "synthetic-test-key",
+    req: request({}),
+    categoryIds: ["water"],
+    rateLimiter: { allow: () => ({ allowed: true, retryAfterSeconds: 0 }) },
+    googleDiscoveryImpl: completedGoogleDiscovery([candidate]),
+    fetchImpl: async () => new Response(JSON.stringify({
+      error: { message: "synthetic provider unavailable", type: "server_error" },
+    }), { status: fixture.providerFailures[1].httpStatus }),
+    documentFetchImpl: async (url) => new Response(
+      `<html><head>${fixture.publicationDateFixtures.semantic.markup}</head><body><main><article><h1>Public project record</h1><p>${fixture.accessibleReceipt.passage} ${substantiveHtmlPassage}</p></article></main></body></html>`,
+      { status: 200, headers: { "content-type": "text/html" } },
+    ),
+  });
+  const receipt = result.sourceLedger.find((source) => source.originalUrl === candidate.url);
+  assert.equal(receipt.date, fixture.publicationDateFixtures.semantic.date);
+  assert.equal(receipt.dateBasis, fixture.publicationDateFixtures.semantic.basis);
+  assert.equal(receipt.publicationDateStatus, "resolved");
+  assert.equal(receipt.accessOutcome.publicationDate, fixture.publicationDateFixtures.semantic.date);
+  assert.equal(receipt.accessOutcome.publicationDateBasis, fixture.publicationDateFixtures.semantic.basis);
+  assert.ok(receipt.accessOutcome.retrievalTime);
+  assert.notEqual(receipt.date, fixture.accessibleReceipt.date);
+  assert.equal(result.researchOutcome.eligibleEvidenceCount, 0);
+});
+
+test("does not use retrieval time as a publication date when both document and provider metadata are absent", async () => {
+  const fixture = JSON.parse(await readFile(new URL("./fixtures/research-partial-receipts.json", import.meta.url), "utf8"));
+  const candidate = {
+    ...fixture.accessibleReceipt,
+    date: null,
+    publishedAt: null,
+    excerpt: fixture.accessibleReceipt.passage,
+  };
+  const result = await runValidatedResearch(fixture.project, {
+    apiKey: "synthetic-test-key",
+    req: request({}),
+    categoryIds: ["water"],
+    rateLimiter: { allow: () => ({ allowed: true, retryAfterSeconds: 0 }) },
+    googleDiscoveryImpl: completedGoogleDiscovery([candidate]),
+    fetchImpl: async () => new Response(JSON.stringify({
+      error: { message: "synthetic provider unavailable", type: "server_error" },
+    }), { status: fixture.providerFailures[1].httpStatus }),
+    documentFetchImpl: async (url) => substantiveHtmlResponse(fixture.publicationDateFixtures.noPublicationDate.unrelatedLines, url),
+  });
+  const receipt = result.sourceLedger.find((source) => source.originalUrl === candidate.url);
+  assert.equal(receipt.date, null);
+  assert.equal(receipt.publishedAt, null);
+  assert.equal(receipt.dateBasis, "not-reported");
+  assert.equal(receipt.accessOutcome.publicationDate, null);
+  assert.equal(receipt.accessOutcome.publicationDateStatus, "absent");
+  assert.ok(receipt.accessOutcome.retrievalTime);
 });
 
 test("parallel bounded document access lets a fast receipt survive a slow-document time slice", async () => {
@@ -4763,8 +4820,47 @@ test("only exposes direct links that are safe and present in the retrieved sourc
   assert.equal(parsed.evidence[0].sourceTitle, retrievedSource.title);
   assert.equal(parsed.evidence[0].sourcePublisher, "example.com");
   assert.equal(parsed.evidence[0].sourcePublishedAt, "2026-06-01");
-  assert.equal(parsed.evidence[0].sourceAccessedAt, "2026-08-30");
+  assert.equal(parsed.evidence[0].sourceAccessedAt, null);
   assert.equal(parsed.evidence[0].sourceAccessStatus, "not provided");
+
+  const redirectedPublicationSource = {
+    ...retrievedSource,
+    url: "https://example.com/atlas/source?utm_source=offline-fixture",
+    canonicalUrl: "https://example.com/atlas/source",
+    date: null,
+    publishedAt: null,
+    accessOutcome: {
+      state: "accessible",
+      reason: "retrieved",
+      resolvedUrl: "https://example.com/atlas/source?redirected=1",
+      canonicalUrl: "https://example.com/atlas/source",
+      retrievalTime: "2026-04-24T10:00:00.000Z",
+      publicationDate: "2026-04-23",
+      publicationDateBasis: "semantic-metadata",
+      publicationDateStatus: "resolved",
+      passage: retrievedSource.claimPassage,
+    },
+  };
+  const redirectedParsed = parseResearchResponse(validResearchResponse(), [redirectedPublicationSource]);
+  assert.equal(redirectedParsed.evidence[0].sourceUrl, "https://example.com/atlas/source");
+  assert.equal(redirectedParsed.evidence[0].sourcePublishedAt, "2026-04-23");
+  assert.equal(redirectedParsed.evidence[0].sourcePublishedAtBasis, "semantic-metadata");
+  assert.equal(redirectedParsed.evidence[0].sourceAccessedAt, "2026-04-24");
+
+  const conflictingPublicationSource = {
+    ...redirectedPublicationSource,
+    date: "2026-03-14",
+    accessOutcome: {
+      ...redirectedPublicationSource.accessOutcome,
+      publicationDate: null,
+      publicationDateBasis: null,
+      publicationDateStatus: "ambiguous",
+    },
+  };
+  const conflictingPublication = parseResearchResponse(validResearchResponse(), [conflictingPublicationSource]);
+  assert.equal(conflictingPublication.evidence[0].sourcePublishedAt, null);
+  assert.equal(conflictingPublication.evidence[0].sourcePublishedAtBasis, "ambiguous-publication-metadata");
+  assert.equal(conflictingPublication.evidence[0].sourceAccessedAt, "2026-04-24");
 
   const untrusted = validResearchResponse();
   untrusted.evidence[0].sourceUrl = "javascript:alert(1)";

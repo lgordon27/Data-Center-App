@@ -27,7 +27,10 @@ import {
   discoverGoogleGroundedProject,
   GOOGLE_GEMINI_MODEL,
 } from "./googleGroundedDiscovery.mjs";
-import { extractResearchDocument } from "./researchDocumentExtraction.mjs";
+import {
+  extractResearchDocument,
+  normalizePublicationDate,
+} from "./researchDocumentExtraction.mjs";
 import { createSecConnector } from "./secConnector.mjs";
 import { releaseIdentity } from "./version.mjs";
 
@@ -1774,6 +1777,9 @@ async function accessResearchDocument(candidate = {}, {
         contentHash: extraction.contentHash,
         extractionMethod: extraction.extractionMethod,
         extractionOutcome: rejectedOutcome ?? extraction.outcome,
+        publicationDate: extraction.publicationDate ?? null,
+        publicationDateBasis: extraction.publicationDateBasis ?? null,
+        publicationDateStatus: extraction.publicationDateStatus ?? "absent",
         underlyingDocumentUrl: extraction.underlyingDocumentUrl,
         candidateLinks: extraction.candidateLinks,
         transportDiagnostic: buildTransportDiagnostic({
@@ -1806,6 +1812,9 @@ async function accessResearchDocument(candidate = {}, {
       contentHash: extraction.contentHash,
       extractionMethod: extraction.extractionMethod,
       extractionOutcome: extraction.outcome,
+      publicationDate: extraction.publicationDate ?? null,
+      publicationDateBasis: extraction.publicationDateBasis ?? null,
+      publicationDateStatus: extraction.publicationDateStatus ?? "absent",
       candidateLinks: extraction.candidateLinks,
       transportDiagnostic: buildTransportDiagnostic({
         stage: "complete",
@@ -3238,6 +3247,15 @@ function parseResearchResponse(
       numericValue: item.numericValue,
       unit: item.unit,
     });
+    const hasReportedClaimTimePeriod = [
+      item?.claimTimePeriod,
+      validatedSources[0]?.timePeriod,
+      extractedClaimScope?.claimTimePeriod,
+    ].some(scopeValueIsKnown);
+    const publicationTimePeriod = !hasReportedClaimTimePeriod
+      && VALID_EXTRACTED_PUBLICATION_BASES.has(validatedSources[0]?.accessOutcome?.publicationDateBasis)
+      ? normalizePublicDate(validatedSources[0]?.accessOutcome?.publicationDate)
+      : null;
     const supportingSources = validatedSources.map((metadata) => {
       const jurisdictionExcluded = isJurisdictionallyExcludedSource(metadata, summary);
       const exactProject = !jurisdictionExcluded
@@ -3257,8 +3275,9 @@ function parseResearchResponse(
         canonicalUrl: canonicalizeSourceUrl(metadata?.canonicalUrl ?? resolvedUrl) ?? resolvedUrl,
         title: typeof metadata?.title === "string" && metadata.title.trim() ? metadata.title.trim().slice(0, 500) : "not provided",
         publisher: new URL(resolvedUrl).hostname.replace(/^www\./, ""),
-        publishedAt: normalizePublicDate(metadata?.date),
-        accessedAt: normalizePublicDate(accessedAt),
+        ...choosePublicationMetadata(metadata?.accessOutcome, metadata),
+        accessedAt: normalizePublicDate(metadata?.accessOutcome?.retrievalTime)
+          ?? normalizePublicDate(metadata?.accessedAt),
         accessStatus: ["open", "paywall", "registration"].includes(metadata?.accessStatus) ? metadata.accessStatus : "not provided",
         excerpt: stringOrFallback(
           metadata?.accessOutcome?.passage ?? metadata?.excerpt,
@@ -3282,7 +3301,7 @@ function parseResearchResponse(
          claimSupport: metadata?.claimSupport ?? null,
          claimPassage: item.claimPassage,
          ...claimScope,
-         timePeriod: claimScope.claimTimePeriod,
+      timePeriod: claimScope.claimTimePeriod ?? publicationTimePeriod,
          relevanceNote: stringOrFallback(
            jurisdictionExcluded
              ? "ERCOT is not a project-evidence authority for a non-Texas project."
@@ -3412,6 +3431,7 @@ function parseResearchResponse(
       record.sourceTitle = metadata.title;
       record.sourcePublisher = metadata.publisher;
       record.sourcePublishedAt = metadata.publishedAt;
+      record.sourcePublishedAtBasis = metadata.publishedAtBasis;
       record.sourceAccessedAt = metadata.accessedAt;
       record.sourceAccessStatus = metadata.accessStatus;
       record.sources = supportingSources;
@@ -3553,10 +3573,77 @@ function parseResearchResponse(
 }
 
 function normalizePublicDate(value) {
-  if (typeof value !== "string" || !value.trim()) return null;
-  const match = value.trim().match(/^\d{4}-\d{2}-\d{2}/);
-  if (!match || !Number.isFinite(Date.parse(`${match[0]}T00:00:00.000Z`))) return null;
-  return match[0];
+  return normalizePublicationDate(value);
+}
+
+const VALID_EXTRACTED_PUBLICATION_BASES = new Set([
+  "semantic-metadata",
+  "json-ld-date-published",
+  "visible-publication-line",
+]);
+
+function choosePublicationMetadata(accessOutcome = {}, source = {}) {
+  if (accessOutcome?.publicationDateStatus === "ambiguous") {
+    return {
+      date: null,
+      publishedAt: null,
+      dateBasis: "ambiguous-publication-metadata",
+      publishedAtBasis: "ambiguous-publication-metadata",
+      publicationDateStatus: "ambiguous",
+    };
+  }
+
+  const extractedDate = normalizePublicDate(accessOutcome?.publicationDate);
+  if (extractedDate && VALID_EXTRACTED_PUBLICATION_BASES.has(accessOutcome?.publicationDateBasis)) {
+    return {
+      date: extractedDate,
+      publishedAt: extractedDate,
+      dateBasis: accessOutcome.publicationDateBasis,
+      publishedAtBasis: accessOutcome.publicationDateBasis,
+      publicationDateStatus: "resolved",
+    };
+  }
+  if (source?.providerPublicationDateStatus === "ambiguous" || source?.publicationDateStatus === "ambiguous") {
+    return {
+      date: null,
+      publishedAt: null,
+      dateBasis: "ambiguous-publication-metadata",
+      publishedAtBasis: "ambiguous-publication-metadata",
+      publicationDateStatus: "ambiguous",
+    };
+  }
+
+  const providerDates = [...new Set([
+    source?.date,
+    source?.publishedAt,
+    source?.published_date,
+    source?.sourcePublishedAt,
+  ].map(normalizePublicDate).filter(Boolean))];
+  if (providerDates.length > 1) {
+    return {
+      date: null,
+      publishedAt: null,
+      dateBasis: "ambiguous-publication-metadata",
+      publishedAtBasis: "ambiguous-publication-metadata",
+      publicationDateStatus: "ambiguous",
+    };
+  }
+  if (providerDates.length === 1) {
+    return {
+      date: providerDates[0],
+      publishedAt: providerDates[0],
+      dateBasis: "provider-source-metadata",
+      publishedAtBasis: "provider-source-metadata",
+      publicationDateStatus: "resolved",
+    };
+  }
+  return {
+    date: null,
+    publishedAt: null,
+    dateBasis: "not-reported",
+    publishedAtBasis: "not-reported",
+    publicationDateStatus: "absent",
+  };
 }
 
 function classifySource(url, title = "") {
@@ -3919,12 +4006,26 @@ function normalizeRetrievedSources(body, searchDomain = "project-identity", proj
   const prioritizedCandidates = prioritizeResearchSources(candidates.map((source) => {
     const url = safePublicSourceUrl(source.url) ?? "";
     const title = typeof source.title === "string" ? source.title.trim() : "Retrieved public source";
+    const providerDates = [...new Set([
+      source.published_date,
+      source.date,
+      source.publishedAt,
+      source.sourcePublishedAt,
+    ].map(normalizePublicDate).filter(Boolean))];
+    const providerDateAmbiguous = providerDates.length > 1;
     return {
       ...source,
       url,
       sourceChannel: typeof source.sourceChannel === "string" ? source.sourceChannel : source.origin ?? "provider",
       title,
-      date: typeof source.published_date === "string" ? source.published_date : typeof source.date === "string" ? source.date : null,
+      date: providerDateAmbiguous ? null : providerDates[0] ?? null,
+      publishedAt: providerDateAmbiguous ? null : providerDates[0] ?? null,
+      dateBasis: providerDateAmbiguous ? "ambiguous-publication-metadata"
+        : providerDates.length ? "provider-source-metadata" : "not-reported",
+      publishedAtBasis: providerDateAmbiguous ? "ambiguous-publication-metadata"
+        : providerDates.length ? "provider-source-metadata" : "not-reported",
+      publicationDateStatus: providerDateAmbiguous ? "ambiguous" : providerDates.length ? "resolved" : "absent",
+      providerPublicationDateStatus: providerDateAmbiguous ? "ambiguous" : providerDates.length ? "resolved" : "absent",
       excerpt: typeof source.snippet === "string" ? source.snippet.trim() : typeof source.excerpt === "string" ? source.excerpt.trim() : "",
       accessStatus: ["open", "paywall", "registration"].includes(source.access_status) ? source.access_status : "not provided",
       contentType: typeof source.content_type === "string" ? source.content_type : typeof source.contentType === "string" ? source.contentType : null,
@@ -3962,26 +4063,35 @@ function normalizeRetrievedSources(body, searchDomain = "project-identity", proj
     };
   }), project);
   const ledger = createSourceLedger(prioritizedCandidates, { maxRetained: RESEARCH_RUN_BUDGET.maxCandidatesPerCategory });
-  const result = ledger.retained.map((source) => ({
-    ...source,
-    date: candidates.find((candidate) => safePublicSourceUrl(candidate.url) === source.originalUrl)?.date ?? null,
-    excerpt: source.excerpt,
-    accessStatus: source.accessStatus,
-    sourceClass: source.sourceClass,
-    searchDomain,
-    ...(source.canonicalIdentityExplicit === true
-      ? {
-          canonicalUrl: canonicalizeSourceUrl(source.canonicalUrl),
-          canonicalIdentityExplicit: true,
-        }
-      : {}),
-    ...(typeof source.exactProject === "boolean" ? { exactProject: source.exactProject } : {}),
-    ...(Array.isArray(source.categoryIds) ? { categoryIds: source.categoryIds.slice(0, 12) } : {}),
-    ...(Array.isArray(source.discoveryCategoryIds) ? { discoveryCategoryIds: source.discoveryCategoryIds.slice(0, 12) } : {}),
-    ...(Array.isArray(source.unknownCategoryLabels) ? { unknownCategoryLabels: source.unknownCategoryLabels.slice(0, 12) } : {}),
-    ...(source.categoryRoutingUnknown === true ? { categoryRoutingUnknown: true } : {}),
-    relevanceNote: source.relevanceNote ?? null,
-  }));
+  const result = ledger.retained.map((source) => {
+    const canonical = canonicalizeSourceUrl(source.canonicalUrl ?? source.originalUrl ?? source.url);
+    const matchedCandidate = candidates.find((candidate) =>
+      canonicalizeSourceUrl(candidate.canonicalUrl ?? candidate.resolvedUrl ?? candidate.url) === canonical);
+    return {
+      ...source,
+      date: matchedCandidate?.date ?? source.date ?? null,
+      publishedAt: matchedCandidate?.publishedAt ?? source.publishedAt ?? source.date ?? null,
+      dateBasis: matchedCandidate?.dateBasis ?? source.dateBasis ?? null,
+      publishedAtBasis: matchedCandidate?.publishedAtBasis ?? source.publishedAtBasis ?? source.dateBasis ?? null,
+      publicationDateStatus: matchedCandidate?.publicationDateStatus ?? source.publicationDateStatus ?? null,
+      excerpt: source.excerpt,
+      accessStatus: source.accessStatus,
+      sourceClass: source.sourceClass,
+      searchDomain,
+      ...(source.canonicalIdentityExplicit === true
+        ? {
+            canonicalUrl: canonicalizeSourceUrl(source.canonicalUrl),
+            canonicalIdentityExplicit: true,
+          }
+        : {}),
+      ...(typeof source.exactProject === "boolean" ? { exactProject: source.exactProject } : {}),
+      ...(Array.isArray(source.categoryIds) ? { categoryIds: source.categoryIds.slice(0, 12) } : {}),
+      ...(Array.isArray(source.discoveryCategoryIds) ? { discoveryCategoryIds: source.discoveryCategoryIds.slice(0, 12) } : {}),
+      ...(Array.isArray(source.unknownCategoryLabels) ? { unknownCategoryLabels: source.unknownCategoryLabels.slice(0, 12) } : {}),
+      ...(source.categoryRoutingUnknown === true ? { categoryRoutingUnknown: true } : {}),
+      relevanceNote: source.relevanceNote ?? null,
+    };
+  });
   result.sourceLedger = ledger;
   result.sourceChannelTelemetry = sourceChannelTelemetry.slice(0, 80);
   return result;
@@ -5392,6 +5502,7 @@ async function runValidatedResearch(project, {
       }
       const openedSource = {
         ...source,
+        ...choosePublicationMetadata(accessOutcome, source),
         discoveryCandidateRank: candidateIndex + 1,
         originalUrl,
         canonicalUrl: source.canonicalIdentityExplicit === true
@@ -5990,6 +6101,7 @@ async function runValidatedResearch(project, {
           });
           const accessedSource = {
             ...source,
+            ...choosePublicationMetadata(accessOutcome, source),
             searchDomain: categoryId,
             originalUrl,
             ...(finalCanonicalUrl ? { canonicalUrl: finalCanonicalUrl } : {}),

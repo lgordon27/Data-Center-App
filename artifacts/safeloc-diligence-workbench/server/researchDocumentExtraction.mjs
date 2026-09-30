@@ -36,6 +36,164 @@ function decodeEntities(value) {
     .replace(/&apos;|&#39;/gi, "'");
 }
 
+const PUBLICATION_DATE_BASES = Object.freeze({
+  SEMANTIC: "semantic-metadata",
+  JSON_LD: "json-ld-date-published",
+  VISIBLE: "visible-publication-line",
+});
+
+function validCalendarDate(year, month, day) {
+  if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day <= daysInMonth[month - 1];
+}
+
+export function normalizePublicationDate(value) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const text = decodeEntities(value).trim();
+  const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,9}))?)?(Z|[+-]\d{2}:\d{2})?)?$/i);
+  if (iso) {
+    const [, yearText, monthText, dayText, hourText, minuteText, secondText, , zone] = iso;
+    const year = Number(yearText);
+    const month = Number(monthText);
+    const day = Number(dayText);
+    if (!validCalendarDate(year, month, day)) return null;
+    if (hourText !== undefined) {
+      if (Number(hourText) > 23 || Number(minuteText) > 59 || Number(secondText ?? "0") > 59) return null;
+      if (zone && !/^z$/i.test(zone)) {
+        const [offsetHours, offsetMinutes] = zone.slice(1).split(":").map(Number);
+        if (offsetHours > 23 || offsetMinutes > 59) return null;
+      }
+    }
+    return `${yearText}-${monthText}-${dayText}`;
+  }
+
+  const monthNames = {
+    jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3, apr: 4, april: 4,
+    may: 5, jun: 6, june: 6, jul: 7, july: 7, aug: 8, august: 8, sep: 9, sept: 9,
+    september: 9, oct: 10, october: 10, nov: 11, november: 11, dec: 12, december: 12,
+  };
+  const monthFirst = text.match(/^([A-Za-z]+)\.?\s+(\d{1,2}),?\s+(\d{4})$/);
+  const dayFirst = text.match(/^(\d{1,2})\s+([A-Za-z]+)\.?,?\s+(\d{4})$/);
+  const match = monthFirst
+    ? [monthFirst[3], monthNames[monthFirst[1].toLowerCase()], monthFirst[2]]
+    : dayFirst
+      ? [dayFirst[3], monthNames[dayFirst[2].toLowerCase()], dayFirst[1]]
+      : null;
+  if (!match) return null;
+  const [yearText, month, dayText] = match;
+  const year = Number(yearText);
+  const day = Number(dayText);
+  if (!Number.isInteger(month) || !validCalendarDate(year, month, day)) return null;
+  return `${yearText}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function htmlAttribute(tag, name) {
+  const match = tag.match(new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i"));
+  return decodeEntities(match?.[1] ?? match?.[2] ?? match?.[3] ?? "");
+}
+
+function publicationTier(values, basis) {
+  const dates = [...new Set(values.map(normalizePublicationDate).filter(Boolean))];
+  if (dates.length > 1) {
+    return { publicationDate: null, publicationDateBasis: null, publicationDateStatus: "ambiguous" };
+  }
+  if (dates.length === 1) {
+    return { publicationDate: dates[0], publicationDateBasis: basis, publicationDateStatus: "resolved" };
+  }
+  return { publicationDate: null, publicationDateBasis: null, publicationDateStatus: "absent" };
+}
+
+function removeVisiblePublicationDateText(value) {
+  return String(value).replace(
+    /\b(?:published(?:\s+on)?|date\s+published|publication\s+date)\s*[:\-]?\s*((?:[A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4})|(?:\d{1,2}\s+[A-Za-z]{3,9}\.?,?\s+\d{4})|(?:\d{4}-\d{2}-\d{2}))\b/gi,
+    (match, date) => normalizePublicationDate(date) ? " " : match,
+  ).replace(/\s+/g, " ").trim();
+}
+
+function jsonLdPublicationDates(markup, limits) {
+  const dates = [];
+  let visited = 0;
+  let scriptCount = 0;
+  const visit = (value, depth = 0) => {
+    if (visited >= limits.maxJsonNodes || depth > 12 || value === null || typeof value !== "object") return;
+    visited += 1;
+    if (Array.isArray(value)) {
+      for (const child of value) {
+        if (visited >= limits.maxJsonNodes) break;
+        visit(child, depth + 1);
+      }
+      return;
+    }
+    for (const [key, child] of Object.entries(value)) {
+      if (visited >= limits.maxJsonNodes) break;
+      if (key.toLowerCase() === "datepublished" && typeof child === "string") dates.push(child);
+      else if (child && typeof child === "object") visit(child, depth + 1);
+    }
+  };
+  for (const match of markup.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)) {
+    if (scriptCount >= 8 || visited >= limits.maxJsonNodes) break;
+    if (!/^application\/ld\+json(?:\s*;|$)/i.test(htmlAttribute(match[1], "type"))) continue;
+    scriptCount += 1;
+    try {
+      visit(JSON.parse(match[2]));
+    } catch {
+      // Invalid or non-JSON-LD script content is not publication metadata.
+    }
+  }
+  return dates;
+}
+
+function visiblePublicationDates(markup) {
+  const lines = String(markup)
+    .replace(/<br\b[^>]*>/gi, "\n")
+    .replace(/<\/(?:p|div|section|article|main|li|tr|td|time|h[1-6])\s*>/gi, "\n")
+    .split(/\n+/)
+    .map(blockText)
+    .filter(Boolean);
+  const dates = [];
+  for (const line of lines) {
+    const labeled = line.match(/^(?:published(?:\s+on)?|date\s+published|publication\s+date)\s*[:\-]?\s*(.+)$/i);
+    if (!labeled) continue;
+    const date = normalizePublicationDate(labeled[1]);
+    if (date) dates.push(date);
+  }
+  return dates;
+}
+
+function extractHtmlPublicationMetadata(markup, visibleMarkup, limits) {
+  const semanticValues = [];
+  const semanticNames = new Set([
+    "article:published_time",
+    "og:article:published_time",
+    "datepublished",
+    "publication_date",
+    "date_published",
+    "dc.date.issued",
+    "dcterms.issued",
+    "citation_publication_date",
+    "citation_date",
+  ]);
+  for (const match of markup.matchAll(/<meta\b[^>]*>/gi)) {
+    const tag = match[0];
+    const keys = ["property", "name", "itemprop"].map((attribute) => htmlAttribute(tag, attribute).toLowerCase());
+    if (keys.some((key) => semanticNames.has(key))) semanticValues.push(htmlAttribute(tag, "content"));
+  }
+  for (const match of markup.matchAll(/<time\b[^>]*>/gi)) {
+    const tag = match[0];
+    if (htmlAttribute(tag, "itemprop").toLowerCase() === "datepublished") {
+      semanticValues.push(htmlAttribute(tag, "datetime"));
+    }
+  }
+
+  const semantic = publicationTier(semanticValues, PUBLICATION_DATE_BASES.SEMANTIC);
+  if (semantic.publicationDateStatus !== "absent") return semantic;
+  const jsonLd = publicationTier(jsonLdPublicationDates(markup, limits), PUBLICATION_DATE_BASES.JSON_LD);
+  if (jsonLd.publicationDateStatus !== "absent") return jsonLd;
+  return publicationTier(visiblePublicationDates(visibleMarkup), PUBLICATION_DATE_BASES.VISIBLE);
+}
+
 function makeIndex(values, limits) {
   const seen = new Set();
   const output = [];
@@ -208,14 +366,20 @@ function htmlAdapter(raw, sourceUrl, limits) {
   const textSource = contentContainers.length
     ? `${titleText.join(" ")} ${contentContainers.join(" ")}`
     : withoutBoilerplate;
-  const text = proseTextFromHtml(textSource);
+  const text = removeVisiblePublicationDateText(proseTextFromHtml(textSource));
   const shellScanText = proseTextFromHtml(withoutBoilerplate);
+  const publicationMetadata = extractHtmlPublicationMetadata(
+    markup,
+    contentContainers.length ? contentContainers.join(" ") : withoutBoilerplate,
+    limits,
+  );
   return {
     text,
     shellReason: htmlShellReason(text || shellScanText, sourceUrl),
     genuineProseChars: genuineProseChars(text),
     index: makeIndex(headings, limits),
     candidates,
+    ...publicationMetadata,
   };
 }
 
@@ -335,6 +499,9 @@ function baseResult(bytes, method, outcome, limitations = []) {
     contentHash: createHash("sha256").update(bytes).digest("hex"),
     limitations,
     underlyingDocumentUrl: null,
+    publicationDate: null,
+    publicationDateBasis: null,
+    publicationDateStatus: "absent",
   };
 }
 
@@ -356,6 +523,11 @@ export async function extractResearchDocument(input, options = {}) {
   else adapted = { text: cleanText(raw), index: [] };
 
   const result = baseResult(bytes, kind === "pdf" ? "pdf-text" : kind, "extracted");
+  if (kind === "html") {
+    result.publicationDate = adapted.publicationDate ?? null;
+    result.publicationDateBasis = adapted.publicationDateBasis ?? null;
+    result.publicationDateStatus = adapted.publicationDateStatus ?? "absent";
+  }
   result.index = (adapted.index ?? []).slice(0, limits.maxIndexEntries);
   result.candidateLinks = (adapted.candidates ?? []).slice(0, limits.maxCandidateLinks);
   if (adapted.malformed) {

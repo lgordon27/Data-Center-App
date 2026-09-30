@@ -352,7 +352,13 @@ test("normalizes missing, empty, unusable, unknown, mixed, and explicit citation
 
 test("delivers one unlabeled parsed citation passage into all eight structured-analysis inputs", async () => {
   const sourceUrl = "https://records.example/project-atlas-routing-control";
-  const passage = "SYNTHETIC ROUTING CONTROL: Project Atlas appears in this offline retained passage; no real facility fact is asserted.";
+  const passage = [
+    "SYNTHETIC ROUTING CONTROL: Project Atlas appears in this offline retained passage; no real facility fact is asserted.",
+    "This paragraph is synthetic test content created only to exercise safe research routing in an offline fixture.",
+    "It is not a public record and does not describe any actual building, power project, operator, property, location, utility, permit, capacity, schedule, or construction activity.",
+    "Every name and phrase here is a placeholder, and no detail should be interpreted as verified or applicable evidence.",
+    "The passage exists to test whether retained text can be supplied to structured analysis without changing source eligibility, project identity, or model acceptance rules.",
+  ].join(" ");
   let googleCalls = 0;
   let documentCalls = 0;
   const analysisInputs = new Map(CATEGORY_LABELS.map(([categoryId]) => [categoryId, []]));
@@ -389,7 +395,7 @@ test("delivers one unlabeled parsed citation passage into all eight structured-a
     documentFetchImpl: async (url) => {
       assert.equal(String(url), sourceUrl);
       documentCalls += 1;
-      return new Response(`<html><body>${passage}</body></html>`, {
+      return new Response(`<html><body><p>${passage}</p></body></html>`, {
         status: 200,
         headers: { "content-type": "text/html" },
       });
@@ -412,7 +418,13 @@ test("delivers one unlabeled parsed citation passage into all eight structured-a
 
 test("keeps mixed and recognized citation labels scoped through availability and analysis input", async () => {
   const sourceUrl = "https://records.example/project-atlas-scoped-routing-control";
-  const passage = "SYNTHETIC SCOPED ROUTING CONTROL: this retained passage is not captured facility evidence.";
+  const passage = [
+    "SYNTHETIC SCOPED ROUTING CONTROL: this retained passage is not captured facility evidence.",
+    "This synthetic paragraph exists solely as offline test material for checking how provider category labels constrain availability and structured analysis.",
+    "It is not copied from a real record and makes no claim about an actual building, power project, water system, operator, parcel, location, permit, project status, or infrastructure condition.",
+    "Any names or category terms in the surrounding test are labels for software behavior, not factual descriptions.",
+    "Reviewers and models must treat this text as non-evidence, and no statement here establishes identity, applicability, or eligibility.",
+  ].join(" ");
   const run = async ({ labels, categoryIds }) => {
     const analysisInputs = [];
     await runValidatedResearch({ ...project, forceRefresh: true }, {
@@ -442,7 +454,7 @@ test("keeps mixed and recognized citation labels scoped through availability and
         return structuredResponseForCategory(categoryId, passage, sourceUrl);
       },
       documentFetchImpl: async (url) => new Response(
-        String(url) === sourceUrl ? `<html><body>${passage}</body></html>` : "not found",
+        String(url) === sourceUrl ? `<html><body><p>${passage}</p></body></html>` : "not found",
         {
           status: String(url) === sourceUrl ? 200 : 404,
           headers: { "content-type": "text/html" },
@@ -703,6 +715,14 @@ test("rejects malformed Interactions steps distinctly", () => {
 test("runs one Google discovery request before structured extraction without OpenAI web tools", async () => {
   let openAiCalls = 0;
   let documentCalls = 0;
+  const passage = [
+    "SYNTHETIC IDENTITY ROUTING CONTROL: this retained passage is fixture text only.",
+    "It exists solely to verify the offline sequence of one Google discovery request, one physical document retrieval, and one identity-only structured-analysis request.",
+    "It is not an actual filing and does not identify a real project, facility, operator, county, state, utility, site, capacity, permit, or construction plan.",
+    "All names and locations elsewhere in the mock response are synthetic fixture values; they are not claims about a real place or business.",
+    "No statement in this paragraph should be treated as verified evidence or as establishing a project match.",
+  ].join(" ");
+  let analysisPrompt = "";
   const result = await runValidatedResearch({
     ...project,
     forceRefresh: true,
@@ -724,7 +744,12 @@ test("runs one Google discovery request before structured extraction without Ope
         discoveryOnly: true,
       }],
       providerRequestCount: 1,
-      providerAttempt: { provider: "google-gemini-grounding", requestCount: 1, outcome: "completed" },
+      providerAttempt: {
+        provider: "google-gemini-grounding",
+        requestCount: 1,
+        issuedAt: "2026-01-01T00:00:00.000Z",
+        outcome: "completed",
+      },
     }),
     categoryIds: ["project-identity"],
     rateLimiter: { allow: () => ({ allowed: true }) },
@@ -733,6 +758,7 @@ test("runs one Google discovery request before structured extraction without Ope
       openAiCalls += 1;
       const body = JSON.parse(init.body);
       assert.equal("tools" in body, false);
+      analysisPrompt = body.input?.[1]?.content ?? "";
       return new Response(JSON.stringify({
         id: "fixture-structured-response",
         output: [{
@@ -761,7 +787,7 @@ test("runs one Google discovery request before structured extraction without Ope
     },
     documentFetchImpl: async () => {
       documentCalls += 1;
-      return new Response("<html><body>Project Atlas public filing identifies the project.</body></html>", {
+      return new Response(`<html><body><p>${passage}</p></body></html>`, {
         status: 200,
         headers: { "content-type": "text/html" },
       });
@@ -769,6 +795,9 @@ test("runs one Google discovery request before structured extraction without Ope
   });
   assert.equal(openAiCalls, 1);
   assert.equal(documentCalls, 1);
+  assert.equal(categoryIdFromStructuredPrompt(analysisPrompt), "project-identity");
+  assert.ok(analysisPrompt.includes(passage), "identity analysis must receive the retained synthetic passage");
+  assert.ok(result.evidence.every((item) => item.eligibleForModel !== true));
   assert.equal(result.researchCoverage.discoveryProvider, "google-gemini-grounding");
   assert.equal(result.researchCoverage.discoveryStatus, "completed");
   assert.equal(result.researchAudit.providerRequestCount, 2);

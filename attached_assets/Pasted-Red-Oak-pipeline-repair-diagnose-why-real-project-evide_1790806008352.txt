@@ -1,0 +1,74 @@
+Red Oak pipeline repair: diagnose why real project evidence is retrieved but never becomes an eligible proposal
+Do not run another live research request yet. Do not change DNS/SSRF behavior, financial-model rules, production data, or deployment.
+The current Red Oak run is the failure case. It shows:
+- 24/24 physical opens used
+- 0 eligible sources
+- 0 eligible proposals
+- 16 material gaps
+- useful Red Oak passages were retrieved, including:
+  - 480 MW total IT load for the eight-building campus
+  - 180 MW for DFW9/DFW10/DFW11
+- those claims are visible in retained findings but still fail scope/eligibility
+- obvious junk also survived, including a CivicEngage “An error has occurred” page and corrupted/binary-looking content
+Primary objective: identify the first gate that kills valid Red Oak evidence and fix only proven defects.
+1. Trace the 480 MW and 180 MW claims
+For each claim, trace:
+retrieval → retention → project identity → facility/phase scope → time scope → claim extraction → source validation → evidence mapping → eligibility → proposal
+Report the first failed gate for each claim.
+Do not relax validation just to make them pass.
+2. Confirm whether this result is current or stale
+Determine whether the displayed Red Oak result came from:
+- current code
+- fresh/recent/stale cache
+- an older saved result
+Report the build/source version and cache state if available.
+3. Fix junk-content bypasses
+If current code is still retaining:
+- application-error pages
+- corrupted/binary text
+- shell/navigation content
+fix the path that bypasses the existing content-quality filters.
+Keep the fetch receipt in audit, but do not let unusable content become retained findings or structured-analysis input.
+Add regression coverage for the exact CivicEngage error pattern and corrupted-text pattern seen here.
+4. Inspect the 24-open budget
+Report:
+- which URLs consumed the 24 slots
+- which were exact-project candidates
+- which were junk, duplicate, or unrelated
+- which high-value candidates were never opened because the ceiling was reached
+Do not change the 24-open limit yet.
+We need to know whether ordering/allocation is wasting slots before stronger sources are attempted.
+5. Use the new structured-response diagnostics
+For each successful structured category call in this run, report:
+- provider response ID
+- zero claims vs claims returned
+- if claims were returned, where each was first rejected downstream
+Do not expose raw provider payloads or prompts.
+6. Repair only what the diagnosis proves
+Make the smallest necessary fix if you confirm:
+- a valid exact-project claim is incorrectly rejected
+- junk content bypasses current filters
+- completed provider claims are lost before downstream validation
+Do not add broad heuristics or weaken identity/scope rules.
+Validation
+Add deterministic tests using the actual Red Oak-style passages for:
+- 480 MW whole-campus claim
+- 180 MW DFW9/DFW10/DFW11 claim
+- CivicEngage application-error page
+- corrupted/binary page
+Then run:
+- focused regressions
+- full offline suite
+- typecheck
+- production build
+Do not run live research.
+Report back with:
+- first failed gate for 480 MW
+- first failed gate for 180 MW
+- why junk content survived
+- 24-slot breakdown
+- structured-response diagnostics
+- files changed
+- test results
+- anything still blocking an eligible Red Oak proposal
+Stop there. Do not start budget optimization or another live run.

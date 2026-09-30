@@ -1,0 +1,121 @@
+Focused SafeLoc dossier UX repair: make an opened project feel like a true diligence dossier, not a second directory
+Work only on the canonical dossier information architecture and presentation layer for the opened-project experience. Do not modify research orchestration, provider calls, DNS/SSRF behavior, custom-project research logic, financial-model rules, deployment, or production data.
+Current UX problem:
+After selecting a project such as Stargate Abilene from Home/Directory, the /analysis/<project> view still looks and behaves too much like the directory. Market Exposure repeats project-selection/search/filter UI, and the useful relationship analysis is buried below it. This makes it unclear that the user has actually opened a specific project dossier.
+The target mental model is:
+Home / Directory → open project → Project Dossier → inspect Market Exposure / Project Reality / Financial Transmission / Advisor Brief
+Once a dossier is open, the user should not have to “select the same project again.”
+Required changes
+1. Create a clear opened-dossier shell
+When a canonical dossier is open, the top of the analysis page should clearly establish:
+- project name
+- location
+- current project status
+- disclosed/source-backed capacity when available
+- selected public company/holding context when one exists
+- current evidence/model state
+- canonical dossier version/date
+The page should visually read as:
+“I am inside the Stargate Abilene dossier.”
+not:
+“I am still browsing project records.”
+Keep the existing top-level tabs:
+- Market Exposure
+- Project Reality
+- Financial Transmission
+- Advisor Brief
+but make them feel like sections of one project file.
+2. Remove repeated directory behavior inside the open dossier
+On Market Exposure for an already-open canonical dossier:
+- remove the large repeated project-search box
+- remove state filter chips
+- remove the repeated full project card
+- remove any “choose the project context” copy that implies the user has not yet selected a project
+Replace this with a small, unobtrusive control such as:
+Change project
+or
+Back to directory
+Do not duplicate the Home/Directory experience inside the dossier.
+3. Make Market Exposure answer its actual question
+The current heading asks:
+“What connects the company to this project?”
+The primary content on the page should immediately answer that.
+For a selected company/project relationship, organize the section around:
+- Relationship
+- What the evidence establishes
+- What it does not establish
+- Why it may matter for an investor/advisor
+- Source / evidence
+Example structure only:
+NVIDIA → Stargate Abilene
+Known relationship
+Equipment supplier / sourced indirect role
+What this establishes
+A documented infrastructure relationship exists between the company and project.
+What this does not establish
+Ownership, tenancy, project-level revenue, portfolio materiality, contractual dependence, or investment impact unless separately supported.
+Why it matters
+This gives the analyst a documented connection to investigate further without overstating exposure.
+Use the existing relationship semantics and evidence. Do not invent investment conclusions.
+4. Improve dossier summary hierarchy
+Near the top of the dossier, surface a compact summary using existing data:
+- relationship status
+- evidence confidence
+- project status
+- disclosed/source-backed capacity
+- evidence coverage summary
+- current model/decision state
+Avoid adding large amounts of explanatory prose. Follow a “Don’t Make Me Think” principle.
+5. Preserve evidence semantics
+Do not change:
+- canonical source records
+- evidence eligibility
+- human review/override logic
+- accepted model inputs
+- scenario calculations
+This task is information architecture and presentation only.
+6. Preserve the user’s ability to switch projects
+The user still needs a clear way to change dossiers, but it should be secondary.
+Acceptable patterns:
+- small “Change project” button
+- compact dossier dropdown
+- “Back to directory”
+Do not re-render the directory search/filter/card experience inside the dossier.
+7. Add regression coverage
+Add deterministic frontend/browser coverage proving:
+- selecting Stargate from Home opens /analysis/stargate-abilene
+- the opened page clearly renders Stargate as the active dossier
+- the repeated directory search/filter/project-card UI is not shown inside Market Exposure
+- Market Exposure renders the existing company → project relationship directly
+- a user can still navigate/change project through the smaller secondary control
+- no evidence/model state changes merely from navigation
+Scope guardrails
+Do not:
+- add new data sources
+- run live research
+- change the Stargate canonical evidence content
+- change Project Reality sourcing
+- change financial logic
+- change custom-project research behavior
+- change provider orchestration
+- deploy
+We will handle canonical evidence expansion separately.
+Validation
+Run:
+- focused browser/UI tests
+- full relevant deterministic suite
+- typecheck
+- production build
+Report when finished
+Report exactly:
+- files/components changed
+- what directory-like UI was removed from the dossier
+- how the dossier header/summary changed
+- how Market Exposure now presents the relationship
+- how project switching still works
+- focused test result
+- full relevant test result
+- typecheck
+- build
+- anything unresolved
+Stop after this dossier information-architecture repair. Do not begin canonical evidence expansion or research-pipeline changes.

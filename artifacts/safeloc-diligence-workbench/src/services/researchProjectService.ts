@@ -508,6 +508,16 @@ export type ResearchCategoryAudit = {
   providerFailureType?: "quota-exhausted" | "provider-rate-limit" | "provider-429" | "authentication" | "deadline" | "malformed-response" | "upstream" | "provider-request-budget" | null;
   providerRequestCount?: number;
   providerAttempts?: ResearchProviderAttempt[];
+  categoryPromptTelemetry?: ResearchCategoryPromptTelemetry[];
+};
+export type ResearchCategoryPromptTelemetry = {
+  candidatePassageCount: number;
+  uniquePassageCount: number;
+  passageCountSent: number;
+  requestBodyBytesBeforeFiltering: number | null;
+  requestBodyBytesAfterFiltering: number | null;
+  requestBodyBytesReduced: number | null;
+  requestBodyReductionPercent: number | null;
 };
 export type ResearchCategoryClaimAudit = {
   evidenceId: string;
@@ -1211,6 +1221,29 @@ function parseProviderAttempts(value: unknown): ResearchProviderAttempt[] {
   });
 }
 
+function parseCategoryPromptTelemetry(value: unknown): ResearchCategoryPromptTelemetry[] {
+  if (!Array.isArray(value)) return [];
+  const count = (candidate: unknown) =>
+    typeof candidate === "number" && Number.isInteger(candidate) && candidate >= 0 ? candidate : 0;
+  const bytes = (candidate: unknown) =>
+    typeof candidate === "number" && Number.isInteger(candidate) && candidate >= 0 ? candidate : null;
+  return value.filter(isRecord).slice(0, 8).map((entry) => ({
+    candidatePassageCount: count(entry.candidatePassageCount),
+    uniquePassageCount: count(entry.uniquePassageCount),
+    passageCountSent: count(entry.passageCountSent),
+    requestBodyBytesBeforeFiltering: bytes(entry.requestBodyBytesBeforeFiltering),
+    requestBodyBytesAfterFiltering: bytes(entry.requestBodyBytesAfterFiltering),
+    requestBodyBytesReduced: typeof entry.requestBodyBytesReduced === "number"
+      && Number.isInteger(entry.requestBodyBytesReduced)
+      ? entry.requestBodyBytesReduced
+      : null,
+    requestBodyReductionPercent: typeof entry.requestBodyReductionPercent === "number"
+      && Number.isFinite(entry.requestBodyReductionPercent)
+      ? Math.max(-100, Math.min(100, entry.requestBodyReductionPercent))
+      : null,
+  }));
+}
+
 function parseResearchAudit(value: unknown): ResearchAudit | undefined {
   if (!isRecord(value) || !Array.isArray(value.categories)) return undefined;
   const states: ResearchCategoryState[] = ["Complete", "Partial", "No eligible evidence", "Provider failure", "Timed out", "Not searched"];
@@ -1365,6 +1398,9 @@ function parseResearchAudit(value: unknown): ResearchAudit | undefined {
         : {}),
       ...(Number.isInteger(candidate.providerRequestCount) ? { providerRequestCount: Math.max(0, Number(candidate.providerRequestCount)) } : {}),
       providerAttempts: parseProviderAttempts(candidate.providerAttempts),
+       ...(Array.isArray(candidate.categoryPromptTelemetry)
+         ? { categoryPromptTelemetry: parseCategoryPromptTelemetry(candidate.categoryPromptTelemetry) }
+         : {}),
     } satisfies ResearchCategoryAudit];
   });
   const budget = isRecord(value.budget) ? value.budget : {};

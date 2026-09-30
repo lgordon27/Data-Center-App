@@ -798,6 +798,15 @@ test("preserves retained physical-open diagnostics without treating them as fres
       accessLimitations: ["The physical document-open ceiling was reached."],
       unresolvedGaps: ["water_rights"],
       stageCounts: { notAttempted: 3 },
+      categoryPromptTelemetry: [{
+        candidatePassageCount: 6,
+        uniquePassageCount: 4,
+        passageCountSent: 4,
+        requestBodyBytesBeforeFiltering: 30_000,
+        requestBodyBytesAfterFiltering: 26_000,
+        requestBodyBytesReduced: 4_000,
+        requestBodyReductionPercent: 13.33,
+      }],
     }],
   };
 
@@ -809,6 +818,15 @@ test("preserves retained physical-open diagnostics without treating them as fres
   assert.equal(parsed.researchAudit?.physicalOpenBudgetExceeded, true);
   assert.equal(parsed.researchAudit?.categories[0].followUpSkipReason, "physical-open-budget");
   assert.equal(parsed.researchAudit?.categories[0].stageCounts.notAttempted, 3);
+  assert.deepEqual(parsed.researchAudit?.categories[0].categoryPromptTelemetry, [{
+    candidatePassageCount: 6,
+    uniquePassageCount: 4,
+    passageCountSent: 4,
+    requestBodyBytesBeforeFiltering: 30_000,
+    requestBodyBytesAfterFiltering: 26_000,
+    requestBodyBytesReduced: 4_000,
+    requestBodyReductionPercent: 13.33,
+  }]);
   assert.equal(parsed.researchCoverage?.physicalOpenBudgetExceeded, true);
 });
 

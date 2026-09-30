@@ -1897,6 +1897,86 @@ function categorySourceMatches(category, source) {
   return source.categoryRoutingUnknown === true || explicitCategoryIds.size === 0;
 }
 
+function categorySourceMatchesForAnalysis(category, source) {
+  if (!category || !source) return false;
+  const knownCategoryIds = new Set(RESEARCH_CATEGORIES.map((candidate) => candidate.id));
+  const explicitCategoryIds = new Set(Array.isArray(source.categoryIds)
+    ? source.categoryIds.filter((categoryId) => knownCategoryIds.has(categoryId))
+    : []);
+  if (explicitCategoryIds.size > 0) return explicitCategoryIds.has(category.categoryId);
+  if (source.categoryRoutingUnknown === true) return false;
+  if (knownCategoryIds.has(source.searchDomain)) return source.searchDomain === category.categoryId;
+
+  const evidenceIds = new Set([
+    ...(Array.isArray(source.supportedEvidenceIds) ? source.supportedEvidenceIds : []),
+    ...(Array.isArray(source.claimSupport)
+      ? source.claimSupport.flatMap((support) => [support?.evidenceId, support?.variable])
+      : isRecord(source.claimSupport)
+        ? [source.claimSupport.evidenceId, source.claimSupport.variable]
+        : []),
+  ].filter((id) => RESEARCH_EVIDENCE_IDS.includes(id)));
+  if (evidenceIds.size > 0) return [...evidenceIds].some((id) => category.evidenceIds.includes(id));
+
+  const identityScoped = [source.identityRole, source.sourceRole, source.categoryRole]
+    .some((role) => typeof role === "string" && /\b(identity|project identity|facility identity)\b/i.test(role));
+  return identityScoped && category.categoryId === "project-identity";
+}
+
+function hasRetrievedPassage(source) {
+  return source?.accessOutcome?.state === "accessible"
+    && typeof source.accessOutcome.passage === "string"
+    && source.accessOutcome.passage.trim().length > 0;
+}
+
+function passageShingles(passage) {
+  const words = String(passage).toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}'’\-]*/gu) ?? [];
+  const shingles = new Set();
+  for (let index = 0; index <= words.length - 3; index += 1) {
+    shingles.add(words.slice(index, index + 3).join(" "));
+  }
+  return shingles;
+}
+
+function substantiallyDuplicatePassages(left, right) {
+  const normalize = (value) => String(value).toLowerCase().replace(/\s+/g, " ").trim();
+  const leftText = normalize(left);
+  const rightText = normalize(right);
+  if (leftText === rightText) return true;
+  const materialSignature = (text) => ({
+    quantities: text.match(/\b\d[\d,]*(?:\.\d+)?%?\b/g) ?? [],
+    qualifiers: text.match(/\b(?:not|no|never|without|except|pending|approved|denied|rejected|completed|operational|planned|proposed|expected|delayed|cancelled|canceled|verified|confirmed|mw|mwh|kw|kwh|mgal|gallons?|acre-feet|days?|weeks?|months?|years?)\b/g) ?? [],
+  });
+  if (JSON.stringify(materialSignature(leftText)) !== JSON.stringify(materialSignature(rightText))) return false;
+  const leftShingles = passageShingles(left);
+  const rightShingles = passageShingles(right);
+  if (leftShingles.size < 10 || rightShingles.size < 10) return false;
+  const lengthRatio = Math.min(leftShingles.size, rightShingles.size)
+    / Math.max(leftShingles.size, rightShingles.size);
+  if (lengthRatio < 0.85) return false;
+  const smaller = leftShingles.size <= rightShingles.size ? leftShingles : rightShingles;
+  const larger = smaller === leftShingles ? rightShingles : leftShingles;
+  let overlap = 0;
+  for (const shingle of smaller) if (larger.has(shingle)) overlap += 1;
+  return overlap / smaller.size >= 0.9;
+}
+
+function prepareCategoryAnalysisPassages(category, sources = []) {
+  const candidates = sources.filter(hasRetrievedPassage);
+  const relevant = candidates.filter((source) => categorySourceMatchesForAnalysis(category, source));
+  const unique = [];
+  for (const source of relevant) {
+    const passage = source.accessOutcome.passage;
+    if (unique.some((prior) => substantiallyDuplicatePassages(prior.accessOutcome.passage, passage))) continue;
+    unique.push(source);
+  }
+  return {
+    candidateCount: candidates.length,
+    uniqueCount: unique.length,
+    suppliedCount: unique.length,
+    sources: unique,
+  };
+}
+
 function categoryOpenedDocuments(sources = [], category = null) {
   return sources.map((source) => {
     const outcome = source.accessOutcome ?? {};
@@ -2154,6 +2234,43 @@ function buildResearchAudit({
       providerAttempts: Array.isArray(supplied.providerAttempts)
         ? supplied.providerAttempts.slice(0, 8).map(sanitizeProviderAttemptForAudit)
         : [],
+      categoryPromptTelemetry: Array.isArray(supplied.categoryPromptTelemetry)
+        ? supplied.categoryPromptTelemetry.slice(0, 8).filter((entry) => isRecord(entry)).map((entry) => ({
+          candidatePassageCount: Number.isInteger(entry.candidatePassageCount) ? Math.max(0, entry.candidatePassageCount) : 0,
+          uniquePassageCount: Number.isInteger(entry.uniquePassageCount) ? Math.max(0, entry.uniquePassageCount) : 0,
+          passageCountSent: Number.isInteger(entry.passageCountSent) ? Math.max(0, entry.passageCountSent) : 0,
+          requestBodyBytesBeforeFiltering: Number.isInteger(entry.requestBodyBytesBeforeFiltering)
+            ? Math.max(0, entry.requestBodyBytesBeforeFiltering)
+            : null,
+          requestBodyBytesAfterFiltering: Number.isInteger(entry.requestBodyBytesAfterFiltering)
+            ? Math.max(0, entry.requestBodyBytesAfterFiltering)
+            : null,
+          requestBodyBytesReduced: Number.isInteger(entry.requestBodyBytesReduced)
+            ? entry.requestBodyBytesReduced
+            : null,
+          requestBodyReductionPercent: Number.isFinite(entry.requestBodyReductionPercent)
+            ? Math.max(-100, Math.min(100, entry.requestBodyReductionPercent))
+            : null,
+        }))
+        : (Array.isArray(supplied.providerAttempts)
+          ? supplied.providerAttempts.map((attempt) => attempt?.categoryPromptTelemetry).filter(isRecord).slice(0, 8).map((entry) => ({
+            candidatePassageCount: Number.isInteger(entry.candidatePassageCount) ? Math.max(0, entry.candidatePassageCount) : 0,
+            uniquePassageCount: Number.isInteger(entry.uniquePassageCount) ? Math.max(0, entry.uniquePassageCount) : 0,
+            passageCountSent: Number.isInteger(entry.passageCountSent) ? Math.max(0, entry.passageCountSent) : 0,
+            requestBodyBytesBeforeFiltering: Number.isInteger(entry.requestBodyBytesBeforeFiltering)
+              ? Math.max(0, entry.requestBodyBytesBeforeFiltering)
+              : null,
+            requestBodyBytesAfterFiltering: Number.isInteger(entry.requestBodyBytesAfterFiltering)
+              ? Math.max(0, entry.requestBodyBytesAfterFiltering)
+              : null,
+            requestBodyBytesReduced: Number.isInteger(entry.requestBodyBytesReduced)
+              ? entry.requestBodyBytesReduced
+              : null,
+            requestBodyReductionPercent: Number.isFinite(entry.requestBodyReductionPercent)
+              ? Math.max(-100, Math.min(100, entry.requestBodyReductionPercent))
+              : null,
+          }))
+          : []),
       sourceChannelTelemetry,
       noReturnCounts: {
         total: noReturnEntries.length,
@@ -2417,6 +2534,7 @@ async function orchestrateCategoryResearch(project, {
       primaryAnalysisCompleted: false,
       followUpCount: 0,
       providerAttempts: [],
+      categoryPromptTelemetry: [],
       discoveryAttempts: [],
       authorityRecords: [],
       secConnectorAttempts: [],
@@ -2447,6 +2565,9 @@ async function orchestrateCategoryResearch(project, {
       if (primary?.analysisState) execution.analysisState = primary.analysisState;
       const primaryAttempts = collectProviderAttempts(primary);
       execution.providerAttempts.push(...primaryAttempts);
+       execution.categoryPromptTelemetry.push(...primaryAttempts
+         .map((attempt) => attempt?.categoryPromptTelemetry)
+         .filter(isRecord));
       execution.primaryAnalysisCompleted = primaryAttempts.some((attempt) =>
         attempt?.requestState === "completed" || attempt?.outcome === "completed");
       execution.discoveryAttempts.push(...(Array.isArray(primary?.discoveryAttempts) ? primary.discoveryAttempts : []));
@@ -2530,6 +2651,9 @@ async function orchestrateCategoryResearch(project, {
         execution.providerRequestCount += followUpRequestCost - 1;
         const followUpAttempts = collectProviderAttempts(followUp);
         execution.providerAttempts.push(...followUpAttempts);
+        execution.categoryPromptTelemetry.push(...followUpAttempts
+          .map((attempt) => attempt?.categoryPromptTelemetry)
+          .filter(isRecord));
         execution.issuedFollowUpQuery = queuedFollowUpQuery;
         execution.followUpAttemptState = "completed";
         execution.discoveryAttempts.push(...(Array.isArray(followUp?.discoveryAttempts) ? followUp.discoveryAttempts : []));
@@ -3880,18 +4004,40 @@ function buildGroundedSourceContext(sources = []) {
   return sources
     .slice(0, RESEARCH_RUN_BUDGET.maxTotalCandidates)
     .map((source) => ({
-      url: source.canonicalUrl ?? source.resolvedUrl ?? source.url ?? null,
+      sourceId: source.occurrenceId ?? source.sourceId ?? source.canonicalUrl ?? source.url ?? null,
+      canonicalUrl: source.canonicalUrl
+        ?? canonicalizeSourceUrl(source.resolvedUrl ?? source.url)
+        ?? null,
+      sourceUrl: source.originalUrl ?? source.url ?? null,
       title: source.title ?? null,
       publisher: source.publisher ?? null,
-      publishedAt: source.date ?? source.publishedAt ?? null,
+      publicationDate: source.publicationDate ?? source.publishedAt ?? source.published_date ?? source.date ?? null,
+      reportingDate: source.reportingDate ?? source.reportedAt ?? null,
+      sourceIdentity: {
+        occurrenceId: source.occurrenceId ?? null,
+        sourceChannel: source.sourceChannel ?? null,
+        origin: source.origin ?? null,
+      },
       categoryIds: Array.isArray(source.categoryIds) ? source.categoryIds.slice(0, 12) : [],
       referringQueries: Array.isArray(source.referringQueries) ? source.referringQueries.slice(0, 12) : [],
-      passage: typeof source.accessOutcome?.passage === "string"
-        ? source.accessOutcome.passage.slice(0, 20_000)
-        : null,
-      accessState: source.accessOutcome?.state ?? "unknown",
+      accessReceipt: {
+        state: source.accessOutcome?.state ?? "unknown",
+        reason: source.accessOutcome?.reason ?? null,
+        physicalOpenIndex: Number.isInteger(source.accessOutcome?.physicalOpenIndex)
+          ? source.accessOutcome.physicalOpenIndex
+          : null,
+        retrievedAt: source.accessOutcome?.retrievalTime ?? source.retrievedAt ?? source.retrievalTime ?? null,
+        originalUrl: source.accessOutcome?.originalUrl ?? source.originalUrl ?? null,
+        resolvedUrl: source.accessOutcome?.resolvedUrl ?? source.resolvedUrl ?? null,
+        canonicalUrl: source.accessOutcome?.canonicalUrl ?? source.canonicalUrl ?? null,
+        reused: source.documentAccessReused === true || source.accessOutcome?.reused === true,
+        extractionMethod: source.accessOutcome?.extractionMethod ?? source.extractionMethod ?? null,
+        contentHash: source.accessOutcome?.contentHash ?? source.contentHash ?? null,
+        pageOrSection: source.accessOutcome?.pageOrSection ?? source.accessOutcome?.sectionOrPage ?? null,
+      },
+      passage: source.accessOutcome.passage,
     }))
-    .filter((source) => source.url || source.passage);
+    .filter((source) => source.passage);
 }
 
 function redactUpstreamDetail(value) {
@@ -4249,41 +4395,70 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
   const groundedSources = Array.isArray(activeCategory?.groundedSources)
     ? activeCategory.groundedSources
     : [];
+  const passageCandidates = groundedSources
+    .slice(0, RESEARCH_RUN_BUDGET.maxTotalCandidates)
+    .filter(hasRetrievedPassage);
+  const categoryPassagePreparation = activeCategory?.categoryId
+    ? prepareCategoryAnalysisPassages(activeCategory, passageCandidates)
+    : {
+      candidateCount: passageCandidates.length,
+      uniqueCount: passageCandidates.length,
+      suppliedCount: passageCandidates.length,
+      sources: passageCandidates,
+    };
   const categoryGroundedSources = activeCategory?.categoryId
-    ? groundedSources.filter((source) => categorySourceMatches(activeCategory, source))
+    ? groundedSources.filter((source) => categorySourceMatchesForAnalysis(activeCategory, source))
     : groundedSources;
+  const categoryAnalysisSources = categoryPassagePreparation.sources;
   const requestedOutputTokens = activeCategory?.categoryId
     ? RESEARCH_CATEGORY_MAX_TOKENS
     : RESEARCH_PROJECT_MAX_TOKENS;
-  const groundedContext = categoryGroundedSources.length
-    ? `\n\nThe following public document passages were physically retrieved by SafeLoc. Use only these passages for source-backed claims. Do not browse, call a search tool, or treat a URL, snippet, title, or generated summary as evidence. Every claimPassage must be copied exactly from one supplied passage.\n${JSON.stringify(buildGroundedSourceContext(categoryGroundedSources))}`
+  const groundedContextFor = (sources) => sources.length
+    ? `\n\nThe following public document passages were physically retrieved by SafeLoc. Use only these passages for source-backed claims. Do not browse, call a search tool, or treat a URL, snippet, title, or generated summary as evidence. Every claimPassage must be copied exactly from one supplied passage.\n${JSON.stringify(buildGroundedSourceContext(sources))}`
     : "";
-  const requestBody = JSON.stringify({
-    model: RESEARCH_PROJECT_MODEL,
-    ...(webSearchEnabled ? { tools: [{ type: "web_search_preview" }] } : {}),
-    input: [
-      {
-        role: "system",
-        content: `${RESEARCH_PROJECT_SYSTEM_PROMPT}${WEB_SEARCH_SOURCE_BOUNDARY_PROMPT}${identityOnly
-          ? "\nFor project-identity discovery, establish or reject the exact project name, location, and operator only. Do not create modeled evidence or infer financial inputs."
-          : ""}`,
+  const buildRequestBody = (groundedContext) => JSON.stringify({
+      model: RESEARCH_PROJECT_MODEL,
+      ...(webSearchEnabled ? { tools: [{ type: "web_search_preview" }] } : {}),
+      input: [
+        {
+          role: "system",
+          content: `${RESEARCH_PROJECT_SYSTEM_PROMPT}${WEB_SEARCH_SOURCE_BOUNDARY_PROMPT}${identityOnly
+            ? "\nFor project-identity discovery, establish or reject the exact project name, location, and operator only. Do not create modeled evidence or infer financial inputs."
+            : ""}`,
+        },
+        { role: "user", content: `${buildResearchProjectPrompt({ ...project, activeCategory })}${groundedContext}` },
+      ],
+      max_output_tokens: requestedOutputTokens,
+      ...(webSearchEnabled ? { max_tool_calls: activeCategory?.maxToolCalls ?? RESEARCH_PROJECT_MAX_TOOL_CALLS } : {}),
+      ...(webSearchEnabled ? { include: ["web_search_call.action.sources"] } : {}),
+      text: {
+        format: {
+          type: "json_schema",
+          name: identityOnly ? "safeloc_project_identity" : "safeloc_research_project",
+          strict: true,
+          schema: identityOnly
+            ? RESEARCH_PROJECT_IDENTITY_RESPONSE_SCHEMA
+            : buildResearchResponseSchema(scopedEvidenceIds),
+        },
       },
-      { role: "user", content: `${buildResearchProjectPrompt({ ...project, activeCategory })}${groundedContext}` },
-    ],
-    max_output_tokens: requestedOutputTokens,
-    ...(webSearchEnabled ? { max_tool_calls: activeCategory?.maxToolCalls ?? RESEARCH_PROJECT_MAX_TOOL_CALLS } : {}),
-    ...(webSearchEnabled ? { include: ["web_search_call.action.sources"] } : {}),
-    text: {
-      format: {
-        type: "json_schema",
-        name: identityOnly ? "safeloc_project_identity" : "safeloc_research_project",
-        strict: true,
-        schema: identityOnly
-          ? RESEARCH_PROJECT_IDENTITY_RESPONSE_SCHEMA
-          : buildResearchResponseSchema(scopedEvidenceIds),
-      },
-    },
-  });
+    });
+  const groundedContext = groundedContextFor(categoryAnalysisSources);
+  const requestBody = buildRequestBody(groundedContext);
+  const requestBodyBytesBeforeFiltering = Buffer.byteLength(buildRequestBody(groundedContextFor(passageCandidates)));
+  const requestBodyBytesAfterFiltering = Buffer.byteLength(requestBody);
+  const categoryPromptTelemetry = activeCategory?.categoryId
+    ? {
+      candidatePassageCount: categoryPassagePreparation.candidateCount,
+      uniquePassageCount: categoryPassagePreparation.uniqueCount,
+      passageCountSent: categoryPassagePreparation.suppliedCount,
+      requestBodyBytesBeforeFiltering,
+      requestBodyBytesAfterFiltering,
+      requestBodyBytesReduced: requestBodyBytesBeforeFiltering - requestBodyBytesAfterFiltering,
+      requestBodyReductionPercent: requestBodyBytesBeforeFiltering > 0
+        ? Math.round(((requestBodyBytesBeforeFiltering - requestBodyBytesAfterFiltering) / requestBodyBytesBeforeFiltering) * 10_000) / 100
+        : null,
+    }
+    : null;
   const startedAt = new Date().toISOString();
   let response;
   const providerAttempt = {
@@ -4299,6 +4474,7 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
     outcome: "cancelled-before-issue",
     requestedOutputTokens,
     requestBodyBytes: Buffer.byteLength(requestBody),
+    ...(categoryPromptTelemetry ? { categoryPromptTelemetry } : {}),
     usage: null,
   };
   if (analysisTracker) analysisTracker.attempts.push(providerAttempt);
@@ -4523,6 +4699,7 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
       providerResponseId,
       activeCategoryId: activeCategory?.categoryId ?? null,
       executedQuery: activeCategory?.query ?? null,
+      ...(categoryPromptTelemetry ? { categoryPromptTelemetry } : {}),
       startedAt,
       finishedAt,
       providerAttempt,
@@ -5371,7 +5548,7 @@ async function runValidatedResearch(project, {
                && source.accessOutcome.passage.trim())
              : [];
            const categoryUsableGroundedSources = usableGroundedSources.filter((source) =>
-             categorySourceMatches(activeCategory, source));
+              categorySourceMatchesForAnalysis(activeCategory, source));
            if (groundedMode && categoryUsableGroundedSources.length === 0) {
              const categoryGroundedSources = googleDiscovery.candidates.filter((source) =>
                categorySourceMatches(activeCategory, source));

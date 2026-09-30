@@ -168,6 +168,20 @@ function CategoryAuditRow({
                        {category.authorityLimitations?.length ? <div className="mt-1 text-[#8a5200]"><strong>Authority limitation:</strong> {category.authorityLimitations.join(" · ")}</div> : null}
                        <div className="mt-1"><strong>Returned domains:</strong> {category.returnedDomains?.length ? category.returnedDomains.join(" · ") : "None returned"}</div>
                        <div className="mt-1"><strong>Documents:</strong> {category.openedDocuments?.length ?? 0} receipts · {category.openedDocuments?.filter((document) => document.opened).length ?? 0} physical opens · {category.openedDocuments?.filter((document) => Boolean(document.retainedPassage)).length ?? 0} retained passages.</div>
+                        {category.categoryPromptTelemetry?.map((telemetry, index) => (
+                          <div
+                            className="mt-1 rounded border border-[#d9e0e4] bg-[#f7f9f8] px-2 py-1"
+                            data-testid={`research-category-prompt-telemetry-${category.categoryId}-${index}`}
+                            key={`${category.categoryId}-prompt-${index}`}
+                          >
+                            <strong>Analysis input:</strong> {telemetry.candidatePassageCount} retrieved → {telemetry.uniquePassageCount} category-matched unique → {telemetry.passageCountSent} sent.
+                            {telemetry.requestBodyBytesBeforeFiltering !== null
+                              && telemetry.requestBodyBytesAfterFiltering !== null
+                              && telemetry.requestBodyBytesReduced !== null
+                              ? ` Request body: ${telemetry.requestBodyBytesBeforeFiltering.toLocaleString()} → ${telemetry.requestBodyBytesAfterFiltering.toLocaleString()} bytes (${telemetry.requestBodyBytesReduced.toLocaleString()} reduced${telemetry.requestBodyReductionPercent !== null ? `, ${telemetry.requestBodyReductionPercent}%` : ""}).`
+                              : " Request body size was not measurable."}
+                          </div>
+                        ))}
                         {category.discoveryAttempts?.length ? <div className="mt-1"><strong>Official discovery:</strong> {category.discoveryAttempts.length} bounded opens · {category.discoveryAttempts.filter((attempt) => attempt.status === "parsed").length} parsed indexes.</div> : null}
                         {category.secConnectorAttempts?.length ? <div className="mt-1"><strong>SEC connector:</strong> {category.secConnectorAttempts.map((attempt) => `${attempt.outcome ?? attempt.reason ?? "unknown"}${attempt.status ? ` (${attempt.status})` : ""}`).join(" · ")}</div> : null}
                        {category.accessLimitations.length > 0 && <div className="mt-1 text-[#8a5200]"><strong>Access limitations:</strong> {category.accessLimitations.join(" · ")}</div>}

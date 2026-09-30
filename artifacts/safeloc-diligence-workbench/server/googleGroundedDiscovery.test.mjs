@@ -350,14 +350,13 @@ test("normalizes missing, empty, unusable, unknown, mixed, and explicit citation
   assert.equal(byPath.explicit.categoryRoutingUnknown, false);
 });
 
-test("delivers one unlabeled parsed citation passage into all eight structured-analysis inputs", async () => {
+test("keeps unlabeled grounded passages in the audit without sending them to every category", async () => {
   const sourceUrl = "https://records.example/project-atlas-routing-control";
   const passage = [
     "SYNTHETIC ROUTING CONTROL: Project Atlas appears in this offline retained passage; no real facility fact is asserted.",
-    "This paragraph is synthetic test content created only to exercise safe research routing in an offline fixture.",
-    "It is not a public record and does not describe any actual building, power project, operator, property, location, utility, permit, capacity, schedule, or construction activity.",
-    "Every name and phrase here is a placeholder, and no detail should be interpreted as verified or applicable evidence.",
-    "The passage exists to test whether retained text can be supplied to structured analysis without changing source eligibility, project identity, or model acceptance rules.",
+    "This fixture describes an example public-record page with a project name, a location, and a generic record index.",
+    "It contains no interconnection, electricity, water, permitting, construction, tenant, or climate finding.",
+    "The additional sentences ensure bounded document extraction retains the page for category-routing checks.",
   ].join(" ");
   let googleCalls = 0;
   let documentCalls = 0;
@@ -407,12 +406,12 @@ test("delivers one unlabeled parsed citation passage into all eight structured-a
   assert.deepEqual(result.researchCoverage.discoveryQueries, ["Project Atlas exact-project public records"]);
   assert.deepEqual(result.researchCoverage.discoveryCandidateCount, 1);
   for (const [categoryId, prompts] of analysisInputs) {
-    assert.ok(prompts.length >= 1, `${categoryId} must receive structured analysis`);
-    assert.ok(prompts.every((prompt) => prompt.includes(passage)), `${categoryId} must receive the retained passage`);
+    assert.ok(prompts.every((prompt) => !prompt.includes(passage)),
+      `${categoryId} analysis must not receive a passage with no category route`);
     assert.ok(prompts.every((prompt) => !prompt.includes("https://invented.invalid/not-a-citation")));
   }
-  assert.ok(analysisInputs.get("grid").length >= 1);
-  assert.ok(analysisInputs.get("electricity").length >= 1);
+  const sourceAccess = result.researchAudit.sourceAttempts.find((attempt) => attempt.url === sourceUrl);
+  assert.equal(sourceAccess.state, "accessible", "category filtering must not remove the access receipt");
   assert.ok(result.evidence.every((item) => item.eligibleForModel !== true));
 });
 
@@ -420,10 +419,10 @@ test("keeps mixed and recognized citation labels scoped through availability and
   const sourceUrl = "https://records.example/project-atlas-scoped-routing-control";
   const passage = [
     "SYNTHETIC SCOPED ROUTING CONTROL: this retained passage is not captured facility evidence.",
-    "This synthetic paragraph exists solely as offline test material for checking how provider category labels constrain availability and structured analysis.",
-    "It is not copied from a real record and makes no claim about an actual building, power project, water system, operator, parcel, location, permit, project status, or infrastructure condition.",
-    "Any names or category terms in the surrounding test are labels for software behavior, not factual descriptions.",
-    "Reviewers and models must treat this text as non-evidence, and no statement here establishes identity, applicability, or eligibility.",
+    "The example filing includes enough public-record prose to exercise passage routing without asserting a real project fact.",
+    "It is deliberately missing any actual rate, permit, water, or construction quantity.",
+    "Additional neutral text gives the bounded extractor a complete public-record passage while keeping every modeled quantity unresolved.",
+    "No real facility value, approval, contract, project milestone, or operating fact is represented by this offline fixture.",
   ].join(" ");
   const run = async ({ labels, categoryIds }) => {
     const analysisInputs = [];
@@ -716,11 +715,11 @@ test("runs one Google discovery request before structured extraction without Ope
   let openAiCalls = 0;
   let documentCalls = 0;
   const passage = [
-    "SYNTHETIC IDENTITY ROUTING CONTROL: this retained passage is fixture text only.",
-    "It exists solely to verify the offline sequence of one Google discovery request, one physical document retrieval, and one identity-only structured-analysis request.",
-    "It is not an actual filing and does not identify a real project, facility, operator, county, state, utility, site, capacity, permit, or construction plan.",
-    "All names and locations elsewhere in the mock response are synthetic fixture values; they are not claims about a real place or business.",
-    "No statement in this paragraph should be treated as verified evidence or as establishing a project match.",
+    "Project Atlas public filing identifies the project.",
+    "This offline fixture describes a public record with a named project and location for identity review.",
+    "The record also provides a generic filing index and a short summary of the administrative review process.",
+    "It contains several neutral sentences so the bounded document extractor retains sufficient text for the structured identity check.",
+    "The example does not assert a real facility capacity, permit outcome, interconnection date, customer relationship, or other operating fact.",
   ].join(" ");
   let analysisPrompt = "";
   const result = await runValidatedResearch({
@@ -747,6 +746,7 @@ test("runs one Google discovery request before structured extraction without Ope
       providerAttempt: {
         provider: "google-gemini-grounding",
         requestCount: 1,
+        requestState: "completed",
         issuedAt: "2026-01-01T00:00:00.000Z",
         outcome: "completed",
       },

@@ -1021,6 +1021,242 @@ test("limits provider requests globally and records honest request telemetry", a
   });
 });
 
+test("scopes grounded category passages, collapses duplicates, and preserves source audit receipts", async () => {
+  const project = { name: "Project Atlas", location: "Taylor County, Texas" };
+  const passage = [
+    "Project Atlas is located in Taylor County, Texas.",
+    "The utility filing reports the project-specific interconnection timeline as 365 days for the 2026 construction phase.",
+    "The filing names the campus, planned electrical service, request status, and expected study milestone.",
+  ].join(" ");
+  const nearDuplicate = `${passage} See filing schedule.`;
+  const unrelatedPassage = "Project Atlas water records describe a separate municipal supply review for the campus.";
+  const source = ({
+    id,
+    url,
+    categoryIds,
+    text,
+    physicalOpenIndex,
+    date = "2026-06-01",
+    reportingDate = "2026-05-28",
+  }) => ({
+    occurrenceId: id,
+    url,
+    originalUrl: url,
+    canonicalUrl: url,
+    title: `Project Atlas filing ${id}`,
+    publisher: "Taylor County Public Records",
+    date,
+    reportingDate,
+    sourceChannel: "county-records",
+    origin: "google-grounded-search",
+    sourceClass: "primary-government",
+    categoryIds,
+    supportedEvidenceIds: ["grid_interconnection"],
+    claimSupport: [{ evidenceId: "grid_interconnection", values: [365] }],
+    exactProject: true,
+    facilityScope: "exact-project",
+    phaseScope: "exact-phase",
+    timePeriod: "2026",
+    accessOutcome: {
+      state: "accessible",
+      reason: "retrieved",
+      originalUrl: url,
+      resolvedUrl: url,
+      canonicalUrl: url,
+      passage: text,
+      physicalOpenIndex,
+      retrievalTime: "2026-09-30T12:00:00.000Z",
+      reused: physicalOpenIndex === 1,
+      extractionMethod: "html-main-content",
+      contentHash: `fixture-hash-${id}`,
+    },
+  });
+  const representative = source({
+    id: "grid-source-1",
+    url: "https://records.example.gov/atlas/grid",
+    categoryIds: ["grid"],
+    text: passage,
+    physicalOpenIndex: 1,
+  });
+  const duplicate = source({
+    id: "grid-source-2",
+    url: "https://records.example.gov/atlas/grid-copy",
+    categoryIds: ["grid"],
+    text: nearDuplicate,
+    physicalOpenIndex: 2,
+  });
+  const unique = source({
+    id: "grid-source-3",
+    url: "https://records.example.gov/atlas/grid-schedule",
+    categoryIds: ["grid"],
+    text: "The utility's 2026 service schedule identifies a separate study milestone for Project Atlas in Taylor County.",
+    physicalOpenIndex: 3,
+  });
+  const differentFinding = source({
+    id: "grid-source-4",
+    url: "https://records.example.gov/atlas/grid-amended",
+    categoryIds: ["grid"],
+    text: passage.replace("365 days", "180 days"),
+    physicalOpenIndex: 4,
+  });
+  const longPassage = `${passage} ${Array.from(
+    { length: 320 },
+    (_, index) => `Record section ${index} reports a distinct public filing detail for Project Atlas and its utility milestone.`,
+  ).join(" ")}`;
+  assert.ok(longPassage.length > 20_000);
+  const longSource = source({
+    id: "grid-source-5",
+    url: "https://records.example.gov/atlas/grid-full-record",
+    categoryIds: ["grid"],
+    text: longPassage,
+    physicalOpenIndex: 5,
+  });
+  const unrelated = source({
+    id: "water-source",
+    url: "https://records.example.gov/atlas/water",
+    categoryIds: ["water"],
+    text: unrelatedPassage,
+    physicalOpenIndex: 6,
+  });
+  const research = validResearchResponse();
+  for (const item of research.evidence) {
+    item.sourceUrl = null;
+    item.sourceUrls = [];
+    item.citation = "No source cited for this non-grid item.";
+  }
+  const gridClaim = research.evidence.find((item) => item.id === "grid_interconnection");
+  Object.assign(gridClaim, {
+    value: 365,
+    numericValue: 365,
+    unit: "days",
+    classification: "Management Assertion",
+    citation: `${passage} https://records.example.gov/atlas/grid`,
+    description: "The filing reports a 365-day interconnection timeline for the exact project.",
+    sourceUrl: representative.url,
+    sourceUrls: [representative.url],
+    coverageStatus: "supported",
+    sourceRelevance: "exact-project",
+    claimPassage: passage,
+    facilityScope: "exact-project",
+    phaseScope: "exact-phase",
+    claimTimePeriod: "2026",
+  });
+  let capturedRequest;
+  const result = await researchProjectWithWebSearch(
+    project,
+    "fixture-provider-token",
+    async (_url, init) => {
+      capturedRequest = JSON.parse(init.body);
+      return singleCallResponse(research, []);
+    },
+    undefined,
+    {
+      categoryId: "grid",
+      label: "Grid",
+      query: "Project Atlas grid interconnection",
+      evidenceIds: ["grid_interconnection"],
+      webSearchEnabled: false,
+      groundedSources: [representative, duplicate, unique, differentFinding, longSource, unrelated],
+    },
+  );
+
+  const userContent = capturedRequest.input.find((entry) => entry.role === "user").content;
+  const marker = "Every claimPassage must be copied exactly from one supplied passage.\n";
+  const sentPassages = JSON.parse(userContent.slice(userContent.indexOf(marker) + marker.length));
+  assert.equal(sentPassages.length, 4);
+  assert.equal(sentPassages[0].passage, passage, "the retained passage must remain exact");
+  assert.equal(sentPassages[0].sourceId, representative.occurrenceId);
+  assert.equal(sentPassages[0].sourceUrl, representative.url);
+  assert.equal(sentPassages[0].canonicalUrl, representative.canonicalUrl);
+  assert.equal(sentPassages[0].sourceIdentity.sourceChannel, representative.sourceChannel);
+  assert.equal(sentPassages[0].accessReceipt.physicalOpenIndex, 1);
+  assert.equal(sentPassages[0].accessReceipt.retrievedAt, "2026-09-30T12:00:00.000Z");
+  assert.equal(sentPassages[0].publicationDate, "2026-06-01");
+  assert.equal(sentPassages[0].reportingDate, "2026-05-28");
+  assert.equal(sentPassages[1].sourceId, unique.occurrenceId);
+  assert.equal(sentPassages[2].passage, differentFinding.accessOutcome.passage);
+  assert.match(sentPassages[2].passage, /180 days/);
+  assert.equal(sentPassages[3].passage, longPassage, "long passages must not be truncated before analysis");
+  assert.doesNotMatch(userContent, /grid-copy|water-source|municipal supply review/);
+
+  const telemetry = result.coverage.categoryPromptTelemetry;
+  assert.equal(telemetry.candidatePassageCount, 6);
+  assert.equal(telemetry.uniquePassageCount, 4);
+  assert.equal(telemetry.passageCountSent, 4);
+  assert.ok(telemetry.requestBodyBytesReduced > 0);
+  assert.equal(
+    telemetry.requestBodyBytesBeforeFiltering - telemetry.requestBodyBytesAfterFiltering,
+    telemetry.requestBodyBytesReduced,
+  );
+  assert.equal(result.coverage.providerAttempt.categoryPromptTelemetry.passageCountSent, 4);
+  assert.doesNotMatch(JSON.stringify(telemetry), /Project Atlas|records\.example\.gov|utility filing/);
+
+  assert.deepEqual(
+    new Set(result.sources.map((item) => item.canonicalUrl)),
+    new Set([
+      representative.canonicalUrl,
+      duplicate.canonicalUrl,
+      unique.canonicalUrl,
+      differentFinding.canonicalUrl,
+      longSource.canonicalUrl,
+    ]),
+    "deduplicating prompt passages must not remove routed source and receipt records",
+  );
+  assert.equal(result.sources.find((item) => item.canonicalUrl === duplicate.canonicalUrl).accessOutcome.physicalOpenIndex, 2);
+
+  const withDuplicateSources = parseResearchResponse(
+    result.research,
+    result.sources,
+    "2026-09-30",
+    result.coverage,
+    null,
+    ["grid_interconnection"],
+  ).evidence.find((item) => item.id === "grid_interconnection");
+  const withoutPromptDuplicate = parseResearchResponse(
+    research,
+    [representative, unique],
+    "2026-09-30",
+    result.coverage,
+    null,
+    ["grid_interconnection"],
+  ).evidence.find((item) => item.id === "grid_interconnection");
+  assert.equal(withDuplicateSources.eligibleForModel, true);
+  assert.equal(withoutPromptDuplicate.eligibleForModel, withDuplicateSources.eligibleForModel);
+
+  const orchestration = await orchestrateCategoryResearch(project, {
+    categoryIds: ["grid"],
+    retrieveCategory: async () => ({
+      candidates: result.sources,
+      categoryResolved: true,
+      resolvedEvidenceIds: ["grid_interconnection"],
+      observedQueries: ["Project Atlas grid interconnection"],
+      providerAttempts: [result.coverage.providerAttempt],
+      categoryResult: {
+        categoryId: "grid",
+        research: result.research,
+        sources: result.sources,
+        coverage: result.coverage,
+      },
+    }),
+  });
+  assert.equal(orchestration.categoryExecutions.grid.categoryPromptTelemetry[0].passageCountSent, 4);
+
+  const audit = buildResearchAudit({
+    project,
+    sources: result.sources,
+    evidence: [withDuplicateSources],
+    coverage: {
+      providerAttempts: [result.coverage.providerAttempt],
+      sourceAttemptRecords: [representative, duplicate, unique, differentFinding, longSource, unrelated],
+      categoryExecutions: orchestration.categoryExecutions,
+    },
+  });
+  const gridAudit = audit.categories.find((category) => category.categoryId === "grid");
+  assert.equal(gridAudit.categoryPromptTelemetry[0].candidatePassageCount, 6);
+  assert.ok(audit.sourceAttempts.some((attempt) => attempt.url === duplicate.canonicalUrl));
+  assert.ok(gridAudit.openedDocuments.some((document) => document.physicalOpenIndex === 2));
+});
+
 test("honors provider reset pressure without retrying and cancels queued work", async () => {
   const gate = createResearchProviderGate({ limit: 1 });
   let calls = 0;

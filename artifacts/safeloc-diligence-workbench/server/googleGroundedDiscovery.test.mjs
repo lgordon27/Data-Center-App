@@ -533,6 +533,12 @@ test("transmits the documented Interactions request and captures it without secr
       transmittedUrl = url;
       transmittedInit = init;
       return new Response(JSON.stringify({
+        id: "interaction_fixture_123",
+        usage: {
+          input_tokens: 120,
+          output_tokens: 34,
+          total_tokens: 154,
+        },
         steps: [
           { type: "google_search_call", arguments: { queries: ["Google Gemini grounding docs last updated"] } },
           { type: "google_search_result", result: { searchSuggestions: "Google Search" } },
@@ -556,6 +562,14 @@ test("transmits the documented Interactions request and captures it without secr
   assert.equal(result.providerAttempt.queryCount, 1);
   assert.equal(result.providerAttempt.citationCount, 1);
   assert.equal(result.providerAttempt.toolDeclarationTransmitted, true);
+  assert.equal(result.providerAttempt.providerResponseId, "interaction_fixture_123");
+  assert.equal(result.providerAttempt.providerResponseIdAvailability, "provider-reported");
+  assert.deepEqual(result.providerAttempt.usage, {
+    inputTokens: 120,
+    outputTokens: 34,
+    totalTokens: 154,
+  });
+  assert.equal(result.providerAttempt.usageAvailability, "provider-reported");
 
   const sanitized = sanitizeGoogleGroundedRequest(transmittedUrl, transmittedInit);
   assert.equal(sanitized.endpoint, GOOGLE_GEMINI_INTERACTIONS_URL);

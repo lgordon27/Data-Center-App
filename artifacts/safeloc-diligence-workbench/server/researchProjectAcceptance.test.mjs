@@ -1,11 +1,149 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import {
   RESEARCH_CATEGORIES,
   RESEARCH_RUN_BUDGET,
 } from "./researchProjectProxy.mjs";
-import { buildAcceptanceReport } from "./researchProjectAcceptance.mjs";
+import {
+  RED_OAK_GRID_CANARY_LIMITS,
+  buildAcceptanceReport,
+  buildRedOakGridCanaryRequestOptions,
+  canaryCandidateCount,
+  canaryContentQualityObservations,
+  canaryPhysicalReceiptCompleteness,
+  createRedOakCanaryDiagnosticCollector,
+  createRedOakCanaryResources,
+  markGridSuppliedCandidates,
+  parseRedOakCanaryCliArguments,
+  runRedOakGridCanary,
+} from "./researchProjectAcceptance.mjs";
+import { createRedOakClaimTrace } from "./redOakClaimTrace.mjs";
+
+test("Red Oak live canary requires explicit opt-in before inspecting gate files or issuing requests", async () => {
+  await assert.rejects(
+    runRedOakGridCanary({
+      optIn: false,
+      preconditionsPath: "/path-that-must-not-be-read",
+      apiKey: "offline-test-key",
+      googleApiKey: "offline-test-key",
+    }),
+    /explicit --live opt-in; no requests were issued/,
+  );
+});
+
+test("Red Oak canary request options encode the exact isolated scope and hard limits", () => {
+  const options = buildRedOakGridCanaryRequestOptions({
+    apiKey: "offline",
+    googleApiKey: "offline",
+    cache: {},
+    registry: {},
+    auditRepository: {},
+    rateLimiter: {},
+    claimTrace: {},
+    signal: new AbortController().signal,
+  });
+
+  assert.deepEqual(options.categoryIds, ["project-identity", "grid"]);
+  assert.equal(options.researchBudgetOverrides.maxProviderRequests, 3);
+  assert.equal(options.researchBudgetOverrides.maxPhysicalDocumentOpens, 8);
+  assert.equal(options.researchBudgetOverrides.maxFollowUps, 0);
+  assert.equal(options.researchBudgetOverrides.maxFollowUpsPerCategory, 0);
+  assert.equal(options.allowGoogleFallback, false);
+  assert.equal(options.allowCorrectiveRetries, false);
+  assert.equal(options.allowProviderRetries, false);
+  assert.equal(options.useDefaultSecConnector, false);
+  assert.match(options.googleDiscoveryPrompt, /only exact project identity and electric grid\/interconnection evidence/i);
+  assert.equal(options.researchTimeoutMs, 75_000);
+  assert.equal(RED_OAK_GRID_CANARY_LIMITS.invocationTimeoutMs, 90_000);
+});
+
+test("pnpm-forwarded separator is accepted before the canary live and gates options", () => {
+  assert.deepEqual(
+    parseRedOakCanaryCliArguments(["--", "--live", "--gates", "/tmp/red-oak-gates.json"]),
+    {
+      optIn: true,
+      preconditionsPath: "/tmp/red-oak-gates.json",
+      outputPath: undefined,
+    },
+  );
+});
+
+test("request-local canary collector preserves bounded discovery and receipt metadata without document payloads", () => {
+  const collector = createRedOakCanaryDiagnosticCollector();
+  const candidate = {
+    url: "https://vertexaisearch.cloud.google.com/grounding-api-redirect/opaque-token",
+    title: "Official Grid Record",
+    sourceChannel: "google-grounded-search",
+    categoryIds: ["grid"],
+    excerpt: "This payload must not be retained.",
+  };
+  const passage = "The source passage is represented only by a hash and length.";
+  collector.recordDiscoveryCandidates([candidate]);
+  collector.recordPhysicalOpenAuthorization({
+    categoryId: "grid",
+    source: { ...candidate, discoveryCandidateRank: 1 },
+    canonicalUrl: candidate.url,
+    physicalOpenIndex: 1,
+  });
+  collector.recordPhysicalReceipt({
+    phase: "grounded-discovery-prefetch",
+    candidateIndex: 1,
+    candidate,
+    accessOutcome: {
+      state: "accessible",
+      reason: "retrieved",
+      physicalOpenIndex: 1,
+      originalUrl: candidate.url,
+      passage,
+      extractionOutcome: "extracted",
+    },
+    attempted: true,
+  });
+  const captured = collector.toJSON();
+  const serialized = JSON.stringify(captured);
+  assert.equal(captured.discoveryCandidateCount, 1);
+  assert.equal(captured.discoveryCandidates[0].candidateId, "discovery-1");
+  assert.equal(captured.discoveryCandidates[0].url, "https://vertexaisearch.cloud.google.com/grounding-api-redirect/[redacted]");
+  assert.equal(captured.physicalOpenAuthorizations[0].physicalOpenIndex, 1);
+  assert.equal(captured.physicalReceipts[0].physicalOpenIndexes[0], 1);
+  assert.equal(captured.physicalReceipts[0].passageLength, passage.length);
+  assert.equal(captured.physicalReceipts[0].passageSha256, createHash("sha256").update(passage).digest("hex"));
+  assert.equal(serialized.includes(passage), false);
+  assert.equal(serialized.includes("This payload must not be retained"), false);
+  assert.equal(serialized.includes("opaque-token"), false);
+  assert.match(captured.captureStatus, /no-document-payloads/);
+
+  const completeness = canaryPhysicalReceiptCompleteness({
+    canary: { scope: { physicalDocumentOpens: 2 } },
+    sourceStates: {
+      normalizedCandidates: [{ accessOutcome: { physicalOpenIndex: 2 } }],
+    },
+  }, captured);
+  assert.deepEqual(completeness.missingPhysicalOpenIndexes, [2]);
+  assert.deepEqual(completeness.authorizedButReceiptMissingIndexes, []);
+  assert.equal(completeness.reconstructionAttempted, false);
+  assert.equal(completeness.refetchAttempted, false);
+});
+
+test("canary cache and registry resources always use distinct temporary directories", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "safeloc-red-oak-isolation-test-"));
+  try {
+    const first = createRedOakCanaryResources(path.join(root, "first"));
+    const second = createRedOakCanaryResources(path.join(root, "second"));
+    assert.notEqual(first.cache, second.cache);
+    assert.notEqual(first.registry.directory, second.registry.directory);
+    assert.equal(first.registry.directory, path.join(root, "first", "registry"));
+    assert.equal(second.registry.directory, path.join(root, "second", "registry"));
+    assert.equal(first.storageMode, "isolated-temporary-cache-and-registry");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("reports bounded citation acceptance and rejection states distinctly", () => {
   const report = buildAcceptanceReport({
@@ -14,7 +152,18 @@ test("reports bounded citation acceptance and rejection states distinctly", () =
       statusCode: 200,
       payload: {
         researchOutcome: { state: "complete-no-eligible-evidence", eligibleEvidenceCount: 0, reasonCodes: [] },
-        researchAudit: { categories: [], providerAttempts: [], elapsedMs: 1 },
+        researchAudit: {
+          categories: [],
+          providerAttempts: [{
+            provider: "google-gemini-grounding",
+            model: "offline-fixture",
+            providerResponseId: "interaction_fixture_123",
+            providerResponseIdAvailability: "provider-reported",
+            usageAvailability: "provider-reported",
+            usage: { inputTokens: 120, outputTokens: 34, totalTokens: 154 },
+          }],
+          elapsedMs: 1,
+        },
         researchCoverage: {
           discoveryStatus: "completed",
           discoveryState: "usable-citations",
@@ -36,6 +185,128 @@ test("reports bounded citation acceptance and rejection states distinctly", () =
   assert.equal(report.discovery.rawAnnotationSummaries[1].rejectionReason, "unsafe-or-invalid-url");
   assert.deepEqual(report.discovery.acceptedCitationUrls, ["https://records.example/a"]);
   assert.equal(report.discovery.rejectedCitationUrls[0].reason, "unsafe-or-invalid-url");
+  assert.equal(report.run.providerAttempts[0].providerResponseId, "interaction_fixture_123");
+  assert.equal(report.run.providerAttempts[0].providerResponseIdAvailability, "provider-reported");
+  assert.equal(report.run.providerAttempts[0].usageAvailability, "provider-reported");
+  assert.deepEqual(report.run.providerAttempts[0].usage, {
+    inputTokens: 120,
+    outputTokens: 34,
+    totalTokens: 154,
+  });
+});
+
+test("canary quality and supplied-to-Grid reporting consume actual report and packet fields", () => {
+  const suppliedPassage = "Project Atlas planning filing describes an interconnection milestone.";
+  const notSuppliedPassage = "Project Atlas planning filing discusses another topic.";
+  const suppliedUrl = "https://records.example/grid-document?token=do-not-report";
+  const notSuppliedUrl = "https://records.example/other-document";
+  const report = buildAcceptanceReport({
+    project: { name: "Project Atlas", location: "Phoenix, Arizona" },
+    liveRun: {
+      statusCode: 200,
+      payload: {
+        researchOutcome: { state: "complete-no-eligible-evidence", eligibleEvidenceCount: 0, reasonCodes: [] },
+        researchAudit: {
+          categories: [],
+          providerAttempts: [],
+          candidateLineage: [
+            {
+              categoryId: "grid",
+              url: suppliedUrl,
+              canonicalUrl: suppliedUrl,
+              passageResult: {
+                state: "retained",
+                passageSha256: createHash("sha256").update(suppliedPassage).digest("hex"),
+              },
+            },
+            {
+              categoryId: "grid",
+              url: notSuppliedUrl,
+              canonicalUrl: notSuppliedUrl,
+              passageResult: {
+                state: "retained",
+                passageSha256: createHash("sha256").update(notSuppliedPassage).digest("hex"),
+              },
+            },
+          ],
+        },
+        sourceLedger: [
+          {
+            url: suppliedUrl,
+            canonicalUrl: suppliedUrl,
+            accessOutcome: {
+              state: "accessible",
+              reason: "retrieved",
+              passage: suppliedPassage,
+              extractionOutcome: "substantive-content",
+            },
+          },
+          {
+            url: "https://records.example/error-page",
+            accessOutcome: {
+              state: "blocked-or-shell",
+              reason: "application-error-page",
+              extractionOutcome: "application-error-page",
+            },
+          },
+          {
+            url: "https://records.example/corrupted-document",
+            accessOutcome: {
+              state: "rejected",
+              reason: "control-heavy-content",
+              extractionOutcome: "control-heavy-content",
+            },
+          },
+          {
+            url: notSuppliedUrl,
+            canonicalUrl: notSuppliedUrl,
+            accessOutcome: {
+              state: "accessible",
+              reason: "retrieved",
+              passage: notSuppliedPassage,
+              extractionOutcome: "substantive-content",
+            },
+          },
+        ],
+        evidence: [],
+      },
+    },
+  });
+  const trace = createRedOakClaimTrace();
+  const packet = [{
+    sourceId: "document-1",
+    canonicalUrl: "https://records.example/grid-document?token=packet-secret",
+    sourceUrl: "https://records.example/grid-document?token=packet-secret",
+    title: "Grid planning filing",
+    passage: suppliedPassage,
+  }];
+  trace.recordAnalysisPacket({
+    categoryId: "grid",
+    attemptType: "primary",
+    packet,
+  });
+
+  const packets = markGridSuppliedCandidates(report, trace.toJSON());
+  const candidates = report.sourceStates.normalizedCandidates;
+  assert.equal(report.sources, undefined);
+  assert.equal(candidates[0].suppliedToGrid, true);
+  assert.equal(candidates[0].passageSha256, createHash("sha256").update(suppliedPassage).digest("hex"));
+  assert.equal(candidates.find((candidate) => candidate.accessReason === "application-error-page").suppliedToGrid, false);
+  assert.equal(candidates.find((candidate) => candidate.accessReason === "control-heavy-content").suppliedToGrid, false);
+  assert.equal(candidates.find((candidate) => candidate.url === notSuppliedUrl).suppliedToGrid, false);
+  assert.equal(report.candidateLineage[0].suppliedToGrid, true);
+  assert.equal(report.candidateLineage[1].suppliedToGrid, false);
+  assert.equal(packets[0].passages[0].quoteSha256, createHash("sha256").update(suppliedPassage).digest("hex"));
+  assert.ok(packets[0].packetSha256);
+  assert.equal(packets[0].passageCount, packet.length);
+  assert.ok(!JSON.stringify(packets).includes("packet-secret"));
+
+  const observations = canaryContentQualityObservations(report);
+  assert.equal(canaryCandidateCount(report), 4);
+  assert.equal(observations.applicationErrorFilter.observedCandidateCount, 1);
+  assert.equal(observations.applicationErrorFilter.observedLive, true);
+  assert.equal(observations.corruptedTextFilter.observedCandidateCount, 1);
+  assert.equal(observations.corruptedTextFilter.observedLive, true);
 });
 
 test("builds a diagnostic-only report with bounded live-run and retention fields", () => {

@@ -63,6 +63,7 @@ import {
   type CustomEvidenceRecord,
   type CapacityProvenance,
   containCustomResearchEvidence,
+  selectResearchProposals,
 } from "@/services/researchProjectService";
 import type { ClaimId, PublicAccessStatus } from "@/data/claimSources";
 import { researchContentRejectionReason } from "@/data/researchContentQuality.mjs";
@@ -1319,9 +1320,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     const nextState = { evidence: customEvidence, modelEvidence: containedModelEvidence, canonicalBaseline: null, hasChangedClassification: false, lastChange: null as FinancialMetrics["lastChange"] };
     stateRef.current = nextState;
     setState(nextState);
-    const researchProposals = Object.fromEntries(
-      (research.proposedInputs ?? []).map((item) => [item.id, item]),
-    ) as Record<string, CustomEvidenceRecord>;
+    const researchProposals = selectResearchProposals(research.proposedInputs ?? []);
     const researchProposalDispositions = Object.fromEntries(
       Object.keys(researchProposals).map((id) => [id, "pending" as const]),
     ) as Record<string, ResearchProposalDisposition>;

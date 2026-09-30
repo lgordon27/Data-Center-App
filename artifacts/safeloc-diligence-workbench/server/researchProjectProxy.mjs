@@ -67,6 +67,28 @@ const RESEARCH_RUN_BUDGET = Object.freeze({
   maxToolCalls: RESEARCH_PROJECT_MAX_TOOL_CALLS,
   maxPhysicalDocumentOpens: 24,
 });
+const RESEARCH_BUDGET_OVERRIDE_FIELDS = Object.freeze([
+  "maxProviderRequests",
+  "maxFollowUps",
+  "maxFollowUpsPerCategory",
+  "maxCandidatesPerCategory",
+  "maxTotalCandidates",
+  "maxToolCalls",
+  "maxPhysicalDocumentOpens",
+]);
+
+function boundedResearchBudget(overrides) {
+  const budget = { ...RESEARCH_RUN_BUDGET };
+  if (!isRecord(overrides)) return budget;
+  for (const key of RESEARCH_BUDGET_OVERRIDE_FIELDS) {
+    const requested = overrides[key];
+    const maximum = RESEARCH_RUN_BUDGET[key];
+    if (Number.isInteger(requested) && requested >= 0) {
+      budget[key] = Math.min(maximum, requested);
+    }
+  }
+  return budget;
+}
 const MAX_RESEARCH_PROVIDER_ATTEMPT_RECORDS = 64;
 const MAX_RESEARCH_PROVIDER_RESPONSE_IDS = RESEARCH_RUN_BUDGET.maxProviderRequests;
 export const PROTECTED_SOURCE_OPPORTUNITIES = Object.freeze([
@@ -2139,6 +2161,7 @@ function buildResearchAudit({
   runCorrelationId = null,
 } = {}) {
   coverage = isRecord(coverage) ? coverage : {};
+  const runBudget = boundedResearchBudget(coverage.budget);
   sources = Array.isArray(sources) ? sources : [];
   evidence = Array.isArray(evidence) ? evidence : [];
   const plan = buildResearchCategoryPlan(project);
@@ -2156,12 +2179,12 @@ function buildResearchAudit({
   const sourceAttemptRecords = [
     ...(Array.isArray(coverage.sourceAttemptRecords) ? coverage.sourceAttemptRecords : []),
     ...sources,
-  ].slice(0, RESEARCH_RUN_BUDGET.maxTotalCandidates + 64);
+  ].slice(0, runBudget.maxTotalCandidates + 64);
   const categories = plan.categories.map((category) => {
     const supplied = isRecord(executions[category.categoryId]) ? executions[category.categoryId] : {};
     const executedQueries = normalizeSearchTerms(
       supplied.executedQueries ?? observedQueries.filter((query) => categoryQueryMatches(category, query)),
-      (RESEARCH_RUN_BUDGET.maxFollowUpsPerCategory ?? 1) + 1,
+      (runBudget.maxFollowUpsPerCategory ?? 1) + 1,
     );
     const counts = {
       ...categoryStageCounts(category, sources, evidence, project),
@@ -2216,7 +2239,7 @@ function buildResearchAudit({
       providerObservedFollowUpQueries: normalizeSearchTerms(supplied.providerObservedFollowUpQueries, 8),
       followUpExecutedQuery: typeof supplied.followUpExecutedQuery === "string" ? supplied.followUpExecutedQuery : null,
       followUpCount: Number.isInteger(supplied.followUpCount) ? Math.max(0, supplied.followUpCount) : (supplied.followUpExecutedQuery ? 1 : 0),
-      followUpLimit: RESEARCH_RUN_BUDGET.maxFollowUpsPerCategory,
+      followUpLimit: runBudget.maxFollowUpsPerCategory,
       followUpTriggerEvidenceIds: Array.isArray(supplied.followUpTriggerEvidenceIds) ? supplied.followUpTriggerEvidenceIds.filter((id) => category.evidenceIds.includes(id)).slice(0, 8) : [],
       followUpSkipReason: supplied.followUpSkipReason ?? (category.evidenceIds.length ? "no-justified-gap" : "evidence-resolved"),
       authorityTargets: category.authorityTargets,
@@ -2362,20 +2385,20 @@ function buildResearchAudit({
     startedAt,
     deadlineAt: coverage.deadlineAt ?? null,
     finishedAt,
-    budget: { ...RESEARCH_RUN_BUDGET },
+    budget: { ...runBudget },
     elapsedMs: startedAt && finishedAt ? Math.max(0, Date.parse(finishedAt) - Date.parse(startedAt)) : null,
     toolCallCount: Number.isInteger(coverage.toolCallCount)
-      ? Math.min(RESEARCH_RUN_BUDGET.maxToolCalls, Math.max(0, coverage.toolCallCount))
+      ? Math.min(runBudget.maxToolCalls, Math.max(0, coverage.toolCallCount))
       : 0,
     providerRequestCount: Number.isInteger(coverage.providerRequestCount)
-      ? Math.min(RESEARCH_RUN_BUDGET.maxProviderRequests, Math.max(0, coverage.providerRequestCount))
+      ? Math.min(runBudget.maxProviderRequests, Math.max(0, coverage.providerRequestCount))
       : issuedProviderAttemptCount(providerAttempts),
     providerAttemptCount: providerAttempts.length,
     providerAttempts,
     providerRequestBudget: {
-      maximum: RESEARCH_RUN_BUDGET.maxProviderRequests,
+      maximum: runBudget.maxProviderRequests,
       issued: Number.isInteger(coverage.providerRequestCount)
-        ? Math.min(RESEARCH_RUN_BUDGET.maxProviderRequests, Math.max(0, coverage.providerRequestCount))
+        ? Math.min(runBudget.maxProviderRequests, Math.max(0, coverage.providerRequestCount))
         : issuedProviderAttemptCount(providerAttempts),
       attempts: providerAttempts.map((attempt, index) => ({
         index: index + 1,
@@ -2402,9 +2425,9 @@ function buildResearchAudit({
     dnsRejections: categories.flatMap((category) => category.openedDocuments
       .filter((document) => document.dnsRejection)
       .map((document) => ({ categoryId: category.categoryId, ...document.dnsRejection }))),
-    physicalOpenBudget: RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens,
+    physicalOpenBudget: runBudget.maxPhysicalDocumentOpens,
     physicalOpensUsed: Number.isInteger(coverage.physicalOpensUsed) ? coverage.physicalOpensUsed : 0,
-    physicalOpensRemaining: Math.max(0, RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens - (Number.isInteger(coverage.physicalOpensUsed) ? coverage.physicalOpensUsed : 0)),
+    physicalOpensRemaining: Math.max(0, runBudget.maxPhysicalDocumentOpens - (Number.isInteger(coverage.physicalOpensUsed) ? coverage.physicalOpensUsed : 0)),
     physicalOpenBudgetExceeded: coverage.physicalOpenBudgetExceeded === true,
     sourceAttempts: sourceAttemptRecords.map((source, index) => ({
       discoveryRank: Number.isInteger(source.discoveryCandidateRank) ? source.discoveryCandidateRank : index + 1,
@@ -2426,8 +2449,8 @@ function buildResearchAudit({
     followUpCount: Number.isInteger(coverage.followUpCount)
       ? Math.max(0, coverage.followUpCount)
       : categories.reduce((total, category) => total + category.followUpCount, 0),
-    followUpLimit: RESEARCH_RUN_BUDGET.maxFollowUps,
-    followUpLimitPerCategory: RESEARCH_RUN_BUDGET.maxFollowUpsPerCategory,
+    followUpLimit: runBudget.maxFollowUps,
+    followUpLimitPerCategory: runBudget.maxFollowUpsPerCategory,
     categories,
     categoryGaps: categories.filter((category) => category.state !== "Complete").map((category) => category.categoryId),
     providerLimitations: Array.isArray(coverage.providerLimitations) ? coverage.providerLimitations.slice(0, 12) : [],
@@ -4552,6 +4575,7 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
     ? groundedSources.filter((source) => categorySourceMatchesForAnalysis(activeCategory, source))
     : groundedSources;
   const categoryAnalysisSources = categoryPassagePreparation.sources;
+  const categoryAnalysisPacket = buildGroundedSourceContext(categoryAnalysisSources);
   const requestedOutputTokens = activeCategory?.categoryId
     ? RESEARCH_CATEGORY_MAX_TOKENS
     : RESEARCH_PROJECT_MAX_TOKENS;
@@ -4584,7 +4608,9 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
         },
       },
     });
-  const groundedContext = groundedContextFor(categoryAnalysisSources);
+  const groundedContext = categoryAnalysisSources.length
+    ? `\n\nThe following public document passages were physically retrieved by SafeLoc. Use only these passages for source-backed claims. Do not browse, call a search tool, or treat a URL, snippet, title, or generated summary as evidence. Every claimPassage must be copied exactly from one supplied passage.\n${JSON.stringify(categoryAnalysisPacket)}`
+    : "";
   const requestBody = buildRequestBody(groundedContext);
   const requestBodyBytesBeforeFiltering = Buffer.byteLength(buildRequestBody(groundedContextFor(passageCandidates)));
   const requestBodyBytesAfterFiltering = Buffer.byteLength(requestBody);
@@ -4649,6 +4675,11 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
         providerAttempt.requestState = "issued";
         providerAttempt.issuedAt = new Date(issuedAtMs).toISOString();
         providerAttempt.queueWaitMs = Math.max(0, issuedAtMs - queuedAtMs);
+        activeCategory?.claimTrace?.recordAnalysisPacket?.({
+          categoryId: activeCategory.categoryId,
+          attemptType: activeCategory.attempt,
+          packet: categoryAnalysisPacket,
+        });
         if (analysisTracker) {
           analysisTracker.inFlight += 1;
           analysisTracker.peak = Math.max(analysisTracker.peak, analysisTracker.inFlight);
@@ -4735,6 +4766,11 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
   const content = extractResponseOutputText(body);
   const providerResponseId = normalizeProviderResponseId(body?.id);
   providerAttempt.providerResponseId = providerResponseId;
+  activeCategory?.claimTrace?.recordAnalysisPacket?.({
+    categoryId: activeCategory.categoryId,
+    providerResponseId,
+    attemptType: activeCategory.attempt,
+  });
   if (!content) {
     const parseError = new Error("Project research provider returned no JSON output.");
     parseError.name = "ResearchParseError";
@@ -5030,7 +5066,7 @@ function classifyResearchFailure(error) {
   return { status: 502, type: "upstream", message: "Project research upstream request failed." };
 }
 
-function mergeCategoryResearchResults(project, categoryResults) {
+function mergeCategoryResearchResults(project, categoryResults, claimTrace = null) {
   const first = categoryResults.find((result) => isRecord(result?.research))?.research;
   if (!first || !isRecord(first.projectSummary)) return null;
   const evidenceById = new Map();
@@ -5038,6 +5074,15 @@ function mergeCategoryResearchResults(project, categoryResults) {
   for (const result of categoryResults) {
     const category = planByCategory.get(result.categoryId);
     const retainedCategoryUrls = new Set((result.sources ?? []).flatMap((source) => sourceUrlAliases(source)));
+    const rawProviderEvidence = result.rawResearch?.evidence ?? result.research?.evidence;
+    const rawProviderClaims = Array.isArray(rawProviderEvidence)
+      ? rawProviderEvidence
+      : isRecord(rawProviderEvidence)
+        ? Object.entries(rawProviderEvidence).map(([id, item]) => ({
+          ...(isRecord(item) ? item : {}),
+          id: item?.id ?? id,
+        }))
+        : [];
     let containedResearch = result.research;
     const categoryEvidence = Array.isArray(result.research?.evidence) ? result.research.evidence : [];
     if (!categoryEvidence.some((item) => typeof item?.eligibleForModel === "boolean")) {
@@ -5065,6 +5110,70 @@ function mergeCategoryResearchResults(project, categoryResults) {
         ? containedResearch.evidence.map((item) => [item.id, item])
         : [],
     );
+    const responseId = result.coverage?.providerResponseId
+      ?? result.coverage?.providerAttempts?.find((attempt) => attempt?.providerResponseId)?.providerResponseId
+      ?? null;
+    for (const item of rawProviderClaims.slice(0, 48)) {
+      const claimId = item?.id;
+      if (!category?.evidenceIds.includes(claimId)) {
+        claimTrace?.recordStage?.({
+          categoryId: result.categoryId,
+          providerResponseId: responseId,
+          claimId,
+          stage: "categoryRestriction",
+          passed: false,
+          reasonCode: "outside-category-schema",
+        });
+        continue;
+      }
+      claimTrace?.recordStage?.({
+        categoryId: result.categoryId,
+        providerResponseId: responseId,
+        claimId,
+        stage: "categoryRestriction",
+        passed: true,
+      });
+      const mappedUrls = [
+        item.sourceUrl,
+        ...(Array.isArray(item.sourceUrls) ? item.sourceUrls : []),
+      ].map((url) => canonicalizeSourceUrl(url)).filter(Boolean);
+      if (!mappedUrls.length) {
+        claimTrace?.recordStage?.({
+          categoryId: result.categoryId,
+          providerResponseId: responseId,
+          claimId,
+          stage: "sourceRestriction",
+          passed: false,
+          reasonCode: "claim-has-no-source-url",
+        });
+      } else if (!mappedUrls.some((url) => retainedCategoryUrls.has(url))) {
+        claimTrace?.recordStage?.({
+          categoryId: result.categoryId,
+          providerResponseId: responseId,
+          claimId,
+          stage: "sourceRestriction",
+          passed: false,
+          reasonCode: "source-not-retained-for-category",
+        });
+      } else if (!containedEvidence.has(claimId)) {
+        claimTrace?.recordStage?.({
+          categoryId: result.categoryId,
+          providerResponseId: responseId,
+          claimId,
+          stage: "sourceRestriction",
+          passed: false,
+          reasonCode: "source-containment-rejected",
+        });
+      } else {
+        claimTrace?.recordStage?.({
+          categoryId: result.categoryId,
+          providerResponseId: responseId,
+          claimId,
+          stage: "sourceRestriction",
+          passed: true,
+        });
+      }
+    }
     for (const item of Array.isArray(result.research?.evidence) ? result.research.evidence : []) {
       if (!category?.evidenceIds.includes(item.id)) continue;
       const mappedUrls = [
@@ -5109,6 +5218,13 @@ function mergeCategoryResearchResults(project, categoryResults) {
           ? { claimTimePeriod: rawItem.claimTimePeriod }
           : {}),
         ...(item.sources?.length || !sourceRecords.length ? {} : { sources: sourceRecords }),
+      });
+      claimTrace?.recordStage?.({
+        categoryId: result.categoryId,
+        providerResponseId: responseId,
+        claimId: item.id,
+        stage: "merge",
+        passed: true,
       });
     }
   }
@@ -5222,6 +5338,9 @@ function candidateLineageForRun(result, orchestration) {
       passageResult: {
         state: access.passage || source.claimPassage ? "retained" : "not-retained",
         reason: access.passage || source.claimPassage ? null : access.reason ?? "No attributable passage was retained.",
+        passageSha256: typeof access.passage === "string" && access.passage.trim()
+          ? createHash("sha256").update(access.passage).digest("hex")
+          : null,
       },
       eligibilityResult: {
         state: source.financialEligibilityState ?? "ineligible",
@@ -5264,6 +5383,8 @@ async function runValidatedResearch(project, {
   googleApiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GEMINI_API_KEY,
   googleDiscoveryImpl = discoverGoogleGroundedProject,
   googleModel = GOOGLE_GEMINI_MODEL,
+  googleDiscoveryPrompt = null,
+  canaryDiagnosticCollector = null,
   allowGoogleFallback = true,
   allowCorrectiveRetries = true,
   fetchImpl,
@@ -5279,10 +5400,15 @@ async function runValidatedResearch(project, {
   documentTimeoutMs = RESEARCH_DOCUMENT_TIMEOUT_MS,
   analysisReserveMs = RESEARCH_DOCUMENT_ANALYSIS_RESERVE_MS,
   maxConcurrentDocumentOpens = RESEARCH_DOCUMENT_MAX_CONCURRENCY,
+  researchBudgetOverrides = null,
+  allowProviderRetries = true,
+  useDefaultSecConnector = true,
   runCorrelationId: requestedRunCorrelationId = null,
   auditStartedAt = null,
   auditDeadlineAt = null,
+  claimTrace = null,
 }) {
+  const researchBudget = boundedResearchBudget(researchBudgetOverrides);
   researchTimeoutMs = Math.min(RESEARCH_PROJECT_TIMEOUT_MS, Math.max(1,
     Number.isFinite(researchTimeoutMs) ? researchTimeoutMs : RESEARCH_PROJECT_TIMEOUT_MS));
   documentTimeoutMs = Math.min(RESEARCH_DOCUMENT_TIMEOUT_MS, Math.max(1,
@@ -5441,6 +5567,7 @@ async function runValidatedResearch(project, {
   let physicalOpensUsed = 0;
   let physicalOpenBudgetExceeded = false;
   const physicalOpenScheduler = createPhysicalOpenScheduler({
+    maxPhysicalOpens: researchBudget.maxPhysicalDocumentOpens,
     activeCategoryIds: buildResearchCategoryPlan(project).categories
       .filter((category) => !Array.isArray(categoryIds) || !categoryIds.length || categoryIds.includes(category.categoryId))
       .map((category) => category.categoryId),
@@ -5449,6 +5576,14 @@ async function runValidatedResearch(project, {
     const authorization = physicalOpenScheduler.authorize(details);
     physicalOpensUsed = physicalOpenScheduler.used;
     if (authorization.reason === "physical-open-budget") physicalOpenBudgetExceeded = true;
+    if (authorization.allowed && !authorization.reused) {
+      canaryDiagnosticCollector?.recordPhysicalOpenAuthorization?.({
+        categoryId: details.categoryId,
+        source: details.source,
+        canonicalUrl: details.canonicalUrl,
+        physicalOpenIndex: authorization.physicalOpenIndex,
+      });
+    }
     return authorization;
   };
   const activeCategoryIds = buildResearchCategoryPlan(project).categories
@@ -5459,7 +5594,7 @@ async function runValidatedResearch(project, {
   const documentAuditReceipts = [];
   const prefetchGoogleGroundedSources = async (candidates) => {
     const boundedCandidates = (Array.isArray(candidates) ? candidates : [])
-      .slice(0, RESEARCH_RUN_BUDGET.maxTotalCandidates);
+      .slice(0, researchBudget.maxTotalCandidates);
     await Promise.all(boundedCandidates.map(async (source, candidateIndex) => {
       throwIfResearchCancelled(controller.signal);
       const originalUrl = source.originalUrl ?? source.url ?? null;
@@ -5495,7 +5630,7 @@ async function runValidatedResearch(project, {
         const authorization = authorizePhysicalOpen({
           categoryId,
           canonicalUrl: announcedCanonicalUrl ?? originalUrl,
-          source,
+          source: { ...source, discoveryCandidateRank: candidateIndex + 1 },
         });
         if (!authorization.allowed) {
           accessOutcome = {
@@ -5549,6 +5684,16 @@ async function runValidatedResearch(project, {
         ...(accessOutcome.passage ? { excerpt: accessOutcome.passage, claimPassage: accessOutcome.passage } : {}),
         ...(NON_RETAINED_DOCUMENT_OUTCOMES.has(accessOutcome.state) ? { excerpt: null, claimPassage: null } : {}),
       };
+      canaryDiagnosticCollector?.recordPhysicalReceipt?.({
+        phase: "grounded-discovery-prefetch",
+        candidateIndex: candidateIndex + 1,
+        candidate: source,
+        accessOutcome,
+        attempted: Number.isInteger(accessOutcome.physicalOpenIndex)
+          && !documentAccessReused
+          && accessOutcome.reused !== true,
+        reused: documentAccessReused,
+      });
       openedGoogleDocuments.push(openedSource);
       documentAuditReceipts.push(openedSource);
       if (hasRetrievedPassage(openedSource)) retainedDocumentReceipts.push(openedSource);
@@ -5556,7 +5701,7 @@ async function runValidatedResearch(project, {
     return openedGoogleDocuments;
   };
   let activeSecConnector = secConnector;
-  if (!activeSecConnector && process.env.SEC_USER_AGENT) {
+  if (!activeSecConnector && useDefaultSecConnector && process.env.SEC_USER_AGENT) {
     activeSecConnector = createSecConnector({
       userAgent: process.env.SEC_USER_AGENT,
       cache: SEC_CONNECTOR_CACHE,
@@ -5589,8 +5734,12 @@ async function runValidatedResearch(project, {
         fetchImpl,
         signal: controller.signal,
         model: googleModel,
+        ...(typeof googleDiscoveryPrompt === "string" && googleDiscoveryPrompt.trim()
+          ? { prompt: googleDiscoveryPrompt }
+          : {}),
         analysisTracker,
       });
+      canaryDiagnosticCollector?.recordDiscoveryCandidates?.(discovery.candidates ?? []);
       const groundedSources = await prefetchGoogleGroundedSources(discovery.candidates ?? []);
       googleDiscovery = {
         ...googleDiscovery,
@@ -5627,6 +5776,7 @@ async function runValidatedResearch(project, {
   let fallbackRequestConsumed = false;
   let fallbackRequestCost = 0;
   const retry429Once = async (issue, reserve) => {
+    if (!allowProviderRetries) return issue();
     try {
       return await issue();
     } catch (error) {
@@ -5656,9 +5806,9 @@ async function runValidatedResearch(project, {
     );
     const orchestration = await orchestrateCategoryResearch(project, {
       budget: {
-        ...RESEARCH_RUN_BUDGET,
+        ...researchBudget,
         deadlineMs: phaseTiming.orchestrationBudgetMs,
-        maxProviderRequests: Math.max(1, RESEARCH_RUN_BUDGET.maxProviderRequests - googleRequestCount),
+        maxProviderRequests: Math.max(0, researchBudget.maxProviderRequests - googleRequestCount),
       },
       signal: controller.signal,
       deadlineState,
@@ -5674,6 +5824,7 @@ async function runValidatedResearch(project, {
           evidenceIds: category?.evidenceIds ?? [],
           runCorrelationId,
           analysisTracker,
+          claimTrace,
           maxToolCalls: Math.max(1, Math.min(RESEARCH_PROJECT_MAX_TOOL_CALLS, remainingToolCalls ?? RESEARCH_PROJECT_MAX_TOOL_CALLS)),
         };
         let categoryResult;
@@ -5792,10 +5943,40 @@ async function runValidatedResearch(project, {
           }
         };
         const validateCategoryResult = (result) => {
+          const responseId = result.coverage?.providerResponseId
+            ?? result.coverage?.providerAttempts?.find((attempt) => attempt?.providerResponseId)?.providerResponseId
+            ?? result.coverage?.providerAttempt?.providerResponseId
+            ?? null;
           const providerAttemptsForResult = [
             ...(Array.isArray(result.coverage?.providerAttempts) ? result.coverage.providerAttempts : []),
             ...(isRecord(result.coverage?.providerAttempt) ? [result.coverage.providerAttempt] : []),
           ];
+          const responseProvider = typeof result.coverage?.provider === "string"
+            ? result.coverage.provider.toLowerCase()
+            : "";
+          const receivedStructuredResponse = responseProvider.startsWith("openai-")
+            || providerAttemptsForResult.some((providerAttempt) =>
+              providerAttempt?.structuredResponseDiagnostic?.outcome === "received");
+          if (receivedStructuredResponse) {
+            claimTrace?.recordStructuredReceipt?.({
+              categoryId,
+              providerResponseId: responseId,
+              research: result.research,
+              expectedEvidenceIds: category?.evidenceIds ?? [],
+            });
+          } else {
+            const structuredRequestIssued = providerAttemptsForResult.some((providerAttempt) =>
+              Boolean(providerAttempt?.issuedAt));
+            claimTrace?.recordUnavailableStructuredResponse?.({
+              categoryId,
+              providerResponseId: responseId,
+              expectedEvidenceIds: category?.evidenceIds ?? [],
+              state: structuredRequestIssued ? "unavailable" : "not-issued",
+              reasonCode: structuredRequestIssued
+                ? "no-structured-response-received"
+                : "structured-analysis-not-issued",
+            });
+          }
           const setStructuredDiagnostic = (outcome, validationErrorType = null) => {
             const diagnostic = createStructuredResponseDiagnostic(result.research, {
               outcome,
@@ -5814,8 +5995,23 @@ async function runValidatedResearch(project, {
               project.knownData ?? null,
               category?.evidenceIds ?? [],
             );
+            if (receivedStructuredResponse) {
+              claimTrace?.recordStructuredParseResult?.({
+                categoryId,
+                providerResponseId: responseId,
+                passed: true,
+              });
+            }
             setStructuredDiagnostic("validated");
           } catch (error) {
+            if (receivedStructuredResponse) {
+              claimTrace?.recordStructuredParseResult?.({
+                categoryId,
+                providerResponseId: responseId,
+                passed: false,
+                reasonCode: "malformed-response",
+              });
+            }
             if (error instanceof Error) {
               error.name = "ResearchParseError";
               error.researchErrorType = "malformed-response";
@@ -5907,7 +6103,7 @@ async function runValidatedResearch(project, {
             knownData: project.knownData,
             category: categoryId,
             signal: controller.signal,
-            maxAttempts: RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens,
+            maxAttempts: researchBudget.maxPhysicalDocumentOpens,
             authorizeAttempt: (url) => authorizePhysicalOpen({
               categoryId,
               canonicalUrl: url,
@@ -5998,8 +6194,8 @@ async function runValidatedResearch(project, {
         categoryResult.coverage.secConnectorAttempts = secAttempts;
         const categoryFetched = fetchedCandidatesByCategory.get(categoryId) ?? 0;
         const categoryReserved = reservedCandidatesByCategory.get(categoryId) ?? 0;
-        const remainingCategory = Math.max(0, RESEARCH_RUN_BUDGET.maxCandidatesPerCategory - categoryFetched - categoryReserved);
-        const remainingTotal = Math.max(0, RESEARCH_RUN_BUDGET.maxTotalCandidates - fetchedCandidateCount - reservedCandidateCount);
+        const remainingCategory = Math.max(0, researchBudget.maxCandidatesPerCategory - categoryFetched - categoryReserved);
+        const remainingTotal = Math.max(0, researchBudget.maxTotalCandidates - fetchedCandidateCount - reservedCandidateCount);
         reservedCandidatesByCategory.set(categoryId, categoryReserved + Math.max(0, remainingCategory));
         reservedCandidateCount += Math.max(0, remainingCategory);
         const boundedSources = categoryResult.sources.slice(0, Math.min(remainingCategory, remainingTotal));
@@ -6147,6 +6343,17 @@ async function runValidatedResearch(project, {
                 ...((accessOutcome.passage ?? source.excerpt) ? { claimPassage: accessOutcome.passage ?? source.excerpt } : {}),
               }),
           };
+          canaryDiagnosticCollector?.recordPhysicalReceipt?.({
+            phase: "category-source-access",
+            candidateIndex: source.discoveryCandidateRank ?? null,
+            categoryId,
+            candidate: source,
+            accessOutcome,
+            attempted: Number.isInteger(accessOutcome.physicalOpenIndex)
+              && !previousAccess
+              && accessOutcome.reused !== true,
+            reused: Boolean(previousAccess || accessOutcome.reused),
+          });
           accessedSources.push(accessedSource);
           documentAuditReceipts.push(accessedSource);
           if (hasRetrievedPassage(accessedSource)) retainedDocumentReceipts.push(accessedSource);
@@ -6177,10 +6384,11 @@ async function runValidatedResearch(project, {
                researchProviderGate,
                );
              }, authorizeAdditionalProviderRequest);
+              validateCategoryResult(supplementalAnalysis);
              categoryResult = supplementalAnalysis;
              if (supplementalAnalysis.coverage?.providerAttempt) providerAttempts.push(supplementalAnalysis.coverage.providerAttempt);
            }
-           const normalizedCategoryResearch = containResearchResult(parseResearchResponse(
+            const normalizedCategoryResearch = containResearchResult(parseResearchResponse(
           categoryResult.research,
           accessedSources,
           new Date().toISOString().slice(0, 10),
@@ -6188,6 +6396,15 @@ async function runValidatedResearch(project, {
           project.knownData ?? null,
           category?.evidenceIds ?? [],
         ));
+         const categoryResponseId = categoryResult.coverage?.providerResponseId
+           ?? categoryResult.coverage?.providerAttempts?.find((attempt) => attempt?.providerResponseId)?.providerResponseId
+           ?? categoryResult.coverage?.providerAttempt?.providerResponseId
+           ?? null;
+         claimTrace?.recordValidatedEvidence?.({
+           categoryId,
+           providerResponseId: categoryResponseId,
+           evidence: normalizedCategoryResearch.evidence,
+         });
         const categoryResolution = categoryResearchIsResolved(
           category,
           normalizedCategoryResearch,
@@ -6298,7 +6515,7 @@ async function runValidatedResearch(project, {
       throw orchestration.lastError;
     }
     const mergedResearch = orchestration.categoryResults.length
-      ? mergeCategoryResearchResults(project, orchestration.categoryResults)
+      ? mergeCategoryResearchResults(project, orchestration.categoryResults, claimTrace)
       : createPartialResearchBody(project);
     if (!mergedResearch) throw new Error("Category research did not return a complete structured response.");
     const categoryExecutions = Object.values(orchestration.categoryExecutions);
@@ -6364,9 +6581,10 @@ async function runValidatedResearch(project, {
         toolCallCount: orchestration.toolCalls,
         observedToolCallCount: orchestration.categoryResults.reduce((total, category) => total + (category.coverage?.observedToolCallCount ?? category.coverage?.toolCallCount ?? 0), 0),
         acceptedToolCallCount: orchestration.toolCalls,
-        physicalOpenBudget: RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens,
+        budget: { ...researchBudget },
+        physicalOpenBudget: researchBudget.maxPhysicalDocumentOpens,
         physicalOpensUsed,
-        physicalOpensRemaining: Math.max(0, RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens - physicalOpensUsed),
+        physicalOpensRemaining: Math.max(0, researchBudget.maxPhysicalDocumentOpens - physicalOpensUsed),
         physicalOpenBudgetExceeded: orchestration.physicalOpenBudgetExceeded,
         providerRequestCount: issuedProviderAttemptCount(providerAttemptsForRun),
         providerAttempts: providerAttemptsForRun,
@@ -6579,6 +6797,8 @@ export async function handleResearchProjectRequest(
     googleApiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GEMINI_API_KEY,
     googleDiscoveryImpl = discoverGoogleGroundedProject,
     googleModel = GOOGLE_GEMINI_MODEL,
+    googleDiscoveryPrompt = null,
+    canaryDiagnosticCollector = null,
     allowGoogleFallback = true,
     allowCorrectiveRetries = true,
     fetchImpl = fetch,
@@ -6595,8 +6815,14 @@ export async function handleResearchProjectRequest(
     documentTimeoutMs = RESEARCH_DOCUMENT_TIMEOUT_MS,
     analysisReserveMs = RESEARCH_DOCUMENT_ANALYSIS_RESERVE_MS,
     maxConcurrentDocumentOpens = RESEARCH_DOCUMENT_MAX_CONCURRENCY,
+    claimTrace = null,
+    researchBudgetOverrides = null,
+    allowProviderRetries = true,
+    useDefaultSecConnector = true,
+    signal = null,
   } = {},
 ) {
+  const requestBudget = boundedResearchBudget(researchBudgetOverrides);
   const auditStore = /** @type {ResearchAuditRepository | null} */ (auditRepository);
   if (req.method === "GET") {
     const requestUrl = new URL(req.url ?? "/api/research-project", "http://localhost");
@@ -6646,6 +6872,9 @@ export async function handleResearchProjectRequest(
     Math.max(1, Number.isFinite(researchTimeoutMs) ? researchTimeoutMs : RESEARCH_PROJECT_TIMEOUT_MS),
   );
   const requestController = new AbortController();
+  const abortFromExternalSignal = () => requestController.abort();
+  if (signal?.aborted) requestController.abort();
+  else signal?.addEventListener("abort", abortFromExternalSignal, { once: true });
   const runPolicyHeader = typeof req.get === "function"
     ? req.get("x-safeloc-research-policy")
     : req.headers?.["x-safeloc-research-policy"];
@@ -6751,7 +6980,7 @@ export async function handleResearchProjectRequest(
         research: { provider: "openai", model: RESEARCH_PROJECT_MODEL },
         discovery: { provider: "google-gemini-grounding", model: googleModel },
       },
-      budget: { ...RESEARCH_RUN_BUDGET },
+      budget: { ...requestBudget },
       providerAttempts: [],
       categories: [],
       response: { ...responseDelivery },
@@ -6791,6 +7020,8 @@ export async function handleResearchProjectRequest(
         googleApiKey,
         googleDiscoveryImpl,
         googleModel,
+        googleDiscoveryPrompt,
+        canaryDiagnosticCollector,
         allowGoogleFallback: allowGoogleFallback && !singleShotRun,
         allowCorrectiveRetries: allowCorrectiveRetries && !singleShotRun,
         fetchImpl,
@@ -6804,11 +7035,15 @@ export async function handleResearchProjectRequest(
         documentTimeoutMs,
         analysisReserveMs,
         maxConcurrentDocumentOpens,
+        researchBudgetOverrides: requestBudget,
+        allowProviderRetries,
+        useDefaultSecConnector,
         dnsLookup,
         signal: foreground ? requestController.signal : undefined,
         runCorrelationId: runId,
         auditStartedAt: startedAt,
         auditDeadlineAt: context.deadlineAt,
+        claimTrace,
       });
     });
     if (!refreshResult.started) {
@@ -7026,6 +7261,7 @@ export async function handleResearchProjectRequest(
     if (!activeRefresh || activeRefresh.started) retainRun(null, error);
   } finally {
     req.removeListener?.("aborted", onRequestAborted);
+    signal?.removeEventListener("abort", abortFromExternalSignal);
   }
 }
 

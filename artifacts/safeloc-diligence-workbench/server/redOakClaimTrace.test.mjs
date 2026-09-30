@@ -9,10 +9,13 @@ import {
 } from "../src/data/evidenceSemanticPolicy.mjs";
 import { extractClaimScopeFromPassage } from "../src/data/claimScopeExtractor.mjs";
 import { matchProject } from "../src/data/researchClaimVerifier.mjs";
+import { createRedOakClaimTrace } from "./redOakClaimTrace.mjs";
+import { mergeCategoryResearchResults } from "./researchProjectProxy.mjs";
 import { extractResearchDocument } from "./researchDocumentExtraction.mjs";
 import {
   deriveRetainedResearchFindings,
   parseResponse,
+  selectResearchProposals,
 } from "../src/services/researchProjectService.ts";
 
 const retainedPassage = readFileSync(
@@ -48,6 +51,217 @@ const retainedSource = {
     passage: retainedPassage,
   },
 };
+
+test("traces a bounded structured claim through validation and proposal selection without retaining provider text", () => {
+  const trace = createRedOakClaimTrace();
+  const providerResponseId = "resp-grid-1";
+  const claimPassage = "The 292-acre site will eventually host eight buildings delivering 480 MW of total IT load.";
+  trace.recordStructuredReceipt({
+    categoryId: "grid",
+    providerResponseId,
+    expectedEvidenceIds: ["grid_interconnection"],
+    research: {
+      projectSummary: { name: "Red Oak Campus" },
+      evidence: {
+        grid_interconnection: {
+          value: 480,
+          unit: "MW",
+          claimPassage,
+          sourceUrl: "https://records.example/red-oak?token=private-provider-token",
+        },
+      },
+    },
+  });
+  trace.recordStructuredParseResult({ categoryId: "grid", providerResponseId, passed: true });
+  trace.recordStage({
+    categoryId: "grid",
+    providerResponseId,
+    claimId: "grid_interconnection",
+    stage: "sourceRestriction",
+    passed: true,
+  });
+  trace.recordStage({
+    categoryId: "grid",
+    providerResponseId,
+    claimId: "grid_interconnection",
+    stage: "merge",
+    passed: true,
+  });
+  const evidence = [{
+    id: "grid_interconnection",
+    value: 480,
+    unit: "MW",
+    normalizedValue: 480,
+    normalizedUnit: "MW",
+    claimPassage,
+    sourceUrl: "https://records.example/red-oak?token=private-provider-token",
+    sourceRelevance: "exact-project",
+    facilityScope: "project",
+    phaseScope: "all-phases",
+    claimTimePeriod: null,
+    semanticValidationStatus: "valid",
+    eligibleForModel: false,
+    quarantineReasons: ["Missing claim time scope."],
+    sources: [{
+      canonicalUrl: "https://records.example/red-oak?token=private-provider-token",
+      exactProject: true,
+    }],
+    claimMappings: [{
+      supportStatus: "supported",
+      rejectionCodes: ["missing-time-scope"],
+      facilityScope: "project",
+      phaseScope: "all-phases",
+      timePeriod: null,
+    }],
+    sourceValidation: {
+      state: "rejected",
+      rejectionCodes: ["missing-time-scope"],
+      eligibilityTrace: {
+        checks: [{ id: "exact-project-source", passed: false }],
+      },
+    },
+  }];
+  trace.recordValidatedEvidence({ categoryId: "grid", providerResponseId, evidence });
+  const syntheticResponse = JSON.parse(readFileSync(
+    new URL("../tests/fixtures/research-project-synthetic.json", import.meta.url),
+    "utf8",
+  ));
+  const clientResult = parseResponse(syntheticResponse, project, trace);
+  const selected = selectResearchProposals(clientResult.proposedInputs ?? [], trace, clientResult.evidence);
+  assert.equal(Object.hasOwn(selected, "grid_interconnection"), false);
+
+  const diagnostic = trace.toJSON();
+  assert.equal(diagnostic.responses[0].state, "claims-received");
+  assert.equal(diagnostic.responses[0].parseState, "validated");
+  assert.equal(diagnostic.claims.length, 1);
+  const claim = diagnostic.claims[0];
+  assert.equal(claim.claimId, "grid_interconnection");
+  assert.equal(claim.providerResponseId, providerResponseId);
+  assert.equal(claim.normalizedValue, 480);
+  assert.equal(claim.normalizedUnit, "MW");
+  assert.match(claim.supportingQuoteSha256, /^[a-f0-9]{64}$/);
+  assert.equal("supportingQuote" in claim, false);
+  assert.equal(claim.canonicalSourceUrl, "https://records.example/red-oak");
+  assert.equal(claim.projectIdentity.state, "exact-project");
+  assert.equal(claim.facilityPhaseScope.facilityScope, "project");
+  assert.equal(claim.facilityPhaseScope.phaseScope, "all-phases");
+  assert.equal(claim.timeScope.state, "rejected");
+  assert.equal(claim.semanticUnitValidation.state, "passed");
+  assert.equal(claim.sourceValidation.state, "rejected");
+  assert.equal(claim.containment.eligibleForModel, false);
+  assert.equal(claim.stages.clientParsing.state, "passed");
+  assert.equal(claim.stages.proposalSelection.state, "failed");
+  assert.equal(claim.firstFailedGate.gate, "exact-project-source");
+  assert.equal(claim.proposalCreated, false);
+  const serialized = JSON.stringify(diagnostic);
+  assert.doesNotMatch(serialized, /private-provider-token|292-acre site|provider text/);
+});
+
+test("records omitted claims, no-claim responses, and malformed responses separately", () => {
+  const trace = createRedOakClaimTrace();
+  trace.recordStructuredReceipt({
+    categoryId: "grid",
+    providerResponseId: "resp-empty",
+    expectedEvidenceIds: ["grid_interconnection", "electricity_cost"],
+    research: { projectSummary: { name: "Red Oak Campus" }, evidence: {} },
+  });
+  trace.recordStructuredParseResult({
+    categoryId: "grid",
+    providerResponseId: "resp-empty",
+    passed: false,
+    reasonCode: "malformed-response",
+  });
+  trace.recordStructuredReceipt({
+    categoryId: "water",
+    providerResponseId: "resp-malformed",
+    expectedEvidenceIds: ["water_rights"],
+    research: null,
+  });
+  trace.recordClientParseResult({
+    evidence: [{ id: "water_rights", sources: { unexpected: true } }],
+    passed: false,
+    reasonCode: "invalid-evidence-item",
+  });
+
+  const diagnostic = trace.toJSON();
+  assert.deepEqual(diagnostic.responses.map(({ state }) => state), ["no-claims", "malformed"]);
+  assert.deepEqual(diagnostic.responses[0].omittedClaimIds, ["grid_interconnection", "electricity_cost"]);
+  assert.equal(diagnostic.claims[0].structuredReceiptState, "omitted");
+  assert.equal(diagnostic.claims[0].stages.structuredParsing.state, "failed");
+  assert.equal(diagnostic.claims[0].firstFailedGate.reasonCode, "claim-omitted-from-response");
+  assert.equal(diagnostic.claims[2].structuredReceiptState, "omitted");
+  assert.equal(diagnostic.claims[2].stages.clientParsing.state, "failed");
+});
+
+test("records category and source restrictions at the production category merge boundary", () => {
+  const trace = createRedOakClaimTrace();
+  const providerResponseId = "resp-merge-1";
+  const sourceUrl = "https://records.example/red-oak/interconnection";
+  const projectSummary = {
+    name: "Red Oak Campus",
+    location: "Texas",
+    description: "Red Oak Campus, Texas.",
+    capacityMW: 480,
+  };
+  const returnedClaims = [
+    { id: "grid_interconnection", value: 180, unit: "MW", sourceUrl },
+    { id: "electricity_cost", value: 70, unit: "USD/MWh", sourceUrl: "https://external.example/unretained" },
+    { id: "backup_power_capacity", value: 480, unit: "MW", sourceUrl },
+  ];
+  trace.recordStructuredReceipt({
+    categoryId: "grid",
+    providerResponseId,
+    expectedEvidenceIds: ["grid_interconnection", "electricity_cost"],
+    research: { projectSummary, evidence: returnedClaims },
+  });
+  trace.recordStructuredParseResult({ categoryId: "grid", providerResponseId, passed: true });
+
+  const source = {
+    url: sourceUrl,
+    resolvedUrl: sourceUrl,
+    canonicalUrl: sourceUrl,
+    sourceId: sourceUrl,
+    exactProject: true,
+    sourceClass: "primary-company",
+    accessStatus: "open",
+  };
+  const result = {
+    categoryId: "grid",
+    research: {
+      projectSummary,
+      evidence: [{
+        ...returnedClaims[0],
+        classification: "Management Assertion",
+        description: "The Phase One interconnection is 180 MW.",
+        sourceUrl,
+        sources: [source],
+        eligibleForModel: false,
+      }],
+    },
+    rawResearch: { evidence: returnedClaims },
+    sources: [source],
+    coverage: { providerResponseId },
+  };
+  const merged = mergeCategoryResearchResults({
+    name: projectSummary.name,
+    location: projectSummary.location,
+    knownData: {},
+  }, [result], trace);
+  const diagnostic = trace.toJSON();
+  const validClaim = diagnostic.claims.find((claim) => claim.claimId === "grid_interconnection");
+  const sourceRestrictedClaim = diagnostic.claims.find((claim) => claim.claimId === "electricity_cost");
+  const outOfCategoryClaim = diagnostic.claims.find((claim) => claim.claimId === "backup_power_capacity");
+
+  assert.ok(merged.evidence.some((item) => item.id === "grid_interconnection"));
+  assert.equal(validClaim.stages.categoryRestriction.state, "passed");
+  assert.equal(validClaim.stages.sourceRestriction.state, "passed");
+  assert.equal(validClaim.stages.merge.state, "passed");
+  assert.equal(sourceRestrictedClaim.stages.categoryRestriction.state, "passed");
+  assert.equal(sourceRestrictedClaim.stages.sourceRestriction.state, "failed");
+  assert.equal(sourceRestrictedClaim.firstFailedGate.gate, "sourceRestriction");
+  assert.equal(outOfCategoryClaim.stages.categoryRestriction.state, "failed");
+  assert.equal(outOfCategoryClaim.firstFailedGate.gate, "categoryRestriction");
+});
 
 test("replays the unchanged retained article through identity, scoped claims, findings, and proposal boundaries", async () => {
   assert.equal(retainedPassage.length, 4_000);
@@ -189,4 +403,29 @@ test("a retained IT-load value cannot map to grid timeline or backup duration", 
       description: "180 MW for DFW9, DFW10, and DFW11",
     }).modelEligible, false, "bounded building-group power is neither grid timeline nor backup duration");
   }
+});
+
+test("Grid passage diagnostics retain only bounded quotes, hashes, and sanitized canonical URLs", () => {
+  const trace = createRedOakClaimTrace();
+  const excerpt = "A retained source passage about a specific Red Oak grid connection.";
+  trace.recordAnalysisPassages({
+    categoryId: "grid",
+    attemptType: "primary",
+    passages: [{
+      url: "https://records.example/grid?signature=private-value",
+      canonicalUrl: "https://records.example/grid?signature=private-value",
+      claimPassage: excerpt,
+    }],
+  });
+  trace.recordAnalysisPassages({
+    categoryId: "grid",
+    providerResponseId: "resp_grid",
+    attemptType: "primary",
+  });
+  const batch = trace.toJSON().analysisPassages[0];
+  assert.equal(batch.providerResponseId, "resp_grid");
+  assert.equal(batch.passages[0].canonicalSourceUrl, "https://records.example/grid");
+  assert.equal(batch.passages[0].excerpt, excerpt);
+  assert.equal(batch.passages[0].quoteSha256.length, 64);
+  assert.equal(JSON.stringify(batch).includes("private-value"), false);
 });

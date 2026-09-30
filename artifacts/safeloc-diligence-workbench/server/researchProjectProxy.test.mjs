@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
 import test from "node:test";
 import { readFileSync } from "node:fs";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { deflateSync } from "node:zlib";
@@ -69,6 +69,7 @@ import {
   createResearchProjectCache,
   researchProjectCacheKey,
 } from "./researchProjectCache.mjs";
+import { createRedOakClaimTrace } from "./redOakClaimTrace.mjs";
 
 const redOakQualityFixtures = JSON.parse(readFileSync(
   new URL("./fixtures/red-oak-quality.json", import.meta.url),
@@ -5870,4 +5871,347 @@ test("a client disconnect is captured and cancels an in-flight offline provider 
   assert.ok(saved.audit.clientDisconnectedAt);
   assert.equal(saved.audit.responseStartedAt, null);
   assert.equal(finishedRecord.runId, saved.runId);
+});
+
+test("request-local canary overrides expose the eight-open and three-provider limits without changing defaults", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "safeloc-canary-budget-test-"));
+  let discoveryRequests = 0;
+  let providerRequests = 0;
+  try {
+    const req = request({
+      name: "Red Oak Campus",
+      location: "Red Oak, Ellis County, Texas",
+      forceRefresh: true,
+    });
+    req.headers = { "x-safeloc-research-policy": "single-shot" };
+    const response = responseRecorder();
+    await handleResearchProjectRequest(req, response, {
+      apiKey: "offline-openai-key",
+      googleApiKey: "offline-google-key",
+      googleDiscoveryImpl: async () => {
+        discoveryRequests += 1;
+        return {
+          status: "completed",
+          provider: "google-gemini-grounding",
+          model: "offline-fixture",
+          queries: ["Red Oak Campus DataBank"],
+          candidates: [],
+          groundingMetadataPresent: true,
+          groundingSearchExecuted: true,
+          usableCitationMetadataPresent: false,
+          providerRequestCount: 1,
+          providerAttempt: {
+            provider: "google-gemini-grounding",
+            model: "offline-fixture",
+            requestCount: 1,
+            requestState: "issued",
+            outcome: "completed",
+          },
+        };
+      },
+      fetchImpl: async () => {
+        providerRequests += 1;
+        throw new Error("Offline budget test must not issue a structured request.");
+      },
+      cache: createResearchProjectCache({ directory }),
+      registry: { async retain() {} },
+      rateLimiter: createResearchProjectRateLimiter(),
+      categoryIds: ["project-identity", "grid"],
+      allowGoogleFallback: false,
+      allowCorrectiveRetries: false,
+      allowProviderRetries: false,
+      useDefaultSecConnector: false,
+      researchBudgetOverrides: {
+        maxProviderRequests: 3,
+        maxPhysicalDocumentOpens: 8,
+        maxFollowUps: 0,
+        maxFollowUpsPerCategory: 0,
+        maxCandidatesPerCategory: 8,
+        maxTotalCandidates: 16,
+      },
+    });
+    const payload = response.json();
+    assert.equal(discoveryRequests, 1);
+    assert.equal(providerRequests, 0);
+    assert.equal(payload.researchAudit.budget.maxProviderRequests, 3);
+    assert.equal(payload.researchAudit.budget.maxPhysicalDocumentOpens, 8);
+    assert.equal(payload.researchAudit.physicalOpenBudget, 8);
+    assert.equal(payload.researchAudit.followUpLimit, 0);
+    assert.equal(payload.researchAudit.followUpLimitPerCategory, 0);
+    assert.equal(payload.researchAudit.providerRequestBudget.maximum, 3);
+    assert.equal(RESEARCH_RUN_BUDGET.maxProviderRequests, 16);
+    assert.equal(RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens, 24);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("two-category canary budget cannot issue extra structured calls, follow-ups, or document opens", async () => {
+  const fixture = JSON.parse(await readFile(
+    new URL("./fixtures/research-partial-receipts.json", import.meta.url),
+    "utf8",
+  ));
+  const passage = "Project Atlas in Phoenix, Arizona has a documented grid interconnection request with a public milestone schedule.";
+  const candidates = Array.from({ length: 12 }, (_, index) => ({
+    ...retrievedSource,
+    url: `https://records.example.test/atlas/canary-${index + 1}`,
+    title: `Synthetic Project Atlas grid record ${index + 1}`,
+    excerpt: passage,
+    claimPassage: passage,
+    categoryIds: [index % 2 === 0 ? "project-identity" : "grid"],
+    searchDomain: index % 2 === 0 ? "project-identity" : "grid",
+    sourceChannel: "google-grounded-search",
+  }));
+  let discoveryCalls = 0;
+  let structuredCalls = 0;
+  const diagnosticCapture = { candidates: null, receipts: [], authorizations: [] };
+  const structuredCategories = [];
+  const trace = createRedOakClaimTrace();
+  const result = await runValidatedResearch(fixture.project, {
+    apiKey: "offline-openai-key",
+    googleApiKey: "offline-google-key",
+    req: request({}),
+    categoryIds: ["project-identity", "grid"],
+    allowGoogleFallback: false,
+    allowCorrectiveRetries: false,
+    allowProviderRetries: false,
+    useDefaultSecConnector: false,
+    researchBudgetOverrides: {
+      maxProviderRequests: 3,
+      maxPhysicalDocumentOpens: 8,
+      maxFollowUps: 0,
+      maxFollowUpsPerCategory: 0,
+      maxCandidatesPerCategory: 8,
+      maxTotalCandidates: 16,
+    },
+    researchTimeoutMs: 8_000,
+    analysisReserveMs: 0,
+    documentTimeoutMs: 1_000,
+    rateLimiter: { allow: () => ({ allowed: true, retryAfterSeconds: 0 }) },
+    googleDiscoveryPrompt: "Offline canary discovery prompt",
+    canaryDiagnosticCollector: {
+      recordDiscoveryCandidates(value) {
+        diagnosticCapture.candidates = value;
+      },
+      recordPhysicalOpenAuthorization(value) {
+        diagnosticCapture.authorizations.push(value);
+      },
+      recordPhysicalReceipt(value) {
+        diagnosticCapture.receipts.push(value);
+      },
+    },
+    googleDiscoveryImpl: async ({ prompt }) => {
+      discoveryCalls += 1;
+      assert.equal(prompt, "Offline canary discovery prompt");
+      const discovery = await completedGoogleDiscovery(candidates)();
+      return {
+        ...discovery,
+        providerAttempt: {
+          provider: "google-gemini-grounding",
+          model: "offline-fixture",
+          requestCount: 1,
+          requestState: "issued",
+          outcome: "completed",
+        },
+      };
+    },
+    dnsLookup: async () => [{ address: "93.184.216.34", family: 4 }],
+    documentFetchImpl: async (url) => substantiveHtmlResponse(passage, url),
+    fetchImpl: async (_url, init) => {
+      structuredCalls += 1;
+      const requestBody = JSON.parse(init.body);
+      const categoryId = requestBody.text.format.name === "safeloc_project_identity"
+        ? "project-identity"
+        : "grid";
+      structuredCategories.push(categoryId);
+      const base = validResearchResponse();
+      const research = categoryId === "project-identity"
+        ? {
+          projectSummary: {
+            ...base.projectSummary,
+            name: fixture.project.name,
+            location: fixture.project.location,
+          },
+          identityAssessment: {
+            exactProjectIdentityEstablished: true,
+            matchedName: fixture.project.name,
+            matchedLocation: fixture.project.location,
+            matchedOperator: "Project Atlas",
+            reason: "The synthetic public record establishes the exact project.",
+          },
+        }
+        : {
+          ...base,
+          projectSummary: {
+            ...base.projectSummary,
+            name: fixture.project.name,
+            location: fixture.project.location,
+          },
+          evidence: base.evidence
+            .filter((item) => buildResearchCategoryPlan(fixture.project).categories
+              .find((category) => category.categoryId === "grid").evidenceIds.includes(item.id))
+            .map((item) => ({
+              ...item,
+              sourceUrl: candidates.find((candidate) => candidate.categoryIds.includes("grid")).url,
+              sourceUrls: [candidates.find((candidate) => candidate.categoryIds.includes("grid")).url],
+              claimPassage: passage,
+              description: "The synthetic record reports a project-specific grid milestone.",
+              classification: "Management Assertion",
+              coverageStatus: "supported",
+            })),
+        };
+      return new Response(JSON.stringify({
+        id: `resp_offline_${categoryId}`,
+        output: [{
+          type: "message",
+          content: [{ type: "output_text", text: JSON.stringify(research) }],
+        }],
+      }), { status: 200 });
+    },
+    claimTrace: trace,
+  });
+
+  assert.equal(discoveryCalls, 1);
+  assert.equal(diagnosticCapture.candidates.length, candidates.length);
+  assert.equal(diagnosticCapture.receipts.length >= candidates.length, true);
+  assert.equal(diagnosticCapture.authorizations.length, 8);
+  assert.equal(diagnosticCapture.receipts.some((receipt) => receipt.attempted === false), true);
+  assert.equal(diagnosticCapture.receipts.some((receipt) => receipt.attempted === true), true);
+  assert.equal(diagnosticCapture.candidates[0].url, candidates[0].url);
+  assert.equal(structuredCalls, 2);
+  assert.deepEqual(structuredCategories.sort(), ["grid", "project-identity"]);
+  assert.equal(result.researchAudit.physicalOpensUsed, 8);
+  assert.equal(result.researchAudit.budget.maxPhysicalDocumentOpens, 8);
+  assert.equal(result.researchAudit.budget.maxProviderRequests, 3);
+  assert.equal(result.researchAudit.followUpLimit, 0);
+  assert.equal(result.researchAudit.followUpLimitPerCategory, 0);
+  assert.equal(result.researchAudit.providerRequestCount <= 3, true);
+  const traceResult = trace.toJSON();
+  assert.equal(traceResult.analysisPassages.length, 1);
+  const responseByCategory = new Map(traceResult.responses.map((response) => [response.categoryId, response]));
+  assert.equal(responseByCategory.get("project-identity").state, "no-claims");
+  assert.equal(responseByCategory.get("project-identity").claimCount, 0);
+  assert.equal(responseByCategory.get("grid").state, "claims-received");
+  assert.equal(responseByCategory.get("grid").claimCount, 4);
+  const gridPacket = traceResult.analysisPassages[0];
+  assert.equal(gridPacket.providerResponseId, "resp_offline_grid");
+  assert.equal(gridPacket.state, "issued-to-provider");
+  assert.equal(gridPacket.passageCount, gridPacket.passages.length);
+  assert.ok(gridPacket.packetSha256);
+  assert.ok(gridPacket.passages.length > 0);
+  assert.ok(gridPacket.passages[0].passageId.startsWith("passage-"));
+  assert.ok(gridPacket.passages[0].quoteSha256);
+  assert.ok(gridPacket.passages[0].excerpt);
+});
+
+test("blocked discovery documents produce unavailable trace responses without fabricated structured claims", async () => {
+  const fixture = JSON.parse(await readFile(
+    new URL("./fixtures/research-partial-receipts.json", import.meta.url),
+    "utf8",
+  ));
+  const candidates = ["project-identity", "grid"].map((categoryId) => ({
+    ...retrievedSource,
+    url: `https://records.example.test/atlas/${categoryId}-blocked`,
+    title: `Synthetic ${categoryId} search result`,
+    excerpt: "Unopened search-result snippet; not a retrieved passage.",
+    claimPassage: undefined,
+    categoryIds: [categoryId],
+    searchDomain: categoryId,
+    sourceChannel: "google-grounded-search",
+  }));
+  const trace = createRedOakClaimTrace();
+  let structuredCalls = 0;
+  const result = await runValidatedResearch(fixture.project, {
+    apiKey: "offline-openai-key",
+    googleApiKey: "offline-google-key",
+    req: request({}),
+    categoryIds: ["project-identity", "grid"],
+    allowGoogleFallback: false,
+    allowCorrectiveRetries: false,
+    allowProviderRetries: false,
+    useDefaultSecConnector: false,
+    researchBudgetOverrides: {
+      maxProviderRequests: 3,
+      maxFollowUps: 0,
+      maxFollowUpsPerCategory: 0,
+      maxCandidatesPerCategory: 8,
+      maxTotalCandidates: 16,
+      maxToolCalls: 32,
+      maxPhysicalDocumentOpens: 8,
+    },
+    researchTimeoutMs: 8_000,
+    analysisReserveMs: 0,
+    documentTimeoutMs: 1_000,
+    rateLimiter: { allow: () => ({ allowed: true, retryAfterSeconds: 0 }) },
+    googleDiscoveryImpl: completedGoogleDiscovery(candidates),
+    dnsLookup: async () => [{ address: "93.184.216.34", family: 4 }],
+    documentFetchImpl: async () => new Response("blocked", { status: 403 }),
+    fetchImpl: async () => {
+      structuredCalls += 1;
+      throw new Error("No structured provider request is expected for blocked documents.");
+    },
+    claimTrace: trace,
+  });
+
+  const diagnostic = trace.toJSON();
+  const responseByCategory = new Map(diagnostic.responses.map((response) => [response.categoryId, response]));
+  assert.equal(result.researchAudit.physicalOpensUsed > 0, true);
+  assert.equal(structuredCalls, 0);
+  assert.equal(diagnostic.claims.length, 0);
+  assert.equal(diagnostic.analysisPassages.length, 0);
+  for (const categoryId of ["project-identity", "grid"]) {
+    const response = responseByCategory.get(categoryId);
+    assert.ok(response, `Expected an explicit unavailable trace state for ${categoryId}.`);
+    assert.equal(response.state, "not-issued");
+    assert.equal(response.claimCount, 0);
+    assert.equal(response.parseState, "not-evaluated");
+    assert.deepEqual(response.omittedClaimIds, []);
+  }
+});
+
+test("request-local abort signal cancels an in-flight discovery before structured work", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "safeloc-canary-cancel-test-"));
+  const controller = new AbortController();
+  let capturedDiscoverySignal = null;
+  let markDiscoveryStarted;
+  const discoveryStarted = new Promise((resolve) => { markDiscoveryStarted = resolve; });
+  let structuredCalls = 0;
+  try {
+    const response = responseRecorder();
+    const pending = handleResearchProjectRequest(request({
+      name: "Red Oak Campus",
+      location: "Red Oak, Ellis County, Texas",
+      forceRefresh: true,
+    }), response, {
+      apiKey: "offline-openai-key",
+      googleApiKey: "offline-google-key",
+      googleDiscoveryImpl: async ({ signal }) => {
+        capturedDiscoverySignal = signal;
+        markDiscoveryStarted();
+        return new Promise((_, reject) => {
+          signal.addEventListener("abort", () => reject(new Error("offline discovery cancelled")), { once: true });
+        });
+      },
+      fetchImpl: async () => {
+        structuredCalls += 1;
+        throw new Error("Structured analysis must not start after cancellation.");
+      },
+      cache: createResearchProjectCache({ directory }),
+      registry: { async retain() {} },
+      rateLimiter: createResearchProjectRateLimiter(),
+      categoryIds: ["project-identity", "grid"],
+      allowGoogleFallback: false,
+      allowCorrectiveRetries: false,
+      allowProviderRetries: false,
+      useDefaultSecConnector: false,
+      signal: controller.signal,
+    });
+    await discoveryStarted;
+    controller.abort();
+    await pending;
+    assert.equal(capturedDiscoverySignal.aborted, true);
+    assert.equal(structuredCalls, 0);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });

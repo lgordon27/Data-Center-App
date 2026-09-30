@@ -62,6 +62,43 @@ function safeGoogleErrorMessage(value) {
     .replace(/(api[_ -]?key|authorization|token)\s*[:=]\s*\S+/gi, "$1=[redacted]");
 }
 
+function safeGoogleResponseId(value) {
+  const id = normalizeText(value, 160);
+  return /^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$/.test(id) ? id : null;
+}
+
+function googleResponseUsage(body) {
+  const containers = [
+    body?.usage,
+    body?.usageMetadata,
+    body?.usage_metadata,
+    body?.response?.usage,
+    body?.response?.usageMetadata,
+    body?.response?.usage_metadata,
+  ].filter((value) => value && typeof value === "object");
+  const firstCount = (keys) => {
+    for (const usage of containers) {
+      for (const key of keys) {
+        const value = usage[key];
+        if (Number.isFinite(value) && value >= 0) return value;
+      }
+    }
+    return null;
+  };
+  const usage = {
+    inputTokens: firstCount(["input_tokens", "inputTokens", "promptTokenCount", "prompt_tokens"]),
+    outputTokens: firstCount([
+      "output_tokens",
+      "outputTokens",
+      "candidatesTokenCount",
+      "candidateTokenCount",
+      "completion_tokens",
+    ]),
+    totalTokens: firstCount(["total_tokens", "totalTokens", "totalTokenCount"]),
+  };
+  return Object.values(usage).some((value) => value !== null) ? usage : null;
+}
+
 function googleRateLimitIndicators(headers) {
   const fields = {
     retryAfter: "retry-after",
@@ -340,7 +377,10 @@ export async function discoverGoogleGroundedProject({
     status: null,
     requestState: "queued",
     outcome: "cancelled-before-issue",
+    providerResponseId: null,
+    providerResponseIdAvailability: "pending",
     usage: null,
+    usageAvailability: "pending",
     requestBodyBytes: Buffer.byteLength(requestInit.body),
   };
   analysisTracker?.attempts?.push(providerAttempt);
@@ -374,7 +414,11 @@ export async function discoverGoogleGroundedProject({
       upstreamStatus: null,
       reason: "cancelled-before-issue",
     };
-    Object.assign(providerAttempt, { providerDiagnostic: error.providerDiagnostic });
+    Object.assign(providerAttempt, {
+      providerDiagnostic: error.providerDiagnostic,
+      providerResponseIdAvailability: "not-issued",
+      usageAvailability: "not-issued",
+    });
     finishAttempt("cancelled-before-issue");
     error.providerAttempt = providerAttempt;
     throw error;
@@ -401,7 +445,11 @@ export async function discoverGoogleGroundedProject({
       upstreamStatus: null,
       reason: safeGoogleErrorKind(cause?.code) ?? (cause?.name === "AbortError" ? "aborted" : "network-failure"),
     };
-    Object.assign(providerAttempt, { providerDiagnostic: error.providerDiagnostic });
+    Object.assign(providerAttempt, {
+      providerDiagnostic: error.providerDiagnostic,
+      providerResponseIdAvailability: "response-not-received",
+      usageAvailability: "response-not-received",
+    });
     finishAttempt(cause?.name === "AbortError" || signal?.aborted ? "cancelled-after-issue" : "failed");
     error.providerAttempt = providerAttempt;
     throw error;
@@ -419,7 +467,11 @@ export async function discoverGoogleGroundedProject({
       upstreamStatus: response.status,
       reason: safeGoogleErrorKind(cause?.code) ?? (cause?.name === "AbortError" ? "aborted" : "response-read-failure"),
     };
-    Object.assign(providerAttempt, { providerDiagnostic: error.providerDiagnostic });
+    Object.assign(providerAttempt, {
+      providerDiagnostic: error.providerDiagnostic,
+      providerResponseIdAvailability: "response-body-unreadable",
+      usageAvailability: "response-body-unreadable",
+    });
     finishAttempt(cause?.name === "AbortError" || signal?.aborted ? "cancelled-after-issue" : "failed", response.status);
     error.providerAttempt = providerAttempt;
     throw error;
@@ -432,11 +484,23 @@ export async function discoverGoogleGroundedProject({
     error.name = "GoogleDiscoveryParseError";
     error.researchErrorType = "google-malformed-response";
     error.providerDiagnostic = { status: response.status, reason: "invalid-json" };
-    Object.assign(providerAttempt, { providerDiagnostic: error.providerDiagnostic });
+    Object.assign(providerAttempt, {
+      providerDiagnostic: error.providerDiagnostic,
+      providerResponseIdAvailability: "response-not-json",
+      usageAvailability: "response-not-json",
+    });
     finishAttempt("failed", response.status);
     error.providerAttempt = providerAttempt;
     throw error;
   }
+  const providerResponseId = safeGoogleResponseId(body?.id);
+  const usage = googleResponseUsage(body);
+  Object.assign(providerAttempt, {
+    providerResponseId,
+    providerResponseIdAvailability: providerResponseId ? "provider-reported" : "not-provided-by-upstream",
+    usage,
+    usageAvailability: usage ? "provider-reported" : "not-provided-by-upstream",
+  });
   if (!response.ok) {
     const error = new Error("Google Gemini grounding returned an upstream failure.");
     error.name = "GoogleDiscoveryProviderError";

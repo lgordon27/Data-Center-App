@@ -1672,8 +1672,27 @@ export function containCustomResearchEvidence(item: CustomEvidenceRecord): Custo
   };
 }
 
-function parseResponse(value: unknown, identity: ResearchIdentity = {}): CustomResearchResponse {
+type ResearchClaimTraceRecorder = {
+  recordClientParsing?: (evidence: CustomEvidenceRecord[]) => void;
+  recordClientParseResult?: (input: {
+    evidence?: unknown[];
+    passed: boolean;
+    reasonCode?: string;
+  }) => void;
+  recordProposalSelection?: (selected: CustomEvidenceRecord[], returned: CustomEvidenceRecord[]) => void;
+};
+
+function parseResponse(
+  value: unknown,
+  identity: ResearchIdentity = {},
+  claimTrace?: ResearchClaimTraceRecorder,
+): CustomResearchResponse {
+  const rawEvidence = isRecord(value) && Array.isArray(value.evidence) ? value.evidence : [];
+  const recordClientFailure = (reasonCode: string, evidence: unknown[] = rawEvidence) => {
+    claimTrace?.recordClientParseResult?.({ evidence, passed: false, reasonCode });
+  };
   if (!isRecord(value) || !isRecord(value.projectSummary) || !Array.isArray(value.evidence)) {
+    recordClientFailure("incomplete-client-response");
     throw new Error("Project research returned an incomplete response.");
   }
   const summary = value.projectSummary;
@@ -1690,32 +1709,41 @@ function parseResponse(value: unknown, identity: ResearchIdentity = {}): CustomR
     !isNonEmptyString(summary.location) ||
     !isNonEmptyString(summary.description)
   ) {
+    recordClientFailure("invalid-project-summary");
     throw new Error("Project research returned an invalid project summary.");
   }
   if (value.evidence.length !== CUSTOM_EVIDENCE_IDS.length) {
+    recordClientFailure("invalid-evidence-count");
     throw new Error("Project research must return exactly 16 evidence items.");
   }
 
   const expectedIds = new Set<string>(CUSTOM_EVIDENCE_IDS);
   const seenIds = new Set<string>();
   const evidence = value.evidence.map((candidate) => {
-    if (!isRecord(candidate)) throw new Error("Project research returned an invalid evidence item.");
+    if (!isRecord(candidate)) {
+      recordClientFailure("invalid-evidence-item", [candidate]);
+      throw new Error("Project research returned an invalid evidence item.");
+    }
     const required = ["id", "label", "unit", "classification", "citation", "description", "sourceRole"];
     if (required.some((field) => !isNonEmptyString(candidate[field])) || (
       typeof candidate.value !== "string" &&
       (typeof candidate.value !== "number" || !Number.isFinite(candidate.value))
     )) {
+      recordClientFailure("incomplete-evidence-item", [candidate]);
       throw new Error("Project research returned an incomplete evidence item.");
     }
     const id = candidate.id as string;
     if (!expectedIds.has(id) || seenIds.has(id)) {
+      recordClientFailure("invalid-or-duplicate-evidence-id", [candidate]);
       throw new Error("Project research must return each modeled evidence item exactly once.");
     }
     seenIds.add(id);
     if (!VALID_CLASSIFICATIONS.includes(candidate.classification as Classification)) {
+      recordClientFailure("invalid-evidence-classification", [candidate]);
       throw new Error("Project research returned an invalid evidence classification.");
     }
     if (candidate.numericValue !== undefined && (typeof candidate.numericValue !== "number" || !Number.isFinite(candidate.numericValue))) {
+      recordClientFailure("invalid-numeric-evidence-value", [candidate]);
       throw new Error("Project research returned an invalid numeric evidence value.");
     }
     const sourceUrl = safePublicSourceUrl(candidate.sourceUrl);
@@ -1809,6 +1837,7 @@ function parseResponse(value: unknown, identity: ResearchIdentity = {}): CustomR
   });
 
   const containedEvidence = evidence.map(containCustomResearchEvidence);
+  claimTrace?.recordClientParsing?.(containedEvidence);
   const eligibleEvidence = containedEvidence.filter((item) => item.eligibleForModel);
   const retrievedLeads = containedEvidence.filter((item) => item.researchState === "retrieved-lead" || item.researchState === "quarantined");
   const terminalOutcome = isRecord(value.researchOutcome) ? value.researchOutcome.state : null;
@@ -1933,6 +1962,21 @@ function parseResponse(value: unknown, identity: ResearchIdentity = {}): CustomR
       retainedFindingAudit: retainedFindingReport.audit,
      ...(replay ? { replay } : {}),
   };
+}
+
+export function selectResearchProposals(
+  proposals: CustomEvidenceRecord[],
+  claimTrace?: ResearchClaimTraceRecorder,
+  returnedClaims?: CustomEvidenceRecord[],
+): Record<string, CustomEvidenceRecord> {
+  const returned = Array.isArray(proposals) ? proposals : [];
+  const selected = Object.fromEntries(
+    returned
+      .filter((item) => item?.eligibleForModel === true)
+      .map((item) => [item.id, item]),
+  );
+  claimTrace?.recordProposalSelection?.(Object.values(selected), returnedClaims ?? returned);
+  return selected;
 }
 
 export function createDefaultAssumptionResearch(

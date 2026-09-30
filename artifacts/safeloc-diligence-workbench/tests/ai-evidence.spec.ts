@@ -168,6 +168,16 @@ test.describe("AI evidence classification", () => {
 
   test("keeps canonical AI suggestions advisory until Accept or Override", async ({ page }) => {
     let requests = 0;
+    await page.route("**/api/eia/electricity", (route) => route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ diagnostics: { error: "deterministic embedded fallback" } }),
+    }));
+    await page.route("**/api/ercot-queue", (route) => route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ diagnostics: { error: "deterministic embedded fallback" } }),
+    }));
     await page.route("**/api/analyze-evidence", async (route) => {
       requests += 1;
       await route.fulfill({
@@ -186,21 +196,46 @@ test.describe("AI evidence classification", () => {
     await expect(row.getByTestId("button-analyze-ai-permitting_timeline")).toBeEnabled();
     const baseline = await select.inputValue();
     expect(baseline).not.toBe("Missing Evidence");
+    await page.waitForFunction(() =>
+      typeof (window as any).__safelocCaptureReturnDiscrepancyState === "function",
+    );
+    const modelInputFingerprintBefore = await page.evaluate(async () => {
+      const capture = (window as any).__safelocCaptureReturnDiscrepancyState as
+        (() => Promise<{ modelInputs: { fingerprint: string } }>) | undefined;
+      if (!capture) throw new Error("Return discrepancy capture hook is unavailable.");
+      return (await capture()).modelInputs.fingerprint;
+    });
     const before = await page.evaluate(() => {
       const session = JSON.parse(localStorage.getItem("safeloc:diligence:current-session:v1") ?? "{}");
-      return { overrides: session.canonicalReview.overrides, model: session.modelEvidence.permitting_timeline.classification };
+      return {
+        overrides: session.canonicalReview.overrides,
+        baseline: session.canonicalReview.baselineEvidence.permitting_timeline.classification,
+        model: session.modelEvidence.permitting_timeline.classification,
+      };
     });
+    expect(before.baseline).toBe(baseline);
 
     await row.getByTestId("button-analyze-ai-permitting_timeline").click();
     await expect(row.getByTestId("ai-assessment-permitting_timeline")).toContainText("Suggestion, not a determination");
     await expect(row.getByTestId("text-ai-reasoning-permitting_timeline")).toContainText("Downgrade suggested");
     await expect(row.getByTestId("button-accept-ai-permitting_timeline")).toHaveText("Accept downgrade");
     await expect(select).toHaveValue(baseline);
+    const modelInputFingerprintAfter = await page.evaluate(async () => {
+      const capture = (window as any).__safelocCaptureReturnDiscrepancyState as
+        (() => Promise<{ modelInputs: { fingerprint: string } }>) | undefined;
+      if (!capture) throw new Error("Return discrepancy capture hook is unavailable.");
+      return (await capture()).modelInputs.fingerprint;
+    });
     const afterSuggestion = await page.evaluate(() => {
       const session = JSON.parse(localStorage.getItem("safeloc:diligence:current-session:v1") ?? "{}");
-      return { overrides: session.canonicalReview.overrides, model: session.modelEvidence.permitting_timeline.classification };
+      return {
+        overrides: session.canonicalReview.overrides,
+        baseline: session.canonicalReview.baselineEvidence.permitting_timeline.classification,
+        model: session.modelEvidence.permitting_timeline.classification,
+      };
     });
     expect(afterSuggestion).toEqual(before);
+    expect(modelInputFingerprintAfter).toBe(modelInputFingerprintBefore);
 
     await row.getByTestId("button-override-ai-permitting_timeline").click();
     await expect(select).toHaveValue(baseline);

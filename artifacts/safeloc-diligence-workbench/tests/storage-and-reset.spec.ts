@@ -416,6 +416,11 @@ test.describe("current-session recovery and reset isolation", () => {
     const water = page.getByTestId("row-evidence-water_rights");
     await water.getByTestId("select-classification-water_rights").selectOption("Verified Evidence");
     await expect(water.getByTestId("session-override-water_rights")).toContainText("Session override · dossier baseline: Missing Evidence");
+    const afterGateOverride = await page.evaluate((key) => JSON.parse(localStorage.getItem(key) ?? "{}"), currentSessionKey);
+    expect(afterGateOverride.canonicalReview.baselineEvidence).toEqual(baseline);
+    expect(afterGateOverride.canonicalReview.overrides.water_rights).toBe("Verified Evidence");
+    expect(afterGateOverride.canonicalReview.reviewMetadata.water_rights.kind).toBe("manual");
+    expect(afterGateOverride.modelEvidence.water_rights.classification).toBe("Verified Evidence");
     const gateChanged = await posture();
     expect(gateChanged.gateCount).toBe(before.gateCount - 1);
     expect(gateChanged.confidence).not.toBe(before.confidence);
@@ -430,6 +435,11 @@ test.describe("current-session recovery and reset isolation", () => {
       powerBaseline === "Missing Evidence" ? "Verified Evidence" : "Missing Evidence",
     );
     await expect(power.getByTestId("session-override-permitting_timeline")).toContainText(`dossier baseline: ${powerBaseline}`);
+    const afterDriverOverride = await page.evaluate((key) => JSON.parse(localStorage.getItem(key) ?? "{}"), currentSessionKey);
+    const reviewedDriverClassification = powerBaseline === "Missing Evidence" ? "Verified Evidence" : "Missing Evidence";
+    expect(afterDriverOverride.canonicalReview.baselineEvidence).toEqual(baseline);
+    expect(afterDriverOverride.canonicalReview.overrides.permitting_timeline).toBe(reviewedDriverClassification);
+    expect(afterDriverOverride.modelEvidence.permitting_timeline.classification).toBe(reviewedDriverClassification);
     const driverChanged = await posture();
     expect(driverChanged.irr === gateChanged.irr && driverChanged.npv === gateChanged.npv).toBe(false);
 
@@ -437,6 +447,14 @@ test.describe("current-session recovery and reset isolation", () => {
     await openProjectRealityEvidenceReview(page);
     await expect(page.getByTestId("session-override-water_rights")).toContainText("dossier baseline: Missing Evidence");
     await expect(page.getByTestId("session-override-permitting_timeline")).toContainText(`dossier baseline: ${powerBaseline}`);
+    const restoredReview = await page.evaluate((key) => JSON.parse(localStorage.getItem(key) ?? "{}").canonicalReview, currentSessionKey);
+    expect(restoredReview.baselineEvidence).toEqual(baseline);
+    expect(restoredReview.overrides).toEqual({
+      water_rights: "Verified Evidence",
+      permitting_timeline: reviewedDriverClassification,
+    });
+    expect(restoredReview.reviewMetadata.water_rights.kind).toBe("manual");
+    expect(restoredReview.reviewMetadata.permitting_timeline.kind).toBe("manual");
     await page.getByTestId("button-reset-default").click();
     await page.getByTestId("button-confirm-reset-default").click();
     const afterReset = await posture();
@@ -449,6 +467,9 @@ test.describe("current-session recovery and reset isolation", () => {
     const resetReview = await page.evaluate((key) => JSON.parse(localStorage.getItem(key) ?? "{}").canonicalReview, currentSessionKey);
     expect(resetReview.baselineEvidence).toEqual(baseline);
     expect(resetReview.overrides).toEqual({});
+    expect(resetReview.reviewMetadata).toEqual({});
+    await expect(page.getByTestId("review-marker-water_rights")).toHaveCount(0);
+    await expect(page.getByTestId("review-marker-permitting_timeline")).toHaveCount(0);
     expect(await (await page.request.get("/api/dossiers/stargate-abilene")).json()).toEqual(canonicalBefore);
   });
 

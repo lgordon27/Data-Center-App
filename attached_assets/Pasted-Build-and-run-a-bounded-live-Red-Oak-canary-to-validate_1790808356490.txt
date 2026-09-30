@@ -1,0 +1,96 @@
+Build and run a bounded live Red Oak canary to validate the real research pipeline
+We now have strong offline coverage, but the real Red Oak run still produced zero eligible proposals. Add an explicit live-integration test path so we can observe real discovery, document access, structured analysis, and downstream validation without running the full 7-category workflow.
+This live path must be opt-in only. It must never run as part of normal pnpm test, CI, or offline regression tests.
+Goal
+Prove or localize this real path:
+live discovery → document access → retained passage → structured category claims → source containment → validation → eligibility/proposal decision
+The canary is diagnostic first. It does not need to force an eligible proposal if the evidence legitimately fails policy.
+1. Add an explicit live-test gate
+Require an explicit flag/command such as a live-research test mode.
+Without that explicit opt-in:
+- no Google/Gemini request
+- no OpenAI request
+- no live document fetches
+Keep live tests separate from the deterministic suite.
+2. Use Red Oak as the first canary
+Run one fresh Red Oak test using the current research code.
+Do not use production cache or production DB state. Use isolated temporary test storage/cache.
+Disable reuse of stale prior Red Oak results for this canary so we know the result is fresh.
+3. Keep the run tightly bounded
+Hard cap the first canary at:
+- 1 grounded discovery request
+- maximum 8 physical document opens
+- maximum 2 structured provider calls total
+- one target research category after project identity
+- bounded wall-clock/runtime
+Start with Grid because the prior Red Oak run returned 4 structured claims there but we could not trace what happened to them afterward.
+Do not run all categories.
+4. Exercise the real document-access path
+For every candidate considered, record:
+- discovered URL
+- resolved URL
+- source/domain
+- whether it was attempted
+- access result
+- content-quality result
+- exact-project relevance state
+- whether it was supplied to structured analysis
+Confirm that the new CivicEngage/application-error and corrupted-text filters operate on live/retrieved content.
+Do not change DNS/SSRF behavior in this task.
+5. Add bounded per-claim tracing
+This is critical.
+For every structured claim returned by the live Grid call, retain enough sanitized diagnostic information to trace it through downstream validation:
+- claim/evidence identifier
+- normalized value/unit where applicable
+- bounded supporting quote or quote hash
+- canonical source URL
+- project identity result
+- facility/phase scope result
+- time-scope result
+- semantic/unit validation result
+- source-validation result
+- containment result
+- eligibility result
+- first failed gate/reason
+- whether a proposal was created
+Do not persist unrestricted provider payloads, prompts, source bodies, secrets, or chain-of-thought.
+The goal is to eliminate the current blind spot where we know “4 claims were returned” but cannot determine where those claims disappeared.
+6. Do not treat campus capacity as grid evidence
+Preserve the current policy:
+- 480 MW whole-campus IT load is contextual capacity
+- 180 MW DFW9/DFW10/DFW11 is phase capacity
+- neither should be reclassified as grid interconnection or backup-power capacity unless a source explicitly supports that semantic claim
+Do not weaken the governed evidence schema just to make the canary produce a proposal.
+7. Live-run preconditions
+Before issuing the live request:
+- full offline suite must be green on the current branch
+- typecheck must pass
+- production build must pass
+- confirm the current content-quality fixes are included
+If the previously known Google-grounding fixture mismatch still exists on this branch, fix/sync that test first. Do not proceed with a live canary from a red deterministic baseline.
+8. Run exactly one live canary
+After the harness and offline gates pass, run exactly one bounded Red Oak Grid canary.
+This live call is authorized for this task only.
+Do not:
+- deploy
+- write production data
+- change financial inputs
+- auto-accept evidence
+- run additional categories
+- retry with broader limits if it fails
+Report
+Return:
+- live discovery call count
+- document-open count
+- URLs attempted and access outcomes
+- which passages reached Grid analysis
+- provider response IDs
+- structured claims returned
+- first failed gate for every returned claim
+- whether any claim reached eligible proposal status
+- total runtime
+- token/request-size telemetry available
+- offline suite result
+- typecheck/build result
+- exact remaining blocker, if any
+Stop after this single live canary. Do not start another Red Oak run or alter DNS/access policy.

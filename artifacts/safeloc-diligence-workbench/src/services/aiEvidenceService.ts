@@ -8,6 +8,7 @@ export type AIEvidenceSuccess = {
   status: "success";
   classification: Classification;
   reasoning: string;
+  downgradeSuggested: boolean;
 };
 
 export type AIEvidenceFailure =
@@ -124,6 +125,14 @@ function parseAssessment(rawText: string): AIEvidenceResult {
     };
   }
 
+  if (typeof parsed.downgradeSuggested !== "boolean") {
+    return {
+      status: "unparseable",
+      message: "The response did not include a valid downgrade signal. Review manually.",
+      rawText,
+    };
+  }
+
   const reasoning = cleanReasoning(parsed.reasoning);
   if (!reasoning) {
     return {
@@ -137,6 +146,7 @@ function parseAssessment(rawText: string): AIEvidenceResult {
     status: "success",
     classification: normalizeClassification(parsed.classification),
     reasoning,
+    downgradeSuggested: parsed.downgradeSuggested,
   };
 }
 

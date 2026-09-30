@@ -474,6 +474,7 @@ test.describe("custom project research", () => {
         body: JSON.stringify({
           classification: "Verified Evidence",
           reasoning: `The supplied citation was assessed for ${request.projectName}; human acceptance is still required.`,
+          downgradeSuggested: false,
         }),
       });
     });

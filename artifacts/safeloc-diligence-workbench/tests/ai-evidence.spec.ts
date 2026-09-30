@@ -1,8 +1,9 @@
 import { expect, test } from "@playwright/test";
 
-const responseFor = (classification: string, reasoning: string) => ({
+const responseFor = (classification: string, reasoning: string, downgradeSuggested = false) => ({
   classification,
   reasoning,
+  downgradeSuggested,
 });
 
 test.describe("AI evidence classification", () => {
@@ -172,7 +173,7 @@ test.describe("AI evidence classification", () => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(responseFor("Missing Evidence", "The supplied record does not establish this input.")),
+        body: JSON.stringify(responseFor("Missing Evidence", "Downgrade suggested: The supplied record does not establish this input.", true)),
       });
     });
     await page.goto("/#analysis/stargate-abilene");
@@ -192,6 +193,7 @@ test.describe("AI evidence classification", () => {
 
     await row.getByTestId("button-analyze-ai-permitting_timeline").click();
     await expect(row.getByTestId("ai-assessment-permitting_timeline")).toContainText("Suggestion, not a determination");
+    await expect(row.getByTestId("text-ai-reasoning-permitting_timeline")).toContainText("Downgrade suggested");
     await expect(row.getByTestId("button-accept-ai-permitting_timeline")).toHaveText("Accept downgrade");
     await expect(select).toHaveValue(baseline);
     const afterSuggestion = await page.evaluate(() => {

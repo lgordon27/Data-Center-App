@@ -137,6 +137,7 @@ test("sends the exact OpenAI contract and returns parsed assessment JSON", async
   assert.deepEqual(response.json(), {
     classification: "Missing Evidence",
     reasoning: "The project has not publicly disclosed a facility-level water total. No source text available; classification based on citation only.",
+    downgradeSuggested: false,
   });
   assert.equal(requestUrl, OPENAI_CHAT_COMPLETIONS_URL);
   assert.equal(requestInit.method, "POST");
@@ -241,6 +242,36 @@ test("citation-only assessments include the required note and cannot downgrade a
   assert.deepEqual(response.json(), {
     classification: "Verified Evidence",
     reasoning: "No source text available; classification based on citation only. The lower Missing Evidence proposal was not applied; the existing Verified Evidence classification is retained because source-text absence alone cannot justify a downgrade.",
+    downgradeSuggested: false,
+  });
+});
+
+test("signals an allowed citation-only downgrade from User Assumption", async () => {
+  const response = responseRecorder();
+  await handleAnalyzeEvidenceRequest(requestWithBody({
+    ...evidence,
+    existingClassification: "User Assumption",
+  }), response, {
+    ...allowedControls,
+    apiKey: "server-secret-for-test",
+    fetchImpl: async () => new Response(JSON.stringify({
+      usage: { prompt_tokens: 100, completion_tokens: 20 },
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            classification: "Missing Evidence",
+            reasoning: "The supplied citation does not establish the facility-level value.",
+          }),
+        },
+      }],
+    }), { status: 200 }),
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.json(), {
+    classification: "Missing Evidence",
+    reasoning: "Downgrade suggested: The supplied citation does not establish the facility-level value. No source text available; classification based on citation only.",
+    downgradeSuggested: true,
   });
 });
 
@@ -274,6 +305,7 @@ test("labels a lower passage-based class as a suggested downgrade", async () => 
   assert.deepEqual(response.json(), {
     classification: "Management Assertion",
     reasoning: "Downgrade suggested: The retained passage is a company disclosure.",
+    downgradeSuggested: true,
   });
 });
 

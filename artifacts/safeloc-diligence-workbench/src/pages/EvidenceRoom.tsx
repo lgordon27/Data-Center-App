@@ -486,7 +486,7 @@ function EvidenceAssessment({
               onClick={() => onAccept(item, assessment)}
               className="rounded-md border border-[#9bd8c5] bg-[#e0f4ed] px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#08644f] hover:bg-[#d2eee3]"
             >
-              {classifications.indexOf(assessment.classification) > classifications.indexOf(item.classification) ? "Accept downgrade" : "Accept"}
+              {assessment.downgradeSuggested ? "Accept downgrade" : "Accept"}
             </button>
             <button
               data-testid={`button-override-ai-${item.id}`}

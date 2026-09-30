@@ -127,9 +127,13 @@ function applySourceTextSafeguards(assessment, evidence) {
         reasoning: `${note} The lower ${proposedClassification} proposal was not applied; the existing ${evidence.existingClassification} classification is retained because source-text absence alone cannot justify a downgrade.`,
       };
     }
-    return assessment.reasoning.includes(AI_EVIDENCE_NO_SOURCE_TEXT_NOTE)
-      ? assessment
-      : { ...assessment, reasoning: `${assessment.reasoning} ${note}` };
+    const reasoning = assessment.reasoning.includes(AI_EVIDENCE_NO_SOURCE_TEXT_NOTE)
+      ? assessment.reasoning
+      : `${assessment.reasoning} ${note}`;
+    return currentRank >= 0 && proposedRank > currentRank
+      && !reasoning.toLowerCase().includes("downgrade suggested")
+      ? { ...assessment, reasoning: `Downgrade suggested: ${reasoning}` }
+      : { ...assessment, reasoning };
   }
 
   const currentRank = classificationRank(evidence.existingClassification);
@@ -342,7 +346,13 @@ export async function handleAnalyzeEvidenceRequest(
     sendJson(res, 502, { error: "AI analysis returned an invalid structured response." });
     return;
   }
-  sendJson(res, 200, applySourceTextSafeguards(assessment, evidence));
+  const finalAssessment = applySourceTextSafeguards(assessment, evidence);
+  const currentRank = classificationRank(evidence.existingClassification);
+  const proposedRank = classificationRank(finalAssessment.classification);
+  sendJson(res, 200, {
+    ...finalAssessment,
+    downgradeSuggested: currentRank >= 0 && proposedRank > currentRank,
+  });
 }
 
 export {

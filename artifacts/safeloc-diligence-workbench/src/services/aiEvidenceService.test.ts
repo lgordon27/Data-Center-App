@@ -31,6 +31,7 @@ test("sends the same-origin evidence contract and normalizes a valid assessment"
     return proxyResponse(JSON.stringify({
       classification: "missing evidence",
       reasoning: "The project has not publicly disclosed a facility-level water total.",
+      downgradeSuggested: false,
     }));
   });
 
@@ -38,6 +39,7 @@ test("sends the same-origin evidence contract and normalizes a valid assessment"
     status: "success",
     classification: "Missing Evidence",
     reasoning: "The project has not publicly disclosed a facility-level water total.",
+    downgradeSuggested: false,
   });
   assert.equal(new URL(request!.url).pathname, AI_EVIDENCE_ENDPOINT);
   assert.equal(request?.method, "POST");
@@ -82,6 +84,7 @@ test("forwards claim-specific retained text and prefers it to a broader retained
     return proxyResponse(JSON.stringify({
       classification: "Management Assertion",
       reasoning: "The cited source is a company statement.",
+      downgradeSuggested: false,
     }));
   });
 
@@ -122,6 +125,7 @@ test("uses a supported exact quote when no claim passage is retained and caps te
     return proxyResponse(JSON.stringify({
       classification: "Verified Evidence",
       reasoning: "The exact project passage states the value.",
+      downgradeSuggested: false,
     }));
   });
 
@@ -137,6 +141,7 @@ test("omits source text rather than inventing a passage when none is retained", 
     return proxyResponse(JSON.stringify({
       classification: "Missing Evidence",
       reasoning: "The citation does not establish the value.",
+      downgradeSuggested: false,
     }));
   });
 
@@ -156,9 +161,17 @@ test("returns raw text for non-JSON and structurally invalid responses", async (
   const invalid = await analyzeEvidence(item, project, async () => proxyResponse(JSON.stringify({
     classification: "Verified Evidence",
     reasoning: "",
+    downgradeSuggested: false,
   })));
   assert.equal(invalid.status, "unparseable");
   assert.match(invalid.message, /concise reasoning/);
+
+  const missingDowngradeSignal = await analyzeEvidence(item, project, async () => proxyResponse(JSON.stringify({
+    classification: "Missing Evidence",
+    reasoning: "The citation does not establish the value.",
+  })));
+  assert.equal(missingDowngradeSignal.status, "unparseable");
+  assert.match(missingDowngradeSignal.message, /downgrade signal/);
 });
 
 test("normalizes transport failures and abort timeouts", async () => {
@@ -198,6 +211,7 @@ test("makes a fresh request for every analysis", async () => {
     return proxyResponse(JSON.stringify({
       classification: "Model Inference",
       reasoning: "The estimate is derived from related public facts rather than a disclosed contract.",
+      downgradeSuggested: false,
     }));
   };
 

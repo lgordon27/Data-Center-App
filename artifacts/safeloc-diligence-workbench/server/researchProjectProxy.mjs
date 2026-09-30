@@ -2117,6 +2117,24 @@ function buildResearchAudit({
         inFlightAnalysisCountAtIssue: attempt?.inFlightAnalysisCountAtIssue ?? null,
         inFlightAnalysisCount: attempt?.inFlightAnalysisCount ?? null,
         budget: attempt?.budget ?? null,
+        providerResponseId: typeof attempt?.providerResponseId === "string" ? attempt.providerResponseId.slice(0, 200) : null,
+        structuredResponseSummary: isRecord(attempt?.structuredResponseSummary)
+          ? {
+            evidenceCount: Number.isInteger(attempt.structuredResponseSummary.evidenceCount)
+              ? Math.max(0, attempt.structuredResponseSummary.evidenceCount)
+              : 0,
+            nonMissingClassificationCount: Number.isInteger(attempt.structuredResponseSummary.nonMissingClassificationCount)
+              ? Math.max(0, attempt.structuredResponseSummary.nonMissingClassificationCount)
+              : 0,
+            sourceLinkedClaimCount: Number.isInteger(attempt.structuredResponseSummary.sourceLinkedClaimCount)
+              ? Math.max(0, attempt.structuredResponseSummary.sourceLinkedClaimCount)
+              : 0,
+            evidenceIds: Array.isArray(attempt.structuredResponseSummary.evidenceIds)
+              ? attempt.structuredResponseSummary.evidenceIds.filter((id) => RESEARCH_EVIDENCE_IDS.includes(id)).slice(0, RESEARCH_EVIDENCE_IDS.length)
+              : [],
+            identityAssessmentPresent: attempt.structuredResponseSummary.identityAssessmentPresent === true,
+          }
+          : null,
         error: attempt?.providerDiagnostic ?? null,
       })),
     },
@@ -2252,6 +2270,8 @@ async function orchestrateCategoryResearch(project, {
     const executedQueries = [];
     let categoryCandidates = [];
     let followUpWasRun = false;
+    let primaryCompleted = false;
+    let primaryCategoryResolved = false;
     let primaryAdditionalRequestsAuthorized = 0;
     let state = "No eligible evidence";
     let providerFailure = null;
@@ -2301,17 +2321,12 @@ async function orchestrateCategoryResearch(project, {
       execution.authorityRecords.push(...(Array.isArray(primary?.authorityRecords) ? primary.authorityRecords : []));
       execution.secConnectorAttempts.push(...(Array.isArray(primary?.secConnectorAttempts) ? primary.secConnectorAttempts : []));
       execution.sourceChannelTelemetry.push(...(Array.isArray(primary?.sourceChannelTelemetry) ? primary.sourceChannelTelemetry : []));
-      if (signal?.aborted) {
-        const error = new Error("Project research was cancelled.");
-        error.name = "ResearchCancelledError";
-        error.researchErrorType = "cancelled";
-        throw error;
-      }
       const primaryToolCalls = Number.isInteger(primary?.toolCallCount) ? Math.max(0, primary.toolCallCount) : 0;
       if (primaryToolCalls > budget.maxToolCalls - toolCalls) toolCallBudgetExceeded = true;
       toolCalls = Math.min(budget.maxToolCalls, toolCalls + primaryToolCalls);
       if (primary?.categoryResult) categoryResults.push(primary.categoryResult);
       else categoryResults.push({ categoryId: category.categoryId, ...primary });
+      primaryCompleted = true;
       const primaryObservedQueries = Array.isArray(primary?.observedQueries) ? primary.observedQueries : [];
       execution.providerObservedPrimaryQueries = primaryObservedQueries;
       executedQueries.push(...primaryObservedQueries);
@@ -2329,7 +2344,15 @@ async function orchestrateCategoryResearch(project, {
       const globalEarlyStop = resolvedEvidenceIds.size >= RESEARCH_EVIDENCE_IDS.length;
        // A returned candidate or a zero-evidence response is not success. Only
        // the validated category resolver may close a category.
-       const primaryCategoryResolved = primary?.categoryResolved === true;
+       primaryCategoryResolved = primary?.categoryResolved === true;
+       if (signal?.aborted) {
+         const error = new Error(deadlineState.expired
+           ? "Project research reached its run deadline after retaining the completed primary result."
+           : "Project research was cancelled.");
+         error.name = "ResearchCancelledError";
+         error.researchErrorType = deadlineState.expired ? "timeout" : "cancelled";
+         throw error;
+       }
        // Preserve one primary opportunity for every remaining category before
        // spending shared request slots on a gap repair/follow-up.
        const remainingPrimaryOpportunity = categories.length - categoryIndex - 1;
@@ -2379,9 +2402,11 @@ async function orchestrateCategoryResearch(project, {
         execution.secConnectorAttempts.push(...(Array.isArray(followUp?.secConnectorAttempts) ? followUp.secConnectorAttempts : []));
         execution.sourceChannelTelemetry.push(...(Array.isArray(followUp?.sourceChannelTelemetry) ? followUp.sourceChannelTelemetry : []));
         if (signal?.aborted) {
-          const error = new Error("Project research was cancelled.");
+          const error = new Error(deadlineState.expired
+            ? "Project research reached its run deadline after retaining completed category results."
+            : "Project research was cancelled.");
           error.name = "ResearchCancelledError";
-          error.researchErrorType = "cancelled";
+          error.researchErrorType = deadlineState.expired ? "timeout" : "cancelled";
           throw error;
         }
         const followUpToolCalls = Number.isInteger(followUp?.toolCallCount) ? Math.max(0, followUp.toolCallCount) : 0;
@@ -2450,17 +2475,31 @@ async function orchestrateCategoryResearch(project, {
         providerRequests += 1;
         execution.providerRequestCount = 1;
       }
-      lastError = error;
       const failure = classifyResearchFailure(error);
-      execution.providerFailureType = failure.type === "timeout" ? "deadline" : failure.type;
       execution.providerAttempts.push(...(Array.isArray(error?.providerAttempts) ? error.providerAttempts : []));
-      providerFailure = failure.type === "timeout" ? null : failure.message;
-      state = categoryCandidates.length
-        ? "Partial"
-        : failure.type === "timeout" ? "Timed out" : "Provider failure";
-      execution.followUpSkipReason = error?.retrySkippedForDeadline
-        ? "provider-429-deadline"
-        : error?.name === "AbortError" ? "deadline" : "provider-failure";
+      if (primaryCompleted) {
+        execution.followUpFailureType = failure.type === "timeout" ? "deadline" : failure.type;
+        execution.followUpFailure = failure.message;
+        providerFailure = null;
+        state = primaryCategoryResolved
+          ? "Complete"
+          : categoryCandidates.length ? "Partial" : "No eligible evidence";
+        execution.followUpSkipReason = error?.retrySkippedForDeadline
+          ? "provider-429-deadline"
+          : deadlineState.expired || failure.type === "timeout" || error?.name === "AbortError"
+            ? "deadline"
+            : "provider-failure";
+      } else {
+        lastError = error;
+        execution.providerFailureType = failure.type === "timeout" ? "deadline" : failure.type;
+        providerFailure = failure.type === "timeout" ? null : failure.message;
+        state = categoryCandidates.length
+          ? "Partial"
+          : failure.type === "timeout" ? "Timed out" : "Provider failure";
+        execution.followUpSkipReason = error?.retrySkippedForDeadline
+          ? "provider-429-deadline"
+          : error?.name === "AbortError" ? "deadline" : "provider-failure";
+      }
       if (error?.retrySkippedForDeadline) execution.analysisState = "not-analyzed-429";
     }
     categoryExecutions[category.categoryId] = {
@@ -4005,6 +4044,36 @@ function boundProviderResponseToToolBudget(body, maxToolCalls) {
   };
 }
 
+function summarizeStructuredResearchResponse(research) {
+  if (!isRecord(research)) {
+    return {
+      evidenceCount: 0,
+      nonMissingClassificationCount: 0,
+      sourceLinkedClaimCount: 0,
+      evidenceIds: [],
+      identityAssessmentPresent: false,
+    };
+  }
+  const evidence = Array.isArray(research.evidence)
+    ? research.evidence
+    : isRecord(research.evidence)
+      ? Object.entries(research.evidence).map(([id, item]) => ({ id, ...(isRecord(item) ? item : {}) }))
+      : [];
+  const canonicalIds = evidence
+    .map((item) => item?.id)
+    .filter((id) => typeof id === "string" && RESEARCH_EVIDENCE_IDS.includes(id))
+    .slice(0, RESEARCH_EVIDENCE_IDS.length);
+  return {
+    evidenceCount: evidence.length,
+    nonMissingClassificationCount: evidence.filter((item) => item?.classification && item.classification !== "Missing Evidence").length,
+    sourceLinkedClaimCount: evidence.filter((item) =>
+      typeof item?.sourceUrl === "string"
+      || (Array.isArray(item?.sourceUrls) && item.sourceUrls.some((url) => typeof url === "string"))).length,
+    evidenceIds: canonicalIds,
+    identityAssessmentPresent: isRecord(research.identityAssessment),
+  };
+}
+
 function restrictResearchToAcceptedSources(research, sources) {
   if (!isRecord(research) || !Array.isArray(research.evidence)) return research;
   const acceptedUrls = new Set(sources.map((source) => canonicalizeSourceUrl(source.url)).filter(Boolean));
@@ -4187,6 +4256,7 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
   let body;
   try {
     body = JSON.parse(rawText);
+    providerAttempt.providerResponseId = typeof body?.id === "string" ? body.id.slice(0, 200) : null;
   } catch (error) {
     const parseError = new Error("Project research provider returned invalid JSON.");
     parseError.name = "ResearchParseError";
@@ -4278,6 +4348,9 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
     status: response.status,
     outcome: "completed",
     usage: normalizeProviderUsage(body.usage),
+    provider: "openai",
+    model: RESEARCH_PROJECT_MODEL,
+    structuredResponseSummary: summarizeStructuredResearchResponse(research),
   });
   return {
     research,
@@ -4376,10 +4449,13 @@ function classifyResearchFailure(error) {
     };
   }
   if (error?.name === "ResearchCancelledError" || error?.researchErrorType === "cancelled") {
+    const deadlineCancellation = error?.researchErrorType === "timeout";
     return {
-      status: 499,
-      type: "cancelled",
-      message: "Project research was cancelled by the requesting client.",
+      status: deadlineCancellation ? 504 : 499,
+      type: deadlineCancellation ? "timeout" : "cancelled",
+      message: deadlineCancellation
+        ? "Project research reached its run deadline; completed category results were retained."
+        : "Project research was cancelled by the requesting client.",
       ...(error?.providerDiagnostic ? { providerDiagnostic: error.providerDiagnostic } : {}),
       ...(Number.isInteger(error?.inFlightAnalysisCount)
         ? { inFlightAnalysisCount: error.inFlightAnalysisCount }
@@ -5705,8 +5781,10 @@ async function runValidatedResearch(project, {
       0,
       Date.parse(phaseTiming.orchestrationFinishedAt) - Date.parse(phaseTiming.orchestrationStartedAt),
     );
-    const phaseProviderAttempts = Object.values(orchestration.categoryExecutions)
-      .flatMap((execution) => execution?.providerAttempts ?? []);
+    const phaseProviderAttempts = Array.isArray(analysisTracker.attempts)
+      ? analysisTracker.attempts
+      : Object.values(orchestration.categoryExecutions)
+        .flatMap((execution) => execution?.providerAttempts ?? []);
     phaseTiming.providerQueueElapsedMs = phaseProviderAttempts.reduce(
       (total, attempt) => total + (Number.isFinite(attempt?.queueWaitMs) ? attempt.queueWaitMs : 0),
       0,
@@ -5778,7 +5856,7 @@ async function runValidatedResearch(project, {
         providerRequestCount: orchestration.providerRequests + googleRequestCount,
         providerAttempts: [
           ...(googleDiscovery.providerAttempt ? [googleDiscovery.providerAttempt] : []),
-          ...Object.values(orchestration.categoryExecutions).flatMap((execution) => execution?.providerAttempts ?? []),
+          ...(Array.isArray(analysisTracker.attempts) ? analysisTracker.attempts : []),
         ],
         inFlightAnalysisCount: analysisTracker.inFlight,
         peakInFlightAnalysisCount: analysisTracker.peak,
@@ -5787,7 +5865,12 @@ async function runValidatedResearch(project, {
         followUpLimitPerCategory: orchestration.followUpLimitPerCategory,
         sourcePriorityApplied: sourcePriorityApplied(project),
         toolCallBudgetExceeded: orchestration.toolCallBudgetExceeded,
-        providerResponseIds: orchestration.categoryResults.map((category) => category.coverage?.providerResponseId).filter(Boolean),
+        providerResponseIds: [...new Set([
+          ...orchestration.categoryResults.map((category) => category.coverage?.providerResponseId),
+          ...(Array.isArray(analysisTracker.attempts)
+            ? analysisTracker.attempts.map((attempt) => attempt?.providerResponseId)
+            : []),
+        ].filter(Boolean))].slice(0, RESEARCH_RUN_BUDGET.maxProviderRequests),
         categoryExecutions: orchestration.categoryExecutions,
         providerLimitations,
         discoveryProvider: "google-gemini-grounding",

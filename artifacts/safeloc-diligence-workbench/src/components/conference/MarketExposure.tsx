@@ -22,6 +22,7 @@ function canonicalSlug(id: string, name: string) {
 
 export function MarketExposure() {
   const { project, originatingCompany, selectedProjectContext, setOriginatingCompany, setProjectSelection } = useDiligence();
+  const canonicalDossier = project.canonicalDossier ?? null;
   const [facilities, setFacilities] = useState<DirectoryFacility[]>([]);
   const [directoryStatus, setDirectoryStatus] = useState<"idle" | "loading" | "ready" | "unavailable">("idle");
   const relationship = getConferenceRelationship(project, originatingCompany);
@@ -33,7 +34,7 @@ export function MarketExposure() {
       : null;
   const relatedProject = relationship.company ? startingRelationshipProject(relationship.company.key) : null;
   useEffect(() => {
-    if (!relationship.company) {
+    if (!relationship.company || canonicalDossier) {
       setFacilities([]);
       setDirectoryStatus("idle");
       return;
@@ -51,13 +52,13 @@ export function MarketExposure() {
       if (active) setDirectoryStatus("unavailable");
     });
     return () => { active = false; };
-  }, [relationship.company?.key]);
+  }, [relationship.company?.key, canonicalDossier?.slug]);
   return (
     <section data-testid="conference-view-market" className="space-y-5">
       <div>
-        <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#607500]">01 / Start with the holding</p>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#607500]">01 / Company and project relationship</p>
         <h2 className="mt-2 text-2xl font-semibold tracking-tight">What connects the company to this project?</h2>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-[#52616b]">A public relationship is a starting point for diligence—not a measurement of your portfolio’s exposure.</p>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-[#52616b]">Review the documented connection and its limits. A public relationship is not a measurement of portfolio exposure.</p>
       </div>
       <div className="rounded-xl border border-[#cbd8d4] bg-white p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -75,6 +76,11 @@ export function MarketExposure() {
             <span className="mt-1 block max-w-xs text-[10px]">Changes the holding context without substituting a project. Select a project below to open the supported case or start research.</span>
           </label>}
         </div>
+        {canonicalDossier && relationship.company && selectedProjectContext?.company === relationship.company.key && selectedProjectContext.projectName === project.name && (
+          <p data-testid="market-selected-project-identity" className="mt-3 break-words border-t border-[#e5eae8] pt-3 text-xs font-semibold text-[#52616b]">
+            Selected company context: {selectedProjectContext.projectName} · {selectedProjectContext.location} · {selectedProjectContext.relationshipType}
+          </p>
+        )}
         {project.kind === "curated" && !project.canonicalDossier && <div data-testid="market-holding-states" className="mt-5 grid gap-2 border-t border-[#e5eae8] pt-5 sm:grid-cols-2 lg:grid-cols-3">
           {options.map((company) => {
             const state = relationship.established && relationship.company?.key === company.key
@@ -88,7 +94,7 @@ export function MarketExposure() {
             );
           })}
         </div>}
-        {relationship.company && (
+        {relationship.company && !canonicalDossier && (
           <div data-testid="market-project-selection" className="mt-5 border-t border-[#e5eae8] pt-5">
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#607500]">Project selection</p>
@@ -144,7 +150,26 @@ export function MarketExposure() {
           <div data-testid="market-exposure-chain" className="mt-5 grid items-center gap-3 rounded-lg bg-[#122232] p-4 text-white sm:grid-cols-[1fr_auto_1fr]">
             <span className="font-semibold">{relationship.company?.displayName}</span><ArrowRight aria-hidden="true" className="h-5 w-5 rotate-90 text-[#d4e86b] sm:rotate-0" /><span className="font-semibold">{project.name}</span>
           </div>
-          <p data-testid="market-relationship-evidence" className="mt-4 text-sm leading-6 text-[#344550]">{relationship.description}</p>
+          {canonicalDossier ? (
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <article data-testid="market-relationship-evidence" className="rounded-lg border border-[#d9e0e4] bg-[#f9faf8] p-4">
+                <h4 className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#607500]">What the evidence establishes</h4>
+                <p className="mt-2 text-sm leading-6 text-[#344550]">{relationship.description}</p>
+                <p className="mt-2 text-xs font-semibold text-[#52616b]">Relationship type: {relationship.type} · Evidence confidence: {relationship.confidence}</p>
+              </article>
+              <article data-testid="market-relationship-limits" className="rounded-lg border border-[#d9e0e4] bg-white p-4">
+                <h4 className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#60707d]">What it does not establish</h4>
+                <p className="mt-2 text-sm leading-6 text-[#52616b]">This relationship record alone does not establish project ownership, facility tenancy, quantified project revenue, or portfolio materiality.</p>
+              </article>
+              <article data-testid="market-relationship-relevance" className="rounded-lg border border-[#d9e0e4] bg-white p-4 md:col-span-2">
+                <h4 className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#60707d]">Why it may matter</h4>
+                <p className="mt-2 text-sm leading-6 text-[#52616b]">The dossier records issuer materiality as “{canonicalDossier.canonicalData.materiality.issuer}” and portfolio materiality as “{canonicalDossier.canonicalData.materiality.portfolio}.” These are diligence boundaries, not an investment conclusion.</p>
+              </article>
+            </div>
+          ) : (
+            <p data-testid="market-relationship-evidence" className="mt-4 text-sm leading-6 text-[#344550]">{relationship.description}</p>
+          )}
+          {canonicalDossier && <p className="mt-3 text-[9px] font-semibold uppercase tracking-[0.1em] text-[#60707d]">Reviewed dossier sources</p>}
           <div className="mt-3 space-y-2">
             {relationship.sources.map((source) => <a key={source.id} href={source.url} target="_blank" rel="noopener noreferrer" className="flex w-fit max-w-full items-start gap-2 break-words text-xs leading-5 text-[#255bb7] underline">
               <ExternalLink aria-hidden="true" className="mt-1 h-3 w-3 shrink-0" /><span>{source.title}</span>
@@ -152,9 +177,9 @@ export function MarketExposure() {
           </div>
         </> : <div data-testid="market-no-relationship" className="mt-5 rounded-lg bg-[#f1f5f3] p-4">
           <h3 className="font-semibold">No established company–project relationship</h3>
-           <p className="mt-2 text-sm leading-6 text-[#52616b]">{relationship.reason} No exposure chain is shown.</p>
-            {relationship.company && <p data-testid="market-relationship-state" className="mt-2 text-xs font-semibold text-[#805000]">{selectedState}: {relatedProject ? `${relatedProject.name} is related discovery context, not a sourced relationship for ${project.name}.` : `No reviewed relationship to ${project.name} is established; project-level research is required.`}</p>}
-           <a href="#home" className="mt-3 inline-block text-xs text-[#255bb7] underline">Explore a related project or start research on Home</a>
+          <p className="mt-2 text-sm leading-6 text-[#52616b]">{relationship.reason} No exposure chain is shown.</p>
+          {relationship.company && !canonicalDossier && <p data-testid="market-relationship-state" className="mt-2 text-xs font-semibold text-[#805000]">{selectedState}: {relatedProject ? `${relatedProject.name} is related discovery context, not a sourced relationship for ${project.name}.` : `No reviewed relationship to ${project.name} is established; project-level research is required.`}</p>}
+          {relationship.company && !canonicalDossier && <a href="#home" className="mt-3 inline-block text-xs text-[#255bb7] underline">Explore a related project or start research on Home</a>}
         </div>}
       </div>
       <p className="text-xs leading-5 text-[#60707d]">No fund is assumed. Portfolio relevance requires your actual holdings, weights and the issuer’s contractual dependence on this facility.</p>

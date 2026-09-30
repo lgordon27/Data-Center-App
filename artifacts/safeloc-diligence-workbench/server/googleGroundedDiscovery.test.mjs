@@ -798,7 +798,7 @@ test("runs one Google discovery request before structured extraction without Ope
     },
     documentFetchImpl: async () => {
       documentCalls += 1;
-      return new Response(offlineArticle("Project Atlas public filing identifies the project."), {
+      return new Response(offlineArticle(passage), {
         status: 200,
         headers: { "content-type": "text/html" },
       });

@@ -6,7 +6,7 @@ import { MarketExposure } from "@/components/conference/MarketExposure";
 import { ProjectReality } from "@/components/conference/ProjectReality";
 import { FinancialTransmission } from "@/components/conference/FinancialTransmission";
 import { AdvisorBrief } from "@/components/conference/AdvisorBrief";
-import { isConferenceResearchIncomplete } from "@/model/conferenceEvidence";
+import { getConferenceEvidenceSummary, getConferenceRelationship, isConferenceResearchIncomplete } from "@/model/conferenceEvidence";
 import { ResearchTelemetryStatus } from "@/components/ResearchHandoffSummary";
 import { getResearchStatusPresentation } from "@/services/researchProjectService";
 import {
@@ -29,6 +29,18 @@ const legacyViews: Record<string, View> = {
 };
 type Props = { onResolveEvidence: (id: string) => void; onReset: () => void; focusSectionId?: string };
 
+function readableState(value: string) {
+  return value.replace(/[-_]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function canonicalPhaseStatus(dossier: CanonicalDossierSummary) {
+  return (dossier.canonicalData.phases ?? []).flatMap((phase) => {
+    if (typeof phase.status !== "string" || !phase.status.trim()) return [];
+    const name = typeof phase.name === "string" && phase.name.trim() ? phase.name.trim() : null;
+    return [`${readableState(phase.status)}${name ? ` · ${name}` : ""}`];
+  }).join(" / ");
+}
+
 export function AnalysisWorkbench(props: Props) {
   return <WorkbenchDrawerProvider><ConferenceWorkbench {...props} /></WorkbenchDrawerProvider>;
 }
@@ -50,6 +62,14 @@ function ConferenceWorkbench({ onResolveEvidence, onReset, focusSectionId }: Pro
   const [dossierLoadState, setDossierLoadState] = useState<"idle" | "loading" | "error">("idle");
   const contentRef = useRef<HTMLDivElement>(null);
   const index = VIEWS.indexOf(view);
+  const canonicalDossier = project.canonicalDossier ?? null;
+  const canonicalRelationship = canonicalDossier
+    ? getConferenceRelationship(project, originatingCompany)
+    : null;
+  const canonicalEvidence = canonicalDossier
+    ? getConferenceEvidenceSummary(evidence, project)
+    : null;
+  const phaseStatus = canonicalDossier ? canonicalPhaseStatus(canonicalDossier) : "";
   const navigateView = (next: View) => {
     setView(next);
     window.requestAnimationFrame(() => {
@@ -102,67 +122,144 @@ function ConferenceWorkbench({ onResolveEvidence, onReset, focusSectionId }: Pro
 
   return (
     <div data-testid="analysis-workbench" className="min-w-0 pb-4">
-      <div data-testid="conference-summary" className="sticky top-[72px] z-10 mb-5 rounded-lg border border-[#d9e0e4] bg-[#f9faf8]/95 px-4 py-3 backdrop-blur-md">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="min-w-0">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#60707d]">{originatingCompany ?? "No company selected"} · Infrastructure review</div>
-            <h1 className="break-words text-lg font-semibold text-[#122232]">{project.name}</h1>
-            <p className="break-words text-[11px] text-[#52616b]">{project.location}</p>
-          </div>
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            {financialModeling.status === "modeled" && (
-              <span data-testid="conference-primary-case" className="rounded-md border border-[#aac6f4] bg-[#eef5ff] px-3 py-2 text-[11px] text-[#255bb7]">
-                <strong>Synthetic current-evidence primary:</strong>{" "}
-                {metrics.projectIRR === null ? "N/M" : `${metrics.projectIRR.toFixed(1)}% IRR`} · {metrics.recommendationStatus}
-                <span className="sr-only"> · Scenario {financialScenarios.primaryScenarioId}. Optional EIA sensitivities do not set this recommendation.</span>
-              </span>
+      <div
+        data-testid="conference-summary"
+        className={`${canonicalDossier ? "" : "sticky top-[72px] z-10"} mb-5 rounded-lg border border-[#d9e0e4] bg-[#f9faf8]/95 px-4 py-3 backdrop-blur-md`}
+      >
+        {canonicalDossier ? (
+          <>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#60707d]">{originatingCompany ?? "No company selected"} · Infrastructure review</div>
+                <h1 className="mt-1 break-words text-xl font-semibold tracking-tight text-[#122232]">{project.name}</h1>
+                <p className="break-words text-[11px] text-[#52616b]">{project.location}</p>
+              </div>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <span data-testid="conference-research-status" className="rounded-md bg-[#e5eeea] px-3 py-2 text-[11px] font-semibold text-[#365b4c]">
+                  Canonical evidence review
+                </span>
+                {dossiers.length > 0 && (
+                  <label className="flex items-center gap-2 text-[10px] font-semibold text-[#60707d]">
+                    <span>Change dossier</span>
+                    <select
+                      id="canonical-dossier-select"
+                      data-testid="canonical-dossier-select"
+                      aria-label="Change canonical dossier"
+                      value={canonicalDossier.slug}
+                      disabled={dossierLoadState === "loading"}
+                      onChange={(event) => void selectDossier(event.target.value)}
+                      className="min-h-9 max-w-48 rounded-md border border-[#cbd8d4] bg-white px-2 text-xs text-[#122232]"
+                    >
+                      {dossiers.map((dossier) => <option key={dossier.slug} value={dossier.slug}>{dossier.name}</option>)}
+                    </select>
+                  </label>
+                )}
+                {dossierLoadState === "error" && <span role="alert" className="text-[10px] text-[#ba2f45]">Canonical dossier store unavailable.</span>}
+              </div>
+            </div>
+            <dl data-testid="canonical-dossier-summary" className="mt-4 grid gap-x-4 gap-y-3 border-t border-[#d9e0e4] pt-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+              {phaseStatus && (
+                <div data-testid="dossier-project-status" className="min-w-0">
+                  <dt className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#60707d]">Phase status</dt>
+                  <dd className="mt-1 break-words text-[11px] font-semibold text-[#122232]">{phaseStatus}</dd>
+                </div>
+              )}
+              {typeof canonicalDossier.canonicalData.identity.capacityMW === "number" && Number.isFinite(canonicalDossier.canonicalData.identity.capacityMW) && (
+                <div data-testid="dossier-capacity" className="min-w-0">
+                  <dt className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#60707d]">Disclosed capacity</dt>
+                  <dd className="mt-1 text-[11px] font-semibold text-[#122232]">{canonicalDossier.canonicalData.identity.capacityMW.toLocaleString("en-US", { maximumFractionDigits: 1 })} MW</dd>
+                  {canonicalDossier.canonicalData.identity.capacityProvenance && <dd className="mt-1 break-words text-[9px] leading-4 text-[#60707d]">{canonicalDossier.canonicalData.identity.capacityProvenance}</dd>}
+                </div>
+              )}
+              {canonicalRelationship?.company && (
+                <div data-testid="dossier-company-context" className="min-w-0">
+                  <dt className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#60707d]">Company context</dt>
+                  <dd className="mt-1 break-words text-[11px] font-semibold text-[#122232]">{canonicalRelationship.company.displayName} · {canonicalRelationship.established ? "Source-backed" : "Not established"}</dd>
+                  <dd className="mt-1 break-words text-[9px] leading-4 text-[#60707d]">{canonicalRelationship.type} · confidence: {canonicalRelationship.confidence}</dd>
+                </div>
+              )}
+              <div data-testid="dossier-evidence-state" className="min-w-0">
+                <dt className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#60707d]">Evidence state</dt>
+                <dd className="mt-1 break-words text-[11px] font-semibold text-[#122232]">{readableState(canonicalDossier.coverageState)}</dd>
+                {canonicalEvidence && <dd className="mt-1 break-words text-[9px] leading-4 text-[#60707d]">{canonicalEvidence.established.length} established · {canonicalEvidence.reportedNotVerified.length} reported · {canonicalEvidence.open.length} open</dd>}
+              </div>
+              <div data-testid="dossier-model-state" className="min-w-0">
+                <dt className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#60707d]">Model state</dt>
+                <dd className="mt-1 break-words text-[11px] font-semibold text-[#122232]">{financialModeling.status === "modeled" ? `Modeled · ${metrics.recommendationStatus}` : "Not modeled"}</dd>
+                {financialModeling.status === "modeled" && (
+                  <>
+                    <dd data-testid="conference-primary-case" className="mt-1 break-words text-[9px] leading-4 text-[#60707d]">
+                      Synthetic current-evidence primary: {metrics.projectIRR === null ? "N/M" : `${metrics.projectIRR.toFixed(1)}% IRR`} · {metrics.recommendationStatus}
+                      <span className="sr-only"> · Scenario {financialScenarios.primaryScenarioId}. Optional EIA sensitivities do not set this recommendation.</span>
+                    </dd>
+                  </>
+                )}
+              </div>
+              <div data-testid="canonical-dossier-version" className="min-w-0">
+                <dt className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#60707d]">Canonical version</dt>
+                <dd className="mt-1 text-[11px] font-semibold text-[#122232]">v{canonicalDossier.version}</dd>
+                <dd className="mt-1 break-words text-[9px] leading-4 text-[#60707d]">evidence as of {canonicalDossier.asOfDate ?? "unavailable"}</dd>
+              </div>
+            </dl>
+          </>
+        ) : (
+          <>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#60707d]">{originatingCompany ?? "No company selected"} · Infrastructure review</div>
+                <h1 className="break-words text-lg font-semibold text-[#122232]">{project.name}</h1>
+                <p className="break-words text-[11px] text-[#52616b]">{project.location}</p>
+              </div>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {financialModeling.status === "modeled" && (
+                  <span data-testid="conference-primary-case" className="rounded-md border border-[#aac6f4] bg-[#eef5ff] px-3 py-2 text-[11px] text-[#255bb7]">
+                    <strong>Synthetic current-evidence primary:</strong>{" "}
+                    {metrics.projectIRR === null ? "N/M" : `${metrics.projectIRR.toFixed(1)}% IRR`} · {metrics.recommendationStatus}
+                    <span className="sr-only"> · Scenario {financialScenarios.primaryScenarioId}. Optional EIA sensitivities do not set this recommendation.</span>
+                  </span>
+                )}
+                <span data-testid="conference-research-status" className={`rounded-md px-3 py-2 text-[11px] font-semibold ${incomplete ? "bg-[#fff0d6] text-[#805000]" : "bg-[#e5eeea] text-[#365b4c]"}`}>
+                  {project.kind === "custom"
+                    ? researchPresentation.label
+                    : incomplete ? "Research Incomplete" : "Curated public-source demonstration"}
+                </span>
+              </div>
+            </div>
+            {project.kind === "custom" && (
+              <div className="mt-3">
+                <ResearchTelemetryStatus
+                  compact
+                  audit={project.researchAudit}
+                  coverage={project.researchCoverage}
+                  researchCache={project.researchCache}
+                />
+              </div>
             )}
-            <span data-testid="conference-research-status" className={`rounded-md px-3 py-2 text-[11px] font-semibold ${incomplete ? "bg-[#fff0d6] text-[#805000]" : "bg-[#e5eeea] text-[#365b4c]"}`}>
-              {project.canonicalDossier
-                ? "Canonical evidence review"
-                : project.kind === "custom"
-                  ? researchPresentation.label
-                  : incomplete ? "Research Incomplete" : "Curated public-source demonstration"}
-            </span>
-          </div>
-        </div>
-        {project.kind === "custom" && (
-          <div className="mt-3">
-            <ResearchTelemetryStatus
-              compact
-              audit={project.researchAudit}
-              coverage={project.researchCoverage}
-              researchCache={project.researchCache}
-            />
-          </div>
-        )}
-        {dossiers.length > 0 && (
-          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#d9e0e4] pt-3">
-            <label htmlFor="canonical-dossier-select" className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#60707d]">
-              Canonical dossier
-            </label>
-            <select
-              id="canonical-dossier-select"
-              data-testid="canonical-dossier-select"
-              value={project.canonicalDossier?.slug ?? ""}
-              disabled={dossierLoadState === "loading"}
-              onChange={(event) => void selectDossier(event.target.value)}
-              className="min-h-9 rounded-md border border-[#cbd8d4] bg-white px-3 text-xs text-[#122232]"
-            >
-              <option value="">Select a PostgreSQL-backed dossier</option>
-              {dossiers.map((dossier) => <option key={dossier.slug} value={dossier.slug}>{dossier.name}</option>)}
-            </select>
-            {project.canonicalDossier && (
-              <span data-testid="canonical-dossier-version" className="text-[10px] text-[#60707d]">
-                v{project.canonicalDossier.version} · evidence as of {project.canonicalDossier.asOfDate ?? "unavailable"}
-              </span>
+            {dossiers.length > 0 && (
+              <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#d9e0e4] pt-3">
+                <label htmlFor="canonical-dossier-select" className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#60707d]">
+                  Open canonical dossier
+                </label>
+                <select
+                  id="canonical-dossier-select"
+                  data-testid="canonical-dossier-select"
+                  value=""
+                  disabled={dossierLoadState === "loading"}
+                  onChange={(event) => void selectDossier(event.target.value)}
+                  className="min-h-9 rounded-md border border-[#cbd8d4] bg-white px-3 text-xs text-[#122232]"
+                >
+                  <option value="">Select a project dossier</option>
+                  {dossiers.map((dossier) => <option key={dossier.slug} value={dossier.slug}>{dossier.name}</option>)}
+                </select>
+                {dossierLoadState === "error" && <span role="alert" className="text-[10px] text-[#ba2f45]">Canonical dossier store unavailable.</span>}
+              </div>
             )}
-            {dossierLoadState === "error" && <span role="alert" className="text-[10px] text-[#ba2f45]">Canonical dossier store unavailable.</span>}
-          </div>
+          </>
         )}
       </div>
 
-      <div id="conference-tabs" role="tablist" aria-label="Analysis views" className="mb-5 grid scroll-mt-44 grid-cols-2 gap-1 rounded-lg bg-[#e6ebe8] p-1 md:grid-cols-4">
+      {canonicalDossier && <p className="mb-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-[#60707d]">Dossier sections</p>}
+      <div id="conference-tabs" role="tablist" aria-label={canonicalDossier ? "Dossier sections" : "Analysis views"} className="mb-5 grid scroll-mt-44 grid-cols-2 gap-1 rounded-lg bg-[#e6ebe8] p-1 md:grid-cols-4">
         {VIEWS.map((item, i) => {
           const Icon = META[item].icon;
           return <button key={item} id={`conference-tab-${item}`} type="button" role="tab" data-testid={`tab-${item}`}

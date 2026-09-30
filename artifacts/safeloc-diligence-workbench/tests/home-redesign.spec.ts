@@ -110,9 +110,40 @@ test.describe("compact conference Home", () => {
     await expect(page).toHaveURL(/#analysis\/stargate-abilene$/);
     await expect(page.getByTestId("conference-view-market")).toBeVisible();
     await expect(page.getByTestId("tab-market")).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("tablist", { name: "Dossier sections" })).toBeVisible();
+    await expect(page.getByTestId("conference-summary").getByRole("heading", { name: "Stargate Abilene" })).toBeVisible();
+    await expect(page.getByTestId("conference-summary")).toContainText("Abilene, Taylor County, Texas");
+    await expect(page.getByTestId("dossier-project-status")).toContainText("Operating · Core campus first phase");
+    await expect(page.getByTestId("dossier-project-status")).toContainText("Planned · Planned eight-building campus");
+    await expect(page.getByTestId("dossier-capacity")).toContainText("1,200 MW");
+    await expect(page.getByTestId("dossier-capacity")).toContainText("Lancium-reported contracted campus power");
+    await expect(page.getByTestId("dossier-company-context")).toContainText("Oracle · Source-backed");
+    await expect(page.getByTestId("dossier-company-context")).toContainText("Sourced Indirect Role");
+    await expect(page.getByTestId("dossier-evidence-state")).toContainText("Material Gaps");
+    await expect(page.getByTestId("dossier-model-state")).toContainText("Modeled");
+    await expect(page.getByTestId("canonical-dossier-version")).toContainText("v1");
+    await expect(page.getByTestId("canonical-dossier-version")).toContainText("2025-09-30");
     await expect(page.getByTestId("market-company")).toContainText("Oracle");
     await expect(page.getByTestId("market-exposure-chain")).toBeVisible();
-    await expect(page.getByTestId("market-relationship-evidence")).toBeVisible();
+    await expect(page.getByTestId("market-relationship-evidence")).toContainText("cloud-infrastructure/customer context");
+    await expect(page.getByTestId("market-relationship-limits")).toContainText("does not establish project ownership");
+    await expect(page.getByTestId("market-relationship-relevance")).toContainText("financial materiality unquantified");
+    await expect(page.getByTestId("conference-view-market").locator("a[href^='https://']").first()).toBeVisible();
+    await expect(page.getByTestId("market-project-selection")).toHaveCount(0);
+    await expect(page.getByTestId("company-project-list")).toHaveCount(0);
+    await expect(page.getByTestId("company-project-search")).toHaveCount(0);
+    await expect(page.locator("[data-testid^='company-project-state-']")).toHaveCount(0);
+    await expect(page.locator("[data-testid^='company-project-open-']")).toHaveCount(0);
+    await expect(page.getByTestId("canonical-dossier-select")).toBeVisible();
+
+    const evidenceStateBefore = await page.getByTestId("dossier-evidence-state").innerText();
+    const modelStateBefore = await page.getByTestId("dossier-model-state").innerText();
+    for (const section of ["reality", "transmission", "advisor", "market"]) {
+      await page.getByTestId(`tab-${section}`).click();
+      await expect(page.getByTestId("tab-market")).toHaveAttribute("aria-selected", section === "market" ? "true" : "false");
+      expect(await page.getByTestId("dossier-evidence-state").innerText()).toBe(evidenceStateBefore);
+      expect(await page.getByTestId("dossier-model-state").innerText()).toBe(modelStateBefore);
+    }
   });
 
   test("keeps the selected NVIDIA project relationship when opening the reviewed dossier", async ({ page }) => {

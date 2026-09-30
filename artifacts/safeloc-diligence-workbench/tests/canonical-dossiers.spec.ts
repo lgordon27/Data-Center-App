@@ -60,7 +60,7 @@ test.describe("canonical PostgreSQL dossiers", () => {
       if (await detailedEvidence.getAttribute("aria-expanded") !== "true") {
         await detailedEvidence.click();
       }
-      await expect(page.locator('[data-testid^="select-classification-"]').first()).toBeDisabled();
+      await expect(page.locator('[data-testid^="select-classification-"]').first()).toBeEnabled();
 
       await page.getByTestId("tab-transmission").click();
       if (slug === "stargate-abilene") {

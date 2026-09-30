@@ -4320,6 +4320,7 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
       identityAssessment: research.identityAssessment ?? null,
     };
   }
+  const structuredResponseSummary = summarizeStructuredResearchResponse(research);
   const bounded = boundProviderResponseToToolBudget(body, activeCategory?.maxToolCalls ?? RESEARCH_PROJECT_MAX_TOOL_CALLS);
   const sources = categoryGroundedSources.length
     ? normalizeRetrievedSources(
@@ -4350,7 +4351,7 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
     usage: normalizeProviderUsage(body.usage),
     provider: "openai",
     model: RESEARCH_PROJECT_MODEL,
-    structuredResponseSummary: summarizeStructuredResearchResponse(research),
+    structuredResponseSummary,
   });
   return {
     research,

@@ -386,6 +386,7 @@ test("reserves fifteen seconds between the server and browser deadlines", () => 
   assert.equal(RESEARCH_PROJECT_TIMEOUT_MS, 75_000);
 });
 
+// Regression: a completed primary response must survive a later optional follow-up deadline.
 test("retains a completed primary category result when its follow-up is cancelled at the deadline", async () => {
   const deadlineState = { expired: false };
   const controller = new AbortController();

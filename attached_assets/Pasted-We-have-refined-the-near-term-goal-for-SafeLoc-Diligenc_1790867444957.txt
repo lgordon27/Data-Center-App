@@ -1,0 +1,515 @@
+We have refined the near-term goal for SafeLoc Diligence Workbench. Do not implement anything yet. This is a read-only planning/review task.
+
+I want you to independently review the current codebase against the roadmap below and tell me whether this is the fastest safe path to a working proof-of-system. Push back where needed. Do not simply agree with the plan.
+
+Near-term product goal
+
+The goal is NOT to have a fully commercialized institutional platform yet.
+
+The immediate goal is to prove that SafeLoc works end-to-end on arbitrary real data-center projects and can do so reliably enough that I can:
+
+1. share the public tool on LinkedIn and with my network;
+2. let users run projects themselves without me guiding them;
+3. bring the working product to the GFI conference on November 10;
+4. prove that the architecture can later scale into a deeper commercial intelligence platform.
+
+I would like to finish this proof-of-system as soon as possible, ideally today if parallel implementation makes that feasible.
+
+Definition of proof-of-system
+
+A user should be able to enter a real data-center project that was not specifically hard-coded into the app.
+
+SafeLoc should then:
+
+1. Establish correct project identity.
+2. Search for relevant current evidence.
+3. Retrieve and clean actual source documents/passages.
+4. Preserve attribution, dates, source URLs, project/phase scope, and research receipts.
+5. Classify what is:
+    * Confirmed
+    * Expected, not located
+    * Located but insufficient
+    * Contradictory
+    * Not expected yet
+6. Determine maturity/status for the relevant diligence categories.
+7. Determine whether each finding has a defensible financial transmission mechanism.
+8. Classify financial interpretation as:
+    * Direct
+    * Derivable
+    * Scenario-only
+    * Unresolved
+9. Classify transmission confidence as:
+    * T0: no transmission established
+    * T1: plausible pathway
+    * T2: project-specific pathway established
+    * T3: quantifiable
+10. Propose financial/model changes only where evidence permits.
+11. Require human acceptance before any research changes the financial model.
+12. Recalculate the financial analysis after accepted changes.
+13. Produce a coherent final project analysis.
+14. Preserve evidence/state history rather than simply overwriting prior states.
+
+Unknown must remain unknown. Failed retrieval must never become evidence that something does not exist.
+
+Diligence categories required in the proof
+
+The proof must cover the full thesis, not just power.
+
+Physical / infrastructure
+
+* grid / power / interconnection
+* electricity / tariffs
+* water / cooling
+* land / site control
+* transmission / substations
+* roads / local infrastructure
+* on-site generation / backup generation
+* air/environmental permitting
+* climate / operational hazards
+
+Development / regulatory
+
+* zoning
+* permitting
+* entitlement
+* community opposition / support
+* hearings
+* moratoria
+* litigation / injunctions
+* construction status
+* project phasing
+
+Financial / commercial
+
+* project financing
+* construction debt
+* financing rate / carry cost where evidenced
+* tenant / counterparty
+* contracted MW
+* tenant commencement
+* incentives
+* tax abatements / exemptions / clawbacks
+
+Expected Evidence
+
+The system should not merely ask, “What did I find?”
+
+It should ask:
+
+“Given this project’s stage, scale, type, location and known design, what evidence should I reasonably have looked for?”
+
+Expected Evidence must never mean a document definitely exists.
+
+The output states should be:
+
+* Confirmed
+* Expected, not located
+* Located but insufficient
+* Contradictory
+* Not expected yet
+
+If important expected evidence is absent, the system should be capable of a targeted second-pass search for that category.
+
+Example for power:
+
+project + utility
+project + interconnection
+project + substation
+project + transmission
+project + load
+project + PUC
+project + tariff
+
+Equivalent targeted search logic can exist for other categories.
+
+Maturity / status model
+
+We want lightweight deterministic maturity ladders for categories where maturity makes sense.
+
+Power
+
+P0 no qualifying evidence
+P1 developer assertion
+P2 utility discussions/request
+P3 study/queue/preliminary commitment
+P4 executed arrangement
+P5 infrastructure under construction
+P6 energized/delivered
+
+Water
+
+W0 none
+W1 strategy stated
+W2 discussions
+W3 permit/allocation process
+W4 executed supply/approval
+W5 infrastructure underway
+W6 operational supply
+
+Permitting
+
+PR0 none
+PR1 application
+PR2 review
+PR3 conditional approval
+PR4 final approval
+PR5 operating authorization
+
+Construction
+
+C0 announced
+C1 site preparation
+C2 active construction
+C3 commissioning
+C4 operational
+
+Financing
+
+F0 none
+F1 reported/planned
+F2 commitment/term sheet
+F3 executed financing
+F4 funded
+
+Tenant
+
+T0 none
+T1 rumored/reported
+T2 LOI/preliminary
+T3 executed commitment
+T4 service/capacity commenced
+
+Incentives
+
+I0 none
+I1 proposed
+I2 approved/conditional
+I3 executed
+I4 realized
+
+Community and climate should use event/status logic rather than artificial maturity ladders.
+
+Examples:
+
+Community:
+concern → organized opposition → formal proceeding → government action → litigation/injunction → project consequence
+
+Climate/operational:
+hazard exposure → historical event → project disruption → mitigation requirement → quantified financial consequence
+
+Financial transmission model
+
+The core rule is:
+
+SafeLoc may identify a transmission mechanism from evidence, but may only quantify financial impact when the magnitude is:
+
+1. directly evidenced;
+2. mechanically derivable from evidenced facts; or
+3. explicitly entered/selected as an illustrative scenario.
+
+No unrestricted LLM-to-financial-model write path.
+
+Pipeline:
+
+eligible evidence
+→ approved mapping rule
+→ transmission mechanism
+→ financial variable
+→ quantification state
+→ human acceptance
+→ financial model
+
+Examples:
+
+* energization date moved 6 months
+    → COD/revenue timing shift
+* delivered MW reduced
+    → capacity change
+* documented utility infrastructure cost
+    → capex
+* water infrastructure cost
+    → capex
+* construction delay
+    → COD / spend timing
+* debt rate change
+    → financing cost
+* tenant commencement delay
+    → revenue/utilization timing
+* incentive revoked
+    → tax/cash-flow impact
+
+Community opposition alone should NOT produce a financial value.
+
+Example:
+
+organized opposition
+→ no direct model change
+
+But:
+
+opposition causes official 90-day hearing delay
+→ project-specific schedule pathway
+→ possible COD transmission
+
+Similarly:
+
+water-stressed location
+→ no automatic MW/capex assumption
+
+But:
+
+municipality requires a documented $45M water connection
+→ +$45M capex candidate
+
+Writable financial surface
+
+Keep it controlled.
+
+Timing
+
+* COD
+* energization
+* construction timing
+* phase ramp
+
+Capacity
+
+* planned MW
+* delivered MW
+* contracted MW
+
+Capex
+
+* construction
+* grid
+* water
+* land
+* roads
+* generation
+* mitigation
+
+Opex
+
+* electricity
+* water
+* fuel
+* taxes
+
+Revenue / utilization
+
+* tenant commencement
+* contracted capacity
+* utilization timing
+
+Financing
+
+* debt amount
+* interest rate
+* carrying cost
+
+Incentives
+
+* abatements
+* exemptions
+* clawbacks
+
+Do NOT allow research to directly manipulate:
+
+* stock price
+* valuation multiples
+* arbitrary company WACC
+* price targets
+* arbitrary risk premiums
+* probabilities invented by the LLM
+
+Human decision boundary
+
+Research must not silently modify the model.
+
+For a qualifying finding, the UI should support something conceptually like:
+
+Observed Evidence
+→ SafeLoc classification/maturity
+→ Expected Evidence state
+→ Financial transmission
+→ Direct / Derivable / Scenario-only / Unresolved
+→ T0–T3 confidence
+→ Current model value
+→ Proposed model value
+
+Then:
+
+Accept into scenario
+Reject
+Keep as evidence only
+
+History requirement
+
+Even though historical analytics come later, the database should be designed now so evidence/maturity changes are not destroyed by overwriting.
+
+Conceptually preserve fields such as:
+
+project_id
+dimension
+evidence_id
+state
+observed_at
+valid_from
+research_run_id
+decision_id
+supersedes
+
+The goal is eventually to reconstruct:
+
+“What did SafeLoc know about this project at a particular point in time?”
+
+Do not build the time-series dashboard yet unless already trivial.
+
+Current Phase 1 bottlenecks from Red Oak
+
+A recent Red Oak run showed:
+
+1. OpenAI category analysis hit a 30,000 TPM rate limit.
+2. Category prompts were about 11k input tokens each across eight categories.
+3. Gemini discovery used roughly 34 seconds of the 75-second run.
+4. Multiple categories were cancelled before completion.
+5. Every DataBank first-party page was blocked by the current SSRF/DNS safety system as private/special-purpose.
+6. Do not loosen SSRF protections without understanding the DNS behavior.
+7. A strong TDLR source was retrieved:
+    * DataBank Red Oak – DFW10
+    * $301M estimated cost
+    * 221,434 sq ft
+    * start 2/1/2025
+    * completion 1/31/2027
+    * owner DB Data Center Red Oak, LLC
+8. That TDLR evidence never became eligible because its category analysis failed.
+9. Its retained passage contained raw HTML.
+10. Error/boilerplate pages were treated as valid content.
+11. Telemetry repeats the same documents excessively.
+
+Phase 1 remains the bottleneck. If the system finds authoritative information but cannot preserve it into eligible evidence, none of the new layers matter.
+
+Proposed parallel implementation tracks
+
+Track A — Research reliability
+
+* token reduction
+* category-specific passage selection
+* provider TPM-aware scheduling
+* rate-limit retry logic
+* category prioritization
+* deadline allocation
+* evidence retention even after partial analysis failure
+* clear category completion/skip/failure diagnostics
+
+Track B — Retrieval/extraction
+
+* clean HTML
+* reject error pages
+* filter boilerplate
+* deduplicate telemetry
+* diagnose DataBank DNS safely
+* preserve structured government records such as TDLR
+
+Track C — Expected Evidence
+
+* rules across all required diligence categories
+* stage/scale/type-aware expectations
+* expected/missing/insufficient/contradictory/not-yet states
+* targeted second-pass search logic
+
+Track D — Maturity/status framework
+
+* implement the ladders above
+* deterministic assignment rules
+* community/climate event-state logic
+
+Track E — Financial transmission
+
+* controlled mapping matrix
+* Direct / Derivable / Scenario-only / Unresolved
+* T0–T3
+* only allowed financial variables
+* no unsupported magnitude invention
+
+Track F — History/data model
+
+* preserve state/evidence changes
+* avoid destructive overwrites
+* keep future time-series analysis possible
+
+Track G — Analyst UI
+
+* expose evidence → classification → maturity → transmission → proposed model change → human decision
+* clean user-facing failure/unknown states
+
+Parallelization requirement
+
+I want to finish as quickly as safely possible, potentially today.
+
+Assess whether Tracks A–G can be implemented in parallel in Replit Agent 4.
+
+If so:
+
+* identify which tracks can safely run simultaneously;
+* identify shared files/contracts that would cause merge conflicts;
+* propose strict file boundaries;
+* identify which foundational schemas/interfaces must be created first;
+* identify what can be developed entirely against fixtures/mocks;
+* identify what must wait for live research;
+* recommend the safest merge order.
+
+Do NOT implement yet.
+
+Testing requirement
+
+The proof must not be Red Oak-specific.
+
+Once integrated, it should be validated against materially different projects such as:
+
+* DataBank Red Oak
+* Stargate Abilene
+* a non-Texas hyperscale project
+* a smaller colo project
+* a sparse-evidence project
+
+The architecture should behave correctly even when evidence is weak.
+
+Current definition of done
+
+SafeLoc can independently research multiple arbitrary real data-center projects across grid/power, water, permitting, community, land/infrastructure, environmental/generation, climate/operational hazards, construction, financing, tenant/counterparty and incentives; retrieve and parse attributable evidence; identify expected, missing, insufficient and contradictory evidence; assign standardized maturity/status; determine whether findings have defensible financial transmission; quantify only what the evidence supports; require human acceptance before modifying assumptions; and carry accepted changes through the financial model into a coherent final analysis.
+
+This is a proof-of-system, not the final commercial platform.
+
+Later depth includes:
+
+* broader source coverage
+* richer category rules
+* company exposure graph
+* public-market linkage
+* cross-project analytics
+* history/trend analysis
+* alerts
+* commercial data/API products
+
+Your task
+
+Review the actual current codebase against this direction.
+
+Return:
+
+1. Where you agree.
+2. Where you disagree or think we’re over-engineering.
+3. Anything technically missing from the roadmap.
+4. Whether the existing architecture can support this without a rewrite.
+5. Which current components can be reused.
+6. What must change in schemas/data contracts.
+7. The exact safest parallel task decomposition.
+8. File overlap / merge-risk analysis.
+9. Recommended merge order.
+10. Which tasks are true launch blockers versus optional depth.
+11. Whether finishing the proof-of-system today is technically realistic if parallelized.
+12. A revised implementation sequence if you think ours is wrong.
+13. Do not implement, deploy, push, or make any paid API calls.
+
+Be skeptical. Optimize for getting a trustworthy end-to-end proof working as fast as possible, not for architectural elegance or feature volume.

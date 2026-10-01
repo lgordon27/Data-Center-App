@@ -1,0 +1,112 @@
+Historical provenance for Task #328 is now conclusively unavailable. Do not spend more time trying to reconstruct it.
+
+Treat the current active development database as the authoritative baseline:
+
+- database: `heliumdb`
+- endpoint fingerprint: `cac77afa`
+- schema: `public`
+- current proof-ledger tables/functions: absent
+- required proof-ledger/user-decision columns: absent
+- production must remain untouched
+
+We now need to establish a new, verifiable development baseline.
+
+## Step 1 — Preflight the migration
+
+Before executing anything, inspect `0005_safeloc_proof_ledger.sql` against the current development schema.
+
+Confirm:
+
+1. Every proposed table, column, index, function and trigger that the migration expects to add is currently absent or compatible.
+2. The migration does not drop, truncate, rename or destructively rewrite existing dossier/research-run data.
+3. Existing 3 dossiers and 6 research-run audits remain structurally compatible.
+4. There are no name collisions with current schema objects.
+5. Foreign keys/references resolve correctly.
+6. The migration can be executed safely in a single explicit transaction.
+7. If any statement is not safely retryable/idempotent, identify it before execution.
+
+If any destructive or ambiguous behavior is found, STOP and report it.
+
+## Step 2 — Capture baseline
+
+Before applying the migration, record a sanitized durable receipt containing:
+
+- database name;
+- endpoint fingerprint `cac77afa`;
+- schema;
+- timestamp;
+- current relevant table/function inventory;
+- row counts for existing dossier/research-run tables;
+- content fingerprints for the existing 3 dossiers and 6 research-run audits;
+- git SHA;
+- migration file hash.
+
+Do not expose credentials.
+
+## Step 3 — Apply to development only
+
+If and only if preflight is clean:
+
+Apply `0005_safeloc_proof_ledger.sql` to the current development `heliumdb` / `public` schema in one explicit transaction.
+
+Production must not be accessed or modified.
+
+## Step 4 — Verify and create a durable migration receipt
+
+After commit, verify:
+
+- all expected proof-ledger tables exist;
+- all required columns exist;
+- both expected migration functions exist;
+- required indexes/triggers exist;
+- append-only protections work;
+- anonymous decisions cannot enter canonical history;
+- existing dossier/research-run rows remain readable;
+- pre/post fingerprints of the existing 3 dossiers and 6 audits match;
+- startup reports required schema complete.
+
+Create a durable sanitized migration receipt in the repository diagnostics/artifacts area containing:
+
+- target fingerprint;
+- migration hash;
+- transaction start/end time;
+- explicit COMMIT result;
+- created object inventory;
+- verification results;
+- pre/post content fingerprints;
+- git SHA.
+
+## Step 5 — Regression
+
+Run:
+
+- typecheck;
+- full provider-free workbench suite;
+- proof-ledger focused tests;
+- database smoke checks.
+
+Then restart the development workflow and confirm the missing-ledger warnings are gone.
+
+## Final report
+
+Return:
+
+- preflight result;
+- migration execution status;
+- explicit COMMIT confirmation;
+- durable receipt path;
+- target fingerprint;
+- schema verification;
+- existing-data integrity result;
+- test counts;
+- startup schema status.
+
+Do not:
+- access production;
+- switch database attachments;
+- make provider calls;
+- start #331;
+- modify product behavior outside what is required for the approved migration.
+
+If successful, state explicitly:
+`CURRENT DEVELOPMENT PROOF LEDGER VERIFIED`.

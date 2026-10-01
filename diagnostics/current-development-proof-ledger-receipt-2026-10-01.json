@@ -1,0 +1,2111 @@
+{
+  "receiptVersion": 1,
+  "purpose": "New authorized current-development baseline; not historical proof for Task 328.",
+  "createdAt": "2026-10-01T18:51:11.218Z",
+  "gitSha": "4abbf89684288b05f3c99295ea7363f474c33384",
+  "target": {
+    "database": "heliumdb",
+    "schema": "public",
+    "effective_schemas": [
+      "public"
+    ],
+    "effective_schemas_including_implicit": [
+      "pg_catalog",
+      "public"
+    ],
+    "search_path": "\"$user\", public",
+    "timezone": "GMT",
+    "hostSha256": "cac77afa6447276c543eb76ebefbc3ad54d5115f42df0ec4db4e3d29de3715da",
+    "hostSha256Prefix": "cac77afa",
+    "identityLimit": "Endpoint fingerprint, not a historical platform instance ID."
+  },
+  "migration": {
+    "file": "0005_safeloc_proof_ledger.sql",
+    "sha256": "fbba0688c460eb651b697c26d94de7e3ac72cb9d7d32ac922d91b5e5c40c5407",
+    "status": "committed",
+    "transactionStart": "2026-10-01T18:54:00.434Z",
+    "beginResult": "BEGIN",
+    "statementResults": [
+      "CREATE",
+      "CREATE",
+      "CREATE",
+      "CREATE",
+      "CREATE",
+      "CREATE",
+      "CREATE",
+      "CREATE",
+      "DROP",
+      "CREATE",
+      "DROP",
+      "CREATE",
+      "DROP",
+      "CREATE",
+      "DROP",
+      "CREATE",
+      "CREATE",
+      "DROP",
+      "CREATE"
+    ],
+    "priorRolledBackAttempt": {
+      "transactionStart": "2026-10-01T18:51:33.377Z",
+      "beginResult": "BEGIN",
+      "statementResults": [
+        "CREATE",
+        "CREATE",
+        "CREATE",
+        "CREATE",
+        "CREATE",
+        "CREATE",
+        "CREATE",
+        "CREATE",
+        "DROP",
+        "CREATE",
+        "DROP",
+        "CREATE",
+        "DROP",
+        "CREATE",
+        "DROP",
+        "CREATE",
+        "CREATE",
+        "DROP",
+        "CREATE"
+      ],
+      "transactionEnd": "2026-10-01T18:51:33.774Z",
+      "rollbackResult": "ROLLBACK",
+      "reason": "Diagnostic verifier incorrectly expected session index to omit recorded_at; actual migration SQL and catalog agree on (session_ref, recorded_at). No product or migration SQL change."
+    },
+    "commitResult": "COMMIT",
+    "transactionEnd": "2026-10-01T18:54:00.881Z"
+  },
+  "preflight": {
+    "result": "passed",
+    "proofInventory": {
+      "relations": [],
+      "functions": [],
+      "triggers": [],
+      "types": [],
+      "columns": [],
+      "constraints": [],
+      "indexes": []
+    },
+    "publicInventory": [
+      {
+        "name": "dossiers",
+        "kind": "r"
+      },
+      {
+        "name": "dossiers_pkey",
+        "kind": "i"
+      },
+      {
+        "name": "dossiers_slug_key",
+        "kind": "i"
+      },
+      {
+        "name": "dossiers_updated_at_idx",
+        "kind": "i"
+      },
+      {
+        "name": "public_provider_spend",
+        "kind": "r"
+      },
+      {
+        "name": "public_provider_spend_pkey",
+        "kind": "i"
+      },
+      {
+        "name": "public_request_events",
+        "kind": "r"
+      },
+      {
+        "name": "public_request_events_client_time_idx",
+        "kind": "i"
+      },
+      {
+        "name": "public_request_events_id_seq",
+        "kind": "S"
+      },
+      {
+        "name": "public_request_events_pkey",
+        "kind": "i"
+      },
+      {
+        "name": "research_result_cache",
+        "kind": "r"
+      },
+      {
+        "name": "research_result_cache_pkey",
+        "kind": "i"
+      },
+      {
+        "name": "research_run_audits",
+        "kind": "r"
+      },
+      {
+        "name": "research_run_audits_finished_at_idx",
+        "kind": "i"
+      },
+      {
+        "name": "research_run_audits_pkey",
+        "kind": "i"
+      }
+    ],
+    "retryability": "All names absent. IF NOT EXISTS is not a compatibility verifier; function/trigger replacement is transactional but requires a new preflight before any future replay.",
+    "safety": "Only proof-specific trigger drops; no legacy table/data alteration. Unqualified references resolve in verified public-only effective schema. Default SECURITY INVOKER; privileged-owner bypass remains outside this baseline."
+  },
+  "baseline": {
+    "dossiers": {
+      "rowCount": 3,
+      "rowContentSha256": [
+        "04645b899ea217644f772076ca7bc30177781cc1c587591a976f60cb2c098867",
+        "b0f87f9e480c4003a39fa4daf6e964732bc079cb3d6af96fd6449f3162907627",
+        "cbf1b34b907a16d5427d6053415a2f4d9a39517d72ae0bb0d3d9aefe6c5c2240"
+      ],
+      "aggregateContentSha256": "9b1bde62b9bd49d9a26fda611958c39a3f99cc4f00bbd8f1be9c026127807f9c",
+      "schemaSha256": "d53b015591a8c2758dc36e5f5643395fcfe4588f09351dba7f87fc0772acd594",
+      "columns": [
+        {
+          "column_name": "id",
+          "udt_name": "uuid",
+          "is_nullable": "NO",
+          "column_default": "gen_random_uuid()"
+        },
+        {
+          "column_name": "slug",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "column_name": "name",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "column_name": "version",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": "'1'::text"
+        },
+        {
+          "column_name": "coverage_state",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": "'review'::text"
+        },
+        {
+          "column_name": "as_of_date",
+          "udt_name": "text",
+          "is_nullable": "YES",
+          "column_default": null
+        },
+        {
+          "column_name": "canonical_data",
+          "udt_name": "jsonb",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "column_name": "created_at",
+          "udt_name": "timestamptz",
+          "is_nullable": "NO",
+          "column_default": "now()"
+        },
+        {
+          "column_name": "updated_at",
+          "udt_name": "timestamptz",
+          "is_nullable": "NO",
+          "column_default": "now()"
+        }
+      ],
+      "constraints": [
+        {
+          "conname": "dossiers_pkey",
+          "contype": "p",
+          "definition": "PRIMARY KEY (id)"
+        },
+        {
+          "conname": "dossiers_slug_key",
+          "contype": "u",
+          "definition": "UNIQUE (slug)"
+        }
+      ]
+    },
+    "research_run_audits": {
+      "rowCount": 6,
+      "rowContentSha256": [
+        "101a3368e787ca26ba983f0f94dc365e9df53461b074d02f2ab16550a6c5e326",
+        "1722704f7e3875fab62eeb001c2b03f4b03dcd5237227b55cd1e41699947851d",
+        "659fd85829978af5ed6b8e5e58a8ad87a7f2d3365c6f2f7e3f1de2b53758f4c5",
+        "6a0b33655abcf003db8d47cbea0ab8885ddca6ec6cc396946a80f916f7b767b1",
+        "98b5355cc6cfed3876de432d869ac64ac24fa7d13a4f3141352c861b90a03f9f",
+        "b4fbec605f22f0f1defdd225e0a70c1b1a6f0f1838e082ccc191e32eeb3f2685"
+      ],
+      "aggregateContentSha256": "7242c931b441fdbcddd0ea0bf9b234a09cd5132ad28a0955947e5b0815f44d0d",
+      "schemaSha256": "fea33e812cfb68625675cd80516e323ae5fe43d1f34c241a5f19bc453023a508",
+      "columns": [
+        {
+          "column_name": "run_id",
+          "udt_name": "uuid",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "column_name": "project_name",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "column_name": "project_location",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "column_name": "research_status",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "column_name": "project_summary",
+          "udt_name": "jsonb",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "column_name": "audit",
+          "udt_name": "jsonb",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "column_name": "finished_at",
+          "udt_name": "timestamptz",
+          "is_nullable": "YES",
+          "column_default": null
+        },
+        {
+          "column_name": "started_at",
+          "udt_name": "timestamptz",
+          "is_nullable": "NO",
+          "column_default": "now()"
+        }
+      ],
+      "constraints": [
+        {
+          "conname": "research_run_audits_pkey",
+          "contype": "p",
+          "definition": "PRIMARY KEY (run_id)"
+        }
+      ]
+    }
+  },
+  "contentFingerprintMethod": "Sorted SHA-256 of PostgreSQL to_jsonb(full row)::text in recorded session timezone; aggregate SHA-256 of the sorted digest array. No row contents or identifiers retained.",
+  "rollbackOnlyDdlInspection": {
+    "at": "2026-10-01T18:53:27.169Z",
+    "objects": {
+      "relations": [
+        {
+          "schema": "public",
+          "name": "proof_ledger_decision_ref_idx",
+          "kind": "i"
+        },
+        {
+          "schema": "public",
+          "name": "proof_ledger_events",
+          "kind": "r"
+        },
+        {
+          "schema": "public",
+          "name": "proof_ledger_events_pkey",
+          "kind": "i"
+        },
+        {
+          "schema": "public",
+          "name": "proof_ledger_project_recorded_idx",
+          "kind": "i"
+        },
+        {
+          "schema": "public",
+          "name": "proof_ledger_project_scope_idx",
+          "kind": "i"
+        },
+        {
+          "schema": "public",
+          "name": "proof_ledger_research_run_idx",
+          "kind": "i"
+        },
+        {
+          "schema": "public",
+          "name": "proof_user_decisions",
+          "kind": "r"
+        },
+        {
+          "schema": "public",
+          "name": "proof_user_decisions_pkey",
+          "kind": "i"
+        },
+        {
+          "schema": "public",
+          "name": "proof_user_decisions_session_idx",
+          "kind": "i"
+        }
+      ],
+      "functions": [
+        {
+          "schema": "public",
+          "name": "safeloc_reject_proof_history_mutation",
+          "arguments": "",
+          "returns": "trigger",
+          "security_definer": false,
+          "settings": null,
+          "definition_sha256": "a75e00734163c2517f552d1c897d00e0b227dd9741592ba6d49352a72d7239d5"
+        },
+        {
+          "schema": "public",
+          "name": "safeloc_validate_proof_event_references",
+          "arguments": "",
+          "returns": "trigger",
+          "security_definer": false,
+          "settings": null,
+          "definition_sha256": "42bcce443d79452b159f1a39bba3ae4ecddc57fac2223ad992e82d40d8f00b9d"
+        }
+      ],
+      "triggers": [
+        {
+          "schema": "public",
+          "table_name": "proof_ledger_events",
+          "name": "proof_ledger_events_append_only",
+          "type_bits": 27,
+          "enabled": "O",
+          "function_name": "safeloc_reject_proof_history_mutation",
+          "definition": "CREATE TRIGGER proof_ledger_events_append_only BEFORE DELETE OR UPDATE ON public.proof_ledger_events FOR EACH ROW EXECUTE FUNCTION safeloc_reject_proof_history_mutation()"
+        },
+        {
+          "schema": "public",
+          "table_name": "proof_ledger_events",
+          "name": "proof_ledger_events_no_truncate",
+          "type_bits": 34,
+          "enabled": "O",
+          "function_name": "safeloc_reject_proof_history_mutation",
+          "definition": "CREATE TRIGGER proof_ledger_events_no_truncate BEFORE TRUNCATE ON public.proof_ledger_events FOR EACH STATEMENT EXECUTE FUNCTION safeloc_reject_proof_history_mutation()"
+        },
+        {
+          "schema": "public",
+          "table_name": "proof_ledger_events",
+          "name": "proof_ledger_events_validate_references",
+          "type_bits": 7,
+          "enabled": "O",
+          "function_name": "safeloc_validate_proof_event_references",
+          "definition": "CREATE TRIGGER proof_ledger_events_validate_references BEFORE INSERT ON public.proof_ledger_events FOR EACH ROW EXECUTE FUNCTION safeloc_validate_proof_event_references()"
+        },
+        {
+          "schema": "public",
+          "table_name": "proof_user_decisions",
+          "name": "proof_user_decisions_append_only",
+          "type_bits": 27,
+          "enabled": "O",
+          "function_name": "safeloc_reject_proof_history_mutation",
+          "definition": "CREATE TRIGGER proof_user_decisions_append_only BEFORE DELETE OR UPDATE ON public.proof_user_decisions FOR EACH ROW EXECUTE FUNCTION safeloc_reject_proof_history_mutation()"
+        },
+        {
+          "schema": "public",
+          "table_name": "proof_user_decisions",
+          "name": "proof_user_decisions_no_truncate",
+          "type_bits": 34,
+          "enabled": "O",
+          "function_name": "safeloc_reject_proof_history_mutation",
+          "definition": "CREATE TRIGGER proof_user_decisions_no_truncate BEFORE TRUNCATE ON public.proof_user_decisions FOR EACH STATEMENT EXECUTE FUNCTION safeloc_reject_proof_history_mutation()"
+        }
+      ],
+      "types": [
+        {
+          "schema": "public",
+          "name": "_proof_ledger_events",
+          "kind": "b"
+        },
+        {
+          "schema": "public",
+          "name": "_proof_user_decisions",
+          "kind": "b"
+        },
+        {
+          "schema": "public",
+          "name": "proof_ledger_events",
+          "kind": "c"
+        },
+        {
+          "schema": "public",
+          "name": "proof_user_decisions",
+          "kind": "c"
+        }
+      ],
+      "columns": [
+        {
+          "table_name": "proof_ledger_events",
+          "column_name": "event_id",
+          "udt_name": "uuid",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "column_name": "project_id",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "column_name": "project_reference",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "column_name": "project_name",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "column_name": "scope_kind",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "column_name": "scope_key",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "column_name": "event_type",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "column_name": "effective_at",
+          "udt_name": "timestamptz",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "column_name": "recorded_at",
+          "udt_name": "timestamptz",
+          "is_nullable": "NO",
+          "column_default": "now()"
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "column_name": "research_run_id",
+          "udt_name": "uuid",
+          "is_nullable": "YES",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "column_name": "schema_version",
+          "udt_name": "int4",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "column_name": "policy_version",
+          "udt_name": "int4",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "column_name": "model_version",
+          "udt_name": "text",
+          "is_nullable": "YES",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "column_name": "decision_ref",
+          "udt_name": "uuid",
+          "is_nullable": "YES",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "column_name": "payload",
+          "udt_name": "jsonb",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "column_name": "decision_id",
+          "udt_name": "uuid",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "column_name": "project_id",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "column_name": "project_reference",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "column_name": "project_name",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "column_name": "scope_kind",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "column_name": "scope_key",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "column_name": "actor_kind",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "column_name": "session_ref",
+          "udt_name": "text",
+          "is_nullable": "YES",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "column_name": "actor_ref",
+          "udt_name": "text",
+          "is_nullable": "YES",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "column_name": "decision",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "column_name": "target_ref",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "column_name": "rationale",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "column_name": "decided_at",
+          "udt_name": "timestamptz",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "column_name": "schema_version",
+          "udt_name": "int4",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "column_name": "policy_version",
+          "udt_name": "int4",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "column_name": "model_version",
+          "udt_name": "text",
+          "is_nullable": "YES",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "column_name": "recorded_at",
+          "udt_name": "timestamptz",
+          "is_nullable": "NO",
+          "column_default": "now()"
+        }
+      ],
+      "constraints": [
+        {
+          "table_name": "proof_ledger_events",
+          "name": "proof_ledger_events_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((((decision_ref IS NULL) AND (event_type <> 'accepted-model-input'::text)) OR ((decision_ref IS NOT NULL) AND (event_type = 'accepted-model-input'::text))))"
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "name": "proof_ledger_events_decision_ref_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (decision_ref) REFERENCES proof_user_decisions(decision_id)"
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "name": "proof_ledger_events_event_type_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((event_type = ANY (ARRAY['search-assessment'::text, 'evidence-observation'::text, 'project-state-change'::text, 'supersession'::text, 'transmission-proposal'::text, 'accepted-model-input'::text])))"
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "name": "proof_ledger_events_pkey",
+          "type": "p",
+          "validated": true,
+          "definition": "PRIMARY KEY (event_id)"
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "name": "proof_ledger_events_policy_version_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((policy_version > 0))"
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "name": "proof_ledger_events_schema_version_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((schema_version > 0))"
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "name": "proof_ledger_events_scope_kind_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((scope_kind = ANY (ARRAY['campus'::text, 'phase'::text, 'facility'::text, 'unknown'::text])))"
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "name": "proof_user_decisions_actor_kind_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((actor_kind = ANY (ARRAY['anonymous-session'::text, 'authenticated'::text])))"
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "name": "proof_user_decisions_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((((actor_kind = 'anonymous-session'::text) AND (session_ref IS NOT NULL) AND (actor_ref IS NULL)) OR ((actor_kind = 'authenticated'::text) AND (actor_ref IS NOT NULL) AND (session_ref IS NULL))))"
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "name": "proof_user_decisions_decision_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((decision = ANY (ARRAY['accept'::text, 'reject'::text, 'override'::text, 'defer'::text, 'note'::text])))"
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "name": "proof_user_decisions_pkey",
+          "type": "p",
+          "validated": true,
+          "definition": "PRIMARY KEY (decision_id)"
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "name": "proof_user_decisions_policy_version_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((policy_version > 0))"
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "name": "proof_user_decisions_schema_version_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((schema_version > 0))"
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "name": "proof_user_decisions_scope_kind_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((scope_kind = ANY (ARRAY['campus'::text, 'phase'::text, 'facility'::text, 'unknown'::text])))"
+        }
+      ],
+      "indexes": [
+        {
+          "table_name": "proof_ledger_events",
+          "name": "proof_ledger_decision_ref_idx",
+          "definition": "CREATE INDEX proof_ledger_decision_ref_idx ON public.proof_ledger_events USING btree (decision_ref) WHERE (decision_ref IS NOT NULL)"
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "name": "proof_ledger_events_pkey",
+          "definition": "CREATE UNIQUE INDEX proof_ledger_events_pkey ON public.proof_ledger_events USING btree (event_id)"
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "name": "proof_ledger_project_recorded_idx",
+          "definition": "CREATE INDEX proof_ledger_project_recorded_idx ON public.proof_ledger_events USING btree (project_id, recorded_at, event_id)"
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "name": "proof_ledger_project_scope_idx",
+          "definition": "CREATE INDEX proof_ledger_project_scope_idx ON public.proof_ledger_events USING btree (project_id, scope_kind, scope_key, recorded_at)"
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "name": "proof_ledger_research_run_idx",
+          "definition": "CREATE INDEX proof_ledger_research_run_idx ON public.proof_ledger_events USING btree (research_run_id) WHERE (research_run_id IS NOT NULL)"
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "name": "proof_user_decisions_pkey",
+          "definition": "CREATE UNIQUE INDEX proof_user_decisions_pkey ON public.proof_user_decisions USING btree (decision_id)"
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "name": "proof_user_decisions_session_idx",
+          "definition": "CREATE INDEX proof_user_decisions_session_idx ON public.proof_user_decisions USING btree (session_ref, recorded_at) WHERE (actor_kind = 'anonymous-session'::text)"
+        }
+      ]
+    },
+    "checkFailure": {
+      "code": "ERR_ASSERTION",
+      "location": [
+        "    at verifyInventory (file:///home/runner/workspace/.local/scripts/development-ledger-baseline.mjs:151:39)",
+        "    at file:///home/runner/workspace/.local/scripts/development-ledger-baseline.mjs:274:11",
+        "    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)"
+      ],
+      "message": "The expression evaluated to a falsy value:\n\n  assert.ok(i.definition.includes(expectedIndexes[i.name]))\n"
+    },
+    "transactionResult": "ROLLBACK",
+    "noObjectsPersisted": true,
+    "existingDataUnchanged": true
+  },
+  "resolvedFailure": {
+    "stage": "migration-ddl",
+    "timestamp": "2026-10-01T18:51:33.774Z",
+    "sqlState": "ERR_ASSERTION",
+    "rollbackResult": "ROLLBACK",
+    "details": "Suppressed; inspect safe checks before any retry."
+  },
+  "postMigrationInventory": {
+    "relations": [
+      {
+        "schema": "public",
+        "name": "proof_ledger_decision_ref_idx",
+        "kind": "i"
+      },
+      {
+        "schema": "public",
+        "name": "proof_ledger_events",
+        "kind": "r"
+      },
+      {
+        "schema": "public",
+        "name": "proof_ledger_events_pkey",
+        "kind": "i"
+      },
+      {
+        "schema": "public",
+        "name": "proof_ledger_project_recorded_idx",
+        "kind": "i"
+      },
+      {
+        "schema": "public",
+        "name": "proof_ledger_project_scope_idx",
+        "kind": "i"
+      },
+      {
+        "schema": "public",
+        "name": "proof_ledger_research_run_idx",
+        "kind": "i"
+      },
+      {
+        "schema": "public",
+        "name": "proof_user_decisions",
+        "kind": "r"
+      },
+      {
+        "schema": "public",
+        "name": "proof_user_decisions_pkey",
+        "kind": "i"
+      },
+      {
+        "schema": "public",
+        "name": "proof_user_decisions_session_idx",
+        "kind": "i"
+      }
+    ],
+    "functions": [
+      {
+        "schema": "public",
+        "name": "safeloc_reject_proof_history_mutation",
+        "arguments": "",
+        "returns": "trigger",
+        "security_definer": false,
+        "settings": null,
+        "definition_sha256": "a75e00734163c2517f552d1c897d00e0b227dd9741592ba6d49352a72d7239d5"
+      },
+      {
+        "schema": "public",
+        "name": "safeloc_validate_proof_event_references",
+        "arguments": "",
+        "returns": "trigger",
+        "security_definer": false,
+        "settings": null,
+        "definition_sha256": "42bcce443d79452b159f1a39bba3ae4ecddc57fac2223ad992e82d40d8f00b9d"
+      }
+    ],
+    "triggers": [
+      {
+        "schema": "public",
+        "table_name": "proof_ledger_events",
+        "name": "proof_ledger_events_append_only",
+        "type_bits": 27,
+        "enabled": "O",
+        "function_name": "safeloc_reject_proof_history_mutation",
+        "definition": "CREATE TRIGGER proof_ledger_events_append_only BEFORE DELETE OR UPDATE ON public.proof_ledger_events FOR EACH ROW EXECUTE FUNCTION safeloc_reject_proof_history_mutation()"
+      },
+      {
+        "schema": "public",
+        "table_name": "proof_ledger_events",
+        "name": "proof_ledger_events_no_truncate",
+        "type_bits": 34,
+        "enabled": "O",
+        "function_name": "safeloc_reject_proof_history_mutation",
+        "definition": "CREATE TRIGGER proof_ledger_events_no_truncate BEFORE TRUNCATE ON public.proof_ledger_events FOR EACH STATEMENT EXECUTE FUNCTION safeloc_reject_proof_history_mutation()"
+      },
+      {
+        "schema": "public",
+        "table_name": "proof_ledger_events",
+        "name": "proof_ledger_events_validate_references",
+        "type_bits": 7,
+        "enabled": "O",
+        "function_name": "safeloc_validate_proof_event_references",
+        "definition": "CREATE TRIGGER proof_ledger_events_validate_references BEFORE INSERT ON public.proof_ledger_events FOR EACH ROW EXECUTE FUNCTION safeloc_validate_proof_event_references()"
+      },
+      {
+        "schema": "public",
+        "table_name": "proof_user_decisions",
+        "name": "proof_user_decisions_append_only",
+        "type_bits": 27,
+        "enabled": "O",
+        "function_name": "safeloc_reject_proof_history_mutation",
+        "definition": "CREATE TRIGGER proof_user_decisions_append_only BEFORE DELETE OR UPDATE ON public.proof_user_decisions FOR EACH ROW EXECUTE FUNCTION safeloc_reject_proof_history_mutation()"
+      },
+      {
+        "schema": "public",
+        "table_name": "proof_user_decisions",
+        "name": "proof_user_decisions_no_truncate",
+        "type_bits": 34,
+        "enabled": "O",
+        "function_name": "safeloc_reject_proof_history_mutation",
+        "definition": "CREATE TRIGGER proof_user_decisions_no_truncate BEFORE TRUNCATE ON public.proof_user_decisions FOR EACH STATEMENT EXECUTE FUNCTION safeloc_reject_proof_history_mutation()"
+      }
+    ],
+    "types": [
+      {
+        "schema": "public",
+        "name": "_proof_ledger_events",
+        "kind": "b"
+      },
+      {
+        "schema": "public",
+        "name": "_proof_user_decisions",
+        "kind": "b"
+      },
+      {
+        "schema": "public",
+        "name": "proof_ledger_events",
+        "kind": "c"
+      },
+      {
+        "schema": "public",
+        "name": "proof_user_decisions",
+        "kind": "c"
+      }
+    ],
+    "columns": [
+      {
+        "table_name": "proof_ledger_events",
+        "column_name": "event_id",
+        "udt_name": "uuid",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "proof_ledger_events",
+        "column_name": "project_id",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "proof_ledger_events",
+        "column_name": "project_reference",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "proof_ledger_events",
+        "column_name": "project_name",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "proof_ledger_events",
+        "column_name": "scope_kind",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "proof_ledger_events",
+        "column_name": "scope_key",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "proof_ledger_events",
+        "column_name": "event_type",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "proof_ledger_events",
+        "column_name": "effective_at",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "proof_ledger_events",
+        "column_name": "recorded_at",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": "now()"
+      },
+      {
+        "table_name": "proof_ledger_events",
+        "column_name": "research_run_id",
+        "udt_name": "uuid",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "proof_ledger_events",
+        "column_name": "schema_version",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "proof_ledger_events",
+        "column_name": "policy_version",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "proof_ledger_events",
+        "column_name": "model_version",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "proof_ledger_events",
+        "column_name": "decision_ref",
+        "udt_name": "uuid",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "proof_ledger_events",
+        "column_name": "payload",
+        "udt_name": "jsonb",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "proof_user_decisions",
+        "column_name": "decision_id",
+        "udt_name": "uuid",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "proof_user_decisions",
+        "column_name": "project_id",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "proof_user_decisions",
+        "column_name": "project_reference",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "proof_user_decisions",
+        "column_name": "project_name",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "proof_user_decisions",
+        "column_name": "scope_kind",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "proof_user_decisions",
+        "column_name": "scope_key",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "proof_user_decisions",
+        "column_name": "actor_kind",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "proof_user_decisions",
+        "column_name": "session_ref",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "proof_user_decisions",
+        "column_name": "actor_ref",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "proof_user_decisions",
+        "column_name": "decision",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "proof_user_decisions",
+        "column_name": "target_ref",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "proof_user_decisions",
+        "column_name": "rationale",
+        "udt_name": "text",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "proof_user_decisions",
+        "column_name": "decided_at",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "proof_user_decisions",
+        "column_name": "schema_version",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "proof_user_decisions",
+        "column_name": "policy_version",
+        "udt_name": "int4",
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      {
+        "table_name": "proof_user_decisions",
+        "column_name": "model_version",
+        "udt_name": "text",
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      {
+        "table_name": "proof_user_decisions",
+        "column_name": "recorded_at",
+        "udt_name": "timestamptz",
+        "is_nullable": "NO",
+        "column_default": "now()"
+      }
+    ],
+    "constraints": [
+      {
+        "table_name": "proof_ledger_events",
+        "name": "proof_ledger_events_check",
+        "type": "c",
+        "validated": true,
+        "definition": "CHECK ((((decision_ref IS NULL) AND (event_type <> 'accepted-model-input'::text)) OR ((decision_ref IS NOT NULL) AND (event_type = 'accepted-model-input'::text))))"
+      },
+      {
+        "table_name": "proof_ledger_events",
+        "name": "proof_ledger_events_decision_ref_fkey",
+        "type": "f",
+        "validated": true,
+        "definition": "FOREIGN KEY (decision_ref) REFERENCES proof_user_decisions(decision_id)"
+      },
+      {
+        "table_name": "proof_ledger_events",
+        "name": "proof_ledger_events_event_type_check",
+        "type": "c",
+        "validated": true,
+        "definition": "CHECK ((event_type = ANY (ARRAY['search-assessment'::text, 'evidence-observation'::text, 'project-state-change'::text, 'supersession'::text, 'transmission-proposal'::text, 'accepted-model-input'::text])))"
+      },
+      {
+        "table_name": "proof_ledger_events",
+        "name": "proof_ledger_events_pkey",
+        "type": "p",
+        "validated": true,
+        "definition": "PRIMARY KEY (event_id)"
+      },
+      {
+        "table_name": "proof_ledger_events",
+        "name": "proof_ledger_events_policy_version_check",
+        "type": "c",
+        "validated": true,
+        "definition": "CHECK ((policy_version > 0))"
+      },
+      {
+        "table_name": "proof_ledger_events",
+        "name": "proof_ledger_events_schema_version_check",
+        "type": "c",
+        "validated": true,
+        "definition": "CHECK ((schema_version > 0))"
+      },
+      {
+        "table_name": "proof_ledger_events",
+        "name": "proof_ledger_events_scope_kind_check",
+        "type": "c",
+        "validated": true,
+        "definition": "CHECK ((scope_kind = ANY (ARRAY['campus'::text, 'phase'::text, 'facility'::text, 'unknown'::text])))"
+      },
+      {
+        "table_name": "proof_user_decisions",
+        "name": "proof_user_decisions_actor_kind_check",
+        "type": "c",
+        "validated": true,
+        "definition": "CHECK ((actor_kind = ANY (ARRAY['anonymous-session'::text, 'authenticated'::text])))"
+      },
+      {
+        "table_name": "proof_user_decisions",
+        "name": "proof_user_decisions_check",
+        "type": "c",
+        "validated": true,
+        "definition": "CHECK ((((actor_kind = 'anonymous-session'::text) AND (session_ref IS NOT NULL) AND (actor_ref IS NULL)) OR ((actor_kind = 'authenticated'::text) AND (actor_ref IS NOT NULL) AND (session_ref IS NULL))))"
+      },
+      {
+        "table_name": "proof_user_decisions",
+        "name": "proof_user_decisions_decision_check",
+        "type": "c",
+        "validated": true,
+        "definition": "CHECK ((decision = ANY (ARRAY['accept'::text, 'reject'::text, 'override'::text, 'defer'::text, 'note'::text])))"
+      },
+      {
+        "table_name": "proof_user_decisions",
+        "name": "proof_user_decisions_pkey",
+        "type": "p",
+        "validated": true,
+        "definition": "PRIMARY KEY (decision_id)"
+      },
+      {
+        "table_name": "proof_user_decisions",
+        "name": "proof_user_decisions_policy_version_check",
+        "type": "c",
+        "validated": true,
+        "definition": "CHECK ((policy_version > 0))"
+      },
+      {
+        "table_name": "proof_user_decisions",
+        "name": "proof_user_decisions_schema_version_check",
+        "type": "c",
+        "validated": true,
+        "definition": "CHECK ((schema_version > 0))"
+      },
+      {
+        "table_name": "proof_user_decisions",
+        "name": "proof_user_decisions_scope_kind_check",
+        "type": "c",
+        "validated": true,
+        "definition": "CHECK ((scope_kind = ANY (ARRAY['campus'::text, 'phase'::text, 'facility'::text, 'unknown'::text])))"
+      }
+    ],
+    "indexes": [
+      {
+        "table_name": "proof_ledger_events",
+        "name": "proof_ledger_decision_ref_idx",
+        "definition": "CREATE INDEX proof_ledger_decision_ref_idx ON public.proof_ledger_events USING btree (decision_ref) WHERE (decision_ref IS NOT NULL)"
+      },
+      {
+        "table_name": "proof_ledger_events",
+        "name": "proof_ledger_events_pkey",
+        "definition": "CREATE UNIQUE INDEX proof_ledger_events_pkey ON public.proof_ledger_events USING btree (event_id)"
+      },
+      {
+        "table_name": "proof_ledger_events",
+        "name": "proof_ledger_project_recorded_idx",
+        "definition": "CREATE INDEX proof_ledger_project_recorded_idx ON public.proof_ledger_events USING btree (project_id, recorded_at, event_id)"
+      },
+      {
+        "table_name": "proof_ledger_events",
+        "name": "proof_ledger_project_scope_idx",
+        "definition": "CREATE INDEX proof_ledger_project_scope_idx ON public.proof_ledger_events USING btree (project_id, scope_kind, scope_key, recorded_at)"
+      },
+      {
+        "table_name": "proof_ledger_events",
+        "name": "proof_ledger_research_run_idx",
+        "definition": "CREATE INDEX proof_ledger_research_run_idx ON public.proof_ledger_events USING btree (research_run_id) WHERE (research_run_id IS NOT NULL)"
+      },
+      {
+        "table_name": "proof_user_decisions",
+        "name": "proof_user_decisions_pkey",
+        "definition": "CREATE UNIQUE INDEX proof_user_decisions_pkey ON public.proof_user_decisions USING btree (decision_id)"
+      },
+      {
+        "table_name": "proof_user_decisions",
+        "name": "proof_user_decisions_session_idx",
+        "definition": "CREATE INDEX proof_user_decisions_session_idx ON public.proof_user_decisions USING btree (session_ref, recorded_at) WHERE (actor_kind = 'anonymous-session'::text)"
+      }
+    ]
+  },
+  "verification": {
+    "verifiedAt": "2026-10-01T18:54:01.261Z",
+    "freshConnection": true,
+    "objects": {
+      "relations": [
+        {
+          "schema": "public",
+          "name": "proof_ledger_decision_ref_idx",
+          "kind": "i"
+        },
+        {
+          "schema": "public",
+          "name": "proof_ledger_events",
+          "kind": "r"
+        },
+        {
+          "schema": "public",
+          "name": "proof_ledger_events_pkey",
+          "kind": "i"
+        },
+        {
+          "schema": "public",
+          "name": "proof_ledger_project_recorded_idx",
+          "kind": "i"
+        },
+        {
+          "schema": "public",
+          "name": "proof_ledger_project_scope_idx",
+          "kind": "i"
+        },
+        {
+          "schema": "public",
+          "name": "proof_ledger_research_run_idx",
+          "kind": "i"
+        },
+        {
+          "schema": "public",
+          "name": "proof_user_decisions",
+          "kind": "r"
+        },
+        {
+          "schema": "public",
+          "name": "proof_user_decisions_pkey",
+          "kind": "i"
+        },
+        {
+          "schema": "public",
+          "name": "proof_user_decisions_session_idx",
+          "kind": "i"
+        }
+      ],
+      "functions": [
+        {
+          "schema": "public",
+          "name": "safeloc_reject_proof_history_mutation",
+          "arguments": "",
+          "returns": "trigger",
+          "security_definer": false,
+          "settings": null,
+          "definition_sha256": "a75e00734163c2517f552d1c897d00e0b227dd9741592ba6d49352a72d7239d5"
+        },
+        {
+          "schema": "public",
+          "name": "safeloc_validate_proof_event_references",
+          "arguments": "",
+          "returns": "trigger",
+          "security_definer": false,
+          "settings": null,
+          "definition_sha256": "42bcce443d79452b159f1a39bba3ae4ecddc57fac2223ad992e82d40d8f00b9d"
+        }
+      ],
+      "triggers": [
+        {
+          "schema": "public",
+          "table_name": "proof_ledger_events",
+          "name": "proof_ledger_events_append_only",
+          "type_bits": 27,
+          "enabled": "O",
+          "function_name": "safeloc_reject_proof_history_mutation",
+          "definition": "CREATE TRIGGER proof_ledger_events_append_only BEFORE DELETE OR UPDATE ON public.proof_ledger_events FOR EACH ROW EXECUTE FUNCTION safeloc_reject_proof_history_mutation()"
+        },
+        {
+          "schema": "public",
+          "table_name": "proof_ledger_events",
+          "name": "proof_ledger_events_no_truncate",
+          "type_bits": 34,
+          "enabled": "O",
+          "function_name": "safeloc_reject_proof_history_mutation",
+          "definition": "CREATE TRIGGER proof_ledger_events_no_truncate BEFORE TRUNCATE ON public.proof_ledger_events FOR EACH STATEMENT EXECUTE FUNCTION safeloc_reject_proof_history_mutation()"
+        },
+        {
+          "schema": "public",
+          "table_name": "proof_ledger_events",
+          "name": "proof_ledger_events_validate_references",
+          "type_bits": 7,
+          "enabled": "O",
+          "function_name": "safeloc_validate_proof_event_references",
+          "definition": "CREATE TRIGGER proof_ledger_events_validate_references BEFORE INSERT ON public.proof_ledger_events FOR EACH ROW EXECUTE FUNCTION safeloc_validate_proof_event_references()"
+        },
+        {
+          "schema": "public",
+          "table_name": "proof_user_decisions",
+          "name": "proof_user_decisions_append_only",
+          "type_bits": 27,
+          "enabled": "O",
+          "function_name": "safeloc_reject_proof_history_mutation",
+          "definition": "CREATE TRIGGER proof_user_decisions_append_only BEFORE DELETE OR UPDATE ON public.proof_user_decisions FOR EACH ROW EXECUTE FUNCTION safeloc_reject_proof_history_mutation()"
+        },
+        {
+          "schema": "public",
+          "table_name": "proof_user_decisions",
+          "name": "proof_user_decisions_no_truncate",
+          "type_bits": 34,
+          "enabled": "O",
+          "function_name": "safeloc_reject_proof_history_mutation",
+          "definition": "CREATE TRIGGER proof_user_decisions_no_truncate BEFORE TRUNCATE ON public.proof_user_decisions FOR EACH STATEMENT EXECUTE FUNCTION safeloc_reject_proof_history_mutation()"
+        }
+      ],
+      "types": [
+        {
+          "schema": "public",
+          "name": "_proof_ledger_events",
+          "kind": "b"
+        },
+        {
+          "schema": "public",
+          "name": "_proof_user_decisions",
+          "kind": "b"
+        },
+        {
+          "schema": "public",
+          "name": "proof_ledger_events",
+          "kind": "c"
+        },
+        {
+          "schema": "public",
+          "name": "proof_user_decisions",
+          "kind": "c"
+        }
+      ],
+      "columns": [
+        {
+          "table_name": "proof_ledger_events",
+          "column_name": "event_id",
+          "udt_name": "uuid",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "column_name": "project_id",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "column_name": "project_reference",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "column_name": "project_name",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "column_name": "scope_kind",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "column_name": "scope_key",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "column_name": "event_type",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "column_name": "effective_at",
+          "udt_name": "timestamptz",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "column_name": "recorded_at",
+          "udt_name": "timestamptz",
+          "is_nullable": "NO",
+          "column_default": "now()"
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "column_name": "research_run_id",
+          "udt_name": "uuid",
+          "is_nullable": "YES",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "column_name": "schema_version",
+          "udt_name": "int4",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "column_name": "policy_version",
+          "udt_name": "int4",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "column_name": "model_version",
+          "udt_name": "text",
+          "is_nullable": "YES",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "column_name": "decision_ref",
+          "udt_name": "uuid",
+          "is_nullable": "YES",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "column_name": "payload",
+          "udt_name": "jsonb",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "column_name": "decision_id",
+          "udt_name": "uuid",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "column_name": "project_id",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "column_name": "project_reference",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "column_name": "project_name",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "column_name": "scope_kind",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "column_name": "scope_key",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "column_name": "actor_kind",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "column_name": "session_ref",
+          "udt_name": "text",
+          "is_nullable": "YES",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "column_name": "actor_ref",
+          "udt_name": "text",
+          "is_nullable": "YES",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "column_name": "decision",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "column_name": "target_ref",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "column_name": "rationale",
+          "udt_name": "text",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "column_name": "decided_at",
+          "udt_name": "timestamptz",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "column_name": "schema_version",
+          "udt_name": "int4",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "column_name": "policy_version",
+          "udt_name": "int4",
+          "is_nullable": "NO",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "column_name": "model_version",
+          "udt_name": "text",
+          "is_nullable": "YES",
+          "column_default": null
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "column_name": "recorded_at",
+          "udt_name": "timestamptz",
+          "is_nullable": "NO",
+          "column_default": "now()"
+        }
+      ],
+      "constraints": [
+        {
+          "table_name": "proof_ledger_events",
+          "name": "proof_ledger_events_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((((decision_ref IS NULL) AND (event_type <> 'accepted-model-input'::text)) OR ((decision_ref IS NOT NULL) AND (event_type = 'accepted-model-input'::text))))"
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "name": "proof_ledger_events_decision_ref_fkey",
+          "type": "f",
+          "validated": true,
+          "definition": "FOREIGN KEY (decision_ref) REFERENCES proof_user_decisions(decision_id)"
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "name": "proof_ledger_events_event_type_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((event_type = ANY (ARRAY['search-assessment'::text, 'evidence-observation'::text, 'project-state-change'::text, 'supersession'::text, 'transmission-proposal'::text, 'accepted-model-input'::text])))"
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "name": "proof_ledger_events_pkey",
+          "type": "p",
+          "validated": true,
+          "definition": "PRIMARY KEY (event_id)"
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "name": "proof_ledger_events_policy_version_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((policy_version > 0))"
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "name": "proof_ledger_events_schema_version_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((schema_version > 0))"
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "name": "proof_ledger_events_scope_kind_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((scope_kind = ANY (ARRAY['campus'::text, 'phase'::text, 'facility'::text, 'unknown'::text])))"
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "name": "proof_user_decisions_actor_kind_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((actor_kind = ANY (ARRAY['anonymous-session'::text, 'authenticated'::text])))"
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "name": "proof_user_decisions_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((((actor_kind = 'anonymous-session'::text) AND (session_ref IS NOT NULL) AND (actor_ref IS NULL)) OR ((actor_kind = 'authenticated'::text) AND (actor_ref IS NOT NULL) AND (session_ref IS NULL))))"
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "name": "proof_user_decisions_decision_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((decision = ANY (ARRAY['accept'::text, 'reject'::text, 'override'::text, 'defer'::text, 'note'::text])))"
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "name": "proof_user_decisions_pkey",
+          "type": "p",
+          "validated": true,
+          "definition": "PRIMARY KEY (decision_id)"
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "name": "proof_user_decisions_policy_version_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((policy_version > 0))"
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "name": "proof_user_decisions_schema_version_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((schema_version > 0))"
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "name": "proof_user_decisions_scope_kind_check",
+          "type": "c",
+          "validated": true,
+          "definition": "CHECK ((scope_kind = ANY (ARRAY['campus'::text, 'phase'::text, 'facility'::text, 'unknown'::text])))"
+        }
+      ],
+      "indexes": [
+        {
+          "table_name": "proof_ledger_events",
+          "name": "proof_ledger_decision_ref_idx",
+          "definition": "CREATE INDEX proof_ledger_decision_ref_idx ON public.proof_ledger_events USING btree (decision_ref) WHERE (decision_ref IS NOT NULL)"
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "name": "proof_ledger_events_pkey",
+          "definition": "CREATE UNIQUE INDEX proof_ledger_events_pkey ON public.proof_ledger_events USING btree (event_id)"
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "name": "proof_ledger_project_recorded_idx",
+          "definition": "CREATE INDEX proof_ledger_project_recorded_idx ON public.proof_ledger_events USING btree (project_id, recorded_at, event_id)"
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "name": "proof_ledger_project_scope_idx",
+          "definition": "CREATE INDEX proof_ledger_project_scope_idx ON public.proof_ledger_events USING btree (project_id, scope_kind, scope_key, recorded_at)"
+        },
+        {
+          "table_name": "proof_ledger_events",
+          "name": "proof_ledger_research_run_idx",
+          "definition": "CREATE INDEX proof_ledger_research_run_idx ON public.proof_ledger_events USING btree (research_run_id) WHERE (research_run_id IS NOT NULL)"
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "name": "proof_user_decisions_pkey",
+          "definition": "CREATE UNIQUE INDEX proof_user_decisions_pkey ON public.proof_user_decisions USING btree (decision_id)"
+        },
+        {
+          "table_name": "proof_user_decisions",
+          "name": "proof_user_decisions_session_idx",
+          "definition": "CREATE INDEX proof_user_decisions_session_idx ON public.proof_user_decisions USING btree (session_ref, recorded_at) WHERE (actor_kind = 'anonymous-session'::text)"
+        }
+      ]
+    },
+    "existingData": {
+      "dossiers": {
+        "rowCount": 3,
+        "rowContentSha256": [
+          "04645b899ea217644f772076ca7bc30177781cc1c587591a976f60cb2c098867",
+          "b0f87f9e480c4003a39fa4daf6e964732bc079cb3d6af96fd6449f3162907627",
+          "cbf1b34b907a16d5427d6053415a2f4d9a39517d72ae0bb0d3d9aefe6c5c2240"
+        ],
+        "aggregateContentSha256": "9b1bde62b9bd49d9a26fda611958c39a3f99cc4f00bbd8f1be9c026127807f9c",
+        "schemaSha256": "d53b015591a8c2758dc36e5f5643395fcfe4588f09351dba7f87fc0772acd594",
+        "columns": [
+          {
+            "column_name": "id",
+            "udt_name": "uuid",
+            "is_nullable": "NO",
+            "column_default": "gen_random_uuid()"
+          },
+          {
+            "column_name": "slug",
+            "udt_name": "text",
+            "is_nullable": "NO",
+            "column_default": null
+          },
+          {
+            "column_name": "name",
+            "udt_name": "text",
+            "is_nullable": "NO",
+            "column_default": null
+          },
+          {
+            "column_name": "version",
+            "udt_name": "text",
+            "is_nullable": "NO",
+            "column_default": "'1'::text"
+          },
+          {
+            "column_name": "coverage_state",
+            "udt_name": "text",
+            "is_nullable": "NO",
+            "column_default": "'review'::text"
+          },
+          {
+            "column_name": "as_of_date",
+            "udt_name": "text",
+            "is_nullable": "YES",
+            "column_default": null
+          },
+          {
+            "column_name": "canonical_data",
+            "udt_name": "jsonb",
+            "is_nullable": "NO",
+            "column_default": null
+          },
+          {
+            "column_name": "created_at",
+            "udt_name": "timestamptz",
+            "is_nullable": "NO",
+            "column_default": "now()"
+          },
+          {
+            "column_name": "updated_at",
+            "udt_name": "timestamptz",
+            "is_nullable": "NO",
+            "column_default": "now()"
+          }
+        ],
+        "constraints": [
+          {
+            "conname": "dossiers_pkey",
+            "contype": "p",
+            "definition": "PRIMARY KEY (id)"
+          },
+          {
+            "conname": "dossiers_slug_key",
+            "contype": "u",
+            "definition": "UNIQUE (slug)"
+          }
+        ]
+      },
+      "research_run_audits": {
+        "rowCount": 6,
+        "rowContentSha256": [
+          "101a3368e787ca26ba983f0f94dc365e9df53461b074d02f2ab16550a6c5e326",
+          "1722704f7e3875fab62eeb001c2b03f4b03dcd5237227b55cd1e41699947851d",
+          "659fd85829978af5ed6b8e5e58a8ad87a7f2d3365c6f2f7e3f1de2b53758f4c5",
+          "6a0b33655abcf003db8d47cbea0ab8885ddca6ec6cc396946a80f916f7b767b1",
+          "98b5355cc6cfed3876de432d869ac64ac24fa7d13a4f3141352c861b90a03f9f",
+          "b4fbec605f22f0f1defdd225e0a70c1b1a6f0f1838e082ccc191e32eeb3f2685"
+        ],
+        "aggregateContentSha256": "7242c931b441fdbcddd0ea0bf9b234a09cd5132ad28a0955947e5b0815f44d0d",
+        "schemaSha256": "fea33e812cfb68625675cd80516e323ae5fe43d1f34c241a5f19bc453023a508",
+        "columns": [
+          {
+            "column_name": "run_id",
+            "udt_name": "uuid",
+            "is_nullable": "NO",
+            "column_default": null
+          },
+          {
+            "column_name": "project_name",
+            "udt_name": "text",
+            "is_nullable": "NO",
+            "column_default": null
+          },
+          {
+            "column_name": "project_location",
+            "udt_name": "text",
+            "is_nullable": "NO",
+            "column_default": null
+          },
+          {
+            "column_name": "research_status",
+            "udt_name": "text",
+            "is_nullable": "NO",
+            "column_default": null
+          },
+          {
+            "column_name": "project_summary",
+            "udt_name": "jsonb",
+            "is_nullable": "NO",
+            "column_default": null
+          },
+          {
+            "column_name": "audit",
+            "udt_name": "jsonb",
+            "is_nullable": "NO",
+            "column_default": null
+          },
+          {
+            "column_name": "finished_at",
+            "udt_name": "timestamptz",
+            "is_nullable": "YES",
+            "column_default": null
+          },
+          {
+            "column_name": "started_at",
+            "udt_name": "timestamptz",
+            "is_nullable": "NO",
+            "column_default": "now()"
+          }
+        ],
+        "constraints": [
+          {
+            "conname": "research_run_audits_pkey",
+            "contype": "p",
+            "definition": "PRIMARY KEY (run_id)"
+          }
+        ]
+      }
+    },
+    "existingDataUnchanged": true,
+    "proofCountsBeforeSmoke": {
+      "proof_user_decisions": 0,
+      "proof_ledger_events": 0
+    },
+    "proofCountsAfterSmoke": {
+      "proof_user_decisions": 0,
+      "proof_ledger_events": 0
+    },
+    "smokeChecks": [
+      {
+        "name": "proof_user_decisions blocks UPDATE",
+        "result": "passed",
+        "sqlState": "P0001"
+      },
+      {
+        "name": "proof_user_decisions blocks DELETE",
+        "result": "passed",
+        "sqlState": "P0001"
+      },
+      {
+        "name": "proof_user_decisions blocks TRUNCATE",
+        "result": "passed",
+        "sqlState": "P0001"
+      },
+      {
+        "name": "proof_ledger_events blocks UPDATE",
+        "result": "passed",
+        "sqlState": "P0001"
+      },
+      {
+        "name": "proof_ledger_events blocks DELETE",
+        "result": "passed",
+        "sqlState": "P0001"
+      },
+      {
+        "name": "proof_ledger_events blocks TRUNCATE",
+        "result": "passed",
+        "sqlState": "P0001"
+      },
+      {
+        "name": "Anonymous decision cannot authorize accepted input",
+        "result": "passed",
+        "sqlState": "P0001"
+      },
+      {
+        "name": "Accepted input requires a decision",
+        "result": "passed",
+        "sqlState": "23514"
+      },
+      {
+        "name": "Authenticated decision must match scope",
+        "result": "passed",
+        "sqlState": "P0001"
+      },
+      {
+        "name": "Unknown decision cannot authorize input",
+        "result": "passed",
+        "sqlState": "P0001"
+      },
+      {
+        "name": "Matching authenticated decision authorizes accepted input",
+        "result": "passed"
+      },
+      {
+        "name": "Supersession requires existing evidence",
+        "result": "passed",
+        "sqlState": "P0001"
+      },
+      {
+        "name": "Supersession cannot cross scope",
+        "result": "passed",
+        "sqlState": "P0001"
+      },
+      {
+        "name": "Same-scope supersession accepted",
+        "result": "passed"
+      }
+    ],
+    "smokeTransactionResult": "ROLLBACK"
+  },
+  "regression": {
+    "typecheck": {
+      "command": "pnpm --filter @workspace/safeloc-diligence-workbench run typecheck",
+      "exitCode": 0
+    },
+    "fullProviderFreeSuite": {
+      "command": "pnpm --filter @workspace/safeloc-diligence-workbench test",
+      "tests": 529,
+      "passed": 529,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "focusedSuite": {
+      "command": "pnpm --filter @workspace/safeloc-diligence-workbench exec tsx --test server/proofLedgerRepository.test.ts server/db.test.ts",
+      "tests": 16,
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "providerSafety": "Fixtures/mocked providers only; DATABASE_URL, TEST_RESEARCH_AUDIT_DATABASE and listed provider keys removed from test processes. No live acceptance commands or browser journeys invoked."
+  },
+  "startup": {
+    "verifiedAt": "2026-10-01T18:55:36.370Z",
+    "workflow": "artifacts/safeloc-diligence-workbench: web",
+    "workflowState": "running",
+    "database": "heliumdb",
+    "hostSha256Prefix": "cac77afa",
+    "requiredSchema": "complete",
+    "missingColumns": [],
+    "versionEndpointHttpStatus": 200
+  },
+  "finalStatus": "CURRENT DEVELOPMENT PROOF LEDGER VERIFIED",
+  "boundaries": {
+    "productionAccessed": false,
+    "databaseAttachmentChanged": false,
+    "runtimeManagedVariablesChanged": false,
+    "productCodeChanged": false,
+    "migrationSqlChanged": false,
+    "providerRequestsMade": false,
+    "task331Started": false,
+    "deployed": false,
+    "gitPushed": false
+  }
+}

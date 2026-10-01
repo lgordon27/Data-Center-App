@@ -41,3 +41,4 @@
 - [One-shot canary persistence](one-shot-canary-persistence.md) — persist request telemetry before assembling a report; a run-once guard makes late report failures unrecoverable.
 - [Offline provider fixtures](offline-provider-fixtures.md) — isolate provider selection from workspace credentials; fresh gates still need simulated time for multi-call fixtures.
 - [Open-use scenario decisions](open-use-scenario-decisions.md) — human financial reviews affect only personal session scenarios; never add sign-in or write human decisions to canonical history.
+- [Development migration receipts](development-migration-receipts.md) — require execution evidence tied to instance identity; database names and endpoint hashes cannot prove historical continuity.

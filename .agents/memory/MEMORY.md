@@ -17,7 +17,7 @@
 - [Evidence semantic boundaries](evidence-semantic-boundaries.md) — keep model acceptance separate and preserve source/UI metadata when rendering session-specific projections.
 - [Source validation pipeline](source-validation-pipeline.md) — explicit passage conflicts outrank provider identity flags; power quantities stay bound to one measure and clause.
 - [Category routing and query attribution](category-query-attribution.md) — route prompts strictly, retain full source audits, and expose size metrics without passage text.
-- [Research audit ledger](research-audit-ledger.md) — enforce run-wide tool budgets before every attempt and count audit stages from the full normalized ledger.
+- [Research audit ledger](research-audit-ledger.md) — enforce run-wide budgets and bind conclusions to the exact run, revision, and limits.
 - [Release interface validation](release-interface-validation.md) — compare content-hash release documents and cache behavior before accepting the public SafeLoc bundle.
 - [Live research acceptance behavior](live-research-acceptance.md) — timeouts before telemetry are diagnostic provider failures, never evidence or executed-query claims.
 - [Physical document-open budget](physical-open-budget.md) — track physical fetches separately from candidate/provider limits and mark later documents not attempted at the hard ceiling.

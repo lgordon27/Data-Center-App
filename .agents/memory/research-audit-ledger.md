@@ -9,6 +9,12 @@ The research run must check remaining shared tool budget before both primary and
 
 **How to apply:** Keep the full normalized ledger for audit-stage counts and source receipts; use the merged run packet for evidence-to-claim resolution and the retained-candidate metric. Require every evidence category item to resolve before marking its category complete, and stream bounded document responses with complete non-public IP classification. Fetch a canonical document once across categories; later category uses must record a reused receipt, not a new open.
 
+Every saved acceptance conclusion must be bound to its exact run ID, source revision, and configured budgets. Treat nearby canaries as separate comparison evidence unless the artifacts prove they are the same run.
+
+**Why:** A prior canary can share the same project and failure pattern while having a different source revision, open limit, and candidate order. Using it as a substitute can create unsupported claims about which sources were discovered, opened, or blocked.
+
+**How to apply:** Before diagnosing candidate order or budget use, match the run ID, source revision, and budget in the run-local receipt. If any link is absent, label candidate rank and per-run outcomes unavailable rather than inferring them from another canary.
+
 For paid research, create the fail-closed audit start inside the single-flight refresh owner immediately before provider work; that same owner alone completes the row. Defer completion until the HTTP response finishes or closes, and treat an early close as a client disconnect while aborting outstanding work.
 
 **Why:** Starting outside the coalesced owner can create duplicate or phantom rows, while completing before the response lifecycle ends can lose delivery timing and disconnect state.

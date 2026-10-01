@@ -1,0 +1,105 @@
+{
+  "fixtureStatus": "illustrative",
+  "policyVersion": 1,
+  "cases": [
+    {
+      "name": "Red Oak",
+      "projectReference": "red-oak",
+      "projectName": "Red Oak Data Center",
+      "scope": { "kind": "facility", "key": "building-1" },
+      "supportedDimensions": [
+        "project-identity",
+        "power-grid-interconnection",
+        "electricity-tariff",
+        "water-cooling",
+        "permitting-entitlement",
+        "construction-phasing",
+        "financing-capital",
+        "tenant-counterparty"
+      ],
+      "conflictingDimensions": ["climate-operational-hazard"],
+      "completeNotFoundDimensions": ["community-local-government", "incentives-taxes"],
+      "incompleteSearchDimensions": [],
+      "notApplicableDimensions": [],
+      "facilityLifecycle": "construction",
+      "powerDelivery": "queue"
+    },
+    {
+      "name": "Stargate Abilene",
+      "projectReference": "stargate-abilene",
+      "projectName": "Stargate Abilene",
+      "scope": { "kind": "phase", "key": "phase-1" },
+      "supportedDimensions": [
+        "project-identity",
+        "power-grid-interconnection",
+        "land-site-civil",
+        "permitting-entitlement",
+        "construction-phasing",
+        "tenant-counterparty"
+      ],
+      "conflictingDimensions": [],
+      "completeNotFoundDimensions": [],
+      "incompleteSearchDimensions": ["water-cooling", "environmental-air-generation"],
+      "notApplicableDimensions": [],
+      "facilityLifecycle": "commissioning",
+      "powerDelivery": "agreement"
+    },
+    {
+      "name": "Non-Texas hyperscale (illustrative)",
+      "projectReference": "non-texas-hyperscale-example",
+      "projectName": "Non-Texas Hyperscale Example",
+      "scope": { "kind": "campus", "key": "example-campus" },
+      "supportedDimensions": [
+        "power-grid-interconnection",
+        "electricity-tariff",
+        "water-cooling",
+        "environmental-air-generation",
+        "climate-operational-hazard",
+        "financing-capital",
+        "incentives-taxes"
+      ],
+      "conflictingDimensions": [],
+      "completeNotFoundDimensions": [],
+      "incompleteSearchDimensions": [],
+      "notApplicableDimensions": [],
+      "facilityLifecycle": "announced",
+      "powerDelivery": "application"
+    },
+    {
+      "name": "Small colocation (illustrative)",
+      "projectReference": "small-colocation-example",
+      "projectName": "Small Colocation Example",
+      "scope": { "kind": "facility", "key": "colo-1" },
+      "supportedDimensions": [
+        "project-identity",
+        "electricity-tariff",
+        "water-cooling",
+        "land-site-civil",
+        "permitting-entitlement",
+        "community-local-government",
+        "climate-operational-hazard",
+        "construction-phasing",
+        "tenant-counterparty"
+      ],
+      "conflictingDimensions": [],
+      "completeNotFoundDimensions": ["financing-capital"],
+      "incompleteSearchDimensions": [],
+      "notApplicableDimensions": ["incentives-taxes"],
+      "facilityLifecycle": "operational",
+      "powerDelivery": "energized"
+    },
+    {
+      "name": "Sparse evidence (illustrative)",
+      "projectReference": "sparse-evidence-example",
+      "projectName": "Sparse Evidence Example",
+      "scope": { "kind": "unknown", "key": "unknown" },
+      "supportedDimensions": [],
+      "conflictingDimensions": [],
+      "completeNotFoundDimensions": ["project-identity"],
+      "incompleteSearchDimensions": ["power-grid-interconnection"],
+      "notApplicableDimensions": [],
+      "facilityLifecycle": null,
+      "powerDelivery": null
+    }
+  ]
+}

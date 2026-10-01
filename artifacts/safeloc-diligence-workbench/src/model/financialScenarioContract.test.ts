@@ -75,6 +75,8 @@ function assertCompleteSnapshot(snapshot: FinancialScenarioSnapshot) {
   assert.ok(snapshot.schedule.length > 0);
   assert.deepEqual(snapshot.schedule, snapshot.model.schedule);
   assert.deepEqual(snapshot.assumptions, snapshot.model.assumptions);
+  assert.equal(snapshot.transmission.mappingPolicyVersion, 1);
+  assert.ok(Array.isArray(snapshot.transmission.acceptedInputs));
   assert.deepEqual(snapshot.recommendation, {
     status: snapshot.model.recommendationStatus,
     blocked: snapshot.model.recommendationBlocked,

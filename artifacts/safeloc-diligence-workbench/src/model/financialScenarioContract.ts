@@ -5,8 +5,17 @@ import {
   type Classification,
   type EvidenceRecord,
 } from "@/model/cashFlowEngine";
+import {
+  applyAcceptedProofInputsToFinancialEvidence,
+  FINANCIAL_TRANSMISSION_POLICY_VERSION,
+  type AppliedFinancialProofInput,
+} from "@/model/financialTransmission";
+import type {
+  ProofLedgerProjection,
+  ProjectIdentity,
+} from "@/model/safelocProofContract";
 
-export const FINANCIAL_MODEL_CONTRACT_VERSION = 1;
+export const FINANCIAL_MODEL_CONTRACT_VERSION = 2;
 
 export type FinancialScenarioId =
   | "synthetic-verified"
@@ -45,6 +54,10 @@ export type FinancialScenarioSnapshot = {
     rawElectricityEscalationPercent: number;
     appliedElectricityEscalationPercent: number;
     classifications: Record<string, Classification>;
+  };
+  transmission: {
+    mappingPolicyVersion: number;
+    acceptedInputs: AppliedFinancialProofInput[];
   };
   assumptions: CashFlowModel["assumptions"];
   returns: {
@@ -126,6 +139,7 @@ function snapshot({
   model,
   providerState,
   eiaData,
+  acceptedInputs,
 }: {
   scenarioId: FinancialScenarioId;
   evidenceBasis: FinancialEvidenceBasis;
@@ -134,6 +148,7 @@ function snapshot({
   model: CashFlowModel;
   providerState: FinancialProviderState;
   eiaData: EiaElectricityData;
+  acceptedInputs: AppliedFinancialProofInput[];
 }): FinancialScenarioSnapshot {
   const standalone = standaloneModel(model);
   const rawElectricityRate = Number(evidence.electricity_cost.numericValue ?? 42);
@@ -180,6 +195,10 @@ function snapshot({
       appliedElectricityEscalationPercent: standalone.assumptions.electricityEscalationRate * 100,
       classifications: classificationsFor(evidence, evidenceBasis),
     },
+    transmission: {
+      mappingPolicyVersion: FINANCIAL_TRANSMISSION_POLICY_VERSION,
+      acceptedInputs,
+    },
     assumptions: standalone.assumptions,
     returns: {
       projectIRR: standalone.projectIRR,
@@ -214,14 +233,29 @@ export function buildFinancialScenarioMatrix({
   eiaData,
   providerState,
   capacityMW,
+  acceptedProofProjection,
+  proofProject,
 }: {
   syntheticEvidence: EvidenceRecord;
   providerEvidence: EvidenceRecord | null;
   eiaData: EiaElectricityData;
   providerState: FinancialProviderState;
   capacityMW: number | null;
+  acceptedProofProjection?: ProofLedgerProjection;
+  proofProject?: ProjectIdentity;
 }): FinancialScenarioMatrix {
-  if (capacityMW === null || !Number.isFinite(capacityMW) || capacityMW <= 0) {
+  if (Boolean(acceptedProofProjection) !== Boolean(proofProject)) {
+    throw new Error("Accepted proof transmission requires both a ledger projection and project identity.");
+  }
+  const proofTransmission = acceptedProofProjection && proofProject
+    ? applyAcceptedProofInputsToFinancialEvidence({
+        evidence: syntheticEvidence,
+        project: proofProject,
+        projection: acceptedProofProjection,
+      })
+    : null;
+  const effectiveCapacityMW = proofTransmission?.acceptedCapacityMW ?? capacityMW;
+  if (effectiveCapacityMW === null || !Number.isFinite(effectiveCapacityMW) || effectiveCapacityMW <= 0) {
     return {
       modelContractVersion: FINANCIAL_MODEL_CONTRACT_VERSION,
       primaryScenarioId: "synthetic-current",
@@ -235,48 +269,73 @@ export function buildFinancialScenarioMatrix({
     };
   }
 
-  const synthetic = calculateCashFlowModel(syntheticEvidence, capacityMW);
+  const effectiveSyntheticEvidence = proofTransmission?.evidence ?? syntheticEvidence;
+  const acceptedSyntheticInputs = proofTransmission?.appliedInputs ?? [];
+  const synthetic = calculateCashFlowModel(effectiveSyntheticEvidence, effectiveCapacityMW);
   const syntheticVerifiedModel = synthetic.baseModel ?? synthetic;
   const syntheticVerified = snapshot({
     scenarioId: "synthetic-verified",
     evidenceBasis: "verified",
     electricityBasis: "synthetic",
-    evidence: syntheticEvidence,
+    evidence: effectiveSyntheticEvidence,
     model: syntheticVerifiedModel,
     providerState,
     eiaData,
+    acceptedInputs: acceptedSyntheticInputs,
   });
   const syntheticCurrent = snapshot({
     scenarioId: "synthetic-current",
     evidenceBasis: "current",
     electricityBasis: "synthetic",
-    evidence: syntheticEvidence,
+    evidence: effectiveSyntheticEvidence,
     model: synthetic,
     providerState,
     eiaData,
+    acceptedInputs: acceptedSyntheticInputs,
   });
 
   let eiaVerified: FinancialScenarioSnapshot | null = null;
   let eiaCurrent: FinancialScenarioSnapshot | null = null;
   if (providerEvidence && (providerState === "live" || providerState === "cached")) {
-    const provider = calculateCashFlowModel(providerEvidence, capacityMW);
+    let effectiveProviderEvidence = providerEvidence;
+    let acceptedProviderInputs: AppliedFinancialProofInput[] = [];
+    if (acceptedProofProjection && proofProject) {
+      const proofOverlay = applyAcceptedProofInputsToFinancialEvidence({
+        evidence: providerEvidence,
+        project: proofProject,
+        projection: acceptedProofProjection,
+      });
+      acceptedProviderInputs = proofOverlay.appliedInputs.filter(
+        (input) => input.inputId !== "electricity_cost" && input.inputId !== "electricity_escalation",
+      );
+      effectiveProviderEvidence = {
+        ...proofOverlay.evidence,
+        // EIA remains a statewide electricity-price sensitivity, not a
+        // substitute for the accepted project tariff in the primary case.
+        electricity_cost: providerEvidence.electricity_cost,
+        electricity_escalation: providerEvidence.electricity_escalation,
+      };
+    }
+    const provider = calculateCashFlowModel(effectiveProviderEvidence, effectiveCapacityMW);
     eiaVerified = snapshot({
       scenarioId: "eia-verified",
       evidenceBasis: "verified",
       electricityBasis: "eia",
-      evidence: providerEvidence,
+      evidence: effectiveProviderEvidence,
       model: provider.baseModel ?? provider,
       providerState,
       eiaData,
+      acceptedInputs: acceptedProviderInputs,
     });
     eiaCurrent = snapshot({
       scenarioId: "eia-current",
       evidenceBasis: "current",
       electricityBasis: "eia",
-      evidence: providerEvidence,
+      evidence: effectiveProviderEvidence,
       model: provider,
       providerState,
       eiaData,
+      acceptedInputs: acceptedProviderInputs,
     });
   }
 

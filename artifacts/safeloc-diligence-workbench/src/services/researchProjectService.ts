@@ -15,6 +15,11 @@ import {
   researchContentRejectionReason,
 } from "@/data/researchContentQuality.mjs";
 import { assessResearchProjectIdentity } from "@/data/researchIdentity.mjs";
+import {
+  getPublicResearchErrorType,
+  parseBoundedRetryAfter,
+  PublicResearchRequestError,
+} from "@/services/publicResearchPresentation";
 
 function normalizeIdentityText(value: string): string {
   return value
@@ -693,7 +698,7 @@ export type ResearchCacheMetadata = {
   validationPolicyVersion?: number;
   researchPolicyVersion?: number;
   modelVersion?: string;
-  errorType?: "quota-exhausted" | "provider-rate-limit" | "provider-429" | "authentication" | "timeout" | "malformed-response" | "request-limit" | "not-configured" | "upstream";
+  errorType?: "quota-exhausted" | "provider-rate-limit" | "provider-429" | "authentication" | "timeout" | "malformed-response" | "request-limit" | "not-configured" | "upstream" | "research-capacity-busy" | "research-admission-unavailable";
 };
 
 export type ResearchTelemetryMode = "current-live" | "historical-retained";
@@ -1293,7 +1298,7 @@ function parseResearchCache(value: unknown): ResearchCacheMetadata | undefined {
   const states = ["fresh", "recent", "stale", "expired", "updated"] as const;
   const refreshStatuses = ["idle", "running", "completed", "failed"] as const;
   if (!states.includes(value.state as typeof states[number]) || !refreshStatuses.includes(value.refreshStatus as typeof refreshStatuses[number])) return undefined;
-  const errorTypes = ["quota-exhausted", "provider-rate-limit", "provider-429", "authentication", "timeout", "malformed-response", "request-limit", "not-configured", "upstream"] as const;
+  const errorTypes = ["quota-exhausted", "provider-rate-limit", "provider-429", "authentication", "timeout", "malformed-response", "request-limit", "not-configured", "upstream", "research-capacity-busy", "research-admission-unavailable"] as const;
   return {
     key: value.key,
     state: value.state as ResearchCacheMetadata["state"],
@@ -2211,15 +2216,22 @@ async function requestResearchProject(
         };
       }
       if (response.status === 504) throw new ResearchTimeoutError();
-      const message = isRecord(body) && isNonEmptyString(body.error) ? body.error : "Project research is unavailable. Try again or use the curated case.";
-      throw new Error(message);
+      const errorType = getPublicResearchErrorType(body);
+      const capacityRejection = response.status === 429
+        || errorType === "research-capacity-busy"
+        || errorType === "research-admission-unavailable";
+      throw new PublicResearchRequestError(
+        capacityRejection ? "busy" : "failed",
+        capacityRejection ? parseBoundedRetryAfter(response.headers.get("retry-after")) : null,
+      );
     }
     return parseResponse(body, { name, location, knownData });
   } catch (error) {
     if (signal?.aborted) throw new ResearchCancelledError();
     if (error instanceof ResearchTimeoutError) throw error;
+    if (error instanceof PublicResearchRequestError) throw error;
     if (error instanceof Error && error.name === "AbortError") throw new ResearchTimeoutError();
-    throw error instanceof Error ? error : new Error("Project research is unavailable. Try again or use the curated case.");
+    throw new PublicResearchRequestError("failed");
   } finally {
     clearTimeout(timeout);
     signal?.removeEventListener("abort", abortFromCaller);
@@ -2260,10 +2272,13 @@ export async function checkResearchStatus(cacheKey: string, fetchImpl: typeof fe
   });
   const body = await response.json().catch(() => null);
   if (!response.ok || !isRecord(body)) {
-    throw new Error(isRecord(body) && isNonEmptyString(body.error) ? body.error : "Research update status is unavailable.");
+    throw new PublicResearchRequestError(
+      response.status === 429 ? "busy" : "failed",
+      response.status === 429 ? parseBoundedRetryAfter(response.headers.get("retry-after")) : null,
+    );
   }
   const researchCache = parseResearchCache(body.researchCache);
-  if (!researchCache) throw new Error("Research update status returned an invalid response.");
+  if (!researchCache) throw new PublicResearchRequestError("failed");
   return {
     researchCache,
     ...(isRecord(body.result) ? { result: parseResponse({ ...body.result, researchCache: body.researchCache }) } : {}),

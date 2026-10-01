@@ -124,7 +124,7 @@ test.describe("Financial Impact Chain", () => {
     await expect(page.getByTestId("panel-decision-context-treatment")).toContainText("Source provenance:");
     await expect(page.getByTestId("panel-decision-context-treatment")).toContainText("Current classification:");
     await expect(page.getByTestId("panel-decision-context-treatment")).toContainText("Financial role:");
-    await expect(page.getByTestId("model-input-assumption-electricity_cost")).toContainText("Synthetic default — not dossier evidence");
+    await expect(page.getByTestId("model-input-assumption-electricity_cost")).toContainText("Illustrative assumption");
 
     await page.getByRole("tab", { name: "Overview" }).click();
     await expect(page.getByTestId("text-current-irr-materiality")).toContainText("%");
@@ -133,7 +133,7 @@ test.describe("Financial Impact Chain", () => {
     await expect(page.getByTestId("panel-impact-chain")).toBeHidden();
     await expect(page.getByTestId("panel-irr-waterfall")).toBeVisible();
     await expect(page.getByTestId("waterfall-methodology")).toContainText(/weaker evidence/i);
-    await expect(page.getByTestId("model-input-provenance-electricity_cost")).toContainText("Synthetic default — not dossier evidence");
+    await expect(page.getByTestId("model-input-provenance-electricity_cost")).toContainText("Illustrative assumption");
 
     await page.getByRole("tab", { name: "Assumptions" }).click();
     await page.getByTestId("disclosure-full-model-detail").locator(":scope > summary").click();
@@ -167,7 +167,7 @@ test.describe("Financial Impact Chain", () => {
     await page.getByTestId("tab-transmission").click();
     await page.getByRole("tab", { name: "Key Drivers" }).click();
     await expect(page.getByTestId("impact-chain-row-electricity_cost")).toContainText("Missing");
-    await expect(page.getByTestId("model-input-provenance-electricity_cost")).toContainText("Synthetic default — not dossier evidence");
+    await expect(page.getByTestId("model-input-provenance-electricity_cost")).toContainText("Illustrative assumption");
   });
 
   test("shows dossier origin and session overrides separately from source classification", async ({ page }) => {
@@ -189,7 +189,7 @@ test.describe("Financial Impact Chain", () => {
     await page.getByRole("tab", { name: "Assumptions" }).click();
 
     const provenance = page.getByTestId("model-input-assumption-customer_concentration");
-    await expect(provenance).toContainText("Dossier evidence");
+    await expect(provenance).toContainText("Sourced");
     await expect(provenance).toContainText("Session override");
     await expect(provenance).toContainText("Source classification: Missing Evidence");
   });

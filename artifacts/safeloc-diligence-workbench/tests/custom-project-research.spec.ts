@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { blockUnmockedProviderRequests } from "./offline-provider-reads";
 import { readFileSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { EventEmitter } from "node:events";
@@ -387,6 +388,7 @@ function acceptanceResponse() {
 
 test.describe("custom project research", () => {
   test.beforeEach(async ({ page }) => {
+    await blockUnmockedProviderRequests(page);
     await page.route("**/api/research-project", async (route) => {
       await new Promise((resolve) => setTimeout(resolve, 150));
       const request = route.request().postDataJSON() as { name: string; location: string; focusIds?: string[]; forceRefresh?: boolean };
@@ -518,7 +520,7 @@ test.describe("custom project research", () => {
     await expect(findings.getByTestId("retained-research-findings-audit")).toContainText("3 shown of 3 retained findings");
     await expect(findings).toContainText("The Phase One utility interconnection was announced at 180 MW");
     await expect(findings).not.toContainText("Dayton, Ohio");
-    await expect(findings).toContainText("Reporting date:");
+    await expect(findings).toContainText("Source publication date:");
     await expect(findings).toContainText("Accessed:");
 
     await expect(page.getByTestId("custom-research-banner")).not.toContainText("operating 480 MW");
@@ -645,7 +647,8 @@ test.describe("custom project research", () => {
     const searchAudit = page.getByTestId("research-search-audit");
     await expect(searchAudit).not.toHaveAttribute("open", "");
     await searchAudit.locator("summary").click();
-    await expect(searchAudit).toContainText("Atlas observed query 32");
+    await expect(searchAudit).toContainText("Individual query details remain in the restricted research audit.");
+    await expect(searchAudit).not.toContainText("Atlas observed query 32");
     await searchAudit.locator("summary").click();
     await expect(page.getByTestId("evidence-source-status-water_consumption")).toHaveText("No validated source");
     await expect(electricitySummary.locator("button, select, input, textarea, a")).toHaveCount(0);
@@ -707,9 +710,9 @@ test.describe("custom project research", () => {
 
     const handoff = page.getByTestId("research-handoff-summary");
     await expect(handoff).toBeVisible();
-    await expect(page.getByTestId("research-handoff-status")).toContainText("Final status: not recorded");
-    await expect(handoff.getByTestId("research-telemetry-status")).toContainText("Historical retained/cached research telemetry");
-    await expect(handoff.getByTestId("research-telemetry-status")).toContainText("Physical opens: 2/24 used · 22 remaining");
+    await expect(page.getByTestId("research-handoff-status")).toContainText("Final status: Partial results available");
+    await expect(handoff.getByTestId("research-telemetry-status")).toContainText("Previously retained research");
+    await expect(handoff.getByTestId("research-coverage-summary")).toContainText("2 of 24 source opens used; 22 remaining");
     await expect(page.getByTestId("research-handoff-details")).not.toHaveAttribute("open", "");
     await expect(page.getByTestId("research-search-audit")).not.toHaveAttribute("open", "");
     await expect(page.getByTestId("research-handoff-proposals")).toContainText("5");
@@ -718,21 +721,19 @@ test.describe("custom project research", () => {
     await expect(page.getByTestId("research-handoff-context")).toContainText("2 related/comparable context");
 
     await page.getByTestId("research-handoff-details").click();
-    await expect(handoff).toContainText("2 identified · 1 official domains established");
-    await expect(handoff).toContainText("Dallas County was identified, but an official domain was not established");
-    await expect(handoff).toContainText("1 physical opens · 1 reused receipts · 2 retained passages");
-    await expect(handoff).toContainText("Physical-open budget: 2/24 used · 22 remaining");
+    await expect(handoff).toContainText("Retained passages: 2 across 1 reviewed source records");
+    await expect(handoff).toContainText("2 of 24 source opens used; 22 remaining");
+    await expect(handoff).toContainText("A blocked, failed, or unrun category is incomplete");
+    await expect(handoff).not.toContainText("official domains established");
 
     const audit = page.getByTestId("research-search-audit");
     await audit.locator(":scope > summary").click();
-    const category = page.getByTestId("research-category-power-grid");
-    await expect(category).toContainText("authoritative-primary");
-    await expect(category).toContainText("Project Atlas site:ercot.com tariff");
-    await expect(category).toContainText("unrestricted-exact-project-fallback");
-    await expect(category).toContainText("Project Atlas exact project grid filing");
-    await expect(category).toContainText("Returned domains: ercot.com · cityofirving.org");
-    await expect(category).toContainText("2 receipts · 1 physical opens · 2 retained passages");
-    await expect(category).toContainText("Dallas County · domain not established");
+    const category = page.getByTestId("public-research-category-power-grid");
+    await expect(category).toContainText("Partial results available");
+    await expect(category).toContainText("Retained passages: 2");
+    await expect(audit).toContainText("Individual query details remain in the restricted research audit");
+    await expect(audit).not.toContainText("Project Atlas site:ercot.com tariff");
+    await expect(audit).not.toContainText("Returned domains:");
 
     if (testInfo.project.name.includes("mobile")) {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -1036,7 +1037,7 @@ test.describe("custom project research", () => {
     await page.getByTestId("input-custom-project-location").fill("Cook County, Illinois");
     await page.getByTestId("button-submit-custom-project").click();
     await expect(page).toHaveURL(/#analysis$/);
-    await expect(page.getByTestId("custom-research-banner")).toContainText("RESEARCH TIMED OUT");
+    await expect(page.getByTestId("custom-research-banner")).toContainText("Research failed safely");
     await expect(page.getByTestId("custom-research-retry")).toBeVisible();
     expect(calls).toBe(1);
     await page.getByTestId("custom-research-retry").click();

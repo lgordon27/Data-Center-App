@@ -46,6 +46,11 @@ import {
   getResearchStatusPresentation,
   type KnownProjectData,
 } from "@/services/researchProjectService";
+import {
+  getPublicResearchFailure,
+  getPublicResearchPresentation,
+} from "@/services/publicResearchPresentation";
+import { boundedCooldownUntil, storeCooldownUntil } from "@/services/clientCooldown";
 import { trackEvent } from "@/services/analytics";
 import type { ImpactRole } from "@/data/evidenceImpactRoles";
 import type { CompanyKey, ProjectSelectionContext } from "@/data/companyExposure";
@@ -318,13 +323,30 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
     researchStatus: project.researchStatus,
     eligibleProposalCount: Object.keys(project.researchProposals ?? {}).length,
   });
+  const publicPresentation = getPublicResearchPresentation({
+    outcome: project.researchOutcome,
+    researchMode: project.researchMode,
+    researchStatus: project.researchStatus,
+    categories: project.researchAudit?.categories ?? [],
+    evidenceCount: Object.values(project.researchProposals ?? {}).length,
+  });
+  const publicHeaderPresentation = getPublicResearchPresentation({
+    outcome: project.researchOutcome,
+    researchMode: project.researchMode,
+    researchStatus: project.researchStatus,
+    categories: project.researchAudit?.categories ?? [],
+    evidenceCount: Object.values(project.researchProposals ?? {}).length,
+  });
   const [customProjectOpen, setCustomProjectOpen] = useState(false);
   const [customProjectPrefill, setCustomProjectPrefill] = useState<{ name: string; location: string; knownData?: KnownProjectData } | null>(null);
   const [customProjectSelection, setCustomProjectSelection] = useState<{ company: CompanyKey | null; selection: ProjectSelectionContext | null } | null>(null);
   const dialogReturnFocus = useRef<HTMLElement | null>(null);
   const activeResearchRequestKey = useRef<string | null>(null);
   const activeResearchCancel = useRef<(() => void) | null>(null);
+  const activeResearchRequestContext = useRef<{ name: string; location: string; knownData?: KnownProjectData } | null>(null);
   const activeResearchSelection = useRef<{ company: CompanyKey | null; selection: ProjectSelectionContext | null } | null>(null);
+  const [researchFailureKind, setResearchFailureKind] = useState<"busy" | "failed" | null>(null);
+  const [researchCooldownUntil, setResearchCooldownUntil] = useState<number | null>(null);
   const previousRoute = useRef(route);
   const isHome = route === "home";
   const canonicalIdentity = project.canonicalDossier?.canonicalData.identity;
@@ -335,6 +357,15 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
     : selectedProjectContext?.projectName === projectName
       ? selectedProjectContext.operator
       : undefined;
+  useEffect(() => {
+    if (!researchCooldownUntil) return undefined;
+    storeCooldownUntil("safeloc-custom-research-cooldown", researchCooldownUntil);
+    const timer = window.setTimeout(() => {
+      setResearchCooldownUntil(null);
+      storeCooldownUntil("safeloc-custom-research-cooldown", null);
+    }, Math.max(0, researchCooldownUntil - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [researchCooldownUntil]);
   const openCustomProject = (event?: Event) => {
     dialogReturnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const detail = event instanceof CustomEvent ? event.detail as { name?: string; location?: string; knownData?: KnownProjectData; company?: CompanyKey | null; selection?: ProjectSelectionContext | null } : undefined;
@@ -387,7 +418,7 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
         </div>
         <div className={`hidden flex-1 items-center justify-center lg:flex ${isHome ? "opacity-0" : ""}`} aria-hidden={isHome}>
           <div className="text-center">
-              <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-[#b9d43a]">{project.kind === "custom" ? `Custom research Beta · ${researchPresentation.proposalReview ? "proposal review" : researchPresentation.label.replace(/^Research /, "").toLowerCase()}` : project.canonicalDossier ? "Maintainer-reviewed canonical dossier" : "Curated starting case"}</div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-[#b9d43a]">{project.kind === "custom" ? `Custom research Beta · ${researchPresentation.proposalReview ? "proposal review" : publicHeaderPresentation.label}` : project.canonicalDossier ? "Maintainer-reviewed canonical dossier" : "Curated starting case"}</div>
               <div data-testid="header-project-identity" className="mt-1 text-[10px] text-[#96a4ad]">{projectName}{projectOperator ? ` · ${projectOperator}` : ""} / {projectLocation} · Evidence before conclusion</div>
           </div>
         </div>
@@ -451,9 +482,12 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
         closeCustomProject();
         window.dispatchEvent(new Event("safeloc-return-to-curated"));
       }}
-      onStart={(provisional, requestKey, cancel) => {
+      onStart={(provisional, requestKey, cancel, requestContext) => {
         activeResearchRequestKey.current = requestKey;
         activeResearchCancel.current = cancel;
+        activeResearchRequestContext.current = requestContext ?? null;
+        setResearchFailureKind(null);
+        setResearchCooldownUntil(null);
         const selection = customProjectSelection;
         activeResearchSelection.current = selection;
         loadCustomProject(provisional, selection?.company);
@@ -463,6 +497,8 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
       onSuccess={(research, requestKey) => {
         if (activeResearchRequestKey.current !== requestKey) return;
         activeResearchCancel.current = null;
+        setResearchFailureKind(null);
+        setResearchCooldownUntil(null);
         loadCustomProject(research, activeResearchSelection.current?.company, activeResearchSelection.current?.selection);
         trackEvent("research_handoff_completed", {
           company: customProjectSelection?.company?.toLowerCase() ?? "none",
@@ -477,6 +513,10 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
       onResearchError={(provisional, requestError, requestKey) => {
         if (activeResearchRequestKey.current !== requestKey) return;
         activeResearchCancel.current = null;
+        const failure = getPublicResearchFailure(requestError);
+        setResearchFailureKind(failure.kind);
+        const cooldown = boundedCooldownUntil(failure.retryAfterSeconds);
+        setResearchCooldownUntil(cooldown);
         const timedOut = requestError instanceof Error && requestError.name === "ResearchTimeoutError";
         const cancelled = requestError instanceof Error && requestError.name === "ResearchCancelledError";
         loadCustomProject({
@@ -488,12 +528,19 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
               ? "Research was cancelled. The submitted project remains open with Missing Evidence; retry the same project when ready."
               : timedOut
               ? "The 90-second research deadline was reached. Valid findings were retained where available; retry the same project to continue."
-              : "The research provider did not return a usable result. The project is still open with Missing Evidence; retry the same project.",
+              : failure.message,
           },
         }, activeResearchSelection.current?.company, activeResearchSelection.current?.selection);
       }}
     />
-    <CustomResearchBanner onCancel={() => activeResearchCancel.current?.()} />
+    <CustomResearchBanner
+      onCancel={() => activeResearchCancel.current?.()}
+      onRetry={() => window.dispatchEvent(new CustomEvent("safeloc-open-custom-project", {
+        detail: activeResearchRequestContext.current ?? { name: project.name, location: project.location },
+      }))}
+      failureKind={researchFailureKind}
+      cooldownUntil={researchCooldownUntil}
+    />
     </>
   );
 }
@@ -506,12 +553,19 @@ export function ShellAside({ screen, metrics, onNavigate, onReset }: { screen: S
     researchStatus: project.researchStatus,
     eligibleProposalCount: Object.keys(project.researchProposals ?? {}).length,
   });
+  const publicPresentation = getPublicResearchPresentation({
+    outcome: project.researchOutcome,
+    researchMode: project.researchMode,
+    researchStatus: project.researchStatus,
+    categories: project.researchAudit?.categories ?? [],
+    evidenceCount: Object.values(project.researchProposals ?? {}).length,
+  });
   return (
     <aside className="hidden w-[246px] shrink-0 border-r border-[#d9e0e4] bg-[#eef2f1] px-5 py-7 lg:block">
       <SectionKicker>Active mandate</SectionKicker>
       <div className="mb-7">
          <div className="font-mono text-[11px] font-bold text-[#122232]">{project.kind === "custom" ? "CUSTOM RESEARCH / BETA" : project.canonicalDossier ? "CANONICAL / REVIEWED" : "CURATED STARTING CASE"}</div>
-          <div className="mt-1 text-xs leading-5 text-[#52616b]">{project.kind === "custom" ? researchPresentation.proposalReview ? "AI research proposal · human acceptance required" : researchPresentation.state === "incomplete-technical-limitation" ? "Research incomplete · technical limitation" : researchPresentation.state === "complete-no-eligible-evidence" ? "Research complete · no eligible evidence" : researchPresentation.label : project.canonicalDossier ? "Maintainer-reviewed PostgreSQL dossier" : "AI infrastructure diligence case"}</div>
+          <div className="mt-1 text-xs leading-5 text-[#52616b]">{project.kind === "custom" ? researchPresentation.proposalReview ? "AI research proposal · human acceptance required" : publicPresentation.label : project.canonicalDossier ? "Maintainer-reviewed PostgreSQL dossier" : "AI infrastructure diligence case"}</div>
       </div>
       <div className="mb-8 rounded-lg border border-[#cbd8d4] bg-[#f9faf8] p-3.5">
         <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#60707d]">
@@ -558,59 +612,45 @@ export function ShellAside({ screen, metrics, onNavigate, onReset }: { screen: S
   );
 }
 
-export function CustomResearchBanner({ onCancel }: { onCancel?: () => void }) {
+export function CustomResearchBanner({
+  onCancel,
+  onRetry,
+  failureKind,
+  cooldownUntil,
+}: {
+  onCancel?: () => void;
+  onRetry?: () => void;
+  failureKind?: "busy" | "failed" | null;
+  cooldownUntil?: number | null;
+}) {
   const { project } = useDiligence();
   if (project.kind !== "custom") return null;
-  const researchPresentation = getResearchStatusPresentation({
-    outcome: project.researchOutcome,
-    researchMode: project.researchMode,
-    researchStatus: project.researchStatus,
-    eligibleProposalCount: Object.keys(project.researchProposals ?? {}).length,
-  });
-  const isDefaultAssumptions = researchPresentation.mode === "default-assumptions";
-  const isPartialResearch = researchPresentation.mode === "partial-public-source";
-  const isResearchIncomplete = researchPresentation.mode === "research-incomplete";
   const isResearching = project.researchStatus === "researching";
   const isTimedOut = project.researchStatus === "timed-out";
   const isFailed = project.researchStatus === "failed";
   const isCancelled = project.researchStatus === "cancelled";
-  const canRetry = isTimedOut || isFailed || isCancelled || isResearchIncomplete;
+  const canRetry = isTimedOut || isFailed || isCancelled || project.researchMode === "research-incomplete" || failureKind === "busy";
+  const publicPresentation = getPublicResearchPresentation({
+    outcome: project.researchOutcome,
+    researchMode: project.researchMode,
+    researchStatus: project.researchStatus,
+    categories: project.researchAudit?.categories ?? [],
+    evidenceCount: Object.values(project.researchProposals ?? {}).length,
+  });
+  const coolingDown = Boolean(cooldownUntil && cooldownUntil > Date.now());
   return (
     <aside data-testid="custom-research-banner" role="note" className="mb-5 flex items-start gap-3 rounded-lg border-2 border-[#f1cb8b] bg-[#fff8e9] px-4 py-3 text-[#6f460e]">
       <TriangleAlert aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
       <div className="min-w-0 flex-1 text-[11px] leading-5">
         <strong className="font-semibold">
-          {isResearching
-            ? "RESEARCH IN PROGRESS"
-            : isTimedOut
-              ? "RESEARCH TIMED OUT"
-             : isFailed
-                ? "RESEARCH PROVIDER FAILURE"
-                : isCancelled
-                  ? "RESEARCH CANCELLED"
-                : isDefaultAssumptions
-                  ? "Default assumptions · AI research unavailable"
-                  : isResearchIncomplete
-                    ? "RESEARCH INCOMPLETE · no eligible sources"
-                    : isPartialResearch
-                      ? "Partial public-source research"
-                      : "Custom research · not yet accepted into the model"}: {project.name}.
+          {failureKind === "busy" ? "Provider busy / rate-limited" : publicPresentation.label}: {project.name}.
         </strong>{" "}
         {isResearching
-          ? "The submitted project is open now while bounded public-source research continues. Current evidence is not accepted into the model."
-             : isTimedOut
-            ? project.researchError?.message ?? "The 90-second research deadline was reached. Valid findings remain visible and unresolved items stay Missing Evidence."
-            : isFailed
-              ? project.researchError?.message ?? "The provider did not return a usable result. Valid findings remain visible and unresolved items stay Missing Evidence."
-                : isCancelled
-                  ? project.researchError?.message ?? "Research was cancelled. The submitted project remains open with Missing Evidence."
-              : isDefaultAssumptions
-                ? "All modeled evidence remains Missing Evidence. Directory facts provide identity context only and do not count as SafeLoc evidence."
-                : isResearchIncomplete
-                  ? "Generated content is retained only under Unverified leads. It cannot become a model input until a source-backed proposal passes containment and a reviewer explicitly accepts it."
-                  : isPartialResearch
-                    ? "Credible public-source passages are retained, while unsupported categories remain Missing Evidence. Financial outputs remain synthetic and no return conclusion is presented."
-                    : "Research findings are proposals only. Loading, reviewing, refreshing, and caching them cannot change accepted economics; only explicit acceptance of an eligible proposal can do so."} Financial outputs remain synthetic assumptions scaled to the displayed capacity.
+          ? "Bounded public-source research is in progress. Findings are not accepted into the financial model."
+          : failureKind === "busy"
+            ? "Try again later. Capacity is not guaranteed, and no place in a queue is reserved."
+            : publicPresentation.explanation}
+        {" "}Financial outputs remain illustrative assumptions and are not evidence of project economics.
           {isResearching && onCancel && (
             <button
               type="button"
@@ -625,12 +665,14 @@ export function CustomResearchBanner({ onCancel }: { onCancel?: () => void }) {
           <button
             type="button"
               data-testid="custom-research-retry"
+            disabled={coolingDown}
             className="ml-3 mt-2 inline-flex items-center gap-1 rounded border border-[#9c6c20] px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-[0.08em] hover:bg-[#f7e5bc]"
-            onClick={() => window.dispatchEvent(new CustomEvent("safeloc-open-custom-project", { detail: { name: project.name, location: project.location } }))}
+            onClick={onRetry}
           >
-            Retry same project
+            {coolingDown ? "Retry later" : "Retry same project"}
           </button>
         )}
+        {coolingDown && <p data-testid="research-retry-cooldown" role="status" className="mt-2 text-[10px]">Wait before retrying; capacity may still be unavailable afterward.</p>}
       </div>
     </aside>
   );

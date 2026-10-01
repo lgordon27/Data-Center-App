@@ -195,13 +195,26 @@ test("normalizes transport failures and abort timeouts", async () => {
 test("uses a safe manual-review message for a rate-limited response", async () => {
   const result = await analyzeEvidence(item, project, async () => new Response(JSON.stringify({
     error: "provider-internal detail should not be shown",
-  }), { status: 429 }));
+  }), { status: 429, headers: { "retry-after": "45" } }));
 
   assert.deepEqual(result, {
     status: "error",
-    message: "AI analysis request limit reached. Please wait before trying again and classify manually.",
+    message: "AI analysis is rate-limited. Wait before trying again.",
+    capacity: "rate-limited",
+    retryAfterSeconds: 45,
   });
   assert.doesNotMatch(result.message, /provider-internal detail/);
+});
+
+test("distinguishes the daily spend cap without exposing its response body", async () => {
+  const result = await analyzeEvidence(item, project, async () => new Response(JSON.stringify({
+    error: "Daily research capacity reached. Please try again tomorrow.",
+  }), { status: 429 }));
+  assert.deepEqual(result, {
+    status: "error",
+    message: "Daily AI analysis capacity is reached. Try again later.",
+    capacity: "daily-capacity",
+  });
 });
 
 test("makes a fresh request for every analysis", async () => {

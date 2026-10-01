@@ -67,7 +67,7 @@ test.describe("Batch 3 Financial Transmission", () => {
     const modeledTreatment = page.getByTestId("driver-treatment-site_hazard_exposure");
     const modeledProvenance = page.getByTestId("model-input-provenance-site_hazard_exposure");
     const modeledDriver = page.getByTestId("impact-chain-row-site_hazard_exposure");
-    await expect(modeledProvenance).toContainText("Synthetic default — not dossier evidence");
+    await expect(modeledProvenance).toContainText("Illustrative assumption");
     await expect(modeledProvenance).not.toContainText("Verified Evidence");
     await expect(modeledDriver).not.toContainText("Verified Evidence");
     await expect(modeledTreatment).toContainText("Source classification: Not verified in dossier");

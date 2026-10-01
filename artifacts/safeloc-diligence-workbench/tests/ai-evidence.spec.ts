@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { blockUnmockedProviderRequests } from "./offline-provider-reads";
 
 const responseFor = (classification: string, reasoning: string, downgradeSuggested = false) => ({
   classification,
@@ -8,6 +9,7 @@ const responseFor = (classification: string, reasoning: string, downgradeSuggest
 
 test.describe("AI evidence classification", () => {
   test.beforeEach(async ({ page }) => {
+    await blockUnmockedProviderRequests(page);
     await page.addInitScript(() => {
       if (!sessionStorage.getItem("safeloc:ai-evidence-test-initialized")) {
         localStorage.clear();
@@ -126,7 +128,8 @@ test.describe("AI evidence classification", () => {
     await page.goto("/#evidence");
     const row = page.getByTestId("row-evidence-electricity_cost");
     await row.getByTestId("button-analyze-ai-electricity_cost").click();
-    await expect(row.getByTestId("text-ai-raw-response-electricity_cost")).toContainText("not structured");
+    await expect(row.getByTestId("ai-assessment-electricity_cost")).toContainText("Could not parse structured assessment. Review manually.");
+    await expect(row.getByTestId("ai-assessment-electricity_cost")).not.toContainText("not structured");
      await expect(row.locator("[data-testid^='ai-trust-context-']")).toHaveCount(0);
      await expect(row.locator("[data-testid^='ai-trust-source-']")).toHaveCount(0);
     await page.reload();

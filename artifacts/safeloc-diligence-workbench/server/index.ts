@@ -12,7 +12,12 @@ import { handleDossiersRequest, handleDossierRequest } from "./dossierApi.js";
 import { handleResearchAuditDownload } from "./researchAuditApi.js";
 import { getResearchAuditRepository } from "./researchAuditRepository.js";
 import type { ResearchRunAudit } from "./researchAuditRepository.js";
-import { createPublicRateLimiter, createDailySpendGuard, evidenceSpendConfig } from "./publicLimits.js";
+import {
+  createPublicRateLimiter,
+  createDailySpendGuard,
+  createExclusiveResearchAdmission,
+  evidenceSpendConfig,
+} from "./publicLimits.js";
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
 const artifactDir = path.resolve(serverDir, "..");
@@ -28,6 +33,7 @@ let publicControls: Promise<{
   rateLimiter: ReturnType<typeof createPublicRateLimiter>;
   spendGuard: ReturnType<typeof createDailySpendGuard>;
 }> | undefined;
+let researchAdmission: Promise<ReturnType<typeof createExclusiveResearchAdmission>> | undefined;
 function getPublicControls() {
   return publicControls ??= (async () => {
     if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required for public safety controls.");
@@ -40,6 +46,115 @@ function getPublicControls() {
     publicControls = undefined;
     throw error;
   });
+}
+
+function getResearchAdmission() {
+  return researchAdmission ??= (async () => {
+    if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required for public research admission.");
+    const { pool } = await import("./db.js");
+    return createExclusiveResearchAdmission(pool);
+  })().catch(error => {
+    researchAdmission = undefined;
+    throw error;
+  });
+}
+
+const MAX_RESEARCH_ADMISSION_LEASE_MS = 110_000;
+type ResearchAdmission = ReturnType<typeof createExclusiveResearchAdmission>;
+
+export function createResearchAdmissionHandler(
+  admission: ResearchAdmission | (() => Promise<ResearchAdmission>),
+  handler: (request: Request, response: Response) => Promise<void>,
+) {
+  return async (request: Request, response: Response) => {
+    if (request.method !== "POST") {
+      await handler(request, response);
+      return;
+    }
+    let lease: Awaited<ReturnType<ResearchAdmission["acquire"]>>;
+    try {
+      const controls = typeof admission === "function" ? await admission() : admission;
+      lease = await controls.acquire();
+    } catch {
+      response.status(503).json({
+        error: "Research capacity is temporarily unavailable. Try again later.",
+        errorType: "research-admission-unavailable",
+      });
+      return;
+    }
+    if (!lease.admitted) {
+      response.status(503).json({
+        error: "Research is busy. Try again later; capacity is not guaranteed.",
+        errorType: "research-capacity-busy",
+      });
+      return;
+    }
+    if (request.aborted || response.destroyed) {
+      try { await lease.release(); } catch { console.error("SafeLoc research admission lock release failed."); }
+      return;
+    }
+
+    let backgroundRefresh = false;
+    let released = false;
+    const release = async () => {
+      if (released) return;
+      released = true;
+      try {
+        await lease.release();
+      } catch {
+        console.error("SafeLoc research admission lock release failed.");
+      }
+    };
+    const releaseTimer = setTimeout(() => { void release(); }, MAX_RESEARCH_ADMISSION_LEASE_MS);
+    releaseTimer.unref?.();
+    const observeResponseBody = (body: unknown) => {
+      if (
+        body
+        && typeof body === "object"
+        && "researchCache" in body
+        && (body as { researchCache?: { refreshStatus?: unknown } }).researchCache?.refreshStatus === "running"
+      ) backgroundRefresh = true;
+    };
+    const originalJson = response.json;
+    const originalEnd = response.end;
+    response.json = ((body: unknown) => {
+      observeResponseBody(body);
+      return originalJson.call(response, body);
+    }) as typeof response.json;
+    // The research handler writes JSON directly through end(), not Express json().
+    // Observe before forwarding so cached background work retains admission even
+    // if writing the response fails. Preserve every native end() argument.
+    if (typeof originalEnd === "function") {
+      response.end = ((...args: unknown[]) => {
+        const chunk = args[0];
+        if (typeof chunk === "string" || Buffer.isBuffer(chunk)) {
+          try {
+            observeResponseBody(JSON.parse(typeof chunk === "string" ? chunk : chunk.toString("utf8")));
+          } catch {
+            // Non-JSON output is not a research-cache status signal.
+          }
+        }
+        return Reflect.apply(originalEnd, response, args);
+      }) as typeof response.end;
+    }
+    try {
+      await handler(request, response);
+    } catch {
+      if (!response.headersSent) {
+        response.status(503).json({
+          error: "Research could not be completed. Previously retained evidence remains available.",
+          errorType: "research-failed-safely",
+        });
+      }
+    } finally {
+      response.json = originalJson;
+      if (typeof originalEnd === "function") response.end = originalEnd;
+      if (!backgroundRefresh) {
+        clearTimeout(releaseTimer);
+        await release();
+      }
+    }
+  };
 }
 
 function readRuntimeConfig() {
@@ -133,9 +248,24 @@ export async function createApp(): Promise<Express> {
     }
   });
   app.all("/api/research-project", logScopedApiRequest, async (request: Request, response: Response) => {
-    await handleResearchProjectRequest(request, response, {
-      auditRepository: researchAuditRepositoryAdapter,
-    });
+    try {
+      const admissionAwareHandler = createResearchAdmissionHandler(
+        getResearchAdmission,
+        async (researchRequest, researchResponse) => {
+          await handleResearchProjectRequest(researchRequest, researchResponse, {
+            auditRepository: researchAuditRepositoryAdapter,
+          });
+        },
+      );
+      await admissionAwareHandler(request, response);
+    } catch {
+      if (!response.headersSent) {
+        response.status(503).json({
+          error: "Research capacity is temporarily unavailable. Try again later.",
+          errorType: "research-admission-unavailable",
+        });
+      }
+    }
   });
   app.all("/api/ercot-queue", async (request: Request, response: Response) => {
     await handleErcotQueueRequest(request, response);

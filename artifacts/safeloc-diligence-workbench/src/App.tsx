@@ -82,6 +82,22 @@ function DirectoryFailure({ resetError }: ErrorFallbackProps) {
   );
 }
 
+function PublicWorkbenchFailure({ resetError }: ErrorFallbackProps) {
+  return (
+    <section data-testid="public-workbench-error" role="alert" className="flex min-h-[52vh] items-center justify-center rounded-xl border border-[#efabb8] bg-white px-6 text-center">
+      <div className="max-w-lg">
+        <div className="font-mono text-[9px] font-bold uppercase tracking-[0.16em] text-[#ba2f45]">SafeLoc view unavailable</div>
+        <h1 className="mt-3 text-2xl font-semibold tracking-[-0.03em] text-[#122232]">This view could not be displayed.</h1>
+        <p className="mt-3 text-[12px] leading-5 text-[#63717a]">Your retained work remains unchanged. Try loading the view again or return Home.</p>
+        <div className="mt-5 flex flex-wrap justify-center gap-3">
+          <button data-testid="button-retry-public-workbench" type="button" onClick={resetError} className="inline-flex min-h-11 items-center rounded-md bg-[#122232] px-4 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#d4e86b]">Retry view</button>
+          <a data-testid="link-public-workbench-home" href="#home" className="inline-flex min-h-11 items-center rounded-md border border-[#cbd8d4] px-4 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#52616b]">Return Home</a>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function AppShell() {
   const [route, setRoute] = useState<AppRoute>(() => typeof window === "undefined" ? "home" : routeFromHash(window.location.hash) ?? "home");
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -386,7 +402,11 @@ function AppShell() {
         }} />
       ) : (
         <>
-          {route === "home" ? <Home onNavigate={go} /> : (
+          {route === "home" ? (
+            <ErrorBoundary resetKey={route} FallbackComponent={PublicWorkbenchFailure}>
+              <Home onNavigate={go} />
+            </ErrorBoundary>
+          ) : (
             <div className="mx-auto flex max-w-[1480px]">
               <main className="min-w-0 flex-1 overflow-x-clip px-4 py-7 md:px-8 md:py-10 xl:px-12">
                 <div className={`mx-auto ${route === "value-chain" || route === "directory" ? "max-w-[1320px]" : "max-w-[1160px]"}`}>
@@ -398,7 +418,11 @@ function AppShell() {
                        </Suspense>
                      </ErrorBoundary>
                    )}
-                  {route === "analysis" && <AnalysisWorkbench key={analysisEpoch} focusSectionId={pendingSection ?? undefined} onResolveEvidence={resolveEvidence} onReset={() => setResetOpen(true)} />}
+                  {route === "analysis" && (
+                    <ErrorBoundary resetKey={`${route}:${analysisEpoch}`} FallbackComponent={PublicWorkbenchFailure}>
+                      <AnalysisWorkbench key={analysisEpoch} focusSectionId={pendingSection ?? undefined} onResolveEvidence={resolveEvidence} onReset={() => setResetOpen(true)} />
+                    </ErrorBoundary>
+                  )}
                 </div>
               </main>
             </div>

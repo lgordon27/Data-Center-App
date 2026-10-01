@@ -68,6 +68,8 @@ import {
   type CustomEvidenceRecord,
   type ResearchProgress,
 } from "@/services/researchProjectService";
+import { getPublicResearchFailure } from "@/services/publicResearchPresentation";
+import { boundedCooldownUntil, getStoredCooldownUntil, storeCooldownUntil } from "@/services/clientCooldown";
 import {
   COMMUNITY_AGREEMENTS,
   COMMUNITY_PROVIDER_ATTRIBUTION,
@@ -517,9 +519,6 @@ function EvidenceAssessment({
         <TriangleAlert aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         <div>
           <div className="font-semibold">{assessment.message}</div>
-          {assessment.status === "unparseable" && (
-            <pre data-testid={`text-ai-raw-response-${item.id}`} className="mt-2 max-h-24 overflow-auto whitespace-pre-wrap rounded border border-[#ecd39d] bg-white/70 p-2 font-mono text-[9px] text-[#52616b]">{assessment.rawText}</pre>
-          )}
         </div>
       </div>
     </div>
@@ -1055,6 +1054,9 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
   const [notices, setNotices] = useState<Record<string, AssessmentNotice | undefined>>({});
   const [activeAnalysisId, setActiveAnalysisId] = useState<string | null>(null);
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
+  const [batchCapacityNotice, setBatchCapacityNotice] = useState<string | null>(null);
+  const [aiCooldownUntil, setAiCooldownUntil] = useState<number | null>(null);
+  const [researchCooldownUntil, setResearchCooldownUntil] = useState<number | null>(null);
   const [sourceResearchProgress, setSourceResearchProgress] = useState<ResearchProgress | null>(null);
   const [sourceResearchError, setSourceResearchError] = useState<string | null>(null);
   const [sourceProposals, setSourceProposals] = useState<Record<string, CustomEvidenceRecord>>(project.researchProposals ?? {});
@@ -1069,6 +1071,11 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
   const [decisionHistory, setDecisionHistory] = useState<DecisionHistoryEntry[]>(getDecisionHistory);
   const isSourceResearchBusy = sourceResearchProgress !== null;
   const isAnalysisBusy = activeAnalysisId !== null || batchProgress !== null || isSourceResearchBusy;
+  const hasAiCooldown = Boolean(aiCooldownUntil && aiCooldownUntil > Date.now());
+  const hasResearchCooldown = Boolean(researchCooldownUntil && researchCooldownUntil > Date.now());
+  const aiCooldownMessage = aiCooldownUntil && aiCooldownUntil > Date.now()
+    ? "AI analysis is paused until the displayed rate limit expires. Availability is not guaranteed afterward."
+    : null;
   const eligiblePendingSourceProposals = Object.entries(sourceProposals).filter(([id, proposal]) =>
     proposal.eligibleForModel === true
     && (sourceProposalDispositions[id] ?? "pending") === "pending");
@@ -1122,6 +1129,26 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [activeFilter, items, materialGapIds],
   );
+  useEffect(() => {
+    setAiCooldownUntil(getStoredCooldownUntil("safeloc-ai-evidence-cooldown"));
+    setResearchCooldownUntil(getStoredCooldownUntil("safeloc-custom-research-cooldown"));
+  }, []);
+  useEffect(() => {
+    if (!aiCooldownUntil) return undefined;
+    const timer = window.setTimeout(() => {
+      storeCooldownUntil("safeloc-ai-evidence-cooldown", null);
+      setAiCooldownUntil(null);
+    }, Math.max(0, aiCooldownUntil - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [aiCooldownUntil]);
+  useEffect(() => {
+    if (!researchCooldownUntil) return undefined;
+    const timer = window.setTimeout(() => {
+      storeCooldownUntil("safeloc-custom-research-cooldown", null);
+      setResearchCooldownUntil(null);
+    }, Math.max(0, researchCooldownUntil - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [researchCooldownUntil]);
   useEffect(() => {
     // A resolve/focus navigation must reach its record even when the active
     // filter excludes it: reset to the full list before App's focus timer fires.
@@ -1180,7 +1207,7 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
           return;
         }
         if (status.researchCache.refreshStatus === "failed") {
-          setSourceCacheNotice(`Cached research remains available; the provider update failed (${status.researchCache.errorType ?? "upstream"}).`);
+          setSourceCacheNotice("The latest update did not complete. Previously retained evidence and source links remain visible and may be older.");
           return;
         }
         if (attempts < 45) window.setTimeout(() => void poll(), 2_000);
@@ -1202,13 +1229,30 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
   };
 
   const analyzeOne = async (item: EvidenceItem) => {
-    if (isAnalysisBusy) return;
+    const storedCooldown = getStoredCooldownUntil("safeloc-ai-evidence-cooldown");
+    if (isAnalysisBusy || hasAiCooldown || Boolean(storedCooldown && storedCooldown > Date.now())) {
+      if (storedCooldown && storedCooldown > Date.now()) setAiCooldownUntil(storedCooldown);
+      return;
+    }
     setAssessments((current) => ({ ...current, [item.id]: undefined }));
     setNotices((current) => ({ ...current, [item.id]: undefined }));
+    setBatchCapacityNotice(null);
     setActiveAnalysisId(item.id);
     try {
       const result = await analyzeEvidence(item, project);
       setAssessments((current) => ({ ...current, [item.id]: result }));
+      if (result.status === "error" && result.capacity) {
+        const cooldownUntil = result.capacity === "daily-capacity"
+          ? Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate() + 1)
+          : boundedCooldownUntil(result.retryAfterSeconds ?? null);
+        if (cooldownUntil) {
+          storeCooldownUntil("safeloc-ai-evidence-cooldown", cooldownUntil);
+          setAiCooldownUntil(cooldownUntil);
+        }
+        setBatchCapacityNotice(result.capacity === "daily-capacity"
+          ? "Daily AI-evidence capacity is reached. Try again after the daily reset; no automatic retry will be made."
+          : "AI analysis is rate-limited. Wait before submitting another analysis.");
+      }
     } catch {
       setAssessments((current) => ({
         ...current,
@@ -1220,8 +1264,13 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
   };
 
   const analyzeAll = async () => {
-    if (isAnalysisBusy) return;
+    const storedCooldown = getStoredCooldownUntil("safeloc-ai-evidence-cooldown");
+    if (isAnalysisBusy || hasAiCooldown || Boolean(storedCooldown && storedCooldown > Date.now())) {
+      if (storedCooldown && storedCooldown > Date.now()) setAiCooldownUntil(storedCooldown);
+      return;
+    }
     setNotices({});
+    setBatchCapacityNotice(null);
     setBatchProgress({ current: 1, total: items.length });
     for (const [index, item] of items.entries()) {
       setAssessments((current) => ({ ...current, [item.id]: undefined }));
@@ -1230,6 +1279,20 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
       try {
         const result = await analyzeEvidence(item, project);
         setAssessments((current) => ({ ...current, [item.id]: result }));
+        if (result.status === "error" && result.capacity) {
+          const cooldownUntil = result.capacity === "daily-capacity"
+            ? Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate() + 1)
+            : boundedCooldownUntil(result.retryAfterSeconds ?? null);
+          if (cooldownUntil) {
+            storeCooldownUntil("safeloc-ai-evidence-cooldown", cooldownUntil);
+            setAiCooldownUntil(cooldownUntil);
+          }
+          const unprocessed = items.slice(index).map((pending) => pending.label);
+          setBatchCapacityNotice(
+            `${result.capacity === "daily-capacity" ? "Daily AI-evidence capacity is reached." : "AI analysis is rate-limited."} No further requests were sent. Not analyzed: ${unprocessed.join(", ")}.`,
+          );
+          break;
+        }
       } catch {
         setAssessments((current) => ({
           ...current,
@@ -1242,7 +1305,11 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
   };
 
   const researchMissingSources = async (forceRefresh = false) => {
-    if (!customProject || isAnalysisBusy) return;
+    const storedCooldown = getStoredCooldownUntil("safeloc-custom-research-cooldown");
+    if (!customProject || isAnalysisBusy || hasResearchCooldown || Boolean(storedCooldown && storedCooldown > Date.now())) {
+      if (storedCooldown && storedCooldown > Date.now()) setResearchCooldownUntil(storedCooldown);
+      return;
+    }
     const focusIds = items
       .filter((item) => item.classification === "Missing Evidence" || !item.sourceUrl)
       .map((item) => item.id);
@@ -1286,15 +1353,21 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
       commitResearchReview(nextProposals, nextDispositions, sourceProposalOverrides);
       if (result.researchCache) {
         const label = result.researchCache.state === "updated" ? "Research updated now" : `${result.researchCache.state} cached research`;
-        setSourceCacheNotice(`${label}${result.researchCache.providerAvailable === false ? `; provider unavailable (${result.researchCache.errorType ?? "upstream"})` : ""}.`);
+        setSourceCacheNotice(result.researchCache.refreshStatus === "failed"
+          ? "The latest refresh was unsuccessful. Previously retained evidence and source links remain visible and may be older."
+          : `${label}. Retained findings still require human review before model use.`);
       }
       if (!Object.keys(proposals).length) {
         setSourceResearchError("The focused searches completed, but no new project-specific source passed validation.");
       }
     } catch (error) {
-      setSourceResearchError(error instanceof Error && (error.name === "ResearchCancelledError" || error.name === "AbortError")
-        ? "Source research cancelled. No evidence or financial model inputs were changed."
-        : error instanceof Error ? error.message : "Source research is unavailable. Try again.");
+      const failure = getPublicResearchFailure(error);
+      setSourceResearchError(failure.message);
+      const cooldown = boundedCooldownUntil(failure.retryAfterSeconds);
+      if (cooldown) {
+        storeCooldownUntil("safeloc-custom-research-cooldown", cooldown);
+        setResearchCooldownUntil(cooldown);
+      }
     } finally {
       if (sourceResearchRunRef.current === runId) {
         sourceResearchAbortRef.current = null;
@@ -1419,7 +1492,7 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
       assessment={assessments[item.id]}
       notice={notices[item.id]}
       analysisBusy={activeAnalysisId === item.id}
-      analysisDisabled={isAnalysisBusy}
+      analysisDisabled={isAnalysisBusy || hasAiCooldown}
       sourceProposal={sourceProposals[item.id]}
       proposalDisposition={sourceProposalDispositions[item.id]}
       onAcceptSourceProposal={acceptSourceProposal}
@@ -1445,21 +1518,21 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
               <button
                 data-testid="button-analyze-all-ai"
                 type="button"
-                disabled={isAnalysisBusy}
+                disabled={isAnalysisBusy || (customProject ? hasResearchCooldown : hasAiCooldown)}
                 aria-busy={isAnalysisBusy}
                 onClick={() => void (customProject ? researchMissingSources(false) : analyzeAll())}
                 className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-[#9aaec0] bg-[#122232] px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#d4e86b] hover:border-[#d4e86b] disabled:cursor-wait disabled:opacity-60"
               >
                 <Sparkles aria-hidden="true" className="h-3.5 w-3.5" />
                 {customProject
-                  ? sourceResearchProgress === "retrying" ? "Retrying source research…" : sourceResearchProgress ? "Researching missing sources…" : "Research Missing Sources"
-                  : batchProgress ? `Analyzing ${batchProgress.current} of ${batchProgress.total}…` : "Analyze All with AI"}
+                  ? sourceResearchProgress ? "Researching missing sources…" : hasResearchCooldown ? "Retry later" : "Research Missing Sources"
+                  : batchProgress ? `Analyzing ${batchProgress.current} of ${batchProgress.total}…` : hasAiCooldown ? "Retry later" : "Analyze All with AI"}
               </button>
               {customProject && (
                 <button
                   data-testid="button-force-refresh-research"
                   type="button"
-                  disabled={isAnalysisBusy}
+                  disabled={isAnalysisBusy || hasResearchCooldown}
                   onClick={() => void researchMissingSources(true)}
                   className="inline-flex min-h-9 items-center justify-center gap-1 rounded-md border border-[#cbd8d4] bg-white px-3 py-2 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#52616b] hover:border-[#255bb7] hover:text-[#255bb7] disabled:cursor-wait disabled:opacity-60"
                 >
@@ -1501,6 +1574,21 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
         />
       )}
       {customProject && <ResearchSearchAudit coverage={searchCoverage} audit={project.researchAudit} evidence={items} researchCache={project.researchCache} />}
+      {batchCapacityNotice && (
+        <aside data-testid="ai-batch-capacity-notice" role="status" className="mb-5 rounded-lg border border-[#f1cb8b] bg-[#fff8e9] px-4 py-3 text-[10px] leading-5 text-[#6f460e]">
+          {batchCapacityNotice}
+        </aside>
+      )}
+      {aiCooldownMessage && (
+        <aside data-testid="ai-evidence-cooldown" role="status" className="mb-5 rounded-lg border border-[#f1cb8b] bg-[#fff8e9] px-4 py-3 text-[10px] leading-5 text-[#6f460e]">
+          {aiCooldownMessage}
+        </aside>
+      )}
+      {hasResearchCooldown && (
+        <aside data-testid="custom-research-cooldown" role="status" className="mb-5 rounded-lg border border-[#f1cb8b] bg-[#fff8e9] px-4 py-3 text-[10px] leading-5 text-[#6f460e]">
+          Research is temporarily paused after a rate-limit response. Please wait before retrying; capacity may still be unavailable afterward.
+        </aside>
+      )}
       {customProject && (
         <aside data-testid="custom-research-containment-status" role="status" className="mb-5 rounded-lg border-2 border-[#ba2f45] bg-[#fff3f4] px-4 py-3 text-[10px] leading-5 text-[#7f2635]">
           <strong>Evidence review does not accept a financial input.</strong> Eligible source proposals: {project.eligibleEvidenceCount ?? 0} / {items.length}. Unverified leads: {project.retrievedLeadCount ?? 0}. Keep findings here as evidence; separately preview and accept eligible electricity, annual cooling water, or interconnection values in My session financial review. These choices affect only your own scenario, never canonical SafeLoc history.

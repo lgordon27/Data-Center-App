@@ -1,4 +1,5 @@
 import type { Classification, EvidenceItem, ProjectContext } from "@/context/DiligenceContext";
+import { parseBoundedRetryAfter } from "@/services/publicResearchPresentation";
 
 export const AI_EVIDENCE_ENDPOINT = "/api/analyze-evidence";
 export const AI_EVIDENCE_TIMEOUT_MS = 10_000;
@@ -15,6 +16,8 @@ export type AIEvidenceFailure =
   | {
       status: "error";
       message: string;
+      capacity?: "rate-limited" | "daily-capacity";
+      retryAfterSeconds?: number;
     }
   | {
       status: "timeout";
@@ -150,6 +153,18 @@ function parseAssessment(rawText: string): AIEvidenceResult {
   };
 }
 
+function isDailyCapacityResponse(rawText: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(rawText);
+    return typeof parsed === "object"
+      && parsed !== null
+      && "error" in parsed
+      && (parsed as { error?: unknown }).error === "Daily research capacity reached. Please try again tomorrow.";
+  } catch {
+    return false;
+  }
+}
+
 export async function analyzeEvidence(
   item: AIEvidenceItem,
   project: Pick<ProjectContext, "name" | "location" | "kind">,
@@ -181,12 +196,25 @@ export async function analyzeEvidence(
 
     const rawText = await response.text();
     if (!response.ok) {
+      if (response.status === 429) {
+        if (isDailyCapacityResponse(rawText)) {
+          return {
+            status: "error",
+            message: "Daily AI analysis capacity is reached. Try again later.",
+            capacity: "daily-capacity",
+          };
+        }
+        const retryAfterSeconds = parseBoundedRetryAfter(response.headers.get("retry-after"));
+        return {
+          status: "error",
+          message: "AI analysis is rate-limited. Wait before trying again.",
+          capacity: "rate-limited",
+          ...(retryAfterSeconds ? { retryAfterSeconds } : {}),
+        };
+      }
       return {
         status: "error",
-        message:
-          response.status === 429
-            ? "AI analysis request limit reached. Please wait before trying again and classify manually."
-            : "AI analysis unavailable. Classify manually.",
+        message: "AI analysis unavailable. Classify manually.",
       };
     }
 
@@ -212,7 +240,7 @@ export async function analyzeEvidence(
     }
     return {
       status: "error",
-      message: `AI analysis unavailable. Classify manually.${error instanceof Error && error.message ? ` ${error.message}` : ""}`,
+      message: "AI analysis unavailable. Classify manually.",
     };
   } finally {
     clearTimeout(timeout);

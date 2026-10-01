@@ -84,3 +84,31 @@ mtime_ms = 1790876779792
 storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:f36c34ed-5536-4eff-ae57-d0f347f2e42e/9672dbc8-50a9-45c9-994c-8789f898e78b/b0e446c4-9a1f-4c1d-ae01-da2edaeaf42b"
 storage_version_token = "1790876806453522"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "14X24fVmXVPp61QuDgDH5"
+uri = "file://artifacts/safeloc-diligence-workbench/screenshots/public-launch/home-empty-mobile.png"
+type = "image"
+title = "SafeLoc Home — mobile, offline capture"
+description = "Empty reviewed-example state and Analyze Any Project — Beta. All API requests were mocked and external traffic was blocked. Re-registered to preserve the capture alongside incoming assets after merge conflict resolution."
+logical_id = "c377105e-5d7f-4a24-95ab-17e8ddabeeda"
+content_hash = "sha256:2fc94c838605dbab544a2fe93846a252e1a9b5f30925eadc13c5ccfc31ce103b"
+size = 285275
+mtime_ms = 1790888088555
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:f36c34ed-5536-4eff-ae57-d0f347f2e42e/c377105e-5d7f-4a24-95ab-17e8ddabeeda/27ea62ab-6069-420b-92cd-60751c6385af"
+storage_version_token = "1790888218852507"
+content_type = "image/png"
+
+[[outputs]]
+id = "UoMUZUT-IlJz246Ls5WHQ"
+uri = "file://artifacts/safeloc-diligence-workbench/screenshots/public-launch/failed-refresh-retained-desktop.png"
+type = "image"
+title = "Retained evidence after a failed refresh — offline capture"
+description = "Fictitious test project. Retained passages and links remain available after a curated failure; this is not a public project snapshot. Re-registered after merge conflict resolution."
+logical_id = "cbc1a937-1d8c-4454-adb5-6c195f9ffc11"
+content_hash = "sha256:ba4bd904b16619a1f1777809c2b46ba083566f3d719cc0eb2a30e9f848b9577e"
+size = 995029
+mtime_ms = 1790888088543
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:f36c34ed-5536-4eff-ae57-d0f347f2e42e/cbc1a937-1d8c-4454-adb5-6c195f9ffc11/5468c25f-92a1-4f2a-8388-1f1e2732505c"
+storage_version_token = "1790888219396495"
+content_type = "image/png"

@@ -1,7 +1,6 @@
 import {
   Component,
   type ComponentType,
-  type ErrorInfo,
   type ReactNode,
 } from 'react';
 
@@ -35,7 +34,7 @@ function toError(value: unknown): Error {
   }
 }
 
-function DefaultFallback({ error, resetError }: ErrorFallbackProps) {
+function DefaultFallback({ resetError }: ErrorFallbackProps) {
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-gray-50 p-6">
       <div className="max-w-lg w-full text-center">
@@ -46,12 +45,6 @@ function DefaultFallback({ error, resetError }: ErrorFallbackProps) {
           This part of the app hit an error. The rest of the app is still
           running.
         </p>
-        {/* Dev only: messages can carry API responses and other internals. */}
-        {import.meta.env.DEV ? (
-          <pre className="mt-4 overflow-x-auto rounded bg-gray-100 p-3 text-left text-xs text-gray-800">
-            {error.message || String(error)}
-          </pre>
-        ) : null}
         <button
           type="button"
           onClick={resetError}
@@ -74,12 +67,10 @@ export class ErrorBoundary extends Component<
     return { error: toError(error) };
   }
 
-  componentDidCatch(error: unknown, info: ErrorInfo): void {
-    console.error(
-      'ErrorBoundary caught an error:',
-      toError(error),
-      info.componentStack,
-    );
+  componentDidCatch(): void {
+    // This boundary also runs in public previews. Never print captured payloads
+    // or stacks here; owner diagnostics retain their existing server boundary.
+    console.error('SafeLoc could not display this view. Retained evidence has not been cleared.');
   }
 
   componentDidUpdate(prevProps: ErrorBoundaryProps): void {

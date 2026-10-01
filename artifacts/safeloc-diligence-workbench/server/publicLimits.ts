@@ -57,6 +57,63 @@ export function createPublicRateLimiter(pool: ClientPool, {
   };
 }
 
+function boundedAdmissionOperation<T>(operation: Promise<T>): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout>;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timeout = setTimeout(() => reject(new Error("Research admission operation timed out.")), 2_000);
+  });
+  return Promise.race([operation, deadline]).finally(() => clearTimeout(timeout));
+}
+
+export function createExclusiveResearchAdmission(pool: ClientPool, {
+  lockName = "safeloc:custom-public-research",
+} = {}) {
+  if (!lockName.trim()) throw new Error("Invalid research admission lock name.");
+  return {
+    async acquire() {
+      const client = await pool.connect();
+      let acquired = false;
+      try {
+        const result = await boundedAdmissionOperation(client.query<{ acquired: boolean }>(
+          "SELECT pg_try_advisory_lock(hashtextextended($1, 0)) AS acquired",
+          [lockName],
+        ));
+        acquired = result.rows[0]?.acquired === true;
+        if (!acquired) {
+          client.release();
+          return { admitted: false as const };
+        }
+        let released = false;
+        return {
+          admitted: true as const,
+          async release() {
+            if (released) return;
+            released = true;
+            let destroyConnection = false;
+            try {
+              const unlock = await boundedAdmissionOperation(client.query<{ unlocked: boolean }>(
+                "SELECT pg_advisory_unlock(hashtextextended($1, 0)) AS unlocked",
+                [lockName],
+              ));
+              if (unlock.rows[0]?.unlocked !== true) throw new Error("Research admission lock release failed.");
+            } catch (error) {
+              destroyConnection = true;
+              throw error;
+            } finally {
+              client.release(destroyConnection);
+            }
+          },
+        };
+      } catch (error) {
+        // A query timeout has an unknown lock result. Destroying that session
+        // releases any database-side lock instead of returning it to the pool.
+        if (!acquired) client.release(true);
+        throw error;
+      }
+    },
+  };
+}
+
 export interface ModelPrice {
   inputUsdPerMillion: number;
   outputUsdPerMillion: number;

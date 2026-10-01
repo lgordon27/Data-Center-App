@@ -6,11 +6,25 @@ import type {
   ResearchOutcomeState,
 } from "@/services/researchProjectService";
 import {
-  getResearchStatusPresentation,
   getResearchTelemetryMode,
 } from "@/services/researchProjectService";
+import { getPublicResearchPresentation } from "@/services/publicResearchPresentation";
 
 export type ProposalDisposition = "pending" | "accepted" | "overridden" | "rejected" | "unresolved";
+
+export type ResearchCoverageSummary = {
+  searchedDomains: string[];
+  failedDomains: string[];
+  retrievedSourceCount: number;
+  sourcePriorityApplied?: string[];
+  followUpCount?: number;
+  followUpLimit?: number;
+  followUpLimitPerCategory?: number;
+  physicalOpenBudget?: number;
+  physicalOpensUsed?: number;
+  physicalOpensRemaining?: number;
+  physicalOpenBudgetExceeded?: boolean;
+};
 
 type ResearchHandoffSummaryProps = {
   projectName: string;
@@ -27,60 +41,51 @@ type ResearchHandoffSummaryProps = {
   dispositions: Record<string, ProposalDisposition>;
   audit?: ResearchAudit;
   researchCache?: ResearchCacheMetadata;
-  coverage?: {
-    searchedDomains: string[];
-    failedDomains: string[];
-    retrievedSourceCount: number;
-    sourcePriorityApplied?: string[];
-    followUpCount?: number;
-    followUpLimit?: number;
-    followUpLimitPerCategory?: number;
-    physicalOpenBudget?: number;
-    physicalOpensUsed?: number;
-    physicalOpensRemaining?: number;
-    physicalOpenBudgetExceeded?: boolean;
-  };
+  coverage?: ResearchCoverageSummary;
   onReviewFindings: () => void;
 };
 
 export function ResearchTelemetryStatus({
   audit,
-  coverage,
   researchCache,
+  coverage,
   compact = false,
 }: {
   audit?: ResearchAudit;
-  coverage?: ResearchHandoffSummaryProps["coverage"];
   researchCache?: ResearchCacheMetadata;
+  coverage?: ResearchCoverageSummary;
   compact?: boolean;
 }) {
   const historical = getResearchTelemetryMode(researchCache) === "historical-retained";
-  const used = coverage?.physicalOpensUsed ?? audit?.physicalOpensUsed ?? 0;
-  const budget = coverage?.physicalOpenBudget ?? audit?.physicalOpenBudget ?? audit?.budget.maxPhysicalDocumentOpens ?? 24;
-  const remaining = coverage?.physicalOpensRemaining ?? audit?.physicalOpensRemaining ?? Math.max(0, budget - used);
-  const ceilingReached = coverage?.physicalOpenBudgetExceeded ?? audit?.physicalOpenBudgetExceeded ?? used >= budget;
   const cacheDescription = historical
-    ? [
-      researchCache?.state ? `${researchCache.state} cache` : "retained cache",
-      researchCache?.refreshStatus === "failed" ? "refresh failed" : null,
-      researchCache?.providerAvailable === false ? "provider unavailable" : null,
-    ].filter(Boolean).join(" · ")
-    : "provider response";
+    ? researchCache?.refreshStatus === "failed"
+      ? "Previously retained research · latest refresh did not complete"
+      : "Previously retained research"
+    : "Research returned during this visit";
   return (
     <div
       data-testid={compact ? "research-telemetry-status-compact" : "research-telemetry-status"}
       role="status"
-      className={`flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 rounded-md border px-3 py-2 text-[9px] leading-4 ${
+      className={`flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 rounded-md border px-3 py-2 text-[10px] leading-4 ${
         historical ? "border-[#f1cb8b] bg-[#fff8e9] text-[#6f460e]" : "border-[#b7dfcf] bg-[#f2fbf7] text-[#08644f]"
       }`}
     >
-      <strong>{historical ? "Historical retained/cached research telemetry" : "Current live research telemetry"}</strong>
+      <strong>{historical ? "Retained research" : "Current research"}</strong>
       <span>{cacheDescription}</span>
       {researchCache?.storedAt && <time dateTime={researchCache.storedAt}>saved {new Date(researchCache.storedAt).toLocaleString()}</time>}
-      <span className="font-mono">
-        Physical opens: {used}/{budget} used · {remaining} remaining{ceilingReached ? " · ceiling reached" : ""}
-      </span>
-      {historical && <span className="sr-only">These counters describe the retained historical run, not a new live search.</span>}
+      {historical && <span>The results describe the retained run, not a new search.</span>}
+      {researchCache?.refreshStatus === "failed" && <span>Some results may be older; retained source links remain available for review.</span>}
+      {coverage && (
+        <span data-testid="research-coverage-summary" className="w-full">
+          {coverage.retrievedSourceCount} source record{coverage.retrievedSourceCount === 1 ? "" : "s"} retrieved.
+          {typeof coverage.physicalOpenBudget === "number"
+            && typeof coverage.physicalOpensUsed === "number"
+            && typeof coverage.physicalOpensRemaining === "number"
+            ? ` ${coverage.physicalOpensUsed} of ${coverage.physicalOpenBudget} source opens used; ${coverage.physicalOpensRemaining} remaining.`
+            : ""}
+          {coverage.physicalOpenBudgetExceeded ? " The source-opening limit was reached; remaining candidates were not opened." : ""}
+        </span>
+      )}
     </div>
   );
 }
@@ -96,9 +101,9 @@ export function ResearchHandoffSummary({
   projectName,
   projectLocation,
   researchStatus,
-  evidence,
-  proposals,
-  dispositions,
+  evidence = [],
+  proposals = {},
+  dispositions = {},
   researchOutcome,
   researchMode,
   audit,
@@ -106,12 +111,7 @@ export function ResearchHandoffSummary({
   coverage,
   onReviewFindings,
 }: ResearchHandoffSummaryProps) {
-  const researchPresentation = getResearchStatusPresentation({
-    outcome: researchOutcome,
-    researchMode,
-    researchStatus,
-    eligibleProposalCount: Object.keys(proposals).length,
-  });
+  const categories = Array.isArray(audit?.categories) ? audit.categories : [];
   const eligibleSourceUrls = new Set(
     evidence.flatMap((item) => {
       if (item.sourceValidation?.state !== "financially-eligible") return [];
@@ -144,18 +144,17 @@ export function ResearchHandoffSummary({
   const rejected = Object.values(dispositions).filter((value) => value === "rejected").length;
   const unresolvedProposals = Object.values(dispositions).filter((value) => value === "unresolved").length;
   const overridden = Object.values(dispositions).filter((value) => value === "overridden").length;
-  const returnedAuthorities = new Set(audit?.categories.flatMap((category) => category.returnedDomains ?? []) ?? []);
-  const openedDocuments = (audit?.categories.flatMap((category) => category.openedDocuments ?? []) ?? []).filter((document) => document.opened).length;
-  const reusedDocuments = (audit?.categories.flatMap((category) => category.openedDocuments ?? []) ?? []).filter((document) => !document.opened && document.reusedFromCanonicalUrl).length;
-  const retainedPassages = (audit?.categories.flatMap((category) => category.openedDocuments ?? []) ?? []).filter((document) => Boolean(document.retainedPassage)).length;
-  const targetedAuthorities = new Set(audit?.categories.flatMap((category) => category.authorityTargets?.names ?? []) ?? []);
-  const localAuthorities = audit?.categories.flatMap((category) => category.localAuthorities ?? category.authorityTargets?.localAuthorities ?? []) ?? [];
-  const authorityLimitations = [...new Set(audit?.categories.flatMap((category) => category.authorityLimitations ?? category.authorityTargets?.limitations ?? []) ?? [])];
-  const unresolvedIds = [...new Set(audit?.categories.flatMap((category) => category.unresolvedGaps ?? []) ?? [])];
-  const outcome = researchPresentation.state;
-  const outcomeLabel = researchOutcome || outcome
-    ? researchPresentation.label
-    : researchStatus ?? "not recorded";
+  const openedDocuments = categories.flatMap((category) => Array.isArray(category.openedDocuments) ? category.openedDocuments : []).filter((document) => document.opened).length;
+  const retainedPassages = categories.flatMap((category) => Array.isArray(category.openedDocuments) ? category.openedDocuments : []).filter((document) => Boolean(document.retainedPassage)).length;
+  const publicPresentation = getPublicResearchPresentation({
+    outcome: researchOutcome,
+    researchMode,
+    researchStatus,
+    evidenceCount: evidence.filter((item) => item.classification !== "Missing Evidence").length,
+    categories,
+    researchCache,
+  });
+  const outcomeLabel = publicPresentation.label;
 
   return (
     <section data-testid="research-handoff-summary" className="mb-5 rounded-xl border border-[#b8cde0] bg-[#f6fbfe] px-4 py-4 md:px-5">
@@ -167,11 +166,9 @@ export function ResearchHandoffSummary({
           <p data-testid="research-handoff-status" className="mt-2 text-[10px] font-semibold text-[#243844]">
             Final status: {outcomeLabel}
           </p>
-          {outcome === "incomplete-technical-limitation" && (
-            <p data-testid="research-handoff-technical-reasons" className="mt-1 text-[10px] font-semibold text-[#8a5200]">
-              Technical reasons: {audit?.terminalReasonCodes?.join(", ") || "provider or access limitation"}
-            </p>
-          )}
+          <p data-testid="research-handoff-explanation" className="mt-1 max-w-3xl text-[10px] leading-4 text-[#6f460e]">
+            {publicPresentation.explanation}
+          </p>
           <p className="mt-1 max-w-3xl text-[10px] leading-4 text-[#52616b]">Exact-project evidence can be proposed here, but it stays outside the model until a reviewer accepts it. Related and comparable material is context only.</p>
         </div>
         <button data-testid="button-review-research-findings" type="button" onClick={onReviewFindings} className="inline-flex min-h-10 items-center justify-center rounded-md bg-[#122232] px-3 py-2 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#d4e86b]">
@@ -179,9 +176,9 @@ export function ResearchHandoffSummary({
         </button>
       </div>
       <div className="mt-4">
-        <ResearchTelemetryStatus audit={audit} coverage={coverage} researchCache={researchCache} />
+        <ResearchTelemetryStatus audit={audit} researchCache={researchCache} coverage={coverage} />
       </div>
-      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <div data-testid="research-handoff-exact-project" className="rounded-lg border border-[#cbd8d4] bg-white p-3">
           <div className="font-mono text-[8px] font-bold uppercase tracking-[0.1em] text-[#52616b]">Eligible sources</div>
           <div className="mt-2 text-[20px] font-semibold text-[#08644f]">{eligibleSourceUrls.size}</div>
@@ -204,19 +201,14 @@ export function ResearchHandoffSummary({
         </div>
       </div>
       <details className="mt-4 rounded-lg border border-[#d9e0e4] bg-white">
-        <summary data-testid="research-handoff-details" className="cursor-pointer list-none px-3 py-2 font-mono text-[8px] font-bold uppercase tracking-[0.1em] text-[#60707d] [&::-webkit-details-marker]:hidden">Search and authority detail</summary>
-        <div className="grid gap-3 border-t border-[#e5eae8] p-3 text-[9px] leading-4 text-[#52616b] sm:grid-cols-2">
-          <p><strong className="text-[#243844]">Targeted:</strong> {targetedAuthorities.size} named authorities or authority groups. <strong className="text-[#243844]">Returned:</strong> {returnedAuthorities.size} domains.</p>
-           <p><strong className="text-[#243844]">Local authority discovery:</strong> {localAuthorities.length} identified · {localAuthorities.filter((authority) => authority.status === "established").length} official domains established. {authorityLimitations.length ? "Limitations recorded below." : "No authority discovery limitation recorded."}</p>
-           <p><strong className="text-[#243844]">Documents:</strong> {openedDocuments} physical opens · {reusedDocuments} reused receipts · {retainedPassages} retained passages. <strong className="text-[#243844]">Retained source records:</strong> {coverage?.retrievedSourceCount ?? 0}.</p>
-           <p><strong className="text-[#243844]">Physical-open budget:</strong> {coverage?.physicalOpensUsed ?? audit?.physicalOpensUsed ?? openedDocuments}/{coverage?.physicalOpenBudget ?? audit?.physicalOpenBudget ?? audit?.budget.maxPhysicalDocumentOpens ?? 24} used · {coverage?.physicalOpensRemaining ?? audit?.physicalOpensRemaining ?? "unknown"} remaining{coverage?.physicalOpenBudgetExceeded || audit?.physicalOpenBudgetExceeded ? " · ceiling reached" : ""}.</p>
-            <p className="sm:col-span-2"><strong className="text-[#243844]">Telemetry lineage:</strong> {getResearchTelemetryMode(researchCache) === "historical-retained" ? "The counts, category skip reasons, and limitations below describe the retained historical run; they are not a new live search." : "The counts below describe the current live provider run."}</p>
-           <p><strong className="text-[#243844]">Queries:</strong> {audit?.categories.reduce((total, category) => total + category.executedQueries.length, 0) ?? 0} provider-observed query records. Follow-ups: {coverage?.followUpCount ?? 0}/{coverage?.followUpLimit ?? audit?.followUpLimit ?? "bounded"}. Unresolved IDs: {unresolvedIds.length ? unresolvedIds.join(", ") : "none recorded"}.</p>
-          <p>{coverage?.failedDomains?.length ? <><strong className="text-[#8a5200]">Unavailable:</strong> {coverage.failedDomains.join(", ")}.</> : "No returned-domain access limitations were recorded."}</p>
-           {authorityLimitations.length > 0 && <p className="sm:col-span-2 text-[#8a5200]"><strong>Authority limitations:</strong> {authorityLimitations.join(" · ")}</p>}
-            {audit?.categories.some((category) => category.followUpSkipReason) && (
-              <p className="sm:col-span-2 text-[#8a5200]"><strong>Category skips:</strong> {audit.categories.filter((category) => category.followUpSkipReason).map((category) => `${category.label}: ${category.followUpSkipReason}`).join(" · ")}</p>
-            )}
+        <summary data-testid="research-handoff-details" className="cursor-pointer list-none px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#60707d] [&::-webkit-details-marker]:hidden">Research scope and limitations</summary>
+        <div className="grid gap-3 border-t border-[#e5eae8] p-3 text-[10px] leading-4 text-[#52616b] sm:grid-cols-2">
+          <p><strong className="text-[#243844]">Search categories recorded:</strong> {categories.length}.</p>
+          <p><strong className="text-[#243844]">Retained passages:</strong> {retainedPassages} across {openedDocuments} reviewed source records.</p>
+          <p className="sm:col-span-2">{publicPresentation.explanation} A blocked, failed, or unrun category is incomplete and is not evidence of absence.</p>
+          {researchCache?.storedAt && <p><strong className="text-[#243844]">Retained run saved:</strong> {new Date(researchCache.storedAt).toLocaleString()}.</p>}
+          {researchCache?.refreshStatus === "failed" && <p className="text-[#8a5200]">The latest refresh was unsuccessful. Existing source links and retained passages remain available; check their dates before relying on them.</p>}
+          {categories.length === 0 && <p className="sm:col-span-2">Category detail was not recorded for this run. Search completeness is unknown.</p>}
         </div>
       </details>
       {unresolved.length > 0 && (

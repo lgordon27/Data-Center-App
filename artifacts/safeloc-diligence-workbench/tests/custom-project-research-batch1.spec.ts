@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { blockUnmockedProviderRequests } from "./offline-provider-reads";
 
 const evidenceIds = [
   "electricity_cost", "water_consumption", "grid_interconnection", "water_escalation",
@@ -88,6 +89,7 @@ async function openManualResearchForm(page: import("@playwright/test").Page) {
 
 test.describe("Batch 1 custom-project research lifecycle", () => {
   test.beforeEach(async ({ page }) => {
+    await blockUnmockedProviderRequests(page);
     await page.route("**/api/directory**", (route) => route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -201,7 +203,7 @@ test.describe("Batch 1 custom-project research lifecycle", () => {
 
     const assertTechnicalLimitation = async () => {
       await expect(page.getByTestId("conference-research-status")).toHaveText("Research incomplete · technical limitation");
-      await expect(page.getByTestId("custom-research-banner")).toContainText("RESEARCH INCOMPLETE");
+      await expect(page.getByTestId("custom-research-banner")).toContainText("Search incomplete");
       await expect(page.locator("header")).toContainText("incomplete");
       await expect(page.locator("body")).not.toContainText("proposal review");
     };
@@ -210,12 +212,12 @@ test.describe("Batch 1 custom-project research lifecycle", () => {
     await page.getByTestId("tab-reality").click();
     await page.getByTestId("button-detailed-evidence").click();
     await expect(page.getByTestId("research-handoff-status")).toHaveText(
-      "Final status: Research incomplete · technical limitation",
+      "Final status: Search incomplete",
     );
     await expect(page.getByTestId("research-handoff-proposals")).toContainText("0");
 
     await page.goto("/#home");
-    await expect(page.getByTestId("custom-research-banner")).toContainText("RESEARCH INCOMPLETE");
+    await expect(page.getByTestId("custom-research-banner")).toContainText("Search incomplete");
     await expect(page.locator("body")).not.toContainText("proposal review");
     await page.goto("/#analysis");
     await assertTechnicalLimitation();
@@ -224,7 +226,7 @@ test.describe("Batch 1 custom-project research lifecycle", () => {
     await page.getByTestId("tab-reality").click();
     await page.getByTestId("button-detailed-evidence").click();
     await expect(page.getByTestId("research-handoff-status")).toHaveText(
-      "Final status: Research incomplete · technical limitation",
+      "Final status: Search incomplete",
     );
   });
 
@@ -263,9 +265,9 @@ test.describe("Batch 1 custom-project research lifecycle", () => {
     await page.getByTestId("button-submit-custom-project").click();
     await requestStarted;
     await expect(page).toHaveURL(/#analysis$/);
-    await expect(page.getByTestId("custom-research-banner")).toContainText("RESEARCH IN PROGRESS");
+    await expect(page.getByTestId("custom-research-banner")).toContainText("Researching");
     await page.getByTestId("custom-research-cancel").click();
-    await expect(page.getByTestId("custom-research-banner")).toContainText("RESEARCH CANCELLED");
+    await expect(page.getByTestId("custom-research-banner")).toContainText("Search incomplete");
     releaseRequest();
     await requestFinished;
     await page.goto("/#home");
@@ -282,7 +284,7 @@ test.describe("Batch 1 custom-project research lifecycle", () => {
     await page.getByTestId("compute-atlas-open-gw-ranch-pecos-tx").click();
     await page.getByTestId("button-submit-custom-project").click();
     await expect(page).toHaveURL(/#analysis$/);
-    await expect(page.getByTestId("custom-research-banner")).toContainText("RESEARCH TIMED OUT");
+    await expect(page.getByTestId("custom-research-banner")).toContainText("Research failed safely");
     await expect(page.getByTestId("custom-research-retry")).toBeVisible();
     await page.getByTestId("custom-research-retry").click();
     await expect(page.getByTestId("custom-project-dialog")).toBeVisible();
@@ -300,9 +302,9 @@ test.describe("Batch 1 custom-project research lifecycle", () => {
     await page.clock.install();
     await page.getByTestId("button-submit-custom-project").click();
     await expect(page).toHaveURL(/#analysis$/);
-    await expect(page.getByTestId("custom-research-banner")).toContainText("RESEARCH IN PROGRESS");
+    await expect(page.getByTestId("custom-research-banner")).toContainText("Researching");
     await page.clock.fastForward(45_000);
-    await expect(page.getByTestId("custom-research-banner")).toContainText("RESEARCH IN PROGRESS");
+    await expect(page.getByTestId("custom-research-banner")).toContainText("Researching");
     await page.getByTestId("custom-research-cancel").click();
     await expect(page.getByTestId("custom-research-banner")).toContainText("RESEARCH CANCELLED");
   });

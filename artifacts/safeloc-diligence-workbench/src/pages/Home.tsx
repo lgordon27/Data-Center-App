@@ -26,6 +26,8 @@ import {
   type KnownProjectData,
   type ResearchProgress,
 } from "@/services/researchProjectService";
+import { getPublicResearchFailure } from "@/services/publicResearchPresentation";
+import { boundedCooldownUntil, getStoredCooldownUntil, storeCooldownUntil } from "@/services/clientCooldown";
 import {
   fetchDirectory,
   fetchAllCompanyDirectoryFacilities,
@@ -49,6 +51,7 @@ import {
 } from "@/data/companyExposure";
 import { ClaimCitation } from "@/components/ClaimCitation";
 import { CompanyProjectSelection } from "@/components/CompanyProjectSelection";
+import { ReviewedShowcaseEntries, type ReviewedShowcaseCatalog } from "@/components/ReviewedShowcaseEntries";
 import { trackEvent } from "@/services/analytics";
 import { ProviderQueueSnapshot } from "@/components/ProviderQueueSnapshot";
 import { Footer } from "@/components/Footer";
@@ -59,7 +62,6 @@ import {
 } from "@/services/canonicalDossierService";
 import {
   canonicalSlugForProject,
-  orderedCanonicalDisplayIdentities,
   projectWithCanonicalDisplayIdentity,
 } from "@/services/canonicalDossierIdentity";
 
@@ -72,7 +74,12 @@ const homeEntryPoints = [
 ] as const;
 
 type CustomProjectFormProps = {
-  onStart?: (research: CustomResearchResponse, requestKey: string, cancel: () => void) => void;
+  onStart?: (
+    research: CustomResearchResponse,
+    requestKey: string,
+    cancel: () => void,
+    requestContext?: { name: string; location: string; knownData?: KnownProjectData },
+  ) => void;
   onSuccess: (research: CustomResearchResponse, requestKey: string) => void;
   onResearchError?: (research: CustomResearchResponse, error: unknown, requestKey: string) => void;
   compact?: boolean;
@@ -97,6 +104,7 @@ export function CustomProjectForm({ onStart, onSuccess, onResearchError, compact
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<ResearchProgress>("researching");
   const [fallbackAvailable, setFallbackAvailable] = useState(false);
+  const [cooldownUntil, setCooldownUntil] = useState<number | null>(null);
   const requestController = useRef<AbortController | null>(null);
   const cancelRequested = useRef(false);
   const requestGeneration = useRef(0);
@@ -115,6 +123,19 @@ export function CustomProjectForm({ onStart, onSuccess, onResearchError, compact
     setFallbackAvailable(false);
   }, [initialValues]);
 
+  useEffect(() => {
+    setCooldownUntil(getStoredCooldownUntil("safeloc-custom-research-cooldown"));
+  }, []);
+
+  useEffect(() => {
+    if (!cooldownUntil) return undefined;
+    const timer = window.setTimeout(() => {
+      storeCooldownUntil("safeloc-custom-research-cooldown", null);
+      setCooldownUntil(null);
+    }, Math.max(0, cooldownUntil - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [cooldownUntil]);
+
   useEffect(() => () => {
     mounted.current = false;
     requestGeneration.current += 1;
@@ -123,6 +144,13 @@ export function CustomProjectForm({ onStart, onSuccess, onResearchError, compact
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const storedCooldown = getStoredCooldownUntil("safeloc-custom-research-cooldown");
+    const activeCooldownUntil = cooldownUntil && cooldownUntil > Date.now() ? cooldownUntil : storedCooldown;
+    if (activeCooldownUntil && activeCooldownUntil > Date.now()) {
+      setCooldownUntil(activeCooldownUntil);
+      return;
+    }
+    if (busy) return;
     if (!name.trim() || !location.trim()) {
       setError("Enter a project name and location to begin research.");
       return;
@@ -147,6 +175,10 @@ export function CustomProjectForm({ onStart, onSuccess, onResearchError, compact
     onStart?.(provisional, requestKey, () => {
       cancelRequested.current = true;
       controller.abort();
+    }, {
+      name: name.trim(),
+      location: location.trim(),
+      ...(researchKnownData ? { knownData: researchKnownData } : {}),
     });
     try {
       const result = await researchProject(name.trim(), location.trim(), {
@@ -172,7 +204,13 @@ export function CustomProjectForm({ onStart, onSuccess, onResearchError, compact
       }
       if (requestGeneration.current !== generation) return;
       if (!mounted.current) return;
-      setError(requestError instanceof Error ? requestError.message : "Project research is unavailable. Try again.");
+      const failure = getPublicResearchFailure(requestError);
+      setError(failure.message);
+      const nextCooldown = boundedCooldownUntil(failure.retryAfterSeconds);
+      if (nextCooldown) {
+        storeCooldownUntil("safeloc-custom-research-cooldown", nextCooldown);
+        setCooldownUntil(nextCooldown);
+      }
       setFallbackAvailable(true);
     } finally {
       if (mounted.current && requestGeneration.current === generation) setBusy(false);
@@ -187,12 +225,12 @@ export function CustomProjectForm({ onStart, onSuccess, onResearchError, compact
     <button
       data-testid={compact ? "button-run-ai-analysis" : "button-submit-custom-project"}
       type="submit"
-      disabled={busy}
+      disabled={busy || (cooldownUntil !== null && cooldownUntil > Date.now())}
       className={compact
         ? "inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md bg-[#d4e86b] px-4 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.13em] text-[#122232] transition-transform hover:-translate-y-0.5 disabled:cursor-wait disabled:opacity-60 sm:w-auto"
         : "inline-flex min-h-11 items-center gap-2 rounded-md bg-[#122232] px-4 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-[#d4e86b] disabled:cursor-wait disabled:opacity-60"}
     >
-      {busy ? "Researching project…" : compact ? "Run AI Analysis" : "Research project"}
+      {busy ? "Researching" : cooldownUntil && cooldownUntil > Date.now() ? "Retry later" : compact ? "Analyze Any Project — Beta" : "Research project"}
       <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" />
     </button>
   );
@@ -321,6 +359,11 @@ export function CustomProjectForm({ onStart, onSuccess, onResearchError, compact
           )}
         </div>
       )}
+      {cooldownUntil && cooldownUntil > Date.now() && (
+        <p data-testid="custom-research-cooldown" role="status" className={compact ? "text-[10px] text-[#f1cb8b]" : "text-[10px] text-[#8a5200]"}>
+          Please wait before retrying. Capacity may still be unavailable when the cooldown ends.
+        </p>
+      )}
       {busy && (
         <div
           data-testid={compact ? "home-custom-analysis-loading" : "custom-project-loading"}
@@ -358,7 +401,7 @@ export function CustomProjectDialog({
 }: {
   open: boolean;
   onClose: () => void;
-  onStart?: (research: CustomResearchResponse, requestKey: string, cancel: () => void) => void;
+  onStart?: CustomProjectFormProps["onStart"];
   onSuccess: (research: CustomResearchResponse, requestKey: string) => void;
   onResearchError?: (research: CustomResearchResponse, error: unknown, requestKey: string) => void;
   initialValues?: CustomProjectFormProps["initialValues"];
@@ -1628,7 +1671,10 @@ export function LegacyCompanyExploration({ onNavigate }: { onNavigate?: (route: 
   );
 }
 
-export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void } = {}) {
+export function Home({ onNavigate, reviewedShowcase }: {
+  onNavigate?: (route: HomeRoute) => void;
+  reviewedShowcase?: ReviewedShowcaseCatalog;
+} = {}) {
   const { setOriginatingCompany, setProjectSelection, originatingCompany } = useDiligence();
   const initialCompany = COMPANY_PROFILES.some((profile) => profile.key === originatingCompany)
     ? originatingCompany as CompanyKey
@@ -1706,7 +1752,6 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
     if (onNavigate) onNavigate(route);
     else window.location.hash = route;
   };
-  const reviewedDossiers = orderedCanonicalDisplayIdentities(canonicalDossiers);
 
   return (
     <div data-testid="home-page" className="min-h-[calc(100vh-72px)] overflow-x-hidden bg-[#0a1b2a] text-[#f6f7f2]">
@@ -1723,46 +1768,31 @@ export function Home({ onNavigate }: { onNavigate?: (route: HomeRoute) => void }
                    Review the evidence behind major AI data-center projects.
                 </h1>
                  <p data-testid="home-product-definition" className="mt-5 max-w-xl text-[15px] leading-6 text-[#c4d0d6] sm:text-[17px]">
-                    SafeLoc searches public sources and returns sourced findings and open questions. Financial modeling uses only inputs you accept.
+                    SafeLoc searches public sources and returns sourced findings and open questions. Research proposals require explicit review; displayed returns remain illustrative scenario outputs.
                 </p>
                 <button
-                  data-testid="button-run-stargate"
+                  data-testid="button-analyze-any-project-beta"
                   type="button"
-                  onClick={() => void openDossier("stargate-abilene")}
-                  className="mt-7 inline-flex min-h-12 items-center justify-center gap-2 rounded-md bg-[#d4e86b] px-5 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.11em] text-[#122232] transition-transform hover:-translate-y-0.5 hover:bg-[#e3f18d] focus:outline-none focus:ring-2 focus:ring-[#d4e86b] focus:ring-offset-2 focus:ring-offset-[#0a1b2a]"
+                  onClick={() => window.dispatchEvent(new Event("safeloc-open-custom-project"))}
+                  className="mt-3 inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-white/30 px-4 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-white hover:border-[#d4e86b] hover:text-[#d4e86b]"
                 >
-                   Open Stargate Abilene <ArrowRight aria-hidden="true" className="h-4 w-4" />
+                  Analyze Any Project — Beta <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" />
                 </button>
                 <p className="mt-3 text-[10px] leading-4 text-[#9dafb8]">
-                  Reviewed dossier · evidence as of Sep 30, 2025 · project-level synthetic economics
+                  Reviewed examples open cached snapshots only. Beta research is a separate, user-initiated request.
                 </p>
               </div>
               <article className="rounded-xl border border-white/15 bg-[#102b3b]/95 p-5 shadow-2xl shadow-black/20 sm:p-6">
-                <div className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-[#d4e86b]">Reviewed dossiers</div>
-                <h2 className="mt-2 text-[26px] font-semibold tracking-[-0.04em] text-white">Choose a canonical case</h2>
+                <div className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-[#d4e86b]">Reviewed examples</div>
+                <h2 className="mt-2 text-[26px] font-semibold tracking-[-0.04em] text-white">Open a reviewed snapshot</h2>
                 <p className="mt-2 text-[12px] leading-5 text-[#c4d0d6]">
-                  Each dossier opens the reviewed workbench directly. Kilby and El Mirage remain not modeled until approved project-specific scenarios exist.
+                  Only examples supplied by the reviewed catalog appear here. Canonical seed cases are not public-review approval, and an unavailable example never starts research.
                 </p>
-                <div className="mt-5 grid gap-2">
-                  {canonicalDossierStatus === "loading" && <p role="status" className="text-[10px] text-[#9dafb8]">Loading reviewed dossier identities…</p>}
-                  {canonicalDossierStatus === "unavailable" && <p role="alert" className="text-[10px] text-[#f1cb8b]">Reviewed dossier identities are unavailable. Reload before opening a canonical case.</p>}
-                  {reviewedDossiers.map((dossier) => (
-                    <button
-                      key={dossier.slug}
-                      data-testid={`home-dossier-${dossier.slug}`}
-                      type="button"
-                      aria-label={`${dossier.name}, ${dossier.location}, evidence as of ${dossier.asOfDate ?? "date unavailable"}, ${dossier.coverageState}`}
-                      onClick={() => void openDossier(dossier.slug)}
-                      className="flex min-h-12 items-center justify-between gap-3 rounded-lg border border-white/10 bg-[#0d2435] px-3 py-2.5 text-left hover:border-[#d4e86b]"
-                    >
-                      <span><span className="block text-[11px] font-semibold text-white">{dossier.name}</span><span className="mt-0.5 block text-[9px] text-[#9dafb8]">{dossier.location} · as of {dossier.asOfDate ?? "date unavailable"}</span></span>
-                      <span className="text-right font-mono text-[8px] font-bold uppercase text-[#d4e86b]">
-                        <span className="block">{dossier.slug === "stargate-abilene" ? "Reviewed model" : "Not modeled"}</span>
-                        <span data-testid={`home-dossier-coverage-${dossier.slug}`} className="mt-0.5 block text-[#9dafb8]">{dossier.coverageState.replaceAll("-", " ")}</span>
-                      </span>
-                    </button>
-                  ))}
-                </div>
+                <ReviewedShowcaseEntries
+                  state={reviewedShowcase?.state ?? canonicalDossierStatus}
+                  entries={reviewedShowcase?.entries ?? []}
+                  onOpen={reviewedShowcase?.onOpen ?? (() => {})}
+                />
               </article>
             </div>
             <details data-testid="home-explore-panel" open className="group mt-8 rounded-xl border border-white/15 bg-[#0d2435]/95">

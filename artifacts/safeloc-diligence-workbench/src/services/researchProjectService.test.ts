@@ -891,7 +891,10 @@ test("does not retry non-timeout failures", async () => {
     calls += 1;
     return new Response(JSON.stringify({ error: "Provider rejected the request." }), { status: 502 });
   };
-  await assert.rejects(() => researchProject("Atlas", "Texas", fetchImpl as typeof fetch), /Provider rejected/);
+  await assert.rejects(
+    () => researchProject("Atlas", "Texas", fetchImpl as typeof fetch),
+    /Research did not return a usable update/,
+  );
   assert.equal(calls, 1);
 });
 

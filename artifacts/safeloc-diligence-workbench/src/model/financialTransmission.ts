@@ -23,7 +23,7 @@ import {
   type TransmissionProposal,
 } from "./safelocProofContract.js";
 
-export const FINANCIAL_TRANSMISSION_POLICY_VERSION = 2;
+export const FINANCIAL_TRANSMISSION_POLICY_VERSION = 3;
 export const FINANCIAL_TRANSMISSION_MAX_EVIDENCE_AGE_DAYS = 365;
 
 export type FinancialTransmissionTarget =
@@ -38,6 +38,23 @@ export type FinancialTransmissionTarget =
   | "cod_date"
   | "tenant_commencement_date"
   | "documented_direct_project_capex";
+
+const CURRENT_FINANCIAL_TRANSMISSION_TARGETS = new Set<FinancialTransmissionTarget>([
+  "electricity_cost",
+  "water_consumption",
+  "grid_interconnection",
+]);
+
+function isCurrentFinancialTransmissionTarget(target: unknown): target is FinancialTransmissionTarget {
+  return typeof target === "string" &&
+    CURRENT_FINANCIAL_TRANSMISSION_TARGETS.has(target as FinancialTransmissionTarget);
+}
+
+function requireCurrentFinancialTransmissionTarget(target: unknown): asserts target is FinancialTransmissionTarget {
+  if (!isCurrentFinancialTransmissionTarget(target)) {
+    throw new Error("Financial target is outside the current first-slice allowlist.");
+  }
+}
 
 const DATE_TARGETS = {
   cod_date: {
@@ -240,6 +257,7 @@ function normalizedValueWithinPolicy(target: FinancialTransmissionTarget, normal
 }
 
 export function expectedAffectedVariable(target: FinancialTransmissionTarget) {
+  requireCurrentFinancialTransmissionTarget(target);
   return target === "documented_direct_project_capex" ? DIRECT_CAPEX_AFFECTED_VARIABLE : target;
 }
 
@@ -287,6 +305,7 @@ export function financialTransmissionFormulaDescription(
   target: FinancialTransmissionTarget,
   modelStartDate?: GovernedFinancialOverrides["modelStartDate"],
 ) {
+  requireCurrentFinancialTransmissionTarget(target);
   if (target === "cod_date" || target === "tenant_commencement_date") {
     if (!modelStartDate || !isISODate(modelStartDate.date) || !modelStartDate.reference.trim()) {
       throw new Error("Date formula descriptors require a valid explicit model-start anchor.");
@@ -893,6 +912,10 @@ export function applyAcceptedProofInputsToFinancialEvidence({
       reject("Accepted input has no identified human decision or acceptance reason.");
       continue;
     }
+    if (!isCurrentFinancialTransmissionTarget(inputId)) {
+      reject("Financial input is outside the current first-slice allowlist.");
+      continue;
+    }
     if (!isFinancialTarget(inputId)) {
       reject("No whitelisted financial formula exists for this model input.");
       continue;
@@ -1141,6 +1164,7 @@ export function createFinancialTransmissionDecisionService({
   resolveTrustedActor: TrustedFinancialTransmissionActorResolver;
 }) {
   return async function decideFinancialTransmissionProposal(request: FinancialTransmissionDecisionRequest) {
+    requireCurrentFinancialTransmissionTarget(request.target);
     const actor = await resolveTrustedActor();
     if (!actor) throw new Error("Financial decisions require an injected trusted server authentication capability.");
     return transaction.withLockedProject(request.project, async (context) => {
@@ -1209,6 +1233,7 @@ export function generateFinancialTransmissionProposal({
   currentValue?: TransmissionProposal["currentValue"];
   modelStartDate?: GovernedFinancialOverrides["modelStartDate"];
 }): TransmissionProposal {
+  requireCurrentFinancialTransmissionTarget(target);
   if (!isFinancialTarget(target)) throw new Error("No whitelisted financial formula exists for this proposal.");
   if (!proposalId.trim()) throw new Error("Financial transmission proposals require an ID.");
   if (project.scope.kind !== "facility") throw new Error("Financial transmission proposals require facility scope.");
@@ -1267,6 +1292,13 @@ export async function appendFinancialTransmissionProposal({
   versions: ProofVersions;
   effectiveAt?: string;
 }) {
+  requireCurrentFinancialTransmissionTarget(proposal.affectedVariable);
+  if (
+    proposal.mappingPolicyVersion !== FINANCIAL_TRANSMISSION_POLICY_VERSION ||
+    !proposalFormulaMatches(proposal.affectedVariable, proposal.formula)
+  ) {
+    throw new Error("Only a current first-slice proposal with an approved formula can be appended.");
+  }
   assertSameProjectScope(project, proposal.project, "Transmission proposal");
   const event: ProofTransmissionEvent = {
     eventId,
@@ -1302,6 +1334,7 @@ export function previewFinancialTransmissionProposal({
   allowGeneratedProposal?: boolean;
   verifiedDecisions?: readonly VerifiedFinancialDecisionContext[];
 }) {
+  requireCurrentFinancialTransmissionTarget(target);
   assertSameProjectScope(project, proposal.project, "Transmission preview");
   const targetProposals = orderedProjectEvents(projection.events, project, projection.asOfRecordedAt)
     .filter((event) =>
@@ -1464,6 +1497,7 @@ async function decideFinancialTransmissionProposalWithinTransaction({
   verifiedDecisions: readonly VerifiedFinancialDecisionContext[];
   decidedAt?: string;
 }) {
+  requireCurrentFinancialTransmissionTarget(target);
   assertSameProjectScope(project, proposal.project, "Transmission decision");
   if (!rationale.trim() || !decisionId.trim()) throw new Error("Transmission decisions require an ID and rationale.");
   const targetKey = expectedAffectedVariable(target);

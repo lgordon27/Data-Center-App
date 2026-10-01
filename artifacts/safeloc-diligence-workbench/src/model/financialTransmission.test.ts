@@ -4,6 +4,7 @@ import test from "node:test";
 import { INITIAL_EVIDENCE } from "@/context/DiligenceContext";
 import { calculateCashFlowModel } from "./cashFlowEngine";
 import {
+  appendFinancialTransmissionProposal,
   applyAcceptedProofInputsToFinancialEvidence,
   createFinancialTransmissionDecisionService,
   expectedAffectedVariable,
@@ -128,16 +129,19 @@ function fixture({
     proposalId: "proposal-1",
     project,
     sourceEvidenceIds: [evidenceId],
-    affectedVariable: expectedAffectedVariable(inputId as Parameters<typeof expectedAffectedVariable>[0]),
+    affectedVariable: inputId === "documented_direct_project_capex"
+      ? "documented_direct_project_capex:facility-total-direct-capex-excluding-contingency"
+      : inputId,
     currentValue: { value: sourceValue, unit: sourceUnit },
     proposedValue: { value, unit },
     mechanism: "Accepted facility evidence changes an explicitly mapped model input.",
     quantificationClass: "quantified" as const,
     formula: proposalFormula === undefined
-      ? financialTransmissionFormulaDescription(
-          inputId as Parameters<typeof expectedAffectedVariable>[0],
-          inputId === "cod_date" || inputId === "tenant_commencement_date" ? modelStart : undefined,
-        )
+      ? ["electricity_cost", "water_consumption", "grid_interconnection"].includes(inputId)
+        ? financialTransmissionFormulaDescription(
+            inputId as "electricity_cost" | "water_consumption" | "grid_interconnection",
+          )
+        : `out-of-slice-fixture-formula:${inputId}`
       : proposalFormula,
     supportLevel: "strong" as const,
     status: proposalStatus,
@@ -330,16 +334,11 @@ test("only a decision-backed accepted proposal changes a whitelisted financial i
   assert.notEqual(after.projectIRR, before.projectIRR);
 });
 
-test("explicit unit formulas normalize tariff, water, timeline, and cooling CAPEX inputs", () => {
+test("explicit unit formulas normalize only tariff, water, and grid-interconnection inputs", () => {
   const cases = [
     ["electricity_cost", "electricity-tariff", 3, "cents/kWh", 30, "USD/MWh"],
-    ["electricity_escalation", "electricity-tariff", 350, "basis points", 3.5, "%"],
     ["water_consumption", "water-cooling", 23_000_000, "gallons/year", 23, "Mgal/year"],
-    ["water_escalation", "water-cooling", 0.05, "fraction", 5, "%"],
     ["grid_interconnection", "power-grid-interconnection", 2, "years", 24, "months"],
-    ["cooling_capex", "water-cooling", 450_000, "USD thousands", 450, "USD millions"],
-    ["permitting_timeline", "permitting-entitlement", 52, "weeks", 11.958932238193018, "months"],
-    ["capacity_mw", "construction-phasing", 1.2, "GW", 1_200, "MW"],
   ] as const;
 
   for (const [inputId, dimension, value, unit, expectedValue, expectedUnit] of cases) {
@@ -349,18 +348,50 @@ test("explicit unit formulas normalize tariff, water, timeline, and cooling CAPE
       projection: fixture({ inputId, dimension, value, unit }),
     });
     assert.deepEqual(result.appliedInputIds, [inputId], JSON.stringify(result.ignoredInputReasons));
-    if (inputId === "capacity_mw") {
-      assert.ok(Math.abs(Number(result.acceptedCapacityMW) - expectedValue) < 1e-9);
-      assert.equal(result.appliedInputs[0]?.acceptedValue.unit, expectedUnit);
-      assert.deepEqual(result.evidence, INITIAL_EVIDENCE, "capacity is transmitted separately, not inserted into financial evidence");
-    } else {
-      assert.ok(Math.abs(Number(result.evidence[inputId].numericValue) - expectedValue) < 1e-9);
-      assert.equal(result.evidence[inputId].unit, expectedUnit);
-    }
+    assert.ok(Math.abs(Number(result.evidence[inputId].numericValue) - expectedValue) < 1e-9);
+    assert.equal(result.evidence[inputId].unit, expectedUnit);
   }
 });
 
-test("accepted facility-total water and cooling CAPEX remain absolute at 600 MW while synthetic defaults scale", () => {
+test("all three current targets can still be generated and previewed", () => {
+  const cases = [
+    { target: "electricity_cost", dimension: "electricity-tariff", value: 30, unit: "USD/MWh" },
+    { target: "water_consumption", dimension: "water-cooling", value: 30, unit: "Mgal/year" },
+    { target: "grid_interconnection", dimension: "power-grid-interconnection", value: 18, unit: "months" },
+  ] as const;
+  for (const { target, dimension, value, unit } of cases) {
+    const projection = fixture({
+      inputId: target,
+      dimension,
+      value,
+      unit,
+      sourceValue: value,
+      sourceUnit: unit,
+    });
+    const proposal = generateFinancialTransmissionProposal({
+      target,
+      project,
+      projection,
+      sourceEvidenceId: "evidence-1",
+      proposalId: `current-${target}`,
+    });
+    assert.equal(proposal.affectedVariable, target);
+    const preview = previewFinancialTransmissionProposal({
+      evidence: INITIAL_EVIDENCE,
+      project,
+      projection,
+      proposal,
+      target,
+      capacityMW: 1_200,
+      allowGeneratedProposal: true,
+      verifiedDecisions: verifiedDecisionsFor(projection),
+    });
+    assert.equal(preview.status, "preview-only");
+    assert.deepEqual(preview.mappedInputIds, [target]);
+  }
+});
+
+test("accepted water consumption remains facility-absolute at 600 MW while synthetic defaults scale", () => {
   const waterProjection = fixture({
     inputId: "water_consumption",
     dimension: "water-cooling",
@@ -376,22 +407,6 @@ test("accepted facility-total water and cooling CAPEX remain absolute at 600 MW 
     30,
   );
   assert.equal(calculateCashFlowModel(INITIAL_EVIDENCE, 600).assumptions.annualCoolingWaterMgal, 17.25);
-
-  const coolingProjection = fixture({
-    inputId: "cooling_capex",
-    dimension: "water-cooling",
-    value: 600,
-    unit: "USD millions",
-    sourceValue: 600,
-    sourceUnit: "USD millions",
-  });
-  const cooling = applyFixture({ evidence: INITIAL_EVIDENCE, project, projection: coolingProjection });
-  assert.equal(cooling.evidence.cooling_capex.capacityBasis, "facility-absolute");
-  assert.equal(
-    calculateCashFlowModel(cooling.evidence, 600).assumptions.syntheticCoolingCapexReference,
-    600,
-  );
-  assert.equal(calculateCashFlowModel(INITIAL_EVIDENCE, 600).assumptions.syntheticCoolingCapexReference, 225);
 });
 
 test("unknown or unsupported targets remain non-effecting rather than receiving invented mappings", () => {
@@ -402,12 +417,12 @@ test("unknown or unsupported targets remain non-effecting rather than receiving 
       projection: fixture({ inputId, dimension: "construction-phasing" }),
     });
     assert.deepEqual(result.appliedInputIds, []);
-    assert.match(result.ignoredInputReasons[inputId], /No whitelisted financial formula/);
+    assert.match(result.ignoredInputReasons[inputId], /current first-slice allowlist/);
     assert.deepEqual(result.evidence, INITIAL_EVIDENCE);
   }
 });
 
-test("financial transmission requires passage-backed quantity, unit, facility and target coverage", () => {
+test("supported tariff transmission requires passage-backed quantity, unit, facility and target coverage", () => {
   const electricityCases = [
     {
       label: "generic quantity and unit without the target measure",
@@ -423,77 +438,6 @@ test("financial transmission requires passage-backed quantity, unit, facility an
     const result = applyFixture({ evidence: INITIAL_EVIDENCE, project, projection });
     assert.deepEqual(result.appliedInputIds, [], label);
   }
-
-  const acceptedITLoad = fixture({
-    inputId: "capacity_mw",
-    dimension: "construction-phasing",
-    value: 350,
-    unit: "MW",
-    sourceValue: 350,
-    sourceUnit: "MW",
-    retainedPassage: "Fixture project facility-a has 350 MW of IT load.",
-  });
-  assert.deepEqual(
-    applyFixture({ evidence: INITIAL_EVIDENCE, project, projection: acceptedITLoad }).appliedInputIds,
-    ["capacity_mw"],
-  );
-  for (const passage of [
-    "Fixture project facility-a has 600 MW of utility interconnection capacity.",
-    "Fixture project facility-a has 600 MW of nameplate capacity.",
-    "Fixture project facility-a has 600 MW of utility capacity and 350 MW of IT load.",
-  ]) {
-    const projection = fixture({
-      inputId: "capacity_mw",
-      dimension: "construction-phasing",
-      value: 600,
-      unit: "MW",
-      sourceValue: 600,
-      sourceUnit: "MW",
-      retainedPassage: passage,
-    });
-    assert.deepEqual(
-      applyFixture({ evidence: INITIAL_EVIDENCE, project, projection }).appliedInputIds,
-      [],
-      passage,
-    );
-  }
-
-  for (const passage of [
-    "Fixture project facility-a direct project CAPEX is 8000 USD millions.",
-    "Fixture project facility-a total direct project CAPEX for phase-one is 8000 USD millions excluding contingency.",
-    "Fixture project facility-a total cooling-only direct project CAPEX is 8000 USD millions excluding contingency.",
-    "Fixture project executive summary. Campus-wide total direct project CAPEX is 8000 USD millions excluding contingency.",
-    "Fixture project facility-a campus-wide total direct project CAPEX is 8000 USD millions excluding contingency.",
-  ]) {
-    const projection = fixture({
-      inputId: "documented_direct_project_capex",
-      dimension: "financing-capital",
-      value: 8_000,
-      unit: "USD millions",
-      sourceValue: 8_000,
-      sourceUnit: "USD millions",
-      retainedPassage: passage,
-    });
-    assert.deepEqual(
-      applyFixture({ evidence: INITIAL_EVIDENCE, project, projection }).appliedInputIds,
-      [],
-      passage,
-    );
-  }
-
-  const totalDirectCapex = fixture({
-    inputId: "documented_direct_project_capex",
-    dimension: "financing-capital",
-    value: 8_000,
-    unit: "USD millions",
-    sourceValue: 8_000,
-    sourceUnit: "USD millions",
-    retainedPassage: "Fixture project facility-a total direct project CAPEX is 8000 USD millions excluding contingency.",
-  });
-  assert.deepEqual(
-    applyFixture({ evidence: INITIAL_EVIDENCE, project, projection: totalDirectCapex }).appliedInputIds,
-    ["documented_direct_project_capex"],
-  );
 });
 
 test("retained quantity and adjacent unit must normalize to the observation value", () => {
@@ -521,38 +465,9 @@ test("retained quantity and adjacent unit must normalize to the observation valu
   assert.deepEqual(convertedResult.appliedInputIds, ["electricity_cost"]);
   assert.equal(convertedResult.evidence.electricity_cost.numericValue, 30);
 
-  const mismatchedCapacity = fixture({
-    inputId: "capacity_mw",
-    dimension: "construction-phasing",
-    value: 1,
-    unit: "MW",
-    sourceValue: 1,
-    sourceUnit: "MW",
-    retainedPassage: "Fixture project facility-a IT load is 1 GW.",
-  });
-  assert.deepEqual(
-    applyFixture({ evidence: INITIAL_EVIDENCE, project, projection: mismatchedCapacity }).appliedInputIds,
-    [],
-    "1 GW describes 1000 MW, not the 1 MW observation",
-  );
-
-  const mismatchedCapex = fixture({
-    inputId: "documented_direct_project_capex",
-    dimension: "financing-capital",
-    value: 8_000,
-    unit: "USD millions",
-    sourceValue: 8_000,
-    sourceUnit: "USD millions",
-    retainedPassage: "Fixture project facility-a total direct project CAPEX is 8000 USD thousands excluding contingency.",
-  });
-  assert.deepEqual(
-    applyFixture({ evidence: INITIAL_EVIDENCE, project, projection: mismatchedCapex }).appliedInputIds,
-    [],
-    "8000 USD thousands describes 8 USD millions, not 8000 USD millions",
-  );
 });
 
-test("COD and tenant commencement use explicit start-date formulas and maximum readiness, not additive delays", () => {
+test("dormant COD and tenant commencement accepted inputs are ignored by the current policy", () => {
   const start = modelStart;
   const codProjection = fixture({
     inputId: "cod_date",
@@ -580,31 +495,18 @@ test("COD and tenant commencement use explicit start-date formulas and maximum r
     modelStartDate: start,
   });
 
-  assert.deepEqual(result.appliedInputIds, ["cod_date", "tenant_commencement_date"]);
-  assert.equal(result.modelOverrides.readinessDates?.length, 2);
-  assert.equal(result.modelOverrides.modelStartDate?.reference, start.reference);
-  assert.ok(result.appliedInputs.every((input) =>
-    input.formulaVersion === 1 &&
-    input.retainedPassageId.length > 0 &&
-    input.sourceAsOfDate === "2026-08-31" &&
-    input.sourceValueStatus === "actual",
-  ));
-  assert.equal(result.appliedInputs[0]?.modelStartDate, start.date);
-  assert.equal(result.appliedInputs[0]?.modelStartDateReference, start.reference);
-  const base = calculateCashFlowModel(INITIAL_EVIDENCE);
-  const modeled = calculateCashFlowModel(INITIAL_EVIDENCE, 1_200, result.modelOverrides);
-  assert.equal(modeled.assumptions.codMonthsFromStart, 19);
-  assert.equal(modeled.assumptions.tenantCommencementMonthsFromStart, 13);
-  assert.equal(modeled.revenueDelayMonths, 19);
-  assert.equal(base.revenueDelayMonths, 14);
+  assert.deepEqual(result.appliedInputIds, []);
+  assert.match(result.ignoredInputReasons.cod_date, /current first-slice allowlist/);
+  assert.match(result.ignoredInputReasons.tenant_commencement_date, /current first-slice allowlist/);
+  assert.deepEqual(result.modelOverrides, {});
 
   const replayFromStoredAnchor = applyFixture({
     evidence: INITIAL_EVIDENCE,
     project,
     projection: codProjection,
   });
-  assert.deepEqual(replayFromStoredAnchor.appliedInputIds, ["cod_date"]);
-  assert.deepEqual(replayFromStoredAnchor.modelOverrides.modelStartDate, start);
+  assert.deepEqual(replayFromStoredAnchor.appliedInputIds, []);
+  assert.match(replayFromStoredAnchor.ignoredInputReasons.cod_date, /current first-slice allowlist/);
   const differentReplayAnchor = applyFixture({
     evidence: INITIAL_EVIDENCE,
     project,
@@ -612,10 +514,10 @@ test("COD and tenant commencement use explicit start-date formulas and maximum r
     modelStartDate: { date: "2026-09-11", reference: "Different replay anchor" },
   });
   assert.deepEqual(differentReplayAnchor.appliedInputIds, []);
-  assert.match(differentReplayAnchor.ignoredInputReasons.cod_date, /latest proposal/);
+  assert.match(differentReplayAnchor.ignoredInputReasons.cod_date, /current first-slice allowlist/);
 });
 
-test("retained COD dates must bind to the COD milestone, not a tenant date in the same passage", () => {
+test("retained COD dates remain out of slice even when a passage is ambiguous", () => {
   const ambiguousCod = fixture({
     inputId: "cod_date",
     dimension: "construction-phasing",
@@ -627,10 +529,10 @@ test("retained COD dates must bind to the COD milestone, not a tenant date in th
   });
   const result = applyFixture({ evidence: INITIAL_EVIDENCE, project, projection: ambiguousCod });
   assert.deepEqual(result.appliedInputIds, []);
-  assert.ok(result.ignoredInputReasons.cod_date);
+  assert.match(result.ignoredInputReasons.cod_date, /current first-slice allowlist/);
 });
 
-test("qualified planned, forecast, and budget evidence can be explicitly accepted without relabeling it actual", () => {
+test("qualified in-slice water evidence remains eligible while dormant mappings fail closed", () => {
   const plannedCod = fixture({
     inputId: "cod_date",
     dimension: "construction-phasing",
@@ -699,28 +601,19 @@ test("qualified planned, forecast, and budget evidence can be explicitly accepte
     modelStartDate: modelStart,
   });
 
-  assert.deepEqual(result.appliedInputIds.sort(), [
-    "capacity_mw",
-    "cod_date",
-    "documented_direct_project_capex",
-    "tenant_commencement_date",
-    "water_consumption",
-  ]);
+  assert.deepEqual(result.appliedInputIds, ["water_consumption"]);
   assert.deepEqual(
     Object.fromEntries(result.appliedInputs.map((input) => [input.inputId, input.sourceValueStatus])),
-    {
-      cod_date: "forecast",
-      documented_direct_project_capex: "estimate",
-      tenant_commencement_date: "forecast",
-      capacity_mw: "forecast",
-      water_consumption: "estimate",
-    },
+    { water_consumption: "estimate" },
   );
+  for (const target of ["cod_date", "tenant_commencement_date", "documented_direct_project_capex", "capacity_mw"]) {
+    assert.match(result.ignoredInputReasons[target], /current first-slice allowlist/);
+  }
   assert.match(result.evidence.water_consumption.sourceRole ?? "", /estimate/);
-  assert.deepEqual(result.modelOverrides.modelStartDate, modelStart);
+  assert.deepEqual(result.modelOverrides, {});
 });
 
-test("scoped direct project CAPEX is absolute, replaces overlapping cooling CAPEX, and leaves synthetic debt unchanged", () => {
+test("dormant direct and cooling CAPEX mappings do not transmit", () => {
   const capexProjection = fixture({
     inputId: "documented_direct_project_capex",
     dimension: "financing-capital",
@@ -745,32 +638,129 @@ test("scoped direct project CAPEX is absolute, replaces overlapping cooling CAPE
     project,
     projection,
   });
-  assert.deepEqual(result.appliedInputIds, ["documented_direct_project_capex"], JSON.stringify(result.ignoredInputReasons));
-  assert.match(result.ignoredInputReasons.cooling_capex, /replaces the cooling component/);
-  assert.equal(result.modelOverrides.directCapex?.scope, "facility-total-direct-capex-excluding-contingency");
-  assert.equal(result.modelOverrides.directCapex?.amountUSDMillions, 8_000);
-  assert.deepEqual(result.modelOverrides.directCapex?.sourceEvidenceIds, ["direct-capex-evidence"]);
-  assert.equal(result.appliedInputs[0]?.formulaId, "absolute-facility-direct-capex-v1");
-  assert.equal(result.evidence.cooling_capex.numericValue, INITIAL_EVIDENCE.cooling_capex.numericValue);
+  assert.deepEqual(result.appliedInputIds, []);
+  assert.match(result.ignoredInputReasons.documented_direct_project_capex, /current first-slice allowlist/);
+  assert.match(result.ignoredInputReasons.cooling_capex, /current first-slice allowlist/);
+  assert.deepEqual(result.modelOverrides, {});
+  assert.deepEqual(result.evidence, INITIAL_EVIDENCE);
+});
 
-  const base = calculateCashFlowModel(INITIAL_EVIDENCE, 1_200);
-  const modeled = calculateCashFlowModel(result.evidence, 1_200, result.modelOverrides);
-  assert.equal(modeled.assumptions.documentedDirectCapex, 8_000);
-  assert.equal(modeled.assumptions.directCapexScope, "facility-total-direct-capex-excluding-contingency");
-  assert.equal(modeled.assumptions.coolingCapex, 0);
-  assert.equal(modeled.assumptions.syntheticCoolingCapexReference, 450);
-  assert.match(modeled.assumptions.capexContingencyBasis, /Documented direct CAPEX excludes contingency/);
-  assert.equal(modeled.lineItems.cooling_capex.value, 0);
-  assert.equal(modeled.assumptions.sourcesAndUses.uses.entryValue, 0);
-  assert.equal(modeled.assumptions.sourcesAndUses.uses.coolingCapex, 0);
-  assert.equal(modeled.assumptions.sourcesAndUses.uses.documentedDirectProjectCapex, 8_000);
-  assert.equal(modeled.assumptions.debtAmount, base.assumptions.debtAmount);
-  assert.match(modeled.assumptions.debtBasis, /Synthetic entry value/);
+test("the first-slice allowlist rejects every dormant and forged target at all public boundaries", async () => {
+  const excludedTargets = [
+    "electricity_escalation",
+    "water_escalation",
+    "cooling_capex",
+    "permitting_timeline",
+    "capacity_mw",
+    "cod_date",
+    "tenant_commencement_date",
+    "documented_direct_project_capex",
+  ] as const;
+  const runtimeTargets: readonly string[] = [
+    ...excludedTargets,
+    "unknown_financial_target",
+    "__proto__",
+    "constructor",
+  ];
+  const supportedProjection = fixture({ proposalStatus: "proposed", decisionRef: null });
+  const supportedProposal = generateFinancialTransmissionProposal({
+    target: "electricity_cost",
+    project,
+    projection: supportedProjection,
+    sourceEvidenceId: "evidence-1",
+    proposalId: "supported-proposal",
+  });
+  const writeCalls: string[] = [];
+  const repository = {
+    async recordDecision() {
+      writeCalls.push("decision");
+    },
+    async appendEvent(event: ProofLedgerEvent) {
+      writeCalls.push(event.eventType);
+      return { ...event, recordedAt: fixedTime } as StoredProofLedgerEvent;
+    },
+  };
+  const decide = decisionServiceFor({
+    projection: supportedProjection,
+    actor: { kind: "authenticated", actorRef: "reviewer-1" },
+    repository,
+  });
 
-  const smallerFacility = calculateCashFlowModel(result.evidence, 600, result.modelOverrides);
-  const smallerFacilityBase = calculateCashFlowModel(INITIAL_EVIDENCE, 600);
-  assert.equal(smallerFacility.assumptions.documentedDirectCapex, 8_000);
-  assert.equal(smallerFacility.assumptions.debtAmount, smallerFacilityBase.assumptions.debtAmount);
+  for (const target of runtimeTargets) {
+    const forgedTarget = target as never;
+    assert.throws(() => expectedAffectedVariable(forgedTarget), /current first-slice allowlist/, target);
+    assert.throws(
+      () => financialTransmissionFormulaDescription(forgedTarget),
+      /current first-slice allowlist/,
+      target,
+    );
+    assert.throws(() => generateFinancialTransmissionProposal({
+      target: forgedTarget,
+      project,
+      projection: supportedProjection,
+      sourceEvidenceId: "evidence-1",
+      proposalId: `forged-${target}`,
+    }), /current first-slice allowlist/, target);
+    assert.throws(() => previewFinancialTransmissionProposal({
+      evidence: INITIAL_EVIDENCE,
+      project,
+      projection: supportedProjection,
+      proposal: supportedProposal,
+      target: forgedTarget,
+      capacityMW: 1_200,
+    }), /current first-slice allowlist/, target);
+    await assert.rejects(appendFinancialTransmissionProposal({
+      repository,
+      project,
+      proposal: { ...supportedProposal, affectedVariable: target },
+      eventId: `forged-append-${target}`,
+      versions,
+      effectiveAt: fixedTime,
+    }), /current first-slice allowlist/, target);
+    await assert.rejects(decide({
+      project,
+      proposal: supportedProposal,
+      target: forgedTarget,
+      action: "accept",
+      decisionId: `forged-decision-${target}`,
+      acceptedInputEventId: `forged-input-${target}`,
+      proposalStatusEventId: `forged-status-${target}`,
+      rationale: "Test forged runtime target.",
+      acceptanceReason: "Must not be accepted.",
+      versions,
+      decidedAt: fixedTime,
+    }), /current first-slice allowlist/, target);
+  }
+  assert.deepEqual(writeCalls, []);
+
+  const dimensions: Record<(typeof excludedTargets)[number], EvidenceObservation["dimension"]> = {
+    electricity_escalation: "electricity-tariff",
+    water_escalation: "water-cooling",
+    cooling_capex: "water-cooling",
+    permitting_timeline: "permitting-entitlement",
+    capacity_mw: "construction-phasing",
+    cod_date: "construction-phasing",
+    tenant_commencement_date: "tenant-counterparty",
+    documented_direct_project_capex: "financing-capital",
+  };
+  for (const inputId of excludedTargets) {
+    const replay = applyFixture({
+      evidence: INITIAL_EVIDENCE,
+      project,
+      projection: fixture({ inputId, dimension: dimensions[inputId] }),
+    });
+    assert.deepEqual(replay.appliedInputIds, [], inputId);
+    assert.match(replay.ignoredInputReasons[inputId], /current first-slice allowlist/, inputId);
+    assert.deepEqual(replay.evidence, INITIAL_EVIDENCE, inputId);
+  }
+
+  const previousPolicyReplay = applyFixture({
+    evidence: INITIAL_EVIDENCE,
+    project,
+    projection: fixture({ proposalPolicyVersion: FINANCIAL_TRANSMISSION_POLICY_VERSION - 1 }),
+  });
+  assert.deepEqual(previousPolicyReplay.appliedInputIds, []);
+  assert.match(previousPolicyReplay.ignoredInputReasons.electricity_cost, /version-compatible/);
 });
 
 test("generated proposal previews use the whitelist, while anonymous decisions remain session-only", async () => {
@@ -789,6 +779,21 @@ test("generated proposal previews use the whitelist, while anonymous decisions r
   assert.equal(proposal.affectedVariable, "electricity_cost");
   assert.equal(proposal.proposedValue.value, 35);
   assert.equal(proposal.formula, financialTransmissionFormulaDescription("electricity_cost"));
+  let appendedProposal: StoredProofLedgerEvent | null = null;
+  await appendFinancialTransmissionProposal({
+    repository: {
+      async appendEvent(event) {
+        appendedProposal = { ...event, recordedAt: fixedTime } as StoredProofLedgerEvent;
+        return appendedProposal;
+      },
+    },
+    project,
+    proposal,
+    eventId: "appended-current-proposal",
+    versions,
+    effectiveAt: fixedTime,
+  });
+  assert.equal(appendedProposal?.eventType, "transmission-proposal");
   const preview = previewFinancialTransmissionProposal({
     evidence: INITIAL_EVIDENCE,
     project,
@@ -897,133 +902,46 @@ test("authenticated acceptance records a decision before the accepted input and 
   }
 });
 
-test("authenticated reviewers can accept qualified forecast dates, but conflicting replay anchors block every write", async () => {
-  const forecastDateProposal = fixture({
+test("authenticated decisions cannot accept dormant date mappings or write to the ledger", async () => {
+  const proposalProjection = fixture({
     inputId: "cod_date",
     dimension: "construction-phasing",
     value: "2028-03-31",
     unit: "date",
     sourceValue: "2028-03-31",
     sourceUnit: "date",
-    evidenceId: "forecast-cod-evidence",
-    valueStatus: "forecast",
-    developmentQualifier: "Phase 2",
-    retainedPassage: "Fixture project facility-a Phase 2 planned COD is 2028-03-31.",
     proposalStatus: "proposed",
     decisionRef: null,
   });
-  const proposalEvent = forecastDateProposal.events.find((event) => event.eventType === "transmission-proposal");
-  if (proposalEvent?.eventType !== "transmission-proposal") throw new Error("Forecast proposal is missing.");
+  const proposalEvent = proposalProjection.events.find((event) => event.eventType === "transmission-proposal");
+  if (proposalEvent?.eventType !== "transmission-proposal") throw new Error("Dormant proposal is missing.");
   const calls: string[] = [];
-  let recordedDecision: import("./safelocProofContract").ProofUserDecision | null = null;
-  const repository = {
-    async recordDecision(decision: import("./safelocProofContract").ProofUserDecision) {
-      recordedDecision = decision;
-      calls.push("decision");
-    },
-    async appendEvent(event: ProofLedgerEvent) {
-      calls.push(event.eventType);
-      return { ...event, recordedAt: "2026-09-10T13:00:00.000Z" } as StoredProofLedgerEvent;
-    },
-  };
-  const forecastService = decisionServiceFor({
-    projection: forecastDateProposal,
+  const decide = decisionServiceFor({
+    projection: proposalProjection,
     actor: { kind: "authenticated", actorRef: "reviewer-forecast" },
-    repository,
-    verifyDecision: async (decisionId) => recordedDecision?.decisionId === decisionId
-      ? {
-          decisionId,
-          project,
-          actorKind: "authenticated",
-          action: "accept",
-          targetRef: proposalEvent.payload.proposal.proposalId,
-        }
-      : null,
+    repository: {
+      async recordDecision() {
+        calls.push("decision");
+      },
+      async appendEvent(event: ProofLedgerEvent) {
+        calls.push(event.eventType);
+        return { ...event, recordedAt: fixedTime } as StoredProofLedgerEvent;
+      },
+    },
   });
-  const forecastResult = await forecastService({
+  await assert.rejects(decide({
     project,
     proposal: proposalEvent.payload.proposal,
     target: "cod_date",
     action: "accept",
-    decisionId: "forecast-decision",
-    acceptedInputEventId: "forecast-input",
-    proposalStatusEventId: "forecast-status",
-    rationale: "The source-backed target date is qualified for Phase 2.",
-    acceptanceReason: "Approved as a forecast, not an actual operating date.",
+    decisionId: "dormant-decision",
+    acceptedInputEventId: "dormant-input",
+    proposalStatusEventId: "dormant-status",
+    rationale: "Review.",
+    acceptanceReason: "Not in the first slice.",
     versions,
-    modelStartDate: modelStart,
     decidedAt: fixedTime,
-  });
-  assert.equal(forecastResult.persisted, true);
-  assert.deepEqual(calls, ["decision", "accepted-model-input", "transmission-proposal"]);
-
-  const existingCod = fixture({
-    inputId: "cod_date",
-    dimension: "construction-phasing",
-    value: "2028-03-31",
-    unit: "date",
-    sourceValue: "2028-03-31",
-    sourceUnit: "date",
-    evidenceId: "existing-cod-evidence",
-  });
-  const proposedTenant = fixture({
-    inputId: "tenant_commencement_date",
-    dimension: "tenant-counterparty",
-    value: "2028-10-01",
-    unit: "date",
-    sourceValue: "2028-10-01",
-    sourceUnit: "date",
-    evidenceId: "proposed-tenant-evidence",
-    proposalStatus: "proposed",
-    decisionRef: null,
-    proposalFormula: financialTransmissionFormulaDescription(
-      "tenant_commencement_date",
-      { date: "2026-09-11", reference: "Different underwriting anchor" },
-    ),
-  });
-  const combinedProjection = mergeFixtures(existingCod, proposedTenant);
-  const tenantEvent = combinedProjection.events.find((event) =>
-    event.eventType === "transmission-proposal" &&
-    event.payload.proposal.affectedVariable === "tenant_commencement_date",
-  );
-  if (tenantEvent?.eventType !== "transmission-proposal") throw new Error("Tenant proposal is missing.");
-  calls.length = 0;
-  const conflictingService = decisionServiceFor({
-    projection: combinedProjection,
-    actor: { kind: "authenticated", actorRef: "reviewer-forecast" },
-    repository,
-    verifyDecision: async (decisionId) => decisionId === "decision-1"
-      ? {
-          decisionId,
-          project,
-          actorKind: "authenticated",
-          action: "accept",
-          targetRef: "proposal-1",
-        }
-      : recordedDecision?.decisionId === decisionId
-        ? {
-          decisionId,
-          project,
-          actorKind: "authenticated",
-          action: "accept",
-          targetRef: tenantEvent.payload.proposal.proposalId,
-        }
-        : null,
-  });
-  await assert.rejects(conflictingService({
-    project,
-    proposal: tenantEvent.payload.proposal,
-    target: "tenant_commencement_date",
-    action: "accept",
-    decisionId: "conflicting-anchor-decision",
-    acceptedInputEventId: "conflicting-anchor-input",
-    proposalStatusEventId: "conflicting-anchor-status",
-    rationale: "Reviewing a second readiness date.",
-    acceptanceReason: "The proposal uses a different model-start anchor.",
-    versions,
-    modelStartDate: { date: "2026-09-11", reference: "Different underwriting anchor" },
-    decidedAt: fixedTime,
-  }), /prospective replay overlay|inconsistent replay anchors/);
+  }), /current first-slice allowlist/);
   assert.deepEqual(calls, []);
 });
 
@@ -1317,19 +1235,19 @@ test("accepted proof changes the synthetic primary while EIA remains a distinct 
     value: 1.2,
     unit: "GW",
   });
-  const capacityOnly = buildFinancialScenarioMatrix({
+  const outOfSliceCapacity = buildFinancialScenarioMatrix({
     syntheticEvidence: INITIAL_EVIDENCE,
     providerEvidence: null,
     eiaData,
     providerState: "embedded",
-    capacityMW: null,
+    capacityMW: 1_200,
     acceptedProofProjection: capacityProjection,
     proofProject: project,
     verifiedFinancialDecisions: verifiedDecisionsFor(capacityProjection),
   });
-  assert.equal(capacityOnly.scenarios["synthetic-current"]?.assumptions.capacityMW, 1_200, JSON.stringify(capacityOnly.transmission.ignoredInputReasons));
-  assert.equal(capacityOnly.scenarios["synthetic-current"]?.transmission.acceptedInputs[0]?.acceptedValue.unit, "MW");
-  assert.deepEqual(capacityOnly.transmission.appliedInputIds, ["capacity_mw"]);
+  assert.equal(outOfSliceCapacity.scenarios["synthetic-current"]?.assumptions.capacityMW, 1_200);
+  assert.deepEqual(outOfSliceCapacity.transmission.appliedInputIds, []);
+  assert.match(outOfSliceCapacity.transmission.ignoredInputReasons.capacity_mw, /current first-slice allowlist/);
   assert.throws(() => buildFinancialScenarioMatrix({
     syntheticEvidence: INITIAL_EVIDENCE,
     providerEvidence: null,

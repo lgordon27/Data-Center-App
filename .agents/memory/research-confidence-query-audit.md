@@ -20,3 +20,9 @@ Directory URLs and operating status are identity context, not filters for every 
 **Why:** A directory-host site restriction prevents discovery of regulator, utility, and company records—the very sources diligence requires.
 
 **How to apply:** Vary project/location and operator/project query angles while checking facility identity; keep directory metadata distinct from evidentiary support.
+
+A deterministic discovery query cap limits requested coverage, not a guarantee that the grounding provider executed every family. Submitted building identifiers are discovery context, not verified aliases.
+
+**Why:** Narrow power-only discovery missed known source classes; broad category prose did not ensure alias, facility, or state-record searches. Inventing execution or campus relationships to fill those gaps would weaken diligence.
+
+**How to apply:** Report requested families and provider-observed searches separately, identify omitted families after the one bounded response, and do not continue with unapproved probes. Use facility terms for admission only until retained text establishes their relationship.

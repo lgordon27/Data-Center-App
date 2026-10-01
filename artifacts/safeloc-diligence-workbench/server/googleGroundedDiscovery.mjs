@@ -191,18 +191,118 @@ function sourceFromUrlCitation(annotation, queries) {
 }
 
 export function buildGoogleGroundedDiscoveryPrompt(project) {
-  const name = normalizeText(project?.name, 240) || "the submitted project";
-  const location = normalizeText(project?.location, 240) || "the stated project location";
-  const operator = normalizeText(project?.knownData?.operator ?? project?.operator, 200) || "the stated operator";
+  const queryPlan = buildGoogleGroundedDiscoveryQueryPlan(project);
   return [
-    `Discover public sources for ${name} in ${location}, associated with ${operator}.`,
+    "Discover public sources for the submitted project using only the supplied project context below.",
     "You must call Google Search before answering; do not answer from memory.",
-    "Use one bounded Google Search grounding request and return only discovery metadata.",
-    `Cover these discovery areas in the query plan: ${DISCOVERY_CATEGORIES.join(", ")}.`,
+    "Use this one bounded, deterministic query plan in order. Issue no more than one search query for each listed family; do not add searches or follow-up phases.",
+    "The plan is requested coverage, not proof of execution. Preserve the actual queries only in google_search_call telemetry.",
+    ...queryPlan.map((query, index) => `${index + 1}. ${query}`),
+    `Keep returned candidates useful across these discovery areas: ${DISCOVERY_CATEGORIES.join(", ")}.`,
     "Do not use generated JSON, prose, snippets, or model-selected URLs as provenance. The application accepts only executed google_search_call queries and provider url_citation annotations in the Interactions response.",
     "The response may contain explanatory text, but it must not be used to manufacture queries or citations. Never invent a URL.",
     "Prefer first-party company/developer disclosures, government and regulator records, permits, utility records, court or public-agenda records, and reputable project-specific reporting.",
   ].join("\n");
+}
+
+function contextStrings(...values) {
+  const flattened = values.flatMap((value) => Array.isArray(value) ? value : [value]);
+  const unique = new Map();
+  for (const value of flattened) {
+    const text = normalizeText(value, 80);
+    const key = text.toLocaleLowerCase();
+    if (text && !unique.has(key)) unique.set(key, text);
+  }
+  return [...unique.values()];
+}
+
+function domainForSearch(value) {
+  const text = normalizeText(value, 180);
+  if (!text) return "";
+  try {
+    const url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(text) ? text : `https://${text}`);
+    const domain = url.hostname.toLowerCase().replace(/^www\./, "");
+    return /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(domain) ? domain : "";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Produces requested search coverage from submitted context only. These terms
+ * guide the single grounding request; they are not execution telemetry,
+ * provenance, identity, or evidence.
+ */
+export function buildGoogleGroundedDiscoveryQueryPlan(project = {}) {
+  const knownData = project?.knownData ?? {};
+  const names = contextStrings(
+    project?.name,
+    project?.projectName,
+    project?.aliases,
+    project?.projectAliases,
+    knownData?.aliases,
+    knownData?.projectAliases,
+  ).slice(0, 3);
+  const name = names[0] ?? (normalizeText(project?.name ?? project?.projectName, 120) || "the submitted project");
+  const operatorNames = contextStrings(
+    project?.operator,
+    knownData?.operator,
+    project?.owner,
+    knownData?.owner,
+    knownData?.developer,
+    knownData?.companyName,
+    project?.operatorAliases,
+    knownData?.operatorAliases,
+    project?.ownerAliases,
+    knownData?.ownerAliases,
+  ).slice(0, 2);
+  const identifiers = contextStrings(
+    project?.facilityIdentifiers,
+    project?.facilityIds,
+    project?.buildingIdentifiers,
+    project?.buildingIds,
+    project?.campusIdentifiers,
+    knownData?.facilityIdentifiers,
+    knownData?.facilityIds,
+    knownData?.buildingIdentifiers,
+    knownData?.buildingIds,
+    knownData?.campusIdentifiers,
+  ).slice(0, 6);
+  const location = contextStrings(project?.location)[0]
+    ?? (contextStrings(knownData?.city, knownData?.county, knownData?.state).join(", ")
+      || "the submitted project location");
+  const operatorTerms = operatorNames.join(" ") || "the submitted owner or operator";
+  const projectTerms = names.slice(0, 2).join(" ") || name;
+  const facilityTerms = identifiers.slice(0, 4).join(" ") || projectTerms;
+  const authorityNames = contextStrings(
+    knownData?.authorityNames,
+    knownData?.permittingAuthority,
+    knownData?.waterAuthority,
+  ).slice(0, 4);
+  const authorityDomains = contextStrings(
+    knownData?.authorityDomains,
+    knownData?.cityDomains,
+    knownData?.countyDomains,
+    knownData?.utilityDomains,
+    knownData?.knownOfficialEndpoints?.map(domainForSearch),
+  ).map(domainForSearch).filter(Boolean).slice(0, 8);
+  const stateText = contextStrings(knownData?.state, project?.location).join(" ");
+  if (/\b(?:texas|tx)\b/i.test(stateText)) {
+    authorityDomains.splice(0, authorityDomains.length, "tdlr.texas.gov", ...authorityDomains.filter((domain) => domain !== "tdlr.texas.gov"));
+  }
+  const officialTargets = [
+    ...authorityNames,
+    ...authorityDomains.map((domain) => `site:${domain}`),
+  ].join(" ");
+
+  return [
+    `"${name}" ${operatorTerms} ${projectTerms} ${location} project campus data center`,
+    `"${name}" ${operatorTerms} ${facilityTerms} ${location} facility building campus data center`,
+    `${projectTerms} ${operatorTerms} ${location} project-specific permits TDLR TABS zoning building records ${officialTargets}`,
+    `${projectTerms} ${operatorTerms} ${location} data center financing construction loan development announcement`,
+    `${projectTerms} ${operatorTerms} ${facilityTerms} ${location} data center electric power utility grid substation interconnection`,
+    `${projectTerms} ${operatorTerms} ${location} data center trade reporting local news community financing construction`,
+  ].map((query) => normalizeText(query, 500));
 }
 
 export function buildGoogleGroundedDiscoveryRequestBody(project, {
@@ -551,7 +651,13 @@ export async function discoverGoogleGroundedProject({
   }
   let result;
   try {
-    result = { ...parseGoogleGroundedDiscoveryResponse(body), model };
+    result = {
+      ...parseGoogleGroundedDiscoveryResponse(body),
+      model,
+      requestedQueryPlan: typeof prompt === "string" && prompt.trim()
+        ? []
+        : buildGoogleGroundedDiscoveryQueryPlan(project),
+    };
   } catch (error) {
     if (error?.providerDiagnostic) {
       error.providerDiagnostic.status = response.status;

@@ -51,8 +51,9 @@ test("Red Oak canary request options encode the exact isolated scope and hard li
     signal: new AbortController().signal,
   });
 
-  assert.deepEqual(options.categoryIds, ["project-identity", "grid"]);
-  assert.equal(options.researchBudgetOverrides.maxProviderRequests, 3);
+  assert.deepEqual(options.categoryIds, ["grid"]);
+  assert.equal(options.canaryGridIdentityGate, true);
+  assert.equal(options.researchBudgetOverrides.maxProviderRequests, 2);
   assert.equal(options.researchBudgetOverrides.maxPhysicalDocumentOpens, 8);
   assert.equal(options.researchBudgetOverrides.maxFollowUps, 0);
   assert.equal(options.researchBudgetOverrides.maxFollowUpsPerCategory, 0);
@@ -60,7 +61,8 @@ test("Red Oak canary request options encode the exact isolated scope and hard li
   assert.equal(options.allowCorrectiveRetries, false);
   assert.equal(options.allowProviderRetries, false);
   assert.equal(options.useDefaultSecConnector, false);
-  assert.match(options.googleDiscoveryPrompt, /only exact project identity and electric grid\/interconnection evidence/i);
+  assert.equal(options.googleDiscoveryPrompt, undefined,
+    "the canary must use the broadened one-request discovery builder");
   assert.equal(options.researchTimeoutMs, 75_000);
   assert.equal(RED_OAK_GRID_CANARY_LIMITS.invocationTimeoutMs, 90_000);
 });
@@ -80,7 +82,8 @@ test("Red Oak retrieval-only canary stops after one discovery and eight bounded 
 
   assert.equal(options.retrievalOnly, true);
   assert.equal(options.apiKey, null);
-  assert.deepEqual(options.categoryIds, ["project-identity", "grid"]);
+  assert.deepEqual(options.categoryIds, ["grid"]);
+  assert.equal(options.canaryGridIdentityGate, false);
   assert.equal(options.researchBudgetOverrides.maxProviderRequests, 1);
   assert.equal(options.researchBudgetOverrides.maxPhysicalDocumentOpens, 8);
   assert.equal(options.researchBudgetOverrides.maxFollowUps, 0);
@@ -91,7 +94,7 @@ test("Red Oak retrieval-only canary stops after one discovery and eight bounded 
   assert.equal(RED_OAK_RETRIEVAL_ONLY_CANARY_LIMITS.structuredProviderCalls, 0);
   assert.equal(RED_OAK_RETRIEVAL_ONLY_CANARY_LIMITS.totalProviderRequests, 1);
   assert.equal(RED_OAK_RETRIEVAL_ONLY_CANARY_LIMITS.invocationTimeoutMs, 90_000);
-  assert.match(options.googleDiscoveryPrompt, /only exact project identity and electric grid\/interconnection evidence/i);
+  assert.equal(options.googleDiscoveryPrompt, undefined);
 });
 
 test("pnpm-forwarded separator is accepted before the canary live and gates options", () => {
@@ -379,6 +382,23 @@ test("retrieval-only blocker report distinguishes usable and exact-project passa
   assert.equal(blockers.passageIdentityAudit.exactProjectPassageCount, 1);
 });
 
+test("Grid canary reports the retained-passage identity gate as the terminal blocker", () => {
+  const report = {
+    canaryIdentityGate: {
+      required: true,
+      state: "unresolved",
+      usableRetainedPassageCount: 1,
+      exactProjectPassageCount: 0,
+    },
+  };
+  const blockers = canaryRemainingBlockers(report, { structuredProviderCalls: 0 }, []);
+  assert.deepEqual(blockers.unresolvedCategories, ["project-identity"]);
+  assert.equal(blockers.canaryIdentityGateState, "unresolved");
+  assert.equal(blockers.identityEstablishedBeforeStructuredCall, false);
+  assert.equal(blockers.retainedUsablePassageButIdentityUnresolved, true);
+  assert.equal(blockers.noUsableGroundedPassageAvailableForAnalysis, false);
+});
+
 test("canary cache and registry resources always use distinct temporary directories", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "safeloc-red-oak-isolation-test-"));
   try {
@@ -416,6 +436,8 @@ test("reports bounded citation acceptance and rejection states distinctly", () =
         researchCoverage: {
           discoveryStatus: "completed",
           discoveryState: "usable-citations",
+          discoveryQueries: ["Provider-observed query"],
+          discoveryRequestedQueryPlan: ["Requested exact-project query", "Requested official-record query"],
           discoveryRawAnnotationSummaries: [
             { type: "url_citation", url: "https://records.example/a", canonicalUrl: "https://records.example/a", accepted: true },
             { type: "url_citation", url: "file:///unsafe", accepted: false, rejectionReason: "unsafe-or-invalid-url" },
@@ -430,6 +452,11 @@ test("reports bounded citation acceptance and rejection states distinctly", () =
   });
   assert.equal(report.discovery.status, "completed");
   assert.equal(report.discovery.state, "usable-citations");
+  assert.deepEqual(report.discovery.queries, ["Provider-observed query"]);
+  assert.deepEqual(report.discovery.requestedQueryPlan, [
+    "Requested exact-project query",
+    "Requested official-record query",
+  ]);
   assert.equal(report.discovery.rawAnnotationSummaries[0].accepted, true);
   assert.equal(report.discovery.rawAnnotationSummaries[1].rejectionReason, "unsafe-or-invalid-url");
   assert.deepEqual(report.discovery.acceptedCitationUrls, ["https://records.example/a"]);

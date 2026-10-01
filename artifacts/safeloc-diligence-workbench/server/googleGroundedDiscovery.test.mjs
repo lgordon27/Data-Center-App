@@ -7,6 +7,7 @@ import {
   GOOGLE_DISCOVERY_CATEGORY_ROUTING,
   GOOGLE_GROUNDED_PREFLIGHT_PROMPT,
   assertGoogleGroundedPreflightResult,
+  buildGoogleGroundedDiscoveryQueryPlan,
   buildGoogleGroundedDiscoveryRequestBody,
   discoverGoogleGroundedProject,
   parseGoogleGroundedDiscoveryResponse,
@@ -136,6 +137,97 @@ test("builds one Google Search grounding request without embedding generated evi
   assert.match(body.input, /project-identity/);
   assert.match(body.input, /must call Google Search/);
   assert.match(body.input, /Never invent a URL/);
+});
+
+test("builds bounded exact-project, facility, official-record, and reporting query families from submitted context", () => {
+  const redOakContext = {
+    name: "Red Oak Campus",
+    aliases: ["DataBank Red Oak Campus"],
+    location: "Red Oak, Ellis County, Texas",
+    knownData: {
+      operator: "DataBank",
+      aliases: ["DataBank Red Oak Data Center"],
+      operatorAliases: ["DataBank LLC"],
+      ownerAliases: ["DB Red Oak Holdings"],
+      facilityIdentifiers: ["DFW9", "DFW10", "DFW11"],
+      authorityNames: ["City of Red Oak", "Ellis County"],
+    },
+  };
+  const queryPlan = buildGoogleGroundedDiscoveryQueryPlan(redOakContext);
+  const prompt = buildGoogleGroundedDiscoveryRequestBody(redOakContext).input;
+
+  assert.equal(queryPlan.length, 6, "query families are deterministic and capped");
+  assert.ok(queryPlan.every((query) => query.length <= 500));
+  assert.match(queryPlan[0], /Red Oak Campus/);
+  assert.match(queryPlan[0], /DataBank/);
+  assert.match(queryPlan[0], /DataBank Red Oak Campus/);
+  assert.match(queryPlan[1], /DFW9.*DFW10.*DFW11/);
+  assert.match(queryPlan[2], /TDLR.*TABS.*zoning.*building records/);
+  assert.match(queryPlan[2], /site:tdlr\.texas\.gov/);
+  assert.match(queryPlan[2], /City of Red Oak/);
+  assert.match(queryPlan[3], /financing.*construction loan.*development announcement/);
+  assert.match(queryPlan[4], /electric power utility grid substation interconnection/);
+  assert.match(queryPlan[5], /trade reporting local news community financing construction/);
+  assert.match(prompt, /one bounded, deterministic query plan/);
+  assert.match(prompt, /actual queries only in google_search_call telemetry/);
+  assert.doesNotMatch(prompt, /https:\/\/(?:www\.)?databank\.com/i,
+    "production query planning must not hard-code a project URL");
+  assert.doesNotMatch(queryPlan.join("\n"), /Red Oak Campus DFW\d{2} is|Red Oak's DFW/,
+    "facility identifiers are supplied search context, not invented project aliases");
+
+  const unrelatedPlan = buildGoogleGroundedDiscoveryQueryPlan({
+    name: "Project Atlas",
+    location: "Taylor County, Texas",
+    knownData: { operator: "Atlas Compute" },
+  });
+  assert.doesNotMatch(unrelatedPlan.join("\n"), /Red Oak|DFW9|DFW10|DFW11/);
+});
+
+test("keeps requested discovery coverage separate from actually executed Google queries", async () => {
+  const redOakContext = {
+    name: "Red Oak Campus",
+    location: "Red Oak, Ellis County, Texas",
+    knownData: {
+      operator: "DataBank",
+      aliases: ["DataBank Red Oak Campus"],
+      facilityIdentifiers: ["DFW10"],
+    },
+  };
+  const actualQuery = "Google executed this one Red Oak permit query";
+  let fetchCalls = 0;
+  const result = await discoverGoogleGroundedProject({
+    project: redOakContext,
+    apiKey: "fixture-google-key",
+    fetchImpl: async () => {
+      fetchCalls += 1;
+      return new Response(JSON.stringify({
+        steps: [
+          { type: "google_search_call", arguments: { queries: [actualQuery] } },
+          { type: "google_search_result", result: {} },
+          {
+            type: "model_output",
+            content: [{
+              annotations: [{
+                type: "url_citation",
+                url: "https://records.example/red-oak-permit",
+                title: "Synthetic Red Oak discovery candidate",
+              }],
+            }],
+          },
+        ],
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    },
+  });
+
+  assert.equal(fetchCalls, 1, "query diversification stays inside one grounding request");
+  assert.equal(result.requestedQueryPlan.length, 6);
+  assert.ok(result.requestedQueryPlan.some((query) => /DFW10/.test(query)));
+  assert.deepEqual(result.queries, [actualQuery], "only provider-reported search-call arguments count as executed");
+  assert.notDeepEqual(result.requestedQueryPlan, result.queries);
+  assert.equal(result.candidates[0].discoveryOnly, true);
+  assert.equal(result.candidates[0].claimCited, false);
+  assert.equal(result.candidates[0].excerpt, "");
+  assert.equal(Object.hasOwn(result.candidates[0], "eligibleForModel"), false);
 });
 
 test("classifies an unavailable model before any grounding query executes", async () => {

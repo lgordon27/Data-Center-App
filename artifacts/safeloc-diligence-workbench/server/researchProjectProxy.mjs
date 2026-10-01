@@ -41,7 +41,7 @@ import { createSecConnector } from "./secConnector.mjs";
 import { releaseIdentity } from "./version.mjs";
 
 const RESEARCH_PROJECT_PROMPT_VERSION = "safeloc-project-research-prompt-v1";
-const GOOGLE_DISCOVERY_PROMPT_VERSION = "safeloc-google-grounding-prompt-v1";
+const GOOGLE_DISCOVERY_PROMPT_VERSION = "safeloc-google-grounding-prompt-v2";
 const CLAIM_REVIEW_VERSION = "policy-check-trace-v2";
 
 function sourceStateTransition(from, to, reason) {
@@ -899,6 +899,15 @@ function parseResearchProjectBody(body) {
     const normalizeDomainArray = (value, limit = 8) => Array.isArray(value)
       ? [...new Set(value.map((item) => normalizeKnownText(item, 120)?.replace(/^https?:\/\//, "").replace(/\/.*$/, "")).filter((item) => item && /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(item)))].slice(0, limit)
       : [];
+    const facilityIdentifiers = Array.isArray(body.knownData.facilityIdentifiers)
+      ? [...new Set(body.knownData.facilityIdentifiers.map((value) => normalizeKnownText(value, 80)).filter(Boolean))].slice(0, 12)
+      : [];
+    const operatorAliases = Array.isArray(body.knownData.operatorAliases)
+      ? [...new Set(body.knownData.operatorAliases.map((value) => normalizeKnownText(value, 160)).filter(Boolean))].slice(0, 8)
+      : [];
+    const ownerAliases = Array.isArray(body.knownData.ownerAliases)
+      ? [...new Set(body.knownData.ownerAliases.map((value) => normalizeKnownText(value, 160)).filter(Boolean))].slice(0, 8)
+      : [];
     const cityDomains = normalizeDomainArray(body.knownData.cityDomains);
     const countyDomains = normalizeDomainArray(body.knownData.countyDomains);
     const utilityDomains = normalizeDomainArray(body.knownData.utilityDomains);
@@ -932,6 +941,9 @@ function parseResearchProjectBody(body) {
       ...(economicDevelopmentDomains.length ? { economicDevelopmentDomains } : {}),
       ...(knownOfficialEndpoints.length ? { knownOfficialEndpoints } : {}),
       ...(aliases.length ? { aliases } : {}),
+      ...(facilityIdentifiers.length ? { facilityIdentifiers } : {}),
+      ...(operatorAliases.length ? { operatorAliases } : {}),
+      ...(ownerAliases.length ? { ownerAliases } : {}),
     };
     if (Object.keys(normalized).length) knownData = normalized;
   }
@@ -2016,9 +2028,12 @@ function substantiallyDuplicatePassages(left, right) {
   return overlap / smaller.size >= 0.9;
 }
 
-function prepareCategoryAnalysisPassages(category, sources = []) {
+function prepareCategoryAnalysisPassages(category, sources = [], project = {}) {
   const candidates = sources.filter(hasRetrievedPassage);
-  const relevant = candidates.filter((source) => categorySourceMatchesForAnalysis(category, source));
+  const relevant = candidates.filter((source) =>
+    categorySourceMatchesForAnalysis(category, source)
+    || (category?.includeExactProjectIdentityContext === true
+      && sourceEstablishesProjectIdentity(source, project)));
   const unique = [];
   for (const source of relevant) {
     const passage = source.accessOutcome.passage;
@@ -2111,6 +2126,23 @@ export function sourceEstablishesProjectIdentity(source, project = {}) {
     exactProject: source?.exactProject === true || source?.entityMatch === "exact",
     entityMatch: source?.entityMatch,
   }, project) === "exact-project";
+}
+
+export function evaluateCanaryGridIdentityGate(sources = [], project = {}) {
+  const retainedPassages = (Array.isArray(sources) ? sources : []).filter(hasRetrievedPassage);
+  const exactProjectPassages = retainedPassages.filter((source) =>
+    sourceEstablishesProjectIdentity(source, project));
+  return {
+    required: true,
+    state: exactProjectPassages.length ? "exact-project" : retainedPassages.length ? "unresolved" : "no-usable-retained-passage",
+    usableRetainedPassageCount: retainedPassages.length,
+    exactProjectPassageCount: exactProjectPassages.length,
+    reason: exactProjectPassages.length
+      ? "At least one successfully retrieved retained passage establishes the exact requested project identity."
+      : retainedPassages.length
+        ? "No successfully retrieved retained passage establishes the exact requested project identity."
+        : "No successfully retrieved usable passage is available to establish exact-project identity.",
+  };
 }
 
 function auditSafePassage(value) {
@@ -2400,6 +2432,7 @@ function buildResearchAudit({
       status: coverage.discoveryStatus ?? null,
       state: coverage.discoveryState ?? null,
       queries: normalizeSearchTerms(coverage.discoveryQueries, 24),
+      requestedQueryPlan: normalizeSearchTerms(coverage.discoveryRequestedQueryPlan, 12),
       candidateCount: Number.isInteger(coverage.discoveryCandidateCount)
         ? coverage.discoveryCandidateCount
         : 0,
@@ -2435,6 +2468,19 @@ function buildResearchAudit({
     terminalState: coverage.terminalState ?? null,
     terminalReasonCodes: Array.isArray(coverage.terminalReasonCodes) ? coverage.terminalReasonCodes.slice(0, 16) : [],
     identityPhysicalOpenOpportunityReserved: coverage.identityPhysicalOpenOpportunityReserved === true,
+    canaryIdentityGate: isRecord(coverage.canaryIdentityGate)
+      ? {
+        required: coverage.canaryIdentityGate.required === true,
+        state: sanitizeTransportText(coverage.canaryIdentityGate.state, 80),
+        usableRetainedPassageCount: Number.isInteger(coverage.canaryIdentityGate.usableRetainedPassageCount)
+          ? Math.max(0, coverage.canaryIdentityGate.usableRetainedPassageCount)
+          : 0,
+        exactProjectPassageCount: Number.isInteger(coverage.canaryIdentityGate.exactProjectPassageCount)
+          ? Math.max(0, coverage.canaryIdentityGate.exactProjectPassageCount)
+          : 0,
+        reason: sanitizeTransportText(coverage.canaryIdentityGate.reason, 240) || null,
+      }
+      : null,
     runCorrelationId,
     providerResponseIds,
     startedAt,
@@ -4723,7 +4769,7 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
     .slice(0, RESEARCH_RUN_BUDGET.maxTotalCandidates)
     .filter(hasRetrievedPassage);
   const categoryPassagePreparation = activeCategory?.categoryId
-    ? prepareCategoryAnalysisPassages(activeCategory, passageCandidates)
+    ? prepareCategoryAnalysisPassages(activeCategory, passageCandidates, project)
     : {
       candidateCount: passageCandidates.length,
       uniqueCount: passageCandidates.length,
@@ -4731,7 +4777,10 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
       sources: passageCandidates,
     };
   const categoryGroundedSources = activeCategory?.categoryId
-    ? groundedSources.filter((source) => categorySourceMatchesForAnalysis(activeCategory, source))
+    ? groundedSources.filter((source) =>
+      categorySourceMatchesForAnalysis(activeCategory, source)
+      || (activeCategory?.includeExactProjectIdentityContext === true
+        && sourceEstablishesProjectIdentity(source, project)))
     : groundedSources;
   const categoryAnalysisSources = categoryPassagePreparation.sources;
   const categoryAnalysisPacket = buildGroundedSourceContext(categoryAnalysisSources);
@@ -4987,7 +5036,9 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
       { sources: categoryGroundedSources },
       "google-grounded-search",
       project,
-      extractResearchSourceUrls(research),
+      activeCategory?.canaryRetainedSourceBoundary === true
+        ? []
+        : extractResearchSourceUrls(research),
     )
     : normalizeRetrievedSources(
       bounded.body,
@@ -5570,6 +5621,7 @@ async function runValidatedResearch(project, {
   allowProviderRetries = true,
   useDefaultSecConnector = true,
   retrievalOnly = false,
+  canaryGridIdentityGate = false,
   runCorrelationId: requestedRunCorrelationId = null,
   auditStartedAt = null,
   auditDeadlineAt = null,
@@ -6038,6 +6090,9 @@ async function runValidatedResearch(project, {
     googleDiscovery.fallbackUsed = allowGoogleFallback;
     googleDiscovery.fallbackReason = "google-not-configured";
   }
+  const canaryIdentityGate = canaryGridIdentityGate
+    ? evaluateCanaryGridIdentityGate(googleDiscovery.candidates, project)
+    : null;
   let fallbackProjectRequest = null;
   let fallbackRequestConsumed = false;
   let fallbackRequestCost = 0;
@@ -6107,7 +6162,43 @@ async function runValidatedResearch(project, {
              : [];
            const categoryUsableGroundedSources = usableGroundedSources.filter((source) =>
               categorySourceMatchesForAnalysis(activeCategory, source));
+          const canaryIdentityGate = canaryGridIdentityGate && categoryId === "grid"
+            ? evaluateCanaryGridIdentityGate(usableGroundedSources, project)
+            : null;
+          if (canaryIdentityGate && canaryIdentityGate.state !== "exact-project") {
+            return {
+              research: createPartialResearchBody(project),
+              sources: usableGroundedSources,
+              coverage: {
+                provider: "google-gemini-grounding",
+                model: googleModel,
+                providerRequestCount: 0,
+                providerAttempts: [],
+                searchTerms: googleDiscovery.queries ?? [],
+                providerLimitations: ["Grid analysis was not issued because the retained-passage exact-project identity gate was not established."],
+                webSearchEnabled: false,
+                googleGroundedSourceCount: usableGroundedSources.length,
+                noUsableGroundedPassages: usableGroundedSources.length === 0,
+                activeCategoryId: categoryId,
+                canaryIdentityGate,
+              },
+            };
+          }
+          const gridAnalysisSources = canaryIdentityGate
+            ? [...new Map([
+              ...usableGroundedSources.filter((source) => sourceEstablishesProjectIdentity(source, project)),
+              ...categoryUsableGroundedSources,
+            ].map((source) => [
+              canonicalizeSourceUrl(source.canonicalUrl ?? source.resolvedUrl ?? source.url) ?? source,
+              source,
+            ])).values()]
+            : categoryUsableGroundedSources;
            if (groundedMode && categoryUsableGroundedSources.length === 0) {
+             if (canaryIdentityGate && canaryIdentityGate.state === "exact-project" && gridAnalysisSources.length > 0) {
+               // A verified identity passage is allowed as context for the one
+               // bounded Grid result even if the provider supplied no category
+               // routing labels. This does not promote the passage to evidence.
+             } else {
              const categoryGroundedSources = googleDiscovery.candidates.filter((source) =>
                categorySourceMatches(activeCategory, source));
              return {
@@ -6124,14 +6215,22 @@ async function runValidatedResearch(project, {
                  googleGroundedSourceCount: 0,
                  noUsableGroundedPassages: true,
                  activeCategoryId: activeCategory?.categoryId ?? null,
+                 ...(canaryIdentityGate ? { canaryIdentityGate } : {}),
                },
              };
+             }
            }
           const requestOptions = groundedMode
             ? {
               ...options,
               webSearchEnabled: false,
-              groundedSources: googleDiscovery.candidates,
+              ...(canaryIdentityGate?.state === "exact-project"
+                ? {
+                  includeExactProjectIdentityContext: true,
+                  canaryRetainedSourceBoundary: true,
+                }
+                : {}),
+              groundedSources: canaryIdentityGate ? gridAnalysisSources : googleDiscovery.candidates,
             }
             : options;
           if (fallbackMode) {
@@ -6352,12 +6451,15 @@ async function runValidatedResearch(project, {
             }
           }
         }
+        if (canaryIdentityGate && categoryResult?.coverage) {
+          categoryResult.coverage.canaryIdentityGate = canaryIdentityGate;
+        }
         const discoveryAttempts = [];
         const authorityRecords = [];
         const secAttempts = [];
         const supplementalSources = [];
         if (
-          (
+          !canaryGridIdentityGate && (
             categoryResult.coverage?.noUsableGroundedPassages === true
             || categoryResult.sources.length === 0
           )
@@ -6405,6 +6507,8 @@ async function runValidatedResearch(project, {
           || project.knownData?.companyName
           || project.knownData?.operator;
         if (
+          !canaryGridIdentityGate
+          &&
           activeSecConnector
           && secRelevant
           && secIdentity
@@ -6877,6 +6981,8 @@ async function runValidatedResearch(project, {
              ? "search-executed-no-usable-citations"
              : "provider-response-without-search-proof",
         discoveryQueries: googleDiscovery.queries,
+        discoveryRequestedQueryPlan: googleDiscovery.requestedQueryPlan ?? [],
+        ...(canaryIdentityGate ? { canaryIdentityGate } : {}),
          discoveryRawAnnotationSummaries: googleDiscovery.rawAnnotationSummaries ?? [],
           discoveryAnnotationCount: googleDiscovery.urlCitationCount ?? googleDiscovery.rawAnnotationSummaries?.length ?? 0,
          discoveryAcceptedCitationUrls: googleDiscovery.acceptedCitationUrls ?? [],
@@ -7031,8 +7137,32 @@ async function runValidatedResearch(project, {
       project,
       sources: documentAuditReceipts,
       coverage: {
-        providerAttempts: attempts,
-        providerRequestCount: issuedProviderAttemptCount(attempts),
+        providerAttempts: [...new Set([
+          ...(googleDiscovery.providerAttempt ? [googleDiscovery.providerAttempt] : []),
+          ...attempts,
+        ])].slice(0, MAX_RESEARCH_PROVIDER_ATTEMPT_RECORDS),
+        providerRequestCount: issuedProviderAttemptCount([
+          ...(googleDiscovery.providerAttempt ? [googleDiscovery.providerAttempt] : []),
+          ...attempts,
+        ]),
+        ...(canaryIdentityGate ? { canaryIdentityGate } : {}),
+        discoveryProvider: googleDiscovery.provider ?? "google-gemini-grounding",
+        discoveryModel: googleDiscovery.model ?? googleModel,
+        discoveryStatus: googleDiscovery.status ?? null,
+        discoveryState: googleDiscovery.usableCitationMetadataPresent
+          ? "usable-citations"
+          : googleDiscovery.groundingSearchExecuted
+            ? "search-executed-no-usable-citations"
+            : googleDiscovery.status === "technical-failure"
+              ? "technical-failure"
+              : "provider-response-without-search-proof",
+        discoveryQueries: googleDiscovery.queries ?? [],
+        discoveryRequestedQueryPlan: googleDiscovery.requestedQueryPlan ?? [],
+        discoveryCandidateCount: Array.isArray(googleDiscovery.candidates) ? googleDiscovery.candidates.length : 0,
+        discoveryAnnotationCount: googleDiscovery.urlCitationCount ?? googleDiscovery.rawAnnotationSummaries?.length ?? 0,
+        discoveryRawAnnotationSummaries: googleDiscovery.rawAnnotationSummaries ?? [],
+        discoveryAcceptedCitationUrls: googleDiscovery.acceptedCitationUrls ?? [],
+        discoveryRejectedCitationUrls: googleDiscovery.rejectedCitationUrls ?? [],
         categoryExecutions: error.partialCategoryExecutions ?? {},
         inFlightAnalysisCount: analysisTracker.inFlight,
         peakInFlightAnalysisCount: analysisTracker.peak,
@@ -7104,6 +7234,7 @@ export async function handleResearchProjectRequest(
     allowProviderRetries = true,
     useDefaultSecConnector = true,
     retrievalOnly = false,
+    canaryGridIdentityGate = false,
     signal = null,
   } = {},
 ) {
@@ -7331,6 +7462,7 @@ export async function handleResearchProjectRequest(
         allowProviderRetries,
         useDefaultSecConnector,
         retrievalOnly: retrievalOnlyRequest,
+        canaryGridIdentityGate,
         dnsLookup,
         signal: foreground ? requestController.signal : undefined,
         runCorrelationId: runId,

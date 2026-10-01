@@ -24,10 +24,10 @@ const REPORT_MAX_PASSAGE = 1_500;
 const REPORT_MAX_ITEMS = 160;
 export const RED_OAK_GRID_CANARY_LIMITS = Object.freeze({
   discoveryRequests: 1,
-  structuredProviderCalls: 2,
-  totalProviderRequests: 3,
+  structuredProviderCalls: 1,
+  totalProviderRequests: 2,
   physicalDocumentOpens: 8,
-  categoryIds: Object.freeze(["project-identity", "grid"]),
+  categoryIds: Object.freeze(["grid"]),
   researchTimeoutMs: 75_000,
   invocationTimeoutMs: 90_000,
 });
@@ -47,21 +47,15 @@ const RED_OAK_GRID_CANARY_PROJECT = Object.freeze({
     providerId: "databank-red-oak-campus",
     aliases: Object.freeze(["Red Oak Campus", "DataBank Red Oak Campus", "DataBank Red Oak Data Center"]),
     operator: "DataBank",
+    facilityIdentifiers: Object.freeze(["DFW9", "DFW10", "DFW11"]),
+    operatorAliases: Object.freeze(["DataBank"]),
+    ownerAliases: Object.freeze(["DataBank"]),
     city: "Red Oak",
     county: "Ellis County",
     state: "Texas",
     capacity: 480,
   }),
 });
-const RED_OAK_GRID_CANARY_DISCOVERY_PROMPT = [
-  "Research only exact project identity and electric grid/interconnection evidence for Red Oak Campus in Red Oak, Ellis County, Texas, operated by DataBank.",
-  "You must call Google Search before answering; do not answer from memory.",
-  "Use one bounded Google Search grounding request and return only discovery metadata.",
-  "Limit searches to identifying the exact Red Oak Campus and project-specific grid interconnection, utility service, transmission, substation, or electric-power filings.",
-  "Do not search or return tenant/counterparty, financing, construction, water, permitting/community, climate, or other categories.",
-  "Do not use generated prose, snippets, or model-selected URLs as provenance. The application accepts only executed google_search_call queries and provider url_citation annotations.",
-  "Never invent a URL. Prefer first-party company disclosures, utility/regulator records, public filings, and project-specific reporting.",
-].join("\n");
 const RED_OAK_CANARY_REQUIRED_GATE_FIELDS = Object.freeze([
   "offlineSuite",
   "standaloneDataMjs",
@@ -118,10 +112,10 @@ export function buildRedOakGridCanaryRequestOptions({
   return {
     singleShotRun: true,
     ...(retrievalOnly ? { retrievalOnly: true } : {}),
+    canaryGridIdentityGate: !retrievalOnly,
     apiKey,
     googleApiKey,
     categoryIds: [...limits.categoryIds],
-    googleDiscoveryPrompt: RED_OAK_GRID_CANARY_DISCOVERY_PROMPT,
     allowGoogleFallback: false,
     allowCorrectiveRetries: false,
     allowProviderRetries: false,
@@ -571,6 +565,11 @@ function reportDiscoveryTelemetry(result) {
       coverage?.discoveryQueries ?? discoveryAudit?.queries,
       (value) => boundedText(value, REPORT_MAX_TEXT),
       24,
+    ),
+    requestedQueryPlan: boundedList(
+      coverage?.discoveryRequestedQueryPlan ?? discoveryAudit?.requestedQueryPlan,
+      (value) => boundedText(value, REPORT_MAX_TEXT),
+      12,
     ),
     candidateCount: Number.isInteger(coverage?.discoveryCandidateCount)
       ? coverage.discoveryCandidateCount
@@ -1501,6 +1500,9 @@ export function buildAcceptanceReport({ project, liveRun, failureRun, generatedA
     })),
     sourceStates: source,
     candidateLineage,
+    canaryIdentityGate: audit?.canaryIdentityGate
+      ?? result?.researchCoverage?.canaryIdentityGate
+      ?? null,
     evidenceAudit: evidence,
     unresolvedIdentifiers,
     budgetState: {
@@ -1731,7 +1733,8 @@ function canaryProviderCounts(payload) {
     attempt?.provider === "google-gemini-grounding" || attempt?.provider === "google",
   ).length;
   const structuredProviderCalls = attempts.filter((attempt) =>
-    attempt?.provider === "openai" && ["project-identity", "grid"].includes(attempt?.categoryId),
+    typeof attempt?.categoryId === "string"
+    && !["google", "google-gemini-grounding"].includes(attempt?.provider),
   ).length;
   return {
     discoveryRequests,
@@ -1964,6 +1967,8 @@ export function canaryRemainingBlockers(report, counts, gridAnalysisPackets, ret
     : 0;
   const gridPassageCount = (Array.isArray(gridAnalysisPackets) ? gridAnalysisPackets : [])
     .reduce((total, packet) => total + (Array.isArray(packet?.passages) ? packet.passages.length : 0), 0);
+  const identityGate = report?.canaryIdentityGate ?? null;
+  const identityEstablished = identityGate?.state === "exact-project";
   if (retrievalOnly) {
     const physicalOpensUsed = Number.isInteger(report?.budgetState?.physicalOpensUsed)
       ? report.budgetState.physicalOpensUsed
@@ -1977,7 +1982,7 @@ export function canaryRemainingBlockers(report, counts, gridAnalysisPackets, ret
       mode: "retrieval-only",
       intentionalStopReason: "Retrieval-only mode stops after grounded discovery and document access, before structured analysis.",
       analysisAbsenceClassification: "intentional-retrieval-only-stop-not-retrieval-failure",
-      analysisCategoriesNotRun: ["project-identity", "grid"],
+      analysisCategoriesNotRun: ["grid"],
       unresolvedCategories: [],
       missingStructuredAnalysisPacketIsRetrievalFailure: false,
       structuredProviderCalls: structuredCalls,
@@ -2014,10 +2019,19 @@ export function canaryRemainingBlockers(report, counts, gridAnalysisPackets, ret
     ? report.budgetState.physicalOpenBudget
     : RED_OAK_GRID_CANARY_LIMITS.physicalDocumentOpens;
   return {
-    unresolvedCategories: structuredCalls === 0 || gridPassageCount === 0
-      ? ["project-identity", "grid"]
-      : [],
-    noUsableGroundedPassageAvailableForAnalysis: structuredCalls === 0 && gridPassageCount === 0,
+    unresolvedCategories: !identityEstablished
+      ? identityGate
+        ? ["project-identity"]
+        : structuredCalls === 0 || gridPassageCount === 0 ? ["project-identity", "grid"] : []
+      : structuredCalls === 0 || gridPassageCount === 0 ? ["grid"] : [],
+    canaryIdentityGateState: identityGate?.state ?? "unavailable",
+    identityEstablishedBeforeStructuredCall: identityEstablished,
+    retainedUsablePassageButIdentityUnresolved: Boolean(
+      identityGate && identityGate.usableRetainedPassageCount > 0 && !identityEstablished,
+    ),
+    noUsableGroundedPassageAvailableForAnalysis: identityGate
+      ? identityGate.usableRetainedPassageCount === 0
+      : structuredCalls === 0 && gridPassageCount === 0,
     structuredProviderCalls: structuredCalls,
     gridAnalysisPacketCount: Array.isArray(gridAnalysisPackets) ? gridAnalysisPackets.length : 0,
     gridAnalysisPassageCount: gridPassageCount,
@@ -2294,7 +2308,16 @@ export async function runRedOakGridCanary({
       },
       scope: {
         categories: [...limits.categoryIds],
-        discoveryRequestedCategories: ["project-identity", "grid"],
+        discoveryRequestedCategories: [
+          "exact-project-and-operator",
+          "aliases-and-facility-identifiers",
+          "official-and-government-records",
+          "financing-and-construction",
+          "power-and-grid",
+          "trade-local-community-reporting",
+        ],
+        identityGateRequired: !retrievalOnly,
+        identityGateState: report.canaryIdentityGate?.state ?? "unavailable",
         retrievalOnly,
         groundedDiscoveryRequests: counts.discoveryRequests,
         structuredProviderCalls: counts.structuredProviderCalls,

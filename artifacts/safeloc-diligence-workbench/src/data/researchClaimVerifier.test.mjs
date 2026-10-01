@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { matchProject, parseLocations, verifyQuote } from "./researchClaimVerifier.mjs";
+import { assessResearchProjectIdentity } from "./researchIdentity.mjs";
 
 test("verifies an exact quote and allows only requested typographic normalization", () => {
   assert.equal(verifyQuote(
@@ -193,6 +195,195 @@ test("keeps Red Oak operator attribution sentence-local and follows the subject 
     ).verdict,
     "ambiguous",
     "financing a project does not establish that DataBank operates it",
+  );
+});
+
+test("resolves the exact saved Red Oak announcement excerpt through shared identity policy", () => {
+  const report = JSON.parse(readFileSync(
+    new URL("../../../../diagnostics/red-oak-retrieval-canary-2026-10-01.json", import.meta.url),
+    "utf8",
+  ));
+  const candidate = report.sourceStates.normalizedCandidates.find((source) => source.usablePassage);
+  assert.ok(candidate, "the saved canary must retain its usable announcement passage");
+  assert.equal(candidate.passageExcerpt.length, 1500, "test only the saved excerpt, not unavailable captured remainder");
+
+  const result = matchProject(candidate.passageExcerpt, report.project);
+  assert.equal(result.verdict, "exact-project", result.reason);
+  assert.equal(
+    assessResearchProjectIdentity(candidate.passageExcerpt, {
+      ...candidate,
+      title: "prnewswire.com",
+      exactProject: false,
+    }, report.project),
+    "exact-project",
+    "the server/client identity entry point uses the same retained-passage rule",
+  );
+
+  const incomplete = candidate.passageExcerpt.replace(
+    "DataBank , a leading provider of enterprise-class edge colocation, interconnection, and managed services, today announced the development of",
+    "DataBank , a leading provider of enterprise-class edge colocation, interconnection, and managed services, today announced a press event before the development of",
+  );
+  assert.notEqual(matchProject(incomplete, report.project).verdict, "exact-project");
+});
+
+test("development-announcement attribution requires connected project wording and fails closed on conflicts", () => {
+  const project = {
+    name: "Red Oak Campus",
+    aliases: ["DataBank Red Oak Campus", "DataBank Red Oak Data Center"],
+    operator: "DataBank",
+    city: "Red Oak",
+    county: "Ellis County",
+    state: "Texas",
+  };
+  const connectedAnnouncement = [
+    "DataBank, a leading provider of enterprise-class edge colocation, interconnection, and managed services, today announced the development of a 480MW data center campus on 292 acres in Red Oak, TX.",
+    'The South Dallas land will become home to the new "Red Oak Campus".',
+  ].join(" ");
+  assert.equal(matchProject(connectedAnnouncement, project).verdict, "exact-project");
+
+  assert.equal(
+    matchProject(
+      connectedAnnouncement.replaceAll("DataBank", "Compass Datacenters"),
+      project,
+    ).verdict,
+    "unrelated",
+    "an announcement by a different operator is a conflict",
+  );
+  assert.equal(
+    matchProject(
+      connectedAnnouncement
+        .replaceAll("Red Oak, TX", "Houston, TX")
+        .replace('"Red Oak Campus".', '"Red Oak Campus" in Houston, TX.'),
+      project,
+    ).verdict,
+    "unrelated",
+    "a connected but conflicting project location remains unrelated",
+  );
+  assert.equal(
+    matchProject(
+      "DataBank announced development of a data center campus in Red Oak, TX. A separate South Creek Campus, not Red Oak Campus, is the project described.",
+      project,
+    ).verdict,
+    "unrelated",
+    "an explicit different-project statement cannot be overridden by operator-plus-location overlap",
+  );
+  assert.notEqual(
+    matchProject(
+      "PRNewswire mentions DataBank in its company description. Red Oak Campus is in Red Oak, TX.",
+      project,
+    ).verdict,
+    "exact-project",
+    "publisher/company mentions without a connected project-development statement do not establish identity",
+  );
+  assert.notEqual(
+    matchProject(
+      "DataBank's DFW1 headquarters is in Dallas, Texas. Red Oak Campus is in Red Oak, Texas.",
+      project,
+    ).verdict,
+    "exact-project",
+    "a separate facility identifier and location do not establish the requested campus",
+  );
+  const metadataOnlyPassage = "Red Oak Campus is located in Red Oak, Texas.";
+  assert.equal(matchProject(metadataOnlyPassage, project).verdict, "ambiguous");
+  assert.equal(
+    assessResearchProjectIdentity(metadataOnlyPassage, {
+      title: "Red Oak Campus",
+      exactProject: true,
+      identityRole: "operator",
+    }, project),
+    "ambiguous",
+    "provider-supplied identity assertions and generic titles cannot establish identity",
+  );
+});
+
+test("development-announcement attribution stays within the announced data-center-camp object", () => {
+  const project = {
+    name: "Red Oak Campus",
+    operator: "DataBank",
+    city: "Red Oak",
+    county: "Ellis County",
+    state: "Texas",
+  };
+  const providerMetadata = {
+    title: "prnewswire.com",
+    exactProject: true,
+    identityRole: "operator",
+  };
+  for (const passage of [
+    "DataBank announced the development of a warehouse with a press conference at Red Oak data center campus in Red Oak, Texas.",
+    "DataBank announced the development of a data center campus hosting a conference at Red Oak Campus in Red Oak, Texas.",
+    "DataBank announced the development of a logistics warehouse at a data center campus in Red Oak, Texas.",
+    "DataBank announced the development of a data center campus in Red Oak, Texas, named South Creek Campus.",
+    "DataBank announced the development of a data center campus in Red Oak, Texas; the development is called South Creek Campus.",
+  ]) {
+    assert.notEqual(matchProject(passage, project).verdict, "exact-project", passage);
+    assert.notEqual(assessResearchProjectIdentity(passage, providerMetadata, project), "exact-project", passage);
+  }
+  const unrelatedDevelopment = [
+    "DataBank, a leading provider, today announced the development of a warehouse venue in Red Oak, TX,",
+    'next to the separate "Red Oak Campus" in Red Oak, TX.',
+  ].join(" ");
+  assert.equal(
+    matchProject(unrelatedDevelopment, project).verdict,
+    "ambiguous",
+    "a location/name-token overlap must not convert a warehouse venue into the requested campus",
+  );
+  assert.equal(
+    assessResearchProjectIdentity(unrelatedDevelopment, providerMetadata, project),
+    "ambiguous",
+    "provider assertions cannot turn an unrelated announced object into project evidence",
+  );
+
+  const differentNamedDevelopment = [
+    "DataBank, a leading provider, today announced the development of a 480MW South Creek data center campus",
+    "on 292 acres of land in Red Oak, TX.",
+  ].join(" ");
+  assert.equal(
+    matchProject(differentNamedDevelopment, project).verdict,
+    "ambiguous",
+    "the requested city and a campus type cannot override another named development",
+  );
+  assert.equal(
+    assessResearchProjectIdentity(differentNamedDevelopment, providerMetadata, project),
+    "ambiguous",
+  );
+
+  const crossClauseName = [
+    "DataBank, a leading provider, today announced the development of a 480MW data center campus in Houston, TX,",
+    "while the Red Oak Campus is nearby in Red Oak, TX.",
+  ].join(" ");
+  assert.notEqual(
+    matchProject(crossClauseName, project).verdict,
+    "exact-project",
+    "a campus name in a comparison clause cannot be attributed to a different announced object",
+  );
+  assert.notEqual(
+    assessResearchProjectIdentity(crossClauseName, providerMetadata, project),
+    "exact-project",
+  );
+});
+
+test("campus identity does not collapse its buildings or other metro facilities into the campus", () => {
+  const project = {
+    name: "Red Oak Campus",
+    operator: "DataBank",
+    city: "Red Oak",
+    county: "Ellis County",
+    state: "Texas",
+  };
+  const passage = [
+    "DataBank's Red Oak Campus is in Red Oak, Texas and is planned for up to eight separate two-story data center buildings.",
+    "Its DFW1 headquarters is in Dallas, Texas, alongside six other metro facilities.",
+  ].join(" ");
+  assert.equal(matchProject(passage, project).verdict, "exact-project");
+  assert.equal(
+    assessResearchProjectIdentity(passage, {
+      title: "Red Oak Campus",
+      exactProject: true,
+      identityRole: "operator",
+    }, project),
+    "exact-project",
+    "candidate metadata and retained-passage matching share the server/client policy",
   );
 });
 

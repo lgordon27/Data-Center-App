@@ -57,6 +57,7 @@ import {
   classifyCanonicalResearchOutcome,
   createPhysicalOpenScheduler,
   sourceEstablishesProjectIdentity,
+  evaluateCanaryGridIdentityGate,
   PROTECTED_SOURCE_OPPORTUNITIES,
   selectResearchPassagesForStructuredAnalysis,
 } from "./researchProjectProxy.mjs";
@@ -2167,6 +2168,172 @@ test("identity workflow ignores provider exactProject when location conflicts or
   }
 });
 
+test("canary Grid request is withheld unless a retained passage establishes exact project identity", async () => {
+  const project = {
+    name: "Red Oak Campus",
+    location: "Red Oak, Ellis County, Texas",
+    knownData: {
+      operator: "DataBank",
+      aliases: ["Red Oak Campus", "DataBank Red Oak Campus"],
+      city: "Red Oak",
+      county: "Ellis County",
+      state: "Texas",
+    },
+  };
+  const candidate = {
+    url: "https://records.example.test/red-oak-campus",
+    title: "Red Oak Campus DataBank project record",
+    categoryIds: ["project-identity"],
+    exactProject: true,
+    sourceChannel: "synthetic-public-record",
+  };
+  const identityPassage = "The Red Oak Campus, located in Red Oak, Ellis County, Texas, is owned and operated by DataBank.";
+  assert.equal(sourceEstablishesProjectIdentity({
+    ...candidate,
+    accessOutcome: { state: "accessible", passage: identityPassage },
+  }, project), true);
+  assert.equal(evaluateCanaryGridIdentityGate([{
+    ...candidate,
+    accessOutcome: { state: "accessible", passage: "DataBank operates data centers across Texas." },
+  }], project).state, "unresolved",
+  "provider exact-project flags cannot establish identity without connected retained-passage text");
+
+  const baseOptions = {
+    apiKey: "synthetic-test-key",
+    req: request({}),
+    categoryIds: ["grid"],
+    canaryGridIdentityGate: true,
+    allowGoogleFallback: false,
+    allowCorrectiveRetries: false,
+    allowProviderRetries: false,
+    researchBudgetOverrides: {
+      maxProviderRequests: 2,
+      maxPhysicalDocumentOpens: 8,
+      maxFollowUps: 0,
+      maxFollowUpsPerCategory: 0,
+      maxCandidatesPerCategory: 8,
+      maxTotalCandidates: 16,
+    },
+    rateLimiter: { allow: () => ({ allowed: true, retryAfterSeconds: 0 }) },
+  };
+  const canaryDiscovery = async (...args) => ({
+    ...(await completedGoogleDiscovery([candidate])(...args)),
+    providerAttempt: {
+      provider: "google-gemini-grounding",
+      model: "synthetic-test-model",
+      issuedAt: new Date().toISOString(),
+      outcome: "completed",
+    },
+  });
+
+  let rejectedStructuredCalls = 0;
+  const rejected = await runValidatedResearch(project, {
+    ...baseOptions,
+    googleDiscoveryImpl: canaryDiscovery,
+    fetchImpl: async () => {
+      rejectedStructuredCalls += 1;
+      return singleCallResponse();
+    },
+    documentFetchImpl: async (url) => substantiveHtmlResponse(
+      "DataBank operates data centers across Texas.",
+      url,
+    ),
+  });
+  assert.equal(rejectedStructuredCalls, 0);
+  assert.equal(rejected.researchAudit.providerRequestCount, 1);
+  assert.equal(rejected.researchAudit.providerAttempts.filter((attempt) => attempt.categoryId === "grid").length, 0);
+  assert.equal(rejected.researchAudit.canaryIdentityGate.state, "unresolved");
+  assert.equal(rejected.researchAudit.canaryIdentityGate.usableRetainedPassageCount, 1);
+
+  const events = [];
+  let structuredCalls = 0;
+  const accepted = await runValidatedResearch(project, {
+    ...baseOptions,
+    googleDiscoveryImpl: async (...args) => {
+      events.push("discovery");
+      return canaryDiscovery(...args);
+    },
+    fetchImpl: async (_url, init) => {
+      events.push("structured");
+      structuredCalls += 1;
+      assert.ok(init.body.includes(identityPassage), "the retained identity passage reaches the single Grid request");
+      return singleCallResponse();
+    },
+    documentFetchImpl: async (url) => {
+      events.push(`document-open:${url}`);
+      return substantiveHtmlResponse(identityPassage, url);
+    },
+  });
+  assert.deepEqual(events, [
+    "discovery",
+    `document-open:${candidate.url}`,
+    "structured",
+  ]);
+  assert.equal(structuredCalls, 1);
+  assert.equal(accepted.researchAudit.providerRequestCount, 2);
+  assert.equal(accepted.researchAudit.providerAttempts.filter((attempt) => attempt.categoryId === "grid").length, 1);
+  assert.equal(accepted.researchAudit.providerAttempts.find((attempt) => attempt.categoryId === "grid").requestState, "completed");
+  assert.equal(accepted.researchAudit.canaryIdentityGate.state, "exact-project");
+  assert.equal(accepted.researchAudit.categories.find((item) => item.categoryId === "grid").providerRequestCount, 1);
+  assert.equal(accepted.researchAudit.followUpCount, 0);
+});
+
+test("incidental announcement venues and nearby campuses cannot authorize canary Grid analysis", async () => {
+  const project = {
+    name: "Red Oak Campus",
+    location: "Red Oak, Ellis County, Texas",
+    knownData: { operator: "DataBank", city: "Red Oak", county: "Ellis County", state: "Texas" },
+  };
+  const candidate = {
+    url: "https://records.example.test/incidental-red-oak",
+    title: "DataBank Red Oak Campus",
+    categoryIds: ["project-identity"],
+    exactProject: true,
+  };
+  const passages = [
+    "DataBank announced the development of a logistics warehouse with a press conference at Red Oak Campus in Red Oak, Texas.",
+    "DataBank announced the development of Cedar Campus near Red Oak Campus in Red Oak, Texas.",
+    "DataBank announced the development of a data center campus near Red Oak Campus in Red Oak, Texas.",
+    "DataBank announced the development of a warehouse adjacent to Red Oak Campus in Red Oak, Texas.",
+    "DataBank announced the development of a warehouse with a press conference at Red Oak data center campus in Red Oak, Texas.",
+    "DataBank announced the development of a data center campus hosting a conference at Red Oak Campus in Red Oak, Texas.",
+    "DataBank announced the development of a data center campus in Red Oak, Texas, named South Creek Campus.",
+    "DataBank announced the development of a data center campus in Red Oak, Texas; the development is called South Creek Campus.",
+  ];
+  for (const passage of passages) {
+    const source = { ...candidate, accessOutcome: { state: "accessible", passage } };
+    assert.equal(sourceEstablishesProjectIdentity(source, project), false, passage);
+    assert.notEqual(evaluateCanaryGridIdentityGate([source], project).state, "exact-project", passage);
+    let structuredCalls = 0;
+    const result = await runValidatedResearch(project, {
+      apiKey: "synthetic-test-key",
+      req: request({}),
+      categoryIds: ["grid"],
+      canaryGridIdentityGate: true,
+      allowGoogleFallback: false,
+      allowCorrectiveRetries: false,
+      allowProviderRetries: false,
+      useDefaultSecConnector: false,
+      researchBudgetOverrides: {
+        maxProviderRequests: 2,
+        maxPhysicalDocumentOpens: 8,
+        maxFollowUps: 0,
+        maxFollowUpsPerCategory: 0,
+      },
+      rateLimiter: { allow: () => ({ allowed: true, retryAfterSeconds: 0 }) },
+      googleDiscoveryImpl: completedGoogleDiscovery([candidate]),
+      documentFetchImpl: async (url) => substantiveHtmlResponse(passage, url),
+      fetchImpl: async () => {
+        structuredCalls += 1;
+        throw new Error("Incidental project wording must never authorize a provider request.");
+      },
+    });
+    assert.equal(structuredCalls, 0, passage);
+    assert.notEqual(result.researchAudit.canaryIdentityGate.state, "exact-project", passage);
+    assert.equal(result.researchAudit.providerAttempts.filter((a) => a.categoryId === "grid").length, 0, passage);
+  }
+});
+
 test("enforces one gap follow-up per category and records the limit", async () => {
   const run = await orchestrateCategoryResearch(
     { name: "Atlas", location: "Texas" },
@@ -2917,6 +3084,26 @@ test("validates and preserves optional Compute Atlas known data", () => {
     },
   });
   assert.throws(() => parseResearchProjectBody({ name: "Atlas", location: "Texas", knownData: "bad" }), /knownData/);
+});
+
+test("preserves validated owner/operator aliases and facility identifiers as discovery context", () => {
+  const result = parseResearchProjectBody({
+    name: "Red Oak Campus",
+    location: "Red Oak, Ellis County, Texas",
+    knownData: {
+      operatorAliases: ["DataBank", " DataBank "],
+      ownerAliases: ["DataBank", "Digital Realty"],
+      facilityIdentifiers: ["DFW9", "DFW10", "DFW9"],
+    },
+  });
+  assert.deepEqual(result.knownData, {
+    city: "Red Oak",
+    county: "Ellis County",
+    state: "Texas",
+    operatorAliases: ["DataBank"],
+    ownerAliases: ["DataBank", "Digital Realty"],
+    facilityIdentifiers: ["DFW9", "DFW10"],
+  });
 });
 
 test("validates focused unresolved evidence requests and current evidence context", () => {

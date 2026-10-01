@@ -378,7 +378,83 @@ function nameMatchContainsTokens(text, matches, requiredTokens) {
   });
 }
 
-function assertedOperators(text, identityMatches = [], expectedOperator = "") {
+function fullyMatchesVariant(text, variant) {
+  const requiredTokens = variant.matchingTokens ?? variant.tokens;
+  const availableTokens = new Set(tokenSpans(text).map((word) => word.value));
+  return requiredTokens.length > 0 && requiredTokens.every((token) => availableTokens.has(token));
+}
+
+function hasConflictingFacilityLabel(prefix, variant, expectedOperator) {
+  const expectedNameTokens = variant.matchingTokens ?? variant.tokens;
+  const operatorNameTokens = new Set(operatorTokens(expectedOperator));
+  const genericLabelTokens = new Set([
+    ...GENERIC_PROJECT_TOKENS,
+    "a", "an", "and", "new", "the",
+  ]);
+  const possibleLabels = /\b(?:[A-Z][\p{L}\p{M}.'’\-]*\s+){1,3}(?=$)/gu;
+  return [...prefix.matchAll(possibleLabels)].some((match) => {
+    const labelTokens = normalizeWords(match[0])
+      .split(" ")
+      .filter((token) => token && !genericLabelTokens.has(token) && !operatorNameTokens.has(token));
+    return labelTokens.length > 0 && !expectedNameTokens.every((token) => labelTokens.includes(token));
+  });
+}
+
+function announcementObjectEstablishesIdentity(text, announcement, identityMatch, expectedOperator, expectedLocation) {
+  if (identityMatch.variant.kind === "operator") return false;
+  const objectStart = announcement.index + announcement[0].length;
+  const remainder = text.slice(objectStart);
+  const sentenceEnd = remainder.search(/[.!?;\n]/u);
+  const objectText = sentenceEnd < 0 ? remainder : remainder.slice(0, sentenceEnd);
+  const facilityPattern = /\b(?:data\s+cent(?:er|re)|datacent(?:er|re))\s+campus\b/giu;
+
+  for (const facility of objectText.matchAll(facilityPattern)) {
+    const facilityStart = objectStart + facility.index;
+    const facilityEnd = facilityStart + facility[0].length;
+    for (const location of detailedLocations(objectText)) {
+      if (location.start < facility.index + facility[0].length) continue;
+      if (!hasLocationConnector(objectText, location)) continue;
+      const comparison = compareLocation(expectedLocation, location.location);
+      if (comparison.conflicts.length || !comparison.matches.length) continue;
+
+      const locationStart = objectStart + location.start;
+      const locationEnd = objectStart + location.end;
+      if (identityMatch.start < facilityEnd || identityMatch.end > locationEnd) continue;
+
+      const facilityPrefix = objectText.slice(0, facility.index);
+      // This must be the head of the development object, not a second
+      // facility mentioned inside a warehouse/venue/reporting object.
+      if (!/^\s*(?:(?:a|an|the)\s+)?(?:(?:new|hyperscale|\d+(?:\.\d+)?\s*MW)\s+){0,4}$/i.test(facilityPrefix)) continue;
+      if (hasConflictingFacilityLabel(facilityPrefix, identityMatch.variant, expectedOperator)) continue;
+
+      const facilityToLocation = text.slice(facilityEnd, locationStart);
+      // Admit only the direct siting phrase demonstrated by the announcement.
+      // Arbitrary intervening prose can introduce an incidental second site.
+      if (!/^\s*(?:on\s+\d+(?:\.\d+)?\s+acres?(?:\s+of\s+land)?\s+)?(?:in|at|within)\s*$/i.test(facilityToLocation)) continue;
+      if (/\b(?:near(?:by)?|next\s+to|adjacent\s+to|beside|alongside|another|different|other|separate)\b/i
+        .test(facilityToLocation)) continue;
+
+      const identityEvidence = text.slice(facilityEnd, locationEnd);
+      if (!fullyMatchesVariant(identityEvidence, identityMatch.variant)) continue;
+
+      // Unknown naming/attribution after the siting phrase may identify a
+      // different development. This narrow rule supports only a complete
+      // campus-development object ending at its attached location.
+      const tail = text.slice(locationEnd);
+      const benignExpansionTail = /^,\s*dramatically expanding its capacity and ability to meet growing demand for data center space and power being driven by A\.I\.(?:\s+applications\.)?\s*$/u;
+      if (!/^[\s.,!?;:)"'’”]*$/u.test(tail) && !benignExpansionTail.test(tail.trim())) continue;
+
+      // A project-name mention after the development object's matching location
+      // is outside that object's text and cannot establish its identity.
+      const laterText = text.slice(locationEnd);
+      if (fullyMatchesVariant(laterText, identityMatch.variant)) continue;
+      return true;
+    }
+  }
+  return false;
+}
+
+function assertedOperators(text, identityMatches = [], expectedOperator = "", expectedLocation = {}, allowDevelopmentAnnouncement = true) {
   const companyName = "[A-Z][\\p{L}\\p{N}&.'’'-]*(?:\\s+[A-Z][\\p{L}\\p{N}&.'’'-]*){0,4}";
   const directCompanyName = "[A-Z][\\p{L}\\p{N}&.\\-]*(?:['’][A-Z][\\p{L}\\p{N}&.\\-]*)*(?:\\s+[A-Z][\\p{L}\\p{N}&.\\-]*(?:['’][A-Z][\\p{L}\\p{N}&.\\-]*)*){0,4}";
   const patterns = [
@@ -455,6 +531,28 @@ function assertedOperators(text, identityMatches = [], expectedOperator = "") {
     const possessive = prefix.match(possessivePattern);
     if (possessive) actors.push(normalizeWords(possessive[1]));
 
+    // A company-led development announcement can name the site in the object
+    // of "announced the development of". Accept that role only when the
+    // matched project wording occurs after the announcement predicate in the
+    // same subject fragment; a publisher or company mention elsewhere is not
+    // operator evidence. Lowercase appositive phrases allow ordinary company
+    // descriptions such as "DataBank, a leading provider ..., today announced".
+    const developmentAnnouncementPattern = new RegExp(
+      `\\b(${directCompanyName})(?:\\s*,\\s+[a-z][^,.;!?]{1,100}){0,4},?\\s+(?:today\\s+)?announced\\s+(?:the\\s+)?development\\s+of\\b`,
+      "gu",
+    );
+    const developmentAnnouncement = allowDevelopmentAnnouncement && [...text.matchAll(developmentAnnouncementPattern)]
+      .find((match) =>
+        identityMatch.start >= match.index + match[0].length
+        && announcementObjectEstablishesIdentity(
+          text,
+          match,
+          identityMatch,
+          expectedOperator,
+          expectedLocation,
+        ));
+    if (developmentAnnouncement) actors.push(normalizeWords(developmentAnnouncement[1]));
+
     // A sentence-subject company can own the project referred to as "its",
     // "their", or "the company's" without being repeated beside the name.
     if (identityMatch.variant.kind !== "operator") {
@@ -519,7 +617,8 @@ function isProjectOperatorAttributionFragment(text) {
 
 function isNegatedProjectReference(text, match) {
   const prefix = text.slice(Math.max(0, match.start - 60), match.start);
-  return /\b(?:no|not|without)\s+(?:any\s+)?(?:connection|relationship|relation|association|affiliation)\s+to\s+(?:the\s+)?(?:project\s+)?$/i.test(prefix);
+  return /\b(?:no|not|without)\s+(?:any\s+)?(?:connection|relationship|relation|association|affiliation)\s+to\s+(?:the\s+)?(?:project\s+)?$/i.test(prefix)
+    || /\bnot\s+(?:the\s+)?$/i.test(prefix);
 }
 
 function splitSubjectFragments(text) {
@@ -628,6 +727,16 @@ export function matchProject(passage, project = {}) {
   }
 
   const fragments = splitSubjectFragments(text);
+  const explicitlyDeniedProjectName = fragments.some(({ text: fragment }) =>
+    findNameMatches(fragment, variants)
+      .some((match) => match.variant.kind !== "operator" && isNegatedProjectReference(fragment, match)));
+  if (explicitlyDeniedProjectName) {
+    return {
+      verdict: "unrelated",
+      reason: "The passage explicitly conflicts with or distinguishes the requested project name from the described project.",
+    };
+  }
+
   const identified = [];
   const allAttachedLocations = [];
   for (const [fragmentIndex, { text: fragment, sentenceIndex }] of fragments.entries()) {
@@ -637,7 +746,10 @@ export function matchProject(passage, project = {}) {
     const attached = detailedLocations(cleaned).filter((location) => hasLocationConnector(cleaned, location));
     allAttachedLocations.push(...attached.map((item) => item.location));
     if (identityMatches.length) {
-      identified.push({ fragment: cleaned, identityMatches, attached, fragmentIndex, sentenceIndex });
+      identified.push({
+        fragment: cleaned, identityMatches, attached, fragmentIndex, sentenceIndex,
+        completeSentence: !fragments.some((item, index) => index !== fragmentIndex && item.sentenceIndex === sentenceIndex),
+      });
     }
   }
 
@@ -665,12 +777,14 @@ export function matchProject(passage, project = {}) {
       subject.fragment,
       subject.identityMatches,
       expectedOperator,
+      expectedLocation,
+      subject.completeSentence,
     );
     const adjacentFragment = fragments[subject.fragmentIndex + 1];
     const adjacentOperatorEvidence = adjacentFragment
       && adjacentFragment.sentenceIndex === subject.sentenceIndex
       && isProjectOperatorAttributionFragment(adjacentFragment.text)
-      ? assertedOperators(adjacentFragment.text, [], expectedOperator)
+      ? assertedOperators(adjacentFragment.text, [], expectedOperator, expectedLocation)
       : [];
     const operatorEvidence = [...localOperatorEvidence, ...adjacentOperatorEvidence];
     if (expectedOperator && operatorConflicts(expectedOperator, operatorEvidence)) {
@@ -712,12 +826,14 @@ export function matchProject(passage, project = {}) {
         subject.fragment,
         subject.identityMatches,
         expectedOperator,
+        expectedLocation,
+        subject.completeSentence,
       );
       const adjacentFragment = fragments[subject.fragmentIndex + 1];
       const adjacentEvidence = adjacentFragment
         && adjacentFragment.sentenceIndex === subject.sentenceIndex
         && isProjectOperatorAttributionFragment(adjacentFragment.text)
-        ? assertedOperators(adjacentFragment.text, [], expectedOperator)
+        ? assertedOperators(adjacentFragment.text, [], expectedOperator, expectedLocation)
         : [];
       const evidence = [...localEvidence, ...adjacentEvidence];
       return expectedOperator && evidence.some((actual) => operatorsMatch(expectedOperator, actual));

@@ -1,0 +1,25 @@
+{
+  "sourceRevision": "ccc1ab7c2e936e809ea3eb1d8a7bc34b8b737d35",
+  "sourceHash": "23cc14eff617acea6842f6e3670d55f5bf376ff510ccc6c3cdfcb17074ef9a74",
+  "recordedAt": "2026-10-01T00:58:11.707Z",
+  "redOakContentQualityFixesIncluded": true,
+  "googleGroundingFixtureSynchronized": true,
+  "offlineSuite": {
+    "status": "passed",
+    "testCount": 477,
+    "logPath": "/tmp/red-oak-identity-validation/final-package.log"
+  },
+  "standaloneDataMjs": {
+    "status": "passed",
+    "testCount": 32,
+    "logPath": "/tmp/red-oak-identity-validation/final-data.log"
+  },
+  "typecheck": {
+    "status": "passed",
+    "logPath": "/tmp/red-oak-identity-validation/final-typecheck.log"
+  },
+  "productionBuild": {
+    "status": "passed",
+    "logPath": "/tmp/red-oak-identity-validation/final-build.log"
+  }
+}

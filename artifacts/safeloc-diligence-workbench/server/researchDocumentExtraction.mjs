@@ -284,6 +284,42 @@ function proseTextFromHtml(source) {
     .replace(/\b([\p{L}\p{N}][\p{L}\p{N}'’\-]*)(?:\s+\1\b){2,}/giu, "$1"));
 }
 
+function extractStructuredRecordFields(markup, limits) {
+  const output = [];
+  const seen = new Set();
+  const add = (label, value) => {
+    const cleanLabel = cleanText(decodeEntities(label)).replace(/[:：]+$/, "").slice(0, 120);
+    const cleanValue = cleanText(decodeEntities(value)).slice(0, 400);
+    if (!cleanLabel || !cleanValue || cleanLabel.length > 120) return;
+    const key = `${cleanLabel.toLowerCase()}\u0000${cleanValue.toLowerCase()}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    output.push({ label: cleanLabel, value: cleanValue });
+  };
+  const source = String(markup).slice(0, limits.maxMarkupChars);
+  for (const row of source.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr\s*>/gi)) {
+    const cells = [...row[1].matchAll(/<(?:th|td)\b[^>]*>([\s\S]*?)<\/(?:th|td)\s*>/gi)]
+      .map((match) => blockText(match[1]))
+      .filter(Boolean);
+    if (cells.length >= 2) add(cells[0], cells.slice(1).join(" | "));
+  }
+  for (const definition of source.matchAll(/<dt\b[^>]*>([\s\S]*?)<\/dt\s*>\s*<dd\b[^>]*>([\s\S]*?)<\/dd\s*>/gi)) {
+    add(blockText(definition[1]), blockText(definition[2]));
+  }
+  const visibleBlocks = source
+    .replace(/<br\b[^>]*>/gi, "\n")
+    .replace(/<\/(?:p|div|section|article|li|tr|td|th|dt|dd|h[1-6])\s*>/gi, "\n")
+    .split(/\n+/)
+    .map(blockText)
+    .filter(Boolean);
+  for (const block of visibleBlocks) {
+    const match = block.match(/^([A-Za-z][A-Za-z0-9 /()#._-]{1,58})\s*:\s*(.{1,400})$/);
+    if (match) add(match[1], match[2]);
+    if (output.length >= 40) break;
+  }
+  return output.slice(0, 40);
+}
+
 function genuineProseChars(text) {
   const tokens = String(text).match(/[\p{L}\p{N}][\p{L}\p{N}'’\-]*/gu) ?? [];
   const charCount = (String(text).match(/[\p{L}\p{N}]/gu) ?? []).length;
@@ -293,11 +329,31 @@ function genuineProseChars(text) {
   return Math.floor(uniqueRatio < 0.2 ? charCount * uniqueRatio / 0.2 : charCount);
 }
 
+function hasMeaningfulStructuredRecord(fields) {
+  // Terse government tables are records, not prose. Require an identity,
+  // responsible party, quantity and both schedule endpoints; arbitrary link
+  // tables and one-field stubs must still fail the normal content floor.
+  const kinds = new Set();
+  for (const { label, value } of fields) {
+    if (researchContentRejectionReason(value) || value.length < 3) continue;
+    if (/^(?:project|facility|building)\s*(?:name|title)$/i.test(label)
+      && /[a-z]{3}/i.test(value)) kinds.add("identity");
+    if (/^(?:owner|applicant|operator)(?:\s+name)?$/i.test(label)
+      && /[a-z]{3}/i.test(value)) kinds.add("party");
+    if (/^(?:estimated cost|project cost|construction cost|square feet|sq\.?\s*ft\.?|area)$/i.test(label)
+      && /\d/.test(value)) kinds.add("quantity");
+    if (/^(?:construction\s+)?start\s+date$/i.test(label)
+      && normalizePublicationDate(value)) kinds.add("start");
+    if (/^(?:(?:estimated|construction)\s+)?completion\s+date$/i.test(label)
+      && normalizePublicationDate(value)) kinds.add("completion");
+  }
+  return kinds.size === 5;
+}
+
 function htmlShellReason(text, sourceUrl) {
   const normalized = String(text ?? "").toLowerCase();
-  if (/\ban error has occurred in this application\b/.test(normalized)) {
-    return "application-error-page";
-  }
+  const sharedQualityReason = researchContentRejectionReason(text);
+  if (sharedQualityReason) return sharedQualityReason;
   if (/\b(?:verify you are human|verify that you are human|human verification|checking your browser|checking if the site connection is secure|unusual traffic from your (?:computer )?network|are you a robot|complete the security check|captcha)\b/.test(normalized)) {
     return "bot-verification-page";
   }
@@ -383,6 +439,7 @@ function htmlAdapter(raw, sourceUrl, limits) {
     genuineProseChars: genuineProseChars(text),
     index: makeIndex(headings, limits),
     candidates,
+    structuredFields: extractStructuredRecordFields(withoutBoilerplate, limits),
     ...publicationMetadata,
   };
 }
@@ -500,6 +557,7 @@ function baseResult(bytes, method, outcome, limitations = []) {
     passage: "",
     index: [],
     candidateLinks: [],
+    structuredFields: [],
     contentHash: createHash("sha256").update(bytes).digest("hex"),
     limitations,
     underlyingDocumentUrl: null,
@@ -534,6 +592,13 @@ export async function extractResearchDocument(input, options = {}) {
   }
   result.index = (adapted.index ?? []).slice(0, limits.maxIndexEntries);
   result.candidateLinks = (adapted.candidates ?? []).slice(0, limits.maxCandidateLinks);
+  result.structuredFields = (Array.isArray(adapted.structuredFields) ? adapted.structuredFields : [])
+    .slice(0, 40)
+    .map((field) => ({
+      label: cleanText(field?.label).slice(0, 120),
+      value: cleanText(field?.value).slice(0, 400),
+    }))
+    .filter((field) => field.label && field.value);
   if (adapted.malformed) {
     result.outcome = "malformed";
     result.limitations.push(`Malformed ${kind.toUpperCase()} input was not interpreted.`);
@@ -546,6 +611,7 @@ export async function extractResearchDocument(input, options = {}) {
   if (contentRejectionReason) {
     result.outcome = [
       "application-error-page",
+      "not-found-page",
       "bot-verification-page",
       "javascript-required-shell",
       "login-or-paywall-shell",
@@ -565,7 +631,9 @@ export async function extractResearchDocument(input, options = {}) {
       result.limitations.push(`HTML was not retained because it is a ${shellReason.replaceAll("-", " ")}.`);
       return result;
     }
-    if (adapted.genuineProseChars < limits.minHtmlProseChars && !(result.candidateLinks.length && !text)) {
+    if (adapted.genuineProseChars < limits.minHtmlProseChars
+      && !hasMeaningfulStructuredRecord(result.structuredFields)
+      && !(result.candidateLinks.length && !text)) {
       result.outcome = "low-content";
       result.reason = `genuine-prose-below-${limits.minHtmlProseChars}-characters`;
       result.limitations.push(`HTML contains only ${adapted.genuineProseChars} genuine prose characters after removing page chrome; at least ${limits.minHtmlProseChars} are required.`);

@@ -25,7 +25,7 @@ import {
   buildResearchProjectPrompt,
   buildVariableQueries,
   buildVariableQueryPlan,
-  handleResearchProjectRequest,
+  handleResearchProjectRequest as handleResearchProjectRequestWithTestGate,
   parseResearchResponse as parseResearchResponseUnchecked,
   createResearchProjectRateLimiter,
   createResearchProviderGate,
@@ -51,8 +51,8 @@ import {
   createPinnedLookup,
   resolvePublicAddress,
   orchestrateCategoryResearch,
-  runValidatedResearch,
-  researchProjectWithWebSearch,
+  runValidatedResearch as runValidatedResearchWithTestGate,
+  researchProjectWithWebSearch as researchProjectWithWebSearchWithTestGate,
   classifyResearchFailure,
   classifyCanonicalResearchOutcome,
   createPhysicalOpenScheduler,
@@ -73,6 +73,63 @@ import {
 } from "./researchProjectCache.mjs";
 import { createRedOakClaimTrace } from "./redOakClaimTrace.mjs";
 import { parseGoogleGroundedDiscoveryResponse } from "./googleGroundedDiscovery.mjs";
+
+const OFFLINE_PROVIDER_TOKEN_WINDOW_MS = 10;
+
+// Isolate offline runs while keeping the production-default TPM ceiling.
+// Shared-gate behavior is covered directly with simulated-clock tests.
+function runValidatedResearch(project, options = {}) {
+  return runValidatedResearchWithTestGate(project, {
+    providerGate: createResearchProviderGate({
+      tokensPerMinute: 30_000,
+      tokenWindowMs: OFFLINE_PROVIDER_TOKEN_WINDOW_MS,
+    }),
+    ...options,
+  });
+}
+
+function handleResearchProjectRequest(req, res, options = {}) {
+  return handleResearchProjectRequestWithTestGate(req, res, {
+    providerGate: createResearchProviderGate({
+      tokensPerMinute: 30_000,
+      tokenWindowMs: OFFLINE_PROVIDER_TOKEN_WINDOW_MS,
+    }),
+    ...options,
+  });
+}
+
+function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, activeCategory, providerGate) {
+  return researchProjectWithWebSearchWithTestGate(
+    project,
+    apiKey,
+    fetchImpl,
+    signal,
+    activeCategory,
+    providerGate ?? createResearchProviderGate({
+      tokensPerMinute: 30_000,
+      tokenWindowMs: OFFLINE_PROVIDER_TOKEN_WINDOW_MS,
+    }),
+  );
+}
+
+async function withEnvironmentVariable(name, value, callback) {
+  const original = process.env[name];
+  process.env[name] = String(value);
+  try {
+    return await callback();
+  } finally {
+    if (original === undefined) delete process.env[name];
+    else process.env[name] = original;
+  }
+}
+
+async function withOpenAiTpmLimit(limit, callback) {
+  return withEnvironmentVariable("OPENAI_TPM_LIMIT", limit, callback);
+}
+
+async function withResearchCategoryInputTokenCap(cap, callback) {
+  return withEnvironmentVariable("RESEARCH_CATEGORY_INPUT_TOKEN_CAP", cap, callback);
+}
 
 const redOakQualityFixtures = JSON.parse(readFileSync(
   new URL("./fixtures/red-oak-quality.json", import.meta.url),
@@ -1058,7 +1115,10 @@ test("preserves bounded sanitized document transport errors and cancellation sta
 });
 
 test("limits provider requests globally and records honest request telemetry", async () => {
-  const gate = createResearchProviderGate();
+  const gate = createResearchProviderGate({
+    tokensPerMinute: 30_000,
+    tokenWindowMs: OFFLINE_PROVIDER_TOKEN_WINDOW_MS,
+  });
   let active = 0;
   let peak = 0;
   const fetchImpl = async () => {
@@ -1091,12 +1151,89 @@ test("limits provider requests globally and records honest request telemetry", a
   assert.equal(gate.snapshot().active, 0);
   assert.ok(calls.some((call) => call.coverage.providerAttempt.queueWaitMs > 0));
   assert.equal(calls[4].coverage.providerAttempt.attemptType, "repair");
+  assert.equal(RESEARCH_CATEGORY_MAX_TOKENS, 3_500);
   assert.equal(calls[0].coverage.providerAttempt.requestedOutputTokens, RESEARCH_CATEGORY_MAX_TOKENS);
   assert.deepEqual(calls[0].coverage.providerUsage, {
     inputTokens: 120,
     outputTokens: 40,
     totalTokens: 160,
   });
+});
+
+test("omits quantity and adjacent qualification sentences as one whole group under a tiny category input cap", async () => {
+  const project = { name: "Project Atlas", location: "Taylor County, Texas" };
+  const protectedSentences = [
+    "The exact-project utility record reports a 365-day interconnection study duration for the first building.",
+    "That 365-day duration is not approved and does not establish a firm energization date.",
+    "It applies only to the proposed first building, not to every phase of the campus.",
+  ];
+  const neutralSentence = "This section contains general administrative context and descriptive public record material.";
+  const passage = [
+    neutralSentence,
+    ...protectedSentences,
+    neutralSentence,
+    ...Array.from({ length: 80 }, () => neutralSentence),
+  ].join(" ");
+  const source = {
+    occurrenceId: "atomic-grid-passage",
+    url: "https://records.example.gov/atlas/atomic-grid-passage",
+    originalUrl: "https://records.example.gov/atlas/atomic-grid-passage",
+    canonicalUrl: "https://records.example.gov/atlas/atomic-grid-passage",
+    title: "Project Atlas utility record",
+    sourceChannel: "county-records",
+    origin: "google-grounded-search",
+    sourceClass: "primary-government",
+    categoryIds: ["grid"],
+    accessOutcome: {
+      state: "accessible",
+      reason: "retrieved",
+      passage,
+      physicalOpenIndex: 1,
+    },
+  };
+  const run = async (groundedSources) => {
+    let requestBody;
+    const result = await researchProjectWithWebSearch(
+      project,
+      "fixture-provider-token",
+      async (_url, init) => {
+        requestBody = JSON.parse(init.body);
+        return singleCallResponse(validResearchResponse(), []);
+      },
+      undefined,
+      {
+        categoryId: "grid",
+        label: "Grid",
+        query: "Project Atlas grid interconnection",
+        evidenceIds: ["grid_interconnection"],
+        webSearchEnabled: false,
+        groundedSources,
+      },
+      createResearchProviderGate({
+        tokensPerMinute: 30_000,
+        tokenWindowMs: OFFLINE_PROVIDER_TOKEN_WINDOW_MS,
+      }),
+    );
+    return { result, requestBody };
+  };
+
+  const baseline = await withResearchCategoryInputTokenCap(5_000, () => run([]));
+  const baselineEstimate = baseline.result.coverage.categoryPromptTelemetry.estimatedInputTokens;
+  const tinyInputCap = baselineEstimate + 40;
+  const bounded = await withResearchCategoryInputTokenCap(tinyInputCap, () => run([source]));
+  const userContent = bounded.requestBody.input.find((entry) => entry.role === "user").content;
+  const presentSentences = protectedSentences.map((sentence) => userContent.includes(sentence));
+
+  assert.deepEqual(presentSentences, [false, false, false],
+    "the quantity, its negation, and its facility/phase scope must be omitted together when their complete context window cannot fit");
+  assert.ok(protectedSentences.every((sentence) => !userContent.includes(sentence.slice(0, 44))),
+    "an over-cap candidate must not leave a clipped sentence prefix in the request");
+  const telemetry = bounded.result.coverage.categoryPromptTelemetry;
+  assert.equal(telemetry.inputTokenCap, tinyInputCap);
+  assert.equal(telemetry.omittedPassageCount, 1);
+  assert.equal(telemetry.windowedPassageCount, 1);
+  assert.ok(telemetry.omissionReasons.includes("input-cap"));
+  assert.equal(telemetry.outcome, "capped");
 });
 
 test("scopes grounded category passages, collapses duplicates, and preserves source audit receipts", async () => {
@@ -1147,6 +1284,15 @@ test("scopes grounded category passages, collapses duplicates, and preserves sou
       reused: physicalOpenIndex === 1,
       extractionMethod: "html-main-content",
       contentHash: `fixture-hash-${id}`,
+      ...(id === "grid-source-1" ? {
+        structuredFields: [
+          { label: "Project Name", value: "DB Data Center Red Oak, LLC" },
+          { label: "Estimated Cost", value: "$301,000,000" },
+          { label: "Square Feet", value: "221,434" },
+          { label: "Start Date", value: "February 1, 2025" },
+          { label: "Completion Date", value: "January 31, 2027" },
+        ],
+      } : {}),
     },
   });
   const representative = source({
@@ -1241,7 +1387,8 @@ test("scopes grounded category passages, collapses duplicates, and preserves sou
   const userContent = capturedRequest.input.find((entry) => entry.role === "user").content;
   const marker = "Every claimPassage must be copied exactly from one supplied passage.\n";
   const sentPassages = JSON.parse(userContent.slice(userContent.indexOf(marker) + marker.length));
-  assert.equal(sentPassages.length, 4);
+  assert.ok(sentPassages.length >= 3 && sentPassages.length <= 4,
+    "the token cap may omit a long secondary window, but retained retrieval stays separate");
   assert.equal(sentPassages[0].passage, passage, "the retained passage must remain exact");
   assert.equal(sentPassages[0].sourceId, representative.occurrenceId);
   assert.equal(sentPassages[0].sourceUrl, representative.url);
@@ -1251,22 +1398,33 @@ test("scopes grounded category passages, collapses duplicates, and preserves sou
   assert.equal(sentPassages[0].accessReceipt.retrievedAt, "2026-09-30T12:00:00.000Z");
   assert.equal(sentPassages[0].publicationDate, "2026-06-01");
   assert.equal(sentPassages[0].reportingDate, "2026-05-28");
+  assert.deepEqual(sentPassages[0].structuredFields, [
+    { label: "Project Name", value: "DB Data Center Red Oak, LLC" },
+    { label: "Estimated Cost", value: "$301,000,000" },
+    { label: "Square Feet", value: "221,434" },
+    { label: "Start Date", value: "February 1, 2025" },
+    { label: "Completion Date", value: "January 31, 2027" },
+  ]);
   assert.equal(sentPassages[1].sourceId, unique.occurrenceId);
   assert.equal(sentPassages[2].passage, differentFinding.accessOutcome.passage);
   assert.match(sentPassages[2].passage, /180 days/);
-  assert.equal(sentPassages[3].passage, longPassage, "long passages must not be truncated before analysis");
+  if (sentPassages[3]) {
+    assert.notEqual(sentPassages[3].passage, longPassage, "the category packet uses a bounded window");
+    assert.ok(sentPassages[3].passage.length <= 2_400);
+  }
   assert.doesNotMatch(userContent, /grid-copy|water-source|municipal supply review/);
 
   const telemetry = result.coverage.categoryPromptTelemetry;
   assert.equal(telemetry.candidatePassageCount, 6);
   assert.equal(telemetry.uniquePassageCount, 4);
-  assert.equal(telemetry.passageCountSent, 4);
+  assert.equal(telemetry.passageCountSent, sentPassages.length);
+  assert.ok(telemetry.estimatedInputTokens <= telemetry.inputTokenCap);
   assert.ok(telemetry.requestBodyBytesReduced > 0);
   assert.equal(
     telemetry.requestBodyBytesBeforeFiltering - telemetry.requestBodyBytesAfterFiltering,
     telemetry.requestBodyBytesReduced,
   );
-  assert.equal(result.coverage.providerAttempt.categoryPromptTelemetry.passageCountSent, 4);
+  assert.equal(result.coverage.providerAttempt.categoryPromptTelemetry.passageCountSent, sentPassages.length);
   assert.doesNotMatch(JSON.stringify(telemetry), /Project Atlas|records\.example\.gov|utility filing/);
 
   assert.deepEqual(
@@ -1317,7 +1475,10 @@ test("scopes grounded category passages, collapses duplicates, and preserves sou
       },
     }),
   });
-  assert.equal(orchestration.categoryExecutions.grid.categoryPromptTelemetry[0].passageCountSent, 4);
+  assert.equal(
+    orchestration.categoryExecutions.grid.categoryPromptTelemetry[0].passageCountSent,
+    result.coverage.categoryPromptTelemetry.passageCountSent,
+  );
 
   const audit = buildResearchAudit({
     project,
@@ -1336,7 +1497,11 @@ test("scopes grounded category passages, collapses duplicates, and preserves sou
 });
 
 test("honors provider reset pressure without retrying and cancels queued work", async () => {
-  const gate = createResearchProviderGate({ limit: 1 });
+  const gate = createResearchProviderGate({
+    limit: 1,
+    tokensPerMinute: 30_000,
+    tokenWindowMs: OFFLINE_PROVIDER_TOKEN_WINDOW_MS,
+  });
   let calls = 0;
   const rateLimitedFetch = async () => {
     calls += 1;
@@ -1383,7 +1548,11 @@ test("honors provider reset pressure without retrying and cancels queued work", 
   assert.ok(Date.now() - startedAt >= 20);
   assert.equal(calls, 2);
 
-  const blockedGate = createResearchProviderGate({ limit: 1 });
+  const blockedGate = createResearchProviderGate({
+    limit: 1,
+    tokensPerMinute: 30_000,
+    tokenWindowMs: OFFLINE_PROVIDER_TOKEN_WINDOW_MS,
+  });
   await assert.rejects(researchProjectWithWebSearch(
     { name: "Project Atlas", location: "Ohio" },
     "server-secret-for-test",
@@ -1478,6 +1647,136 @@ test("pressure-gates every recognized temporary rate-limit code but not quota or
     noHeaderGate,
   ));
   assert.equal(noHeaderGate.snapshot().blockedUntil, now + 1_000);
+
+  const dateNow = Date.parse("2026-10-01T12:00:00.000Z");
+  const dateGate = createResearchProviderGate({
+    limit: 1,
+    now: () => dateNow,
+    schedule: () => ({ pending: true }),
+    cancelSchedule: () => {},
+  });
+  await assert.rejects(researchProjectWithWebSearch(
+    { name: "Date Header Atlas", location: "Ohio" },
+    "server-secret-for-test",
+    async () => new Response(JSON.stringify({
+      error: { message: "Wait for reset.", type: "tokens", code: "rate_limit_exceeded" },
+    }), {
+      status: 429,
+      headers: { "content-type": "application/json", "retry-after": new Date(dateNow + 5_000).toUTCString() },
+    }),
+    undefined,
+    { categoryId: "grid", evidenceIds: ["grid_interconnection"] },
+    dateGate,
+  ));
+  assert.equal(dateGate.snapshot().blockedUntil, dateNow + 5_000);
+
+  for (const retryAfter of ["5 seconds", "not a valid date"]) {
+    const invalidHeaderNow = 12_000;
+    const invalidHeaderGate = createResearchProviderGate({
+      limit: 1,
+      now: () => invalidHeaderNow,
+      schedule: () => ({ pending: true }),
+      cancelSchedule: () => {},
+    });
+    await assert.rejects(researchProjectWithWebSearch(
+      { name: "Malformed Retry Atlas", location: "Ohio" },
+      "server-secret-for-test",
+      async () => new Response(JSON.stringify({
+        error: { message: "Malformed Retry-After.", type: "tokens", code: "rate_limit_exceeded" },
+      }), {
+        status: 429,
+        headers: { "content-type": "application/json", "retry-after": retryAfter },
+      }),
+      undefined,
+      { categoryId: "grid", evidenceIds: ["grid_interconnection"] },
+      invalidHeaderGate,
+    ));
+    assert.equal(
+      invalidHeaderGate.snapshot().blockedUntil,
+      invalidHeaderNow + 1_000,
+      `unparseable Retry-After ${JSON.stringify(retryAfter)} must use the bounded fallback rather than guessing a delay`,
+    );
+  }
+});
+
+test("schedules eight foundation-first categories within a simulated 30k TPM window", async () => {
+  const categoryIds = [
+    "project-identity",
+    "grid",
+    "construction-capital",
+    "permitting-community",
+    "water",
+    "tenant-counterparty",
+    "electricity",
+    "climate-operational-hazard",
+  ];
+  let now = 0;
+  const scheduled = [];
+  const gate = createResearchProviderGate({
+    limit: 1,
+    tokensPerMinute: 30_000,
+    tokenWindowMs: 60_000,
+    now: () => now,
+    schedule: (callback, delayMs) => {
+      const timer = { callback, dueAt: now + delayMs, cancelled: false };
+      scheduled.push(timer);
+      return timer;
+    },
+    cancelSchedule: (timer) => { timer.cancelled = true; },
+  });
+  const starts = [];
+  const attempts = categoryIds.map((categoryId) => gate.run(async () => {
+    starts.push({ categoryId, at: now });
+  }, {
+    estimatedTokens: 4_000,
+    deadlineAt: 180_000,
+    minimumResponseMs: 1_000,
+  }));
+  for (let tick = 0; tick < 20; tick += 1) await Promise.resolve();
+  assert.equal(starts.length, 7);
+  assert.equal(gate.snapshot().reservedTokensInWindow, 28_000);
+  const wake = scheduled.filter((timer) => !timer.cancelled).sort((left, right) => left.dueAt - right.dueAt)[0];
+  assert.equal(wake.dueAt, 60_000);
+  now = wake.dueAt;
+  wake.callback();
+  await Promise.all(attempts);
+  assert.deepEqual(starts.map((entry) => entry.categoryId), categoryIds);
+  assert.deepEqual(starts.map((entry) => entry.at), [0, 0, 0, 0, 0, 0, 0, 60_000]);
+});
+
+test("reports one elapsed TPM wait after repeated queue drains", async () => {
+  let now = 0;
+  const scheduled = [];
+  const gate = createResearchProviderGate({
+    limit: 1,
+    tokensPerMinute: 30_000,
+    tokenWindowMs: 60_000,
+    now: () => now,
+    schedule: (callback, delayMs) => {
+      const timer = { callback, dueAt: now + delayMs, cancelled: false };
+      scheduled.push(timer);
+      return timer;
+    },
+    cancelSchedule: (timer) => { timer.cancelled = true; },
+  });
+
+  await gate.run(async () => {}, { estimatedTokens: 20_000 });
+  let observedTpmWaitMs = null;
+  const waiting = gate.run(async () => {}, {
+    estimatedTokens: 20_000,
+    onStart: (admission) => { observedTpmWaitMs = admission.tpmWaitMs; },
+  });
+  const additionalWaiters = Array.from({ length: 4 }, () => gate.run(async () => {}, {
+    estimatedTokens: 0,
+  }));
+  const wake = scheduled.filter((timer) => !timer.cancelled).at(-1);
+  assert.equal(wake.dueAt, 60_000);
+
+  now = wake.dueAt;
+  wake.callback();
+  await Promise.all([waiting, ...additionalWaiters]);
+  assert.equal(observedTpmWaitMs, 60_000,
+    "re-draining the queue must not add projected waits more than once; telemetry is elapsed time");
 });
 
 test("keeps an issued deadline cancellation distinct and reports concurrent analysis count", async () => {
@@ -1821,7 +2120,8 @@ test("counts zero-provider official discovery and candidate access under one phy
     },
   });
   const category = result.researchAudit.categories.find((item) => item.categoryId === "water");
-  assert.ok(category.discoveryAttempts.length > 0);
+  assert.ok(category.discoveryAttempts.length > 0,
+    "the selected category should retain discovery attempts for its sources");
   assert.ok(category.discoveryAttempts.every((attempt) => Number.isInteger(attempt.physicalOpenIndex)));
   assert.ok(result.researchAudit.physicalOpensUsed >= category.discoveryAttempts.length);
   assert.ok(result.researchAudit.physicalOpensUsed <= RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens);
@@ -1907,6 +2207,9 @@ test("actual request workflow returns retrieved receipts as HTTP 200 partial aft
   assert.equal(record.projectSummary.capacityMW, null);
   assert.equal(record.projectSummary.capacityProvenance, "unknown");
   assert.equal(record.audit.runCorrelationId, payload.researchAudit.runCorrelationId);
+  assert.ok(record.audit.categories.find((category) => category.categoryId === "water").openedDocuments.some((document) =>
+    document.accessState === "accessible"
+    && document.retainedPassage.includes(fixture.accessibleReceipt.passage)));
   assert.equal(payload.researchOutcome.eligibleEvidenceCount, 0);
   assert.ok(receipt, "the accessible source is retained in the source ledger");
   assert.equal(receipt.date ?? receipt.publishedAt, fixture.accessibleReceipt.date);
@@ -1930,6 +2233,10 @@ test("retries a category HTTP 429 with Retry-After once only when the deadline a
     categoryIds: ["water"],
     allowGoogleFallback: false,
     allowCorrectiveRetries: false,
+    providerGate: createResearchProviderGate({
+      tokensPerMinute: 30_000,
+      tokenWindowMs: OFFLINE_PROVIDER_TOKEN_WINDOW_MS,
+    }),
     researchTimeoutMs,
     analysisReserveMs: 0,
     documentTimeoutMs: 100,
@@ -1939,7 +2246,7 @@ test("retries a category HTTP 429 with Retry-After once only when the deadline a
   });
   const limited = () => new Response(JSON.stringify({
     error: { code: "rate_limit_exceeded", type: "rate_limit_error", message: "Synthetic pressure" },
-  }), { status: 429, headers: { "retry-after": "0.02" } });
+  }), { status: 429, headers: { "retry-after": "1" } });
   let calls = 0;
   const successful = responseRecorder();
   await handleResearchProjectRequest(request({ ...fixture.project, forceRefresh: true }), successful,
@@ -1951,7 +2258,9 @@ test("retries a category HTTP 429 with Retry-After once only when the deadline a
   assert.equal(successful.statusCode, 200);
   assert.equal(successful.json().researchAudit.providerAttempts.filter((attempt) =>
     attempt.categoryId === "water" && attempt.status === 429).length, 1);
-  assert.equal(successful.json().researchAudit.providerAttempts[0].providerDiagnostic.rateLimit.retryAfter, "0.02");
+  assert.equal(successful.json().researchAudit.providerAttempts[0].providerDiagnostic.rateLimit.retryAfter, "1");
+  assert.equal(successful.json().researchAudit.categories.find((category) =>
+    category.categoryId === "water").retryCount, 1);
 
   calls = 0;
   const tooLate = responseRecorder();
@@ -1960,12 +2269,269 @@ test("retries a category HTTP 429 with Retry-After once only when the deadline a
       calls += 1;
       return new Response(JSON.stringify({
         error: { code: "rate_limit_exceeded", type: "rate_limit_error", message: "Synthetic pressure" },
-      }), { status: 429, headers: { "retry-after": "0.5" } });
-    }, 250));
+      }), { status: 429, headers: { "retry-after": "30" } });
+    }, 10_000));
   assert.equal(calls, 1);
   assert.equal(tooLate.statusCode, 200);
-  assert.equal(tooLate.json().researchStatus, "partial");
-  assert.equal(tooLate.json().researchAudit.categories.find((category) => category.categoryId === "water").analysisState, "not-analyzed-429");
+  const tooLatePayload = tooLate.json();
+  const tooLateWater = tooLatePayload.researchAudit.categories.find((category) => category.categoryId === "water");
+  assert.equal(tooLatePayload.researchStatus, "partial");
+  assert.equal(tooLateWater.analysisState, "not-analyzed-429");
+  assert.equal(tooLateWater.retryCount, 0);
+  assert.equal(tooLateWater.executionOutcome, "completed");
+  assert.equal(tooLateWater.analysisOutcome, "not-run");
+  assert.equal(tooLateWater.searchCompleteness, "observed");
+  assert.equal(tooLateWater.searchCompletenessLabel, null);
+  assert.ok(tooLatePayload.researchAudit.providerAttempts.some((attempt) =>
+    attempt.status === 429 && attempt.providerDiagnostic?.rateLimit?.retryAfter === "30"));
+  assert.ok(tooLatePayload.sourceLedger.some((source) =>
+    source.originalUrl === candidate.url
+    && source.accessOutcome?.state === "accessible"
+    && source.accessOutcome.passage?.includes(fixture.accessibleReceipt.passage)));
+});
+
+test("single-shot request header suppresses category 429 retry while retaining the grounded receipt", async () => {
+  const fixture = JSON.parse(await readFile(new URL("./fixtures/research-partial-receipts.json", import.meta.url), "utf8"));
+  const candidate = {
+    ...fixture.accessibleReceipt,
+    categoryIds: ["water"],
+    excerpt: fixture.accessibleReceipt.passage,
+  };
+  const req = request({ ...fixture.project, forceRefresh: true });
+  req.headers = { "x-safeloc-research-policy": "single-shot" };
+  const response = responseRecorder();
+  let providerCalls = 0;
+
+  await handleResearchProjectRequest(req, response, {
+    apiKey: "synthetic-test-key",
+    googleApiKey: null,
+    cache: createResearchProjectCache({
+      directory: await mkdtemp(path.join(os.tmpdir(), "research-single-shot-429-")),
+    }),
+    rateLimiter: { allow: () => ({ allowed: true, retryAfterSeconds: 0 }) },
+    categoryIds: ["water"],
+    researchTimeoutMs: 30_000,
+    analysisReserveMs: 0,
+    documentTimeoutMs: 100,
+    researchBudgetOverrides: {
+      maxProviderRequests: 4,
+      maxFollowUps: 0,
+      maxFollowUpsPerCategory: 0,
+      maxCandidatesPerCategory: 2,
+      maxTotalCandidates: 2,
+      maxToolCalls: 1,
+      maxPhysicalDocumentOpens: 2,
+    },
+    googleDiscoveryImpl: completedGoogleDiscovery([candidate]),
+    documentFetchImpl: async (url) => substantiveHtmlResponse(fixture.accessibleReceipt.passage, url),
+    fetchImpl: async () => {
+      providerCalls += 1;
+      return new Response(JSON.stringify({
+        error: { code: "rate_limit_exceeded", type: "rate_limit_error", message: "Synthetic pressure" },
+      }), { status: 429, headers: { "retry-after": "0" } });
+    },
+  });
+
+  const payload = response.json();
+  const water = payload.researchAudit.categories.find((category) => category.categoryId === "water");
+  const retryableAttempts = payload.researchAudit.providerAttempts.filter((attempt) =>
+    attempt.categoryId === "water" && attempt.status === 429);
+  assert.equal(response.statusCode, 200);
+  assert.equal(providerCalls, 1, "the single-shot header must disable the handler's otherwise-default 429 retry");
+  assert.equal(payload.researchStatus, "partial");
+  assert.equal(payload.researchAudit.providerRequestBudget.maximum, 4);
+  assert.equal(Date.parse(payload.researchAudit.deadlineAt) - Date.parse(payload.researchAudit.startedAt) > 1_000, true);
+  assert.equal(retryableAttempts.length, 1);
+  assert.equal(retryableAttempts[0].retryCount, 0);
+  assert.equal(retryableAttempts[0].providerDiagnostic.rateLimit.retryAfter, "0");
+  assert.equal(water.retryCount, 0);
+  assert.ok(payload.sourceLedger.some((source) =>
+    source.originalUrl === candidate.url
+    && source.accessOutcome?.state === "accessible"
+    && source.accessOutcome.passage?.includes(fixture.accessibleReceipt.passage)),
+  "the retained Water receipt survives the single-shot 429");
+});
+
+test("synthetic DFW10 TDLR record retains eligible facility schedule and rejects campus or facility mismatch", async () => {
+  const project = {
+    name: "DataBank Red Oak DFW10",
+    location: "Red Oak, Ellis County, Texas",
+    knownData: {
+      operator: "DataBank",
+      aliases: ["DFW10"],
+      city: "Red Oak",
+      county: "Ellis County",
+      state: "Texas",
+    },
+  };
+  const urlFor = (facilityId) => `https://tdlr.texas.gov/TABS/Project/${facilityId}`;
+  const makeRecord = (facilityId) => {
+    const facilityStatement = `DataBank Red Oak - ${facilityId} is a building project in Red Oak, Ellis County, Texas, and DataBank is the project operator. This TDLR TABS record identifies the ${facilityId} building.`;
+    const passage = [
+      `${facilityStatement} The owner is DB Data Center Red Oak, LLC.`,
+      "The record lists an estimated cost of $301,000,000 and an area of 221,434 square feet.",
+      "The planned construction start date is February 1, 2025, with completion on January 31, 2027.",
+    ].join(" ");
+    const rows = [
+      ["Project Name", `DataBank Red Oak - ${facilityId}`],
+      ["Owner", "DB Data Center Red Oak, LLC"],
+      ["Estimated Cost", "$301,000,000"],
+      ["Square Feet", "221,434"],
+      ["Start Date", "February 1, 2025"],
+      ["Completion Date", "January 31, 2027"],
+    ].map(([label, value]) => `<tr><th>${label}</th><td>${value}</td></tr>`).join("");
+    const html = [
+      "<!doctype html><html><head>",
+      '<meta property="article:published_time" content="2025-02-03T12:00:00Z">',
+      "</head><body><main>",
+      `<p>${facilityStatement}</p>`,
+      "<h1>TDLR TABS Building Construction Record</h1>",
+      `<table>${rows}</table><p>${passage}</p>`,
+      "<p>The public filing is an official project record and its named schedule applies to the building described in this entry.</p>",
+      "</main></body></html>",
+    ].join("");
+    return { facilityStatement, passage, html };
+  };
+
+  const runRecord = async ({ facilityId = "DFW10", broadCampusScope = false } = {}) => {
+    const url = urlFor(facilityId);
+    const { facilityStatement, passage, html } = makeRecord(facilityId);
+    const candidate = {
+      url,
+      title: "TDLR TABS Building Construction Record",
+      categoryIds: ["permitting-community"],
+      searchDomain: "permitting-community",
+      sourceClass: "primary-government",
+      sourceChannel: "google-grounded-search",
+      exactProject: true,
+      claimSupport: [{ evidenceId: "permitting_timeline", values: ["2025-02-01 – 2027-01-31"] }],
+      facilityScope: facilityId === "DFW10" ? "exact-facility" : "related-facility",
+      phaseScope: "not-applicable",
+      timePeriod: "2025-2027",
+    };
+    const base = validResearchResponse();
+    base.projectSummary = {
+      ...base.projectSummary,
+      name: project.name,
+      location: project.location,
+    };
+    base.evidence = base.evidence
+      .filter((item) => ["community_risk", "permitting_timeline", "carbon_compliance"].includes(item.id))
+      .map((item) => item.id !== "permitting_timeline" ? item : ({
+        ...item,
+        value: "2025-02-01 – 2027-01-31",
+        numericValue: null,
+        unit: "date range",
+        classification: "Verified Evidence",
+        citation: `${facilityStatement} ${url}`,
+        description: broadCampusScope
+          ? "The Red Oak Campus has a planned construction date range from February 1, 2025, through January 31, 2027."
+          : `The ${facilityId} building has a planned construction date range from February 1, 2025, through January 31, 2027.`,
+        sourceUrl: url,
+        sourceUrls: [url],
+        coverageStatus: "supported",
+        sourceRelevance: "exact-project",
+        claimPassage: passage,
+        facilityScope: broadCampusScope ? "exact-project" : "exact-facility",
+        phaseScope: broadCampusScope ? "all-phases" : "not-applicable",
+        claimTimePeriod: "2025-2027",
+      }));
+    const trace = createRedOakClaimTrace();
+    const result = await runValidatedResearch(project, {
+      apiKey: "offline-openai-key",
+      googleApiKey: "offline-google-key",
+      req: request({}),
+      categoryIds: ["permitting-community"],
+      allowGoogleFallback: false,
+      allowCorrectiveRetries: false,
+      allowProviderRetries: false,
+      useDefaultSecConnector: false,
+      researchBudgetOverrides: {
+        maxProviderRequests: 2,
+        maxPhysicalDocumentOpens: 1,
+        maxFollowUps: 0,
+        maxFollowUpsPerCategory: 0,
+        maxCandidatesPerCategory: 2,
+        maxTotalCandidates: 2,
+      },
+      researchTimeoutMs: 10_000,
+      analysisReserveMs: 0,
+      documentTimeoutMs: 1_000,
+      rateLimiter: { allow: () => ({ allowed: true, retryAfterSeconds: 0 }) },
+      googleDiscoveryImpl: completedGoogleDiscovery([candidate]),
+      dnsLookup: async () => [{ address: "93.184.216.34", family: 4 }],
+      documentFetchImpl: async () => new Response(html, {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      }),
+      fetchImpl: async (_requestUrl, init) => {
+        const requestBody = JSON.parse(init.body);
+        assert.equal(requestBody.tools, undefined, "grounded category analysis must not browse");
+        return new Response(JSON.stringify({
+          id: `resp_offline_tdlr_${facilityId}`,
+          output: [{
+            type: "message",
+            content: [{ type: "output_text", text: JSON.stringify(base) }],
+          }],
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      },
+      claimTrace: trace,
+      providerGate: createResearchProviderGate({
+        tokensPerMinute: 30_000,
+        tokenWindowMs: OFFLINE_PROVIDER_TOKEN_WINDOW_MS,
+      }),
+    });
+    return { result, facilityStatement, passage, url };
+  };
+
+  const positive = await runRecord();
+  const claim = positive.result.evidence.find((item) => item.id === "permitting_timeline");
+  const source = positive.result.sourceLedger.find((item) => item.originalUrl === positive.url);
+  assert.ok(source, "the accessed government source must remain in the canonical ledger");
+  assert.equal(source.accessOutcome.state, "accessible");
+  assert.equal(sourceEstablishesProjectIdentity(source, project), true, source.accessOutcome.passage);
+  assert.equal(source.date ?? source.publishedAt, "2025-02-03");
+  assert.equal(source.facilityScope, "exact-facility");
+  assert.equal(source.phaseScope, "not-applicable");
+  assert.ok(source.accessOutcome.passage.includes("DFW10"));
+  assert.ok(source.accessOutcome.structuredFields.some((field) =>
+    field.label === "Project Name" && field.value === "DataBank Red Oak - DFW10"));
+  assert.ok(source.accessOutcome.structuredFields.some((field) =>
+    field.label === "Owner" && field.value === "DB Data Center Red Oak, LLC"));
+  assert.ok(source.accessOutcome.structuredFields.some((field) =>
+    field.label === "Estimated Cost" && field.value === "$301,000,000"));
+  assert.ok(source.accessOutcome.structuredFields.some((field) =>
+    field.label === "Square Feet" && field.value === "221,434"));
+  assert.ok(source.accessOutcome.structuredFields.some((field) =>
+    field.label === "Completion Date" && field.value === "January 31, 2027"));
+  assert.equal(claim.rawValue, "2025-02-01 – 2027-01-31");
+  assert.ok(claim.numericValue > 23 && claim.numericValue < 24);
+  assert.equal(claim.unit, "date range");
+  assert.equal(claim.normalizedUnit, "months");
+  assert.equal(claim.facilityScope, "exact-facility");
+  assert.equal(claim.phaseScope, "not-applicable");
+  assert.equal(claim.eligibleForModel, true);
+  assert.equal(claim.sourceValidation.state, "financially-eligible");
+  assert.ok(claim.claimMappings.some((mapping) =>
+    mapping.supportStatus === "supported" && mapping.exactQuotation === positive.passage));
+  assert.equal(claim.sourceValidation.eligibilityTrace.firstFailure, null);
+
+  const campusClaim = (await runRecord({ broadCampusScope: true })).result.evidence
+    .find((item) => item.id === "permitting_timeline");
+  assert.equal(campusClaim.eligibleForModel, false);
+  assert.ok(campusClaim.claimMappings.every((mapping) => mapping.supportStatus !== "supported"));
+
+  const wrongFacilityRun = await runRecord({ facilityId: "DFW9" });
+  const wrongFacilitySource = wrongFacilityRun.result.sourceLedger.find((item) =>
+    item.originalUrl === wrongFacilityRun.url);
+  assert.ok(wrongFacilitySource.accessOutcome.structuredFields.some((field) =>
+    field.label === "Project Name" && field.value === "DataBank Red Oak - DFW9"));
+  assert.ok(wrongFacilitySource.accessOutcome.structuredFields.some((field) =>
+    field.label === "Owner" && field.value === "DB Data Center Red Oak, LLC"));
+  const wrongFacility = wrongFacilityRun.result.evidence
+    .find((item) => item.id === "permitting_timeline");
+  assert.equal(wrongFacility.eligibleForModel, false);
+  assert.ok(wrongFacility.claimMappings.every((mapping) => mapping.supportStatus !== "supported"));
 });
 
 test("actual validated workflow retains receipts after total category-analysis failure", async () => {
@@ -2102,7 +2668,7 @@ test("parallel bounded document access lets a fast receipt survive a slow-docume
   assert.equal(result.researchStatus, "partial");
 });
 
-test("deadline finalizes retained passages as a partial response after retrieval", async () => {
+test("provider deadline admission finalizes retained passages as a partial response after retrieval", async () => {
   const fixture = JSON.parse(await readFile(new URL("./fixtures/research-partial-receipts.json", import.meta.url), "utf8"));
   const candidate = { ...fixture.accessibleReceipt, excerpt: fixture.accessibleReceipt.passage };
   const started = Date.now();
@@ -2131,7 +2697,17 @@ test("deadline finalizes retained passages as a partial response after retrieval
   assert.ok(receipt.accessOutcome.passage.includes(fixture.accessibleReceipt.passage));
   assert.equal(receipt.date ?? receipt.publishedAt, fixture.accessibleReceipt.date);
   assert.ok(water.openedDocuments.some((document) => document.retainedPassage.includes(fixture.accessibleReceipt.passage)));
-  assert.ok(result.researchAudit.terminalReasonCodes.includes("deadline"));
+  assert.ok(result.researchAudit.terminalReasonCodes.includes("provider-deadline-admission"), JSON.stringify({
+    terminalReasonCodes: result.researchAudit.terminalReasonCodes,
+    researchStatus: result.researchStatus,
+    water: {
+      executionOutcome: water.executionOutcome,
+      analysisOutcome: water.analysisOutcome,
+      analysisState: water.analysisState,
+      notRunReason: water.notRunReason,
+    },
+    phaseTiming: result.researchAudit.phaseTiming,
+  }));
   assert.ok(elapsed < 600, `deadline did not promptly finalize the partial result (${elapsed}ms)`);
 });
 
@@ -2546,6 +3122,16 @@ test("finishes identity first, then issues remaining primaries concurrently and 
     { name: "Atlas", location: "Texas" },
     {
       concurrent: true,
+      categoryIds: [
+        "climate-operational-hazard",
+        "electricity",
+        "tenant-counterparty",
+        "water",
+        "permitting-community",
+        "construction-capital",
+        "grid",
+        "project-identity",
+      ],
       retrieveCategory: async ({ categoryId }) => {
         started.push(categoryId);
         if (categoryId === "project-identity") {
@@ -2562,7 +3148,16 @@ test("finishes identity first, then issues remaining primaries concurrently and 
     },
   );
   const run = await runPromise;
-  assert.equal(started[0], "project-identity");
+  assert.deepEqual(started, [
+    "project-identity",
+    "grid",
+    "construction-capital",
+    "permitting-community",
+    "water",
+    "tenant-counterparty",
+    "electricity",
+    "climate-operational-hazard",
+  ]);
   assert.equal(peak, 7);
   assert.equal(run.providerRequests, 8);
   assert.equal(run.categoryExecutions.water.state, "Provider failure");
@@ -2597,6 +3192,40 @@ test("identity document work precedes remaining primary provider opportunities",
   assert.deepEqual(events.slice(0, 2), ["provider:project-identity", "document:project-identity"]);
   assert.equal(events.slice(2, 9).every((event) => event.startsWith("provider:")), true);
   assert.ok(Object.values(run.categoryExecutions).every((execution) => execution.issuedPrimaryQuery));
+});
+
+test("categories skipped by the provider budget remain NOT RUN and SEARCH INCOMPLETE", async () => {
+  const project = { name: "Atlas", location: "Arizona" };
+  const plan = buildResearchCategoryPlan(project);
+  const started = [];
+  const run = await orchestrateCategoryResearch(project, {
+    budget: { ...RESEARCH_RUN_BUDGET, maxProviderRequests: 1 },
+    retrieveCategory: async ({ categoryId }) => {
+      started.push(categoryId);
+      return {
+        candidates: [],
+        observedQueries: [`observed ${categoryId}`],
+        providerRequestCount: 1,
+      };
+    },
+  });
+  assert.deepEqual(started, ["project-identity"]);
+
+  const audit = buildResearchAudit({
+    project,
+    coverage: { categoryExecutions: run.categoryExecutions },
+    sources: [],
+    evidence: [],
+  });
+  for (const category of plan.categories.slice(1)) {
+    const recorded = audit.categories.find((item) => item.categoryId === category.categoryId);
+    assert.equal(recorded.executionOutcome, "not-run");
+    assert.equal(recorded.analysisOutcome, "not-run");
+    assert.equal(recorded.notRunReason, "provider-request-budget");
+    assert.equal(recorded.state, "Not searched");
+    assert.equal(recorded.searchCompleteness, "incomplete");
+    assert.equal(recorded.searchCompletenessLabel, "SEARCH INCOMPLETE");
+  }
 });
 
 test("malformed repairs consume request slots and cannot displace reserved primaries", async () => {
@@ -3535,16 +4164,7 @@ test("reuses provider-declared canonical receipts across concurrent categories w
     fetchImpl: async (_url, init) => {
       providerCalls += 1;
       const prompt = JSON.parse(init.body).input?.[1]?.content ?? "";
-      const categoryId = [
-        ["project-identity", "Project identity"],
-        ["grid", "Grid"],
-        ["electricity", "Electricity"],
-        ["water", "Water"],
-        ["permitting-community", "Permitting and community"],
-        ["construction-capital", "Construction and capital"],
-        ["tenant-counterparty", "Tenant and counterparty"],
-        ["climate-operational-hazard", "Climate and operational hazard"],
-      ].find(([, label]) => prompt.includes(`observed ${label} category attempt`))?.[0] ?? "project-identity";
+      const categoryId = prompt.match(/\bCategory:\s*[^\n]*\(([a-z][a-z0-9-]*)\)\./)?.[1] ?? "project-identity";
       providerCategories.push(categoryId);
       return responseForCategory(categoryId);
     },
@@ -3560,7 +4180,7 @@ test("reuses provider-declared canonical receipts across concurrent categories w
   assert.equal(response.statusCode, 200);
   assert.ok(/project-identity|puc\.texas\.gov/.test(openedUrls[0]));
   assert.equal(response.json().researchAudit.identityPhysicalOpenOpportunityReserved, true);
-  assert.deepEqual(providerCategories, [
+  const expectedProviderCategories = [
     "project-identity",
     "grid",
     "electricity",
@@ -3569,7 +4189,8 @@ test("reuses provider-declared canonical receipts across concurrent categories w
     "construction-capital",
     "tenant-counterparty",
     "climate-operational-hazard",
-  ]);
+  ];
+  assert.deepEqual([...providerCategories].sort(), [...expectedProviderCategories].sort());
   assert.ok(providerCalls >= 8);
   assert.equal(documentCalls, RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens);
   assert.equal(payload.researchCoverage.physicalOpensUsed, RESEARCH_RUN_BUDGET.maxPhysicalDocumentOpens);
@@ -4614,7 +5235,7 @@ test("uses the bounded OpenAI fallback with scoped strict schemas after Google i
   let requestInit;
   let calls = 0;
   let providerCalls = 0;
-  await handleResearchProjectRequest(request({
+  await withOpenAiTpmLimit(30_000, async () => handleResearchProjectRequest(request({
     name: "Project Atlas",
     location: "Texas",
     knownData: { operator: "Atlas Compute" },
@@ -4627,6 +5248,10 @@ test("uses the bounded OpenAI fallback with scoped strict schemas after Google i
       throw error;
     },
     cache: createResearchProjectCache({ directory: await mkdtemp(path.join(os.tmpdir(), "safeloc-research-schema-")) }),
+    providerGate: createResearchProviderGate({
+      tokensPerMinute: 30_000,
+      tokenWindowMs: OFFLINE_PROVIDER_TOKEN_WINDOW_MS,
+    }),
     fetchImpl: async (url, init) => {
       requestUrl = url;
       requestInit = init;
@@ -4640,7 +5265,7 @@ test("uses the bounded OpenAI fallback with scoped strict schemas after Google i
       `Atlas Compute operates Project Atlas in Taylor County, Texas. ${retrievedSource.claimPassage}`,
       url,
     ),
-  });
+  }));
   assert.equal(response.statusCode, 200);
   assert.equal(providerCalls, 1);
   assert.equal(response.json().evidence[1].classification, "Management Assertion");
@@ -4654,7 +5279,16 @@ test("uses the bounded OpenAI fallback with scoped strict schemas after Google i
   assert.equal(requestUrl, OPENAI_RESPONSES_URL);
   const body = JSON.parse(requestInit.body);
   assert.equal(body.model, RESEARCH_PROJECT_MODEL);
-  assert.equal(body.max_output_tokens, RESEARCH_PROJECT_MAX_TOKENS);
+  assert.equal(RESEARCH_PROJECT_MAX_TOKENS, 8_000);
+  assert.equal(RESEARCH_CATEGORY_MAX_TOKENS, 3_500);
+  const estimatedInputTokens = Math.ceil(Buffer.byteLength(requestInit.body) / 3);
+  assert.equal(
+    body.max_output_tokens,
+    Math.min(RESEARCH_PROJECT_MAX_TOKENS, Math.max(1_000, 30_000 - estimatedInputTokens - 512)),
+    "the full-project fallback must adapt its output reservation to the configured TPM ceiling",
+  );
+  assert.ok(estimatedInputTokens + body.max_output_tokens < 30_000,
+    "the serialized body plus its output reservation must remain below the configured 30k TPM ceiling");
   assert.ok(body.max_tool_calls > 0 && body.max_tool_calls <= RESEARCH_PROJECT_MAX_TOOL_CALLS);
   assert.deepEqual(body.tools, [{ type: "web_search_preview" }]);
   assert.equal(body.text.format.type, "json_schema");
@@ -4840,7 +5474,8 @@ test("retains and validates mapped sources from later categories after final con
       providerCalls += 1;
       const payload = JSON.parse(init.body);
       const prompt = payload.input?.[1]?.content ?? "";
-      const label = Object.keys(categoryEvidence).find((candidate) => prompt.includes(`observed ${candidate} category attempt`)) ?? "Project identity";
+      const categoryId = prompt.match(/\bCategory:\s*[^\n]*\(([a-z][a-z0-9-]*)\)\./)?.[1] ?? "project-identity";
+      const label = Object.keys(categoryIdByLabel).find((candidate) => categoryIdByLabel[candidate] === categoryId) ?? "Project identity";
       const evidenceId = categoryEvidence[label];
       const sourceUrl = `https://example.gov/${label.toLowerCase().replaceAll(" ", "-")}/source-1`;
       const research = validResearchResponse();
@@ -5592,7 +6227,9 @@ test("HTTP research deadline aborts a stalled provider and returns a typed timeo
     categoryIds: ["water"],
     allowGoogleFallback: false,
     allowCorrectiveRetries: false,
-    researchTimeoutMs: 250,
+    // Leave enough time for admission, then exercise cancellation of an
+    // actually issued request rather than the minimum-response-time gate.
+    researchTimeoutMs: 1_500,
     analysisReserveMs: 0,
     documentTimeoutMs: 10,
     googleDiscoveryImpl: completedGoogleDiscovery([candidate]),

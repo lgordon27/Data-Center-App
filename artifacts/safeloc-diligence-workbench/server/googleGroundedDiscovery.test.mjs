@@ -16,7 +16,22 @@ import {
   resolveGoogleGeminiModel,
   sanitizeGoogleGroundedRequest,
 } from "./googleGroundedDiscovery.mjs";
-import { runValidatedResearch } from "./researchProjectProxy.mjs";
+import {
+  createResearchProviderGate,
+  runValidatedResearch as runValidatedResearchWithTestGate,
+} from "./researchProjectProxy.mjs";
+
+const OFFLINE_PROVIDER_TOKEN_WINDOW_MS = 10;
+
+function runValidatedResearch(project, options = {}) {
+  return runValidatedResearchWithTestGate(project, {
+    providerGate: createResearchProviderGate({
+      tokensPerMinute: 30_000,
+      tokenWindowMs: OFFLINE_PROVIDER_TOKEN_WINDOW_MS,
+    }),
+    ...options,
+  });
+}
 
 const project = {
   name: "Project Atlas",
@@ -57,8 +72,12 @@ const CATEGORY_LABELS = Object.freeze([
 ]);
 
 function categoryIdFromStructuredPrompt(prompt) {
+  const normalizedPrompt = String(prompt);
+  const categoryHeader = normalizedPrompt.match(/(?:^|\n)Category:\s*[^\n(]+\(([a-z0-9-]+)\)/i);
+  if (categoryHeader) return categoryHeader[1].toLowerCase();
+  const lowerCasePrompt = normalizedPrompt.toLowerCase();
   return CATEGORY_LABELS.find(([, label]) =>
-    prompt.includes(`observed ${label} category attempt`))?.[0] ?? "project-identity";
+    lowerCasePrompt.includes(`observed ${label.toLowerCase()} category attempt`))?.[0] ?? "project-identity";
 }
 
 function structuredResponseForCategory(categoryId, passage, sourceUrl) {
@@ -666,7 +685,8 @@ test("keeps mixed and recognized citation labels scoped through availability and
     categoryIds: ["grid", "water"],
   });
   assert.ok(mixed.length >= 1);
-  assert.ok(mixed.every(({ categoryId, prompt }) => categoryId === "water" && prompt.includes(passage)));
+  assert.ok(mixed.every(({ categoryId, prompt }) => categoryId === "water" && prompt.includes(passage)),
+    "mixed recognized and unknown labels must route only to the recognized water category");
 
   const recognized = await run({
     labels: ["grid-power"],

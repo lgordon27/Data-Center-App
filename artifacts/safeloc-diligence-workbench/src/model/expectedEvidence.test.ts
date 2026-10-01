@@ -351,7 +351,7 @@ test("versioned profiles and rules cover the full canonical taxonomy", () => {
 });
 
 test("JSON profile inputs validate versions, enums, numeric scale, dated provenance, and scope", () => {
-  const fixture = fixtureData.cases.find((item) => item.name === "Red Oak")!;
+  const fixture = fixtureData.cases[0]!;
   const { profile } = createFixtureProjection(fixture);
 
   const badVersion = { ...profile, profileVersion: 99 } as unknown as ExpectedEvidenceProfile;
@@ -402,7 +402,7 @@ test("JSON profile inputs validate versions, enums, numeric scale, dated provena
 
 test("deterministic scenario fixtures evaluate all dimensions with project-scope and provenance intact", () => {
   for (const fixture of fixtureData.cases) {
-    const { project, profile, projection } = createFixtureProjection(fixture);
+    const { project, profile, projection } = createFixtureProjection(fixture, "Verified Evidence");
     const result = evaluateExpectedEvidence(profile, projection);
     assert.equal(result.policyVersion, SAFELOC_EXPECTED_EVIDENCE_POLICY_VERSION, fixture.name);
     assert.equal(result.project.projectId, project.projectId, fixture.name);
@@ -419,7 +419,10 @@ test("deterministic scenario fixtures evaluate all dimensions with project-scope
     for (const dimension of fixture.completeNotFoundDimensions) {
       const item = result.dimensions.find((candidate) => candidate.dimension === dimension)!;
       assert.equal(item.searchState, "complete");
-      assert.equal(item.evidenceResolution, "searched-not-found");
+      assert.equal(
+        item.evidenceResolution,
+        item.expectation === "not-expected" ? "not-expected" : "searched-not-found",
+      );
     }
     for (const dimension of fixture.incompleteSearchDimensions) {
       const item = result.dimensions.find((candidate) => candidate.dimension === dimension)!;
@@ -515,7 +518,7 @@ test("profile signals change decisions, claim requirements, jurisdiction guidanc
 
 test("eligibility, explicit conflicts, incomplete search, and not-applicable remain distinct", () => {
   const fixture = fixtureData.cases.find((item) => item.name.startsWith("Small colocation"))!;
-  const { project, profile, projection } = createFixtureProjection(fixture);
+  const { project, profile, projection } = createFixtureProjection(fixture, "Verified Evidence");
   const ineligible = evidence(project, "financing-capital", "ineligible-financing");
   ineligible.eligibility = { eligible: false, reason: "Illustrative record is outside the facility scope." };
   const ineligibleEvent: StoredProofLedgerEvent = {
@@ -530,11 +533,7 @@ test("eligibility, explicit conflicts, incomplete search, and not-applicable rem
     payload: { evidence: ineligible },
   };
   validateProofLedgerEvent(ineligibleEvent);
-  const events = [
-    ...projection.events,
-    ineligibleEvent,
-  ] as StoredProofLedgerEvent[];
-  const amended = deriveProofLedgerProjection(events, AS_OF);
+  const amended = deriveProofLedgerProjection([...projection.events, ineligibleEvent], AS_OF);
   const result = evaluateExpectedEvidence(profile, amended);
   const finance = result.dimensions.find((item) => item.dimension === "financing-capital")!;
   assert.equal(finance.evidenceResolution, "not-assessed");
@@ -597,8 +596,8 @@ test("eligibility, explicit conflicts, incomplete search, and not-applicable rem
 });
 
 test("stale and superseded evidence are exposed and cannot advance maturity", () => {
-  const fixture = fixtureData.cases.find((item) => item.name === "Red Oak")!;
-  const { project, profile, projection } = createFixtureProjection(fixture);
+  const fixture = fixtureData.cases[0]!;
+  const { project, profile, projection } = createFixtureProjection(fixture, "Verified Evidence");
   const staleRecord = evidence(project, "incentives-taxes", "stale-incentives", [], "Verified Evidence");
   staleRecord.asOfDate = "2020-01-01";
   const staleEvent: StoredProofLedgerEvent = {
@@ -672,8 +671,8 @@ test("stale and superseded evidence are exposed and cannot advance maturity", ()
 });
 
 test("future as-of and effective evidence is exposed but cannot support findings or maturity", () => {
-  const fixture = fixtureData.cases.find((item) => item.name === "Red Oak")!;
-  const { project, profile, projection } = createFixtureProjection(fixture);
+  const fixture = fixtureData.cases[0]!;
+  const { project, profile, projection } = createFixtureProjection(fixture, "Verified Evidence");
   const futureAsOf = evidence(project, "community-local-government", "future-community-record", [], "Verified Evidence");
   futureAsOf.asOfDate = "2030-06-01";
   futureAsOf.publicationDate = "2030-06-02";
@@ -719,7 +718,7 @@ test("future as-of and effective evidence is exposed but cannot support findings
 });
 
 test("only fresh, dimension-matched, direct source-quality evidence can advance the two maturity tracks", () => {
-  const fixture = fixtureData.cases.find((item) => item.name === "Red Oak")!;
+  const fixture = fixtureData.cases[0]!;
   const { profile, projection } = createFixtureProjection(fixture, "Verified Evidence");
   const supported = evaluateExpectedEvidence(profile, projection);
   assert.equal(supported.maturity.facilityLifecycle.status, "known");
@@ -759,7 +758,7 @@ test("only fresh, dimension-matched, direct source-quality evidence can advance 
 });
 
 test("maturity rejects announced/not-started construction and applications as proof of later stages", () => {
-  const fixture = fixtureData.cases.find((item) => item.name === "Red Oak")!;
+  const fixture = fixtureData.cases[0]!;
   const { project, profile, projection } = createFixtureProjection(fixture, "Verified Evidence");
 
   const announcedOnly = evidence(project, "construction-phasing", "announced-only-construction", [], "Verified Evidence");
@@ -818,7 +817,7 @@ test("maturity rejects announced/not-started construction and applications as pr
 });
 
 test("maturity supports explicit N/A, rejects unknown stage values, and permits recorded regression", () => {
-  const fixture = fixtureData.cases.find((item) => item.name === "Red Oak")!;
+  const fixture = fixtureData.cases[0]!;
   const { project, profile, projection } = createFixtureProjection(fixture, "Verified Evidence");
 
   const unrecognizedState = storedStateEvent({

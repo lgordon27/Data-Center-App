@@ -1,5 +1,7 @@
 const APPLICATION_ERROR_PATTERNS = [
   /\ban error has occurred in this application\b/i,
+  /^\s*(?:application error|internal server error|http error\s+\d{3}|error\s+50[0-9])\b/i,
+  /^\s*(?:404(?:\s+(?:error|not found))?|page not found|the requested (?:page|record|document) (?:was\s+)?not found)\b/i,
 ];
 
 const HTML_SHELL_PATTERNS = [

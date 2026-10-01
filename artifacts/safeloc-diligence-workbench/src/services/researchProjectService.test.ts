@@ -957,6 +957,23 @@ test("preserves retained physical-open diagnostics without treating them as fres
       label: "Water",
       state: "Not searched",
       followUpSkipReason: "physical-open-budget",
+      executionOutcome: "not-run",
+      analysisOutcome: "not-run",
+      notRunReason: "provider-tpm-deadline",
+      searchCompleteness: "incomplete",
+      searchCompletenessLabel: "SEARCH INCOMPLETE",
+      providerFailureType: "provider-tpm-deadline",
+      retryCount: 1,
+      tpmWaitMs: 60_000,
+      rateLimitWaitMs: 1_000,
+      providerAttempts: [{
+        estimatedInputTokens: 4_500,
+        reservedTokens: 8_000,
+        providerTpmCeiling: 30_000,
+        retryCount: 1,
+        tpmWaitMs: 60_000,
+        rateLimitWaitMs: 1_000,
+      }],
       accessLimitations: ["The physical document-open ceiling was reached."],
       unresolvedGaps: ["water_rights"],
       stageCounts: { notAttempted: 3 },
@@ -968,6 +985,12 @@ test("preserves retained physical-open diagnostics without treating them as fres
         requestBodyBytesAfterFiltering: 26_000,
         requestBodyBytesReduced: 4_000,
         requestBodyReductionPercent: 13.33,
+        estimatedInputTokens: 4_500,
+        inputTokenCap: 5_000,
+        omittedPassageCount: 1,
+        windowedPassageCount: 2,
+        omissionReasons: ["input-cap", "passage-window-selection", "untrusted explanation"],
+        outcome: "capped",
       }],
     }],
   };
@@ -980,6 +1003,22 @@ test("preserves retained physical-open diagnostics without treating them as fres
   assert.equal(parsed.researchAudit?.physicalOpenBudgetExceeded, true);
   assert.equal(parsed.researchAudit?.categories[0].followUpSkipReason, "physical-open-budget");
   assert.equal(parsed.researchAudit?.categories[0].stageCounts.notAttempted, 3);
+  const category = parsed.researchAudit?.categories[0];
+  assert.equal(category?.executionOutcome, "not-run");
+  assert.equal(category?.analysisOutcome, "not-run");
+  assert.equal(category?.notRunReason, "provider-tpm-deadline");
+  assert.equal(category?.searchCompleteness, "incomplete");
+  assert.equal(category?.searchCompletenessLabel, "SEARCH INCOMPLETE");
+  assert.equal(category?.providerFailureType, "provider-tpm-deadline");
+  assert.equal(category?.retryCount, 1);
+  assert.equal(category?.tpmWaitMs, 60_000);
+  assert.equal(category?.rateLimitWaitMs, 1_000);
+  assert.equal(category?.providerAttempts?.[0].estimatedInputTokens, 4_500);
+  assert.equal(category?.providerAttempts?.[0].reservedTokens, 8_000);
+  assert.equal(category?.providerAttempts?.[0].providerTpmCeiling, 30_000);
+  assert.equal(category?.providerAttempts?.[0].retryCount, 1);
+  assert.equal(category?.providerAttempts?.[0].tpmWaitMs, 60_000);
+  assert.equal(category?.providerAttempts?.[0].rateLimitWaitMs, 1_000);
   assert.deepEqual(parsed.researchAudit?.categories[0].categoryPromptTelemetry, [{
     candidatePassageCount: 6,
     uniquePassageCount: 4,
@@ -988,6 +1027,12 @@ test("preserves retained physical-open diagnostics without treating them as fres
     requestBodyBytesAfterFiltering: 26_000,
     requestBodyBytesReduced: 4_000,
     requestBodyReductionPercent: 13.33,
+    estimatedInputTokens: 4_500,
+    inputTokenCap: 5_000,
+    omittedPassageCount: 1,
+    windowedPassageCount: 2,
+    omissionReasons: ["input-cap", "passage-window-selection"],
+    outcome: "capped",
   }]);
   assert.equal(parsed.researchCoverage?.physicalOpenBudgetExceeded, true);
 });

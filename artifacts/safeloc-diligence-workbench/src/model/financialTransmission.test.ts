@@ -352,6 +352,7 @@ test("explicit unit formulas normalize tariff, water, timeline, and cooling CAPE
     if (inputId === "capacity_mw") {
       assert.ok(Math.abs(Number(result.acceptedCapacityMW) - expectedValue) < 1e-9);
       assert.equal(result.appliedInputs[0]?.acceptedValue.unit, expectedUnit);
+      assert.deepEqual(result.evidence, INITIAL_EVIDENCE, "capacity is transmitted separately, not inserted into financial evidence");
     } else {
       assert.ok(Math.abs(Number(result.evidence[inputId].numericValue) - expectedValue) < 1e-9);
       assert.equal(result.evidence[inputId].unit, expectedUnit);

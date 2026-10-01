@@ -55,6 +55,20 @@ const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const RESEARCH_PROJECT_MODEL = "gpt-4o";
 const RESEARCH_PROJECT_MAX_TOKENS = 8_000;
 const RESEARCH_CATEGORY_MAX_TOKENS = 3_500;
+const DEFAULT_RESEARCH_CATEGORY_INPUT_TOKEN_CAP = 5_000;
+const DEFAULT_OPENAI_TPM_LIMIT = 30_000;
+const PROVIDER_TOKEN_WINDOW_MS = 60_000;
+const PROVIDER_RESPONSE_RESERVE_MS = 1_000;
+const RESEARCH_CATEGORY_ORDER = Object.freeze([
+  "project-identity",
+  "grid",
+  "construction-capital",
+  "permitting-community",
+  "water",
+  "tenant-counterparty",
+  "electricity",
+  "climate-operational-hazard",
+]);
 const RESEARCH_PROVIDER_MAX_CONCURRENCY = 1;
 // The browser retains its 90s limit; leave room for partial serialization and delivery.
 const RESEARCH_PROJECT_TIMEOUT_MS = 75_000;
@@ -507,6 +521,8 @@ function withCacheMetadata(entry, metadata) {
   const { cacheable: _cacheable, ...publicResult } = entry.result ?? {};
   return { ...publicResult, researchCache: metadata };
 }
+
+const RESEARCH_CATEGORY_SYSTEM_PROMPT = `You are SafeLoc's evidence analyst. Analyze only the category and evidence identifiers in the user message, using the physically retrieved passages supplied in that request. Do not browse or treat titles, URLs, snippets, directory context, or search plans as evidence. Return the exact strict JSON schema, with no extra keys. Quote claimPassage exactly from a supplied passage; preserve names, values, units, dates, status, facility/phase scope, and qualifiers. Use Missing Evidence when the packet does not support a claim. Classify independent government records as Verified Evidence and company statements as Management Assertion; never upgrade confidence from model self-ratings.`;
 
 const WEB_SEARCH_SOURCE_BOUNDARY_PROMPT = `
 Use the built-in web-search tool during this response. Perform all searches and synthesis inside this one response; do not request a follow-up provider call. Never invent a source, URL, date, excerpt, or facility-level fact. Put the exact public URLs returned by web search into sourceUrl and sourceUrls. Verified Evidence requires an exact-project government, regulator, utility, filed-company, or independent-reporting source returned by this web search; a company announcement is normally Management Assertion. If no searched source independently confirms a claim, do not classify it as Verified Evidence. You may use well-established model knowledge only at a Management Assertion ceiling and must say it requires independent verification. If projectSummary states an exact-project fact such as a named customer or offtaker, behind-the-meter power, disclosed capacity, or a stated water source, map the same fact into the relevant evidence variable at the appropriate classification rather than calling that variable Missing Evidence. Do not classify contextual market or industry reporting as facility-level Verified Evidence. There is no finding quota: after bounded searches, leave a variable explicitly unresolved rather than inventing a result. Do not use modelReportedConfidence or sourceSupportConfidence to promote a finding: the server recomputes sourceSupportConfidence from validated sources, independence, and conflicts.`;
@@ -1079,6 +1095,17 @@ function buildProjectIdentityContext(project = {}) {
     state: parts.state,
     ambiguities,
     resolutionRequired: true,
+  };
+}
+
+function projectClaimValidationContext(project = {}) {
+  const knownData = isRecord(project.knownData) ? project.knownData : {};
+  return {
+    ...knownData,
+    name: project.name ?? knownData.name ?? knownData.projectName ?? "",
+    location: project.location ?? knownData.location ?? "",
+    operator: knownData.operator ?? project.operator ?? null,
+    aliases: knownData.aliases ?? project.aliases ?? [],
   };
 }
 
@@ -1841,6 +1868,7 @@ async function accessResearchDocument(candidate = {}, {
         publicationDateStatus: extraction.publicationDateStatus ?? "absent",
         underlyingDocumentUrl: extraction.underlyingDocumentUrl,
         candidateLinks: extraction.candidateLinks,
+        structuredFields: extraction.structuredFields ?? [],
         transportDiagnostic: buildTransportDiagnostic({
           stage: "extraction",
           url: currentUrl,
@@ -1875,6 +1903,7 @@ async function accessResearchDocument(candidate = {}, {
       publicationDateBasis: extraction.publicationDateBasis ?? null,
       publicationDateStatus: extraction.publicationDateStatus ?? "absent",
       candidateLinks: extraction.candidateLinks,
+      structuredFields: extraction.structuredFields ?? [],
       transportDiagnostic: buildTransportDiagnostic({
         stage: "complete",
         url: currentUrl,
@@ -2052,6 +2081,103 @@ function substantiallyDuplicatePassages(left, right) {
   return overlap / smaller.size >= 0.9;
 }
 
+function categoryAnalysisPatterns(categoryId) {
+  const patterns = {
+    "project-identity": /\b(?:project|facility|building|campus|owner|operator|applicant|company|data center|data-centre|dfw\d+)\b/i,
+    grid: /\b(?:grid|interconnection|interconnect|substation|transmission|load|mw|mwh|kw|kwh|service date|energization|ercot|utility)\b/i,
+    "construction-capital": /\b(?:estimated cost|construction cost|project cost|capital|capex|square feet|sq\.?\s*ft|area|building|construction|start date|completion date|schedule|contractor|backup power|generator)\b/i,
+    "permitting-community": /\b(?:permit|application|approved|approval|denied|hearing|community|public comment|filing|status|start date|completion date|construction|inspection)\b/i,
+    water: /\b(?:water|gallons?|acre-feet|mgal|withdrawal|supply|discharge|wastewater|permit|rights)\b/i,
+    "tenant-counterparty": /\b(?:tenant|customer|counterparty|lease|offtake|contract|owner|operator|customer concentration)\b/i,
+    electricity: /\b(?:electricity|power|rate|tariff|energy|mwh|kwh|renewable|carbon|utility|cost)\b/i,
+    "climate-operational-hazard": /\b(?:flood|fema|noaa|wildfire|drought|hazard|climate|storm|heat|water|backup power|resilience)\b/i,
+  };
+  return patterns[categoryId] ?? /\b(?:project|facility|building|campus|owner|operator|status|date|mw|mwh|cost|area|permit)\b/i;
+}
+
+function structuredFieldsForCategory(source, categoryId, project = {}) {
+  const fields = Array.isArray(source?.accessOutcome?.structuredFields)
+    ? source.accessOutcome.structuredFields
+    : Array.isArray(source?.structuredFields) ? source.structuredFields : [];
+  const identityTerms = [
+    project?.name,
+    project?.knownData?.operator,
+    ...(Array.isArray(project?.knownData?.aliases) ? project.knownData.aliases : []),
+  ].map((value) => String(value ?? "").trim()).filter((value) => value.length >= 3);
+  const identityPattern = new RegExp(
+    `(?:${["project", "facility", "building", "campus", "owner", "operator", "applicant", "location", "county", "city", "state", "status", "start", "completion", "estimated cost", "square feet", ...identityTerms]
+      .map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .join("|")})`,
+    "i",
+  );
+  const categoryPattern = categoryAnalysisPatterns(categoryId);
+  return fields
+    .filter((field) => isRecord(field)
+      && typeof field.label === "string"
+      && typeof field.value === "string"
+      && (identityPattern.test(field.label) || categoryPattern.test(field.label)))
+    .slice(0, 32)
+    .map((field) => ({
+      label: sanitizeTransportText(field.label, 120),
+      value: sanitizeTransportText(field.value, 400),
+    }))
+    .filter((field) => field.label && field.value);
+}
+
+function categoryPassageWindow(source, categoryId, project = {}, maxChars = 2_400) {
+  const passage = String(source?.accessOutcome?.passage ?? "");
+  if (passage.length <= maxChars) return passage;
+  const sentences = [...passage.matchAll(/[^.!?]+(?:[.!?]+["')\]]*)?|[.!?]+/gu)]
+    .map((match) => ({ text: match[0].trim(), start: match.index, end: match.index + match[0].length }))
+    .filter((sentence) => sentence.text);
+  if (!sentences.length) return "";
+  const categoryPattern = categoryAnalysisPatterns(categoryId);
+  const identityTerms = [
+    project?.name,
+    project?.knownData?.operator,
+    ...(Array.isArray(project?.knownData?.aliases) ? project.knownData.aliases : []),
+  ].map((value) => String(value ?? "").trim().toLowerCase()).filter((value) => value.length >= 3);
+  const windows = [];
+  sentences.forEach(({ text: sentence }, index) => {
+    const lower = sentence.toLowerCase();
+    const isIdentity = identityTerms.some((term) => lower.includes(term))
+      || /\b(?:project|facility|building|campus|dfw\d+|owner|operator)\b/i.test(sentence);
+    const isCategory = categoryPattern.test(sentence);
+    const isQualifier = /\b(?:not|no|never|without|except|pending|approved|denied|rejected|completed|operational|planned|proposed|expected|delayed|cancelled|canceled|verified|confirmed|start|completion|as of|effective)\b/i.test(sentence);
+    const isQuantity = /\b\d[\d,]*(?:\.\d+)?\b/i.test(sentence);
+    if (!isIdentity && !isCategory && !isQualifier && !isQuantity) return;
+    // Admit the surrounding sentences as one unit. A token cap must not keep
+    // a quantity while dropping its adjacent qualification or scope.
+    windows.push({
+      first: Math.max(0, index - 1),
+      last: Math.min(sentences.length - 1, index + 1),
+      score: (isIdentity ? 8 : 0) + (isCategory ? 5 : 0) + (isQualifier ? 4 : 0) + (isQuantity ? 4 : 0),
+      index,
+    });
+  }
+  );
+  if (!windows.length) windows.push({ first: 0, last: Math.min(3, sentences.length - 1), score: 0, index: 0 });
+  const mergeRanges = (ranges) => {
+    const merged = [];
+    for (const range of [...ranges].sort((left, right) => left.first - right.first)) {
+      const prior = merged.at(-1);
+      if (prior && range.first <= prior.last + 1) prior.last = Math.max(prior.last, range.last);
+      else merged.push({ first: range.first, last: range.last });
+    }
+    return merged;
+  };
+  const render = (ranges) => ranges.map(({ first, last }) =>
+    passage.slice(sentences[first].start, sentences[last].end).trim()).join("\n\n");
+  let selected = [];
+  for (const window of windows.sort((left, right) => right.score - left.score || left.index - right.index)) {
+    const candidate = mergeRanges([...selected, window]);
+    if (render(candidate).length <= maxChars) selected = candidate;
+  }
+  // No partial-sentence fallback: keep the full receipt separately and omit
+  // an oversized atomic window rather than manufacturing a safe-looking quote.
+  return render(selected);
+}
+
 function prepareCategoryAnalysisPassages(category, sources = [], project = {}) {
   const candidates = sources.filter(hasRetrievedPassage);
   const relevant = candidates.filter((source) =>
@@ -2066,11 +2192,16 @@ function prepareCategoryAnalysisPassages(category, sources = [], project = {}) {
     if (unique.some((prior) => substantiallyDuplicatePassages(prior.accessOutcome.passage, passage))) continue;
     unique.push(source);
   }
+  const analysisSources = unique.map((source) => ({
+    ...source,
+    analysisPassage: categoryPassageWindow(source, category.categoryId, project),
+    analysisStructuredFields: structuredFieldsForCategory(source, category.categoryId, project),
+  }));
   return {
     candidateCount: candidates.length,
     uniqueCount: unique.length,
-    suppliedCount: unique.length,
-    sources: unique,
+    suppliedCount: analysisSources.length,
+    sources: analysisSources,
   };
 }
 
@@ -2325,6 +2456,23 @@ function buildResearchAudit({
           : executedQueries.length || primaryWasIssued ? "No eligible evidence"
             : "Not searched"
     );
+    const categoryAttempts = Array.isArray(supplied.providerAttempts) ? supplied.providerAttempts : [];
+    const executionOutcome = ["completed", "failed", "skipped", "not-run"].includes(supplied.executionOutcome)
+      ? supplied.executionOutcome
+      : primaryWasIssued ? "completed" : "not-run";
+    const analysisOutcome = ["completed", "failed", "skipped", "not-run"].includes(supplied.analysisOutcome)
+      ? supplied.analysisOutcome
+      : supplied.primaryAnalysisCompleted === true
+        ? "completed"
+        : categoryAttempts.some((attempt) => attempt?.issuedAt)
+          ? "failed"
+          : "not-run";
+    const notRunReason = /^[a-z0-9-]{1,80}$/i.test(String(supplied.notRunReason ?? ""))
+      ? supplied.notRunReason
+      : null;
+    const searchCompleteness = executedQueries.length
+      ? "observed"
+      : primaryWasIssued ? "unavailable" : "incomplete";
     const sourceChannelTelemetry = Array.isArray(supplied.sourceChannelTelemetry)
       ? supplied.sourceChannelTelemetry.slice(0, 80).map((entry) => ({
         sourceChannel: sanitizeTransportText(entry.sourceChannel, 120) || "provider",
@@ -2376,6 +2524,11 @@ function buildResearchAudit({
         }))
         : categoryOpenedDocuments(sources.filter((source) => categorySourceMatches(category, source)), category),
       state,
+      executionOutcome,
+      analysisOutcome,
+      notRunReason,
+      searchCompleteness,
+      searchCompletenessLabel: searchCompleteness === "incomplete" ? "SEARCH INCOMPLETE" : null,
       stageCounts: counts,
       rejectionCounts: counts.rejectionCounts,
       accessLimitations: Array.isArray(supplied.accessLimitations) ? supplied.accessLimitations.slice(0, 8) : [],
@@ -2392,6 +2545,16 @@ function buildResearchAudit({
       providerAttempts: Array.isArray(supplied.providerAttempts)
         ? supplied.providerAttempts.slice(0, 8).map(sanitizeProviderAttemptForAudit)
         : [],
+      retryCount: categoryAttempts.reduce((count, attempt) => Math.max(
+        count,
+        Number.isInteger(attempt?.retryCount) ? Math.max(0, attempt.retryCount) : 0,
+      ), 0),
+      tpmWaitMs: categoryAttempts.reduce((sum, attempt) => sum + (Number.isFinite(attempt?.tpmWaitMs)
+        ? Math.max(0, attempt.tpmWaitMs)
+        : 0), 0),
+      rateLimitWaitMs: categoryAttempts.reduce((sum, attempt) => sum + (Number.isFinite(attempt?.rateLimitWaitMs)
+        ? Math.max(0, attempt.rateLimitWaitMs)
+        : 0), 0),
       categoryPromptTelemetry: Array.isArray(supplied.categoryPromptTelemetry)
         ? supplied.categoryPromptTelemetry.slice(0, 8).filter((entry) => isRecord(entry)).map((entry) => ({
           candidatePassageCount: Number.isInteger(entry.candidatePassageCount) ? Math.max(0, entry.candidatePassageCount) : 0,
@@ -2409,6 +2572,16 @@ function buildResearchAudit({
           requestBodyReductionPercent: Number.isFinite(entry.requestBodyReductionPercent)
             ? Math.max(-100, Math.min(100, entry.requestBodyReductionPercent))
             : null,
+          estimatedInputTokens: Number.isInteger(entry.estimatedInputTokens)
+            ? Math.max(0, entry.estimatedInputTokens)
+            : null,
+          inputTokenCap: Number.isInteger(entry.inputTokenCap)
+            ? Math.max(0, entry.inputTokenCap)
+            : null,
+          omittedPassageCount: Number.isInteger(entry.omittedPassageCount)
+            ? Math.max(0, entry.omittedPassageCount)
+            : 0,
+          outcome: ["within-cap", "capped"].includes(entry.outcome) ? entry.outcome : null,
         }))
         : (Array.isArray(supplied.providerAttempts)
           ? supplied.providerAttempts.map((attempt) => attempt?.categoryPromptTelemetry).filter(isRecord).slice(0, 8).map((entry) => ({
@@ -2427,6 +2600,24 @@ function buildResearchAudit({
             requestBodyReductionPercent: Number.isFinite(entry.requestBodyReductionPercent)
               ? Math.max(-100, Math.min(100, entry.requestBodyReductionPercent))
               : null,
+            estimatedInputTokens: Number.isInteger(entry.estimatedInputTokens)
+              ? Math.max(0, entry.estimatedInputTokens)
+              : null,
+            inputTokenCap: Number.isInteger(entry.inputTokenCap)
+              ? Math.max(0, entry.inputTokenCap)
+              : null,
+            omittedPassageCount: Number.isInteger(entry.omittedPassageCount)
+              ? Math.max(0, entry.omittedPassageCount)
+              : 0,
+            windowedPassageCount: Number.isInteger(entry.windowedPassageCount)
+              ? Math.max(0, entry.windowedPassageCount)
+              : 0,
+            omissionReasons: Array.isArray(entry.omissionReasons)
+              ? entry.omissionReasons.filter((reason) => [
+                "passage-window-selection", "input-cap", "no-complete-context-window",
+              ].includes(reason))
+              : [],
+            outcome: ["within-cap", "capped"].includes(entry.outcome) ? entry.outcome : null,
           }))
           : []),
       sourceChannelTelemetry,
@@ -2780,6 +2971,8 @@ async function orchestrateCategoryResearch(project, {
   const categories = Array.isArray(categoryIds) && categoryIds.length
     ? plannedCategories.filter((category) => categoryIds.includes(category.categoryId))
     : plannedCategories;
+  categories.sort((left, right) => RESEARCH_CATEGORY_ORDER.indexOf(left.categoryId)
+    - RESEARCH_CATEGORY_ORDER.indexOf(right.categoryId));
   if (retrievalOnly) {
     for (const category of categories) {
       categoryExecutions[category.categoryId] = {
@@ -2797,6 +2990,10 @@ async function orchestrateCategoryResearch(project, {
         providerFailure: null,
         providerFailureType: null,
         providerRequestCount: 0,
+        executionOutcome: "not-run",
+        analysisOutcome: "not-run",
+        notRunReason: "retrieval-only-stop",
+        searchCompleteness: "incomplete",
       };
     }
     const finishedAtMs = now();
@@ -2885,6 +3082,18 @@ async function orchestrateCategoryResearch(project, {
         providerFailure: null,
         providerFailureType: null,
         providerRequestCount: 0,
+        executionOutcome: "not-run",
+        analysisOutcome: "not-run",
+        notRunReason: physicalOpenBudgetExceeded
+          ? "physical-open-budget"
+          : elapsed >= budget.deadlineMs || deadlineState.expired
+            ? "deadline"
+            : toolCalls >= budget.maxToolCalls
+              ? "tool-call-budget"
+              : providerRequests >= budget.maxProviderRequests
+                ? "provider-request-budget"
+                : "unavailable",
+        searchCompleteness: "incomplete",
       };
       continue;
     }
@@ -2918,6 +3127,10 @@ async function orchestrateCategoryResearch(project, {
       authorityRecords: [],
       secConnectorAttempts: [],
       sourceChannelTelemetry: [],
+      executionOutcome: "running",
+      analysisOutcome: "not-run",
+      notRunReason: null,
+      searchCompleteness: "incomplete",
     };
     try {
       if (!concurrent) providerRequests += 1;
@@ -2967,6 +3180,8 @@ async function orchestrateCategoryResearch(project, {
       const primaryObservedQueries = Array.isArray(primary?.observedQueries) ? primary.observedQueries : [];
       execution.providerObservedPrimaryQueries = primaryObservedQueries;
       executedQueries.push(...primaryObservedQueries);
+      execution.executionOutcome = "completed";
+      execution.searchCompleteness = primaryObservedQueries.length ? "observed" : "unavailable";
       categoryCandidates = Array.isArray(primary?.candidates) ? primary.candidates.slice(0, budget.maxCandidatesPerCategory) : [];
       candidates.push(...categoryCandidates);
       (Array.isArray(primary?.resolvedEvidenceIds) ? primary.resolvedEvidenceIds : []).forEach((id) => {
@@ -3170,6 +3385,12 @@ async function orchestrateCategoryResearch(project, {
               : "provider-failure";
       if (clientCancellation) cancellationToRethrow = error;
       if (error?.retrySkippedForDeadline) execution.analysisState = "not-analyzed-429";
+      execution.executionOutcome = "failed";
+      execution.analysisOutcome = issuedProviderAttemptCount(errorAttempts) > 0 ? "failed" : "not-run";
+      execution.notRunReason = execution.analysisOutcome === "not-run"
+        ? error?.researchErrorType ?? failure.type
+        : null;
+      execution.searchCompleteness = "incomplete";
     }
     categoryExecutions[category.categoryId] = {
       ...(categoryExecutions[category.categoryId] ?? {}),
@@ -3179,6 +3400,10 @@ async function orchestrateCategoryResearch(project, {
       providerFailure,
       unresolvedGaps: category.evidenceIds.filter((id) => !categoryResolvedEvidenceIds.has(id)),
     };
+    if (execution.primaryAnalysisCompleted) {
+      categoryExecutions[category.categoryId].analysisOutcome = "completed";
+      categoryExecutions[category.categoryId].notRunReason = null;
+    }
     if (cancellationToRethrow) {
       cancellationToRethrow.partialCategoryResults = categoryResults;
       cancellationToRethrow.partialCategoryExecutions = categoryExecutions;
@@ -3188,6 +3413,35 @@ async function orchestrateCategoryResearch(project, {
       prefetchPrimaryCategories(categories.filter((candidate) => candidate.categoryId !== "project-identity"));
     }
     if (!concurrent && (resolvedEvidenceIds.size >= RESEARCH_EVIDENCE_IDS.length || deadlineState.expired)) break;
+  }
+  for (const category of categories) {
+    if (categoryExecutions[category.categoryId]) continue;
+    categoryExecutions[category.categoryId] = {
+      issuedPrimaryQuery: null,
+      providerObservedPrimaryQueries: [],
+      executedQueries: [],
+      issuedFollowUpQuery: null,
+      providerObservedFollowUpQueries: [],
+      followUpTriggerEvidenceIds: [],
+      followUpSkipReason: resolvedEvidenceIds.size >= RESEARCH_EVIDENCE_IDS.length
+        ? "early-stop"
+        : deadlineState.expired || now() - startedAtMs >= budget.deadlineMs
+          ? "deadline"
+          : "not-scheduled",
+      state: "Not searched",
+      unresolvedGaps: category.evidenceIds,
+      providerFailure: null,
+      providerFailureType: null,
+      providerRequestCount: 0,
+      executionOutcome: "not-run",
+      analysisOutcome: "not-run",
+      notRunReason: resolvedEvidenceIds.size >= RESEARCH_EVIDENCE_IDS.length
+        ? "early-stop"
+        : deadlineState.expired || now() - startedAtMs >= budget.deadlineMs
+          ? "deadline"
+          : "not-scheduled",
+      searchCompleteness: "incomplete",
+    };
   }
   const finishedAtMs = now();
   return {
@@ -4335,6 +4589,16 @@ function buildVariableQueryPlan({ name, location, knownData, focusIds }) {
 }
 
 function buildResearchProjectPrompt({ name, location, knownData, focusIds, currentEvidence, activeCategory }) {
+  const identityContext = buildProjectIdentityContext({ name, location, knownData });
+  if (activeCategory?.categoryId) {
+    const scopeInstruction = activeCategory.includeRelatedFacilityIdentityContext === true
+      ? "Keep claims scoped to the named facility; do not generalize facility facts to its campus or other buildings."
+      : "Distinguish exact facility evidence from campus, regional, and similarly named project context.";
+    const knownDataPrompt = knownData
+      ? ` Directory context (not SafeLoc evidence): ${JSON.stringify(knownData)}.`
+      : "";
+    return `Analyze the exact data-center project ${name} in ${location}. This is the observed ${activeCategory.label} category attempt. Execute this exact query: ${activeCategory.query}. Return only these category-scoped evidence keys: ${activeCategory.evidenceIds?.join(", ") || "(none; return an empty evidence object)"}. ${scopeInstruction} Use only physically retrieved source passages supplied below for source-backed claims; never treat titles, URLs, snippets, or search plans as evidence. Copy each claimPassage exactly from a supplied passage. Preserve identity, dates, units, status, scope, and material qualifiers. Use Missing Evidence where a supplied passage does not support a claim. ${JSON.stringify(identityContext)}${knownDataPrompt}${activeCategory.repair ? " This is one bounded repair attempt; use compact descriptions and explicit Missing Evidence values for unresolved items." : ""}`;
+  }
   const knownDataPrompt = knownData
     ? `\n\nThe following facts are already confirmed from the Compute Atlas public database: ${JSON.stringify(knownData)}. Use them as directory discovery context for project identity and summary fields, not as SafeLoc evidence or verified project economics. Focus your research on the 16 evidence variables, not on rediscovering basic project facts.`
     : "";
@@ -4342,7 +4606,6 @@ function buildResearchProjectPrompt({ name, location, knownData, focusIds, curre
   const categoryPlan = buildResearchCategoryPlan({ name, location, knownData }).categories
     .map((category) => `- ${category.label}: primary ${category.requestedPrimaryQuery}; optional gap follow-up ${category.optionalFollowUpQuery}`)
     .join("\n");
-  const identityContext = buildProjectIdentityContext({ name, location, knownData });
   const activeCategoryPrompt = activeCategory
     ? `\n\nThis is the observed ${activeCategory.label} category attempt. Execute this exact query now and do not substitute a plan for execution: ${activeCategory.query}. Return only the category-scoped evidence keys ${activeCategory.evidenceIds?.join(", ") || "(none; return an empty evidence object)"}. The server validates and merges completed categories into the full 16-item contract. Do not emit unrelated evidence keys.${activeCategory.repair ? " This is one bounded repair attempt. Use compact descriptions and explicit Missing Evidence values for unresolved category items; never invent values." : ""}`
     : "";
@@ -4353,6 +4616,24 @@ ${queryPlan}
 
 Governed category schedule:
 ${categoryPlan}${focusIds?.length ? ` This is a focused refresh for these unresolved variables: ${focusIds.join(", ")}. Prioritize their query angles, then still return all 16 records. Preserve unrelated existing records unless new searched evidence directly contradicts them.` : ""}${currentEvidence?.length ? `\n\nExisting evidence context:\n${JSON.stringify(currentEvidence)}` : ""}${knownDataPrompt}`;
+}
+
+function buildCategoryAnalysisPrompt(project, activeCategory) {
+  const identityContext = buildProjectIdentityContext(project);
+  const evidenceIds = (activeCategory.evidenceIds ?? []).filter((id) => RESEARCH_EVIDENCE_IDS.includes(id));
+  const scopeInstruction = activeCategory.includeRelatedFacilityIdentityContext === true
+    ? "A passage about a related building does not establish the whole campus; keep claims limited to the specifically named facility."
+    : "Distinguish the named facility from its campus, other buildings, similarly named projects, and regional context.";
+  const identityInstruction = activeCategory.categoryId === "project-identity"
+    ? "Assess exact identity only. Do not create or alter modeled evidence."
+    : `Assess only these evidence identifiers: ${evidenceIds.join(", ") || "(none)"}.`;
+  return [
+    `Requested project: ${project.name}. Location: ${project.location}.`,
+    `Identity context: ${JSON.stringify(identityContext)}.`,
+    `Category: ${activeCategory.label} (${activeCategory.categoryId}). ${identityInstruction}`,
+    scopeInstruction,
+    "The response schema requires projectSummary and only the supplied category evidence keys. Use Missing Evidence when the retrieved packet does not support a value.",
+  ].join("\n");
 }
 
 function normalizeRetrievedSources(body, searchDomain = "project-identity", project = {}, researchSourceUrls = []) {
@@ -4594,9 +4875,122 @@ function buildGroundedSourceContext(sources = []) {
         contentHash: source.accessOutcome?.contentHash ?? source.contentHash ?? null,
         pageOrSection: source.accessOutcome?.pageOrSection ?? source.accessOutcome?.sectionOrPage ?? null,
       },
-      passage: source.accessOutcome.passage,
+      structuredFields: (Array.isArray(source.analysisStructuredFields)
+        ? source.analysisStructuredFields
+        : Array.isArray(source.accessOutcome?.structuredFields) ? source.accessOutcome.structuredFields : [])
+        .slice(0, 32)
+        .map((field) => ({
+          label: sanitizeTransportText(field?.label, 120),
+          value: sanitizeTransportText(field?.value, 400),
+        }))
+        .filter((field) => field.label && field.value),
+      passage: source.analysisPassage ?? source.accessOutcome.passage,
     }))
     .filter((source) => source.passage);
+}
+
+function configuredCategoryInputTokenCap() {
+  const configured = Number.parseInt(process.env.RESEARCH_CATEGORY_INPUT_TOKEN_CAP ?? "", 10);
+  return Number.isInteger(configured) && configured >= 1
+    ? Math.min(configured, 100_000)
+    : DEFAULT_RESEARCH_CATEGORY_INPUT_TOKEN_CAP;
+}
+
+function configuredOpenAiTokensPerMinute() {
+  const configured = Number.parseInt(process.env.OPENAI_TPM_LIMIT ?? "", 10);
+  return Number.isInteger(configured) && configured >= 1
+    ? Math.min(configured, 1_000_000)
+    : DEFAULT_OPENAI_TPM_LIMIT;
+}
+
+function estimateProviderInputTokens(requestBody) {
+  // Counting the serialized request at three bytes per token is intentionally
+  // conservative and includes message, schema, and request-envelope overhead.
+  return Math.ceil(Buffer.byteLength(requestBody) / 3);
+}
+
+function fitCategoryAnalysisInput(sources, buildRequestBody, category, project) {
+  const inputTokenCap = configuredCategoryInputTokenCap();
+  const baselineBody = buildRequestBody("");
+  const baselineEstimate = estimateProviderInputTokens(baselineBody);
+  if (baselineEstimate > inputTokenCap) {
+    const error = new Error("The configured category input cap is smaller than the fixed prompt and response schema.");
+    error.name = "ResearchBudgetExceededError";
+    error.researchErrorType = "category-input-budget";
+    error.categoryInputTokenEstimate = baselineEstimate;
+    error.categoryInputTokenCap = inputTokenCap;
+    throw error;
+  }
+  const accepted = [];
+  let requestBody = baselineBody;
+  let estimate = baselineEstimate;
+  let omittedPassageCount = 0;
+  let windowedPassageCount = 0;
+  const omissionReasons = new Set();
+  const prepared = sources.map((source) => ({
+    ...source,
+    analysisPassage: source.analysisPassage ?? categoryPassageWindow(source, category.categoryId, project),
+    analysisStructuredFields: source.analysisStructuredFields
+      ?? structuredFieldsForCategory(source, category.categoryId, project),
+  }));
+  for (const source of prepared) {
+    if (!source.analysisPassage) {
+      omittedPassageCount += 1;
+      omissionReasons.add("no-complete-context-window");
+      continue;
+    }
+    if (source.analysisPassage !== source.accessOutcome?.passage) {
+      windowedPassageCount += 1;
+      omissionReasons.add("passage-window-selection");
+    }
+    const fullCandidate = [...accepted, source];
+    const fullBody = buildRequestBody(`\n\nThe following public document passages were physically retrieved by SafeLoc. Use only these passages for source-backed claims. Do not browse, call a search tool, or treat a URL, snippet, title, or generated summary as evidence. Every claimPassage must be copied exactly from one supplied passage.\n${JSON.stringify(buildGroundedSourceContext(fullCandidate))}`);
+    if (estimateProviderInputTokens(fullBody) <= inputTokenCap) {
+      accepted.push(source);
+      requestBody = fullBody;
+      estimate = estimateProviderInputTokens(fullBody);
+      continue;
+    }
+    let low = 0;
+    let high = source.analysisPassage.length;
+    let best = null;
+    let bestBody = null;
+    while (low <= high) {
+      const middle = Math.floor((low + high) / 2);
+      const compact = {
+        ...source,
+        analysisPassage: categoryPassageWindow(source, category.categoryId, project, middle),
+      };
+      const candidate = [...accepted, compact];
+      const candidateBody = buildRequestBody(`\n\nThe following public document passages were physically retrieved by SafeLoc. Use only these passages for source-backed claims. Do not browse, call a search tool, or treat a URL, snippet, title, or generated summary as evidence. Every claimPassage must be copied exactly from one supplied passage.\n${JSON.stringify(buildGroundedSourceContext(candidate))}`);
+      if (estimateProviderInputTokens(candidateBody) <= inputTokenCap) {
+        best = compact;
+        bestBody = candidateBody;
+        low = middle + 1;
+      } else {
+        high = middle - 1;
+      }
+    }
+    if (best && best.analysisPassage) {
+      accepted.push(best);
+      requestBody = bestBody;
+      estimate = estimateProviderInputTokens(bestBody);
+      omissionReasons.add("input-cap");
+    } else {
+      omittedPassageCount += 1;
+      omissionReasons.add("input-cap");
+    }
+  }
+  if (accepted.length === 0) requestBody = baselineBody;
+  return {
+    sources: accepted,
+    requestBody,
+    inputTokenEstimate: estimate,
+    inputTokenCap,
+    omittedPassageCount,
+    windowedPassageCount,
+    omissionReasons: [...omissionReasons],
+  };
 }
 
 function redactUpstreamDetail(value) {
@@ -4634,16 +5028,37 @@ function selectedRateLimitIndicators(headers) {
     resetTokens: "x-ratelimit-reset-tokens",
   };
   return Object.fromEntries(Object.entries(fields).flatMap(([key, header]) => {
-    const value = safeDiagnosticToken(headers.get(header));
+    const raw = headers.get(header);
+    const value = key === "retryAfter"
+      ? typeof raw === "string" && /^[A-Za-z0-9,.:/+ -]{1,80}$/.test(raw.trim()) ? raw.trim() : null
+      : safeDiagnosticToken(raw);
     return value ? [[key, value]] : [];
   }));
 }
 
-function parseRateLimitDurationMs(value) {
-  if (typeof value !== "string" || !value.trim()) return 0;
-  if (/^\d+(?:\.\d+)?$/.test(value.trim())) return Math.ceil(Number(value) * 1_000);
+function parseRetryAfterMs(value, nowMs = Date.now()) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const normalized = value.trim();
+  if (/^\d+(?:\.\d+)?$/.test(normalized)) {
+    const delay = Number(normalized) * 1_000;
+    return Number.isFinite(delay) ? Math.max(0, Math.ceil(delay)) : null;
+  }
+  // Accept HTTP-date forms, not Date.parse's loose numeric/date guesses or
+  // provider reset-duration syntax (which belongs to a different header).
+  if (!/^(?:[A-Za-z]{3}, \d{2} [A-Za-z]{3} \d{4} \d{2}:\d{2}:\d{2} GMT|[A-Za-z]+, \d{2}-[A-Za-z]{3}-\d{2} \d{2}:\d{2}:\d{2} GMT|[A-Za-z]{3} [A-Za-z]{3} {1,2}\d{1,2} \d{2}:\d{2}:\d{2} \d{4})$/.test(normalized)) return null;
+  const dateMs = Date.parse(normalized);
+  return Number.isFinite(dateMs) ? Math.max(0, dateMs - nowMs) : null;
+}
+
+function parseRateLimitDurationMs(value, nowMs = Date.now()) {
+  if (typeof value !== "string") return 0;
+  const normalized = value.trim();
+  if (!/^(?:\d+(?:\.\d+)?\s*(?:ms|s|m)\s*)+$/i.test(normalized)) {
+    return parseRetryAfterMs(value, nowMs) ?? 0;
+  }
   let total = 0;
-  for (const match of value.matchAll(/(\d+(?:\.\d+)?)\s*(ms|s|m)/gi)) {
+  const durationParts = [...normalized.matchAll(/(\d+(?:\.\d+)?)\s*(ms|s|m)/gi)];
+  for (const match of durationParts) {
     const amount = Number(match[1]);
     total += match[2].toLowerCase() === "m"
       ? amount * 60_000
@@ -4651,11 +5066,13 @@ function parseRateLimitDurationMs(value) {
         ? amount * 1_000
         : amount;
   }
-  return Math.ceil(total);
+  return Number.isFinite(total) ? Math.max(0, Math.ceil(total)) : 0;
 }
 
 function createResearchProviderGate({
   limit = RESEARCH_PROVIDER_MAX_CONCURRENCY,
+  tokensPerMinute = configuredOpenAiTokensPerMinute(),
+  tokenWindowMs = PROVIDER_TOKEN_WINDOW_MS,
   now = () => Date.now(),
   schedule = setTimeout,
   cancelSchedule = clearTimeout,
@@ -4664,14 +5081,57 @@ function createResearchProviderGate({
   let blockedUntil = 0;
   let wakeTimer = null;
   const queue = [];
+  const tokenReservations = [];
+
+  const pruneReservations = (currentTime) => {
+    while (tokenReservations.length && currentTime - tokenReservations[0].reservedAt >= tokenWindowMs) {
+      tokenReservations.shift();
+    }
+  };
+
+  const tokenWaitFor = (requestedTokens, currentTime) => {
+    pruneReservations(currentTime);
+    if (requestedTokens > tokensPerMinute) {
+      return { waitMs: null, usedTokens: tokenReservations.reduce((sum, item) => sum + item.tokens, 0) };
+    }
+    let remaining = tokenReservations.reduce((sum, item) => sum + item.tokens, 0) + requestedTokens - tokensPerMinute;
+    if (remaining <= 0) {
+      return { waitMs: 0, usedTokens: tokenReservations.reduce((sum, item) => sum + item.tokens, 0) };
+    }
+    for (const reservation of tokenReservations) {
+      remaining -= reservation.tokens;
+      if (remaining <= 0) {
+        return {
+          waitMs: Math.max(0, reservation.reservedAt + tokenWindowMs - currentTime),
+          usedTokens: tokenReservations.reduce((sum, item) => sum + item.tokens, 0),
+        };
+      }
+    }
+    return { waitMs: tokenWindowMs, usedTokens: tokenReservations.reduce((sum, item) => sum + item.tokens, 0) };
+  };
 
   const drain = () => {
     if (wakeTimer) {
       cancelSchedule(wakeTimer);
       wakeTimer = null;
     }
-    const delay = blockedUntil - now();
+    const currentTime = now();
+    pruneReservations(currentTime);
+    const delay = Math.max(0, blockedUntil - currentTime);
     if (delay > 0) {
+      for (let index = queue.length - 1; index >= 0; index -= 1) {
+        const waiter = queue[index];
+        if (Number.isFinite(waiter.deadlineAt)
+          && currentTime + delay + waiter.minimumResponseMs >= waiter.deadlineAt) {
+          queue.splice(index, 1);
+          waiter.cleanup();
+          const error = createResearchBudgetError("provider-rate-limit-deadline");
+          error.researchErrorType = "provider-rate-limit-deadline";
+          error.providerRateLimitWaitMs = delay;
+          waiter.reject(error);
+        }
+      }
+      if (!queue.length) return;
       wakeTimer = schedule(() => {
         wakeTimer = null;
         drain();
@@ -4679,31 +5139,110 @@ function createResearchProviderGate({
       return;
     }
     while (active < limit && queue.length) {
-      const waiter = queue.shift();
+      const waiter = queue[0];
       if (waiter.signal?.aborted) {
+        queue.shift();
+        waiter.cleanup();
         waiter.reject(createResearchCancellationError());
         continue;
       }
+      const tokenPressure = tokenWaitFor(waiter.reservedTokens, now());
+      if (tokenPressure.waitMs === null) {
+        queue.shift();
+        waiter.cleanup();
+        const error = createResearchBudgetError("provider-tpm-exceeds-ceiling");
+        error.researchErrorType = "provider-tpm-budget";
+        error.providerTpmCeiling = tokensPerMinute;
+        error.providerTokenReservation = waiter.reservedTokens;
+        waiter.reject(error);
+        continue;
+      }
+      if (tokenPressure.waitMs > 0) {
+        const waitMs = tokenPressure.waitMs;
+        if (Number.isFinite(waiter.deadlineAt)
+          && now() + waitMs + waiter.minimumResponseMs >= waiter.deadlineAt) {
+          queue.shift();
+          waiter.cleanup();
+          const error = createResearchBudgetError("provider-tpm-deadline");
+          error.researchErrorType = "provider-tpm-deadline";
+          error.providerTpmWaitMs = waitMs;
+          waiter.reject(error);
+          continue;
+        }
+        waiter.tpmWaitStartedAt ??= now();
+        wakeTimer = schedule(() => {
+          wakeTimer = null;
+          drain();
+        }, waitMs);
+        return;
+      }
+      if (Number.isFinite(waiter.deadlineAt)
+        && now() + waiter.minimumResponseMs >= waiter.deadlineAt) {
+        queue.shift();
+        waiter.cleanup();
+        const error = createResearchBudgetError("provider-deadline-admission");
+        error.researchErrorType = "provider-deadline-admission";
+        waiter.reject(error);
+        continue;
+      }
+      queue.shift();
       active += 1;
       waiter.cleanup();
-      waiter.resolve(() => {
-        active = Math.max(0, active - 1);
-        drain();
+      const reservedAt = now();
+      tokenReservations.push({ reservedAt, tokens: waiter.reservedTokens });
+      waiter.resolve({
+        release: () => {
+          active = Math.max(0, active - 1);
+          drain();
+        },
+        details: {
+        admittedAt: reservedAt,
+        queueWaitMs: Math.max(0, reservedAt - waiter.queuedAt),
+        rateLimitWaitMs: Math.min(
+          Math.max(0, reservedAt - waiter.queuedAt),
+          Math.max(0, blockedUntil - waiter.queuedAt),
+        ),
+        tpmWaitMs: waiter.tpmWaitStartedAt === null ? 0 : Math.max(0, reservedAt - waiter.tpmWaitStartedAt),
+        reservedTokens: waiter.reservedTokens,
+        usedTokensBeforeReservation: tokenPressure.usedTokens,
+        tokensPerMinute,
+        },
       });
     }
   };
 
-  const acquire = (signal) => new Promise((resolve, reject) => {
+  const acquire = (signal, {
+    estimatedTokens = 0,
+    deadlineAt = null,
+    minimumResponseMs = PROVIDER_RESPONSE_RESERVE_MS,
+  } = {}) => new Promise((resolve, reject) => {
+    const requestedTokens = Number.isFinite(estimatedTokens) ? Math.max(0, Math.ceil(estimatedTokens)) : 0;
+    if (requestedTokens > tokensPerMinute) {
+      const error = createResearchBudgetError("provider-tpm-exceeds-ceiling");
+      error.researchErrorType = "provider-tpm-budget";
+      error.providerTpmCeiling = tokensPerMinute;
+      error.providerTokenReservation = requestedTokens;
+      reject(error);
+      return;
+    }
     const waiter = {
       signal,
       resolve,
       reject,
       cleanup: () => {},
+      queuedAt: now(),
+      reservedTokens: requestedTokens,
+      deadlineAt: Number.isFinite(deadlineAt) ? deadlineAt : null,
+      minimumResponseMs: Math.max(0, minimumResponseMs),
+      tpmWaitStartedAt: null,
+      rateLimitWaitMs: 0,
     };
     const onAbort = () => {
       const index = queue.indexOf(waiter);
       if (index >= 0) queue.splice(index, 1);
+      waiter.cleanup();
       reject(createResearchCancellationError());
+      drain();
     };
     waiter.cleanup = () => signal?.removeEventListener("abort", onAbort);
     signal?.addEventListener("abort", onAbort, { once: true });
@@ -4719,20 +5258,34 @@ function createResearchProviderGate({
       || ![diagnostic?.errorCode, diagnostic?.errorType].some((kind) => rateLimitCodes.has(kind))
     ) return;
     const rateLimit = diagnostic.rateLimit ?? {};
+    const retryAfterMs = parseRetryAfterMs(rateLimit.retryAfter, now());
     const indicatedDelayMs = Math.max(
-      parseRateLimitDurationMs(rateLimit.retryAfter),
+      retryAfterMs ?? 0,
       rateLimit.remainingTokens === "0" ? parseRateLimitDurationMs(rateLimit.resetTokens) : 0,
       rateLimit.remainingRequests === "0" ? parseRateLimitDurationMs(rateLimit.resetRequests) : 0,
     );
-    const delayMs = indicatedDelayMs > 0 ? indicatedDelayMs : DEFAULT_PROVIDER_RATE_LIMIT_PRESSURE_MS;
+    const delayMs = retryAfterMs !== null
+      ? retryAfterMs
+      : indicatedDelayMs > 0 ? indicatedDelayMs : DEFAULT_PROVIDER_RATE_LIMIT_PRESSURE_MS;
     if (delayMs > 0) blockedUntil = Math.max(blockedUntil, now() + delayMs);
   };
 
   return {
-    async run(task, { signal, onStart } = {}) {
-      const release = await acquire(signal);
+    async run(task, {
+      signal,
+      onStart,
+      estimatedTokens = 0,
+      deadlineAt = null,
+      minimumResponseMs = PROVIDER_RESPONSE_RESERVE_MS,
+    } = {}) {
+      const admission = await acquire(signal, {
+        estimatedTokens,
+        deadlineAt,
+        minimumResponseMs,
+      });
+      const { release, details } = admission;
       try {
-        onStart?.({ active, blockedUntil });
+        onStart?.({ active, blockedUntil, ...details });
         return await task();
       } catch (error) {
         recordPressure(error);
@@ -4742,7 +5295,15 @@ function createResearchProviderGate({
       }
     },
     snapshot() {
-      return { active, queued: queue.length, blockedUntil, limit };
+      pruneReservations(now());
+      return {
+        active,
+        queued: queue.length,
+        blockedUntil,
+        limit,
+        tokensPerMinute,
+        reservedTokensInWindow: tokenReservations.reduce((sum, item) => sum + item.tokens, 0),
+      };
     },
   };
 }
@@ -4974,10 +5535,11 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
         && sourceEstablishesRelatedFacilityIdentity(source, project)))
     : groundedSources;
   const categoryAnalysisSources = categoryPassagePreparation.sources;
-  const categoryAnalysisPacket = buildGroundedSourceContext(categoryAnalysisSources);
-  const requestedOutputTokens = activeCategory?.categoryId
+  let categoryAnalysisPacket = buildGroundedSourceContext(categoryAnalysisSources);
+  const maxRequestedOutputTokens = activeCategory?.categoryId
     ? RESEARCH_CATEGORY_MAX_TOKENS
     : RESEARCH_PROJECT_MAX_TOKENS;
+  let requestedOutputTokens = maxRequestedOutputTokens;
   const groundedContextFor = (sources) => sources.length
     ? `\n\nThe following public document passages were physically retrieved by SafeLoc. Use only these passages for source-backed claims. Do not browse, call a search tool, or treat a URL, snippet, title, or generated summary as evidence. Every claimPassage must be copied exactly from one supplied passage.\n${JSON.stringify(buildGroundedSourceContext(sources))}`
     : "";
@@ -4987,13 +5549,18 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
       input: [
         {
           role: "system",
-          content: `${RESEARCH_PROJECT_SYSTEM_PROMPT}${WEB_SEARCH_SOURCE_BOUNDARY_PROMPT}${identityOnly
-            ? "\nFor project-identity discovery, establish or reject the exact project name, location, and operator only. Do not create modeled evidence or infer financial inputs."
-            : activeCategory?.includeRelatedFacilityIdentityContext === true
-              ? "\nAt least one supplied identity passage establishes only a named facility related to the requested campus, not exact campus identity. Keep every claim scoped to the specifically named building or facility; do not generalize its status, capacity, schedule, or impacts to the campus or other buildings."
-              : ""}`,
+          content: activeCategory?.categoryId
+            ? `${RESEARCH_CATEGORY_SYSTEM_PROMPT}${identityOnly
+              ? "\nEstablish or reject exact project name, location, and operator only."
+              : ""}`
+            : `${RESEARCH_PROJECT_SYSTEM_PROMPT}${WEB_SEARCH_SOURCE_BOUNDARY_PROMPT}`,
         },
-        { role: "user", content: `${buildResearchProjectPrompt({ ...project, activeCategory })}${groundedContext}` },
+        {
+          role: "user",
+          content: `${activeCategory?.categoryId
+            ? buildCategoryAnalysisPrompt(project, activeCategory)
+            : buildResearchProjectPrompt({ ...project, activeCategory })}${groundedContext}`,
+        },
       ],
       max_output_tokens: requestedOutputTokens,
       ...(webSearchEnabled ? { max_tool_calls: activeCategory?.maxToolCalls ?? RESEARCH_PROJECT_MAX_TOOL_CALLS } : {}),
@@ -5009,23 +5576,61 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
         },
       },
     });
-  const groundedContext = categoryAnalysisSources.length
+  let groundedContext = categoryAnalysisSources.length
     ? `\n\nThe following public document passages were physically retrieved by SafeLoc. Use only these passages for source-backed claims. Do not browse, call a search tool, or treat a URL, snippet, title, or generated summary as evidence. Every claimPassage must be copied exactly from one supplied passage.\n${JSON.stringify(categoryAnalysisPacket)}`
     : "";
-  const requestBody = buildRequestBody(groundedContext);
+  let requestBody = buildRequestBody(groundedContext);
+  let categoryInputTelemetry = null;
+  if (activeCategory?.categoryId) {
+    const fitted = fitCategoryAnalysisInput(
+      categoryAnalysisSources,
+      buildRequestBody,
+      activeCategory,
+      project,
+    );
+    categoryAnalysisSources.splice(0, categoryAnalysisSources.length, ...fitted.sources);
+    categoryAnalysisPacket = buildGroundedSourceContext(categoryAnalysisSources);
+    groundedContext = categoryAnalysisSources.length
+      ? `\n\nThe following public document passages were physically retrieved by SafeLoc. Use only these passages for source-backed claims. Do not browse, call a search tool, or treat a URL, snippet, title, or generated summary as evidence. Every claimPassage must be copied exactly from one supplied passage.\n${JSON.stringify(categoryAnalysisPacket)}`
+      : "";
+    requestBody = fitted.requestBody;
+    categoryInputTelemetry = {
+      estimatedInputTokens: fitted.inputTokenEstimate,
+      inputTokenCap: fitted.inputTokenCap,
+      omittedPassageCount: fitted.omittedPassageCount,
+      windowedPassageCount: fitted.windowedPassageCount,
+      omissionReasons: fitted.omissionReasons,
+      outcome: fitted.omissionReasons.length > 0 ? "capped" : "within-cap",
+    };
+  } else {
+    // The legacy full-project fallback has a larger schema than category
+    // calls. Preserve the conservative 30k default by shrinking its output
+    // reservation to fit the serialized input estimate, with headroom for
+    // tokenization variance. The shared provider gate remains the final guard.
+    const inputEstimate = estimateProviderInputTokens(requestBody);
+    const outputBudget = configuredOpenAiTokensPerMinute() - inputEstimate - 512;
+    requestedOutputTokens = Math.min(
+      maxRequestedOutputTokens,
+      Math.max(1_000, outputBudget),
+    );
+    requestBody = buildRequestBody(groundedContext);
+  }
   const requestBodyBytesBeforeFiltering = Buffer.byteLength(buildRequestBody(groundedContextFor(passageCandidates)));
   const requestBodyBytesAfterFiltering = Buffer.byteLength(requestBody);
   const categoryPromptTelemetry = activeCategory?.categoryId
     ? {
       candidatePassageCount: categoryPassagePreparation.candidateCount,
       uniquePassageCount: categoryPassagePreparation.uniqueCount,
-      passageCountSent: categoryPassagePreparation.suppliedCount,
+      passageCountSent: activeCategory?.categoryId
+        ? categoryAnalysisSources.length
+        : categoryPassagePreparation.suppliedCount,
       requestBodyBytesBeforeFiltering,
       requestBodyBytesAfterFiltering,
       requestBodyBytesReduced: requestBodyBytesBeforeFiltering - requestBodyBytesAfterFiltering,
       requestBodyReductionPercent: requestBodyBytesBeforeFiltering > 0
         ? Math.round(((requestBodyBytesBeforeFiltering - requestBodyBytesAfterFiltering) / requestBodyBytesBeforeFiltering) * 10_000) / 100
         : null,
+      ...categoryInputTelemetry,
     }
     : null;
   const startedAt = new Date().toISOString();
@@ -5043,7 +5648,13 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
     outcome: "cancelled-before-issue",
     requestedOutputTokens,
     requestBodyBytes: Buffer.byteLength(requestBody),
+    retryCount: activeCategory?.retryState?.retryCount ?? 0,
+    rateLimitWaitMs: activeCategory?.retryState?.rateLimitWaitMs ?? 0,
     ...(categoryPromptTelemetry ? { categoryPromptTelemetry } : {}),
+    estimatedInputTokens: categoryInputTelemetry?.estimatedInputTokens
+      ?? estimateProviderInputTokens(requestBody),
+    reservedTokens: (categoryInputTelemetry?.estimatedInputTokens
+      ?? estimateProviderInputTokens(requestBody)) + requestedOutputTokens,
     usage: null,
   };
   if (analysisTracker) analysisTracker.attempts.push(providerAttempt);
@@ -5071,11 +5682,21 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
       }
     }, {
       signal,
-      onStart: () => {
+      estimatedTokens: providerAttempt.reservedTokens,
+      deadlineAt: activeCategory?.deadlineAt ?? null,
+      minimumResponseMs: activeCategory?.minimumResponseMs ?? PROVIDER_RESPONSE_RESERVE_MS,
+      onStart: (admission = {}) => {
         issuedAtMs = Date.now();
         providerAttempt.requestState = "issued";
         providerAttempt.issuedAt = new Date(issuedAtMs).toISOString();
-        providerAttempt.queueWaitMs = Math.max(0, issuedAtMs - queuedAtMs);
+        providerAttempt.queueWaitMs = admission.queueWaitMs ?? Math.max(0, issuedAtMs - queuedAtMs);
+        providerAttempt.tpmWaitMs = admission.tpmWaitMs ?? 0;
+        providerAttempt.rateLimitWaitMs = Math.max(
+          providerAttempt.rateLimitWaitMs ?? 0,
+          admission.rateLimitWaitMs ?? 0,
+        );
+        providerAttempt.reservedTokens = admission.reservedTokens ?? providerAttempt.reservedTokens;
+        providerAttempt.providerTpmCeiling = admission.tokensPerMinute ?? null;
         activeCategory?.claimTrace?.recordAnalysisPacket?.({
           categoryId: activeCategory.categoryId,
           attemptType: activeCategory.attempt,
@@ -5344,6 +5965,31 @@ function createResearchProjectRateLimiter({
 const defaultRateLimiter = createResearchProjectRateLimiter();
 
 function classifyResearchFailure(error) {
+  if (error?.researchErrorType === "category-input-budget") {
+    return {
+      status: 502,
+      type: "category-input-budget",
+      message: "The category request could not fit its fixed prompt and response schema inside the configured input cap.",
+    };
+  }
+  if (error?.researchErrorType === "provider-tpm-budget") {
+    return {
+      status: 502,
+      type: "provider-tpm-budget",
+      message: "The request's conservative token reservation exceeds the configured provider TPM ceiling; no request was issued.",
+    };
+  }
+  if ([
+    "provider-tpm-deadline",
+    "provider-rate-limit-deadline",
+    "provider-deadline-admission",
+  ].includes(error?.researchErrorType)) {
+    return {
+      status: 504,
+      type: error.researchErrorType,
+      message: "The provider request was not issued because the shared token/rate-limit wait would leave insufficient time before the research deadline.",
+    };
+  }
   if (error?.researchErrorType === "audit-storage") {
     return {
       status: 503,
@@ -5495,7 +6141,7 @@ function mergeCategoryResearchResults(project, categoryResults, claimTrace = nul
           result.sources ?? [],
           new Date().toISOString().slice(0, 10),
           result.coverage ?? null,
-          project.knownData ?? null,
+          projectClaimValidationContext(project),
           category?.evidenceIds ?? RESEARCH_EVIDENCE_IDS,
         ));
       } catch {
@@ -5650,7 +6296,7 @@ function categoryResearchIsResolved(category, research, sources, project, covera
       sources,
       new Date().toISOString().slice(0, 10),
       coverage,
-      project.knownData ?? null,
+      projectClaimValidationContext(project),
       category.evidenceIds,
     ));
     const unresolvedEvidenceIds = category.evidenceIds.filter((id) =>
@@ -5819,6 +6465,7 @@ async function runValidatedResearch(project, {
   auditStartedAt = null,
   auditDeadlineAt = null,
   claimTrace = null,
+  providerGate = researchProviderGate,
 }) {
   const researchBudget = boundedResearchBudget(researchBudgetOverrides);
   researchTimeoutMs = Math.min(RESEARCH_PROJECT_TIMEOUT_MS, Math.max(1,
@@ -6291,24 +6938,42 @@ async function runValidatedResearch(project, {
   let fallbackProjectRequest = null;
   let fallbackRequestConsumed = false;
   let fallbackRequestCost = 0;
-  const retry429Once = async (issue, reserve) => {
+  const retry429Once = async (issue, reserve, retryState = { retryCount: 0, rateLimitWaitMs: 0 }) => {
     if (!allowProviderRetries) return issue();
     try {
       return await issue();
     } catch (error) {
+      if (error?.upstreamStatus !== 429
+        || retryState.retryCount >= 1
+        || controller.signal.aborted) throw error;
       const retryAfter = error?.providerDiagnostic?.rateLimit?.retryAfter;
-      const delayMs = parseRateLimitDurationMs(retryAfter);
-      if (error?.upstreamStatus !== 429 || !retryAfter || delayMs <= 0 || controller.signal.aborted) throw error;
-      const waitMs = Math.max(delayMs, researchProviderGate.snapshot().blockedUntil - Date.now());
+      const parsedDelayMs = parseRetryAfterMs(retryAfter);
+      const delayMs = parsedDelayMs ?? DEFAULT_PROVIDER_RATE_LIMIT_PRESSURE_MS;
+      const waitMs = Math.max(delayMs, providerGate.snapshot().blockedUntil - Date.now());
+      const deadlineAt = runStartedAtMs + researchTimeoutMs;
       // Reserve time for a response, not just for starting the retry.
-      if (Date.now() + waitMs + 1_000 >= runStartedAtMs + researchTimeoutMs) {
+      if (Date.now() + waitMs + PROVIDER_RESPONSE_RESERVE_MS >= deadlineAt) {
         error.retrySkippedForDeadline = true;
+        error.retrySkippedReason = "deadline";
         throw error;
       }
-      if (reserve?.() !== true) throw error;
-      await awaitWithResearchSignal(new Promise((resolve) => setTimeout(resolve, waitMs)), controller.signal);
-      if (Date.now() + 1_000 >= runStartedAtMs + researchTimeoutMs) {
+      if (reserve?.() !== true) {
+        error.retrySkippedReason = "provider-request-budget";
+        if (error.providerAttempt) error.providerAttempt.retrySkippedReason = "provider-request-budget";
+        throw error;
+      }
+      retryState.retryCount = 1;
+      retryState.rateLimitWaitMs = Math.max(0, retryState.rateLimitWaitMs ?? 0) + waitMs;
+      if (error.providerAttempt) {
+        error.providerAttempt.retryAfterMs = parsedDelayMs;
+        error.providerAttempt.retryAfterWaitMs = waitMs;
+      }
+      if (waitMs > 0) {
+        await awaitWithResearchSignal(new Promise((resolve) => setTimeout(resolve, waitMs)), controller.signal);
+      }
+      if (Date.now() + PROVIDER_RESPONSE_RESERVE_MS >= deadlineAt) {
         error.retrySkippedForDeadline = true;
+        error.retrySkippedReason = "deadline";
         throw error;
       }
       return issue();
@@ -6350,6 +7015,12 @@ async function runValidatedResearch(project, {
         let observedToolCallCount = 0;
         const providerAttempts = [];
         const requestCategory = async (options) => {
+          const retryState = { retryCount: 0, rateLimitWaitMs: 0 };
+          const retryBoundOptions = {
+            ...options,
+            retryState,
+            deadlineAt: runStartedAtMs + researchTimeoutMs,
+          };
           const groundedMode = googleDiscovery.status === "completed";
           const fallbackMode = !groundedMode;
            const usableGroundedSources = groundedMode
@@ -6426,7 +7097,7 @@ async function runValidatedResearch(project, {
            }
           const requestOptions = groundedMode
             ? {
-              ...options,
+              ...retryBoundOptions,
               webSearchEnabled: false,
               ...(canaryIdentityGate?.state === "exact-project"
                 ? {
@@ -6442,7 +7113,7 @@ async function runValidatedResearch(project, {
                 : {}),
               groundedSources: canaryIdentityGate ? gridAnalysisSources : googleDiscovery.candidates,
             }
-            : options;
+            : retryBoundOptions;
           if (fallbackMode) {
             if (!allowGoogleFallback) {
               const validationError = new Error("Google grounding failed; OpenAI fallback is disabled for this validation.");
@@ -6467,10 +7138,12 @@ async function runValidatedResearch(project, {
                   runCorrelationId,
                   analysisTracker,
                   maxToolCalls: RESEARCH_PROJECT_MAX_TOOL_CALLS,
+                  retryState,
+                  deadlineAt: runStartedAtMs + researchTimeoutMs,
                 },
-                researchProviderGate,
+                providerGate,
                 );
-              }, authorizeAdditionalProviderRequest);
+              }, authorizeAdditionalProviderRequest, retryState);
             }
             try {
               const result = await fallbackProjectRequest;
@@ -6498,7 +7171,14 @@ async function runValidatedResearch(project, {
           const issue = async () => {
             providerRequestCount += 1;
             try {
-              return await researchProjectWithWebSearch(project, apiKey, fetchImpl, controller.signal, requestOptions);
+              return await researchProjectWithWebSearch(
+                project,
+                apiKey,
+                fetchImpl,
+                controller.signal,
+                requestOptions,
+                providerGate,
+              );
             } catch (error) {
               observedToolCallCount += Number.isInteger(error?.toolCallCount) ? error.toolCallCount : 0;
               if (error?.providerAttempt) providerAttempts.push(error.providerAttempt);
@@ -6508,7 +7188,7 @@ async function runValidatedResearch(project, {
             }
           };
           try {
-            const result = await retry429Once(issue, authorizeAdditionalProviderRequest);
+            const result = await retry429Once(issue, authorizeAdditionalProviderRequest, retryState);
             observedToolCallCount += Number.isInteger(result.coverage?.toolCallCount) ? result.coverage.toolCallCount : 0;
             if (result.coverage?.providerAttempt) providerAttempts.push(result.coverage.providerAttempt);
             return result;
@@ -6568,7 +7248,7 @@ async function runValidatedResearch(project, {
               [],
               new Date().toISOString().slice(0, 10),
               result.coverage,
-              project.knownData ?? null,
+              projectClaimValidationContext(project),
               category?.evidenceIds ?? [],
             );
             if (receivedStructuredResponse) {
@@ -6965,7 +7645,7 @@ async function runValidatedResearch(project, {
                  webSearchEnabled: false,
                  groundedSources: accessedSources,
                },
-               researchProviderGate,
+               providerGate,
                );
              }, authorizeAdditionalProviderRequest);
               validateCategoryResult(supplementalAnalysis);
@@ -6977,7 +7657,7 @@ async function runValidatedResearch(project, {
           accessedSources,
           new Date().toISOString().slice(0, 10),
           categoryResult.coverage,
-          project.knownData ?? null,
+          projectClaimValidationContext(project),
           category?.evidenceIds ?? [],
         ));
          const categoryResponseId = categoryResult.coverage?.providerResponseId
@@ -7247,7 +7927,7 @@ async function runValidatedResearch(project, {
         result.sources,
         new Date().toISOString().slice(0, 10),
         result.coverage,
-        project.knownData,
+        projectClaimValidationContext(project),
       );
       const eligibleEvidenceCount = parsed.evidence.filter((item) => item.eligibleForModel === true).length;
       const canonicalOutcome = classifyCanonicalResearchOutcome(eligibleEvidenceCount, technicalReasonCodes);
@@ -7274,7 +7954,10 @@ async function runValidatedResearch(project, {
             execution?.providerFailureType === "malformed-response"
             || /invalid json|structured|schema|missing required/i.test(execution?.providerFailure ?? ""));
         parsed.researchError = {
-          type: deadlineState.expired || technicalReasonCodes.includes("deadline")
+          type: deadlineState.expired || technicalReasonCodes.some((reason) => [
+            "deadline", "timeout", "provider-tpm-deadline",
+            "provider-rate-limit-deadline", "provider-deadline-admission",
+          ].includes(reason))
             ? "timeout"
             : primaryTechnicalReason === "malformed-response" || malformedResponseObserved
               ? "malformed-response"
@@ -7453,6 +8136,7 @@ export async function handleResearchProjectRequest(
     retrievalOnly = false,
     canaryGridIdentityGate = false,
     signal = null,
+    providerGate = researchProviderGate,
   } = {},
 ) {
   const requestBudget = boundedResearchBudget(researchBudgetOverrides);
@@ -7676,7 +8360,7 @@ export async function handleResearchProjectRequest(
         analysisReserveMs,
         maxConcurrentDocumentOpens,
         researchBudgetOverrides: requestBudget,
-        allowProviderRetries,
+        allowProviderRetries: allowProviderRetries && !singleShotRun,
         useDefaultSecConnector,
         retrievalOnly: retrievalOnlyRequest,
         canaryGridIdentityGate,
@@ -7686,6 +8370,7 @@ export async function handleResearchProjectRequest(
         auditStartedAt: startedAt,
         auditDeadlineAt: context.deadlineAt,
         claimTrace,
+        providerGate,
       });
     });
     if (!refreshResult.started) {

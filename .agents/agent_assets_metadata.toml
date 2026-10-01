@@ -42,3 +42,45 @@ mtime_ms = 1790808038651
 storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:f36c34ed-5536-4eff-ae57-d0f347f2e42e/ce2b9752-3ae9-4886-af90-7861c17d0e5c/a4133651-7d8c-421a-bee3-87c7aaf4d244"
 storage_version_token = "1790808099587866"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "sUuEz8fytQ4pvi9XIyNjM"
+uri = "file://diagnostics/live-research-reliability-readiness-2026-10-01.md"
+type = "text"
+title = "Final Research Reliability — Offline Readiness Report"
+description = "Final synced-tree results: 538 package tests passed, typecheck/build passed, retained DFW10 eligibility controls, unresolved DNS and separate proof-ledger schema risks. Live acceptance remains pending."
+logical_id = "d72bd3f0-9738-45c6-883b-03f10961060f"
+content_hash = "sha256:36d619fe0660b9007ed903e5816c39c54b2c35f6b461387cd82a7db9794fa3e5"
+size = 15709
+mtime_ms = 1790875580711
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:f36c34ed-5536-4eff-ae57-d0f347f2e42e/d72bd3f0-9738-45c6-883b-03f10961060f/2a281125-6209-4bc9-8919-9eab1b36fbd4"
+storage_version_token = "1790875614488063"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "e5FAe45OgaBkLi4HmhK9Y"
+uri = "file://diagnostics/red-oak-live-acceptance-2026-10-01-385b1c6.md"
+type = "text"
+title = "Red Oak live acceptance — full audit"
+description = "The single authorized run failed acceptance. Includes exact revision, all eight category outcomes, provider timing, DNS block, open ledger, limitations, and the stop decision."
+logical_id = "50433bdd-0558-4563-adc3-844041397e2b"
+content_hash = "sha256:12ecaca48f84bbe2b2b099de88f633f19c344dd9a27b897bf77b63b734a9d4ef"
+size = 13337
+mtime_ms = 1790876730019
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:f36c34ed-5536-4eff-ae57-d0f347f2e42e/50433bdd-0558-4563-adc3-844041397e2b/b65d3112-645b-4afe-b0af-e7baeb75fe8f"
+storage_version_token = "1790876805807282"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "IDQ6brXLMNMZ-oTgR1RPR"
+uri = "file://diagnostics/red-oak-live-acceptance-2026-10-01-385b1c6.json"
+type = "unspecified"
+title = "Red Oak live acceptance — sanitized JSON"
+description = "Unchanged recorded acceptance telemetry, discovery and candidate lineage, evidence decisions, and authorization bounds. No eligible evidence was established."
+logical_id = "9672dbc8-50a9-45c9-994c-8789f898e78b"
+content_hash = "sha256:cbd04a79106c0ad91b913f3bc4b30e1e84a9c887a8d2b30b804b24b9b819a11f"
+size = 443767
+mtime_ms = 1790876779792
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:f36c34ed-5536-4eff-ae57-d0f347f2e42e/9672dbc8-50a9-45c9-994c-8789f898e78b/b0e446c4-9a1f-4c1d-ae01-da2edaeaf42b"
+storage_version_token = "1790876806453522"
+content_type = "application/octet-stream"

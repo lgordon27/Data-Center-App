@@ -29,6 +29,46 @@ const substantialArticle = [
   "County staff reviewed the application, public comments, construction schedule, and related infrastructure plans.",
   "The report also summarizes the applicant's development timeline, expected capacity, and the agencies responsible for review.",
 ].join(" ");
+
+test("retains a terse TDLR-like table without adding prose or treating it as eligible evidence", async () => {
+  const fields = [
+    ["Project Name", "DataBank Red Oak - DFW10"],
+    ["Owner", "DB Data Center Red Oak, LLC"],
+    ["Estimated Cost", "$301,000,000"],
+    ["Square Feet", "221,434"],
+    ["Start Date", "February 1, 2025"],
+    ["Completion Date", "January 31, 2027"],
+  ];
+  const rows = fields.map(([label, value]) =>
+    `<tr data-field="record"><th class="label">${label}</th><td id="value"><span>${value}</span></td></tr>`).join("");
+  const result = await extractResearchDocument({
+    bytes: `<main><table>${rows}</table></main>`,
+    contentType: "text/html",
+    sourceUrl: "https://tdlr.texas.gov/TABS/Project/DFW10",
+  });
+  assert.equal(result.outcome, "extracted");
+  assert.equal(result.structuredFields.length, 6);
+  assert.equal(result.structuredFields.find((field) => field.label === "Project Name").value, "DataBank Red Oak - DFW10");
+  for (const [, value] of fields) assert.ok(result.passage.includes(value), value);
+  assert.doesNotMatch(result.passage, /<|>|data-field|class=|id=/);
+  assert.equal(result.eligibleForModel, undefined, "extraction alone does not grant eligibility");
+});
+
+test("keeps navigation, incomplete record tables and 200 error pages below the structured-record gate", async () => {
+  for (const [markup, outcome] of [
+    ['<table><tr><th>Project Name</th><td>Home</td></tr><tr><th>Owner</th><td>About us</td></tr></table>', "low-content"],
+    ['<table><tr><th>Project Name</th><td>DataBank Red Oak - DFW10</td></tr><tr><th>Owner</th><td>DB Data Center Red Oak, LLC</td></tr><tr><th>Estimated Cost</th><td>$301,000,000</td></tr></table>', "low-content"],
+    ['<h1>Page not found</h1><table><tr><th>Project Name</th><td>DFW10</td></tr></table>', "blocked-or-shell"],
+  ]) {
+    const result = await extractResearchDocument({
+      bytes: `<main>${markup}</main>`,
+      contentType: "text/html",
+      sourceUrl: "https://tdlr.texas.gov/TABS/Project/DFW10",
+    });
+    assert.equal(result.outcome, outcome);
+    assert.equal(result.passage, "");
+  }
+});
 const publicationFixtures = JSON.parse(readFileSync(
   new URL("./fixtures/research-partial-receipts.json", import.meta.url),
   "utf8",
@@ -210,6 +250,47 @@ test("rejects pure navigation and status chrome without rejecting short legitima
   });
   assert.equal(legitimate.outcome, "extracted");
   assert.match(legitimate.passage, /proposes a new water plan/);
+});
+
+test("extracts readable, attribute-free TDLR-style record fields and rejects HTTP-200 error pages", async () => {
+  const record = await extractResearchDocument({
+    bytes: [
+      "<html><body><main><h1>Commercial Plan Review</h1><table>",
+      "<tr><th>Project Name</th><td>DB Data Center Red Oak, LLC</td></tr>",
+      "<tr><th>Owner</th><td>DB Data Center Red Oak, LLC</td></tr>",
+      "<tr><th>Estimated Cost</th><td>$301,000,000</td></tr>",
+      "<tr><th>Square Feet</th><td>221,434</td></tr>",
+      "<tr><th>Start Date</th><td>February 1, 2025</td></tr>",
+      "<tr><th>Completion Date</th><td>January 31, 2027</td></tr>",
+      "</table><p>The record lists a building-specific project review and identifies the public authority responsible for confirming the proposed construction details.</p>",
+      "<p>Construction information is available in this public record, including the commercial plan review, the owner, and the scope of the specific data-center building.</p>",
+      "<p>The project is located in Red Oak, Ellis County, Texas, and the stated completion date applies to the building named in this filing.</p>",
+      "<p>The filing identifies the data center owner and its planned schedule while distinguishing this facility from any broader campus program.</p>",
+      "</main></body></html>",
+    ].join(""),
+    contentType: "text/html",
+    sourceUrl: "https://tdlr.texas.gov/TABS/Project/DFW10",
+  });
+  assert.equal(record.outcome, "extracted");
+  assert.deepEqual(record.structuredFields, [
+    { label: "Project Name", value: "DB Data Center Red Oak, LLC" },
+    { label: "Owner", value: "DB Data Center Red Oak, LLC" },
+    { label: "Estimated Cost", value: "$301,000,000" },
+    { label: "Square Feet", value: "221,434" },
+    { label: "Start Date", value: "February 1, 2025" },
+    { label: "Completion Date", value: "January 31, 2027" },
+  ]);
+  assert.ok(record.structuredFields.every((field) => !/[<>]/.test(field.label + field.value)));
+
+  for (const html of [
+    "<html><body><h1>404 Page Not Found</h1></body></html>",
+    "<html><body><main>Application Error</main><nav>Home Projects Contact</nav></body></html>",
+  ]) {
+    const rejected = await extractResearchDocument({ bytes: html, contentType: "text/html" });
+    assert.equal(rejected.outcome, "blocked-or-shell");
+    assert.match(rejected.reason, /not-found|application-error/);
+    assert.equal(rejected.passage, "");
+  }
 });
 
 test("extracts plain text, generic JSON, and bounded indexes", async () => {

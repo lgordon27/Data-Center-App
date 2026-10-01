@@ -422,6 +422,12 @@ export type ResearchProviderAttempt = {
   outcome: "completed" | "failed" | "cancelled" | "cancelled-before-issue";
   requestedOutputTokens: number;
   requestBodyBytes: number;
+  estimatedInputTokens?: number;
+  reservedTokens?: number;
+  providerTpmCeiling?: number;
+  tpmWaitMs?: number;
+  rateLimitWaitMs?: number;
+  retryCount?: number;
   usage: ResearchProviderUsage | null;
 };
 export type ResearchCategoryAudit = {
@@ -522,13 +528,21 @@ export type ResearchCategoryAudit = {
     reason: string | null;
   }>;
   state: ResearchCategoryState;
+  executionOutcome?: "completed" | "failed" | "skipped" | "not-run";
+  analysisOutcome?: "completed" | "failed" | "skipped" | "not-run";
+  notRunReason?: string | null;
+  searchCompleteness?: "observed" | "unavailable" | "incomplete";
+  searchCompletenessLabel?: "SEARCH INCOMPLETE" | null;
   stageCounts: ResearchAuditStageCounts;
   rejectionCounts: Record<string, number>;
   accessLimitations: string[];
   unresolvedGaps: string[];
   providerFailure?: string | null;
-  providerFailureType?: "quota-exhausted" | "provider-rate-limit" | "provider-429" | "authentication" | "deadline" | "malformed-response" | "upstream" | "provider-request-budget" | null;
+  providerFailureType?: "quota-exhausted" | "provider-rate-limit" | "provider-429" | "authentication" | "deadline" | "malformed-response" | "upstream" | "provider-request-budget" | "category-input-budget" | "provider-tpm-budget" | "provider-tpm-deadline" | "provider-rate-limit-deadline" | "provider-deadline-admission" | null;
   providerRequestCount?: number;
+  retryCount?: number;
+  tpmWaitMs?: number;
+  rateLimitWaitMs?: number;
   providerAttempts?: ResearchProviderAttempt[];
   categoryPromptTelemetry?: ResearchCategoryPromptTelemetry[];
 };
@@ -540,6 +554,12 @@ export type ResearchCategoryPromptTelemetry = {
   requestBodyBytesAfterFiltering: number | null;
   requestBodyBytesReduced: number | null;
   requestBodyReductionPercent: number | null;
+  estimatedInputTokens?: number;
+  inputTokenCap?: number;
+  omittedPassageCount?: number;
+  windowedPassageCount?: number;
+  omissionReasons?: string[];
+  outcome?: "within-cap" | "capped";
 };
 export type ResearchCategoryClaimAudit = {
   evidenceId: string;
@@ -1287,6 +1307,13 @@ function parseResearchCache(value: unknown): ResearchCacheMetadata | undefined {
   };
 }
 
+function parseNonnegativeTelemetry(entry: Record<string, unknown>, keys: string[]): Record<string, number> {
+  return Object.fromEntries(keys.flatMap((key) => {
+    const value = entry[key];
+    return typeof value === "number" && Number.isFinite(value) && value >= 0 ? [[key, value]] : [];
+  }));
+}
+
 function parseProviderAttempts(value: unknown): ResearchProviderAttempt[] {
   if (!Array.isArray(value)) return [];
   return value.filter(isRecord).slice(0, 16).map((attempt) => {
@@ -1311,6 +1338,9 @@ function parseProviderAttempts(value: unknown): ResearchProviderAttempt[] {
         : "failed",
       requestedOutputTokens: Math.max(0, Number(attempt.requestedOutputTokens) || 0),
       requestBodyBytes: Math.max(0, Number(attempt.requestBodyBytes) || 0),
+      ...parseNonnegativeTelemetry(attempt, [
+        "estimatedInputTokens", "reservedTokens", "providerTpmCeiling", "tpmWaitMs", "rateLimitWaitMs", "retryCount",
+      ]),
       usage: usage ? {
         inputTokens: nullableNumber(usage.inputTokens),
         outputTokens: nullableNumber(usage.outputTokens),
@@ -1340,6 +1370,14 @@ function parseCategoryPromptTelemetry(value: unknown): ResearchCategoryPromptTel
       && Number.isFinite(entry.requestBodyReductionPercent)
       ? Math.max(-100, Math.min(100, entry.requestBodyReductionPercent))
       : null,
+    ...parseNonnegativeTelemetry(entry, [
+      "estimatedInputTokens", "inputTokenCap", "omittedPassageCount", "windowedPassageCount",
+    ]),
+    ...(Array.isArray(entry.omissionReasons) ? {
+      omissionReasons: entry.omissionReasons.filter((reason): reason is string =>
+        typeof reason === "string" && ["passage-window-selection", "input-cap", "no-complete-context-window"].includes(reason)),
+    } : {}),
+    ...(entry.outcome === "within-cap" || entry.outcome === "capped" ? { outcome: entry.outcome } : {}),
   }));
 }
 
@@ -1353,6 +1391,17 @@ function parseResearchAudit(value: unknown): ResearchAudit | undefined {
     return [{
       categoryId: candidate.categoryId,
       label: candidate.label,
+      ...(["completed", "failed", "skipped", "not-run"].includes(String(candidate.executionOutcome))
+        ? { executionOutcome: candidate.executionOutcome as ResearchCategoryAudit["executionOutcome"] } : {}),
+      ...(["completed", "failed", "skipped", "not-run"].includes(String(candidate.analysisOutcome))
+        ? { analysisOutcome: candidate.analysisOutcome as ResearchCategoryAudit["analysisOutcome"] } : {}),
+      ...(candidate.notRunReason === null || (typeof candidate.notRunReason === "string"
+        && /^[a-z0-9-]{1,80}$/i.test(candidate.notRunReason))
+        ? { notRunReason: candidate.notRunReason as string | null } : {}),
+      ...(["observed", "unavailable", "incomplete"].includes(String(candidate.searchCompleteness))
+        ? { searchCompleteness: candidate.searchCompleteness as ResearchCategoryAudit["searchCompleteness"] } : {}),
+      ...(candidate.searchCompletenessLabel === null || candidate.searchCompletenessLabel === "SEARCH INCOMPLETE"
+        ? { searchCompletenessLabel: candidate.searchCompletenessLabel } : {}),
       evidenceIds: Array.isArray(candidate.evidenceIds) ? candidate.evidenceIds.filter(isNonEmptyString) : [],
       requestedPrimaryQuery: isNonEmptyString(candidate.requestedPrimaryQuery) ? candidate.requestedPrimaryQuery : "Not available",
       ...(isNonEmptyString(candidate.plannedPrimaryQuery) ? { plannedPrimaryQuery: candidate.plannedPrimaryQuery } : {}),
@@ -1492,10 +1541,11 @@ function parseResearchAudit(value: unknown): ResearchAudit | undefined {
       accessLimitations: Array.isArray(candidate.accessLimitations) ? candidate.accessLimitations.filter(isNonEmptyString).slice(0, 8) : [],
       unresolvedGaps: Array.isArray(candidate.unresolvedGaps) ? candidate.unresolvedGaps.filter(isNonEmptyString).slice(0, 8) : [],
       ...(isNonEmptyString(candidate.providerFailure) ? { providerFailure: candidate.providerFailure } : {}),
-      ...(["quota-exhausted", "provider-rate-limit", "provider-429", "authentication", "deadline", "malformed-response", "upstream", "provider-request-budget"].includes(String(candidate.providerFailureType))
+      ...(["quota-exhausted", "provider-rate-limit", "provider-429", "authentication", "deadline", "malformed-response", "upstream", "provider-request-budget", "category-input-budget", "provider-tpm-budget", "provider-tpm-deadline", "provider-rate-limit-deadline", "provider-deadline-admission"].includes(String(candidate.providerFailureType))
         ? { providerFailureType: candidate.providerFailureType as NonNullable<ResearchCategoryAudit["providerFailureType"]> }
         : {}),
       ...(Number.isInteger(candidate.providerRequestCount) ? { providerRequestCount: Math.max(0, Number(candidate.providerRequestCount)) } : {}),
+      ...parseNonnegativeTelemetry(candidate, ["retryCount", "tpmWaitMs", "rateLimitWaitMs"]),
       providerAttempts: parseProviderAttempts(candidate.providerAttempts),
        ...(Array.isArray(candidate.categoryPromptTelemetry)
          ? { categoryPromptTelemetry: parseCategoryPromptTelemetry(candidate.categoryPromptTelemetry) }

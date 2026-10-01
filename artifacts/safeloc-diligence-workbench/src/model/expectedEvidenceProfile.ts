@@ -248,7 +248,7 @@ function validateSignal<Value>(
   if (!isRecord(signal.provenance.scope)) throw new Error(`${label} profile provenance requires project scope.`);
   assertSameProjectScope(project, { ...project, scope: signal.provenance.scope as ProjectScope }, `${label} profile provenance`);
   if (!Array.isArray(signal.provenance.sourceIds) || signal.provenance.sourceIds.some(
-    (sourceId) => typeof sourceId !== "string" || !sourceId.trim(),
+    (sourceId: unknown) => typeof sourceId !== "string" || !sourceId.trim(),
   )) {
     throw new Error(`${label} profile source references must be non-empty strings.`);
   }

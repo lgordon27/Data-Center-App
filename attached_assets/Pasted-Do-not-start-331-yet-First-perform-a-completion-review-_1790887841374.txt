@@ -1,0 +1,41 @@
+Do not start #331 yet.
+First perform a completion review of the current merged #330 state, including the latest denial/hypothetical-prefix fixes.
+Do not redesign or add features.
+Verify:
+- all 557 tests still pass;
+- typecheck passes;
+- production build passes;
+- the latest fixes for denial/hypothetical-prefix cases are actually present in the merged code;
+- electricity, annual water consumption, and grid interconnection remain session-only financial review paths;
+- Accept / Reject / Evidence Only affects only the user’s current scenario/session;
+- no authentication, login, reviewer identity, or canonical-history writes were introduced;
+- unsupported financial destinations still fail closed;
+- no research result can change a model input without explicit user acceptance.
+Add a focused browser verification of the three supported session-only review flows if possible without provider calls.
+Report whether #330 is clean as merged. Do not start #331 automatically.
+Also revise #331’s scope before implementation:
+SafeLoc is permanently open-use with no login/sign-in requirement.
+Replace “reviewer” with “user” or “analysis decision” where appropriate.
+User Accept / Reject / Evidence Only decisions are session-scoped only. They must never modify canonical SafeLoc project history.
+Canonical history contains system research observations only.
+If decision persistence across reloads is supported, it may persist only within the user’s local/session scenario context and must remain clearly separate from canonical observations. Do not add authentication or a canonical reviewer-decision ledger.
+#331 should prove:
+- expected evidence → observed evidence;
+- source/provenance/scope;
+- project state where supported;
+- model-neutral versus model-active findings;
+- session-only human decision;
+- permitted model change;
+- fixture-backed offline end-to-end behavior.
+Do not claim live research success from fixtures.
+Do not make provider calls.
+Do not start #331 until this review is returned.
+
+There is one other issue in the current #331 description: “history view shows append-only project assessment versions and reviewer decisions across reloads.” I would change that to two separate things:
+Canonical system history
+append-only SafeLoc observations/assessment versions.
+
+User scenario history
+local/session acceptance decisions, never canonical.
+
+That separation is important.

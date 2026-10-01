@@ -1,0 +1,39 @@
+Task #328 is verified and complete on main at `2f108b951c4a26c3fc0a7aa8a7c31f1430bcd767`.
+
+Start Tasks #329 and #330 in parallel against the frozen #328 contracts.
+
+Requirements for both:
+- Use #328 as the authoritative schema/contract.
+- Do not modify live acquisition/retrieval logic owned by the separate research-reliability task.
+- Use deterministic fixtures only; no live or paid provider calls.
+- Do not deploy or push.
+- Keep project scope explicit: campus / phase / building-facility / unknown.
+- Keep source/evidence quality separate from project maturity/state.
+- Preserve Unknown and Not Applicable as distinct states.
+- Never infer “not found” from partial, failed, blocked, or not-run search.
+- Reuse the existing evidence vocabulary where possible rather than creating overlapping public-facing labels.
+- All numbers must preserve provenance, scope, as-of date, and sourced/derived/illustrative status.
+- Run typecheck and the full workbench suite after each task.
+
+For #329:
+- Cover all required diligence dimensions with Expected Evidence/evidence-resolution behavior.
+- Implement deeper deterministic project-state logic only for power and construction initially.
+- Other dimensions may remain evidence-resolution only rather than forcing maturity ladders.
+- Include likely-non-public, search-incomplete, scope-mismatch, superseded/stale, and not-applicable cases.
+
+For #330:
+- Implement only controlled, versioned transmission mappings.
+- Model-active initial allowlist should include COD/timing, MW/capacity, documented capex, tenant commencement, and existing governed electricity/water/interconnection inputs.
+- No unrestricted LLM-to-model path.
+- Mechanically derived values must use whitelisted formulas with eligible evidence inputs and stored formulas.
+- Unsupported community/climate/permitting findings may be directional/contextual without model changes.
+- Human acceptance remains mandatory.
+
+When complete, report separately for #329 and #330:
+- files changed;
+- tests/results;
+- contract compatibility;
+- any overlap or merge conflict;
+- anything #331 must know before integration.
+
+Do not begin #331 automatically.

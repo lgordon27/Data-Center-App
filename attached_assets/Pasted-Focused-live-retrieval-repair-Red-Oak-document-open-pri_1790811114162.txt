@@ -1,0 +1,67 @@
+Focused live retrieval repair: Red Oak document-open prioritization
+Do not change structured analysis, evidence eligibility, financial-model rules, DNS/SSRF protections, or provider prompts.
+The first live Red Oak Grid canary used:
+- 1 discovery request
+- 8/8 physical opens
+- 0 usable passages
+- 0 structured calls
+The failure is therefore upstream of structured analysis.
+Diagnose and repair only the candidate-ranking / physical-open selection path.
+1. Inspect the completed canary
+For all discovered candidates, report:
+- URL
+- resolved URL if known
+- source/domain
+- discovery order/rank
+- exact-project identity signals available before opening
+- source-type signals
+- whether selected for opening
+- physical-open position
+- final access/content-quality result
+Identify which 8 URLs consumed the budget and which candidates remained unopened.
+2. Determine whether slot allocation is prioritizing the wrong candidates
+We want exact-project candidates to outrank generic domain/root/index candidates where deterministic signals support doing so.
+Strong pre-open signals include:
+- exact project name in title/URL/snippet
+- operator + project/campus name
+- named facility/building such as DFW9/DFW10/DFW11
+- official project filing/record
+- project-specific operator article
+Weaker candidates include:
+- generic homepages
+- feeds
+- sitemaps
+- generic authority roots
+- unrelated county policy pages
+- videos when equivalent text sources exist
+Do not infer that a source is valid evidence before opening it. This is only open-order prioritization.
+3. Preserve security and auditability
+Do not weaken DNS/SSRF rules.
+Preserve every discovered candidate and selection decision in the audit so we can distinguish:
+- discovered but not selected
+- selected and blocked
+- selected and unusable
+- selected and usable
+4. Add deterministic ranking regressions
+Using Red Oak-style candidates, prove that:
+- exact-project official/project pages outrank generic roots/sitemaps/feeds
+- exact-project third-party reporting outranks unrelated generic pages
+- ranking does not grant evidence eligibility
+- blocked exact-project sources remain blocked
+- all candidates remain auditable
+5. Run one additional bounded live retrieval canary
+After offline tests, typecheck, and build pass, run exactly one additional Red Oak retrieval canary with:
+- 1 discovery request
+- maximum 8 physical opens
+- no structured provider call required unless at least one usable exact-project passage is obtained
+If usable exact-project text is obtained, stop and report it. Do not continue into a broad multi-category run.
+Report:
+- prior vs new 8-slot ordering
+- usable passages obtained
+- exact-project passages obtained
+- blocked high-value sources
+- discovered-but-unopened candidates
+- runtime
+- test results
+- remaining retrieval blocker
+Stop after this retrieval canary.

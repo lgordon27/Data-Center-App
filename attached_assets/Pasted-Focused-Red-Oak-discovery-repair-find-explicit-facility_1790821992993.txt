@@ -1,0 +1,123 @@
+Focused Red Oak discovery repair: find explicit facility-to-campus linkage and preserve query attribution
+
+Do not weaken identity rules, DNS/SSRF protections, evidence eligibility, or financial-model behavior.
+
+Latest canary:
+
+* 1 discovery request
+* 6 query terms
+* 20 candidates
+* 7/8 opens
+* 1 usable retained passage
+* retained passage contained DFW9
+* DFW10/DFW11 were not retained
+* identity remained unresolved because the passage did not establish DFW9 ↔ Red Oak Campus
+* structured analysis correctly did not run
+* candidate-to-query attribution was unavailable
+
+Goal: make discovery better at finding sources that explicitly connect DFW9/DFW10/DFW11 to DataBank Red Oak Campus, while keeping identity strict.
+
+1. Add query-to-candidate attribution
+
+For every discovered candidate, retain:
+
+* originating query
+* candidate URL
+* candidate rank within that query
+* resolved URL if available
+* whether deduplicated against another query
+* whether selected for opening
+* access result
+* retained/usability result
+
+This is audit metadata only. Do not expose unrestricted provider payloads.
+
+2. Make facility-campus bridge queries explicit
+
+The bounded discovery set should deliberately include exact relationship queries such as:
+
+* DataBank Red Oak DFW9
+* DataBank Red Oak DFW10
+* DataBank Red Oak DFW11
+* "DFW9" "Red Oak"
+* "DFW10" "Red Oak"
+* "DFW11" "Red Oak"
+* official/state variants where appropriate
+
+Use a bounded deterministic query set. Do not expand into uncontrolled search.
+
+The objective is to retrieve text that explicitly states the relationship, not infer it from search metadata.
+
+3. Prioritize bridge evidence
+
+Before opening, give higher admission priority to candidates whose title/URL/query context contains both:
+
+* a facility identifier such as DFW9/DFW10/DFW11
+* and Red Oak/DataBank/project-location signals
+
+This affects open order only.
+
+It must not establish identity or evidence eligibility.
+
+4. Preserve identity semantics
+
+Keep current behavior:
+
+* DFW9 alone → unresolved
+* DFW9 + DataBank without Red Oak relationship → unresolved unless other retrieved passage evidence establishes the relationship
+* explicit retrieved text tying DFW9 to DataBank Red Oak Campus → valid related-facility identity
+* facility identity must not automatically become exact-campus identity
+* DFW14/DFW15 remain unrelated/unresolved unless explicit Red Oak linkage exists
+
+5. Allow corroborated identity only from retrieved evidence
+
+If current architecture supports combining retained passages, allow a related-facility relationship to be established from multiple retrieved passages only when the linkage is deterministic and non-conflicting.
+
+Example:
+
+* retained source A establishes DFW9 is a DataBank facility in Red Oak, Texas
+* retained source B establishes the requested project is DataBank Red Oak Campus in Red Oak, Texas
+
+The relationship may be corroborated from those retrieved passages.
+
+Do not use:
+
+* search snippets
+* provider assertions
+* URL/title metadata alone
+
+to complete that bridge.
+
+6. Tests
+
+Add deterministic coverage for:
+
+* explicit DFW9 ↔ Red Oak passage passes related-facility identity
+* cross-passage corroboration passes only when operator/location/project signals agree
+* conflicting location/operator evidence fails closed
+* DFW9-only passage remains unresolved
+* DFW14/DFW15 remain unresolved without explicit Red Oak linkage
+* candidate-to-query attribution survives deduplication and opening
+
+7. One bounded live canary
+
+After offline tests, typecheck, and build pass, run exactly one authorized Red Oak canary:
+
+* one bounded discovery phase
+* maximum 8 physical opens
+* maximum 1 structured category call
+* structured analysis only if exact-campus or valid related-facility identity is established from retained passage evidence
+
+Report:
+
+* executed queries
+* candidates by originating query
+* which queries surfaced DFW9/DFW10/DFW11
+* opens and outcomes
+* retained passages
+* whether any retained passage explicitly linked a facility to Red Oak Campus
+* final identity state
+* whether structured analysis ran
+* remaining blocker
+
+Stop after the single canary. Do not loosen identity or increase the open budget.

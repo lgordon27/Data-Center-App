@@ -13,3 +13,12 @@ export function assessResearchProjectIdentity(
     };
   },
 ): "exact-project" | "ambiguous" | "unrelated";
+
+export function corroborateRelatedFacilityAcrossPassages(
+  passages: unknown[],
+  identity: Record<string, unknown>,
+): {
+  identifiers: string[];
+  conflictedIdentifiers: string[];
+  reason?: string | null;
+};

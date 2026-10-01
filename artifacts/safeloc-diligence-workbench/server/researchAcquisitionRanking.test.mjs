@@ -103,3 +103,36 @@ test("operator campus chatter without a submitted project or facility identifier
   assert.ok(!ranked[0].acquisitionReasons.includes("operator-and-project-or-campus"));
   assert.ok(ranked[0].acquisitionReasons.includes("no-exact-project-identity-signal"));
 });
+
+test("prioritizes only bridge candidates whose trusted metadata combines a submitted DFW ID with project signals", () => {
+  const candidates = [
+    {
+      url: "https://records.example/dfw9",
+      title: "DFW9 facility filing",
+      discoveryQueryAttributionStatus: "provider-attributed",
+      discoveryOriginatingQuery: "DataBank Red Oak Campus DFW9 relationship",
+    },
+    {
+      url: "https://records.example/dfw10",
+      title: "DFW10 facility filing",
+      discoveryContext: "DataBank Red Oak Campus DFW10 relationship",
+    },
+    {
+      url: "https://records.example/dfw11",
+      title: "DFW11 facility filing",
+      discoveryQueryAttributionStatus: "unavailable",
+      discoveryOriginatingQuery: "DataBank Red Oak Campus DFW11 relationship",
+    },
+  ];
+  const ranked = rankAcquisitionCandidates(candidates, redOakProject);
+  const attributedBridge = ranked.find((candidate) => candidate.url.endsWith("/dfw9"));
+  const unverifiedContext = ranked.find((candidate) => candidate.url.endsWith("/dfw10"));
+  const unavailableAttribution = ranked.find((candidate) => candidate.url.endsWith("/dfw11"));
+
+  assert.ok(attributedBridge.acquisitionPriority > unverifiedContext.acquisitionPriority);
+  assert.ok(attributedBridge.acquisitionReasons.includes("facility-project-bridge-discovery-metadata"));
+  assert.ok(!unverifiedContext.acquisitionReasons.includes("facility-project-bridge-discovery-metadata"),
+    "snippets and generic discovery context do not create the new bridge priority");
+  assert.ok(!unavailableAttribution.acquisitionReasons.includes("facility-project-bridge-discovery-metadata"),
+    "a planned-looking query string is ignored unless the provider attribution is explicit");
+});

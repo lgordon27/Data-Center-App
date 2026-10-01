@@ -230,10 +230,46 @@ function diagnosticCandidateSnapshot(source, candidateIndex, categoryId = null) 
       : rank,
     acquisitionRank: Number.isInteger(source.acquisitionRank) ? source.acquisitionRank : null,
     categoryId: boundedText(categoryId ?? source.searchDomain, 120),
+    candidateUrl: canaryDiagnosticUrl(source.discoveryCandidateUrl),
     url: canaryDiagnosticUrl(source.url),
     originalUrl: canaryDiagnosticUrl(source.originalUrl),
     canonicalUrl: canaryDiagnosticUrl(source.canonicalUrl),
     resolvedUrl: canaryDiagnosticUrl(source.resolvedUrl),
+    originatingQuery: boundedText(source.discoveryOriginatingQuery, REPORT_MAX_TEXT),
+    queryAttributionStatus: source.discoveryQueryAttributionStatus === "provider-attributed"
+      ? "provider-attributed"
+      : "unavailable",
+    candidateRankWithinQuery: Number.isInteger(source.discoveryCandidateRankWithinQuery)
+      ? source.discoveryCandidateRankWithinQuery
+      : null,
+    queryRankAvailability: source.discoveryQueryRankAvailability === "provider-reported"
+      ? "provider-reported"
+      : "unavailable",
+    deduplicationLineage: source.discoveryDeduplicationLineage && typeof source.discoveryDeduplicationLineage === "object"
+      ? {
+        duplicateAnnotationRanks: boundedList(
+          source.discoveryDeduplicationLineage.duplicateAnnotationRanks,
+          (value) => Number.isInteger(value) ? value : null,
+          80,
+        ).filter(Number.isInteger),
+        deduplicatedAcrossQueries: typeof source.discoveryDeduplicationLineage.deduplicatedAcrossQueries === "boolean"
+          ? source.discoveryDeduplicationLineage.deduplicatedAcrossQueries
+          : null,
+      }
+      : null,
+    retainedPassageOutcome: source.retainedPassageOutcome && typeof source.retainedPassageOutcome === "object"
+      ? {
+        retained: source.retainedPassageOutcome.retained === true,
+        usability: boundedText(source.retainedPassageOutcome.usability, 80),
+        reason: boundedText(source.retainedPassageOutcome.reason, 160),
+      }
+      : null,
+    accessState: boundedText(source.accessOutcome?.state, 80),
+    accessReason: boundedText(source.accessOutcome?.reason, 160),
+    accessAttempted: source.accessOutcome
+      ? source.accessOutcome.state !== "not-attempted" && source.accessOutcome.attempted !== false
+      : null,
+    accessReused: source.accessOutcome?.reused === true,
     title: safeReportText(source.title, 240),
     sourceChannel: boundedText(source.sourceChannel ?? source.origin, 120),
     searchDomain: boundedText(source.searchDomain, 120),
@@ -393,6 +429,14 @@ export function createRedOakCanaryDiagnosticCollector({
       const selectedCandidate = locateCandidate(candidate, candidateIndex);
       if (selectedCandidate) {
         const physicalOpenPosition = physicalOpenIndexes[0] ?? null;
+        selectedCandidate.accessState = boundedText(accessOutcome?.state, 80);
+        selectedCandidate.accessReason = boundedText(accessOutcome?.reason, 160);
+        selectedCandidate.accessAttempted = attempted === true
+          || (accessOutcome?.state !== "not-attempted" && accessOutcome?.attempted !== false);
+        selectedCandidate.accessReused = reused === true || accessOutcome?.reused === true;
+        selectedCandidate.resolvedUrl = canaryDiagnosticUrl(accessOutcome?.resolvedUrl ?? candidate?.resolvedUrl);
+        selectedCandidate.retainedPassageOutcome = diagnosticCandidateSnapshot(candidate, candidateIndex, categoryId)
+          ?.retainedPassageOutcome ?? null;
         if (attempted === true) {
           selectedCandidate.acquisitionSelected = true;
           selectedCandidate.selectedForOpening = true;
@@ -607,6 +651,19 @@ function reportDiscoveryTelemetry(result) {
       title: boundedText(annotation?.title, 240),
       url: reportUrl(annotation?.url),
       canonicalUrl: reportUrl(annotation?.canonicalUrl),
+      originatingQuery: boundedText(annotation?.discoveryOriginatingQuery, REPORT_MAX_TEXT),
+      queryAttributionStatus: annotation?.discoveryQueryAttributionStatus === "provider-attributed"
+        ? "provider-attributed"
+        : "unavailable",
+      candidateRankWithinQuery: Number.isInteger(annotation?.discoveryCandidateRankWithinQuery)
+        ? annotation.discoveryCandidateRankWithinQuery
+        : null,
+      queryRankAvailability: annotation?.discoveryQueryRankAvailability === "provider-reported"
+        ? "provider-reported"
+        : "unavailable",
+      deduplicatedAgainstDiscoveryRank: Number.isInteger(annotation?.deduplicatedAgainstDiscoveryRank)
+        ? annotation.deduplicatedAgainstDiscoveryRank
+        : null,
       accepted: annotation?.accepted === true,
       rejectionReason: boundedText(annotation?.rejectionReason, 120),
     }), 80),
@@ -705,15 +762,50 @@ function reportSelectionDecision(entry) {
 
 function reportCandidateLineage(entry) {
   if (!entry || typeof entry !== "object") return null;
+  const dedupe = entry.deduplicationLineage ?? entry.discoveryDeduplicationLineage;
+  const retention = entry.retainedPassageOutcome;
   return {
     categoryId: boundedText(entry.categoryId, 120),
     url: reportUrl(entry.url),
+    originalUrl: reportUrl(entry.originalUrl),
+    resolvedUrl: reportUrl(entry.resolvedUrl),
+    canonicalUrl: reportUrl(entry.canonicalUrl),
     sourceChannel: boundedText(entry.sourceChannel, 120),
     sourceType: boundedText(entry.sourceType, 120),
     discoveryRank: Number.isInteger(entry.discoveryRank)
       ? entry.discoveryRank
       : Number.isInteger(entry.discoveryCandidateRank) ? entry.discoveryCandidateRank : null,
     acquisitionRank: Number.isInteger(entry.acquisitionRank) ? entry.acquisitionRank : null,
+    candidateUrl: reportUrl(entry.candidateUrl ?? entry.discoveryCandidateUrl),
+    originatingQuery: boundedText(entry.originatingQuery ?? entry.discoveryOriginatingQuery, REPORT_MAX_TEXT),
+    queryAttributionStatus: (entry.queryAttributionStatus ?? entry.discoveryQueryAttributionStatus) === "provider-attributed"
+      ? "provider-attributed"
+      : "unavailable",
+    candidateRankWithinQuery: Number.isInteger(entry.candidateRankWithinQuery ?? entry.discoveryCandidateRankWithinQuery)
+      ? entry.candidateRankWithinQuery ?? entry.discoveryCandidateRankWithinQuery
+      : null,
+    queryRankAvailability: (entry.queryRankAvailability ?? entry.discoveryQueryRankAvailability) === "provider-reported"
+      ? "provider-reported"
+      : "unavailable",
+    deduplicationLineage: dedupe && typeof dedupe === "object"
+      ? {
+        duplicateAnnotationRanks: boundedList(
+          dedupe.duplicateAnnotationRanks,
+          (value) => Number.isInteger(value) ? value : null,
+          80,
+        ).filter(Number.isInteger),
+        deduplicatedAcrossQueries: typeof dedupe.deduplicatedAcrossQueries === "boolean"
+          ? dedupe.deduplicatedAcrossQueries
+          : null,
+      }
+      : null,
+    retainedPassageOutcome: retention && typeof retention === "object"
+      ? {
+        retained: retention.retained === true,
+        usability: boundedText(retention.usability, 80),
+        reason: boundedText(retention.reason, 160),
+      }
+      : null,
     identitySignals: boundedList(
       entry.exactProjectIdentitySignals ?? entry.identitySignals ?? entry.identitySignalReasons,
       (value) => safeReportText(value, 240),
@@ -743,6 +835,8 @@ function reportCandidateLineage(entry) {
       ? {
         state: boundedText(entry.accessOutcome.state, 80),
         reason: boundedText(entry.accessOutcome.reason, 240),
+        attempted: entry.accessOutcome.attempted === true
+          || (entry.accessOutcome.state !== "not-attempted" && entry.accessOutcome.attempted !== false),
         physicalOpenIndex: Number.isInteger(entry.accessOutcome.physicalOpenIndex) ? entry.accessOutcome.physicalOpenIndex : null,
         reused: entry.accessOutcome.reused === true,
       }

@@ -67,6 +67,9 @@ function projectIdentityValues(project = {}) {
     [project, knownData],
     ["facilityIdentifiers", "facilityIds", "buildingIdentifiers", "buildingIds", "campusIdentifiers"],
   ).map((value) => asText(value).toUpperCase()).filter(Boolean);
+  const locationTerms = valuesAt([project, knownData], ["location", "city", "county", "state"])
+    .map(asText)
+    .filter((value) => normalizeWords(value).length >= 3);
   const companyDomains = valuesAt([project, knownData], ["companyDomains"])
     .map((value) => asText(value).toLowerCase().replace(/^https?:\/\//, "").split("/")[0].replace(/^www\./, ""))
     .filter(Boolean);
@@ -87,6 +90,7 @@ function projectIdentityValues(project = {}) {
     aliases: [...new Set(aliases)],
     operators: [...new Set(operators)],
     facilityIds: [...new Set(facilityIds)],
+    locationTerms: [...new Set(locationTerms)],
     companyDomains: [...new Set(companyDomains)],
     officialDomains: [...new Set(officialDomains)],
   };
@@ -105,6 +109,11 @@ function rankCandidate(source, project, discoveryRank) {
     .filter((value) => typeof value === "string")
     .join(" ");
   const discoveryText = [titleText, urlText, snippetText].join(" ");
+  const attributedQuery = source.discoveryQueryAttributionStatus === "provider-attributed"
+    && typeof source.discoveryOriginatingQuery === "string"
+    ? source.discoveryOriginatingQuery
+    : "";
+  const trustedBridgeText = [titleText, urlText, attributedQuery].join(" ");
   const aliasInTitle = identity.aliases.some((alias) => phrasePresent(titleText, alias));
   const aliasInUrl = identity.aliases.some((alias) => phrasePresent(urlText, alias));
   const aliasInSnippet = identity.aliases.some((alias) => phrasePresent(snippetText, alias));
@@ -122,6 +131,15 @@ function rankCandidate(source, project, discoveryRank) {
   const namedFacilitySignal = mentionedFacilityIds.length > 0
     && (exactProjectSignal || operatorMatch || identity.facilityIds.some((facilityId) =>
       mentionedFacilityIds.some((mentioned) => mentioned.toLowerCase() === facilityId.toLowerCase())));
+  const bridgeFacilitySignal = identity.facilityIds.some((facilityId) =>
+    /^DFW\s*[- ]?\s*\d{1,2}$/i.test(facilityId)
+    && phrasePresent(trustedBridgeText, facilityId));
+  const bridgeProjectSignal =
+    /\b(?:red\s+oak|databank)\b/i.test(trustedBridgeText)
+    || identity.aliases.some((alias) => phrasePresent(trustedBridgeText, alias))
+    || identity.operators.some((operator) => phrasePresent(trustedBridgeText, operator))
+    || identity.locationTerms.some((location) => phrasePresent(trustedBridgeText, location));
+  const facilityProjectBridgeSignal = bridgeFacilitySignal && bridgeProjectSignal;
   const sourceChannel = asText(source.sourceChannel ?? source.origin).toLowerCase();
   const sourceType = asText(source.sourceType ?? source.sourceClass ?? source.documentType).toLowerCase();
   const official =
@@ -152,6 +170,7 @@ function rankCandidate(source, project, discoveryRank) {
   if (aliasInSnippet) acquisitionReasons.push("exact-project-discovery-metadata");
   if (operatorMatch) acquisitionReasons.push("operator-match");
   if (namedFacilitySignal) acquisitionReasons.push("named-facility-identifier");
+  if (facilityProjectBridgeSignal) acquisitionReasons.push("facility-project-bridge-discovery-metadata");
   if (official) acquisitionReasons.push("official-source-type");
   if (operatorDomain) acquisitionReasons.push("operator-source-domain");
   if (projectRecord) acquisitionReasons.push("project-record-source-type");
@@ -186,6 +205,8 @@ function rankCandidate(source, project, discoveryRank) {
     acquisitionPriority = 140;
     acquisitionReasons.push("generic-operator-source");
   }
+
+  if (facilityProjectBridgeSignal) acquisitionPriority += 100;
 
   if (genericIndex) {
     acquisitionPriority = Math.min(acquisitionPriority, 10);

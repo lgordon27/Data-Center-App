@@ -400,6 +400,12 @@ function fullyMatchesVariant(text, variant) {
   return requiredTokens.length > 0 && requiredTokens.every((token) => availableTokens.has(token));
 }
 
+function fullyMatchesProjectLabel(text, variant) {
+  const requiredTokens = variant.tokens ?? [];
+  const availableTokens = new Set(tokenSpans(text).map((word) => word.value));
+  return requiredTokens.length > 0 && requiredTokens.every((token) => availableTokens.has(token));
+}
+
 function hasConflictingFacilityLabel(prefix, variant, expectedOperator) {
   const expectedNameTokens = variant.matchingTokens ?? variant.tokens;
   const operatorNameTokens = new Set(operatorTokens(expectedOperator));
@@ -1066,5 +1072,187 @@ export function matchProject(passage, project = {}) {
   return {
     verdict: "ambiguous",
     reason: "The passage does not provide enough project-specific context to determine whether it refers to the requested project.",
+  };
+}
+
+function requestedFacilityIdentifiers(project = {}) {
+  const knownData = project?.knownData ?? {};
+  const supplied = [
+    project?.facilityIdentifiers,
+    project?.facilityIds,
+    project?.buildingIdentifiers,
+    project?.buildingIds,
+    project?.campusIdentifiers,
+    knownData.facilityIdentifiers,
+    knownData.facilityIds,
+    knownData.buildingIdentifiers,
+    knownData.buildingIds,
+    knownData.campusIdentifiers,
+  ].flatMap((value) => Array.isArray(value) ? value : typeof value === "string" ? [value] : []);
+  return [...new Set(supplied.flatMap((value) =>
+    facilityIdentifierMatches(value).map((match) => match.value)))];
+}
+
+function projectAnchorProofs(passage, project, variants, expectedOperator, expectedLocation, requestedIds) {
+  const fragments = splitSubjectFragments(passage);
+  const proofs = [];
+  for (const { text: fragment } of fragments) {
+    const names = findNameMatches(fragment, variants)
+      .filter((match) => match.variant.kind !== "operator")
+      .filter((match) => fullyMatchesProjectLabel(fragment, match.variant))
+      .filter((match) => !isNegatedProjectReference(fragment, match));
+    for (const name of names) {
+      const linkedFacilityIdentifiers = facilityIdentifierMatches(fragment)
+        .map((identifier) => identifier.value)
+        .filter((identifier) => requestedIds.includes(identifier));
+      const otherFacilityInFragment = facilityIdentifierMatches(fragment)
+        .some((identifier) => !requestedIds.includes(identifier.value));
+      if (otherFacilityInFragment) {
+        continue;
+      }
+      const locations = detailedLocations(removeAdministrativeLocations(fragment))
+        .filter((location) => hasLocationConnector(fragment, location))
+        .filter((location) => location.end >= name.start - 40 && location.start <= name.end + 200);
+      const comparisons = locations.map((location) => compareLocation(expectedLocation, location.location));
+      const operatorEvidence = assertedOperators(
+        fragment,
+        [name],
+        expectedOperator,
+        expectedLocation,
+        !fragments.some((item) => item.text !== fragment),
+      );
+      const explicitOperatorCue = /\b(?:operator|owner|developer|operat(?:e|ed|es|ing)|own(?:s|ed)?|develop(?:s|ed|ing)|manag(?:e|ed|es|ing)|runs?|built|construct(?:s|ed|ing))\b/i
+        .test(fragment);
+      const conflictingOperatorEvidence = operatorEvidence.filter((actual) =>
+        !variants.some((variant) =>
+          variant.kind !== "operator" && fullyMatchesVariant(actual, variant)));
+      proofs.push({
+        conflict: comparisons.some((comparison) => comparison.conflicts.length)
+          || (explicitOperatorCue && operatorConflicts(expectedOperator, conflictingOperatorEvidence)),
+        identifiers: linkedFacilityIdentifiers,
+      });
+    }
+  }
+  return proofs;
+}
+
+function facilityBridgeFacts(passages, project, expectedOperator, expectedLocation, requestedIds) {
+  const facts = [];
+  for (const [passageIndex, passage] of passages.entries()) {
+    const fragments = splitSubjectFragments(passage);
+    for (const { text: fragment, sentenceIndex } of fragments) {
+      const identifiers = facilityIdentifierMatches(fragment)
+        .filter((identifier) => requestedIds.includes(identifier.value));
+      for (const identifier of identifiers) {
+        const identifierMatch = {
+          variant: {
+            kind: "name",
+            label: identifier.value,
+            tokens: [identifier.value.toLocaleLowerCase()],
+            matchingTokens: [identifier.value.toLocaleLowerCase()],
+          },
+          start: identifier.start,
+          end: identifier.end,
+        };
+        const locations = detailedLocations(removeAdministrativeLocations(fragment))
+          .filter((location) => hasLocationConnector(fragment, location))
+          .filter((location) => Math.abs(location.start - identifier.end) <= 180);
+        const comparisons = locations.map((location) => compareLocation(expectedLocation, location.location));
+        const locationConflict = comparisons.some((comparison) => comparison.conflicts.length > 0);
+        const matchingDimensions = [...new Set(comparisons.flatMap((comparison) => comparison.matches))];
+        const expectedLocalityConfirmed = matchingDimensions.some((dimension) =>
+          dimension === "city" || dimension === "county");
+        const operatorEvidence = assertedOperators(
+          fragment,
+          [identifierMatch],
+          expectedOperator,
+          expectedLocation,
+        );
+        const explicitOperatorConflict = explicitFacilityOperatorConflict(fragments, sentenceIndex, expectedOperator);
+        const inferredOperatorConflicts = operatorEvidence.filter((actual) =>
+          (() => {
+            const facilityTokens = new Set(facilityIdentifierMatches(actual)
+              .flatMap((match) => normalizeWords(match.value).split(" ")));
+            const possibleOperator = operatorTokens(actual)
+              .filter((token) => !facilityTokens.has(token))
+              .join(" ");
+            return !operatorsMatch(expectedOperator, possibleOperator)
+              && operatorExplicitlyConnectedToFacility(fragment, possibleOperator, identifierMatch, []);
+          })());
+        const operatorConflict = explicitOperatorConflict || inferredOperatorConflicts.length > 0;
+        const operatorConfirmed = operatorExplicitlyConnectedToFacility(
+          fragment,
+          expectedOperator,
+          identifierMatch,
+          [],
+        ) || operatorEvidence.some((actual) => operatorsMatch(expectedOperator, actual));
+        facts.push({
+          identifier: identifier.value,
+          passageIndex,
+          operatorConfirmed,
+          locationConfirmed: expectedLocalityConfirmed,
+          conflicts: locationConflict || operatorConflict,
+        });
+      }
+    }
+  }
+  return facts;
+}
+
+/**
+ * Corroborates a named facility across separate retained passages. It only
+ * considers facility IDs submitted with the project; search plans and
+ * discovery metadata are never identity inputs.
+ */
+export function corroborateRelatedFacilityAcrossPassages(passages = [], project = {}) {
+  const retainedPassages = (Array.isArray(passages) ? passages : [])
+    .filter((passage) => typeof passage === "string" && passage.trim());
+  const expectedOperator = project?.operator ?? project?.knownData?.operator ?? "";
+  const expectedLocation = requestedLocation(project);
+  const expectedLocationText = formatExpectedLocation(expectedLocation);
+  const requestedIds = requestedFacilityIdentifiers(project);
+  if (!retainedPassages.length || !expectedOperator || !requestedIds.length) {
+    return { identifiers: [], conflictedIdentifiers: [] };
+  }
+  const variants = identityVariants(project);
+  const projectProofs = retainedPassages.flatMap((passage, passageIndex) =>
+    projectAnchorProofs(passage, project, variants, expectedOperator, expectedLocation, requestedIds)
+      .map((proof) => ({ ...proof, passageIndex })));
+  if (!projectProofs.length) return { identifiers: [], conflictedIdentifiers: [] };
+  const projectConflictIds = new Set(projectProofs
+    .filter((proof) => proof.conflict)
+    .flatMap((proof) => proof.identifiers ?? []));
+  const hasUnscopedProjectConflict = projectProofs.some((proof) =>
+    proof.conflict && !(proof.identifiers ?? []).length);
+
+  const facilityFacts = facilityBridgeFacts(
+    retainedPassages,
+    project,
+    expectedOperator,
+    expectedLocation,
+    requestedIds,
+  );
+  const identifiers = [];
+  const conflictedIdentifiers = hasUnscopedProjectConflict ? [...requestedIds] : [...projectConflictIds];
+  for (const identifier of requestedIds) {
+    if (hasUnscopedProjectConflict || projectConflictIds.has(identifier)) continue;
+    const relatedFacts = facilityFacts.filter((fact) =>
+      fact.identifier === identifier
+      && projectProofs.some((proof) =>
+        proof.passageIndex !== fact.passageIndex && !proof.conflict));
+    if (relatedFacts.some((fact) => fact.conflicts)) {
+      conflictedIdentifiers.push(identifier);
+      continue;
+    }
+    if (relatedFacts.some((fact) => fact.operatorConfirmed && fact.locationConfirmed)) {
+      identifiers.push(identifier);
+    }
+  }
+  return {
+    identifiers,
+    conflictedIdentifiers,
+    reason: identifiers.length
+      ? `Retained passages agree on the named facility, requested operator, project, and requested location${expectedLocationText ? ` (${expectedLocationText})` : ""}; exact campus identity remains unestablished.`
+      : null,
   };
 }

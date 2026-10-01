@@ -2176,6 +2176,7 @@ test("canary Grid request is withheld unless a retained passage establishes exac
     knownData: {
       operator: "DataBank",
       aliases: ["Red Oak Campus", "DataBank Red Oak Campus"],
+      facilityIdentifiers: ["DFW9", "DFW10", "DFW11"],
       city: "Red Oak",
       county: "Ellis County",
       state: "Texas",
@@ -2208,8 +2209,23 @@ test("canary Grid request is withheld unless a retained passage establishes exac
     exactProjectPassageCount: 0,
     relatedFacilityPassageCount: 1,
     relatedFacilityIdentifiers: ["DFW9"],
+    crossPassageCorroboratedFacilityIdentifiers: [],
+    conflictedRelatedFacilityIdentifiers: [],
     reason: "A successfully retrieved retained passage establishes a named facility related to the requested project, but not exact campus identity.",
   });
+  for (const [label, passage] of [
+    ["facility identifier alone", "DFW9 is a data-center facility in Texas."],
+    ["DataBank facility at the project location without a campus link", "DataBank's DFW9 facility is located in Red Oak, Ellis County, Texas."],
+    ["unlinked DFW14", "DataBank operates DFW14 in Red Oak, Ellis County, Texas."],
+    ["unlinked DFW15", "DataBank operates DFW15 in Red Oak, Ellis County, Texas."],
+  ]) {
+    const unresolvedGate = evaluateCanaryGridIdentityGate([{
+      ...candidate,
+      accessOutcome: { state: "accessible", passage },
+    }], project);
+    assert.equal(unresolvedGate.state, "unresolved", label);
+    assert.deepEqual(unresolvedGate.relatedFacilityIdentifiers, [], label);
+  }
   for (const [identifier, passage] of [
     ["DFW9", "DataBank's DFW9 building is part of the Red Oak Campus in Red Oak, Ellis County, Texas."],
     ["DFW10", "DataBank DFW10 is a building of the Red Oak Campus located in Red Oak, Ellis County, Texas."],
@@ -2223,6 +2239,71 @@ test("canary Grid request is withheld unless a retained passage establishes exac
     assert.equal(gate.exactProjectPassageCount, 0, identifier);
     assert.deepEqual(gate.relatedFacilityIdentifiers, [identifier]);
   }
+  const crossPassageGate = evaluateCanaryGridIdentityGate([
+    {
+      ...candidate,
+      accessOutcome: {
+        state: "accessible",
+        passage: "DataBank's DFW9 facility is located in Red Oak, Ellis County, Texas.",
+      },
+    },
+    {
+      ...candidate,
+      url: "https://records.example.test/red-oak-campus-context",
+      accessOutcome: {
+        state: "accessible",
+        passage: "The Red Oak Campus was listed in a municipal development presentation.",
+      },
+    },
+  ], project);
+  assert.equal(crossPassageGate.state, "related-facility");
+  assert.equal(crossPassageGate.exactProjectPassageCount, 0);
+  assert.equal(crossPassageGate.relatedFacilityPassageCount, 0,
+    "cross-passage corroboration is recorded separately from a direct single-passage link");
+  assert.deepEqual(crossPassageGate.relatedFacilityIdentifiers, ["DFW9"]);
+  assert.deepEqual(crossPassageGate.crossPassageCorroboratedFacilityIdentifiers, ["DFW9"]);
+  assert.match(crossPassageGate.reason, /Retained passages agree/);
+
+  const conflictGate = evaluateCanaryGridIdentityGate([
+    {
+      ...candidate,
+      accessOutcome: {
+        state: "accessible",
+        passage: "Compass operates the DFW9 facility in Red Oak, Ellis County, Texas.",
+      },
+    },
+    {
+      ...candidate,
+      url: "https://records.example.test/red-oak-campus-context",
+      accessOutcome: {
+        state: "accessible",
+        passage: "The Red Oak Campus was listed in a municipal development presentation.",
+      },
+    },
+  ], project);
+  assert.equal(conflictGate.state, "unresolved");
+  assert.deepEqual(conflictGate.relatedFacilityIdentifiers, []);
+  assert.deepEqual(conflictGate.conflictedRelatedFacilityIdentifiers, ["DFW9"]);
+
+  const unrelatedGate = evaluateCanaryGridIdentityGate([
+    {
+      ...candidate,
+      accessOutcome: {
+        state: "accessible",
+        passage: "DataBank operates DFW14 in Red Oak, Ellis County, Texas.",
+      },
+    },
+    {
+      ...candidate,
+      url: "https://records.example.test/red-oak-campus-context",
+      accessOutcome: {
+        state: "accessible",
+        passage: "The Red Oak Campus was listed in a municipal development presentation.",
+      },
+    },
+  ], project);
+  assert.equal(unrelatedGate.state, "unresolved");
+
   assert.equal(evaluateCanaryGridIdentityGate([{
     ...candidate,
     accessOutcome: { state: "accessible", passage: "DataBank operates data centers across Texas." },

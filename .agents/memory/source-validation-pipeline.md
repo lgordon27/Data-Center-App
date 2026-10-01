@@ -14,3 +14,9 @@ For development-announcement attribution, project wording after a company predic
 **Why:** Sentence-local proximity and city-token overlap do not prove a company's relationship to the requested development.
 
 **How to apply:** Exercise object-versus-incidental-reference negatives through both shared identity assessment and structured-call admission, including explicit different-development names before and after siting phrases.
+
+For a related-facility bridge, a location match is not a project anchor: retained text must include the complete requested project label or alias, and a direct facility-to-project passage must remain distinguishable from multi-passage corroboration.
+
+**Why:** Partial matching treated a facility's city name as a campus reference, while reporting a direct link as corroborated across passages overstated the basis for identity.
+
+**How to apply:** Require the full non-operator project name or alias in the retained project passage; corroborate only submitted facility IDs with agreeing operator and requested-location evidence, and report direct linkage separately.

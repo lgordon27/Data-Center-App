@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { matchProject, parseLocations, verifyQuote } from "./researchClaimVerifier.mjs";
+import {
+  corroborateRelatedFacilityAcrossPassages,
+  matchProject,
+  parseLocations,
+  verifyQuote,
+} from "./researchClaimVerifier.mjs";
 import { assessResearchProjectIdentity } from "./researchIdentity.mjs";
 
 test("verifies an exact quote and allows only requested typographic normalization", () => {
@@ -465,6 +470,7 @@ test("DFW14, incidental facility mentions, and identity conflicts do not establi
 
   for (const passage of [
     "DataBank operates DFW14 in Red Oak, Ellis County, Texas. The separate Red Oak Campus is in Dallas, Texas.",
+    "DataBank operates DFW15 in Red Oak, Ellis County, Texas. The separate Red Oak Campus is in Dallas, Texas.",
     "DataBank's DFW9 filing mentions Red Oak Campus, but does not identify DFW9 as a building or part of that campus.",
     "DataBank's DFW9 building is part of the Red Oak Campus in Houston, Texas.",
     "The DFW10 building, owned by Compass, is part of DataBank's Red Oak Campus in Red Oak, Ellis County, Texas.",
@@ -489,6 +495,10 @@ test("DFW14, incidental facility mentions, and identity conflicts do not establi
     "exact-project",
     "a submitted alias and matching operator/location remain hints without a passage-level campus link",
   );
+  assert.ok(["ambiguous", "unrelated"].includes(matchProject(
+    "DataBank operates DFW9 facility in Texas.",
+    project,
+  ).verdict), "DFW9 plus DataBank without a campus relationship remains unresolved");
   assert.notEqual(
     assessResearchProjectIdentity(
       "DataBank operates a DFW9 records filing in Red Oak, Texas.",
@@ -506,6 +516,68 @@ test("DFW14, incidental facility mentions, and identity conflicts do not establi
     "ambiguous",
     "metadata alone cannot turn an incidental DataBank/DFW mention into project identity",
   );
+});
+
+test("corroborates submitted DFW facility identity only across retained text with matching project, operator, and location", () => {
+  const project = {
+    name: "Red Oak Campus",
+    aliases: ["DataBank Red Oak Campus", "DataBank Red Oak Data Center"],
+    location: "Red Oak, Ellis County, Texas",
+    knownData: {
+      operator: "DataBank",
+      facilityIdentifiers: ["DFW9", "DFW10", "DFW11"],
+      city: "Red Oak",
+      county: "Ellis County",
+      state: "Texas",
+    },
+  };
+  const facilityPassage = "DataBank's DFW9 facility is located in Red Oak, Ellis County, Texas.";
+  const projectPassage = "The Red Oak Campus was listed in a municipal development presentation.";
+  assert.deepEqual(
+    corroborateRelatedFacilityAcrossPassages([facilityPassage], project).identifiers,
+    [],
+    "DataBank, DFW9, and the requested city alone do not establish a Red Oak Campus relationship",
+  );
+  const corroborated = corroborateRelatedFacilityAcrossPassages(
+    [facilityPassage, projectPassage],
+    project,
+  );
+  assert.deepEqual(corroborated.identifiers, ["DFW9"]);
+  assert.deepEqual(corroborated.conflictedIdentifiers, []);
+  assert.equal(matchProject(facilityPassage, project).verdict, "ambiguous");
+  assert.notEqual(matchProject(projectPassage, project).verdict, "exact-project");
+
+  const operatorConflict = corroborateRelatedFacilityAcrossPassages([
+    "Compass operates the DFW9 facility in Red Oak, Ellis County, Texas.",
+    projectPassage,
+  ], project);
+  assert.deepEqual(operatorConflict.identifiers, []);
+  assert.deepEqual(operatorConflict.conflictedIdentifiers, ["DFW9"]);
+
+  const locationConflict = corroborateRelatedFacilityAcrossPassages([
+    "DataBank's DFW9 facility is located in Houston, Harris County, Texas.",
+    projectPassage,
+  ], project);
+  assert.deepEqual(locationConflict.identifiers, []);
+  assert.deepEqual(locationConflict.conflictedIdentifiers, ["DFW9"]);
+
+  const facilityOnly = corroborateRelatedFacilityAcrossPassages([
+    "DataBank's DFW9 facility is operating at 300 MW.",
+  ], project);
+  assert.deepEqual(facilityOnly.identifiers, []);
+
+  const unrelatedFacility = corroborateRelatedFacilityAcrossPassages([
+    "DataBank operates DFW14 in Red Oak, Ellis County, Texas.",
+    projectPassage,
+  ], project);
+  assert.deepEqual(unrelatedFacility.identifiers, []);
+  assert.deepEqual(unrelatedFacility.conflictedIdentifiers, []);
+
+  const unrelatedDfw15 = corroborateRelatedFacilityAcrossPassages([
+    "DataBank operates DFW15 in Red Oak, Ellis County, Texas.",
+    projectPassage,
+  ], project);
+  assert.deepEqual(unrelatedDfw15.identifiers, []);
 });
 
 test("recognizes an operator directly before a facility name and in the full requested name", () => {

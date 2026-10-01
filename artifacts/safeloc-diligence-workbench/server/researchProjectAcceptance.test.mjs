@@ -229,13 +229,83 @@ test("full acceptance report redacts Google grounding redirect tokens without co
   assert.ok(projectedUrls.every((url) => !url.includes("token=")));
 });
 
+test("acceptance report preserves provider-backed candidate attribution and acquisition outcomes", () => {
+  const report = buildAcceptanceReport({
+    project: { name: "Red Oak Campus", location: "Red Oak, Ellis County, Texas" },
+    liveRun: {
+      statusCode: 200,
+      payload: {
+        researchAudit: {
+          categories: [],
+          providerAttempts: [],
+          candidateLineage: [{
+            categoryId: "project-identity",
+            url: "https://records.example/red-oak-final",
+            candidateUrl: "https://records.example/red-oak?token=secret",
+            resolvedUrl: "https://records.example/red-oak-final",
+            discoveryRank: 1,
+            originatingQuery: "DataBank Red Oak Campus DFW9 official record",
+            queryAttributionStatus: "provider-attributed",
+            candidateRankWithinQuery: 2,
+            queryRankAvailability: "provider-reported",
+            deduplicationLineage: {
+              duplicateAnnotationRanks: [3],
+              deduplicatedAcrossQueries: true,
+            },
+            physicalOpenAdmission: "authorized",
+            accessOutcome: {
+              state: "accessible",
+              reason: "retrieved",
+              attempted: true,
+              physicalOpenIndex: 2,
+            },
+            retainedPassageOutcome: {
+              retained: true,
+              usability: "usable",
+              reason: "Retrieved text passed quality checks.",
+            },
+          }],
+        },
+        researchCoverage: {},
+        sourceLedger: [],
+        evidence: [],
+      },
+    },
+  });
+
+  const [candidate] = report.candidateLineage;
+  assert.equal(candidate.candidateUrl, "https://records.example/red-oak");
+  assert.equal(candidate.originatingQuery, "DataBank Red Oak Campus DFW9 official record");
+  assert.equal(candidate.queryAttributionStatus, "provider-attributed");
+  assert.equal(candidate.candidateRankWithinQuery, 2);
+  assert.equal(candidate.queryRankAvailability, "provider-reported");
+  assert.deepEqual(candidate.deduplicationLineage, {
+    duplicateAnnotationRanks: [3],
+    deduplicatedAcrossQueries: true,
+  });
+  assert.equal(candidate.accessOutcome.state, "accessible");
+  assert.equal(candidate.accessOutcome.physicalOpenIndex, 2);
+  assert.equal(candidate.retainedPassageOutcome.retained, true);
+  assert.equal(candidate.retainedPassageOutcome.usability, "usable");
+  assert.doesNotMatch(JSON.stringify(candidate), /token=|secret/);
+});
+
 test("request-local canary audit records ranked selection and unopened candidates without document payloads", () => {
   const collector = createRedOakCanaryDiagnosticCollector();
   const exactProject = {
     url: "https://records.example/project/red-oak?token=url-secret-value",
+    discoveryCandidateUrl: "https://records.example/project/red-oak?token=url-secret-value",
     title: "Red Oak Campus project filing",
     sourceChannel: "official-record",
     categoryIds: ["grid"],
+    discoveryOriginatingQuery: "DataBank Red Oak Campus DFW9 official project record",
+    discoveryQueryAttributionStatus: "provider-attributed",
+    discoveryCandidateRankWithinQuery: 2,
+    discoveryQueryRankAvailability: "provider-reported",
+    discoveryDeduplicationLineage: {
+      duplicateAnnotationRanks: [4],
+      deduplicatedAcrossQueries: true,
+    },
     acquisitionPriority: 100,
     acquisitionPriorityReasons: ["exact project title", "official project-specific filing"],
   };
@@ -267,11 +337,20 @@ test("request-local canary audit records ranked selection and unopened candidate
   collector.recordPhysicalReceipt({
     phase: "grounded-discovery-prefetch",
     candidateIndex: 1,
-    candidate: { ...exactProject, discoveryCandidateRank: 1 },
+    candidate: {
+      ...exactProject,
+      discoveryCandidateRank: 1,
+      retainedPassageOutcome: {
+        retained: true,
+        usability: "usable",
+        reason: "Retrieved text passed quality checks.",
+      },
+    },
     accessOutcome: {
       state: "accessible",
       passage: "Red Oak Campus grid filing. Contact https://records.example/private?token=secret-value",
       physicalOpenIndex: 1,
+      resolvedUrl: "https://records.example/project/red-oak-final",
     },
     attempted: true,
   });
@@ -301,6 +380,20 @@ test("request-local canary audit records ranked selection and unopened candidate
   assert.equal(captured.discoveryCandidates.length, 3);
   assert.equal(captured.discoveryCandidates[0].acquisitionPriority, 100);
   assert.equal(captured.discoveryCandidates[0].acquisitionSelected, true);
+  assert.equal(captured.discoveryCandidates[0].candidateUrl, "https://records.example/project/red-oak");
+  assert.equal(captured.discoveryCandidates[0].originatingQuery, "DataBank Red Oak Campus DFW9 official project record");
+  assert.equal(captured.discoveryCandidates[0].queryAttributionStatus, "provider-attributed");
+  assert.equal(captured.discoveryCandidates[0].candidateRankWithinQuery, 2);
+  assert.equal(captured.discoveryCandidates[0].queryRankAvailability, "provider-reported");
+  assert.deepEqual(captured.discoveryCandidates[0].deduplicationLineage, {
+    duplicateAnnotationRanks: [4],
+    deduplicatedAcrossQueries: true,
+  });
+  assert.equal(captured.discoveryCandidates[0].resolvedUrl, "https://records.example/project/red-oak-final");
+  assert.equal(captured.discoveryCandidates[0].accessState, "accessible");
+  assert.equal(captured.discoveryCandidates[0].accessAttempted, true);
+  assert.equal(captured.discoveryCandidates[0].retainedPassageOutcome.retained, true);
+  assert.equal(captured.discoveryCandidates[0].retainedPassageOutcome.usability, "usable");
   assert.deepEqual(captured.discoveryCandidates[0].acquisitionPriorityReasons, [
     "exact project title",
     "official project-specific filing",
@@ -530,6 +623,11 @@ test("diagnostic report preserves duplicate annotation summaries from research a
       title: "Grid filing",
       url: duplicateUrl,
       canonicalUrl: duplicateUrl,
+      originatingQuery: null,
+      queryAttributionStatus: "unavailable",
+      candidateRankWithinQuery: null,
+      queryRankAvailability: "unavailable",
+      deduplicatedAgainstDiscoveryRank: null,
       accepted: true,
       rejectionReason: null,
     },
@@ -539,6 +637,11 @@ test("diagnostic report preserves duplicate annotation summaries from research a
       title: "Duplicate grid filing",
       url: duplicateUrl,
       canonicalUrl: duplicateUrl,
+      originatingQuery: null,
+      queryAttributionStatus: "unavailable",
+      candidateRankWithinQuery: null,
+      queryRankAvailability: "unavailable",
+      deduplicatedAgainstDiscoveryRank: null,
       accepted: false,
       rejectionReason: "duplicate-canonical-url",
     },
@@ -585,6 +688,11 @@ test("diagnostic report preserves duplicate annotation summaries from research a
       title: "Grid filing",
       url: duplicateUrl,
       canonicalUrl: duplicateUrl,
+      originatingQuery: null,
+      queryAttributionStatus: "unavailable",
+      candidateRankWithinQuery: null,
+      queryRankAvailability: "unavailable",
+      deduplicatedAgainstDiscoveryRank: null,
       accepted: true,
       rejectionReason: null,
     },
@@ -594,6 +702,11 @@ test("diagnostic report preserves duplicate annotation summaries from research a
       title: "Duplicate grid filing",
       url: duplicateUrl,
       canonicalUrl: duplicateUrl,
+      originatingQuery: null,
+      queryAttributionStatus: "unavailable",
+      candidateRankWithinQuery: null,
+      queryRankAvailability: "unavailable",
+      deduplicatedAgainstDiscoveryRank: null,
       accepted: false,
       rejectionReason: "duplicate-canonical-url",
     },

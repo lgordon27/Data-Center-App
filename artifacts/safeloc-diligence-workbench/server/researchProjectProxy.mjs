@@ -24,7 +24,10 @@ import {
   hasUsableResearchPassage,
   researchContentRejectionReason,
 } from "../src/data/researchContentQuality.mjs";
-import { assessResearchProjectIdentity } from "../src/data/researchIdentity.mjs";
+import {
+  assessResearchProjectIdentity,
+  corroborateRelatedFacilityAcrossPassages,
+} from "../src/data/researchIdentity.mjs";
 import { defaultProjectResearchRegistry } from "./projectResearchRegistry.mjs";
 import { discoverOfficialSources } from "./officialSourceDiscovery.mjs";
 import {
@@ -41,7 +44,7 @@ import { createSecConnector } from "./secConnector.mjs";
 import { releaseIdentity } from "./version.mjs";
 
 const RESEARCH_PROJECT_PROMPT_VERSION = "safeloc-project-research-prompt-v1";
-const GOOGLE_DISCOVERY_PROMPT_VERSION = "safeloc-google-grounding-prompt-v2";
+const GOOGLE_DISCOVERY_PROMPT_VERSION = "safeloc-google-grounding-prompt-v3";
 const CLAIM_REVIEW_VERSION = "policy-check-trace-v2";
 
 function sourceStateTransition(from, to, reason) {
@@ -1992,6 +1995,27 @@ function hasRetrievedPassage(source) {
     && hasUsableResearchPassage(source.accessOutcome.passage);
 }
 
+function discoveryCandidateRetentionOutcome(source) {
+  const accessOutcome = source?.accessOutcome ?? {};
+  if (accessOutcome.state !== "accessible") {
+    return {
+      retained: false,
+      usability: "not-assessed",
+      reason: accessOutcome.reason ?? accessOutcome.state ?? "not-attempted",
+    };
+  }
+  const passage = accessOutcome.passage;
+  const rejectionReason = researchContentRejectionReason(passage);
+  if (typeof passage !== "string" || !passage.trim() || rejectionReason) {
+    return {
+      retained: false,
+      usability: "unusable",
+      reason: rejectionReason ?? "empty-passage",
+    };
+  }
+  return { retained: true, usability: "usable", reason: null };
+}
+
 export function selectResearchPassagesForStructuredAnalysis(sources = []) {
   return (Array.isArray(sources) ? sources : []).filter(hasRetrievedPassage);
 }
@@ -2136,16 +2160,32 @@ export function evaluateCanaryGridIdentityGate(sources = [], project = {}) {
   const retainedPassages = (Array.isArray(sources) ? sources : []).filter(hasRetrievedPassage);
   const exactProjectPassages = retainedPassages.filter((source) =>
     sourceEstablishesProjectIdentity(source, project));
-  const relatedFacilityPassages = retainedPassages.filter((source) =>
-    sourceEstablishesRelatedFacilityIdentity(source, project));
-  const relatedFacilityIdentifiers = [...new Set(relatedFacilityPassages.flatMap((source) => {
+  const retainedPassageTexts = retainedPassages.map((source) =>
+    source?.accessOutcome?.passage ?? source?.claimPassage ?? source?.excerpt ?? "");
+  const crossPassageIdentity = corroborateRelatedFacilityAcrossPassages(retainedPassageTexts, project);
+  const conflictedIdentifiers = new Set(crossPassageIdentity.conflictedIdentifiers ?? []);
+  const relatedFacilityPassages = retainedPassages.filter((source) => {
+    if (!sourceEstablishesRelatedFacilityIdentity(source, project)) return false;
+    const identifiers = [...String(
+      source?.accessOutcome?.passage ?? source?.claimPassage ?? source?.excerpt ?? "",
+    ).matchAll(/\bDFW\s*[- ]?\s*(\d{1,2})\b/giu)].map((match) => `DFW${match[1]}`);
+    return !identifiers.some((identifier) => conflictedIdentifiers.has(identifier));
+  });
+  const directRelatedFacilityIdentifiers = relatedFacilityPassages.flatMap((source) => {
     const passage = source?.accessOutcome?.passage ?? source?.claimPassage ?? source?.excerpt ?? "";
     return [...String(passage).matchAll(/\bDFW\s*[- ]?\s*(\d{1,2})\b/giu)]
       .map((match) => `DFW${match[1]}`);
-  }))].slice(0, 8);
+  });
+  const directRelatedFacilityIdentifierSet = new Set(directRelatedFacilityIdentifiers);
+  const crossPassageCorroboratedIdentifiers = (crossPassageIdentity.identifiers ?? [])
+    .filter((identifier) => !directRelatedFacilityIdentifierSet.has(identifier));
+  const relatedFacilityIdentifiers = [...new Set([
+    ...directRelatedFacilityIdentifiers,
+    ...(crossPassageIdentity.identifiers ?? []),
+  ])].slice(0, 8);
   const state = exactProjectPassages.length
     ? "exact-project"
-    : relatedFacilityPassages.length
+    : relatedFacilityPassages.length || relatedFacilityIdentifiers.length
       ? "related-facility"
       : retainedPassages.length
         ? "unresolved"
@@ -2157,10 +2197,17 @@ export function evaluateCanaryGridIdentityGate(sources = [], project = {}) {
     exactProjectPassageCount: exactProjectPassages.length,
     relatedFacilityPassageCount: relatedFacilityPassages.length,
     relatedFacilityIdentifiers,
+    crossPassageCorroboratedFacilityIdentifiers: state === "exact-project"
+      ? []
+      : crossPassageCorroboratedIdentifiers.slice(0, 8),
+    conflictedRelatedFacilityIdentifiers: [...conflictedIdentifiers].slice(0, 8),
     reason: state === "exact-project"
       ? "At least one successfully retrieved retained passage establishes the exact requested project identity."
       : state === "related-facility"
-        ? "A successfully retrieved retained passage establishes a named facility related to the requested project, but not exact campus identity."
+        ? crossPassageCorroboratedIdentifiers.length
+          ? crossPassageIdentity.reason
+          ?? "A successfully retrieved retained passage establishes a named facility related to the requested project, but not exact campus identity."
+          : "A successfully retrieved retained passage establishes a named facility related to the requested project, but not exact campus identity."
         : state === "unresolved"
         ? "No successfully retrieved retained passage establishes the exact requested project identity."
         : "No successfully retrieved usable passage is available to establish exact-project identity.",
@@ -2470,6 +2517,19 @@ function buildResearchAudit({
           title: sanitizeTransportText(annotation?.title, 240),
           url: safePublicDiagnosticUrl(annotation?.url),
           canonicalUrl: safePublicDiagnosticUrl(annotation?.canonicalUrl),
+          originatingQuery: sanitizeTransportText(annotation?.discoveryOriginatingQuery, 500) || null,
+          queryAttributionStatus: annotation?.discoveryQueryAttributionStatus === "provider-attributed"
+            ? "provider-attributed"
+            : "unavailable",
+          candidateRankWithinQuery: Number.isInteger(annotation?.discoveryCandidateRankWithinQuery)
+            ? annotation.discoveryCandidateRankWithinQuery
+            : null,
+          queryRankAvailability: annotation?.discoveryQueryRankAvailability === "provider-reported"
+            ? "provider-reported"
+            : "unavailable",
+          deduplicatedAgainstDiscoveryRank: Number.isInteger(annotation?.deduplicatedAgainstDiscoveryRank)
+            ? annotation.deduplicatedAgainstDiscoveryRank
+            : null,
           accepted: annotation?.accepted === true,
           rejectionReason: sanitizeTransportText(annotation?.rejectionReason, 120),
         }))
@@ -2503,6 +2563,18 @@ function buildResearchAudit({
         relatedFacilityPassageCount: Number.isInteger(coverage.canaryIdentityGate.relatedFacilityPassageCount)
           ? Math.max(0, coverage.canaryIdentityGate.relatedFacilityPassageCount)
           : 0,
+        crossPassageCorroboratedFacilityIdentifiers: Array.isArray(coverage.canaryIdentityGate.crossPassageCorroboratedFacilityIdentifiers)
+          ? coverage.canaryIdentityGate.crossPassageCorroboratedFacilityIdentifiers
+            .slice(0, 8)
+            .map((identifier) => sanitizeTransportText(identifier, 24))
+            .filter(Boolean)
+          : [],
+        conflictedRelatedFacilityIdentifiers: Array.isArray(coverage.canaryIdentityGate.conflictedRelatedFacilityIdentifiers)
+          ? coverage.canaryIdentityGate.conflictedRelatedFacilityIdentifiers
+            .slice(0, 8)
+            .map((identifier) => sanitizeTransportText(identifier, 24))
+            .filter(Boolean)
+          : [],
         relatedFacilityIdentifiers: Array.isArray(coverage.canaryIdentityGate.relatedFacilityIdentifiers)
           ? coverage.canaryIdentityGate.relatedFacilityIdentifiers
             .slice(0, 8)
@@ -2572,6 +2644,34 @@ function buildResearchAudit({
       acquisitionSelected: typeof source.acquisitionSelected === "boolean" ? source.acquisitionSelected : null,
       acquisitionSelectionReason: source.acquisitionSelectionReason ?? null,
       physicalOpenAdmission: source.physicalOpenAdmission ?? null,
+      candidateUrl: safePublicDiagnosticUrl(source.discoveryCandidateUrl),
+      originatingQuery: sanitizeTransportText(source.discoveryOriginatingQuery, 500) || null,
+      queryAttributionStatus: source.discoveryQueryAttributionStatus === "provider-attributed"
+        ? "provider-attributed"
+        : "unavailable",
+      candidateRankWithinQuery: Number.isInteger(source.discoveryCandidateRankWithinQuery)
+        ? source.discoveryCandidateRankWithinQuery
+        : null,
+      queryRankAvailability: source.discoveryQueryRankAvailability === "provider-reported"
+        ? "provider-reported"
+        : "unavailable",
+      deduplicationLineage: isRecord(source.discoveryDeduplicationLineage)
+        ? {
+          duplicateAnnotationRanks: Array.isArray(source.discoveryDeduplicationLineage.duplicateAnnotationRanks)
+            ? source.discoveryDeduplicationLineage.duplicateAnnotationRanks.slice(0, 80).filter(Number.isInteger)
+            : [],
+          deduplicatedAcrossQueries: typeof source.discoveryDeduplicationLineage.deduplicatedAcrossQueries === "boolean"
+            ? source.discoveryDeduplicationLineage.deduplicatedAcrossQueries
+            : null,
+        }
+        : null,
+      retainedPassageOutcome: isRecord(source.retainedPassageOutcome)
+        ? {
+          retained: source.retainedPassageOutcome.retained === true,
+          usability: sanitizeTransportText(source.retainedPassageOutcome.usability, 80),
+          reason: sanitizeTransportText(source.retainedPassageOutcome.reason, 160) || null,
+        }
+        : null,
       categoryId: source.categoryId ?? null,
       url: safePublicSourceUrl(source.canonicalUrl ?? source.resolvedUrl ?? source.originalUrl ?? source.url),
       sourceChannel: source.sourceChannel ?? source.origin ?? null,
@@ -2595,9 +2695,38 @@ function buildResearchAudit({
         selectedForOpen: candidate.selectedForOpen === true,
         selectionReason: sanitizeTransportText(candidate.selectionReason, 100),
         physicalOpenAdmission: sanitizeTransportText(candidate.physicalOpenAdmission, 80),
+        candidateUrl: safePublicDiagnosticUrl(candidate.discoveryCandidateUrl),
         url: safePublicSourceUrl(candidate.url),
         originalUrl: safePublicSourceUrl(candidate.originalUrl),
         resolvedUrl: safePublicSourceUrl(candidate.resolvedUrl),
+        originatingQuery: sanitizeTransportText(candidate.discoveryOriginatingQuery, 500) || null,
+        queryAttributionStatus: candidate.discoveryQueryAttributionStatus === "provider-attributed"
+          ? "provider-attributed"
+          : "unavailable",
+        candidateRankWithinQuery: Number.isInteger(candidate.discoveryCandidateRankWithinQuery)
+          ? candidate.discoveryCandidateRankWithinQuery
+          : null,
+        queryRankAvailability: candidate.discoveryQueryRankAvailability === "provider-reported"
+          ? "provider-reported"
+          : "unavailable",
+        deduplicationLineage: isRecord(candidate.discoveryDeduplicationLineage)
+          ? {
+            duplicateAnnotationRanks: Array.isArray(candidate.discoveryDeduplicationLineage.duplicateAnnotationRanks)
+              ? candidate.discoveryDeduplicationLineage.duplicateAnnotationRanks.slice(0, 80)
+                .filter(Number.isInteger)
+              : [],
+            deduplicatedAcrossQueries: typeof candidate.discoveryDeduplicationLineage.deduplicatedAcrossQueries === "boolean"
+              ? candidate.discoveryDeduplicationLineage.deduplicatedAcrossQueries
+              : null,
+          }
+          : { duplicateAnnotationRanks: [], deduplicatedAcrossQueries: null },
+        retainedPassageOutcome: isRecord(candidate.retainedPassageOutcome)
+          ? {
+            retained: candidate.retainedPassageOutcome.retained === true,
+            usability: sanitizeTransportText(candidate.retainedPassageOutcome.usability, 80),
+            reason: sanitizeTransportText(candidate.retainedPassageOutcome.reason, 160) || null,
+          }
+          : null,
         title: sanitizeTransportText(candidate.title, 300),
         categoryIds: Array.isArray(candidate.categoryIds)
           ? candidate.categoryIds.slice(0, 8).map((categoryId) => sanitizeTransportText(categoryId, 100))
@@ -3809,9 +3938,38 @@ function parseResearchResponse(
           selectedForOpen: candidate.selectedForOpen === true,
           selectionReason: candidate.selectionReason ?? null,
           physicalOpenAdmission: candidate.physicalOpenAdmission ?? null,
+          candidateUrl: safePublicDiagnosticUrl(candidate.discoveryCandidateUrl),
           url: safePublicSourceUrl(candidate.url),
           originalUrl: safePublicSourceUrl(candidate.originalUrl),
           resolvedUrl: safePublicSourceUrl(candidate.resolvedUrl),
+          originatingQuery: sanitizeTransportText(candidate.discoveryOriginatingQuery, 500) || null,
+          queryAttributionStatus: candidate.discoveryQueryAttributionStatus === "provider-attributed"
+            ? "provider-attributed"
+            : "unavailable",
+          candidateRankWithinQuery: Number.isInteger(candidate.discoveryCandidateRankWithinQuery)
+            ? candidate.discoveryCandidateRankWithinQuery
+            : null,
+          queryRankAvailability: candidate.discoveryQueryRankAvailability === "provider-reported"
+            ? "provider-reported"
+            : "unavailable",
+          deduplicationLineage: isRecord(candidate.discoveryDeduplicationLineage)
+            ? {
+              duplicateAnnotationRanks: Array.isArray(candidate.discoveryDeduplicationLineage.duplicateAnnotationRanks)
+                ? candidate.discoveryDeduplicationLineage.duplicateAnnotationRanks.slice(0, 80)
+                  .filter(Number.isInteger)
+                : [],
+              deduplicatedAcrossQueries: typeof candidate.discoveryDeduplicationLineage.deduplicatedAcrossQueries === "boolean"
+                ? candidate.discoveryDeduplicationLineage.deduplicatedAcrossQueries
+                : null,
+            }
+            : { duplicateAnnotationRanks: [], deduplicatedAcrossQueries: null },
+          retainedPassageOutcome: isRecord(candidate.retainedPassageOutcome)
+            ? {
+              retained: candidate.retainedPassageOutcome.retained === true,
+              usability: sanitizeTransportText(candidate.retainedPassageOutcome.usability, 80),
+              reason: sanitizeTransportText(candidate.retainedPassageOutcome.reason, 160) || null,
+            }
+            : null,
           title: sanitizeTransportText(candidate.title, 300),
           categoryIds: Array.isArray(candidate.categoryIds) ? candidate.categoryIds.slice(0, 8) : [],
           accessState: candidate.accessOutcome?.state ?? null,
@@ -5880,7 +6038,7 @@ async function runValidatedResearch(project, {
     const openedCandidates = await Promise.all(boundedRankedCandidates.map(async (source) => {
       throwIfResearchCancelled(controller.signal);
       const candidateRank = source.discoveryCandidateRank;
-      const originalUrl = source.originalUrl ?? source.url ?? null;
+      const originalUrl = source.discoveryCandidateUrl ?? source.originalUrl ?? source.url ?? null;
       const originalCanonicalUrl = canonicalizeSourceUrl(originalUrl);
       const announcedCanonicalUrl = canonicalizeSourceUrl(source.canonicalUrl ?? source.resolvedUrl ?? source.url);
       if (!source.acquisitionCandidateSelected) {
@@ -5906,6 +6064,7 @@ async function runValidatedResearch(project, {
           physicalOpenAdmission: "not-selected",
           accessibilityState: accessOutcome.state,
           parsingState: "not-attempted",
+          retainedPassageOutcome: discoveryCandidateRetentionOutcome({ ...source, accessOutcome }),
         };
         documentAuditReceipts.push(deferredSource);
         canaryDiagnosticCollector?.recordPhysicalReceipt?.({
@@ -6034,6 +6193,7 @@ async function runValidatedResearch(project, {
         ...(accessOutcome.passage ? { excerpt: accessOutcome.passage, claimPassage: accessOutcome.passage } : {}),
         ...(NON_RETAINED_DOCUMENT_OUTCOMES.has(accessOutcome.state) ? { excerpt: null, claimPassage: null } : {}),
       };
+      openedSource.retainedPassageOutcome = discoveryCandidateRetentionOutcome(openedSource);
       documentAuditReceipts.push(openedSource);
       if (hasRetrievedPassage(openedSource)) retainedDocumentReceipts.push(openedSource);
       canaryDiagnosticCollector?.recordPhysicalReceipt?.({
@@ -7047,13 +7207,20 @@ async function runValidatedResearch(project, {
           selectedForOpen: source.acquisitionSelected === true,
           selectionReason: source.acquisitionSelectionReason ?? null,
           physicalOpenAdmission: source.physicalOpenAdmission ?? null,
+          discoveryCandidateUrl: source.discoveryCandidateUrl ?? null,
           url: source.canonicalUrl ?? source.url ?? null,
           originalUrl: source.originalUrl ?? source.url ?? null,
           resolvedUrl: source.resolvedUrl ?? null,
           title: source.title ?? null,
+          discoveryOriginatingQuery: source.discoveryOriginatingQuery ?? null,
+          discoveryQueryAttributionStatus: source.discoveryQueryAttributionStatus ?? "unavailable",
+          discoveryCandidateRankWithinQuery: source.discoveryCandidateRankWithinQuery ?? null,
+          discoveryQueryRankAvailability: source.discoveryQueryRankAvailability ?? "unavailable",
+          discoveryDeduplicationLineage: source.discoveryDeduplicationLineage ?? null,
           referringQueries: source.referringQueries ?? [],
           categoryIds: source.categoryIds ?? [],
           accessOutcome: source.accessOutcome ?? null,
+          retainedPassageOutcome: source.retainedPassageOutcome ?? null,
           skipReason: source.accessOutcome?.reason ?? null,
         })),
         retrievalOnlyStop: retrievalOnly ? "discovery-prefetch-complete" : null,

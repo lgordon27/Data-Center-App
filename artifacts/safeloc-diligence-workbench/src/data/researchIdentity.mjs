@@ -1,4 +1,7 @@
-import { matchProject } from "./researchClaimVerifier.mjs";
+import {
+  corroborateRelatedFacilityAcrossPassages as corroborateRetainedFacilityIdentity,
+  matchProject,
+} from "./researchClaimVerifier.mjs";
 
 const STATES = [
   ["Alabama", "AL"], ["Alaska", "AK"], ["Arizona", "AZ"], ["Arkansas", "AR"],
@@ -122,4 +125,8 @@ function operatorsConflict(expected, actuals) {
 export function assessResearchProjectIdentity(passage, candidate = {}, identity = {}) {
   void candidate;
   return matchProject(passage, identity).verdict;
+}
+
+export function corroborateRelatedFacilityAcrossPassages(passages, identity = {}) {
+  return corroborateRetainedFacilityIdentity(passages, identity);
 }

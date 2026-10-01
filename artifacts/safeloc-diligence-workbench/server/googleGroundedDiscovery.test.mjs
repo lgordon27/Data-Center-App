@@ -163,13 +163,14 @@ test("builds bounded exact-project, facility, official-record, and reporting que
   assert.match(queryPlan[0], /Red Oak Campus/);
   assert.match(queryPlan[0], /DataBank/);
   assert.match(queryPlan[0], /DataBank Red Oak Campus/);
-  assert.match(queryPlan[1], /DFW9.*DFW10.*DFW11/);
-  assert.match(queryPlan[2], /TDLR.*TABS.*zoning.*building records/);
-  assert.match(queryPlan[2], /site:tdlr\.texas\.gov/);
-  assert.match(queryPlan[2], /City of Red Oak/);
-  assert.match(queryPlan[3], /financing.*construction loan.*development announcement/);
-  assert.match(queryPlan[4], /electric power utility grid substation interconnection/);
-  assert.match(queryPlan[5], /trade reporting local news community financing construction/);
+  for (const [index, identifier] of ["DFW9", "DFW10", "DFW11"].entries()) {
+    assert.match(queryPlan[index + 1], new RegExp(`"${identifier}".*Red Oak.*DataBank|DataBank.*"${identifier}".*Red Oak`));
+  }
+  assert.match(queryPlan[4], /DFW9.*DFW10.*DFW11/);
+  assert.match(queryPlan[4], /official state records TDLR TABS permits/);
+  assert.match(queryPlan[4], /site:tdlr\.texas\.gov/);
+  assert.match(queryPlan[4], /City of Red Oak/);
+  assert.match(queryPlan[5], /utility power grid permits financing construction local reporting/);
   assert.match(prompt, /one bounded, deterministic query plan/);
   assert.match(prompt, /actual queries only in google_search_call telemetry/);
   assert.doesNotMatch(prompt, /https:\/\/(?:www\.)?databank\.com/i,
@@ -252,7 +253,13 @@ test("keeps requested discovery coverage separate from actually executed Google 
 
   assert.equal(fetchCalls, 1, "query diversification stays inside one grounding request");
   assert.equal(result.requestedQueryPlan.length, 6);
-  assert.ok(result.requestedQueryPlan.some((query) => /DFW10/.test(query)));
+  for (const identifier of ["DFW9", "DFW10", "DFW11"]) {
+    assert.ok(result.requestedQueryPlan.some((query) =>
+      new RegExp(`"${identifier}"`).test(query) && /Red Oak DataBank relationship/i.test(query)),
+    `the bounded plan must include an explicit Red Oak/DataBank bridge query for ${identifier}`);
+  }
+  assert.ok(result.requestedQueryPlan.some((query) => /official state records TDLR TABS permits/i.test(query)));
+  assert.ok(result.requestedQueryPlan.some((query) => /site:tdlr\.texas\.gov/i.test(query)));
   assert.deepEqual(result.queries, [actualQuery], "only provider-reported search-call arguments count as executed");
   assert.notDeepEqual(result.requestedQueryPlan, result.queries);
   assert.equal(result.candidates[0].discoveryOnly, true);
@@ -398,10 +405,13 @@ test("parses successful Interactions search steps and deduplicates URL-citation 
   assert.equal(result.candidates[0].claimCited, false);
   assert.equal(result.candidates[0].excerpt, "");
   assert.equal(result.candidates[0].discoveryCandidateRank, 1);
+  assert.equal(result.candidates[0].discoveryQueryAttributionStatus, "unavailable");
+  assert.equal(result.candidates[0].discoveryCandidateRankWithinQuery, null);
+  assert.deepEqual(result.candidates[0].referringQueries, [],
+    "executed queries must not be projected onto citations when the provider supplies no candidate-level mapping");
   assert.equal(result.candidates[1].discoveryCandidateRank, 3,
     "accepted candidates retain original citation order across a rejected duplicate");
   assert.equal(Object.hasOwn(result.candidates[0], "exactProject"), false);
-  assert.ok(result.candidates[0].referringQueries.includes("Project Atlas Taylor County permit"));
   assert.equal(result.groundingMetadataPresent, true);
   assert.equal(result.groundingSearchExecuted, true);
   assert.equal(result.usableCitationMetadataPresent, true);
@@ -409,6 +419,57 @@ test("parses successful Interactions search steps and deduplicates URL-citation 
   assert.equal(result.googleSearchResultCount, 1);
   assert.equal(result.urlCitationCount, 3);
   assert.equal(result.citationCount, 2);
+});
+
+test("preserves only provider-established query attribution and deduplication lineage", () => {
+  const originatingQuery = "DataBank Red Oak DFW9 building";
+  const otherQuery = "DFW10 Red Oak Campus official record";
+  const result = parseGoogleGroundedDiscoveryResponse({
+    steps: [
+      {
+        type: "google_search_call",
+        arguments: { queries: [originatingQuery, otherQuery] },
+      },
+      {
+        type: "google_search_result",
+        result: {},
+      },
+      {
+        type: "model_output",
+        content: [{
+          type: "text",
+          annotations: [
+            {
+              type: "url_citation",
+              url: "https://records.example/dfw9",
+              title: "DFW9 record",
+              originatingQuery,
+              rankWithinQuery: 3,
+            },
+            {
+              type: "url_citation",
+              url: "https://records.example/dfw9?utm_source=duplicate",
+              title: "Duplicate DFW9 record",
+              originatingQuery: otherQuery,
+              rankWithinQuery: 1,
+            },
+          ],
+        }],
+      },
+    ],
+  });
+
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.candidates[0].discoveryOriginatingQuery, originatingQuery);
+  assert.equal(result.candidates[0].discoveryCandidateRankWithinQuery, 3);
+  assert.equal(result.candidates[0].discoveryQueryRankAvailability, "provider-reported");
+  assert.deepEqual(result.candidates[0].referringQueries, [originatingQuery]);
+  assert.deepEqual(result.candidates[0].discoveryDeduplicationLineage, {
+    duplicateAnnotationRanks: [2],
+    deduplicatedAcrossQueries: true,
+  });
+  assert.equal(result.rawAnnotationSummaries[1].discoveryQueryAttributionStatus, "provider-attributed");
+  assert.equal(result.rawAnnotationSummaries[1].deduplicatedAgainstDiscoveryRank, 1);
 });
 
 test("maps discovery labels to every downstream category without positional assignment", () => {

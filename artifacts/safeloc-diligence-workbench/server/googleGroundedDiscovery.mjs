@@ -166,12 +166,16 @@ function categoryIdsForCitation(citation) {
   };
 }
 
-function sourceFromUrlCitation(annotation, queries) {
+function sourceFromUrlCitation(annotation) {
   const url = safeCandidateUrl(annotation?.url);
   if (!url) return null;
+  const originatingQuery = typeof annotation?.discoveryOriginatingQuery === "string"
+    ? normalizeText(annotation.discoveryOriginatingQuery, 500)
+    : null;
   return {
     url,
     canonicalUrl: url,
+    discoveryCandidateUrl: safeCandidateUrl(annotation?.url),
     title: normalizeText(annotation?.title, 240) || "Google-grounded public source",
     publisher: null,
     date: null,
@@ -184,7 +188,19 @@ function sourceFromUrlCitation(annotation, queries) {
     discoveryCandidateRank: Number.isInteger(annotation?.discoveryCandidateRank)
       ? annotation.discoveryCandidateRank
       : null,
-    referringQueries: [...new Set(queries)].slice(0, 12),
+    discoveryOriginatingQuery: originatingQuery,
+    discoveryCandidateRankWithinQuery: Number.isInteger(annotation?.discoveryCandidateRankWithinQuery)
+      ? annotation.discoveryCandidateRankWithinQuery
+      : null,
+    discoveryQueryAttributionStatus: originatingQuery ? "provider-attributed" : "unavailable",
+    discoveryQueryRankAvailability: Number.isInteger(annotation?.discoveryCandidateRankWithinQuery)
+      ? "provider-reported"
+      : "unavailable",
+    discoveryDeduplicationLineage: annotation?.discoveryDeduplicationLineage ?? {
+      duplicateAnnotationRanks: [],
+      deduplicatedAcrossQueries: false,
+    },
+    referringQueries: originatingQuery ? [originatingQuery] : [],
     ...categoryIdsForCitation(annotation),
     relevanceNote: "Google grounding discovered this URL; generated summaries and snippets are not evidence.",
   };
@@ -357,6 +373,28 @@ export function buildGoogleGroundedDiscoveryQueryPlan(project = {}) {
     ...authorityDomains.map((domain) => `site:${domain}`),
   ].join(" ");
 
+  const redOakDataBankContext = /\bred\s+oak\b/i.test(`${name} ${projectTerms} ${names.join(" ")}`)
+    && /\bdatabank\b/i.test(`${operatorNames.join(" ")} ${names.join(" ")}`);
+  const queryFacilityIdentifiers = redOakDataBankContext
+    ? ["DFW9", "DFW10", "DFW11"]
+    : identifiers;
+  const dfwIdentifiers = queryFacilityIdentifiers
+    .filter((identifier) => /^DFW\s*[- ]?\s*\d{1,2}$/i.test(identifier))
+    .slice(0, 3)
+    .map((identifier) => identifier.replace(/\s+|-/g, "").toUpperCase());
+  if (dfwIdentifiers.length) {
+    const bridgeQueries = dfwIdentifiers.map((identifier) =>
+      `"${operatorNames[0] ?? operatorTerms}" "${identifier}" "${name}" "${location}" Red Oak DataBank relationship`);
+    const officialBridge = `${dfwIdentifiers.map((identifier) => `"${identifier}"`).join(" OR ")} ${operatorTerms} ${projectTerms} ${location} official state records TDLR TABS permits ${officialTargets}`;
+    const broadCoverage = `${projectTerms} ${operatorTerms} ${facilityTerms} ${location} data center campus utility power grid permits financing construction local reporting`;
+    return [
+      `"${name}" ${operatorTerms} ${projectTerms} ${location} project campus data center`,
+      ...bridgeQueries,
+      officialBridge,
+      broadCoverage,
+    ].map((query) => normalizeText(query, 500));
+  }
+
   return [
     `"${name}" ${operatorTerms} ${projectTerms} ${location} project campus data center`,
     `"${name}" ${operatorTerms} ${facilityTerms} ${location} facility building campus data center`,
@@ -365,6 +403,27 @@ export function buildGoogleGroundedDiscoveryQueryPlan(project = {}) {
     `${projectTerms} ${operatorTerms} ${facilityTerms} ${location} data center electric power utility grid substation interconnection`,
     `${projectTerms} ${operatorTerms} ${location} data center trade reporting local news community financing construction`,
   ].map((query) => normalizeText(query, 500));
+}
+
+function explicitCandidateQueryAttribution(annotation, executedQueries) {
+  const reportedQuery = [
+    annotation?.discoveryOriginatingQuery,
+    annotation?.originatingQuery,
+    annotation?.searchQuery,
+    annotation?.search_query,
+  ].find((value) => typeof value === "string" && value.trim());
+  if (!reportedQuery) return { query: null, queryRank: null };
+  const normalizedReported = normalizeText(reportedQuery, 500).toLocaleLowerCase();
+  const query = executedQueries.find((value) =>
+    normalizeText(value, 500).toLocaleLowerCase() === normalizedReported) ?? null;
+  if (!query) return { query: null, queryRank: null };
+  const reportedRank = [
+    annotation?.discoveryCandidateRankWithinQuery,
+    annotation?.candidateRankWithinQuery,
+    annotation?.rankWithinQuery,
+    annotation?.queryRank,
+  ].find((value) => Number.isInteger(value) && value > 0 && value <= GOOGLE_GROUNDED_DISCOVERY_MAX_CANDIDATES);
+  return { query, queryRank: reportedRank ?? null };
 }
 
 export function buildGoogleGroundedDiscoveryRequestBody(project, {
@@ -422,28 +481,59 @@ export function parseGoogleGroundedDiscoveryResponse(body) {
       Array.isArray(content?.annotations) ? content.annotations : []),
   ).filter((annotation) => annotation?.type === "url_citation");
   const sources = [];
-  const seen = new Set();
+  const firstByCanonicalUrl = new Map();
   const annotationDiagnostics = annotations.map((annotation, index) => {
     const rawUrl = typeof annotation?.url === "string" ? annotation.url.trim() : "";
     const url = safeCandidateUrl(rawUrl);
     const canonicalUrl = url ? canonicalizeSourceUrl(url) : null;
-    const duplicate = Boolean(canonicalUrl && seen.has(canonicalUrl));
-    if (canonicalUrl) seen.add(canonicalUrl);
+    const attribution = explicitCandidateQueryAttribution(annotation, queries);
+    const prior = canonicalUrl ? firstByCanonicalUrl.get(canonicalUrl) : null;
+    const duplicate = Boolean(prior);
+    if (canonicalUrl && !prior) firstByCanonicalUrl.set(canonicalUrl, {
+      discoveryRank: index + 1,
+      originatingQuery: attribution.query,
+    });
     return {
       discoveryRank: index + 1,
       type: "url_citation",
       title: normalizeText(annotation?.title, 240) || null,
       url: rawUrl || null,
       canonicalUrl,
+      discoveryOriginatingQuery: attribution.query,
+      discoveryQueryAttributionStatus: attribution.query ? "provider-attributed" : "unavailable",
+      discoveryCandidateRankWithinQuery: attribution.queryRank,
+      discoveryQueryRankAvailability: attribution.queryRank === null ? "unavailable" : "provider-reported",
       accepted: Boolean(url && !duplicate),
+      deduplicatedAgainstDiscoveryRank: prior?.discoveryRank ?? null,
       rejectionReason: !rawUrl ? "missing-url" : !url ? "unsafe-or-invalid-url" : duplicate ? "duplicate-canonical-url" : null,
     };
   });
+  for (const diagnostic of annotationDiagnostics) {
+    if (!diagnostic.accepted) continue;
+    const duplicates = annotationDiagnostics.filter((candidate) =>
+      candidate.deduplicatedAgainstDiscoveryRank === diagnostic.discoveryRank);
+    const queryValues = [
+      diagnostic.discoveryOriginatingQuery,
+      ...duplicates.map((candidate) => candidate.discoveryOriginatingQuery),
+    ];
+    const allAttributed = queryValues.every((query) => typeof query === "string" && query.length > 0);
+    diagnostic.discoveryDeduplicationLineage = {
+      duplicateAnnotationRanks: duplicates.map((candidate) => candidate.discoveryRank),
+      deduplicatedAcrossQueries: duplicates.length === 0
+        ? false
+        : allAttributed
+          ? new Set(queryValues).size > 1
+          : null,
+    };
+  }
   for (const [index, annotation] of annotations.entries()) {
     const source = sourceFromUrlCitation({
       ...annotation,
       discoveryCandidateRank: index + 1,
-    }, queries);
+      discoveryOriginatingQuery: annotationDiagnostics[index]?.discoveryOriginatingQuery,
+      discoveryCandidateRankWithinQuery: annotationDiagnostics[index]?.discoveryCandidateRankWithinQuery,
+      discoveryDeduplicationLineage: annotationDiagnostics[index]?.discoveryDeduplicationLineage,
+    });
     if (source && annotationDiagnostics[index]?.accepted) {
       sources.push(source);
     }
@@ -469,6 +559,12 @@ export function parseGoogleGroundedDiscoveryResponse(body) {
       .map((annotation) => ({
         discoveryRank: annotation.discoveryRank,
         url: annotation.url,
+        discoveryOriginatingQuery: annotation.discoveryOriginatingQuery,
+        discoveryQueryAttributionStatus: annotation.discoveryQueryAttributionStatus,
+        discoveryCandidateRankWithinQuery: annotation.discoveryCandidateRankWithinQuery,
+        discoveryQueryRankAvailability: annotation.discoveryQueryRankAvailability,
+        deduplicatedAgainstDiscoveryRank: annotation.deduplicatedAgainstDiscoveryRank,
+        discoveryDeduplicationLineage: annotation.discoveryDeduplicationLineage ?? null,
         reason: annotation.rejectionReason,
       })),
   };

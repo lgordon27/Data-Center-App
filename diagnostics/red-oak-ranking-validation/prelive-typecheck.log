@@ -1,4 +1,0 @@
-
-> @workspace/safeloc-diligence-workbench@1.0.0 typecheck /home/runner/workspace/artifacts/safeloc-diligence-workbench
-> tsc -p tsconfig.json --noEmit
-

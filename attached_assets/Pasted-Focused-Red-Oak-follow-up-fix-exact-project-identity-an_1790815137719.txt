@@ -1,0 +1,176 @@
+Focused Red Oak follow-up: fix exact-project identity and expand discovery coverage without weakening evidence rules
+
+Do not change DNS/SSRF protections, financial-model rules, evidence eligibility, or production data.
+
+The latest live canary improved retrieval:
+
+* 1 discovery request
+* 4 of 8 opens used
+* 1 usable Red Oak campus announcement retrieved
+* 0 structured calls
+* identity audit still unresolved
+* 3 operator pages remained security-blocked
+
+There are two objectives for this task:
+
+A. Resolve why a usable Red Oak passage does not establish exact-project identity
+
+B. Verify that discovery is not missing obvious Red Oak evidence sources/classes
+
+⸻
+
+1. Trace the usable campus announcement through identity
+
+For the exact usable passage from the latest canary, report the result of:
+
+source metadata → project-name match → operator match → location match → facility/building match → conflict detection → final identity state
+
+Identify the first reason identity remains unresolved.
+
+If the passage contains sufficient exact-project evidence, make the smallest deterministic repair necessary.
+
+Preserve current safeguards:
+
+* provider assertions alone cannot establish identity
+* conflicting project/operator/location evidence must still fail closed
+* do not use search snippets as evidence
+* identity must come from retrieved passage/source metadata
+
+2. Audit Red Oak discovery breadth
+
+The live search is still surfacing too little of the known public footprint.
+
+Using the existing discovery path, inspect what categories/classes of sources are being found versus missed.
+
+At minimum, Red Oak discovery should be capable of surfacing candidates from classes such as:
+
+* DataBank project/campus pages
+* DataBank financing/construction announcements
+* Texas state project/permit records
+* TDLR project filings
+* county/city records where project-specific
+* financing/construction reporting
+* data-center trade reporting
+* local news/community reporting
+* utility/grid/regulatory records where project-specific
+
+Known Red Oak examples already encountered in prior runs include:
+
+* DataBank Red Oak campus/project pages
+* DataBank construction/financing articles
+* TDLR Red Oak / DFW10 project filing
+* Dallas Innovates financing coverage
+* CoStar financing coverage
+* DataCenterMap DFW11
+* CRE Daily Red Oak reporting
+* FOX 4 Red Oak reporting
+* other third-party Red Oak/DFW9/DFW10/DFW11 reporting
+
+Do not hard-code these URLs into production discovery as a workaround. Use them as a benchmark for whether the current search formulation is broad enough.
+
+3. Diagnose search-query coverage
+
+Report the actual discovery query strategy and whether it adequately covers:
+
+* DataBank Red Oak
+* Red Oak Campus
+* DFW9
+* DFW10
+* DFW11
+* owner/operator aliases
+* Ellis County / Red Oak, Texas
+* financing / construction / power / grid / permitting terms
+
+If current discovery relies too heavily on one generic query, add bounded query diversification.
+
+Prefer a small deterministic query set over uncontrolled query expansion.
+
+Example classes:
+
+* exact project/operator query
+* facility/building query
+* official/government query
+* category-specific query
+
+Preserve one overall discovery budget.
+
+4. Improve candidate admission, not evidence eligibility
+
+Discovery/ranking may use deterministic signals such as:
+
+* exact project name
+* operator + location
+* DFW9/DFW10/DFW11
+* official government domain
+* project-specific title/URL
+
+These signals may improve which documents are opened first.
+
+They must not:
+
+* establish evidence eligibility
+* establish source authority by themselves
+* bypass passage validation
+
+5. Preserve blocked high-value sources
+
+Continue to record blocked DataBank/operator pages as blocked.
+
+Do not weaken SSRF/DNS rules to access them.
+
+The audit should clearly distinguish:
+
+* discovered high-value source
+* selected for opening
+* blocked by security
+* deferred due to budget
+* successfully opened
+
+6. Add deterministic coverage
+
+Add tests proving:
+
+* the usable Red Oak passage resolves identity if its text actually satisfies current identity rules
+* conflicting passages still fail closed
+* query diversification surfaces exact-project/facility/government candidates
+* exact-project candidates outrank generic homepages, feeds, and root pages
+* discovery breadth does not alter evidence eligibility
+
+7. Run one bounded live canary after offline validation
+
+After:
+
+* full offline suite passes
+* standalone regressions pass
+* typecheck passes
+* build passes
+
+run exactly one Red Oak canary with:
+
+* 1 bounded discovery phase
+* maximum 8 physical opens
+* structured analysis allowed only if exact-project identity is established from a usable retained passage
+* maximum 1 structured category call
+
+If identity succeeds and a usable passage reaches analysis, stop after that category result.
+
+Do not run a full Red Oak research job.
+
+Report
+
+Return:
+
+* why identity was unresolved before
+* identity repair made, if any
+* discovery queries used before vs after
+* number and classes of Red Oak candidates discovered
+* notable high-value sources discovered
+* which were opened, blocked, deferred, or unusable
+* whether DFW9/DFW10/DFW11 and official/state sources appeared
+* whether exact-project identity succeeded
+* whether one structured analysis call occurred
+* offline/standalone test totals
+* typecheck/build
+* remaining blocker
+
+Stop after this task. Do not broaden into budget redesign, DNS changes, or full multi-category research.

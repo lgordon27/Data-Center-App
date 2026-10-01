@@ -42,6 +42,8 @@ export type EvidenceRecord = Record<
      researchState?: string;
      eligibleForModel?: boolean;
      acceptedForModel?: boolean;
+      /** Accepted facility-wide quantities are not synthetic capacity-scaled assumptions. */
+      capacityBasis?: "facility-absolute";
      quarantineReasons?: string[];
      rawValue?: string | number;
      rawUnit?: string;
@@ -207,6 +209,32 @@ export type FinancialAttribution = {
   hasDirectModeledEffect: boolean;
 };
 
+export type GovernedModelOverrideProvenance = {
+  sourceEvidenceIds: string[];
+  formulaId: string;
+  formulaVersion: number;
+  mappingPolicyVersion: number;
+};
+
+export type GovernedReadinessDate = GovernedModelOverrideProvenance & {
+  kind: "cod" | "tenant-commencement";
+  date: string;
+};
+
+export type GovernedDirectCapex = GovernedModelOverrideProvenance & {
+  scope: "facility-total-direct-capex-excluding-contingency";
+  amountUSDMillions: number;
+};
+
+export type GovernedFinancialOverrides = {
+  modelStartDate?: {
+    date: string;
+    reference: string;
+  };
+  readinessDates?: GovernedReadinessDate[];
+  directCapex?: GovernedDirectCapex;
+};
+
 export type ModelAssumptions = {
   capacityMW: number;
   leaseRatePerKwMonth: number;
@@ -239,15 +267,24 @@ export type ModelAssumptions = {
   permittingMonths: number;
   communityDelayMonths: number;
   revenueDelayMonths: number;
+  modelStartDate: string | null;
+  modelStartDateReference: string | null;
+  codMonthsFromStart: number | null;
+  tenantCommencementMonthsFromStart: number | null;
   customerUtilizationMultiplier: number;
   coolingCapexContingencyRate: number;
   communityCapexContingencyRate: number;
+  syntheticCoolingCapexReference: number;
+  capexContingencyBasis: string;
   backupPowerContingencyTriggered: boolean;
   entryValue: number;
   coolingCapex: number;
   capexContingency: number;
   totalCapex: number;
+  documentedDirectCapex: number | null;
+  directCapexScope: GovernedDirectCapex["scope"] | null;
   debtAmount: number;
+  debtBasis: string;
   debtLtv: number;
   interestRate: number;
   amortizationYears: number;
@@ -259,7 +296,13 @@ export type ModelAssumptions = {
   initialInvestedEquity: number;
   sourcesAndUses: {
     sources: { debt: number; equity: number };
-    uses: { entryValue: number; coolingCapex: number; capexContingency: number; total: number };
+    uses: {
+      entryValue: number;
+      coolingCapex: number;
+      documentedDirectProjectCapex: number;
+      capexContingency: number;
+      total: number;
+    };
   };
   terminalFormula: string;
 };
@@ -322,6 +365,7 @@ export type CashFlowModel = {
 
 export const DEFAULT_CAPACITY_MW = 1_200;
 export const MAX_CAPACITY_MW = 10_000;
+export const GOVERNED_FINANCIAL_OVERRIDE_MAPPING_POLICY_VERSION = 2;
 /** IRR is displayed to one decimal place; this is the maximum closure error in percentage points. */
 export const WATERFALL_RECONCILIATION_TOLERANCE = 0.05;
 export const MODEL_LEASE_RATE_PER_KW_MONTH = 185;
@@ -670,11 +714,72 @@ function normalizeCapacityMW(value: unknown) {
     : DEFAULT_CAPACITY_MW;
 }
 
+function parseCalendarDate(value: string, label: string): number {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new Error(`${label} must be an ISO calendar date (YYYY-MM-DD).`);
+  }
+  const timestamp = Date.parse(`${value}T00:00:00.000Z`);
+  if (!Number.isFinite(timestamp) || new Date(timestamp).toISOString().slice(0, 10) !== value) {
+    throw new Error(`${label} is not a valid calendar date.`);
+  }
+  return timestamp;
+}
+
+function validateGovernedOverrides(overrides: GovernedFinancialOverrides) {
+  const dates = overrides.readinessDates ?? [];
+  if (dates.length > 0) {
+    if (!overrides.modelStartDate?.reference.trim()) {
+      throw new Error("Absolute COD or tenant dates require an explicit model start-date reference.");
+    }
+    parseCalendarDate(overrides.modelStartDate.date, "Model start date");
+  }
+  for (const item of dates) {
+    const expectedFormula = item.kind === "cod"
+      ? "cod-date-to-readiness-months-v1"
+      : "tenant-date-to-readiness-months-v1";
+    if (
+      item.formulaId !== expectedFormula ||
+      item.formulaVersion !== 1 ||
+      item.mappingPolicyVersion !== GOVERNED_FINANCIAL_OVERRIDE_MAPPING_POLICY_VERSION ||
+      item.sourceEvidenceIds.length === 0 ||
+      item.sourceEvidenceIds.some((id) => !id.trim())
+    ) {
+      throw new Error(`Governed ${item.kind} override has incomplete formula or evidence provenance.`);
+    }
+    parseCalendarDate(item.date, `${item.kind} date`);
+  }
+  const capex = overrides.directCapex;
+  if (capex) {
+    if (
+      capex.scope !== "facility-total-direct-capex-excluding-contingency" ||
+      capex.formulaId !== "absolute-facility-direct-capex-v1" ||
+      capex.formulaVersion !== 1 ||
+      capex.mappingPolicyVersion !== GOVERNED_FINANCIAL_OVERRIDE_MAPPING_POLICY_VERSION ||
+      !Number.isFinite(capex.amountUSDMillions) ||
+      capex.amountUSDMillions <= 0 ||
+      capex.amountUSDMillions > 100_000 ||
+      capex.sourceEvidenceIds.length === 0 ||
+      capex.sourceEvidenceIds.some((id) => !id.trim())
+    ) {
+      throw new Error("Governed direct CAPEX override has unsupported scope, value, formula, or evidence provenance.");
+    }
+  }
+}
+
+function readinessMonthsFromStart(date: string, startDate: string) {
+  const start = parseCalendarDate(startDate, "Model start date");
+  const ready = parseCalendarDate(date, "Readiness date");
+  const elapsedDays = Math.max(0, (ready - start) / (24 * 60 * 60 * 1_000));
+  return Math.ceil(elapsedDays / (365.25 / 12));
+}
+
 function runModel(
   evidence: EvidenceRecord,
   capacityMW: number,
   sensitivity: { powerPriceMultiplier?: number; utilizationMultiplier?: number } = {},
+  governedOverrides: GovernedFinancialOverrides = {},
 ): CashFlowModel {
+  validateGovernedOverrides(governedOverrides);
   const capacityScale = capacityMW / DEFAULT_CAPACITY_MW;
   const electricityItem = evidence.electricity_cost;
   const waterConsumptionItem = evidence.water_consumption;
@@ -715,7 +820,7 @@ function runModel(
   const annualCoolingWaterMgal =
     finiteNumericValue(waterConsumptionItem.numericValue, 23) *
     waterQuality.waterConsumptionMultiplier *
-    capacityScale;
+    (waterConsumptionItem.capacityBasis === "facility-absolute" ? 1 : capacityScale);
   const waterEscalationRate =
     finiteNumericValue(waterEscalationItem.numericValue, 7) / 100 +
     waterEscalationQuality.waterEscalationAdder;
@@ -737,15 +842,44 @@ function runModel(
   const permittingMonths =
     finiteNumericValue(permittingItem.numericValue, 10) + permittingQuality.timelineAdder;
   const communityDelayMonths = 0;
+  const modelStartDate = governedOverrides.modelStartDate?.date ?? null;
+  const codMonthsFromStart = modelStartDate
+    ? Math.max(
+        0,
+        ...(governedOverrides.readinessDates ?? [])
+          .filter((item) => item.kind === "cod")
+          .map((item) => readinessMonthsFromStart(item.date, modelStartDate)),
+      )
+    : null;
+  const tenantCommencementMonthsFromStart = modelStartDate
+    ? Math.max(
+        0,
+        ...(governedOverrides.readinessDates ?? [])
+          .filter((item) => item.kind === "tenant-commencement")
+          .map((item) => readinessMonthsFromStart(item.date, modelStartDate)),
+      )
+    : null;
   // Interconnection and permitting are parallel Financial Drivers; the later
-  // timeline controls the start date. Community risk remains context only.
-  const revenueDelayMonths = Math.round(
+  // timeline controls the start date. Absolute COD/tenant dates add further
+  // readiness constraints, not additive delays. Community risk remains context only.
+  const modeledTimelineMonths = Math.round(
     Math.max(gridInterconnectionMonths, permittingMonths) + communityDelayMonths,
+  );
+  const revenueDelayMonths = Math.max(
+    modeledTimelineMonths,
+    codMonthsFromStart ?? 0,
+    tenantCommencementMonthsFromStart ?? 0,
   );
   // Customer concentration is a Decision Gate. Preserve the calibrated base
   // utilization assumption without deriving it from gate provenance or value.
   const customerUtilizationMultiplier = 0.9;
-  const coolingCapex = finiteNumericValue(coolingItem.numericValue, 450) * capacityScale;
+  const documentedDirectProjectCapex = governedOverrides.directCapex?.amountUSDMillions ?? null;
+  const syntheticCoolingCapexReference =
+    finiteNumericValue(coolingItem.numericValue, 450) *
+    (coolingItem.capacityBasis === "facility-absolute" ? 1 : capacityScale);
+  const coolingCapex = documentedDirectProjectCapex === null
+    ? syntheticCoolingCapexReference
+    : 0;
   const communityCapexContingency = 0;
   const coolingCapexContingency = coolingQuality.coolingContingency;
   const hazardExposureLevel = isHazardExposureLevel(hazardItem.qualitativeValue)
@@ -790,13 +924,15 @@ function runModel(
     coolingCapex * (communityCapexContingency + coolingCapexContingency) +
     climateCapexContingency;
   const entryValue = ENTRY_VALUE * capacityScale;
-  const totalCapex = entryValue + coolingCapex + capexContingency;
+  const totalDirectCapex = documentedDirectProjectCapex ?? entryValue + coolingCapex;
+  const totalCapex = totalDirectCapex + capexContingency;
+  // Debt terms remain the synthetic underwriting assumption, regardless of a
+  // documented aggregate CAPEX input.
   const debtAmount = entryValue * DEBT_LTV;
   const annualPrincipalPayment = debtAmount / AMORTIZATION_YEARS;
   const annualCarbonCompliance =
     finiteNumericValue(carbonItem.numericValue, 20) * carbonQuality.carbonMultiplier;
   const waterRightsCostMultiplier = 1.5;
-  const totalDirectCapex = entryValue + coolingCapex;
   const annualRevenueAtFullUtilization =
     capacityMW * 1_000 * LEASE_RATE_PER_KW_MONTH * 12 / 1_000_000;
 
@@ -1008,15 +1144,25 @@ function runModel(
     permittingMonths,
     communityDelayMonths,
     revenueDelayMonths,
+    modelStartDate,
+    modelStartDateReference: governedOverrides.modelStartDate?.reference ?? null,
+    codMonthsFromStart,
+    tenantCommencementMonthsFromStart,
     customerUtilizationMultiplier,
     coolingCapexContingencyRate: coolingCapexContingency,
     communityCapexContingencyRate: communityCapexContingency,
+    syntheticCoolingCapexReference,
+    capexContingencyBasis:
+      "Documented direct CAPEX excludes contingency and replaces synthetic cooling CAPEX; climate contingency remains synthetic.",
     backupPowerContingencyTriggered,
     entryValue,
     coolingCapex,
     capexContingency,
     totalCapex,
+    documentedDirectCapex: documentedDirectProjectCapex,
+    directCapexScope: governedOverrides.directCapex?.scope ?? null,
     debtAmount,
+    debtBasis: "Synthetic entry value multiplied by synthetic debt LTV; documented CAPEX does not rebase debt.",
     debtLtv: DEBT_LTV,
     interestRate: INTEREST_RATE,
     amortizationYears: AMORTIZATION_YEARS,
@@ -1028,7 +1174,13 @@ function runModel(
     initialInvestedEquity,
     sourcesAndUses: {
       sources: { debt: debtAmount, equity: initialInvestedEquity },
-      uses: { entryValue, coolingCapex, capexContingency, total: totalCapex },
+      uses: {
+        entryValue: documentedDirectProjectCapex === null ? entryValue : 0,
+        coolingCapex: documentedDirectProjectCapex === null ? coolingCapex : 0,
+        documentedDirectProjectCapex: documentedDirectProjectCapex ?? 0,
+        capexContingency,
+        total: totalCapex,
+      },
     },
     terminalFormula: "Terminal value = max(0, Year 5 NOI × synthetic exit multiple); terminal debt repayment = Year 5 ending debt.",
   };
@@ -1044,7 +1196,14 @@ function runModel(
     water_escalation: createLineItem("water_escalation", "Water OPEX growth", adjustedWaterEscalationRate * 100, "%"),
     community_risk: createLineItem("community_risk", "Community diligence context", communityDelayMonths, "context"),
     renewable_percentage: createLineItem("renewable_percentage", "Renewable procurement context", effectiveRenewableProcurement, "%"),
-    cooling_capex: createLineItem("cooling_capex", "Direct CAPEX", coolingCapex + capexContingency, "$M"),
+    cooling_capex: createLineItem(
+      "cooling_capex",
+      documentedDirectProjectCapex === null
+        ? "Direct CAPEX"
+        : "Synthetic cooling component replaced by documented total CAPEX",
+      documentedDirectProjectCapex === null ? coolingCapex + capexContingency : 0,
+      "$M",
+    ),
     electricity_escalation: createLineItem("electricity_escalation", "Power OPEX escalation", electricityEscalationRate * 100, "%"),
     carbon_compliance: createLineItem("carbon_compliance", "Carbon compliance OPEX", annualCarbonCompliance, "$M / yr"),
     permitting_timeline: createLineItem("permitting_timeline", "Revenue delay", permittingMonths, "months"),
@@ -1095,15 +1254,24 @@ function runModel(
   };
 }
 
-export function calculateCashFlowModel(evidence: EvidenceRecord, requestedCapacityMW = DEFAULT_CAPACITY_MW) {
+export function calculateCashFlowModel(
+  evidence: EvidenceRecord,
+  requestedCapacityMW = DEFAULT_CAPACITY_MW,
+  governedOverrides: GovernedFinancialOverrides = {},
+) {
   const capacityMW = normalizeCapacityMW(requestedCapacityMW);
   const safeEvidence = containEvidenceForModel(evidence).evidence;
-  const current = runModel(safeEvidence, capacityMW);
-  const verifiedBaseline = runModel(buildVerifiedEvidence(safeEvidence), capacityMW);
+  const current = runModel(safeEvidence, capacityMW, {}, governedOverrides);
+  const verifiedBaseline = runModel(buildVerifiedEvidence(safeEvidence), capacityMW, {}, governedOverrides);
   const sensitivityGrid = [0.8, 1, 1.2];
   current.returnSensitivity = sensitivityGrid.flatMap((powerPriceMultiplier) =>
     sensitivityGrid.map((utilizationMultiplier) => {
-      const scenario = runModel(safeEvidence, capacityMW, { powerPriceMultiplier, utilizationMultiplier });
+      const scenario = runModel(
+        safeEvidence,
+        capacityMW,
+        { powerPriceMultiplier, utilizationMultiplier },
+        governedOverrides,
+      );
       return {
         powerPriceMultiplier,
         utilizationMultiplier,
@@ -1127,7 +1295,7 @@ export function calculateCashFlowModel(evidence: EvidenceRecord, requestedCapaci
           classification: "Verified Evidence" as Classification,
           modelClassification: undefined,
         },
-      }, capacityMW);
+      }, capacityMW, {}, governedOverrides);
       const rawDeltaIRR =
         current.projectIRR === null || repairedModel.projectIRR === null
           ? 0
@@ -1163,7 +1331,7 @@ export function calculateCashFlowModel(evidence: EvidenceRecord, requestedCapaci
           classification: "Verified Evidence" as Classification,
           modelClassification: undefined,
         },
-      }, capacityMW);
+      }, capacityMW, {}, governedOverrides);
       const directEffect = impactRole === "Financial Driver";
       const marginalAnnualDeltas = directEffect
         ? current.schedule.map((year, index) => year.netEquityCashFlow - (repairedModel.schedule[index]?.netEquityCashFlow ?? 0))
@@ -1217,7 +1385,7 @@ export function calculateCashFlowModel(evidence: EvidenceRecord, requestedCapaci
       ...beforeEvidence,
        [id]: safeEvidence[id],
     };
-    const afterModel = runModel(afterEvidence, capacityMW);
+    const afterModel = runModel(afterEvidence, capacityMW, {}, governedOverrides);
     const rawDeltaIRR =
       beforeModel.projectIRR === null || afterModel.projectIRR === null
         ? 0

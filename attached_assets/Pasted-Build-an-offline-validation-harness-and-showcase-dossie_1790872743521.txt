@@ -1,0 +1,190 @@
+Build an offline validation harness and showcase-dossier framework for the SafeLoc proof-of-system.
+
+This task must not make live/paid provider calls, alter research acquisition logic, change proof-contract schemas, or deploy.
+
+## Objective
+
+Create the infrastructure needed to answer two questions quickly after integration:
+
+1. Did a live SafeLoc run state anything materially false or unsupported?
+2. Can public visitors view a small set of human-reviewed, dated showcase dossiers without triggering a paid live research run?
+
+The harness must help validate generic behavior rather than hard-code the app to the example projects.
+
+## 1. Validation project matrix
+
+Create fixture-backed validation cases for at least:
+
+- DataBank Red Oak / DFW10
+- Stargate Abilene
+- one non-Texas hyperscale project
+- one smaller colocation facility
+- one sparse-evidence / unresolved project
+
+Do not fabricate unknown facts.
+
+Only encode facts that are already available from retained project fixtures, existing project knowledge in the codebase, or manually supplied fixture data already present in the repository.
+
+If a needed ground-truth fact is not safely available offline, mark it:
+`unknown / not asserted`
+
+## 2. Ground-truth assertion model
+
+For each project, allow assertions such as:
+
+- identity must match / must not match;
+- operator/developer where known;
+- project scope;
+- known official capacity values;
+- known construction dates;
+- known capex figures;
+- known project phase;
+- known source that should be retained when present;
+- facts SafeLoc must NOT assert;
+- categories expected to remain unresolved;
+- known scope traps, e.g. campus vs building;
+- known estimate-vs-actual distinctions.
+
+Each assertion should support:
+- expected value/state;
+- scope;
+- as-of date;
+- source/fixture provenance;
+- tolerance if numeric;
+- severity if violated.
+
+Do not create an overall opaque score.
+
+## 3. Validation checks
+
+Create deterministic checks that can evaluate a future dossier/run for:
+
+### Identity
+- correct project;
+- correct operator/developer where asserted;
+- no unrelated facility substitution.
+
+### Scope
+- campus/phase/building values not silently conflated.
+
+### Evidence support
+- claims must reference retained evidence;
+- source/passages exist;
+- no unsupported factual claim promoted.
+
+### Search-state honesty
+- incomplete search cannot become searched-not-found;
+- blocked sources remain blocked;
+- failed categories remain incomplete.
+
+### Numeric correctness
+- units match;
+- estimate vs actual preserved;
+- numeric tolerances respected.
+
+### Financial-transmission safety
+- no model-active proposal without eligible evidence;
+- no unsupported derived magnitude;
+- no scope-mismatched transmission;
+- illustrative values remain labeled illustrative.
+
+### Unknown handling
+- sparse evidence remains unresolved rather than inferred.
+
+## 4. Failure severity
+
+Classify validation failures simply:
+
+- BLOCKER — materially false/unsupported claim, identity error, unsafe model transmission
+- MAJOR — misleading scope/state/provenance
+- MINOR — presentation/metadata issue
+
+Do not compute a meaningless aggregate quality score.
+
+## 5. Human review checklist
+
+Generate a concise per-project review output that a human can inspect after a live run.
+
+For each project show:
+- critical assertions passed/failed;
+- unexpected claims;
+- unsupported numbers;
+- search-incomplete dimensions;
+- financial proposals created;
+- blockers first.
+
+The purpose is to make five-project validation fast after integration.
+
+## 6. Showcase dossier framework
+
+Create a way to store and serve pre-researched, human-reviewed showcase dossiers separately from live research runs.
+
+Requirements:
+- clearly mark showcase dossiers as cached/reviewed;
+- preserve research/as-of date;
+- preserve source/provenance metadata;
+- do not present fixture data as live research;
+- no automatic refresh;
+- no provider call when opening a showcase dossier;
+- support later replacement with a reviewed live dossier.
+
+Do not populate public showcase content from invented fixtures.
+
+If existing reviewed dossier data is available, wire the framework around it. Otherwise create the structure and test fixtures only.
+
+## 7. Showcase routing / metadata
+
+Expose an integration interface for the UI task to support:
+- showcase project slug;
+- display name;
+- as-of date;
+- reviewed status;
+- canonical project ID;
+- dossier payload/reference;
+- “cached example” label.
+
+Do not redesign the homepage.
+
+## 8. Regression fixtures
+
+Ensure fixtures cover:
+- complete evidence;
+- partial research;
+- conflicting evidence;
+- scope mismatch;
+- estimate vs actual;
+- blocked source;
+- likely non-public field;
+- unresolved category;
+- accepted financial proposal;
+- rejected/unsupported proposal.
+
+## Tests
+
+Offline only.
+
+Test:
+- validation detects a wrong project identity;
+- validation detects campus/building scope mixing;
+- validation catches unsupported numeric claims;
+- validation catches incomplete-search→missing-evidence misclassification;
+- validation catches unsafe financial transmission;
+- sparse evidence passes when the app honestly returns Unknown;
+- showcase dossier loads without any provider invocation;
+- fixture/showcase content cannot be mistaken for a live run in metadata.
+
+Run typecheck and relevant/full test suites.
+
+## Deliverable
+
+Report:
+- files changed;
+- project fixtures created;
+- validation rules implemented;
+- test results;
+- showcase dossier interface;
+- any facts intentionally left unknown;
+- exact command/test entry point to run the five-project validation after live integration;
+- file overlap with Tasks #329/#330/#331.
+
+Do not make provider calls, modify research acquisition, deploy, push, or hard-code production answers for these example projects.

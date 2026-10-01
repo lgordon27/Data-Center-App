@@ -1,5 +1,6 @@
 import type { EiaElectricityData } from "@/services/eiaService";
 import {
+  type GovernedFinancialOverrides,
   calculateCashFlowModel,
   type CashFlowModel,
   type Classification,
@@ -9,13 +10,14 @@ import {
   applyAcceptedProofInputsToFinancialEvidence,
   FINANCIAL_TRANSMISSION_POLICY_VERSION,
   type AppliedFinancialProofInput,
+  type VerifiedFinancialDecisionContext,
 } from "@/model/financialTransmission";
 import type {
   ProofLedgerProjection,
   ProjectIdentity,
 } from "@/model/safelocProofContract";
 
-export const FINANCIAL_MODEL_CONTRACT_VERSION = 2;
+export const FINANCIAL_MODEL_CONTRACT_VERSION = 4;
 
 export type FinancialScenarioId =
   | "synthetic-verified"
@@ -58,6 +60,7 @@ export type FinancialScenarioSnapshot = {
   transmission: {
     mappingPolicyVersion: number;
     acceptedInputs: AppliedFinancialProofInput[];
+    ignoredInputReasons: Record<string, string>;
   };
   assumptions: CashFlowModel["assumptions"];
   returns: {
@@ -90,6 +93,12 @@ export type FinancialScenarioMatrix = {
   modelContractVersion: number;
   primaryScenarioId: "synthetic-current";
   providerState: FinancialProviderState;
+  transmission: {
+    mappingPolicyVersion: number;
+    appliedInputIds: string[];
+    acceptedInputs: AppliedFinancialProofInput[];
+    ignoredInputReasons: Record<string, string>;
+  };
   scenarios: Record<FinancialScenarioId, FinancialScenarioSnapshot | null>;
 };
 
@@ -140,6 +149,7 @@ function snapshot({
   providerState,
   eiaData,
   acceptedInputs,
+  ignoredInputReasons,
 }: {
   scenarioId: FinancialScenarioId;
   evidenceBasis: FinancialEvidenceBasis;
@@ -149,6 +159,7 @@ function snapshot({
   providerState: FinancialProviderState;
   eiaData: EiaElectricityData;
   acceptedInputs: AppliedFinancialProofInput[];
+  ignoredInputReasons: Record<string, string>;
 }): FinancialScenarioSnapshot {
   const standalone = standaloneModel(model);
   const rawElectricityRate = Number(evidence.electricity_cost.numericValue ?? 42);
@@ -198,6 +209,7 @@ function snapshot({
     transmission: {
       mappingPolicyVersion: FINANCIAL_TRANSMISSION_POLICY_VERSION,
       acceptedInputs,
+      ignoredInputReasons,
     },
     assumptions: standalone.assumptions,
     returns: {
@@ -235,6 +247,8 @@ export function buildFinancialScenarioMatrix({
   capacityMW,
   acceptedProofProjection,
   proofProject,
+  modelStartDate,
+  verifiedFinancialDecisions,
 }: {
   syntheticEvidence: EvidenceRecord;
   providerEvidence: EvidenceRecord | null;
@@ -243,6 +257,8 @@ export function buildFinancialScenarioMatrix({
   capacityMW: number | null;
   acceptedProofProjection?: ProofLedgerProjection;
   proofProject?: ProjectIdentity;
+  modelStartDate?: GovernedFinancialOverrides["modelStartDate"];
+  verifiedFinancialDecisions?: readonly VerifiedFinancialDecisionContext[];
 }): FinancialScenarioMatrix {
   if (Boolean(acceptedProofProjection) !== Boolean(proofProject)) {
     throw new Error("Accepted proof transmission requires both a ledger projection and project identity.");
@@ -252,6 +268,8 @@ export function buildFinancialScenarioMatrix({
         evidence: syntheticEvidence,
         project: proofProject,
         projection: acceptedProofProjection,
+         modelStartDate,
+         verifiedDecisions: verifiedFinancialDecisions,
       })
     : null;
   const effectiveCapacityMW = proofTransmission?.acceptedCapacityMW ?? capacityMW;
@@ -260,6 +278,12 @@ export function buildFinancialScenarioMatrix({
       modelContractVersion: FINANCIAL_MODEL_CONTRACT_VERSION,
       primaryScenarioId: "synthetic-current",
       providerState,
+      transmission: {
+        mappingPolicyVersion: FINANCIAL_TRANSMISSION_POLICY_VERSION,
+        appliedInputIds: proofTransmission?.appliedInputIds ?? [],
+        acceptedInputs: proofTransmission?.appliedInputs ?? [],
+        ignoredInputReasons: proofTransmission?.ignoredInputReasons ?? {},
+      },
       scenarios: {
         "synthetic-verified": null,
         "synthetic-current": null,
@@ -271,7 +295,11 @@ export function buildFinancialScenarioMatrix({
 
   const effectiveSyntheticEvidence = proofTransmission?.evidence ?? syntheticEvidence;
   const acceptedSyntheticInputs = proofTransmission?.appliedInputs ?? [];
-  const synthetic = calculateCashFlowModel(effectiveSyntheticEvidence, effectiveCapacityMW);
+  const synthetic = calculateCashFlowModel(
+    effectiveSyntheticEvidence,
+    effectiveCapacityMW,
+    proofTransmission?.modelOverrides,
+  );
   const syntheticVerifiedModel = synthetic.baseModel ?? synthetic;
   const syntheticVerified = snapshot({
     scenarioId: "synthetic-verified",
@@ -282,6 +310,7 @@ export function buildFinancialScenarioMatrix({
     providerState,
     eiaData,
     acceptedInputs: acceptedSyntheticInputs,
+    ignoredInputReasons: proofTransmission?.ignoredInputReasons ?? {},
   });
   const syntheticCurrent = snapshot({
     scenarioId: "synthetic-current",
@@ -292,6 +321,7 @@ export function buildFinancialScenarioMatrix({
     providerState,
     eiaData,
     acceptedInputs: acceptedSyntheticInputs,
+    ignoredInputReasons: proofTransmission?.ignoredInputReasons ?? {},
   });
 
   let eiaVerified: FinancialScenarioSnapshot | null = null;
@@ -299,12 +329,18 @@ export function buildFinancialScenarioMatrix({
   if (providerEvidence && (providerState === "live" || providerState === "cached")) {
     let effectiveProviderEvidence = providerEvidence;
     let acceptedProviderInputs: AppliedFinancialProofInput[] = [];
+    let providerModelOverrides: GovernedFinancialOverrides = {};
+    let providerIgnoredInputReasons: Record<string, string> = {};
     if (acceptedProofProjection && proofProject) {
       const proofOverlay = applyAcceptedProofInputsToFinancialEvidence({
         evidence: providerEvidence,
         project: proofProject,
         projection: acceptedProofProjection,
+         modelStartDate,
+         verifiedDecisions: verifiedFinancialDecisions,
       });
+      providerModelOverrides = proofOverlay.modelOverrides;
+      providerIgnoredInputReasons = proofOverlay.ignoredInputReasons;
       acceptedProviderInputs = proofOverlay.appliedInputs.filter(
         (input) => input.inputId !== "electricity_cost" && input.inputId !== "electricity_escalation",
       );
@@ -316,7 +352,11 @@ export function buildFinancialScenarioMatrix({
         electricity_escalation: providerEvidence.electricity_escalation,
       };
     }
-    const provider = calculateCashFlowModel(effectiveProviderEvidence, effectiveCapacityMW);
+    const provider = calculateCashFlowModel(
+      effectiveProviderEvidence,
+      effectiveCapacityMW,
+      providerModelOverrides,
+    );
     eiaVerified = snapshot({
       scenarioId: "eia-verified",
       evidenceBasis: "verified",
@@ -326,6 +366,7 @@ export function buildFinancialScenarioMatrix({
       providerState,
       eiaData,
       acceptedInputs: acceptedProviderInputs,
+      ignoredInputReasons: providerIgnoredInputReasons,
     });
     eiaCurrent = snapshot({
       scenarioId: "eia-current",
@@ -336,6 +377,7 @@ export function buildFinancialScenarioMatrix({
       providerState,
       eiaData,
       acceptedInputs: acceptedProviderInputs,
+      ignoredInputReasons: providerIgnoredInputReasons,
     });
   }
 
@@ -343,6 +385,12 @@ export function buildFinancialScenarioMatrix({
     modelContractVersion: FINANCIAL_MODEL_CONTRACT_VERSION,
     primaryScenarioId: "synthetic-current",
     providerState,
+    transmission: {
+      mappingPolicyVersion: FINANCIAL_TRANSMISSION_POLICY_VERSION,
+      appliedInputIds: proofTransmission?.appliedInputIds ?? [],
+      acceptedInputs: proofTransmission?.appliedInputs ?? [],
+      ignoredInputReasons: proofTransmission?.ignoredInputReasons ?? {},
+    },
     scenarios: {
       "synthetic-verified": syntheticVerified,
       "synthetic-current": syntheticCurrent,

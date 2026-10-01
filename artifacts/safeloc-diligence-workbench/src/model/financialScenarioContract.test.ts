@@ -16,6 +16,7 @@ import {
   type FinancialProviderState,
   type FinancialScenarioSnapshot,
 } from "./financialScenarioContract";
+import { FINANCIAL_TRANSMISSION_POLICY_VERSION } from "./financialTransmission";
 
 const IRR_TOLERANCE = 1e-9;
 const PROVIDER_RATE = 65.8;
@@ -75,7 +76,7 @@ function assertCompleteSnapshot(snapshot: FinancialScenarioSnapshot) {
   assert.ok(snapshot.schedule.length > 0);
   assert.deepEqual(snapshot.schedule, snapshot.model.schedule);
   assert.deepEqual(snapshot.assumptions, snapshot.model.assumptions);
-  assert.equal(snapshot.transmission.mappingPolicyVersion, 1);
+  assert.equal(snapshot.transmission.mappingPolicyVersion, FINANCIAL_TRANSMISSION_POLICY_VERSION);
   assert.ok(Array.isArray(snapshot.transmission.acceptedInputs));
   assert.deepEqual(snapshot.recommendation, {
     status: snapshot.model.recommendationStatus,

@@ -1,0 +1,171 @@
+Implement launch-facing UX and capacity hardening for the SafeLoc public proof-of-system.
+
+This task must not change live research acquisition logic, project identity rules, eligibility rules, Expected Evidence logic, financial-transmission mappings, or the proof-contract schemas owned by the other active tasks.
+
+Do not deploy, push, or make live/paid provider calls.
+
+## Objective
+
+Make the public app resilient and understandable when:
+- research is running;
+- research is partial;
+- a provider is rate-limited;
+- a source is blocked;
+- a category did not run;
+- results are sparse;
+- the financial model remains partly illustrative;
+- multiple users arrive at once.
+
+The goal is that a LinkedIn visitor can use the app without me explaining what happened.
+
+## 1. Research-state UX
+
+Add/normalize user-facing states for:
+
+- Researching
+- Partial results available
+- Search incomplete
+- Source blocked
+- Provider busy / rate-limited
+- No qualifying evidence located
+- Evidence likely non-public
+- Research failed safely
+
+Do not expose raw provider errors, stack traces, JSON blobs, model names, token counts, or internal exception text to public users.
+
+Detailed diagnostics can remain available in owner/admin audit views.
+
+## 2. Partial-result behavior
+
+If useful evidence was already retained before a later failure:
+- render the retained evidence;
+- clearly mark research as incomplete;
+- do not replace the page with a generic failure screen.
+
+Sparse or incomplete results must look intentional and honest rather than broken.
+
+## 3. Sourced vs derived vs illustrative financial labels
+
+Where the current financial UI shows model inputs or outputs, make provenance visible.
+
+Support at minimum:
+
+- Sourced
+- Derived from sourced evidence
+- Illustrative assumption
+- Unresolved
+
+Do not imply that the entire IRR/return model is project-evidenced when synthetic assumptions remain.
+
+If the current data model exposes enough information safely, show a compact summary such as:
+“3 of 8 material inputs are sourced or accepted from evidence.”
+
+Do not invent a quality score or percentage if material-input coverage cannot be determined reliably.
+
+## 4. Public vocabulary simplification
+
+The internal proof contracts may contain detailed reason codes.
+
+Public-facing UI should use a small, consistent vocabulary.
+
+Avoid exposing:
+- raw P0/P1/etc. codes without explanation;
+- duplicate/conflicting labels for source quality, resolution and confidence;
+- internal implementation terms.
+
+Prefer simple language such as:
+- Confirmed
+- Unresolved
+- Search incomplete
+- Conflicting evidence
+- Likely non-public
+- Illustrative financial impact
+
+Technical detail can be expandable.
+
+## 5. Busy / capacity state
+
+Implement a public-safe capacity state using the app's existing rate-limit/spend infrastructure where possible.
+
+Requirements:
+- if the system cannot safely start another live research run, show a clear “research capacity currently busy” state;
+- do not silently start a request that is expected to fail;
+- preserve existing daily spend caps and per-client limits;
+- no changes that increase provider spend;
+- do not introduce polling faster than current safe limits.
+
+Do not invent a queue unless the current architecture already supports one safely. A clear busy/retry-later state is acceptable.
+
+## 6. Example / showcase entry point support
+
+Prepare the UI so pre-researched showcase projects can be exposed prominently later without requiring live provider calls.
+
+Examples:
+- “View Red Oak example”
+- “View Stargate example”
+- “Analyze Any Project — Beta”
+
+Do not populate fake live results or hard-code unsupported facts.
+
+This task only needs the UX hooks/components and routing support required for cached showcase dossiers.
+
+## 7. Mobile and first-use review
+
+Review the primary public flow on mobile-sized layouts.
+
+Prioritize:
+- project input;
+- progress state;
+- evidence summary;
+- source links;
+- missing/unresolved evidence;
+- financial-impact section;
+- analyst decision controls where applicable.
+
+Fix obvious overflow, unreadable tables, clipped buttons, sticky elements covering content, or excessively dense copy.
+
+Do not redesign the entire app.
+
+## 8. Error boundaries
+
+Ensure public research/results views fail gracefully when:
+- one category is missing;
+- evidence arrays are empty;
+- new proof-contract fields are absent on older runs;
+- a source has no date;
+- a model proposal is unresolved;
+- historical records do not yet exist.
+
+Backward compatibility with existing dossiers/runs is required.
+
+## Tests
+
+Use mocks/fixtures only.
+
+Test at minimum:
+- successful result;
+- partial result;
+- rate-limit/busy state;
+- blocked source;
+- sparse evidence;
+- unresolved financial transmission;
+- mixed sourced/illustrative inputs;
+- older dossier missing new contract fields;
+- mobile viewport smoke test where existing tooling supports it.
+
+Run:
+- typecheck;
+- relevant UI tests;
+- full workbench suite if practical.
+
+## Deliverable
+
+Report:
+- files changed;
+- UX states added;
+- tests/results;
+- any shared-file overlap with Tasks #329/#330/#331;
+- anything that should wait for #331 integration;
+- screenshots/component captures if available.
+
+Do not modify live acquisition/retrieval, proof-contract schemas, Expected Evidence rules, transmission policy, or deploy.

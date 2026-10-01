@@ -20,3 +20,9 @@ For a related-facility bridge, a location match is not a project anchor: retaine
 **Why:** Partial matching treated a facility's city name as a campus reference, while reporting a direct link as corroborated across passages overstated the basis for identity.
 
 **How to apply:** Require the full non-operator project name or alias in the retained project passage; corroborate only submitted facility IDs with agreeing operator and requested-location evidence, and report direct linkage separately.
+
+Ledger eligibility and a recognized state label do not establish claim-specific support. Assessment and financial consumers must independently verify the retained passage's stage, quantity, measure, and aggregate-versus-component coverage.
+
+**Why:** A structurally valid observation can describe an announcement without proving operation, or contain a cost figure without proving total project CAPEX. Trusting eligibility metadata alone lets valid records acquire unsupported meaning downstream.
+
+**How to apply:** Preserve the frozen ledger contract, but qualify each consumer's interpretation independently. Treat contradictory, ambiguous, future-effective, or unsupported interpretations as unresolved rather than promoting them.

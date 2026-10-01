@@ -1,12 +1,20 @@
 {
   "fixtureStatus": "illustrative",
-  "policyVersion": 1,
+  "policyVersion": 2,
   "cases": [
     {
       "name": "Red Oak",
       "projectReference": "red-oak",
       "projectName": "Red Oak Data Center",
       "scope": { "kind": "facility", "key": "building-1" },
+      "profile": {
+        "profileVersion": 1,
+        "stage": { "status": "known", "value": "construction", "provenance": { "kind": "illustrative", "sourceIds": [], "rationale": "Illustrative stage input for evaluator coverage only.", "asOfDate": "2026-03-01", "scope": { "kind": "facility", "key": "building-1" } } },
+        "scale": { "status": "known", "value": { "category": "hyperscale", "itLoadMW": 500 }, "provenance": { "kind": "illustrative", "sourceIds": [], "rationale": "Illustrative scale input; not a project fact.", "asOfDate": "2026-03-01", "scope": { "kind": "facility", "key": "building-1" } } },
+        "projectType": { "status": "known", "value": "ai-compute-campus", "provenance": { "kind": "illustrative", "sourceIds": [], "rationale": "Illustrative project-type input; not a project fact.", "asOfDate": "2026-03-01", "scope": { "kind": "facility", "key": "building-1" } } },
+        "jurisdiction": { "status": "known", "value": { "countryCode": "US", "subdivisionCode": "TX", "locality": "Abilene" }, "provenance": { "kind": "illustrative", "sourceIds": [], "rationale": "Illustrative jurisdiction for source-guidance coverage only.", "asOfDate": "2026-03-01", "scope": { "kind": "facility", "key": "building-1" } } },
+        "coolingDesign": { "status": "known", "value": { "technology": "hybrid", "waterUse": "process-water" }, "provenance": { "kind": "illustrative", "sourceIds": [], "rationale": "Illustrative cooling input; not a project fact.", "asOfDate": "2026-03-01", "scope": { "kind": "facility", "key": "building-1" } } }
+      },
       "supportedDimensions": [
         "project-identity",
         "power-grid-interconnection",
@@ -29,6 +37,14 @@
       "projectReference": "stargate-abilene",
       "projectName": "Stargate Abilene",
       "scope": { "kind": "phase", "key": "phase-1" },
+      "profile": {
+        "profileVersion": 1,
+        "stage": { "status": "known", "value": "commissioning", "provenance": { "kind": "illustrative", "sourceIds": [], "rationale": "Illustrative stage input for evaluator coverage only.", "asOfDate": "2026-03-01", "scope": { "kind": "phase", "key": "phase-1" } } },
+        "scale": { "status": "known", "value": { "category": "hyperscale", "itLoadMW": null }, "provenance": { "kind": "illustrative", "sourceIds": [], "rationale": "Illustrative scale input; not a project fact.", "asOfDate": "2026-03-01", "scope": { "kind": "phase", "key": "phase-1" } } },
+        "projectType": { "status": "known", "value": "hyperscale-cloud", "provenance": { "kind": "illustrative", "sourceIds": [], "rationale": "Illustrative project-type input; not a project fact.", "asOfDate": "2026-03-01", "scope": { "kind": "phase", "key": "phase-1" } } },
+        "jurisdiction": { "status": "known", "value": { "countryCode": "US", "subdivisionCode": "TX", "locality": "Abilene" }, "provenance": { "kind": "illustrative", "sourceIds": [], "rationale": "Illustrative jurisdiction for source-guidance coverage only.", "asOfDate": "2026-03-01", "scope": { "kind": "phase", "key": "phase-1" } } },
+        "coolingDesign": { "status": "unknown", "value": null, "provenance": { "kind": "unknown", "sourceIds": [], "rationale": "Fixture leaves cooling design unknown.", "asOfDate": null, "scope": { "kind": "phase", "key": "phase-1" } } }
+      },
       "supportedDimensions": [
         "project-identity",
         "power-grid-interconnection",
@@ -49,6 +65,14 @@
       "projectReference": "non-texas-hyperscale-example",
       "projectName": "Non-Texas Hyperscale Example",
       "scope": { "kind": "campus", "key": "example-campus" },
+      "profile": {
+        "profileVersion": 1,
+        "stage": { "status": "known", "value": "pre-construction", "provenance": { "kind": "illustrative", "sourceIds": [], "rationale": "Illustrative stage input for evaluator coverage only.", "asOfDate": "2026-03-01", "scope": { "kind": "campus", "key": "example-campus" } } },
+        "scale": { "status": "known", "value": { "category": "large", "itLoadMW": 180 }, "provenance": { "kind": "illustrative", "sourceIds": [], "rationale": "Illustrative scale input; not a project fact.", "asOfDate": "2026-03-01", "scope": { "kind": "campus", "key": "example-campus" } } },
+        "projectType": { "status": "known", "value": "hyperscale-cloud", "provenance": { "kind": "illustrative", "sourceIds": [], "rationale": "Illustrative project-type input; not a project fact.", "asOfDate": "2026-03-01", "scope": { "kind": "campus", "key": "example-campus" } } },
+        "jurisdiction": { "status": "known", "value": { "countryCode": "US", "subdivisionCode": "VA", "locality": null }, "provenance": { "kind": "illustrative", "sourceIds": [], "rationale": "Illustrative non-Texas jurisdiction for source-guidance coverage only.", "asOfDate": "2026-03-01", "scope": { "kind": "campus", "key": "example-campus" } } },
+        "coolingDesign": { "status": "known", "value": { "technology": "direct-liquid", "waterUse": "process-water" }, "provenance": { "kind": "illustrative", "sourceIds": [], "rationale": "Illustrative cooling input; not a project fact.", "asOfDate": "2026-03-01", "scope": { "kind": "campus", "key": "example-campus" } } }
+      },
       "supportedDimensions": [
         "power-grid-interconnection",
         "electricity-tariff",
@@ -70,15 +94,21 @@
       "projectReference": "small-colocation-example",
       "projectName": "Small Colocation Example",
       "scope": { "kind": "facility", "key": "colo-1" },
+      "profile": {
+        "profileVersion": 1,
+        "stage": { "status": "known", "value": "operational", "provenance": { "kind": "illustrative", "sourceIds": [], "rationale": "Illustrative stage input for evaluator coverage only.", "asOfDate": "2026-03-01", "scope": { "kind": "facility", "key": "colo-1" } } },
+        "scale": { "status": "known", "value": { "category": "small", "itLoadMW": 8 }, "provenance": { "kind": "illustrative", "sourceIds": [], "rationale": "Illustrative scale input; not a project fact.", "asOfDate": "2026-03-01", "scope": { "kind": "facility", "key": "colo-1" } } },
+        "projectType": { "status": "known", "value": "colocation-provider", "provenance": { "kind": "illustrative", "sourceIds": [], "rationale": "Illustrative project-type input; not a project fact.", "asOfDate": "2026-03-01", "scope": { "kind": "facility", "key": "colo-1" } } },
+        "jurisdiction": { "status": "known", "value": { "countryCode": "US", "subdivisionCode": "WA", "locality": "Seattle" }, "provenance": { "kind": "illustrative", "sourceIds": [], "rationale": "Illustrative jurisdiction for source-guidance coverage only.", "asOfDate": "2026-03-01", "scope": { "kind": "facility", "key": "colo-1" } } },
+        "coolingDesign": { "status": "known", "value": { "technology": "air-cooled", "waterUse": "none" }, "provenance": { "kind": "illustrative", "sourceIds": [], "rationale": "Illustrative cooling input; no process-water expectation is asserted as a project fact.", "asOfDate": "2026-03-01", "scope": { "kind": "facility", "key": "colo-1" } } }
+      },
       "supportedDimensions": [
         "project-identity",
         "electricity-tariff",
-        "water-cooling",
         "land-site-civil",
         "permitting-entitlement",
         "community-local-government",
         "climate-operational-hazard",
-        "construction-phasing",
         "tenant-counterparty"
       ],
       "conflictingDimensions": [],
@@ -93,6 +123,14 @@
       "projectReference": "sparse-evidence-example",
       "projectName": "Sparse Evidence Example",
       "scope": { "kind": "unknown", "key": "unknown" },
+      "profile": {
+        "profileVersion": 1,
+        "stage": { "status": "unknown", "value": null, "provenance": { "kind": "unknown", "sourceIds": [], "rationale": "No stage profile input is supplied.", "asOfDate": null, "scope": { "kind": "unknown", "key": "unknown" } } },
+        "scale": { "status": "unknown", "value": null, "provenance": { "kind": "unknown", "sourceIds": [], "rationale": "No scale profile input is supplied.", "asOfDate": null, "scope": { "kind": "unknown", "key": "unknown" } } },
+        "projectType": { "status": "unknown", "value": null, "provenance": { "kind": "unknown", "sourceIds": [], "rationale": "No project type profile input is supplied.", "asOfDate": null, "scope": { "kind": "unknown", "key": "unknown" } } },
+        "jurisdiction": { "status": "unknown", "value": null, "provenance": { "kind": "unknown", "sourceIds": [], "rationale": "No jurisdiction profile input is supplied.", "asOfDate": null, "scope": { "kind": "unknown", "key": "unknown" } } },
+        "coolingDesign": { "status": "unknown", "value": null, "provenance": { "kind": "unknown", "sourceIds": [], "rationale": "No cooling design profile input is supplied.", "asOfDate": null, "scope": { "kind": "unknown", "key": "unknown" } } }
+      },
       "supportedDimensions": [],
       "conflictingDimensions": [],
       "completeNotFoundDimensions": ["project-identity"],

@@ -60,7 +60,7 @@ export function ProjectReality({ evidenceOpen, onEvidenceOpenChange, onNavigate 
       {project.kind === "custom" && <section data-testid="reality-capacity-review" className="rounded-xl border border-[#aac6f4] bg-white p-5">
         <h3 className="font-semibold text-[#122232]">Capacity review · illustrative modeling only</h3>
         {capacityClaimCandidate ? <>
-          <p className="mt-2 text-xs leading-5 text-[#52616b]">A qualifying candidate is available for explicit reviewer acceptance. A candidate alone does not create a model input.</p>
+          <p className="mt-2 text-xs leading-5 text-[#52616b]">A qualifying candidate is available for a user to accept into their scenario. A candidate alone does not create a model input.</p>
           <div data-testid="reality-capacity-candidate" className="mt-3 rounded-lg border border-[#d9e0e4] bg-[#f9faf8] p-3 text-xs leading-5">
             <p><strong>Capacity:</strong> {capacityClaimCandidate.claim.value} {capacityClaimCandidate.claim.unit} {capacityClaimCandidate.claim.powerMeasure}</p>
             <p><strong>Scope:</strong> {capacityClaimCandidate.claim.scope.kind === "campus"

@@ -108,7 +108,7 @@ export function ValueChain({ onWorkbench }: { onWorkbench: () => void }) {
               ["02", "Exact-project identity", "Names, location, operator and authoritative domains must resolve to the same project."],
               ["03", "Bounded passages", "Fixed request and document-open limits retain exact quotations, dates and source URLs."],
               ["04", "Evidence review", "Claims are classified by scope and unit; missing or conflicting evidence stays visible."],
-              ["05", "Human acceptance", "AI proposals remain pending and model-neutral until a reviewer explicitly accepts them."],
+              ["05", "User acceptance", "AI proposals remain pending and model-neutral until a user explicitly accepts them for their scenario."],
               ["06", "Eligible model inputs", "Only accepted, semantically compatible project inputs may enter an approved scenario."],
               ["07", "Audience outputs", "Financial Advisor and Asset Manager outputs remain separate from issuer, fund or portfolio conclusions."],
             ].map(([number, title, description]) => (

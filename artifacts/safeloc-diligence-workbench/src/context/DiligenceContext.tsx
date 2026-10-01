@@ -699,6 +699,14 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     description: "A public-source diligence case paired with clearly labeled synthetic acquisition economics.",
     capacityMW: DEFAULT_CAPACITY_MW,
   };
+  const initialProjectWithCustomReview: ProjectContext = initialSession.customResearch
+    ? {
+      ...initialProject,
+      researchProposals: initialSession.customResearch.researchProposals,
+      researchProposalDispositions: initialSession.customResearch.researchProposalDispositions,
+      researchProposalOverrides: initialSession.customResearch.researchProposalOverrides,
+    }
+    : initialProject;
   const [state, setState] = useState({
     evidence: initialSession.evidence,
     modelEvidence: initialSession.modelEvidence,
@@ -713,7 +721,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   const [capacityReview, setCapacityReview] = useState<CapacityReviewState | null>(initialSession.capacityReview);
   const capacityReviewRef = useRef<CapacityReviewState | null>(capacityReview);
   capacityReviewRef.current = capacityReview;
-  const [project, setProject] = useState<ProjectContext>(initialProject);
+  const [project, setProject] = useState<ProjectContext>(initialProjectWithCustomReview);
   const [financialSessionHistory, setFinancialSessionHistoryState] = useState(
     () => readSessionFinancialHistory(sessionFinancialProjectKey(initialProject))
       ?? emptySessionFinancialHistory(
@@ -884,7 +892,21 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   );
   const effectiveEvidence = useMemo(
     () => project.kind === "custom"
-      ? sessionFinancialTransmission.evidence as Record<string, EvidenceItem>
+      ? Object.fromEntries(
+        Object.entries(sessionFinancialTransmission.evidence).map(([id, item]) => {
+          const uiRecord = state.evidence[id];
+          const scenarioRecord = item as EvidenceItem;
+          return [id, {
+            ...uiRecord,
+            ...scenarioRecord,
+            id,
+            impactRole: getEvidenceImpactRole(id),
+            sourceRole: typeof scenarioRecord.sourceRole === "string"
+              ? scenarioRecord.sourceRole
+              : uiRecord?.sourceRole ?? "Unspecified in retained UI record",
+          }];
+        }),
+      ) as Record<string, EvidenceItem>
       : state.evidence,
     [project.kind, sessionFinancialTransmission.evidence, state.evidence],
   );

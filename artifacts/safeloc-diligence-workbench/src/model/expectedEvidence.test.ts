@@ -21,6 +21,10 @@ import {
   expectedEvidenceApplicabilityStateKey,
   validateExpectedEvidenceProfile,
 } from "./expectedEvidence.js";
+import {
+  EXPECTED_EVIDENCE_FIXTURE_DATA,
+  createExpectedEvidenceFixtureProjection,
+} from "./expectedEvidenceFixtureCases.js";
 
 type FixtureCase = {
   name: string;
@@ -347,6 +351,24 @@ test("versioned profiles and rules cover the full canonical taxonomy", () => {
     ]) {
       assert.ok(signal.provenance.rationale.length > 0, `${fixture.name} profile values retain explicit provenance`);
     }
+  }
+});
+
+test("browser-facing offline proof fixtures match the evaluator matrix and contain no model activations", () => {
+  assert.equal(EXPECTED_EVIDENCE_FIXTURE_DATA.fixtureStatus, "illustrative");
+  assert.equal(EXPECTED_EVIDENCE_FIXTURE_DATA.policyVersion, SAFELOC_EXPECTED_EVIDENCE_POLICY_VERSION);
+  assert.equal(EXPECTED_EVIDENCE_FIXTURE_DATA.cases.length, fixtureData.cases.length);
+
+  for (const [index, fixture] of fixtureData.cases.entries()) {
+    const reusable = createExpectedEvidenceFixtureProjection(EXPECTED_EVIDENCE_FIXTURE_DATA.cases[index]!);
+    const existingTestProjection = createFixtureProjection(fixture);
+    assert.deepEqual(
+      evaluateExpectedEvidence(reusable.profile, reusable.projection),
+      evaluateExpectedEvidence(existingTestProjection.profile, existingTestProjection.projection),
+      `${fixture.name} fixture should match the established evaluator matrix`,
+    );
+    assert.ok(reusable.projection.events.every((event) => event.decisionRef === null));
+    assert.deepEqual(reusable.projection.acceptedInputsById, {});
   }
 });
 

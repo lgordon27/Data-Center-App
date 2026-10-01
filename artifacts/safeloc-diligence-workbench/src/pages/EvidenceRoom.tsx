@@ -60,6 +60,7 @@ import type {
 } from "@/components/Shell";
 import { ClaimCitation } from "@/components/ClaimCitation";
 import { ResearchSearchAudit } from "@/components/ResearchSearchAudit";
+import { OfflineEvidenceAssessment } from "@/components/OfflineEvidenceAssessment";
 import { ResearchHandoffSummary, type ProposalDisposition } from "@/components/ResearchHandoffSummary";
 import { formatClaimDate, getClaimSources, type ClaimSourceRecord } from "@/data/claimSources";
 import {
@@ -559,6 +560,9 @@ function EvidenceRow({
   onOverrideSourceProposal: (proposal: CustomEvidenceRecord, value: string, classification: Classification, rationale: string) => void;
 }) {
   const meta = classMeta[item.classification];
+  const sourceRole = typeof item.sourceRole === "string" && item.sourceRole.trim()
+    ? item.sourceRole
+    : "Unspecified in retained UI record";
   const { sourceStates, project, applyEvidenceCorrection } = useDiligence();
   const source = item.sourceId ? sourceStates[item.sourceId] : null;
   const providerSource = item.providerSourceId ? sourceStates[item.providerSourceId] : null;
@@ -604,7 +608,7 @@ function EvidenceRow({
                 Open cited public source <ExternalLink aria-hidden="true" className="h-3 w-3" />
               </a>
             )}
-            <p className="font-mono text-[9px] uppercase tracking-[0.08em] text-[#7d898f]">Role: {item.sourceRole}{source ? ` · ${source.fullName}` : ""}</p>
+            <p className="font-mono text-[9px] uppercase tracking-[0.08em] text-[#7d898f]">Role: {sourceRole}{source ? ` · ${source.fullName}` : ""}</p>
           </DrawerSection>
           <DrawerSection label="Financial treatment">
             <div className="grid gap-2 sm:grid-cols-2">
@@ -624,7 +628,7 @@ function EvidenceRow({
       ),
     }, { trigger: event.currentTarget, returnFocusSelector: `[data-testid='row-evidence-${item.id}'] summary` });
   };
-  const validatedSourceCount = item.sourceRole.startsWith("Reviewer-submitted") ? 0 : new Set([
+  const validatedSourceCount = sourceRole.startsWith("Reviewer-submitted") ? 0 : new Set([
     ...(item.sourceUrl && !item.sources?.some((candidate) => candidate.url === item.sourceUrl && candidate.sourceClass === "reviewer-submitted") ? [item.sourceUrl] : []),
     ...(item.sources ?? []).filter((candidate) => candidate.sourceClass !== "reviewer-submitted").map((candidate) => candidate.url),
   ]).size;
@@ -746,7 +750,7 @@ function EvidenceRow({
            <FileText aria-hidden="true" className="mt-0.5 h-3 w-3 shrink-0" />
            <span>
              {item.citation}
-              <span className="mt-1 block text-[9px] uppercase tracking-[0.08em] text-[#7d898f]">Role: {item.sourceRole}{source ? ` · ${source.fullName}` : project.kind === "custom" ? " · Custom project research" : " · Embedded case record"}{providerSource ? ` · Provider-ready: ${providerSource.shortName}` : ""}</span>
+              <span className="mt-1 block text-[9px] uppercase tracking-[0.08em] text-[#7d898f]">Role: {sourceRole}{source ? ` · ${source.fullName}` : project.kind === "custom" ? " · Custom project research" : " · Embedded case record"}{providerSource ? ` · Provider-ready: ${providerSource.shortName}` : ""}</span>
               <button data-testid={`button-view-source-${item.id}`} type="button" onClick={openSourceTrace} className="mt-2 inline-flex min-h-9 items-center gap-1.5 rounded-md border border-[#cbd8d4] bg-white px-2.5 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#255bb7] hover:border-[#255bb7]"><FileText aria-hidden="true" className="h-3 w-3" /> View Source</button>
               {project.kind === "curated" && item.claimIds.map((claimId) => (
                 <ClaimCitation key={claimId} claimId={claimId} />
@@ -1657,6 +1661,7 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
           return <div key={classification} data-testid={`count-classification-${meta.short.toLowerCase()}`} className="rounded-lg border p-3" style={{ borderColor: meta.border, backgroundColor: meta.bg }}><div className="flex items-center justify-between gap-2"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: meta.color }} /><span className="font-mono text-xl font-bold" style={{ color: meta.color }}>{count}</span></div><div className="mt-2 text-[9px] font-bold uppercase leading-3 tracking-[0.1em]" style={{ color: meta.color }}>{classification}</div></div>;
         })}
       </div>
+      <OfflineEvidenceAssessment />
       <DecisionHistory items={decisionHistory} evidence={evidence} />
       <div className="mb-4" role="group" aria-label="Evidence filters">
         <div className="flex gap-1.5 overflow-x-auto pb-1">
@@ -1770,15 +1775,15 @@ function DecisionHistory({ items, evidence }: { items: DecisionHistoryEntry[]; e
       <header className="border-b border-[#d9e0e4] bg-[#122232] px-4 py-4 text-white md:px-5">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <div>
-            <div className="font-mono text-[9px] font-bold uppercase tracking-[0.16em] text-[#b9d43a]">Reviewable decision trail</div>
-            <h2 id="ai-decision-history-title" className="mt-1 text-[16px] font-semibold">AI decisions behind the classification</h2>
+            <div className="font-mono text-[9px] font-bold uppercase tracking-[0.16em] text-[#b9d43a]">Local scenario history</div>
+            <h2 id="ai-decision-history-title" className="mt-1 text-[16px] font-semibold">Analysis decisions in this session</h2>
           </div>
           <span data-testid="ai-decision-history-count" className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#aebdc5]">{items.length} {items.length === 1 ? "entry" : "entries"}</span>
         </div>
-        <p className="mt-2 max-w-3xl text-[10px] leading-4 text-[#c4d0d6]">Model suggestions and human decisions are recorded separately. This history explains how the current classification was reached; it does not change the live model.</p>
+        <p className="mt-2 max-w-3xl text-[10px] leading-4 text-[#c4d0d6]">Model suggestions and your classification choices are stored in the local session scenario, separate from canonical SafeLoc system observations. No login or reviewer identity is used; this history does not itself change the live model.</p>
       </header>
       {orderedItems.length === 0 ? (
-        <p data-testid="ai-decision-history-empty" className="px-4 py-4 text-[10px] leading-4 text-[#60707d] md:px-5">No AI decisions or manual classification changes have been recorded in this session.</p>
+        <p data-testid="ai-decision-history-empty" className="px-4 py-4 text-[10px] leading-4 text-[#60707d] md:px-5">No model suggestions or user classification choices have been recorded in this local session.</p>
       ) : (
         <ol className="divide-y divide-[#e5eae8]">
           {orderedItems.map((entry, index) => {
@@ -1809,7 +1814,7 @@ function AIDecisionHistoryEntry({ entry, item }: { entry: Extract<DecisionHistor
           <div className="flex flex-wrap items-center gap-2">
             <Sparkles aria-hidden="true" className="h-3.5 w-3.5 text-[#607500]" />
             <span className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#607500]">Model suggestion</span>
-            <span className={`rounded-full px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.08em] ${accepted ? "bg-[#e0f4ed] text-[#0b7a63]" : "bg-[#fff0d6] text-[#a65a00]"}`}>{accepted ? "Accepted by human" : "Overridden by human"}</span>
+            <span className={`rounded-full px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.08em] ${accepted ? "bg-[#e0f4ed] text-[#0b7a63]" : "bg-[#fff0d6] text-[#a65a00]"}`}>{accepted ? "Accepted by user" : "Changed by user"}</span>
           </div>
           <h3 className="mt-2 text-[12px] font-semibold text-[#243844]">{item.label}</h3>
         </div>

@@ -198,7 +198,7 @@ function resolveClaim(input: CapacityAssumptionBindingInput): ClaimResolution {
   const { claim } = input;
   if (!claim) return { kind: "unbound", reason: "No capacity claim was supplied." };
   if (!claim.humanAccepted) {
-    return { kind: "unbound", reason: "The capacity claim has not been accepted by a human reviewer." };
+    return { kind: "unbound", reason: "The capacity claim has not been accepted by a user into this scenario." };
   }
   if (claim.status !== "current") {
     return { kind: "unbound", reason: `The capacity claim is ${claim.status}, not current.` };

@@ -14,7 +14,7 @@
 - [Source vs modeled classification](source-vs-modeled-classification.md) — an evidence item can be source-verified while its underwriting treatment remains a separate model inference.
 - [Recurring attribution semantics](recurring-attribution-semantics.md) — annual driver effects must exclude terminal value and debt repayment; keep total equity impact separate.
 - [Community benchmark provenance](community-benchmark-provenance.md) — external benchmark rows need immutable source fields, explicit review state, and no invented quote or primary-document fallback.
-- [Evidence semantic boundaries](evidence-semantic-boundaries.md) — normalize once, preserve raw research, and persist accepted model/history state separately from reviewer-visible proposals.
+- [Evidence semantic boundaries](evidence-semantic-boundaries.md) — keep model acceptance separate and preserve source/UI metadata when rendering session-specific projections.
 - [Source validation pipeline](source-validation-pipeline.md) — explicit passage conflicts outrank provider identity flags; power quantities stay bound to one measure and clause.
 - [Category routing and query attribution](category-query-attribution.md) — route prompts strictly, retain full source audits, and expose size metrics without passage text.
 - [Research audit ledger](research-audit-ledger.md) — enforce run-wide tool budgets before every attempt and count audit stages from the full normalized ledger.

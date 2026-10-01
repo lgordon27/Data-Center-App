@@ -245,7 +245,7 @@ export function HowItWorks({ onReturn, onOpenScreen, initialSection }: HowItWork
               </Disclosure>
 
               <Disclosure id="ai-research" title="AI research process · Beta" preview="AI organizes candidate sources and bounded passages while human acceptance remains explicit.">
-                <p className="max-w-3xl text-[12px] leading-5 text-[#52616b]">Custom-project research starts from directory-backed identity and company context, searches authoritative sources under fixed request and document-open limits, retains exact-project passages, maps them to governed evidence variables, and keeps gaps or conflicts visible. Eligible findings remain pending and model-neutral until a reviewer explicitly accepts them. Provider caches and the local registry retain diagnostics and prior research; they are not canonical authority.</p>
+                <p className="max-w-3xl text-[12px] leading-5 text-[#52616b]">Custom-project research starts from directory-backed identity and company context, searches authoritative sources under fixed request and document-open limits, retains exact-project passages, maps them to governed evidence variables, and keeps gaps or conflicts visible. Eligible findings remain pending and model-neutral until a user explicitly accepts them for their scenario. Provider caches and the local registry retain diagnostics and prior research; they are not canonical authority.</p>
               </Disclosure>
 
               <Disclosure id="market-context" title="Detailed market timeline and statistics" preview="Open the dated context and source citations behind the demonstration.">

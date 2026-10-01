@@ -169,7 +169,7 @@ export function ResearchHandoffSummary({
           <p data-testid="research-handoff-explanation" className="mt-1 max-w-3xl text-[10px] leading-4 text-[#6f460e]">
             {publicPresentation.explanation}
           </p>
-          <p className="mt-1 max-w-3xl text-[10px] leading-4 text-[#52616b]">Exact-project evidence can be proposed here, but it stays outside the model until a reviewer accepts it. Related and comparable material is context only.</p>
+          <p className="mt-1 max-w-3xl text-[10px] leading-4 text-[#52616b]">Exact-project evidence can be proposed here, but it stays outside the model until a user accepts it into their scenario. Related and comparable material is context only.</p>
         </div>
         <button data-testid="button-review-research-findings" type="button" onClick={onReviewFindings} className="inline-flex min-h-10 items-center justify-center rounded-md bg-[#122232] px-3 py-2 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#d4e86b]">
           Review findings
@@ -192,7 +192,7 @@ export function ResearchHandoffSummary({
         <div data-testid="research-handoff-gaps" className="rounded-lg border border-[#efbac3] bg-white p-3">
           <div className="font-mono text-[8px] font-bold uppercase tracking-[0.1em] text-[#8f2437]">Material gaps</div>
           <div className="mt-2 text-[20px] font-semibold text-[#ba2f45]">{unresolved.length}</div>
-          <div className="text-[9px] text-[#60707d]">Still unresolved or requiring reviewer confirmation</div>
+          <div className="text-[9px] text-[#60707d]">Still unresolved or requiring user review</div>
         </div>
         <div data-testid="research-handoff-context" className="rounded-lg border border-[#cbd8d4] bg-white p-3">
           <div className="font-mono text-[8px] font-bold uppercase tracking-[0.1em] text-[#52616b]">Related context</div>

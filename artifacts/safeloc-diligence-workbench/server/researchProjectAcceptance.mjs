@@ -31,6 +31,15 @@ export const RED_OAK_GRID_CANARY_LIMITS = Object.freeze({
   researchTimeoutMs: 75_000,
   invocationTimeoutMs: 90_000,
 });
+export const RED_OAK_RETRIEVAL_ONLY_CANARY_LIMITS = Object.freeze({
+  discoveryRequests: 1,
+  structuredProviderCalls: 0,
+  totalProviderRequests: 1,
+  physicalDocumentOpens: 8,
+  categoryIds: RED_OAK_GRID_CANARY_LIMITS.categoryIds,
+  researchTimeoutMs: 75_000,
+  invocationTimeoutMs: 90_000,
+});
 const RED_OAK_GRID_CANARY_PROJECT = Object.freeze({
   name: "Red Oak Campus",
   location: "Red Oak, Ellis County, Texas",
@@ -101,26 +110,31 @@ export function buildRedOakGridCanaryRequestOptions({
   claimTrace,
   canaryDiagnosticCollector,
   signal,
+  retrievalOnly = false,
 } = {}) {
+  const limits = retrievalOnly
+    ? RED_OAK_RETRIEVAL_ONLY_CANARY_LIMITS
+    : RED_OAK_GRID_CANARY_LIMITS;
   return {
     singleShotRun: true,
+    ...(retrievalOnly ? { retrievalOnly: true } : {}),
     apiKey,
     googleApiKey,
-    categoryIds: [...RED_OAK_GRID_CANARY_LIMITS.categoryIds],
+    categoryIds: [...limits.categoryIds],
     googleDiscoveryPrompt: RED_OAK_GRID_CANARY_DISCOVERY_PROMPT,
     allowGoogleFallback: false,
     allowCorrectiveRetries: false,
     allowProviderRetries: false,
     useDefaultSecConnector: false,
     researchBudgetOverrides: {
-      maxProviderRequests: RED_OAK_GRID_CANARY_LIMITS.totalProviderRequests,
-      maxPhysicalDocumentOpens: RED_OAK_GRID_CANARY_LIMITS.physicalDocumentOpens,
+      maxProviderRequests: limits.totalProviderRequests,
+      maxPhysicalDocumentOpens: limits.physicalDocumentOpens,
       maxFollowUps: 0,
       maxFollowUpsPerCategory: 0,
       maxCandidatesPerCategory: 8,
       maxTotalCandidates: 16,
     },
-    researchTimeoutMs: RED_OAK_GRID_CANARY_LIMITS.researchTimeoutMs,
+    researchTimeoutMs: limits.researchTimeoutMs,
     cache,
     registry,
     auditRepository,
@@ -146,6 +160,14 @@ function safeReportText(value, maxLength = REPORT_MAX_TEXT) {
     .slice(0, maxLength);
 }
 
+function safePassageExcerpt(value, maxLength = REPORT_MAX_PASSAGE) {
+  const text = safeReportText(value, maxLength);
+  return text
+    ?.replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, "[redacted-address]")
+    .replace(/\[[a-f0-9:]+:[a-f0-9:]+\]/gi, "[redacted-address]")
+    ?? null;
+}
+
 function boundedList(values, mapper = (value) => value, maxItems = REPORT_MAX_ITEMS) {
   if (!Array.isArray(values)) return [];
   return values.map(mapper).filter((value) => value !== null && value !== undefined).slice(0, maxItems);
@@ -156,6 +178,13 @@ function reportUrl(value) {
   try {
     const url = new URL(value.trim());
     if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) return null;
+    if (url.hostname.toLowerCase() === "vertexaisearch.cloud.google.com"
+      && /^\/grounding-api-redirect\//i.test(url.pathname)
+      && !/^\/grounding-api-redirect\/redacted-[a-f0-9]{16}$/i.test(url.pathname)) {
+      const opaquePath = url.pathname.slice("/grounding-api-redirect/".length);
+      const identitySuffix = createHash("sha256").update(opaquePath).digest("hex").slice(0, 16);
+      url.pathname = `/grounding-api-redirect/redacted-${identitySuffix}`;
+    }
     for (const key of [...url.searchParams.keys()]) {
       if (/(?:token|secret|signature|^sig$|auth|credential|password|api[_-]?key|session|jwt)/i.test(key)) {
         url.searchParams.delete(key);
@@ -182,10 +211,6 @@ function canaryDiagnosticUrl(value) {
   if (!reported) return null;
   try {
     const url = new URL(reported);
-    if (url.hostname.toLowerCase() === "vertexaisearch.cloud.google.com"
-      && /^\/grounding-api-redirect\//i.test(url.pathname)) {
-      url.pathname = "/grounding-api-redirect/[redacted]";
-    }
     url.search = "";
     url.hash = "";
     return `${url.origin}${url.pathname}`.slice(0, REPORT_MAX_TEXT);
@@ -202,6 +227,10 @@ function diagnosticCandidateSnapshot(source, candidateIndex, categoryId = null) 
   return {
     candidateId: rank === null ? null : `discovery-${rank}`,
     candidateIndex: rank,
+    discoveryRank: Number.isInteger(source.discoveryCandidateRank)
+      ? source.discoveryCandidateRank
+      : rank,
+    acquisitionRank: Number.isInteger(source.acquisitionRank) ? source.acquisitionRank : null,
     categoryId: boundedText(categoryId ?? source.searchDomain, 120),
     url: canaryDiagnosticUrl(source.url),
     originalUrl: canaryDiagnosticUrl(source.originalUrl),
@@ -210,15 +239,21 @@ function diagnosticCandidateSnapshot(source, candidateIndex, categoryId = null) 
     title: safeReportText(source.title, 240),
     sourceChannel: boundedText(source.sourceChannel ?? source.origin, 120),
     searchDomain: boundedText(source.searchDomain, 120),
+    sourceType: boundedText(source.sourceType ?? source.sourceTypeHint, 120),
     categoryIds: boundedList(source.categoryIds, (value) => boundedText(value, 120), 12),
     sourceState: boundedText(source.sourceState, 100),
     exactProject: source.exactProject === true,
+    identitySignals: boundedList(
+      source.exactProjectIdentitySignals ?? source.identitySignals ?? source.identitySignalReasons,
+      (value) => safeReportText(value, 240),
+      12,
+    ),
   };
 }
 
 export function createRedOakCanaryDiagnosticCollector({
-  maxDiscoveryCandidates = 16,
-  maxPhysicalReceipts = 64,
+  maxDiscoveryCandidates = 80,
+  maxPhysicalReceipts = 160,
 } = {}) {
   const discoveryCandidates = [];
   const physicalOpenAuthorizations = [];
@@ -226,12 +261,65 @@ export function createRedOakCanaryDiagnosticCollector({
   let discoveryCandidateCount = 0;
   let physicalReceiptCount = 0;
 
+  const locateCandidate = (candidate, candidateIndex = null) => {
+    const rank = Number.isInteger(candidate?.discoveryCandidateRank)
+      ? candidate.discoveryCandidateRank
+      : Number.isInteger(candidateIndex) ? candidateIndex : null;
+    if (rank !== null) {
+      const byRank = discoveryCandidates.find((item) => item.candidateIndex === rank);
+      if (byRank) return byRank;
+    }
+    const canonicalUrl = canaryDiagnosticUrl(candidate?.canonicalUrl ?? candidate?.resolvedUrl ?? candidate?.url);
+    const originalUrl = canaryDiagnosticUrl(candidate?.originalUrl ?? candidate?.url);
+    return discoveryCandidates.find((item) =>
+      (canonicalUrl && [item.canonicalUrl, item.resolvedUrl, item.url].includes(canonicalUrl))
+      || (originalUrl && [item.originalUrl, item.url].includes(originalUrl))) ?? null;
+  };
+  const makeSelectionDecision = (decision, reason, physicalOpenPosition = null) => ({
+    decision,
+    selected: decision === "selected",
+    reason: boundedText(reason, 240),
+    physicalOpenPosition: Number.isInteger(physicalOpenPosition) ? physicalOpenPosition : null,
+  });
+
   return {
     recordDiscoveryCandidates(candidates = []) {
       const values = Array.isArray(candidates) ? candidates : [];
       discoveryCandidateCount = values.length;
       for (const [index, candidate] of values.slice(0, maxDiscoveryCandidates).entries()) {
-        discoveryCandidates.push(diagnosticCandidateSnapshot(candidate, index + 1));
+        const snapshot = diagnosticCandidateSnapshot(candidate, index + 1);
+        const incomingDecision = candidate?.selectionDecision;
+        const decision = typeof incomingDecision === "string"
+          ? incomingDecision
+          : incomingDecision?.decision ?? incomingDecision?.state;
+        snapshot.acquisitionPriority = Number.isFinite(candidate?.acquisitionPriority)
+          ? candidate.acquisitionPriority
+          : boundedText(candidate?.acquisitionPriority, 120);
+        snapshot.acquisitionPriorityReasons = boundedList(
+          candidate?.acquisitionPriorityReasons ?? candidate?.priorityReasons ?? candidate?.acquisitionReasons,
+          (reason) => boundedText(reason, 240),
+          12,
+        );
+        snapshot.acquisitionRank = Number.isInteger(candidate?.acquisitionRank)
+          ? candidate.acquisitionRank
+          : snapshot.acquisitionRank;
+        snapshot.candidateLimitSelected = candidateLimitSelection(candidate);
+        snapshot.acquisitionSelected = null;
+        snapshot.acquisitionSelectionReason = boundedText(candidate?.acquisitionSelectionReason, 160);
+        snapshot.physicalOpenAdmission = boundedText(candidate?.physicalOpenAdmission, 100);
+        snapshot.selectedForOpening = candidate?.selectedForOpening === true
+          || incomingDecision?.selected === true
+          || decision === "selected";
+        snapshot.selectionDecision = makeSelectionDecision(
+          boundedText(decision, 80) ?? "unresolved",
+          incomingDecision?.reason ?? candidate?.selectionReason
+            ?? (decision
+              ? "Selection decision supplied with discovery candidate."
+              : "Awaiting the physical-open scheduler decision."),
+          incomingDecision?.physicalOpenPosition ?? candidate?.physicalOpenPosition,
+        );
+        snapshot.physicalOpenPosition = snapshot.selectionDecision.physicalOpenPosition;
+        discoveryCandidates.push(snapshot);
       }
     },
 
@@ -251,6 +339,18 @@ export function createRedOakCanaryDiagnosticCollector({
           categoryId,
         ),
       });
+      const candidate = locateCandidate(source);
+      if (candidate) {
+        candidate.acquisitionSelected = true;
+        candidate.selectedForOpening = true;
+        candidate.physicalOpenAdmission = "authorized";
+        candidate.selectionDecision = makeSelectionDecision(
+          "selected",
+          source?.selectionReason ?? "Authorized for a physical document open.",
+          physicalOpenIndex,
+        );
+        candidate.physicalOpenPosition = physicalOpenIndex;
+      }
     },
 
     recordPhysicalReceipt({
@@ -287,15 +387,59 @@ export function createRedOakCanaryDiagnosticCollector({
         contentHash: boundedText(accessOutcome?.contentHash, 80),
         passageSha256: passage.trim() ? createHash("sha256").update(passage).digest("hex") : null,
         passageLength: passage ? passage.length : 0,
+        passageExcerpt: safePassageExcerpt(passage),
         extractionMethod: boundedText(accessOutcome?.extractionMethod, 100),
         extractionOutcome: boundedText(accessOutcome?.extractionOutcome, 100),
         transportDiagnostic: reportTransportDiagnostic(accessOutcome?.transportDiagnostic),
       });
+      const selectedCandidate = locateCandidate(candidate, candidateIndex);
+      if (selectedCandidate) {
+        const physicalOpenPosition = physicalOpenIndexes[0] ?? null;
+        if (attempted === true) {
+          selectedCandidate.acquisitionSelected = true;
+          selectedCandidate.selectedForOpening = true;
+          selectedCandidate.physicalOpenAdmission = "authorized";
+          selectedCandidate.selectionDecision = makeSelectionDecision(
+            "selected",
+            "Physical document open was attempted.",
+            physicalOpenPosition,
+          );
+          selectedCandidate.physicalOpenPosition = physicalOpenPosition;
+        } else if (reused === true || accessOutcome?.reused === true) {
+          selectedCandidate.acquisitionSelected = false;
+          selectedCandidate.selectedForOpening = false;
+          selectedCandidate.physicalOpenAdmission = "reused-receipt";
+          selectedCandidate.selectionDecision = makeSelectionDecision(
+            "reused",
+            accessOutcome?.reason ?? "An existing canonical document receipt was reused.",
+            physicalOpenPosition,
+          );
+          selectedCandidate.physicalOpenPosition = physicalOpenPosition;
+        } else if (accessOutcome?.state === "not-attempted") {
+          selectedCandidate.acquisitionSelected = false;
+          selectedCandidate.selectedForOpening = false;
+          selectedCandidate.physicalOpenAdmission = boundedText(accessOutcome?.reason, 100) ?? "not-selected";
+          selectedCandidate.selectionDecision = makeSelectionDecision(
+            "not-selected",
+            accessOutcome?.reason ?? "Document was not selected for a physical open.",
+          );
+          selectedCandidate.physicalOpenPosition = null;
+        }
+      }
     },
 
     toJSON() {
+      for (const candidate of discoveryCandidates) {
+        if (candidate.selectionDecision?.decision !== "unresolved") continue;
+        candidate.acquisitionSelected = false;
+        candidate.selectedForOpening = false;
+        candidate.selectionDecision = makeSelectionDecision(
+          "not-selected",
+          "No physical-open authorization or document receipt was recorded before retrieval stopped.",
+        );
+      }
       return {
-        captureStatus: "request-local-sanitized-no-document-payloads",
+        captureStatus: "request-local-sanitized-bounded-passage-excerpts-no-full-document-payloads",
         discoveryCandidateCount,
         discoveryCandidateSnapshotCount: discoveryCandidates.length,
         discoveryCandidatesTruncated: discoveryCandidateCount > discoveryCandidates.length,
@@ -390,17 +534,50 @@ function reportProviderDiagnostic(value) {
   };
 }
 
+function chooseTelemetryArray(candidates) {
+  const present = candidates.filter((candidate) => Array.isArray(candidate.value));
+  const selected = present.find((candidate) => candidate.value.length > 0) ?? present[0] ?? null;
+  return {
+    values: selected?.value ?? [],
+    source: selected?.source ?? "unavailable",
+  };
+}
+
 function reportDiscoveryTelemetry(result) {
   const coverage = result?.researchCoverage;
+  const audit = result?.researchAudit;
+  const discoveryAudit = audit?.discovery ?? audit?.googleDiscovery ?? {};
+  const rawAnnotations = chooseTelemetryArray([
+    { source: "researchCoverage", value: coverage?.discoveryRawAnnotationSummaries },
+    { source: "researchAudit", value: audit?.discoveryRawAnnotationSummaries },
+    { source: "researchAudit.discovery", value: discoveryAudit?.rawAnnotationSummaries },
+  ]);
+  const acceptedCitations = chooseTelemetryArray([
+    { source: "researchCoverage", value: coverage?.discoveryAcceptedCitationUrls },
+    { source: "researchAudit", value: audit?.discoveryAcceptedCitationUrls },
+    { source: "researchAudit.discovery", value: discoveryAudit?.acceptedCitationUrls },
+  ]);
+  const rejectedCitations = chooseTelemetryArray([
+    { source: "researchCoverage", value: coverage?.discoveryRejectedCitationUrls },
+    { source: "researchAudit", value: audit?.discoveryRejectedCitationUrls },
+    { source: "researchAudit.discovery", value: discoveryAudit?.rejectedCitationUrls },
+  ]);
   return {
-    provider: boundedText(coverage?.discoveryProvider, 120),
-    model: boundedText(coverage?.discoveryModel, 120),
-    status: boundedText(coverage?.discoveryStatus, 100),
-    state: boundedText(coverage?.discoveryState, 120),
-    queries: boundedList(coverage?.discoveryQueries, (value) => boundedText(value, REPORT_MAX_TEXT), 24),
+    provider: boundedText(coverage?.discoveryProvider ?? discoveryAudit?.provider, 120),
+    model: boundedText(coverage?.discoveryModel ?? discoveryAudit?.model, 120),
+    status: boundedText(coverage?.discoveryStatus ?? discoveryAudit?.status, 100),
+    state: boundedText(coverage?.discoveryState ?? discoveryAudit?.state, 120),
+    queries: boundedList(
+      coverage?.discoveryQueries ?? discoveryAudit?.queries,
+      (value) => boundedText(value, REPORT_MAX_TEXT),
+      24,
+    ),
     candidateCount: Number.isInteger(coverage?.discoveryCandidateCount)
       ? coverage.discoveryCandidateCount
-      : null,
+      : Number.isInteger(discoveryAudit?.candidateCount) ? discoveryAudit.candidateCount : null,
+    annotationCount: Number.isInteger(coverage?.discoveryAnnotationCount)
+      ? coverage.discoveryAnnotationCount
+      : Number.isInteger(discoveryAudit?.annotationCount) ? discoveryAudit.annotationCount : null,
     fallbackProvider: boundedText(coverage?.fallbackProvider, 120),
     fallbackReason: boundedText(coverage?.fallbackReason, 180),
     fallbackRequestCount: Number.isInteger(coverage?.fallbackRequestCount)
@@ -409,7 +586,20 @@ function reportDiscoveryTelemetry(result) {
     providerRequestCount: Number.isInteger(coverage?.providerRequestCount)
       ? coverage.providerRequestCount
       : null,
-    rawAnnotationSummaries: boundedList(coverage?.discoveryRawAnnotationSummaries, (annotation) => ({
+    rawAnnotationSummariesAvailability: rawAnnotations.source === "unavailable"
+      ? "unavailable-not-retained-in-report"
+      : "reported",
+    rawAnnotationSummariesSource: rawAnnotations.source,
+    acceptedCitationUrlsAvailability: acceptedCitations.source === "unavailable"
+      ? "unavailable-not-retained-in-report"
+      : "reported",
+    acceptedCitationUrlsSource: acceptedCitations.source,
+    rejectedCitationUrlsAvailability: rejectedCitations.source === "unavailable"
+      ? "unavailable-not-retained-in-report"
+      : "reported",
+    rejectedCitationUrlsSource: rejectedCitations.source,
+    rawAnnotationSummaries: boundedList(rawAnnotations.values, (annotation, index) => ({
+      discoveryRank: Number.isInteger(annotation?.discoveryRank) ? annotation.discoveryRank : index + 1,
       type: boundedText(annotation?.type, 80),
       title: boundedText(annotation?.title, 240),
       url: reportUrl(annotation?.url),
@@ -417,11 +607,96 @@ function reportDiscoveryTelemetry(result) {
       accepted: annotation?.accepted === true,
       rejectionReason: boundedText(annotation?.rejectionReason, 120),
     }), 80),
-    acceptedCitationUrls: boundedList(coverage?.discoveryAcceptedCitationUrls, reportUrl, 80),
-    rejectedCitationUrls: boundedList(coverage?.discoveryRejectedCitationUrls, (entry) => ({
+    acceptedCitationUrls: boundedList(acceptedCitations.values, reportUrl, 80),
+    rejectedCitationUrls: boundedList(rejectedCitations.values, (entry) => ({
+      discoveryRank: Number.isInteger(entry?.discoveryRank) ? entry.discoveryRank : null,
       url: reportUrl(entry?.url),
       reason: boundedText(entry?.reason, 120),
     }), 80),
+  };
+}
+
+function actualAcquisitionSelected(entry) {
+  const admission = boundedText(entry?.physicalOpenAdmission, 100);
+  const physicalOpenPosition = Number.isInteger(entry?.physicalOpenPosition)
+    ? entry.physicalOpenPosition
+    : Number.isInteger(entry?.accessOutcome?.physicalOpenIndex)
+      ? entry.accessOutcome.physicalOpenIndex
+      : null;
+  if (admission === "reused-receipt" || entry?.accessOutcome?.reused === true) return false;
+  if (admission === "authorized" || physicalOpenPosition !== null) return true;
+  if (["not-selected", "deferred"].includes(admission)
+    || entry?.accessOutcome?.state === "not-attempted") return false;
+  return typeof entry?.acquisitionSelected === "boolean" ? entry.acquisitionSelected : null;
+}
+
+function candidateLimitSelection(entry) {
+  if (typeof entry?.candidateLimitSelected === "boolean") return entry.candidateLimitSelected;
+  if (entry?.acquisitionSelectionReason === "ranked-within-candidate-limit") return true;
+  if (entry?.acquisitionSelectionReason === "candidate-limit") return false;
+  return null;
+}
+
+function selectedForPhysicalOpening(entry) {
+  const admission = boundedText(entry?.physicalOpenAdmission, 100);
+  const access = entry?.accessOutcome;
+  if (admission === "reused-receipt" || access?.reused === true) return false;
+  if (admission === "authorized"
+    || Number.isInteger(entry?.physicalOpenPosition)
+    || Number.isInteger(access?.physicalOpenIndex)) return true;
+  if (admission === "not-selected" || admission === "deferred" || access?.state === "not-attempted") return false;
+  return entry?.selectedForOpening === true
+    || entry?.selectionDecision === "selected"
+    || entry?.selectionDecision?.selected === true
+    || entry?.selectionDecision?.decision === "selected"
+    || entry?.selectionDecision?.state === "selected"
+    || actualAcquisitionSelected(entry) === true;
+}
+
+function reportSelectionDecision(entry) {
+  const incoming = entry?.selectionDecision;
+  if (incoming && typeof incoming === "object") {
+    const decision = boundedText(incoming.decision ?? incoming.state, 80);
+    return {
+      decision,
+      selected: incoming.selected === true || decision === "selected",
+      reason: boundedText(incoming.reason, 240),
+      physicalOpenPosition: Number.isInteger(incoming.physicalOpenPosition)
+        ? incoming.physicalOpenPosition
+        : Number.isInteger(entry?.physicalOpenPosition)
+          ? entry.physicalOpenPosition
+          : Number.isInteger(entry?.accessOutcome?.physicalOpenIndex) ? entry.accessOutcome.physicalOpenIndex : null,
+    };
+  }
+  if (typeof incoming === "string") return boundedText(incoming, 240);
+  const access = entry?.accessOutcome;
+  const physicalOpenPosition = Number.isInteger(entry?.physicalOpenPosition)
+    ? entry.physicalOpenPosition
+    : Number.isInteger(access?.physicalOpenIndex) ? access.physicalOpenIndex : null;
+  const admission = boundedText(entry?.physicalOpenAdmission, 100);
+  const acquisitionSelected = actualAcquisitionSelected(entry);
+  const decision = admission === "reused-receipt" || access?.reused === true
+    ? "reused"
+    : admission === "authorized" || physicalOpenPosition !== null
+      ? "selected"
+      : admission === "not-selected" || entry?.acquisitionSelectionReason === "candidate-limit"
+        ? "not-selected"
+        : admission === "deferred" || access?.state === "not-attempted"
+        ? "deferred"
+        : acquisitionSelected === true
+          ? "selected"
+          : "not-selected";
+  const reason = access?.reason
+    ?? entry?.acquisitionSelectionReason
+    ?? entry?.selectionReason
+    ?? (decision === "selected"
+      ? "Selected within the acquisition candidate limit."
+      : "Not selected for a physical document open.");
+  return {
+    decision,
+    selected: decision === "selected",
+    reason: boundedText(reason, 240),
+    physicalOpenPosition,
   };
 }
 
@@ -431,6 +706,33 @@ function reportCandidateLineage(entry) {
     categoryId: boundedText(entry.categoryId, 120),
     url: reportUrl(entry.url),
     sourceChannel: boundedText(entry.sourceChannel, 120),
+    sourceType: boundedText(entry.sourceType, 120),
+    discoveryRank: Number.isInteger(entry.discoveryRank)
+      ? entry.discoveryRank
+      : Number.isInteger(entry.discoveryCandidateRank) ? entry.discoveryCandidateRank : null,
+    acquisitionRank: Number.isInteger(entry.acquisitionRank) ? entry.acquisitionRank : null,
+    identitySignals: boundedList(
+      entry.exactProjectIdentitySignals ?? entry.identitySignals ?? entry.identitySignalReasons,
+      (value) => safeReportText(value, 240),
+      12,
+    ),
+    acquisitionPriority: Number.isFinite(entry.acquisitionPriority)
+      ? entry.acquisitionPriority
+      : boundedText(entry.acquisitionPriority, 120),
+    acquisitionPriorityReasons: boundedList(
+      entry.acquisitionPriorityReasons ?? entry.priorityReasons ?? entry.acquisitionReasons,
+      (reason) => boundedText(reason, 240),
+      12,
+    ),
+    candidateLimitSelected: candidateLimitSelection(entry),
+    acquisitionSelected: actualAcquisitionSelected(entry),
+    acquisitionSelectionReason: boundedText(entry.acquisitionSelectionReason, 160),
+    physicalOpenAdmission: boundedText(entry.physicalOpenAdmission, 100),
+    selectedForOpening: selectedForPhysicalOpening(entry),
+    selectionDecision: reportSelectionDecision(entry),
+    physicalOpenPosition: Number.isInteger(entry.physicalOpenPosition)
+      ? entry.physicalOpenPosition
+      : Number.isInteger(entry.accessOutcome?.physicalOpenIndex) ? entry.accessOutcome.physicalOpenIndex : null,
     acquisitionPath: entry.acquisitionPath && typeof entry.acquisitionPath === "object"
       ? Object.fromEntries(Object.entries(entry.acquisitionPath).slice(0, 8).map(([key, value]) => [boundedText(key, 80), reportScalar(value)]))
       : null,
@@ -453,8 +755,15 @@ function reportCandidateLineage(entry) {
         state: boundedText(entry.passageResult.state, 80),
         reason: boundedText(entry.passageResult.reason, 240),
         passageSha256: boundedText(entry.passageResult.passageSha256, 80),
+        excerpt: safePassageExcerpt(entry.passageResult.excerpt ?? entry.passageExcerpt),
       }
       : null,
+    usablePassage: entry.passageResult?.state === "retained"
+      && /^[a-f0-9]{64}$/i.test(entry.passageResult?.passageSha256 ?? ""),
+    exactProjectPassage: entry.passageResult?.state === "retained"
+      && /^[a-f0-9]{64}$/i.test(entry.passageResult?.passageSha256 ?? "")
+      && entry.identityResult?.exactProject === true,
+    passageExcerpt: safePassageExcerpt(entry.passageResult?.excerpt ?? entry.passageExcerpt),
     eligibilityResult: entry.eligibilityResult && typeof entry.eligibilityResult === "object"
       ? {
         state: boundedText(entry.eligibilityResult.state, 80),
@@ -518,17 +827,47 @@ function sourceDiagnostics(result) {
       ),
       identityRole: boundedText(source.identityRole ?? source.sourceRole, 160),
       sourceState: boundedText(source.sourceState, 100),
+      sourceType: boundedText(source.sourceType ?? source.sourceTypeHint, 120),
+      discoveryRank: Number.isInteger(source.discoveryRank)
+        ? source.discoveryRank
+        : Number.isInteger(source.discoveryCandidateRank) ? source.discoveryCandidateRank : null,
+      acquisitionRank: Number.isInteger(source.acquisitionRank) ? source.acquisitionRank : null,
       exactProject: source.exactProject === true,
+      identitySignals: boundedList(
+        source.exactProjectIdentitySignals ?? source.identitySignals ?? source.identitySignalReasons,
+        (value) => safeReportText(value, 240),
+        12,
+      ),
+      acquisitionPriority: Number.isFinite(source.acquisitionPriority)
+        ? source.acquisitionPriority
+        : boundedText(source.acquisitionPriority, 120),
+      acquisitionPriorityReasons: boundedList(
+        source.acquisitionPriorityReasons ?? source.priorityReasons ?? source.acquisitionReasons,
+        (reason) => boundedText(reason, 240),
+        12,
+      ),
+      candidateLimitSelected: candidateLimitSelection(source),
+      acquisitionSelected: actualAcquisitionSelected(source),
+      acquisitionSelectionReason: boundedText(source.acquisitionSelectionReason, 160),
+      physicalOpenAdmission: boundedText(source.physicalOpenAdmission, 100),
+      selectedForOpening: selectedForPhysicalOpening(source),
+      selectionDecision: reportSelectionDecision(source),
+      physicalOpenPosition: Number.isInteger(source.physicalOpenPosition)
+        ? source.physicalOpenPosition
+        : Number.isInteger(source.accessOutcome?.physicalOpenIndex) ? source.accessOutcome.physicalOpenIndex : null,
       claimSupportState: boundedText(source.claimSupportState, 100),
       projectSpecificityState: boundedText(source.projectSpecificityState, 100),
       financialEligibilityState: boundedText(source.financialEligibilityState, 100),
-      sourceType: boundedText(source.sourceType, 120),
       extractionMethod: boundedText(source.extractionMethod ?? source.accessOutcome?.extractionMethod, 100),
       extractionOutcome: boundedText(source.extractionOutcome ?? source.accessOutcome?.extractionOutcome, 100),
       contentHash: boundedText(source.contentHash ?? source.accessOutcome?.contentHash, 80),
       passageSha256: typeof source.accessOutcome?.passage === "string" && source.accessOutcome.passage.trim()
         ? createHash("sha256").update(source.accessOutcome.passage).digest("hex")
         : null,
+      usablePassage: source.accessOutcome?.state === "accessible"
+        && typeof source.accessOutcome?.passage === "string"
+        && source.accessOutcome.passage.trim().length > 0,
+      passageExcerpt: safePassageExcerpt(source.accessOutcome?.passage),
       referringUrls: boundedList(
         source.documentReferringUrls ?? source.referringUrls,
         reportUrl,
@@ -969,6 +1308,7 @@ export function buildAcceptanceReport({ project, liveRun, failureRun, generatedA
   const retainedCacheResponse = isFailedRetainedCacheResponse(result);
   const audit = retainedCacheResponse ? null : result?.researchAudit ?? null;
   const retainedHistoricalAudit = retainedCacheResponse ? result?.researchAudit ?? null : null;
+  const retrievalOnlyStop = audit?.retrievalOnlyStop === "discovery-prefetch-complete";
   const categoryPlans = buildResearchCategoryPlan(project).categories;
   const categoryPlanById = new Map(categoryPlans.map((category) => [category.categoryId, category]));
   // Category-scoped acceptance runs may return a sparse audit. Merge by the
@@ -990,6 +1330,10 @@ export function buildAcceptanceReport({ project, liveRun, failureRun, generatedA
     }));
   const reportCategories = categories.length ? categories : categoryPlans;
   const source = sourceDiagnostics(audit ? result : null);
+  const candidateLineage = enrichCandidateLineagePassages(
+    boundedList(audit?.candidateLineage, reportCandidateLineage, 112).filter(Boolean),
+    source.normalizedCandidates,
+  );
   const categoryGaps = Array.isArray(audit?.categoryGaps)
     ? audit.categoryGaps
     : categories.filter((category) => category.state !== "Complete").map((category) => category.categoryId);
@@ -1063,11 +1407,18 @@ export function buildAcceptanceReport({ project, liveRun, failureRun, generatedA
     ? "incomplete-technical-limitation"
     : canonicalOutcome ?? "incomplete-technical-limitation";
   const liveAcceptance = canonicalOutcome === "complete-with-eligible-evidence" && visibleFindingTrace.length
+    && !retrievalOnlyStop
     ? {
       status: "Research complete — eligible evidence found",
       trace: visibleFindingTrace,
     }
-    : canonicalOutcome === "complete-no-eligible-evidence"
+    : retrievalOnlyStop
+      ? {
+        status: "Retrieval-only run stopped intentionally before structured analysis",
+        reason: "Document access and passage retention are reported separately; no structured analysis was requested.",
+        trace: [],
+      }
+      : canonicalOutcome === "complete-no-eligible-evidence"
       ? {
         status: "Research complete — no eligible evidence found",
         reason: "All required discovery completed without a technical blocker; no source reached governed eligibility.",
@@ -1091,6 +1442,7 @@ export function buildAcceptanceReport({ project, liveRun, failureRun, generatedA
       runId: audit?.runCorrelationId ?? null,
       researchStatus: result?.researchStatus ?? null,
       researchOutcome: canonicalOutcome,
+      intentionalRetrievalOnlyStop: retrievalOnlyStop,
       httpStatus: liveRun.statusCode,
       provider: audit?.provider ?? "openai",
       model: audit?.model ?? RESEARCH_PROJECT_MODEL,
@@ -1148,7 +1500,7 @@ export function buildAcceptanceReport({ project, liveRun, failureRun, generatedA
       state: category.state,
     })),
     sourceStates: source,
-    candidateLineage: boundedList(audit?.candidateLineage, reportCandidateLineage, 112).filter(Boolean),
+    candidateLineage,
     evidenceAudit: evidence,
     unresolvedIdentifiers,
     budgetState: {
@@ -1417,12 +1769,55 @@ export function canaryCandidateCount(report) {
 function canonicalReportUrlKey(value) {
   if (typeof value !== "string" || !value.trim()) return null;
   try {
-    const url = new URL(value.trim());
+    const reported = reportUrl(value);
+    if (!reported) return null;
+    const url = new URL(reported);
     if (!["http:", "https:"].includes(url.protocol)) return null;
     return `${url.origin}${url.pathname}`;
   } catch {
     return null;
   }
+}
+
+function passageIdentityKey(url, passageSha256) {
+  const urlKey = canonicalReportUrlKey(url);
+  if (!urlKey || !/^[a-f0-9]{64}$/i.test(passageSha256 ?? "")) return null;
+  return `${urlKey}|${passageSha256.toLowerCase()}`;
+}
+
+function enrichCandidateLineagePassages(candidateLineage, normalizedCandidates) {
+  const candidatesByPassageIdentity = new Map();
+  for (const candidate of normalizedCandidates ?? []) {
+    const passageSha256 = candidate?.passageSha256;
+    const key = passageIdentityKey(
+      candidate?.canonicalUrl ?? candidate?.resolvedUrl ?? candidate?.url,
+      passageSha256,
+    );
+    if (key && !candidatesByPassageIdentity.has(key)) {
+      candidatesByPassageIdentity.set(key, candidate);
+    }
+  }
+  return (candidateLineage ?? []).map((candidate) => {
+    const passageSha256 = candidate.passageResult?.passageSha256 ?? null;
+    const key = passageIdentityKey(candidate.url, passageSha256);
+    const matchingCandidate = key ? candidatesByPassageIdentity.get(key) : null;
+    const excerpt = candidate.passageExcerpt
+      ?? candidate.passageResult?.excerpt
+      ?? matchingCandidate?.passageExcerpt
+      ?? null;
+    const usablePassage = candidate.usablePassage === true
+      || (candidate.passageResult?.state === "retained"
+        && /^[a-f0-9]{64}$/i.test(passageSha256 ?? ""));
+    return {
+      ...candidate,
+      passageExcerpt: safePassageExcerpt(excerpt),
+      passageResult: candidate.passageResult
+        ? { ...candidate.passageResult, excerpt: safePassageExcerpt(excerpt) }
+        : candidate.passageResult,
+      usablePassage,
+      exactProjectPassage: usablePassage && candidate.identityResult?.exactProject === true,
+    };
+  });
 }
 
 export function markGridSuppliedCandidates(report, claimTrace) {
@@ -1450,6 +1845,42 @@ export function markGridSuppliedCandidates(report, claimTrace) {
     candidate.suppliedToGrid = Boolean(exactKey && exactPassages.has(exactKey));
   }
   return packets;
+}
+
+export function canaryRetrievalPassageAudit(report) {
+  const byIdentity = new Map();
+  for (const candidate of report?.candidateLineage ?? []) {
+    const passageSha256 = candidate?.passageResult?.passageSha256;
+    const sourceUrl = candidate?.canonicalUrl ?? candidate?.resolvedUrl ?? candidate?.url;
+    const key = passageIdentityKey(sourceUrl, passageSha256);
+    if (!key || candidate.usablePassage !== true) continue;
+    const existing = byIdentity.get(key);
+    const observation = {
+      sourceUrl: reportUrl(sourceUrl),
+      passageSha256,
+      excerpt: safePassageExcerpt(candidate.passageExcerpt ?? candidate.passageResult?.excerpt),
+      exactProject: candidate.identityResult?.exactProject === true,
+      identityState: boundedText(candidate.identityResult?.state, 120),
+    };
+    if (!existing) {
+      byIdentity.set(key, observation);
+    } else if (observation.exactProject && !existing.exactProject) {
+      byIdentity.set(key, { ...observation, sourceUrl: existing.sourceUrl ?? observation.sourceUrl });
+    } else if (!existing.excerpt && observation.excerpt) {
+      existing.excerpt = observation.excerpt;
+    }
+  }
+  const usablePassages = [...byIdentity.values()];
+  const exactProjectPassages = usablePassages.filter((passage) => passage.exactProject);
+  return {
+    identityBasis: "canonical-source-url-plus-passage-sha256",
+    classificationBasis: "retained-passage-identity-result-not-discovery-or-acquisition-rank",
+    usablePassageCount: usablePassages.length,
+    exactProjectPassageCount: exactProjectPassages.length,
+    usableNonExactPassageCount: usablePassages.length - exactProjectPassages.length,
+    usablePassages,
+    exactProjectPassages,
+  };
 }
 
 export function canaryPhysicalReceiptCompleteness(report, requestLocalDiagnostics = null) {
@@ -1526,13 +1957,44 @@ export function canaryPhysicalReceiptCompleteness(report, requestLocalDiagnostic
   };
 }
 
-function canaryRemainingBlockers(report, counts, gridAnalysisPackets) {
+export function canaryRemainingBlockers(report, counts, gridAnalysisPackets, retrievalOnly = false) {
   const candidates = report?.sourceStates?.normalizedCandidates ?? [];
   const structuredCalls = Number.isInteger(counts?.structuredProviderCalls)
     ? counts.structuredProviderCalls
     : 0;
   const gridPassageCount = (Array.isArray(gridAnalysisPackets) ? gridAnalysisPackets : [])
     .reduce((total, packet) => total + (Array.isArray(packet?.passages) ? packet.passages.length : 0), 0);
+  if (retrievalOnly) {
+    const physicalOpensUsed = Number.isInteger(report?.budgetState?.physicalOpensUsed)
+      ? report.budgetState.physicalOpensUsed
+      : Number.isInteger(report?.canary?.scope?.physicalDocumentOpens)
+        ? report.canary.scope.physicalDocumentOpens
+        : null;
+    const physicalOpenLimit = Number.isInteger(report?.budgetState?.physicalOpenBudget)
+      ? report.budgetState.physicalOpenBudget
+      : RED_OAK_RETRIEVAL_ONLY_CANARY_LIMITS.physicalDocumentOpens;
+    return {
+      mode: "retrieval-only",
+      intentionalStopReason: "Retrieval-only mode stops after grounded discovery and document access, before structured analysis.",
+      analysisAbsenceClassification: "intentional-retrieval-only-stop-not-retrieval-failure",
+      analysisCategoriesNotRun: ["project-identity", "grid"],
+      unresolvedCategories: [],
+      missingStructuredAnalysisPacketIsRetrievalFailure: false,
+      structuredProviderCalls: structuredCalls,
+      structuredProviderCallLimitPassed: structuredCalls === 0,
+      gridAnalysisPacketCount: Array.isArray(gridAnalysisPackets) ? gridAnalysisPackets.length : 0,
+      gridAnalysisPassageCount: gridPassageCount,
+      noUsableGroundedPassageAvailableForAnalysis: null,
+      noUsablePassageAssessment: "not-applicable-structured-analysis-intentionally-not-run",
+      passageIdentityAudit: canaryRetrievalPassageAudit(report),
+      physicalOpenBudgetExhausted: Number.isInteger(physicalOpensUsed)
+        ? physicalOpensUsed >= physicalOpenLimit
+        : false,
+      physicalOpensUsed,
+      physicalOpenLimit,
+      deadlineCauseAsserted: false,
+    };
+  }
   const accessibleNotSupplied = candidates.filter((candidate) =>
     candidate?.accessState === "accessible" && candidate.suppliedToGrid !== true,
   );
@@ -1601,12 +2063,12 @@ async function raceWithTimeout(promise, timeoutMs, timeoutValue = null) {
  */
 export async function runRedOakGridCanary({
   optIn = false,
+  retrievalOnly = false,
   preconditionsPath = null,
   preconditions = null,
   apiKey = process.env.OPENAI_API_KEY,
   googleApiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GEMINI_API_KEY,
-  outputPath = process.env.SAFELOC_RED_OAK_CANARY_OUTPUT
-    ?? path.join(os.tmpdir(), "red-oak-grid-canary-report.json"),
+  outputPath = null,
 } = {}) {
   if (optIn !== true) {
     throw new Error("Red Oak live canary requires the dedicated command and explicit --live opt-in; no requests were issued.");
@@ -1618,12 +2080,22 @@ export async function runRedOakGridCanary({
   const gateFilePath = preconditionsPath ? path.resolve(preconditionsPath) : null;
   const currentSourceIdentity = getRedOakCanarySourceIdentity();
   const verifiedPreconditions = summarizePreconditions(metadata, gateFilePath, currentSourceIdentity);
-  if (!apiKey) throw new Error("OPENAI_API_KEY is required for the opted-in Red Oak canary.");
+  const limits = retrievalOnly
+    ? RED_OAK_RETRIEVAL_ONLY_CANARY_LIMITS
+    : RED_OAK_GRID_CANARY_LIMITS;
+  if (!retrievalOnly && !apiKey) throw new Error("OPENAI_API_KEY is required for the opted-in Red Oak canary.");
   if (!googleApiKey) throw new Error("GEMINI_API_KEY or GOOGLE_GEMINI_API_KEY is required for the opted-in Red Oak canary.");
 
   const invocationStartedAt = Date.now();
-  const hardDeadlineAt = invocationStartedAt + RED_OAK_GRID_CANARY_LIMITS.invocationTimeoutMs;
-  const resolvedOutputPath = path.resolve(outputPath);
+  const hardDeadlineAt = invocationStartedAt + limits.invocationTimeoutMs;
+  const defaultOutputPath = (retrievalOnly
+    ? process.env.SAFELOC_RED_OAK_RETRIEVAL_CANARY_OUTPUT
+    : process.env.SAFELOC_RED_OAK_CANARY_OUTPUT)
+    ?? process.env.SAFELOC_RED_OAK_CANARY_OUTPUT
+    ?? path.join(os.tmpdir(), retrievalOnly
+      ? "red-oak-retrieval-only-canary-report.json"
+      : "red-oak-grid-canary-report.json");
+  const resolvedOutputPath = path.resolve(outputPath ?? defaultOutputPath);
   const outputPathRelativeToRepository = path.relative(REPOSITORY_ROOT, resolvedOutputPath);
   if (outputPathRelativeToRepository === ""
     || (!outputPathRelativeToRepository.startsWith(`..${path.sep}`)
@@ -1633,7 +2105,7 @@ export async function runRedOakGridCanary({
   }
   const singleRunMarkerPath = path.join(
     os.tmpdir(),
-    `safeloc-red-oak-grid-canary-${currentSourceIdentity.sourceRevision}.lock`,
+    `safeloc-red-oak-${retrievalOnly ? "retrieval-only" : "grid"}-canary-${currentSourceIdentity.sourceRevision}.lock`,
   );
   try {
     await writeFile(singleRunMarkerPath, JSON.stringify({
@@ -1647,7 +2119,10 @@ export async function runRedOakGridCanary({
     }
     throw error;
   }
-  const tempDirectory = await mkdtemp(path.join(os.tmpdir(), "safeloc-red-oak-grid-canary-"));
+  const tempDirectory = await mkdtemp(path.join(
+    os.tmpdir(),
+    retrievalOnly ? "safeloc-red-oak-retrieval-only-canary-" : "safeloc-red-oak-grid-canary-",
+  ));
   const isolated = createRedOakCanaryResources(tempDirectory);
   const pendingRegistryWrites = [];
   const registry = {
@@ -1685,7 +2160,7 @@ export async function runRedOakGridCanary({
     researchTimer = setTimeout(() => {
       researchTimeoutReached = true;
       abortController.abort();
-    }, Math.max(0, invocationStartedAt + RED_OAK_GRID_CANARY_LIMITS.researchTimeoutMs - Date.now()));
+    }, Math.max(0, invocationStartedAt + limits.researchTimeoutMs - Date.now()));
     requestPromise = runRequest(project, {
       ...buildRedOakGridCanaryRequestOptions({
         apiKey,
@@ -1697,6 +2172,7 @@ export async function runRedOakGridCanary({
         claimTrace,
           canaryDiagnosticCollector,
         signal: abortController.signal,
+          retrievalOnly,
       }),
     }).then(
       (result) => ({ result }),
@@ -1741,7 +2217,13 @@ export async function runRedOakGridCanary({
       selectedProposalCount: null,
       errorType: null,
     };
-    if (invocationCancellationStarted || !settled?.result || Date.now() >= hardDeadlineAt - 15_000) {
+    if (retrievalOnly) {
+      clientParsing = {
+        ...clientParsing,
+        state: "skipped-retrieval-only",
+        errorType: null,
+      };
+    } else if (invocationCancellationStarted || !settled?.result || Date.now() >= hardDeadlineAt - 15_000) {
       clientParsing = {
         ...clientParsing,
         errorType: invocationCancellationStarted
@@ -1789,7 +2271,14 @@ export async function runRedOakGridCanary({
     const gridAnalysisPackets = markGridSuppliedCandidates(report, claimTraceReport);
     const requestLocalDiagnostics = canaryDiagnosticCollector.toJSON();
     report.canary = {
-      mode: "red-oak-grid",
+      mode: retrievalOnly ? "red-oak-retrieval-only" : "red-oak-grid",
+      retrievalOnly,
+      retrievalOnlyStopBoundary: retrievalOnly
+        ? "after-discovery-document-access-before-structured-analysis"
+        : null,
+      retrievalOnlyStopReason: retrievalOnly
+        ? "Intentional retrieval-only stop after bounded document access; structured analysis was not requested."
+        : null,
       explicitLiveOptIn: true,
       repeatRunGuard: "one-invocation-per-source-revision",
       preconditions: verifiedPreconditions,
@@ -1804,8 +2293,9 @@ export async function runRedOakGridCanary({
         productionResearchStateWritten: false,
       },
       scope: {
-        categories: [...RED_OAK_GRID_CANARY_LIMITS.categoryIds],
+        categories: [...limits.categoryIds],
         discoveryRequestedCategories: ["project-identity", "grid"],
+        retrievalOnly,
         groundedDiscoveryRequests: counts.discoveryRequests,
         structuredProviderCalls: counts.structuredProviderCalls,
         totalProviderRequests: counts.totalProviderRequests,
@@ -1813,20 +2303,21 @@ export async function runRedOakGridCanary({
           ? liveRun.payload.researchAudit.physicalOpensUsed
           : null,
         limits: {
-          groundedDiscoveryRequests: RED_OAK_GRID_CANARY_LIMITS.discoveryRequests,
-          structuredProviderCalls: RED_OAK_GRID_CANARY_LIMITS.structuredProviderCalls,
-          totalProviderRequests: RED_OAK_GRID_CANARY_LIMITS.totalProviderRequests,
-          physicalDocumentOpens: RED_OAK_GRID_CANARY_LIMITS.physicalDocumentOpens,
+          groundedDiscoveryRequests: limits.discoveryRequests,
+          structuredProviderCalls: limits.structuredProviderCalls,
+          totalProviderRequests: limits.totalProviderRequests,
+          physicalDocumentOpens: limits.physicalDocumentOpens,
           followUps: 0,
           openAIFallback: false,
           correctiveRetries: false,
           providerRetries: false,
           secConnectorDefault: false,
           failureRehearsal: false,
-          researchTimeoutMs: RED_OAK_GRID_CANARY_LIMITS.researchTimeoutMs,
-          invocationTimeoutMs: RED_OAK_GRID_CANARY_LIMITS.invocationTimeoutMs,
+          researchTimeoutMs: limits.researchTimeoutMs,
+          invocationTimeoutMs: limits.invocationTimeoutMs,
         },
       },
+      retrievalOnlyCallLimitPassed: !retrievalOnly || counts.structuredProviderCalls === 0,
       timeout: {
         researchDeadlineReached: researchTimeoutReached,
         invocationCancellationStarted,
@@ -1834,9 +2325,10 @@ export async function runRedOakGridCanary({
       },
       contentQualityObservations: canaryContentQualityObservations(report),
       gridAnalysisPackets,
+      retrievalOnlyPassageAudit: retrievalOnly ? canaryRetrievalPassageAudit(report) : null,
       requestLocalDiagnostics,
       physicalReceiptCompleteness: canaryPhysicalReceiptCompleteness(report, requestLocalDiagnostics),
-      remainingBlockers: canaryRemainingBlockers(report, counts, gridAnalysisPackets),
+      remainingBlockers: canaryRemainingBlockers(report, counts, gridAnalysisPackets, retrievalOnly),
       candidateCount: canaryCandidateCount(report),
       clientParsing,
       claimTrace: claimTraceReport,
@@ -1887,12 +2379,14 @@ function parseKnownData(rawValue) {
 }
 
 export function parseRedOakCanaryCliArguments(args) {
-  const parsed = { optIn: false, preconditionsPath: null, outputPath: undefined };
+  const parsed = { optIn: false, retrievalOnly: false, preconditionsPath: null, outputPath: undefined };
   const forwardedArgs = args[0] === "--" ? args.slice(1) : args;
   for (let index = 0; index < forwardedArgs.length; index += 1) {
     const argument = forwardedArgs[index];
     if (argument === "--live") {
       parsed.optIn = true;
+    } else if (argument === "--retrieval-only") {
+      parsed.retrievalOnly = true;
     } else if (argument === "--gates" || argument === "--output") {
       const value = forwardedArgs[index + 1];
       if (!value || value.startsWith("--")) throw new Error(`${argument} requires a file path.`);
@@ -1906,7 +2400,7 @@ export function parseRedOakCanaryCliArguments(args) {
   return parsed;
 }
 
-function armRedOakCanaryHardWatchdog(outputPath) {
+function armRedOakCanaryHardWatchdog(outputPath, retrievalOnly = false) {
   const watchdogOutputPath = path.resolve(outputPath);
   const timer = setTimeout(() => {
     let report;
@@ -1928,7 +2422,11 @@ function armRedOakCanaryHardWatchdog(outputPath) {
         candidateLineage: [],
       };
     }
-    report.canary ??= { mode: "red-oak-grid", explicitLiveOptIn: true };
+    report.canary ??= {
+      mode: retrievalOnly ? "red-oak-retrieval-only" : "red-oak-grid",
+      explicitLiveOptIn: true,
+      retrievalOnly,
+    };
     report.canary.timeout ??= {};
     report.canary.timeout.hardWatchdogTriggered = true;
     report.canary.timeout.hardDeadlineMs = RED_OAK_GRID_CANARY_LIMITS.invocationTimeoutMs;
@@ -1960,10 +2458,15 @@ if (invokedDirectly && process.argv[2] === "--red-oak-grid-canary") {
   }
   if (options) {
     const watchdogOutputPath = options.outputPath
+      ?? (options.retrievalOnly
+        ? process.env.SAFELOC_RED_OAK_RETRIEVAL_CANARY_OUTPUT
+        : process.env.SAFELOC_RED_OAK_CANARY_OUTPUT)
       ?? process.env.SAFELOC_RED_OAK_CANARY_OUTPUT
-      ?? path.join(os.tmpdir(), "red-oak-grid-canary-report.json");
+      ?? path.join(os.tmpdir(), options.retrievalOnly
+        ? "red-oak-retrieval-only-canary-report.json"
+        : "red-oak-grid-canary-report.json");
     const disarmWatchdog = options.optIn
-      ? armRedOakCanaryHardWatchdog(watchdogOutputPath)
+      ? armRedOakCanaryHardWatchdog(watchdogOutputPath, options.retrievalOnly)
       : () => {};
     runRedOakGridCanary(options)
       .then(({ report, outputPath }) => {
@@ -1973,6 +2476,7 @@ if (invokedDirectly && process.argv[2] === "--red-oak-grid-canary") {
           elapsedMs: report.run.elapsedMs,
           limits: report.canary.scope,
           timeout: report.canary.timeout,
+          retrievalOnlyCallLimitPassed: report.canary.retrievalOnlyCallLimitPassed,
           eligibleEvidenceCount: report.eligibleEvidenceCount,
         }, null, 2));
         if (report.run.status === "incomplete-technical-limitation") process.exitCode = 1;

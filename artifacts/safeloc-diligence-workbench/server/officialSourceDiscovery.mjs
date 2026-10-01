@@ -1,3 +1,5 @@
+import { rankAcquisitionCandidates } from "./researchAcquisitionRanking.mjs";
+
 const DEFAULT_MAX_ATTEMPTS = 12;
 const HARD_MAX_ATTEMPTS = 24;
 const MAX_DOCUMENT_BYTES = 256 * 1024;
@@ -371,11 +373,19 @@ export async function discoverOfficialSources({
   }
   const queue = [];
   const queued = new Set();
-  const enqueue = (value, provenance, sourceChannel = null) => {
+  let nextQueueRank = 0;
+  const enqueue = (value, provenance, sourceChannel = null, discoveryContext = "") => {
     const url = safeUrl(value);
     if (!url || !hostAllowed(url, allowedDomains) || queued.has(url) || queued.size >= MAX_URLS) return;
     queued.add(url);
-    queue.push({ url, provenance, sourceChannel });
+    nextQueueRank += 1;
+    queue.push({
+      url,
+      provenance,
+      sourceChannel,
+      discoveryContext: cleanText(discoveryContext, 500),
+      discoveryCandidateRank: nextQueueRank,
+    });
   };
   if (declaredSourceUrl) enqueue(declaredSourceUrl, { kind: "knownData", field: "sourceUrl" }, "declared-source-url");
   for (const endpoint of declaredEndpoints) {
@@ -393,14 +403,18 @@ export async function discoverOfficialSources({
 
   const candidateUrls = [];
   const candidateSet = new Set();
-  const addCandidate = (url, sourceChannel, provenance, alias = null) => {
+  let nextCandidateRank = 0;
+  const addCandidate = (url, sourceChannel, provenance, alias = null, discoveryContext = "") => {
     if (candidateSet.has(url) || candidateUrls.length >= MAX_URLS) return;
     candidateSet.add(url);
+    nextCandidateRank += 1;
     candidateUrls.push({
       url,
       sourceChannel,
       provenance: { ...provenance, discoveryOnly: true },
       matchedAlias: alias,
+      discoveryContext: cleanText(discoveryContext, 500),
+      discoveryCandidateRank: nextCandidateRank,
       discoveryOnly: true,
     });
   };
@@ -418,7 +432,11 @@ export async function discoverOfficialSources({
     return { authorities, attempts, candidateUrls, limits: { maxAttempts: limit, maxDocumentBytes: MAX_DOCUMENT_BYTES }, discoveryIsEvidence: false };
   }
   while (queue.length && attempts.length < limit && !signal?.aborted) {
-    const target = queue.shift();
+    const rankedQueue = rankAcquisitionCandidates(queue, identity);
+    const nextTarget = rankedQueue[0];
+    const queueIndex = queue.findIndex((candidate) =>
+      candidate.discoveryCandidateRank === nextTarget.discoveryCandidateRank);
+    const target = queue.splice(queueIndex, 1)[0];
     const sourceChannel = target.sourceChannel ?? sourceChannelForHost(target.url, domainFamilies);
     const authorization = typeof authorizeAttempt === "function"
       ? authorizeAttempt(target.url)
@@ -510,9 +528,16 @@ export async function discoverOfficialSources({
         for (const context of contexts) {
           const candidate = safeUrl(context.url, target.url);
           if (!candidate || !hostAllowed(candidate, allowedDomains)) continue;
-          const matchedAlias = aliases.find((alias) => mentionsExactAlias(`${context.context} ${safelyDecoded(candidate)}`, [alias]));
+          const discoveryContext = `${context.context} ${safelyDecoded(candidate)}`;
+          const matchedAlias = aliases.find((alias) => mentionsExactAlias(discoveryContext, [alias]));
           if (!matchedAlias) continue;
-          addCandidate(candidate, sourceChannel, { kind: "exact-alias-index-match", parent: target.url }, matchedAlias);
+          addCandidate(
+            candidate,
+            sourceChannel,
+            { kind: "exact-alias-index-match", parent: target.url },
+            matchedAlias,
+            discoveryContext,
+          );
         }
       };
       if (typeof withRequestBudget === "function") await withRequestBudget(executeAttempt);
@@ -547,7 +572,10 @@ export async function discoverOfficialSources({
   return {
     authorities,
     attempts,
-    candidateUrls,
+    candidateUrls: rankAcquisitionCandidates(candidateUrls.map((candidate) => ({
+      ...candidate,
+      title: candidate.discoveryContext,
+    })), identity),
     limits: { maxAttempts: limit, maxDocumentBytes: MAX_DOCUMENT_BYTES, maxCandidateUrls: MAX_URLS },
     discoveryIsEvidence: false,
   };

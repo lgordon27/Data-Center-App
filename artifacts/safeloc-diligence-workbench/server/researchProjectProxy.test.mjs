@@ -70,6 +70,7 @@ import {
   researchProjectCacheKey,
 } from "./researchProjectCache.mjs";
 import { createRedOakClaimTrace } from "./redOakClaimTrace.mjs";
+import { parseGoogleGroundedDiscoveryResponse } from "./googleGroundedDiscovery.mjs";
 
 const redOakQualityFixtures = JSON.parse(readFileSync(
   new URL("./fixtures/red-oak-quality.json", import.meta.url),
@@ -6102,6 +6103,419 @@ test("two-category canary budget cannot issue extra structured calls, follow-ups
   assert.ok(gridPacket.passages[0].passageId.startsWith("passage-"));
   assert.ok(gridPacket.passages[0].quoteSha256);
   assert.ok(gridPacket.passages[0].excerpt);
+});
+
+test("retrieval-only admission ranks exact-project sources before a competing cap and preserves every candidate", async () => {
+  const project = {
+    name: "Red Oak Campus",
+    location: "Red Oak, Ellis County, Texas",
+    knownData: {
+      aliases: ["Red Oak Campus", "DataBank Red Oak Campus", "DataBank Red Oak Data Center"],
+      operator: "DataBank",
+      companyDomains: ["databank.com"],
+      facilityIdentifiers: ["DFW9", "DFW10", "DFW11"],
+      city: "Red Oak",
+      county: "Ellis County",
+      state: "Texas",
+    },
+  };
+  const candidates = [
+    {
+      url: "https://databank.com/",
+      title: "DataBank",
+      categoryIds: ["project-identity"],
+    },
+    {
+      url: "https://databank.com/sitemap.xml",
+      title: "DataBank sitemap",
+      categoryIds: ["project-identity"],
+    },
+    {
+      url: "https://elliscounty.gov/data-center-policy",
+      title: "Ellis County Data Center Policy",
+      categoryIds: ["grid"],
+    },
+    {
+      url: "https://youtube.com/watch?v=red-oak",
+      title: "Red Oak Campus grid interconnection video",
+      categoryIds: ["grid"],
+      sourceType: "video",
+    },
+    {
+      url: "https://reporting.example/red-oak-campus-grid",
+      title: "Red Oak Campus grid interconnection report",
+      categoryIds: ["grid"],
+    },
+    {
+      url: "https://databank.com/projects/red-oak-campus-dfw11",
+      title: "DataBank Red Oak Campus DFW11 project record",
+      categoryIds: ["grid"],
+    },
+    {
+      url: "https://tdlr.texas.gov/TABS/Search/Project/DFW11",
+      title: "TDLR filing for DataBank Red Oak Campus DFW11",
+      categoryIds: ["project-identity"],
+    },
+  ].map((candidate) => ({
+    ...candidate,
+    searchDomain: candidate.categoryIds[0],
+    sourceChannel: "google-grounded-search",
+  }));
+  const openedUrls = [];
+  const discoveryAudit = { candidates: [], receipts: [], authorizations: [] };
+  let discoveryCalls = 0;
+  let structuredCalls = 0;
+  const result = await runValidatedResearch(project, {
+    apiKey: "offline-openai-key",
+    googleApiKey: "offline-google-key",
+    req: request({}),
+    categoryIds: ["project-identity", "grid"],
+    allowGoogleFallback: false,
+    allowCorrectiveRetries: false,
+    allowProviderRetries: false,
+    useDefaultSecConnector: false,
+    retrievalOnly: true,
+    researchBudgetOverrides: {
+      maxProviderRequests: 3,
+      maxPhysicalDocumentOpens: 2,
+      maxFollowUps: 0,
+      maxFollowUpsPerCategory: 0,
+      maxCandidatesPerCategory: 8,
+      maxTotalCandidates: 5,
+    },
+    researchTimeoutMs: 8_000,
+    analysisReserveMs: 0,
+    documentTimeoutMs: 1_000,
+    rateLimiter: { allow: () => ({ allowed: true, retryAfterSeconds: 0 }) },
+    canaryDiagnosticCollector: {
+      recordDiscoveryCandidates(value) {
+        discoveryAudit.candidates = value;
+      },
+      recordPhysicalOpenAuthorization(value) {
+        discoveryAudit.authorizations.push(value);
+      },
+      recordPhysicalReceipt(value) {
+        discoveryAudit.receipts.push(value);
+      },
+    },
+    googleDiscoveryImpl: async () => {
+      discoveryCalls += 1;
+      return completedGoogleDiscovery(candidates)();
+    },
+    dnsLookup: async () => [{ address: "93.184.216.34", family: 4 }],
+    documentFetchImpl: async (url) => {
+      openedUrls.push(String(url));
+      if (String(url) === candidates[6].url) {
+        return new Response("forbidden", { status: 403, headers: { "content-type": "text/plain" } });
+      }
+      return substantiveHtmlResponse(
+        "DataBank Red Oak Campus is named in this synthetic public page. No real project metric is represented here.",
+        url,
+      );
+    },
+    fetchImpl: async () => {
+      structuredCalls += 1;
+      throw new Error("Retrieval-only acceptance must stop before structured provider work.");
+    },
+  });
+
+  assert.equal(discoveryCalls, 1);
+  assert.equal(structuredCalls, 0);
+  assert.deepEqual(openedUrls, [candidates[6].url, candidates[5].url]);
+  assert.equal(result.researchAudit.physicalOpensUsed, 2);
+  assert.equal(result.researchAudit.retrievalOnlyStop, "discovery-prefetch-complete");
+  assert.equal(result.cacheable, false);
+  assert.ok(result.evidence.every((item) => item.eligibleForModel !== true));
+
+  const admitted = result.researchCoverage.discoveryCandidates;
+  assert.equal(admitted.length, candidates.length);
+  assert.deepEqual(admitted.map((candidate) => candidate.discoveryRank), [7, 6, 5, 4, 3, 1, 2]);
+  assert.deepEqual(admitted.slice(0, 2).map((candidate) => candidate.physicalOpenAdmission), [
+    "authorized",
+    "authorized",
+  ]);
+  assert.deepEqual(admitted.slice(0, 2).map((candidate) => candidate.accessState), [
+    "blocked",
+    "accessible",
+  ]);
+  assert.equal(admitted[2].accessReason, "physical-open-budget");
+  assert.equal(admitted.at(-1).selectionReason, "candidate-limit");
+  assert.equal(admitted.at(-1).selectedForOpen, false);
+  assert.equal(discoveryAudit.candidates.length, candidates.length);
+  assert.equal(discoveryAudit.authorizations.length, 2);
+  assert.equal(discoveryAudit.receipts.length, candidates.length);
+});
+
+test("retrievalOnly request body runs without OpenAI credentials, stops before official continuation, and finalizes audit", async () => {
+  const body = {
+    name: "Red Oak Campus",
+    location: "Red Oak, Ellis County, Texas",
+    retrievalOnly: true,
+    knownData: {
+      aliases: ["Red Oak Campus", "DataBank Red Oak Campus"],
+      operator: "DataBank",
+      companyDomains: ["databank.com"],
+      knownOfficialEndpoints: ["https://databank.com/projects/red-oak-campus"],
+    },
+  };
+  const candidate = {
+    url: "https://tdlr.texas.gov/TABS/Search/Project/DFW11",
+    title: "TDLR filing for DataBank Red Oak Campus DFW11",
+    categoryIds: ["project-identity"],
+    searchDomain: "project-identity",
+    sourceChannel: "google-grounded-search",
+  };
+  const response = Object.assign(new EventEmitter(), responseRecorder());
+  response.writableEnded = false;
+  response.writableFinished = false;
+  let markResponseEnded;
+  const responseEnded = new Promise((resolve) => { markResponseEnded = resolve; });
+  response.end = function end(serialized) {
+    this.body = serialized ?? "";
+    this.writableEnded = true;
+    markResponseEnded();
+  };
+  let markAuditFinished;
+  const auditFinished = new Promise((resolve) => { markAuditFinished = resolve; });
+  let startedAudit = null;
+  let finishedAudit = null;
+  const auditRepository = {
+    async startRun(record) {
+      startedAudit = record;
+    },
+    async finishRun(record) {
+      finishedAudit = record;
+      markAuditFinished(record);
+    },
+  };
+  let discoveryCalls = 0;
+  let structuredCalls = 0;
+  const documentFetches = [];
+  const pending = handleResearchProjectRequest(request(body), response, {
+    apiKey: null,
+    googleApiKey: null,
+    googleDiscoveryImpl: async () => {
+      discoveryCalls += 1;
+      return completedGoogleDiscovery([candidate])();
+    },
+    fetchImpl: async () => {
+      structuredCalls += 1;
+      throw new Error("No structured provider request is expected.");
+    },
+    documentFetchImpl: async (url) => {
+      documentFetches.push(String(url));
+      return new Response("forbidden", { status: 403, headers: { "content-type": "text/plain" } });
+    },
+    dnsLookup: async () => [{ address: "93.184.216.34", family: 4 }],
+    cache: createResearchProjectCache(),
+    registry: { async retain() {} },
+    rateLimiter: { allow: () => ({ allowed: true, retryAfterSeconds: 0 }) },
+    auditRepository,
+    categoryIds: ["project-identity"],
+    allowGoogleFallback: false,
+    allowCorrectiveRetries: false,
+    allowProviderRetries: false,
+    useDefaultSecConnector: false,
+    researchBudgetOverrides: { maxPhysicalDocumentOpens: 4 },
+  });
+
+  await responseEnded;
+  await pending;
+  response.writableFinished = true;
+  response.emit("finish");
+  const completedAudit = await auditFinished;
+  const payload = response.json();
+
+  assert.equal(discoveryCalls, 1);
+  assert.equal(structuredCalls, 0);
+  assert.deepEqual(documentFetches, [candidate.url], "official-source continuation must not run after prefetch receipts");
+  assert.equal(startedAudit.researchStatus, "running");
+  assert.ok(completedAudit.finishedAt);
+  assert.equal(completedAudit.audit.retrievalOnlyStop, "discovery-prefetch-complete");
+  assert.equal(completedAudit.audit.physicalOpensUsed, 1);
+  assert.equal(payload.researchAudit.retrievalOnlyStop, "discovery-prefetch-complete");
+  assert.equal(payload.researchCoverage.discoveryCandidates.length, 1);
+  assert.equal(payload.researchCoverage.discoveryCandidates[0].selectedForOpen, true);
+  assert.equal(payload.researchCoverage.discoveryCandidates[0].accessState, "blocked");
+  assert.equal(payload.researchAudit.sourceAttempts.length, 1);
+  assert.equal(payload.researchAudit.sourceAttempts[0].acquisitionSelected, true);
+});
+
+test("production research audit retains original Google citation ranks and canonical duplicate decisions", async () => {
+  const duplicateAnnotations = [
+    { type: "url_citation", url: "https://records.example.test/atlas/one?id=1", title: "Project Atlas filing one" },
+    { type: "url_citation", url: "https://records.example.test/atlas/one?id=1&utm_source=duplicate", title: "Duplicate one" },
+    { type: "url_citation", url: "https://records.example.test/atlas/three?id=3", title: "Project Atlas filing three" },
+    { type: "url_citation", url: "https://records.example.test/atlas/three?id=3&utm_medium=duplicate", title: "Duplicate three" },
+    { type: "url_citation", url: "javascript:alert(1)", title: "Unsafe citation" },
+    { type: "url_citation", title: "Missing URL citation" },
+    { type: "url_citation", url: "https://records.example.test/atlas/seven?id=7", title: "Project Atlas filing seven" },
+    { type: "url_citation", url: "https://records.example.test/atlas/seven?id=7&utm_source=duplicate", title: "Duplicate seven" },
+    { type: "url_citation", url: "https://records.example.test/atlas/one?id=1&utm_campaign=repeat", title: "Repeated filing one" },
+    { type: "url_citation", url: "ftp://127.0.0.1/private", title: "Non-HTTP citation" },
+    { type: "url_citation", url: "https://records.example.test/atlas/three?id=3&utm_campaign=repeat", title: "Repeated filing three" },
+    { type: "url_citation", url: "https://records.example.test/atlas/seven?id=7&utm_campaign=repeat", title: "Repeated filing seven" },
+    { type: "url_citation", url: "https://records.example.test/atlas/thirteen?id=13", title: "Project Atlas filing thirteen" },
+  ];
+  const discovery = parseGoogleGroundedDiscoveryResponse({
+    steps: [
+      { type: "google_search_call", arguments: { queries: ["Project Atlas Taylor County filings"] } },
+      { type: "google_search_result", result: {} },
+      { type: "model_output", content: [{
+        type: "text",
+        text: "Grounded citation fixture.",
+        annotations: duplicateAnnotations,
+      }] },
+    ],
+  });
+  const documentCalls = [];
+  let structuredCalls = 0;
+  const result = await runValidatedResearch({
+    name: "Project Atlas",
+    location: "Taylor County, Texas",
+  }, {
+    apiKey: null,
+    googleApiKey: null,
+    googleDiscoveryImpl: async () => discovery,
+    categoryIds: ["project-identity"],
+    retrievalOnly: true,
+    req: request({}),
+    rateLimiter: { allow: () => ({ allowed: true, retryAfterSeconds: 0 }) },
+    allowGoogleFallback: false,
+    allowCorrectiveRetries: false,
+    allowProviderRetries: false,
+    useDefaultSecConnector: false,
+    researchBudgetOverrides: { maxPhysicalDocumentOpens: 2 },
+    dnsLookup: async () => [{ address: "93.184.216.34", family: 4 }],
+    documentFetchImpl: async (url) => {
+      documentCalls.push(String(url));
+      return new Response("forbidden", { status: 403, headers: { "content-type": "text/plain" } });
+    },
+    fetchImpl: async () => {
+      structuredCalls += 1;
+      throw new Error("Retrieval-only audit regression must not call a structured provider.");
+    },
+  });
+
+  const audit = result.researchAudit.discovery;
+  assert.equal(structuredCalls, 0);
+  assert.equal(documentCalls.length, 2);
+  assert.equal(audit.annotationCount, duplicateAnnotations.length);
+  assert.equal(audit.candidateCount, 4);
+  assert.deepEqual(
+    audit.rawAnnotationSummaries.filter((item) => item.accepted).map((item) => item.discoveryRank),
+    [1, 3, 7, 13],
+  );
+  assert.deepEqual(
+    audit.rawAnnotationSummaries.filter((item) => item.rejectionReason === "duplicate-canonical-url")
+      .map((item) => item.discoveryRank),
+    [2, 4, 8, 9, 11, 12],
+  );
+  assert.equal(audit.rawAnnotationSummaries[0].url, "https://records.example.test/atlas/one");
+  assert.equal(audit.rawAnnotationSummaries[1].canonicalUrl, audit.rawAnnotationSummaries[0].canonicalUrl);
+  assert.equal(audit.rawAnnotationSummaries[4].url, null, "unsafe raw annotation URLs are not exposed");
+  assert.equal(audit.rawAnnotationSummaries[5].rejectionReason, "missing-url");
+  assert.equal(audit.rawAnnotationSummaries[9].url, null, "non-HTTP URLs are not exposed");
+  assert.deepEqual(
+    audit.rejectedCitationUrls.map((item) => item.discoveryRank),
+    [2, 4, 5, 6, 8, 9, 10, 11, 12],
+  );
+  assert.doesNotMatch(JSON.stringify(audit), /utm_|javascript:|127\.0\.0\.1/);
+});
+
+test("finalized request audit retains all discovery ranks and every admitted physical-open receipt", async () => {
+  const candidates = Array.from({ length: 80 }, (_, index) => ({
+    url: `https://records.example.test/project-atlas/item-${index + 1}`,
+    title: `Project Atlas public record ${index + 1}`,
+    categoryIds: ["project-identity"],
+    searchDomain: "project-identity",
+    sourceChannel: "google-grounded-search",
+  }));
+  const body = {
+    name: "Project Atlas",
+    location: "Taylor County, Texas",
+    retrievalOnly: true,
+    forceRefresh: true,
+  };
+  const response = Object.assign(new EventEmitter(), responseRecorder());
+  response.writableEnded = false;
+  response.writableFinished = false;
+  let markResponseEnded;
+  const responseEnded = new Promise((resolve) => { markResponseEnded = resolve; });
+  response.end = function end(serialized) {
+    this.body = serialized ?? "";
+    this.writableEnded = true;
+    markResponseEnded();
+  };
+  let markAuditFinished;
+  const auditFinished = new Promise((resolve) => { markAuditFinished = resolve; });
+  let finishedAudit = null;
+  const auditRepository = {
+    async startRun() {},
+    async finishRun(record) {
+      finishedAudit = record;
+      markAuditFinished(record);
+    },
+  };
+  const documentCalls = [];
+  let structuredCalls = 0;
+
+  const pending = handleResearchProjectRequest(request(body), response, {
+    apiKey: null,
+    googleApiKey: null,
+    googleDiscoveryImpl: completedGoogleDiscovery(candidates),
+    cache: createResearchProjectCache(),
+    rateLimiter: { allow: () => ({ allowed: true, retryAfterSeconds: 0 }) },
+    auditRepository,
+    categoryIds: ["project-identity"],
+    researchBudgetOverrides: {
+      maxTotalCandidates: 16,
+      maxCandidatesPerCategory: 16,
+      maxPhysicalDocumentOpens: 8,
+    },
+    dnsLookup: async () => [{ address: "93.184.216.34", family: 4 }],
+    documentFetchImpl: async (url) => {
+      documentCalls.push(String(url));
+      return new Response("forbidden", { status: 403, headers: { "content-type": "text/plain" } });
+    },
+    fetchImpl: async () => {
+      structuredCalls += 1;
+      throw new Error("Retrieval-only audit regression must not call a structured provider.");
+    },
+  });
+
+  await responseEnded;
+  await pending;
+  response.writableFinished = true;
+  response.emit("finish");
+  const finalized = await auditFinished;
+  const persistedAudit = finalized.audit;
+  assert.equal(response.statusCode, 200);
+  assert.equal(structuredCalls, 0);
+  assert.equal(documentCalls.length, 8);
+  assert.equal(persistedAudit.physicalOpensUsed, 8);
+  assert.equal(persistedAudit.discoveryCandidates.length, 80);
+  assert.deepEqual(
+    persistedAudit.discoveryCandidates.map((candidate) => candidate.discoveryRank),
+    Array.from({ length: 80 }, (_, index) => index + 1),
+  );
+  assert.deepEqual(
+    persistedAudit.sourceAttempts.map((attempt) => attempt.discoveryRank).sort((left, right) => left - right),
+    Array.from({ length: 80 }, (_, index) => index + 1),
+  );
+  assert.deepEqual(
+    persistedAudit.sourceAttempts
+      .map((attempt) => attempt.physicalOpenIndex)
+      .filter(Number.isInteger)
+      .sort((left, right) => left - right),
+    Array.from({ length: 8 }, (_, index) => index + 1),
+  );
+  assert.equal(
+    persistedAudit.discoveryCandidates.filter((candidate) => candidate.selectedForOpen).length,
+    8,
+  );
+  assert.ok(persistedAudit.discoveryCandidates.every((candidate) =>
+    candidate.physicalOpenAdmission && (candidate.accessState || candidate.accessReason)));
 });
 
 test("blocked discovery documents produce unavailable trace responses without fabricated structured claims", async () => {

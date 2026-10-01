@@ -274,6 +274,9 @@ test("parses successful Interactions search steps and deduplicates URL-citation 
   assert.equal(result.candidates[0].discoveryOnly, true);
   assert.equal(result.candidates[0].claimCited, false);
   assert.equal(result.candidates[0].excerpt, "");
+  assert.equal(result.candidates[0].discoveryCandidateRank, 1);
+  assert.equal(result.candidates[1].discoveryCandidateRank, 3,
+    "accepted candidates retain original citation order across a rejected duplicate");
   assert.equal(Object.hasOwn(result.candidates[0], "exactProject"), false);
   assert.ok(result.candidates[0].referringQueries.includes("Project Atlas Taylor County permit"));
   assert.equal(result.groundingMetadataPresent, true);

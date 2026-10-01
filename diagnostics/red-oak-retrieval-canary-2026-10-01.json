@@ -1,0 +1,2790 @@
+{
+  "diagnosticOnly": true,
+  "evidenceStatus": "not-evidence",
+  "liveAcceptance": {
+    "status": "Retrieval-only run stopped intentionally before structured analysis",
+    "reason": "Document access and passage retention are reported separately; no structured analysis was requested.",
+    "trace": []
+  },
+  "generatedAt": "2026-10-01T00:16:32.710Z",
+  "project": {
+    "name": "Red Oak Campus",
+    "location": "Red Oak, Ellis County, Texas",
+    "directoryProvider": "Compute Atlas",
+    "directoryProviderId": "databank-red-oak-campus",
+    "aliases": [
+      "Red Oak Campus",
+      "DataBank Red Oak Campus",
+      "DataBank Red Oak Data Center"
+    ],
+    "operator": "DataBank",
+    "status": null,
+    "city": "Red Oak",
+    "county": "Ellis County",
+    "state": "Texas",
+    "sourceUrl": null,
+    "authorities": {
+      "establishedDomains": [],
+      "identifiedAuthorities": [],
+      "missingAuthorityDomains": [
+        "City of Red Oak",
+        "Ellis County County"
+      ],
+      "companyDomains": []
+    }
+  },
+  "run": {
+    "status": "incomplete-technical-limitation",
+    "telemetryStatus": "current-live",
+    "runId": "63afb2b1-65e2-4000-a653-d5dd3ee28627",
+    "researchStatus": "partial",
+    "researchOutcome": "incomplete-technical-limitation",
+    "intentionalRetrievalOnlyStop": true,
+    "httpStatus": 200,
+    "provider": "openai",
+    "model": "gpt-4o",
+    "discovery": {
+      "provider": "google-gemini-grounding",
+      "model": "gemini-3.8-flash",
+      "status": "completed",
+      "state": null,
+      "queries": [
+        "DataBank Red Oak campus Texas electric power substation Oncor ERCOT",
+        "DataBank Red Oak data center campus electric grid utility power"
+      ],
+      "candidateCount": 4,
+      "fallbackProvider": null,
+      "fallbackReason": null,
+      "fallbackRequestCount": 0,
+      "providerRequestCount": 1,
+      "rawAnnotationSummaries": [],
+      "acceptedCitationUrls": [],
+      "rejectedCitationUrls": []
+    },
+    "providerResponseIds": [
+      "v1_ChdZYWE5YXBhaEJybm1xdHNQdmVlSDhBURIXWWFhOWFwYWhCcm5tcXRzUHZlZUg4QVE"
+    ],
+    "startedAt": "2026-10-01T00:16:32.715Z",
+    "finishedAt": "2026-10-01T00:16:39.181Z",
+    "elapsedMs": 6466,
+    "wallClockElapsedMs": 6528,
+    "phaseTiming": {
+      "runStartedAt": "2026-10-01T00:16:32.715Z",
+      "discoveryStartedAt": "2026-10-01T00:16:32.730Z",
+      "discoveryFinishedAt": "2026-10-01T00:16:39.082Z",
+      "orchestrationStartedAt": "2026-10-01T00:16:39.082Z",
+      "orchestrationFinishedAt": "2026-10-01T00:16:39.089Z",
+      "cancellationAt": null,
+      "orchestrationBudgetMs": 68635,
+      "discoveryElapsedMs": 6352,
+      "orchestrationElapsedMs": 7,
+      "providerQueueElapsedMs": 0,
+      "analysisElapsedMs": 0,
+      "retrievalElapsedMs": 288,
+      "totalElapsedMs": 6376
+    },
+    "failureType": null,
+    "failureMessage": null,
+    "providerDiagnostic": null,
+    "elapsedWithinDeadline": true,
+    "providerRequestCount": 1,
+    "providerAttempts": [
+      {
+        "provider": "google-gemini-grounding",
+        "model": "gemini-3.8-flash",
+        "providerResponseId": "v1_ChdZYWE5YXBhaEJybm1xdHNQdmVlSDhBURIXWWFhOWFwYWhCcm5tcXRzUHZlZUg4QVE",
+        "providerResponseIdAvailability": "provider-reported",
+        "usageAvailability": "provider-reported",
+        "requestCount": 1,
+        "categoryId": null,
+        "attemptType": null,
+        "queuedAt": "2026-10-01T00:16:32.731Z",
+        "issuedAt": "2026-10-01T00:16:32.731Z",
+        "finishedAt": "2026-10-01T00:16:38.871Z",
+        "queueWaitMs": 0,
+        "elapsedMs": 6140,
+        "status": 200,
+        "requestState": "completed",
+        "outcome": "completed",
+        "failureClassification": null,
+        "inFlightAnalysisCount": 0,
+        "inFlightAnalysisCountAtIssue": 1,
+        "providerDiagnostic": null,
+        "requestedOutputTokens": null,
+        "requestBodyBytes": 1002,
+        "usage": {
+          "inputTokens": null,
+          "outputTokens": null,
+          "totalTokens": 1359
+        }
+      }
+    ],
+    "inFlightAnalysisCount": 0,
+    "toolCallCount": 0,
+    "followUpCount": 0,
+    "budget": {
+      "deadlineMs": 75000,
+      "maxProviderRequests": 1,
+      "maxFollowUps": 0,
+      "maxFollowUpsPerCategory": 0,
+      "maxCandidatesPerCategory": 8,
+      "maxTotalCandidates": 16,
+      "maxToolCalls": 32,
+      "maxPhysicalDocumentOpens": 8
+    },
+    "limitsObserved": {
+      "providerRequestsWithinLimit": true,
+      "followUpsWithinLimit": true,
+      "toolCallsWithinLimit": true,
+      "candidatesWithinTotalLimit": true,
+      "candidatesByCategory": {
+        "project-identity": 1,
+        "grid": 0,
+        "electricity": 0,
+        "water": 0,
+        "permitting-community": 0,
+        "construction-capital": 0,
+        "tenant-counterparty": 0,
+        "climate-operational-hazard": 0
+      },
+      "candidateCategoryLimit": 8
+    }
+  },
+  "requests": [
+    {
+      "provider": "google-gemini-grounding",
+      "model": "gemini-3.8-flash",
+      "providerResponseId": "v1_ChdZYWE5YXBhaEJybm1xdHNQdmVlSDhBURIXWWFhOWFwYWhCcm5tcXRzUHZlZUg4QVE",
+      "providerResponseIdAvailability": "provider-reported",
+      "usageAvailability": "provider-reported",
+      "requestCount": 1,
+      "categoryId": null,
+      "attemptType": null,
+      "queuedAt": "2026-10-01T00:16:32.731Z",
+      "issuedAt": "2026-10-01T00:16:32.731Z",
+      "finishedAt": "2026-10-01T00:16:38.871Z",
+      "queueWaitMs": 0,
+      "elapsedMs": 6140,
+      "status": 200,
+      "requestState": "completed",
+      "outcome": "completed",
+      "failureClassification": null,
+      "inFlightAnalysisCount": 0,
+      "inFlightAnalysisCountAtIssue": 1,
+      "providerDiagnostic": null,
+      "requestedOutputTokens": null,
+      "requestBodyBytes": 1002,
+      "usage": {
+        "inputTokens": null,
+        "outputTokens": null,
+        "totalTokens": 1359
+      }
+    }
+  ],
+  "discovery": {
+    "provider": "google-gemini-grounding",
+    "model": "gemini-3.8-flash",
+    "status": "completed",
+    "state": null,
+    "queries": [
+      "DataBank Red Oak campus Texas electric power substation Oncor ERCOT",
+      "DataBank Red Oak data center campus electric grid utility power"
+    ],
+    "candidateCount": 4,
+    "fallbackProvider": null,
+    "fallbackReason": null,
+    "fallbackRequestCount": 0,
+    "providerRequestCount": 1,
+    "rawAnnotationSummaries": [],
+    "acceptedCitationUrls": [],
+    "rejectedCitationUrls": []
+  },
+  "observedSearches": [],
+  "returnedDomains": [
+    "www.prnewswire.com"
+  ],
+  "executedQueries": [
+    {
+      "categoryId": "project-identity",
+      "label": "Project identity",
+      "requestedPrimaryQuery": "\"Red Oak Campus\" \"Red Oak, Ellis County, Texas\" Texas project permit operator disclosure ERCOT PUCT (site:ercot.com OR site:puc.texas.gov OR site:sec.gov) \"Red Oak Campus\" \"DataBank Red Oak Campus\" \"DataBank Red Oak Data Center\" \"DataBank\" \"DataBank\"",
+      "executedQueries": [],
+      "followUpExecutedQuery": null,
+      "state": "Not searched"
+    },
+    {
+      "categoryId": "grid",
+      "label": "Grid",
+      "requestedPrimaryQuery": "\"Red Oak Campus\" \"Red Oak, Ellis County, Texas\" ERCOT PUCT Texas interconnection queue transmission study (site:ercot.com OR site:puc.texas.gov) \"Red Oak Campus\" \"DataBank Red Oak Campus\" \"DataBank Red Oak Data Center\" \"DataBank\" \"DataBank\"",
+      "executedQueries": [],
+      "followUpExecutedQuery": null,
+      "state": "Not searched"
+    },
+    {
+      "categoryId": "electricity",
+      "label": "Electricity",
+      "requestedPrimaryQuery": "\"Red Oak Campus\" \"Red Oak, Ellis County, Texas\" ERCOT PUCT Texas utility tariff rate case EIA market context (site:ercot.com OR site:puc.texas.gov OR site:eia.gov) \"Red Oak Campus\" \"DataBank Red Oak Campus\" \"DataBank Red Oak Data Center\" \"DataBank\" \"DataBank\"",
+      "executedQueries": [],
+      "followUpExecutedQuery": null,
+      "state": "Not searched"
+    },
+    {
+      "categoryId": "water",
+      "label": "Water",
+      "requestedPrimaryQuery": "\"Red Oak Campus\" \"Red Oak, Ellis County, Texas\" \"City of Red Oak\" \"Ellis County County\" TWDB municipal county water demand consumption rights permit (site:twdb.texas.gov) \"Red Oak Campus\" \"DataBank Red Oak Campus\" \"DataBank Red Oak Data Center\" \"DataBank\" \"DataBank\"",
+      "executedQueries": [],
+      "followUpExecutedQuery": null,
+      "state": "Not searched"
+    },
+    {
+      "categoryId": "permitting-community",
+      "label": "Permitting and community",
+      "requestedPrimaryQuery": "\"Red Oak Campus\" \"Red Oak, Ellis County, Texas\" \"City of Red Oak\" \"Ellis County County\" Texas municipal county agenda permit public hearing agreement \"Red Oak Campus\" \"DataBank Red Oak Campus\" \"DataBank Red Oak Data Center\" \"DataBank\" \"DataBank\"",
+      "executedQueries": [],
+      "followUpExecutedQuery": null,
+      "state": "Not searched"
+    },
+    {
+      "categoryId": "construction-capital",
+      "label": "Construction and capital",
+      "requestedPrimaryQuery": "\"DataBank\" \"Red Oak Campus\" SEC EDGAR investor relations official developer project disclosure (site:sec.gov) \"Red Oak Campus\" \"DataBank Red Oak Campus\" \"DataBank Red Oak Data Center\" \"DataBank\" \"DataBank\"",
+      "executedQueries": [],
+      "followUpExecutedQuery": null,
+      "state": "Not searched"
+    },
+    {
+      "categoryId": "tenant-counterparty",
+      "label": "Tenant and counterparty",
+      "requestedPrimaryQuery": "\"DataBank\" \"Red Oak Campus\" SEC EDGAR investor relations official project developer disclosure customer offtake (site:sec.gov) \"Red Oak Campus\" \"DataBank Red Oak Campus\" \"DataBank Red Oak Data Center\" \"DataBank\" \"DataBank\"",
+      "executedQueries": [],
+      "followUpExecutedQuery": null,
+      "state": "Not searched"
+    },
+    {
+      "categoryId": "climate-operational-hazard",
+      "label": "Climate and operational hazard",
+      "requestedPrimaryQuery": "\"Red Oak Campus\" \"Red Oak, Ellis County, Texas\" FEMA NOAA Texas exact site flood wildfire drought hazard (site:fema.gov OR site:noaa.gov) \"Red Oak Campus\" \"DataBank Red Oak Campus\" \"DataBank Red Oak Data Center\" \"DataBank\" \"DataBank\"",
+      "executedQueries": [],
+      "followUpExecutedQuery": null,
+      "state": "Not searched"
+    }
+  ],
+  "sourceStates": {
+    "total": 3,
+    "bySourceState": {
+      "rejected": 2,
+      "retained": 1
+    },
+    "byAccessOutcome": {
+      "accessible": 3
+    },
+    "byClaimSupportState": {
+      "unknown": 3
+    },
+    "byProjectSpecificityState": {
+      "unknown": 3
+    },
+    "returnedDomains": [
+      "www.prnewswire.com"
+    ],
+    "normalizedCandidates": [
+      {
+        "url": null,
+        "originalUrl": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-ee0b2dc63c82031b",
+        "resolvedUrl": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+        "canonicalUrl": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+        "title": "prnewswire.com",
+        "sourceChannel": "google-grounded-search",
+        "returnedDomain": "www.prnewswire.com",
+        "searchDomain": "project-identity",
+        "categoryIds": [],
+        "identityRole": null,
+        "sourceState": "retained",
+        "sourceType": null,
+        "discoveryRank": null,
+        "acquisitionRank": null,
+        "exactProject": false,
+        "identitySignals": [],
+        "acquisitionPriority": null,
+        "acquisitionPriorityReasons": [],
+        "candidateLimitSelected": null,
+        "acquisitionSelected": true,
+        "acquisitionSelectionReason": null,
+        "physicalOpenAdmission": null,
+        "selectedForOpening": true,
+        "selectionDecision": {
+          "decision": "selected",
+          "selected": true,
+          "reason": "retrieved",
+          "physicalOpenPosition": 2
+        },
+        "physicalOpenPosition": 2,
+        "claimSupportState": "unknown",
+        "projectSpecificityState": "unknown",
+        "financialEligibilityState": "unknown",
+        "extractionMethod": "html",
+        "extractionOutcome": "extracted",
+        "contentHash": "3a596deedcadab06f38116ef11a9a0fb74210d2f4d39332fe0229aa800f518a5",
+        "passageSha256": "aff6f9aa0b08f77d39f802ea8c6ec9040f66d6ab3008aca68c3baa2e241ad939",
+        "usablePassage": true,
+        "passageExcerpt": "DataBank Announces Development of 480MW Data Center Campus in South Dallas Third land acquisition in the past year creates total expansion capacity of 450+ acres, 5.8M square feet of data center space and more than 750MWs of critical IT load across the three sites DALLAS , Sept. 10, 2024 /PRNewswire/ -- DataBank , a leading provider of enterprise-class edge colocation, interconnection, and managed services, today announced the development of a 480MW data center campus on 292 acres of land in Red Oak, TX , dramatically expanding its capacity and ability to meet growing demand for data center space and power being driven by A.I. applications. The South Dallas land will become home to the new \" Red Oak Campus \" accommodating up to eight, 2-story data centers of 425,000 gross square feet, each totaling as much as 3.4M square feet. The Phase 1 design of the site will feature 4 buildings and a 400MW sub-station from Oncor that can deliver up to 240MW of critical IT power with the ability to increase this in Phase 2 for a total of 480MW across all 8 buildings. Construction at the site has already commenced with an initial Ready for Service date of Q2-2026. Red Oak has become a major sub-market in Dallas attracting the world's largest cloud and technology providers. DataBank's campus adds to its already significant presence in the market which includes its headquarters location (DFW1) and 6 other data centers in the metro. This announcement is DataBank's third new campus announcement",
+        "referringUrls": [
+          "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-ee0b2dc63c82031b"
+        ],
+        "accessState": "accessible",
+        "accessReason": "retrieved",
+        "transportDiagnostic": {
+          "stage": "complete",
+          "responseReceived": true,
+          "httpStatus": 200,
+          "contentType": "text/html",
+          "redirectChain": [
+            "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html"
+          ],
+          "addressValidationReason": null,
+          "addressValidationCategory": null,
+          "addressValidationRule": null,
+          "addressValidationTelemetry": null,
+          "elapsedMs": 203
+        },
+        "accessOutcome": {
+          "state": "accessible",
+          "attempted": true,
+          "succeeded": true,
+          "blocked": false,
+          "failed": false,
+          "reused": false,
+          "reason": "retrieved",
+          "physicalOpenIndex": 2,
+          "retrievalTime": "2026-10-01T00:16:39.081Z",
+          "originalUrl": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-ee0b2dc63c82031b",
+          "resolvedUrl": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+          "canonicalUrl": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+          "contentHash": "3a596deedcadab06f38116ef11a9a0fb74210d2f4d39332fe0229aa800f518a5",
+          "extractionMethod": "html",
+          "extractionOutcome": "extracted",
+          "underlyingDocumentUrl": null,
+          "referringUrls": [
+            "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-ee0b2dc63c82031b"
+          ],
+          "transportDiagnostic": {
+            "stage": "complete",
+            "responseReceived": true,
+            "httpStatus": 200,
+            "contentType": "text/html",
+            "redirectChain": [
+              "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html"
+            ],
+            "addressValidationReason": null,
+            "addressValidationCategory": null,
+            "addressValidationRule": null,
+            "addressValidationTelemetry": null,
+            "elapsedMs": 203
+          }
+        },
+        "suppliedToGrid": false
+      },
+      {
+        "url": null,
+        "originalUrl": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-ee0b2dc63c82031b",
+        "resolvedUrl": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+        "canonicalUrl": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+        "title": "prnewswire.com",
+        "sourceChannel": "google-grounded-search",
+        "returnedDomain": "www.prnewswire.com",
+        "searchDomain": "project-identity",
+        "categoryIds": [],
+        "identityRole": null,
+        "sourceState": "rejected",
+        "sourceType": null,
+        "discoveryRank": null,
+        "acquisitionRank": null,
+        "exactProject": false,
+        "identitySignals": [],
+        "acquisitionPriority": null,
+        "acquisitionPriorityReasons": [],
+        "candidateLimitSelected": null,
+        "acquisitionSelected": true,
+        "acquisitionSelectionReason": null,
+        "physicalOpenAdmission": null,
+        "selectedForOpening": true,
+        "selectionDecision": {
+          "decision": "selected",
+          "selected": true,
+          "reason": "retrieved",
+          "physicalOpenPosition": 2
+        },
+        "physicalOpenPosition": 2,
+        "claimSupportState": "unknown",
+        "projectSpecificityState": "unknown",
+        "financialEligibilityState": "unknown",
+        "extractionMethod": "html",
+        "extractionOutcome": "extracted",
+        "contentHash": "3a596deedcadab06f38116ef11a9a0fb74210d2f4d39332fe0229aa800f518a5",
+        "passageSha256": "aff6f9aa0b08f77d39f802ea8c6ec9040f66d6ab3008aca68c3baa2e241ad939",
+        "usablePassage": true,
+        "passageExcerpt": "DataBank Announces Development of 480MW Data Center Campus in South Dallas Third land acquisition in the past year creates total expansion capacity of 450+ acres, 5.8M square feet of data center space and more than 750MWs of critical IT load across the three sites DALLAS , Sept. 10, 2024 /PRNewswire/ -- DataBank , a leading provider of enterprise-class edge colocation, interconnection, and managed services, today announced the development of a 480MW data center campus on 292 acres of land in Red Oak, TX , dramatically expanding its capacity and ability to meet growing demand for data center space and power being driven by A.I. applications. The South Dallas land will become home to the new \" Red Oak Campus \" accommodating up to eight, 2-story data centers of 425,000 gross square feet, each totaling as much as 3.4M square feet. The Phase 1 design of the site will feature 4 buildings and a 400MW sub-station from Oncor that can deliver up to 240MW of critical IT power with the ability to increase this in Phase 2 for a total of 480MW across all 8 buildings. Construction at the site has already commenced with an initial Ready for Service date of Q2-2026. Red Oak has become a major sub-market in Dallas attracting the world's largest cloud and technology providers. DataBank's campus adds to its already significant presence in the market which includes its headquarters location (DFW1) and 6 other data centers in the metro. This announcement is DataBank's third new campus announcement",
+        "referringUrls": [
+          "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-ee0b2dc63c82031b"
+        ],
+        "accessState": "accessible",
+        "accessReason": "retrieved",
+        "transportDiagnostic": {
+          "stage": "complete",
+          "responseReceived": true,
+          "httpStatus": 200,
+          "contentType": "text/html",
+          "redirectChain": [
+            "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html"
+          ],
+          "addressValidationReason": null,
+          "addressValidationCategory": null,
+          "addressValidationRule": null,
+          "addressValidationTelemetry": null,
+          "elapsedMs": 203
+        },
+        "accessOutcome": {
+          "state": "accessible",
+          "attempted": true,
+          "succeeded": true,
+          "blocked": false,
+          "failed": false,
+          "reused": false,
+          "reason": "retrieved",
+          "physicalOpenIndex": 2,
+          "retrievalTime": "2026-10-01T00:16:39.081Z",
+          "originalUrl": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-ee0b2dc63c82031b",
+          "resolvedUrl": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+          "canonicalUrl": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+          "contentHash": "3a596deedcadab06f38116ef11a9a0fb74210d2f4d39332fe0229aa800f518a5",
+          "extractionMethod": "html",
+          "extractionOutcome": "extracted",
+          "underlyingDocumentUrl": null,
+          "referringUrls": [
+            "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-ee0b2dc63c82031b"
+          ],
+          "transportDiagnostic": {
+            "stage": "complete",
+            "responseReceived": true,
+            "httpStatus": 200,
+            "contentType": "text/html",
+            "redirectChain": [
+              "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html"
+            ],
+            "addressValidationReason": null,
+            "addressValidationCategory": null,
+            "addressValidationRule": null,
+            "addressValidationTelemetry": null,
+            "elapsedMs": 203
+          }
+        },
+        "suppliedToGrid": false
+      },
+      {
+        "url": null,
+        "originalUrl": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-ee0b2dc63c82031b",
+        "resolvedUrl": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+        "canonicalUrl": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+        "title": "prnewswire.com",
+        "sourceChannel": "google-grounded-search",
+        "returnedDomain": "www.prnewswire.com",
+        "searchDomain": "project-identity",
+        "categoryIds": [],
+        "identityRole": null,
+        "sourceState": "rejected",
+        "sourceType": null,
+        "discoveryRank": null,
+        "acquisitionRank": null,
+        "exactProject": false,
+        "identitySignals": [],
+        "acquisitionPriority": null,
+        "acquisitionPriorityReasons": [],
+        "candidateLimitSelected": null,
+        "acquisitionSelected": true,
+        "acquisitionSelectionReason": null,
+        "physicalOpenAdmission": null,
+        "selectedForOpening": true,
+        "selectionDecision": {
+          "decision": "selected",
+          "selected": true,
+          "reason": "retrieved",
+          "physicalOpenPosition": 2
+        },
+        "physicalOpenPosition": 2,
+        "claimSupportState": "unknown",
+        "projectSpecificityState": "unknown",
+        "financialEligibilityState": "unknown",
+        "extractionMethod": "html",
+        "extractionOutcome": "extracted",
+        "contentHash": "3a596deedcadab06f38116ef11a9a0fb74210d2f4d39332fe0229aa800f518a5",
+        "passageSha256": "aff6f9aa0b08f77d39f802ea8c6ec9040f66d6ab3008aca68c3baa2e241ad939",
+        "usablePassage": true,
+        "passageExcerpt": "DataBank Announces Development of 480MW Data Center Campus in South Dallas Third land acquisition in the past year creates total expansion capacity of 450+ acres, 5.8M square feet of data center space and more than 750MWs of critical IT load across the three sites DALLAS , Sept. 10, 2024 /PRNewswire/ -- DataBank , a leading provider of enterprise-class edge colocation, interconnection, and managed services, today announced the development of a 480MW data center campus on 292 acres of land in Red Oak, TX , dramatically expanding its capacity and ability to meet growing demand for data center space and power being driven by A.I. applications. The South Dallas land will become home to the new \" Red Oak Campus \" accommodating up to eight, 2-story data centers of 425,000 gross square feet, each totaling as much as 3.4M square feet. The Phase 1 design of the site will feature 4 buildings and a 400MW sub-station from Oncor that can deliver up to 240MW of critical IT power with the ability to increase this in Phase 2 for a total of 480MW across all 8 buildings. Construction at the site has already commenced with an initial Ready for Service date of Q2-2026. Red Oak has become a major sub-market in Dallas attracting the world's largest cloud and technology providers. DataBank's campus adds to its already significant presence in the market which includes its headquarters location (DFW1) and 6 other data centers in the metro. This announcement is DataBank's third new campus announcement",
+        "referringUrls": [
+          "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-ee0b2dc63c82031b"
+        ],
+        "accessState": "accessible",
+        "accessReason": "retrieved",
+        "transportDiagnostic": {
+          "stage": "complete",
+          "responseReceived": true,
+          "httpStatus": 200,
+          "contentType": "text/html",
+          "redirectChain": [
+            "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html"
+          ],
+          "addressValidationReason": null,
+          "addressValidationCategory": null,
+          "addressValidationRule": null,
+          "addressValidationTelemetry": null,
+          "elapsedMs": 203
+        },
+        "accessOutcome": {
+          "state": "accessible",
+          "attempted": true,
+          "succeeded": true,
+          "blocked": false,
+          "failed": false,
+          "reused": false,
+          "reason": "retrieved",
+          "physicalOpenIndex": 2,
+          "retrievalTime": "2026-10-01T00:16:39.081Z",
+          "originalUrl": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-ee0b2dc63c82031b",
+          "resolvedUrl": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+          "canonicalUrl": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+          "contentHash": "3a596deedcadab06f38116ef11a9a0fb74210d2f4d39332fe0229aa800f518a5",
+          "extractionMethod": "html",
+          "extractionOutcome": "extracted",
+          "underlyingDocumentUrl": null,
+          "referringUrls": [
+            "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-ee0b2dc63c82031b"
+          ],
+          "transportDiagnostic": {
+            "stage": "complete",
+            "responseReceived": true,
+            "httpStatus": 200,
+            "contentType": "text/html",
+            "redirectChain": [
+              "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html"
+            ],
+            "addressValidationReason": null,
+            "addressValidationCategory": null,
+            "addressValidationRule": null,
+            "addressValidationTelemetry": null,
+            "elapsedMs": 203
+          }
+        },
+        "suppliedToGrid": false
+      }
+    ],
+    "sources": [
+      {
+        "url": null,
+        "originalUrl": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-ee0b2dc63c82031b",
+        "resolvedUrl": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+        "canonicalUrl": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+        "title": "prnewswire.com",
+        "sourceChannel": "google-grounded-search",
+        "returnedDomain": "www.prnewswire.com",
+        "searchDomain": "project-identity",
+        "categoryIds": [],
+        "identityRole": null,
+        "sourceState": "retained",
+        "sourceType": null,
+        "discoveryRank": null,
+        "acquisitionRank": null,
+        "exactProject": false,
+        "identitySignals": [],
+        "acquisitionPriority": null,
+        "acquisitionPriorityReasons": [],
+        "candidateLimitSelected": null,
+        "acquisitionSelected": true,
+        "acquisitionSelectionReason": null,
+        "physicalOpenAdmission": null,
+        "selectedForOpening": true,
+        "selectionDecision": {
+          "decision": "selected",
+          "selected": true,
+          "reason": "retrieved",
+          "physicalOpenPosition": 2
+        },
+        "physicalOpenPosition": 2,
+        "claimSupportState": "unknown",
+        "projectSpecificityState": "unknown",
+        "financialEligibilityState": "unknown",
+        "extractionMethod": "html",
+        "extractionOutcome": "extracted",
+        "contentHash": "3a596deedcadab06f38116ef11a9a0fb74210d2f4d39332fe0229aa800f518a5",
+        "passageSha256": "aff6f9aa0b08f77d39f802ea8c6ec9040f66d6ab3008aca68c3baa2e241ad939",
+        "usablePassage": true,
+        "passageExcerpt": "DataBank Announces Development of 480MW Data Center Campus in South Dallas Third land acquisition in the past year creates total expansion capacity of 450+ acres, 5.8M square feet of data center space and more than 750MWs of critical IT load across the three sites DALLAS , Sept. 10, 2024 /PRNewswire/ -- DataBank , a leading provider of enterprise-class edge colocation, interconnection, and managed services, today announced the development of a 480MW data center campus on 292 acres of land in Red Oak, TX , dramatically expanding its capacity and ability to meet growing demand for data center space and power being driven by A.I. applications. The South Dallas land will become home to the new \" Red Oak Campus \" accommodating up to eight, 2-story data centers of 425,000 gross square feet, each totaling as much as 3.4M square feet. The Phase 1 design of the site will feature 4 buildings and a 400MW sub-station from Oncor that can deliver up to 240MW of critical IT power with the ability to increase this in Phase 2 for a total of 480MW across all 8 buildings. Construction at the site has already commenced with an initial Ready for Service date of Q2-2026. Red Oak has become a major sub-market in Dallas attracting the world's largest cloud and technology providers. DataBank's campus adds to its already significant presence in the market which includes its headquarters location (DFW1) and 6 other data centers in the metro. This announcement is DataBank's third new campus announcement",
+        "referringUrls": [
+          "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-ee0b2dc63c82031b"
+        ],
+        "accessState": "accessible",
+        "accessReason": "retrieved",
+        "transportDiagnostic": {
+          "stage": "complete",
+          "responseReceived": true,
+          "httpStatus": 200,
+          "contentType": "text/html",
+          "redirectChain": [
+            "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html"
+          ],
+          "addressValidationReason": null,
+          "addressValidationCategory": null,
+          "addressValidationRule": null,
+          "addressValidationTelemetry": null,
+          "elapsedMs": 203
+        },
+        "accessOutcome": {
+          "state": "accessible",
+          "attempted": true,
+          "succeeded": true,
+          "blocked": false,
+          "failed": false,
+          "reused": false,
+          "reason": "retrieved",
+          "physicalOpenIndex": 2,
+          "retrievalTime": "2026-10-01T00:16:39.081Z",
+          "originalUrl": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-ee0b2dc63c82031b",
+          "resolvedUrl": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+          "canonicalUrl": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+          "contentHash": "3a596deedcadab06f38116ef11a9a0fb74210d2f4d39332fe0229aa800f518a5",
+          "extractionMethod": "html",
+          "extractionOutcome": "extracted",
+          "underlyingDocumentUrl": null,
+          "referringUrls": [
+            "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-ee0b2dc63c82031b"
+          ],
+          "transportDiagnostic": {
+            "stage": "complete",
+            "responseReceived": true,
+            "httpStatus": 200,
+            "contentType": "text/html",
+            "redirectChain": [
+              "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html"
+            ],
+            "addressValidationReason": null,
+            "addressValidationCategory": null,
+            "addressValidationRule": null,
+            "addressValidationTelemetry": null,
+            "elapsedMs": 203
+          }
+        },
+        "suppliedToGrid": false
+      },
+      {
+        "url": null,
+        "originalUrl": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-ee0b2dc63c82031b",
+        "resolvedUrl": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+        "canonicalUrl": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+        "title": "prnewswire.com",
+        "sourceChannel": "google-grounded-search",
+        "returnedDomain": "www.prnewswire.com",
+        "searchDomain": "project-identity",
+        "categoryIds": [],
+        "identityRole": null,
+        "sourceState": "rejected",
+        "sourceType": null,
+        "discoveryRank": null,
+        "acquisitionRank": null,
+        "exactProject": false,
+        "identitySignals": [],
+        "acquisitionPriority": null,
+        "acquisitionPriorityReasons": [],
+        "candidateLimitSelected": null,
+        "acquisitionSelected": true,
+        "acquisitionSelectionReason": null,
+        "physicalOpenAdmission": null,
+        "selectedForOpening": true,
+        "selectionDecision": {
+          "decision": "selected",
+          "selected": true,
+          "reason": "retrieved",
+          "physicalOpenPosition": 2
+        },
+        "physicalOpenPosition": 2,
+        "claimSupportState": "unknown",
+        "projectSpecificityState": "unknown",
+        "financialEligibilityState": "unknown",
+        "extractionMethod": "html",
+        "extractionOutcome": "extracted",
+        "contentHash": "3a596deedcadab06f38116ef11a9a0fb74210d2f4d39332fe0229aa800f518a5",
+        "passageSha256": "aff6f9aa0b08f77d39f802ea8c6ec9040f66d6ab3008aca68c3baa2e241ad939",
+        "usablePassage": true,
+        "passageExcerpt": "DataBank Announces Development of 480MW Data Center Campus in South Dallas Third land acquisition in the past year creates total expansion capacity of 450+ acres, 5.8M square feet of data center space and more than 750MWs of critical IT load across the three sites DALLAS , Sept. 10, 2024 /PRNewswire/ -- DataBank , a leading provider of enterprise-class edge colocation, interconnection, and managed services, today announced the development of a 480MW data center campus on 292 acres of land in Red Oak, TX , dramatically expanding its capacity and ability to meet growing demand for data center space and power being driven by A.I. applications. The South Dallas land will become home to the new \" Red Oak Campus \" accommodating up to eight, 2-story data centers of 425,000 gross square feet, each totaling as much as 3.4M square feet. The Phase 1 design of the site will feature 4 buildings and a 400MW sub-station from Oncor that can deliver up to 240MW of critical IT power with the ability to increase this in Phase 2 for a total of 480MW across all 8 buildings. Construction at the site has already commenced with an initial Ready for Service date of Q2-2026. Red Oak has become a major sub-market in Dallas attracting the world's largest cloud and technology providers. DataBank's campus adds to its already significant presence in the market which includes its headquarters location (DFW1) and 6 other data centers in the metro. This announcement is DataBank's third new campus announcement",
+        "referringUrls": [
+          "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-ee0b2dc63c82031b"
+        ],
+        "accessState": "accessible",
+        "accessReason": "retrieved",
+        "transportDiagnostic": {
+          "stage": "complete",
+          "responseReceived": true,
+          "httpStatus": 200,
+          "contentType": "text/html",
+          "redirectChain": [
+            "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html"
+          ],
+          "addressValidationReason": null,
+          "addressValidationCategory": null,
+          "addressValidationRule": null,
+          "addressValidationTelemetry": null,
+          "elapsedMs": 203
+        },
+        "accessOutcome": {
+          "state": "accessible",
+          "attempted": true,
+          "succeeded": true,
+          "blocked": false,
+          "failed": false,
+          "reused": false,
+          "reason": "retrieved",
+          "physicalOpenIndex": 2,
+          "retrievalTime": "2026-10-01T00:16:39.081Z",
+          "originalUrl": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-ee0b2dc63c82031b",
+          "resolvedUrl": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+          "canonicalUrl": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+          "contentHash": "3a596deedcadab06f38116ef11a9a0fb74210d2f4d39332fe0229aa800f518a5",
+          "extractionMethod": "html",
+          "extractionOutcome": "extracted",
+          "underlyingDocumentUrl": null,
+          "referringUrls": [
+            "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-ee0b2dc63c82031b"
+          ],
+          "transportDiagnostic": {
+            "stage": "complete",
+            "responseReceived": true,
+            "httpStatus": 200,
+            "contentType": "text/html",
+            "redirectChain": [
+              "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html"
+            ],
+            "addressValidationReason": null,
+            "addressValidationCategory": null,
+            "addressValidationRule": null,
+            "addressValidationTelemetry": null,
+            "elapsedMs": 203
+          }
+        },
+        "suppliedToGrid": false
+      },
+      {
+        "url": null,
+        "originalUrl": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-ee0b2dc63c82031b",
+        "resolvedUrl": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+        "canonicalUrl": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+        "title": "prnewswire.com",
+        "sourceChannel": "google-grounded-search",
+        "returnedDomain": "www.prnewswire.com",
+        "searchDomain": "project-identity",
+        "categoryIds": [],
+        "identityRole": null,
+        "sourceState": "rejected",
+        "sourceType": null,
+        "discoveryRank": null,
+        "acquisitionRank": null,
+        "exactProject": false,
+        "identitySignals": [],
+        "acquisitionPriority": null,
+        "acquisitionPriorityReasons": [],
+        "candidateLimitSelected": null,
+        "acquisitionSelected": true,
+        "acquisitionSelectionReason": null,
+        "physicalOpenAdmission": null,
+        "selectedForOpening": true,
+        "selectionDecision": {
+          "decision": "selected",
+          "selected": true,
+          "reason": "retrieved",
+          "physicalOpenPosition": 2
+        },
+        "physicalOpenPosition": 2,
+        "claimSupportState": "unknown",
+        "projectSpecificityState": "unknown",
+        "financialEligibilityState": "unknown",
+        "extractionMethod": "html",
+        "extractionOutcome": "extracted",
+        "contentHash": "3a596deedcadab06f38116ef11a9a0fb74210d2f4d39332fe0229aa800f518a5",
+        "passageSha256": "aff6f9aa0b08f77d39f802ea8c6ec9040f66d6ab3008aca68c3baa2e241ad939",
+        "usablePassage": true,
+        "passageExcerpt": "DataBank Announces Development of 480MW Data Center Campus in South Dallas Third land acquisition in the past year creates total expansion capacity of 450+ acres, 5.8M square feet of data center space and more than 750MWs of critical IT load across the three sites DALLAS , Sept. 10, 2024 /PRNewswire/ -- DataBank , a leading provider of enterprise-class edge colocation, interconnection, and managed services, today announced the development of a 480MW data center campus on 292 acres of land in Red Oak, TX , dramatically expanding its capacity and ability to meet growing demand for data center space and power being driven by A.I. applications. The South Dallas land will become home to the new \" Red Oak Campus \" accommodating up to eight, 2-story data centers of 425,000 gross square feet, each totaling as much as 3.4M square feet. The Phase 1 design of the site will feature 4 buildings and a 400MW sub-station from Oncor that can deliver up to 240MW of critical IT power with the ability to increase this in Phase 2 for a total of 480MW across all 8 buildings. Construction at the site has already commenced with an initial Ready for Service date of Q2-2026. Red Oak has become a major sub-market in Dallas attracting the world's largest cloud and technology providers. DataBank's campus adds to its already significant presence in the market which includes its headquarters location (DFW1) and 6 other data centers in the metro. This announcement is DataBank's third new campus announcement",
+        "referringUrls": [
+          "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-ee0b2dc63c82031b"
+        ],
+        "accessState": "accessible",
+        "accessReason": "retrieved",
+        "transportDiagnostic": {
+          "stage": "complete",
+          "responseReceived": true,
+          "httpStatus": 200,
+          "contentType": "text/html",
+          "redirectChain": [
+            "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html"
+          ],
+          "addressValidationReason": null,
+          "addressValidationCategory": null,
+          "addressValidationRule": null,
+          "addressValidationTelemetry": null,
+          "elapsedMs": 203
+        },
+        "accessOutcome": {
+          "state": "accessible",
+          "attempted": true,
+          "succeeded": true,
+          "blocked": false,
+          "failed": false,
+          "reused": false,
+          "reason": "retrieved",
+          "physicalOpenIndex": 2,
+          "retrievalTime": "2026-10-01T00:16:39.081Z",
+          "originalUrl": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-ee0b2dc63c82031b",
+          "resolvedUrl": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+          "canonicalUrl": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+          "contentHash": "3a596deedcadab06f38116ef11a9a0fb74210d2f4d39332fe0229aa800f518a5",
+          "extractionMethod": "html",
+          "extractionOutcome": "extracted",
+          "underlyingDocumentUrl": null,
+          "referringUrls": [
+            "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-ee0b2dc63c82031b"
+          ],
+          "transportDiagnostic": {
+            "stage": "complete",
+            "responseReceived": true,
+            "httpStatus": 200,
+            "contentType": "text/html",
+            "redirectChain": [
+              "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html"
+            ],
+            "addressValidationReason": null,
+            "addressValidationCategory": null,
+            "addressValidationRule": null,
+            "addressValidationTelemetry": null,
+            "elapsedMs": 203
+          }
+        },
+        "suppliedToGrid": false
+      }
+    ],
+    "retainedPassages": [
+      {
+        "url": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+        "title": "prnewswire.com",
+        "searchDomain": "project-identity",
+        "text": "DataBank Announces Development of 480MW Data Center Campus in South Dallas Third land acquisition in the past year creates total expansion capacity of 450+ acres, 5.8M square feet of data center space and more than 750MWs of critical IT load across the three sites DALLAS , Sept. 10, 2024 /PRNewswire/ -- DataBank , a leading provider of enterprise-class edge colocation, interconnection, and managed services, today announced the development of a 480MW data center campus on 292 acres of land in Red Oak, TX , dramatically expanding its capacity and ability to meet growing demand for data center space and power being driven by A.I. applications. The South Dallas land will become home to the new \" Red Oak Campus \" accommodating up to eight, 2-story data centers of 425,000 gross square feet, each totaling as much as 3.4M square feet. The Phase 1 design of the site will feature 4 buildings and a 400MW sub-station from Oncor that can deliver up to 240MW of critical IT power with the ability to increase this in Phase 2 for a total of 480MW across all 8 buildings. Construction at the site has already commenced with an initial Ready for Service date of Q2-2026. Red Oak has become a major sub-market in Dallas attracting the world's largest cloud and technology providers. DataBank's campus adds to its already significant presence in the market which includes its headquarters location (DFW1) and 6 other data centers in the metro. This announcement is DataBank's third new campus announcement",
+        "passage": "DataBank Announces Development of 480MW Data Center Campus in South Dallas Third land acquisition in the past year creates total expansion capacity of 450+ acres, 5.8M square feet of data center space and more than 750MWs of critical IT load across the three sites DALLAS , Sept. 10, 2024 /PRNewswire/ -- DataBank , a leading provider of enterprise-class edge colocation, interconnection, and managed services, today announced the development of a 480MW data center campus on 292 acres of land in Red Oak, TX , dramatically expanding its capacity and ability to meet growing demand for data center space and power being driven by A.I. applications. The South Dallas land will become home to the new \" Red Oak Campus \" accommodating up to eight, 2-story data centers of 425,000 gross square feet, each totaling as much as 3.4M square feet. The Phase 1 design of the site will feature 4 buildings and a 400MW sub-station from Oncor that can deliver up to 240MW of critical IT power with the ability to increase this in Phase 2 for a total of 480MW across all 8 buildings. Construction at the site has already commenced with an initial Ready for Service date of Q2-2026. Red Oak has become a major sub-market in Dallas attracting the world's largest cloud and technology providers. DataBank's campus adds to its already significant presence in the market which includes its headquarters location (DFW1) and 6 other data centers in the metro. This announcement is DataBank's third new campus announcement",
+        "truncated": true
+      },
+      {
+        "url": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+        "title": "prnewswire.com",
+        "searchDomain": "project-identity",
+        "text": "DataBank Announces Development of 480MW Data Center Campus in South Dallas Third land acquisition in the past year creates total expansion capacity of 450+ acres, 5.8M square feet of data center space and more than 750MWs of critical IT load across the three sites DALLAS , Sept. 10, 2024 /PRNewswire/ -- DataBank , a leading provider of enterprise-class edge colocation, interconnection, and managed services, today announced the development of a 480MW data center campus on 292 acres of land in Red Oak, TX , dramatically expanding its capacity and ability to meet growing demand for data center space and power being driven by A.I. applications. The South Dallas land will become home to the new \" Red Oak Campus \" accommodating up to eight, 2-story data centers of 425,000 gross square feet, each totaling as much as 3.4M square feet. The Phase 1 design of the site will feature 4 buildings and a 400MW sub-station from Oncor that can deliver up to 240MW of critical IT power with the ability to increase this in Phase 2 for a total of 480MW across all 8 buildings. Construction at the site has already commenced with an initial Ready for Service date of Q2-2026. Red Oak has become a major sub-market in Dallas attracting the world's largest cloud and technology providers. DataBank's campus adds to its already significant presence in the market which includes its headquarters location (DFW1) and 6 other data centers in the metro. This announcement is DataBank's third new campus announcement",
+        "passage": "DataBank Announces Development of 480MW Data Center Campus in South Dallas Third land acquisition in the past year creates total expansion capacity of 450+ acres, 5.8M square feet of data center space and more than 750MWs of critical IT load across the three sites DALLAS , Sept. 10, 2024 /PRNewswire/ -- DataBank , a leading provider of enterprise-class edge colocation, interconnection, and managed services, today announced the development of a 480MW data center campus on 292 acres of land in Red Oak, TX , dramatically expanding its capacity and ability to meet growing demand for data center space and power being driven by A.I. applications. The South Dallas land will become home to the new \" Red Oak Campus \" accommodating up to eight, 2-story data centers of 425,000 gross square feet, each totaling as much as 3.4M square feet. The Phase 1 design of the site will feature 4 buildings and a 400MW sub-station from Oncor that can deliver up to 240MW of critical IT power with the ability to increase this in Phase 2 for a total of 480MW across all 8 buildings. Construction at the site has already commenced with an initial Ready for Service date of Q2-2026. Red Oak has become a major sub-market in Dallas attracting the world's largest cloud and technology providers. DataBank's campus adds to its already significant presence in the market which includes its headquarters location (DFW1) and 6 other data centers in the metro. This announcement is DataBank's third new campus announcement",
+        "truncated": true
+      },
+      {
+        "url": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+        "title": "prnewswire.com",
+        "searchDomain": "project-identity",
+        "text": "DataBank Announces Development of 480MW Data Center Campus in South Dallas Third land acquisition in the past year creates total expansion capacity of 450+ acres, 5.8M square feet of data center space and more than 750MWs of critical IT load across the three sites DALLAS , Sept. 10, 2024 /PRNewswire/ -- DataBank , a leading provider of enterprise-class edge colocation, interconnection, and managed services, today announced the development of a 480MW data center campus on 292 acres of land in Red Oak, TX , dramatically expanding its capacity and ability to meet growing demand for data center space and power being driven by A.I. applications. The South Dallas land will become home to the new \" Red Oak Campus \" accommodating up to eight, 2-story data centers of 425,000 gross square feet, each totaling as much as 3.4M square feet. The Phase 1 design of the site will feature 4 buildings and a 400MW sub-station from Oncor that can deliver up to 240MW of critical IT power with the ability to increase this in Phase 2 for a total of 480MW across all 8 buildings. Construction at the site has already commenced with an initial Ready for Service date of Q2-2026. Red Oak has become a major sub-market in Dallas attracting the world's largest cloud and technology providers. DataBank's campus adds to its already significant presence in the market which includes its headquarters location (DFW1) and 6 other data centers in the metro. This announcement is DataBank's third new campus announcement",
+        "passage": "DataBank Announces Development of 480MW Data Center Campus in South Dallas Third land acquisition in the past year creates total expansion capacity of 450+ acres, 5.8M square feet of data center space and more than 750MWs of critical IT load across the three sites DALLAS , Sept. 10, 2024 /PRNewswire/ -- DataBank , a leading provider of enterprise-class edge colocation, interconnection, and managed services, today announced the development of a 480MW data center campus on 292 acres of land in Red Oak, TX , dramatically expanding its capacity and ability to meet growing demand for data center space and power being driven by A.I. applications. The South Dallas land will become home to the new \" Red Oak Campus \" accommodating up to eight, 2-story data centers of 425,000 gross square feet, each totaling as much as 3.4M square feet. The Phase 1 design of the site will feature 4 buildings and a 400MW sub-station from Oncor that can deliver up to 240MW of critical IT power with the ability to increase this in Phase 2 for a total of 480MW across all 8 buildings. Construction at the site has already commenced with an initial Ready for Service date of Q2-2026. Red Oak has become a major sub-market in Dallas attracting the world's largest cloud and technology providers. DataBank's campus adds to its already significant presence in the market which includes its headquarters location (DFW1) and 6 other data centers in the metro. This announcement is DataBank's third new campus announcement",
+        "truncated": true
+      }
+    ]
+  },
+  "candidateLineage": [
+    {
+      "categoryId": null,
+      "url": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+      "sourceChannel": "google-grounded-search",
+      "sourceType": null,
+      "discoveryRank": null,
+      "acquisitionRank": null,
+      "identitySignals": [],
+      "acquisitionPriority": null,
+      "acquisitionPriorityReasons": [],
+      "candidateLimitSelected": null,
+      "acquisitionSelected": true,
+      "acquisitionSelectionReason": null,
+      "physicalOpenAdmission": null,
+      "selectedForOpening": true,
+      "selectionDecision": {
+        "decision": "selected",
+        "selected": true,
+        "reason": "retrieved",
+        "physicalOpenPosition": 2
+      },
+      "physicalOpenPosition": 2,
+      "acquisitionPath": null,
+      "accessOutcome": {
+        "state": "accessible",
+        "reason": "retrieved",
+        "physicalOpenIndex": 2,
+        "reused": false
+      },
+      "identityResult": {
+        "exactProject": false,
+        "state": "unresolved"
+      },
+      "passageResult": {
+        "state": "retained",
+        "reason": null,
+        "passageSha256": "aff6f9aa0b08f77d39f802ea8c6ec9040f66d6ab3008aca68c3baa2e241ad939",
+        "excerpt": "DataBank Announces Development of 480MW Data Center Campus in South Dallas Third land acquisition in the past year creates total expansion capacity of 450+ acres, 5.8M square feet of data center space and more than 750MWs of critical IT load across the three sites DALLAS , Sept. 10, 2024 /PRNewswire/ -- DataBank , a leading provider of enterprise-class edge colocation, interconnection, and managed services, today announced the development of a 480MW data center campus on 292 acres of land in Red Oak, TX , dramatically expanding its capacity and ability to meet growing demand for data center space and power being driven by A.I. applications. The South Dallas land will become home to the new \" Red Oak Campus \" accommodating up to eight, 2-story data centers of 425,000 gross square feet, each totaling as much as 3.4M square feet. The Phase 1 design of the site will feature 4 buildings and a 400MW sub-station from Oncor that can deliver up to 240MW of critical IT power with the ability to increase this in Phase 2 for a total of 480MW across all 8 buildings. Construction at the site has already commenced with an initial Ready for Service date of Q2-2026. Red Oak has become a major sub-market in Dallas attracting the world's largest cloud and technology providers. DataBank's campus adds to its already significant presence in the market which includes its headquarters location (DFW1) and 6 other data centers in the metro. This announcement is DataBank's third new campus announcement"
+      },
+      "usablePassage": true,
+      "exactProjectPassage": false,
+      "passageExcerpt": "DataBank Announces Development of 480MW Data Center Campus in South Dallas Third land acquisition in the past year creates total expansion capacity of 450+ acres, 5.8M square feet of data center space and more than 750MWs of critical IT load across the three sites DALLAS , Sept. 10, 2024 /PRNewswire/ -- DataBank , a leading provider of enterprise-class edge colocation, interconnection, and managed services, today announced the development of a 480MW data center campus on 292 acres of land in Red Oak, TX , dramatically expanding its capacity and ability to meet growing demand for data center space and power being driven by A.I. applications. The South Dallas land will become home to the new \" Red Oak Campus \" accommodating up to eight, 2-story data centers of 425,000 gross square feet, each totaling as much as 3.4M square feet. The Phase 1 design of the site will feature 4 buildings and a 400MW sub-station from Oncor that can deliver up to 240MW of critical IT power with the ability to increase this in Phase 2 for a total of 480MW across all 8 buildings. Construction at the site has already commenced with an initial Ready for Service date of Q2-2026. Red Oak has become a major sub-market in Dallas attracting the world's largest cloud and technology providers. DataBank's campus adds to its already significant presence in the market which includes its headquarters location (DFW1) and 6 other data centers in the metro. This announcement is DataBank's third new campus announcement",
+      "eligibilityResult": {
+        "state": "unknown",
+        "rejectionReasons": [
+          "No supported immutable claim-to-passage mapping was retained.",
+          "Source did not reach governed evidence eligibility."
+        ]
+      },
+      "rejectionReason": "No supported immutable claim-to-passage mapping was retained. Source did not reach governed evidence eligibility.",
+      "suppliedToGrid": false
+    },
+    {
+      "categoryId": null,
+      "url": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+      "sourceChannel": "google-grounded-search",
+      "sourceType": null,
+      "discoveryRank": null,
+      "acquisitionRank": null,
+      "identitySignals": [],
+      "acquisitionPriority": null,
+      "acquisitionPriorityReasons": [],
+      "candidateLimitSelected": null,
+      "acquisitionSelected": true,
+      "acquisitionSelectionReason": null,
+      "physicalOpenAdmission": null,
+      "selectedForOpening": true,
+      "selectionDecision": {
+        "decision": "selected",
+        "selected": true,
+        "reason": "retrieved",
+        "physicalOpenPosition": 2
+      },
+      "physicalOpenPosition": 2,
+      "acquisitionPath": null,
+      "accessOutcome": {
+        "state": "accessible",
+        "reason": "retrieved",
+        "physicalOpenIndex": 2,
+        "reused": false
+      },
+      "identityResult": {
+        "exactProject": false,
+        "state": "unresolved"
+      },
+      "passageResult": {
+        "state": "retained",
+        "reason": null,
+        "passageSha256": "aff6f9aa0b08f77d39f802ea8c6ec9040f66d6ab3008aca68c3baa2e241ad939",
+        "excerpt": "DataBank Announces Development of 480MW Data Center Campus in South Dallas Third land acquisition in the past year creates total expansion capacity of 450+ acres, 5.8M square feet of data center space and more than 750MWs of critical IT load across the three sites DALLAS , Sept. 10, 2024 /PRNewswire/ -- DataBank , a leading provider of enterprise-class edge colocation, interconnection, and managed services, today announced the development of a 480MW data center campus on 292 acres of land in Red Oak, TX , dramatically expanding its capacity and ability to meet growing demand for data center space and power being driven by A.I. applications. The South Dallas land will become home to the new \" Red Oak Campus \" accommodating up to eight, 2-story data centers of 425,000 gross square feet, each totaling as much as 3.4M square feet. The Phase 1 design of the site will feature 4 buildings and a 400MW sub-station from Oncor that can deliver up to 240MW of critical IT power with the ability to increase this in Phase 2 for a total of 480MW across all 8 buildings. Construction at the site has already commenced with an initial Ready for Service date of Q2-2026. Red Oak has become a major sub-market in Dallas attracting the world's largest cloud and technology providers. DataBank's campus adds to its already significant presence in the market which includes its headquarters location (DFW1) and 6 other data centers in the metro. This announcement is DataBank's third new campus announcement"
+      },
+      "usablePassage": true,
+      "exactProjectPassage": false,
+      "passageExcerpt": "DataBank Announces Development of 480MW Data Center Campus in South Dallas Third land acquisition in the past year creates total expansion capacity of 450+ acres, 5.8M square feet of data center space and more than 750MWs of critical IT load across the three sites DALLAS , Sept. 10, 2024 /PRNewswire/ -- DataBank , a leading provider of enterprise-class edge colocation, interconnection, and managed services, today announced the development of a 480MW data center campus on 292 acres of land in Red Oak, TX , dramatically expanding its capacity and ability to meet growing demand for data center space and power being driven by A.I. applications. The South Dallas land will become home to the new \" Red Oak Campus \" accommodating up to eight, 2-story data centers of 425,000 gross square feet, each totaling as much as 3.4M square feet. The Phase 1 design of the site will feature 4 buildings and a 400MW sub-station from Oncor that can deliver up to 240MW of critical IT power with the ability to increase this in Phase 2 for a total of 480MW across all 8 buildings. Construction at the site has already commenced with an initial Ready for Service date of Q2-2026. Red Oak has become a major sub-market in Dallas attracting the world's largest cloud and technology providers. DataBank's campus adds to its already significant presence in the market which includes its headquarters location (DFW1) and 6 other data centers in the metro. This announcement is DataBank's third new campus announcement",
+      "eligibilityResult": {
+        "state": "unknown",
+        "rejectionReasons": [
+          "No supported immutable claim-to-passage mapping was retained.",
+          "Source did not reach governed evidence eligibility."
+        ]
+      },
+      "rejectionReason": "No supported immutable claim-to-passage mapping was retained. Source did not reach governed evidence eligibility.",
+      "suppliedToGrid": false
+    },
+    {
+      "categoryId": null,
+      "url": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+      "sourceChannel": "google-grounded-search",
+      "sourceType": null,
+      "discoveryRank": null,
+      "acquisitionRank": null,
+      "identitySignals": [],
+      "acquisitionPriority": null,
+      "acquisitionPriorityReasons": [],
+      "candidateLimitSelected": null,
+      "acquisitionSelected": true,
+      "acquisitionSelectionReason": null,
+      "physicalOpenAdmission": null,
+      "selectedForOpening": true,
+      "selectionDecision": {
+        "decision": "selected",
+        "selected": true,
+        "reason": "retrieved",
+        "physicalOpenPosition": 2
+      },
+      "physicalOpenPosition": 2,
+      "acquisitionPath": null,
+      "accessOutcome": {
+        "state": "accessible",
+        "reason": "retrieved",
+        "physicalOpenIndex": 2,
+        "reused": false
+      },
+      "identityResult": {
+        "exactProject": false,
+        "state": "unresolved"
+      },
+      "passageResult": {
+        "state": "retained",
+        "reason": null,
+        "passageSha256": "aff6f9aa0b08f77d39f802ea8c6ec9040f66d6ab3008aca68c3baa2e241ad939",
+        "excerpt": "DataBank Announces Development of 480MW Data Center Campus in South Dallas Third land acquisition in the past year creates total expansion capacity of 450+ acres, 5.8M square feet of data center space and more than 750MWs of critical IT load across the three sites DALLAS , Sept. 10, 2024 /PRNewswire/ -- DataBank , a leading provider of enterprise-class edge colocation, interconnection, and managed services, today announced the development of a 480MW data center campus on 292 acres of land in Red Oak, TX , dramatically expanding its capacity and ability to meet growing demand for data center space and power being driven by A.I. applications. The South Dallas land will become home to the new \" Red Oak Campus \" accommodating up to eight, 2-story data centers of 425,000 gross square feet, each totaling as much as 3.4M square feet. The Phase 1 design of the site will feature 4 buildings and a 400MW sub-station from Oncor that can deliver up to 240MW of critical IT power with the ability to increase this in Phase 2 for a total of 480MW across all 8 buildings. Construction at the site has already commenced with an initial Ready for Service date of Q2-2026. Red Oak has become a major sub-market in Dallas attracting the world's largest cloud and technology providers. DataBank's campus adds to its already significant presence in the market which includes its headquarters location (DFW1) and 6 other data centers in the metro. This announcement is DataBank's third new campus announcement"
+      },
+      "usablePassage": true,
+      "exactProjectPassage": false,
+      "passageExcerpt": "DataBank Announces Development of 480MW Data Center Campus in South Dallas Third land acquisition in the past year creates total expansion capacity of 450+ acres, 5.8M square feet of data center space and more than 750MWs of critical IT load across the three sites DALLAS , Sept. 10, 2024 /PRNewswire/ -- DataBank , a leading provider of enterprise-class edge colocation, interconnection, and managed services, today announced the development of a 480MW data center campus on 292 acres of land in Red Oak, TX , dramatically expanding its capacity and ability to meet growing demand for data center space and power being driven by A.I. applications. The South Dallas land will become home to the new \" Red Oak Campus \" accommodating up to eight, 2-story data centers of 425,000 gross square feet, each totaling as much as 3.4M square feet. The Phase 1 design of the site will feature 4 buildings and a 400MW sub-station from Oncor that can deliver up to 240MW of critical IT power with the ability to increase this in Phase 2 for a total of 480MW across all 8 buildings. Construction at the site has already commenced with an initial Ready for Service date of Q2-2026. Red Oak has become a major sub-market in Dallas attracting the world's largest cloud and technology providers. DataBank's campus adds to its already significant presence in the market which includes its headquarters location (DFW1) and 6 other data centers in the metro. This announcement is DataBank's third new campus announcement",
+      "eligibilityResult": {
+        "state": "unknown",
+        "rejectionReasons": [
+          "No supported immutable claim-to-passage mapping was retained.",
+          "Source did not reach governed evidence eligibility."
+        ]
+      },
+      "rejectionReason": "No supported immutable claim-to-passage mapping was retained. Source did not reach governed evidence eligibility.",
+      "suppliedToGrid": false
+    }
+  ],
+  "evidenceAudit": [
+    {
+      "evidenceId": "electricity_cost",
+      "label": "electricity cost",
+      "categoryId": "grid",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "USD/MWh",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": "unknown",
+      "phaseScope": "unknown",
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "water_consumption",
+      "label": "water consumption",
+      "categoryId": "water",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "Mgal/year",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": "unknown",
+      "phaseScope": "unknown",
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "grid_interconnection",
+      "label": "grid interconnection",
+      "categoryId": "grid",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "months",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": "unknown",
+      "phaseScope": "unknown",
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "water_escalation",
+      "label": "water escalation",
+      "categoryId": "water",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "%",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": "unknown",
+      "phaseScope": "unknown",
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "community_risk",
+      "label": "community risk",
+      "categoryId": "permitting-community",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "qualitative",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": "unknown",
+      "phaseScope": "unknown",
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Missing or incompatible qualitative unit; a human User Assumption must supply the unit."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "renewable_percentage",
+      "label": "renewable percentage",
+      "categoryId": "grid",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "%",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": "unknown",
+      "phaseScope": "unknown",
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "cooling_capex",
+      "label": "cooling capex",
+      "categoryId": "construction-capital",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "USD millions",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": "unknown",
+      "phaseScope": "unknown",
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "electricity_escalation",
+      "label": "electricity escalation",
+      "categoryId": "grid",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "%",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": "unknown",
+      "phaseScope": "unknown",
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "carbon_compliance",
+      "label": "carbon compliance",
+      "categoryId": "electricity",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "USD millions/year",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": "unknown",
+      "phaseScope": "unknown",
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "permitting_timeline",
+      "label": "permitting timeline",
+      "categoryId": "permitting-community",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "months",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": "unknown",
+      "phaseScope": "unknown",
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "customer_concentration",
+      "label": "customer concentration",
+      "categoryId": "tenant-counterparty",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "%",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": "unknown",
+      "phaseScope": "unknown",
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "water_rights",
+      "label": "water rights",
+      "categoryId": "water",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "qualitative",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": "unknown",
+      "phaseScope": "unknown",
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Missing or incompatible qualitative unit; a human User Assumption must supply the unit."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "site_hazard_exposure",
+      "label": "site hazard exposure",
+      "categoryId": "climate-operational-hazard",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "qualitative",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": "unknown",
+      "phaseScope": "unknown",
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Missing or incompatible qualitative unit; a human User Assumption must supply the unit."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "backup_power_capacity",
+      "label": "backup power capacity",
+      "categoryId": "construction-capital",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "hours",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": "unknown",
+      "phaseScope": "unknown",
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "water_source_resilience",
+      "label": "water source resilience",
+      "categoryId": "water",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "qualitative",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": "unknown",
+      "phaseScope": "unknown",
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Missing or incompatible qualitative unit; a human User Assumption must supply the unit."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    },
+    {
+      "evidenceId": "downtime_cost",
+      "label": "downtime cost",
+      "categoryId": "construction-capital",
+      "rawValue": "Not established",
+      "normalizedValue": null,
+      "rawUnit": "Project evidence",
+      "normalizedUnit": "USD/day",
+      "classification": "Missing Evidence",
+      "claimTimePeriod": null,
+      "facilityScope": "unknown",
+      "phaseScope": "unknown",
+      "researchState": "retrieved-lead",
+      "sourceRelevance": "unresolved",
+      "sourceSupportConfidence": 0,
+      "mappings": [],
+      "eligibilityDecision": {
+        "eligibleForModel": false,
+        "acceptedForModel": false,
+        "financialEligibilityState": null,
+        "quarantineReasons": [
+          "No validated source was returned.",
+          "No source matches the eligible source types for this evidence variable.",
+          "An exact-project source is required for this evidence variable.",
+          "Reviewer-submitted sources cannot establish research provenance.",
+          "Only source-backed classifications can activate research evidence.",
+          "Source support confidence is below the model-eligibility threshold.",
+          "No immutable claim-to-passage mapping supports this evidence claim.",
+          "Numeric value is missing; no model input can be derived."
+        ],
+        "sourceValidationState": "rejected"
+      }
+    }
+  ],
+  "unresolvedIdentifiers": [
+    "project-identity",
+    "grid",
+    "electricity",
+    "water",
+    "permitting-community",
+    "construction-capital",
+    "tenant-counterparty",
+    "climate-operational-hazard",
+    "grid_interconnection",
+    "electricity_cost",
+    "electricity_escalation",
+    "renewable_percentage",
+    "carbon_compliance",
+    "water_consumption",
+    "water_escalation",
+    "water_rights",
+    "water_source_resilience",
+    "community_risk",
+    "permitting_timeline",
+    "cooling_capex",
+    "backup_power_capacity",
+    "downtime_cost",
+    "customer_concentration",
+    "site_hazard_exposure"
+  ],
+  "budgetState": {
+    "telemetryStatus": "current-live",
+    "physicalOpenBudget": 8,
+    "physicalOpensUsed": 4,
+    "physicalOpensRemaining": 4,
+    "physicalOpenBudgetExceeded": false,
+    "documentsNotAttempted": [
+      {
+        "categoryId": "project-identity",
+        "count": 0,
+        "reason": "retrieval-only-stop"
+      },
+      {
+        "categoryId": "grid",
+        "count": 0,
+        "reason": "retrieval-only-stop"
+      },
+      {
+        "categoryId": "electricity",
+        "count": 0,
+        "reason": "no-justified-gap"
+      },
+      {
+        "categoryId": "water",
+        "count": 0,
+        "reason": "no-justified-gap"
+      },
+      {
+        "categoryId": "permitting-community",
+        "count": 0,
+        "reason": "no-justified-gap"
+      },
+      {
+        "categoryId": "construction-capital",
+        "count": 0,
+        "reason": "no-justified-gap"
+      },
+      {
+        "categoryId": "tenant-counterparty",
+        "count": 0,
+        "reason": "no-justified-gap"
+      },
+      {
+        "categoryId": "climate-operational-hazard",
+        "count": 0,
+        "reason": "no-justified-gap"
+      }
+    ]
+  },
+  "cacheState": {
+    "state": "updated",
+    "refreshStatus": "idle",
+    "providerAvailable": true,
+    "storedAt": null,
+    "keyPresent": true,
+    "telemetryStatus": "current-live"
+  },
+  "workbenchState": {
+    "status": "incomplete-technical-limitation",
+    "reviewAction": "Review findings",
+    "eligibleSourceCount": 3,
+    "eligibleEvidenceCount": 0,
+    "proposalCount": 0,
+    "acceptedModelInputCount": 0,
+    "materialGaps": [
+      "project-identity",
+      "grid",
+      "electricity",
+      "water",
+      "permitting-community",
+      "construction-capital",
+      "tenant-counterparty",
+      "climate-operational-hazard",
+      "grid_interconnection",
+      "electricity_cost",
+      "electricity_escalation",
+      "renewable_percentage",
+      "carbon_compliance",
+      "water_consumption",
+      "water_escalation",
+      "water_rights",
+      "water_source_resilience",
+      "community_risk",
+      "permitting_timeline",
+      "cooling_capex",
+      "backup_power_capacity",
+      "downtime_cost",
+      "customer_concentration",
+      "site_hazard_exposure"
+    ],
+    "modelChangePendingHumanAcceptance": true
+  },
+  "sessionState": {
+    "runId": "63afb2b1-65e2-4000-a653-d5dd3ee28627",
+    "researchStatus": "partial",
+    "cacheState": "updated",
+    "telemetryStatus": "current-live",
+    "reloadRestoration": "run-scoped identity and cache metadata are retained; no model mutation is implied"
+  },
+  "categoryGaps": [
+    "project-identity",
+    "grid",
+    "electricity",
+    "water",
+    "permitting-community",
+    "construction-capital",
+    "tenant-counterparty",
+    "climate-operational-hazard"
+  ],
+  "categories": [
+    {
+      "categoryId": "project-identity",
+      "label": "Project identity",
+      "state": "Not searched",
+      "unresolvedGaps": [
+        "project-identity"
+      ],
+      "accessLimitations": [],
+      "providerFailure": null,
+      "providerAttempts": [],
+      "stageCounts": {
+        "normalized": 3,
+        "accessed": 3,
+        "parsed": 3,
+        "claimMapped": 0,
+        "eligible": 0,
+        "retainedCandidates": 1,
+        "candidates": 3,
+        "attemptedRetrievals": 3,
+        "successfulAccesses": 3,
+        "retainedPassages": 3,
+        "reusedReceipts": 0,
+        "notAttempted": 0,
+        "allEvidenceEligible": false,
+        "rejectionCounts": {},
+        "issuedProviderRequests": 0,
+        "observedSearches": 0,
+        "successfulExtractions": 3
+      }
+    },
+    {
+      "categoryId": "grid",
+      "label": "Grid",
+      "state": "Not searched",
+      "unresolvedGaps": [
+        "grid_interconnection",
+        "electricity_cost",
+        "electricity_escalation",
+        "renewable_percentage"
+      ],
+      "accessLimitations": [],
+      "providerFailure": null,
+      "providerAttempts": [],
+      "stageCounts": {
+        "normalized": 0,
+        "accessed": 0,
+        "parsed": 0,
+        "claimMapped": 0,
+        "eligible": 0,
+        "retainedCandidates": 0,
+        "candidates": 0,
+        "attemptedRetrievals": 0,
+        "successfulAccesses": 0,
+        "retainedPassages": 0,
+        "reusedReceipts": 0,
+        "notAttempted": 0,
+        "allEvidenceEligible": false,
+        "rejectionCounts": {
+          "No validated source was returned.": 4,
+          "No source matches the eligible source types for this evidence variable.": 4,
+          "An exact-project source is required for this evidence variable.": 4,
+          "Reviewer-submitted sources cannot establish research provenance.": 4,
+          "Only source-backed classifications can activate research evidence.": 4,
+          "Source support confidence is below the model-eligibility threshold.": 4,
+          "No immutable claim-to-passage mapping supports this evidence claim.": 4,
+          "Numeric value is missing; no model input can be derived.": 4
+        },
+        "issuedProviderRequests": 0,
+        "observedSearches": 0,
+        "successfulExtractions": 0
+      }
+    },
+    {
+      "categoryId": "electricity",
+      "label": "Electricity",
+      "state": "Not searched",
+      "unresolvedGaps": [
+        "electricity_cost",
+        "electricity_escalation",
+        "renewable_percentage",
+        "carbon_compliance"
+      ],
+      "accessLimitations": [],
+      "providerFailure": null,
+      "providerAttempts": [],
+      "stageCounts": {
+        "normalized": 0,
+        "accessed": 0,
+        "parsed": 0,
+        "claimMapped": 0,
+        "eligible": 0,
+        "retainedCandidates": 0,
+        "candidates": 0,
+        "attemptedRetrievals": 0,
+        "successfulAccesses": 0,
+        "retainedPassages": 0,
+        "reusedReceipts": 0,
+        "notAttempted": 0,
+        "allEvidenceEligible": false,
+        "rejectionCounts": {
+          "No validated source was returned.": 4,
+          "No source matches the eligible source types for this evidence variable.": 4,
+          "An exact-project source is required for this evidence variable.": 4,
+          "Reviewer-submitted sources cannot establish research provenance.": 4,
+          "Only source-backed classifications can activate research evidence.": 4,
+          "Source support confidence is below the model-eligibility threshold.": 4,
+          "No immutable claim-to-passage mapping supports this evidence claim.": 4,
+          "Numeric value is missing; no model input can be derived.": 4
+        },
+        "issuedProviderRequests": 0,
+        "observedSearches": 0,
+        "successfulExtractions": 0
+      }
+    },
+    {
+      "categoryId": "water",
+      "label": "Water",
+      "state": "Not searched",
+      "unresolvedGaps": [
+        "water_consumption",
+        "water_escalation",
+        "water_rights",
+        "water_source_resilience"
+      ],
+      "accessLimitations": [],
+      "providerFailure": null,
+      "providerAttempts": [],
+      "stageCounts": {
+        "normalized": 0,
+        "accessed": 0,
+        "parsed": 0,
+        "claimMapped": 0,
+        "eligible": 0,
+        "retainedCandidates": 0,
+        "candidates": 0,
+        "attemptedRetrievals": 0,
+        "successfulAccesses": 0,
+        "retainedPassages": 0,
+        "reusedReceipts": 0,
+        "notAttempted": 0,
+        "allEvidenceEligible": false,
+        "rejectionCounts": {
+          "No validated source was returned.": 4,
+          "No source matches the eligible source types for this evidence variable.": 4,
+          "An exact-project source is required for this evidence variable.": 4,
+          "Reviewer-submitted sources cannot establish research provenance.": 4,
+          "Only source-backed classifications can activate research evidence.": 4,
+          "Source support confidence is below the model-eligibility threshold.": 4,
+          "No immutable claim-to-passage mapping supports this evidence claim.": 4,
+          "Numeric value is missing; no model input can be derived.": 2,
+          "Missing or incompatible qualitative unit; a human User Assumption must supply the unit.": 2
+        },
+        "issuedProviderRequests": 0,
+        "observedSearches": 0,
+        "successfulExtractions": 0
+      }
+    },
+    {
+      "categoryId": "permitting-community",
+      "label": "Permitting and community",
+      "state": "Not searched",
+      "unresolvedGaps": [
+        "community_risk",
+        "permitting_timeline",
+        "carbon_compliance"
+      ],
+      "accessLimitations": [],
+      "providerFailure": null,
+      "providerAttempts": [],
+      "stageCounts": {
+        "normalized": 0,
+        "accessed": 0,
+        "parsed": 0,
+        "claimMapped": 0,
+        "eligible": 0,
+        "retainedCandidates": 0,
+        "candidates": 0,
+        "attemptedRetrievals": 0,
+        "successfulAccesses": 0,
+        "retainedPassages": 0,
+        "reusedReceipts": 0,
+        "notAttempted": 0,
+        "allEvidenceEligible": false,
+        "rejectionCounts": {
+          "No validated source was returned.": 3,
+          "No source matches the eligible source types for this evidence variable.": 3,
+          "Reviewer-submitted sources cannot establish research provenance.": 3,
+          "Only source-backed classifications can activate research evidence.": 3,
+          "Source support confidence is below the model-eligibility threshold.": 3,
+          "No immutable claim-to-passage mapping supports this evidence claim.": 3,
+          "Missing or incompatible qualitative unit; a human User Assumption must supply the unit.": 1,
+          "An exact-project source is required for this evidence variable.": 2,
+          "Numeric value is missing; no model input can be derived.": 2
+        },
+        "issuedProviderRequests": 0,
+        "observedSearches": 0,
+        "successfulExtractions": 0
+      }
+    },
+    {
+      "categoryId": "construction-capital",
+      "label": "Construction and capital",
+      "state": "Not searched",
+      "unresolvedGaps": [
+        "cooling_capex",
+        "backup_power_capacity",
+        "downtime_cost"
+      ],
+      "accessLimitations": [],
+      "providerFailure": null,
+      "providerAttempts": [],
+      "stageCounts": {
+        "normalized": 0,
+        "accessed": 0,
+        "parsed": 0,
+        "claimMapped": 0,
+        "eligible": 0,
+        "retainedCandidates": 0,
+        "candidates": 0,
+        "attemptedRetrievals": 0,
+        "successfulAccesses": 0,
+        "retainedPassages": 0,
+        "reusedReceipts": 0,
+        "notAttempted": 0,
+        "allEvidenceEligible": false,
+        "rejectionCounts": {
+          "No validated source was returned.": 3,
+          "No source matches the eligible source types for this evidence variable.": 3,
+          "An exact-project source is required for this evidence variable.": 3,
+          "Reviewer-submitted sources cannot establish research provenance.": 3,
+          "Only source-backed classifications can activate research evidence.": 3,
+          "Source support confidence is below the model-eligibility threshold.": 3,
+          "No immutable claim-to-passage mapping supports this evidence claim.": 3,
+          "Numeric value is missing; no model input can be derived.": 3
+        },
+        "issuedProviderRequests": 0,
+        "observedSearches": 0,
+        "successfulExtractions": 0
+      }
+    },
+    {
+      "categoryId": "tenant-counterparty",
+      "label": "Tenant and counterparty",
+      "state": "Not searched",
+      "unresolvedGaps": [
+        "customer_concentration",
+        "downtime_cost"
+      ],
+      "accessLimitations": [],
+      "providerFailure": null,
+      "providerAttempts": [],
+      "stageCounts": {
+        "normalized": 0,
+        "accessed": 0,
+        "parsed": 0,
+        "claimMapped": 0,
+        "eligible": 0,
+        "retainedCandidates": 0,
+        "candidates": 0,
+        "attemptedRetrievals": 0,
+        "successfulAccesses": 0,
+        "retainedPassages": 0,
+        "reusedReceipts": 0,
+        "notAttempted": 0,
+        "allEvidenceEligible": false,
+        "rejectionCounts": {
+          "No validated source was returned.": 2,
+          "No source matches the eligible source types for this evidence variable.": 2,
+          "An exact-project source is required for this evidence variable.": 2,
+          "Reviewer-submitted sources cannot establish research provenance.": 2,
+          "Only source-backed classifications can activate research evidence.": 2,
+          "Source support confidence is below the model-eligibility threshold.": 2,
+          "No immutable claim-to-passage mapping supports this evidence claim.": 2,
+          "Numeric value is missing; no model input can be derived.": 2
+        },
+        "issuedProviderRequests": 0,
+        "observedSearches": 0,
+        "successfulExtractions": 0
+      }
+    },
+    {
+      "categoryId": "climate-operational-hazard",
+      "label": "Climate and operational hazard",
+      "state": "Not searched",
+      "unresolvedGaps": [
+        "site_hazard_exposure",
+        "backup_power_capacity",
+        "water_source_resilience",
+        "downtime_cost"
+      ],
+      "accessLimitations": [],
+      "providerFailure": null,
+      "providerAttempts": [],
+      "stageCounts": {
+        "normalized": 0,
+        "accessed": 0,
+        "parsed": 0,
+        "claimMapped": 0,
+        "eligible": 0,
+        "retainedCandidates": 0,
+        "candidates": 0,
+        "attemptedRetrievals": 0,
+        "successfulAccesses": 0,
+        "retainedPassages": 0,
+        "reusedReceipts": 0,
+        "notAttempted": 0,
+        "allEvidenceEligible": false,
+        "rejectionCounts": {
+          "No validated source was returned.": 4,
+          "No source matches the eligible source types for this evidence variable.": 4,
+          "Reviewer-submitted sources cannot establish research provenance.": 4,
+          "Only source-backed classifications can activate research evidence.": 4,
+          "Source support confidence is below the model-eligibility threshold.": 4,
+          "No immutable claim-to-passage mapping supports this evidence claim.": 4,
+          "Missing or incompatible qualitative unit; a human User Assumption must supply the unit.": 2,
+          "An exact-project source is required for this evidence variable.": 3,
+          "Numeric value is missing; no model input can be derived.": 2
+        },
+        "issuedProviderRequests": 0,
+        "observedSearches": 0,
+        "successfulExtractions": 0
+      }
+    }
+  ],
+  "providerLimitations": [
+    "The run deadline prevented structured category analysis; retrieved passages and their access receipts were retained."
+  ],
+  "retainedHistoricalRun": null,
+  "failureRetention": {
+    "status": "not-run",
+    "reason": "The live request did not produce a cache entry to rehearse against."
+  },
+  "canary": {
+    "mode": "red-oak-retrieval-only",
+    "retrievalOnly": true,
+    "retrievalOnlyStopBoundary": "after-discovery-document-access-before-structured-analysis",
+    "retrievalOnlyStopReason": "Intentional retrieval-only stop after bounded document access; structured analysis was not requested.",
+    "explicitLiveOptIn": true,
+    "repeatRunGuard": "one-invocation-per-source-revision",
+    "preconditions": {
+      "gateFilePath": "/tmp/task316-red-oak-gates.json",
+      "gates": {
+        "offlineSuite": {
+          "status": "passed",
+          "logPath": "/tmp/task316-offline-suite-final.log"
+        },
+        "standaloneDataMjs": {
+          "status": "passed",
+          "logPath": "/tmp/task316-data-mjs-final.log"
+        },
+        "typecheck": {
+          "status": "passed",
+          "logPath": "/tmp/task316-typecheck-final.log"
+        },
+        "productionBuild": {
+          "status": "passed",
+          "logPath": "/tmp/task316-build-final.log"
+        }
+      },
+      "redOakContentQualityFixesIncluded": true,
+      "googleGroundingFixtureSynchronized": true,
+      "sourceRevision": "131fbe250dcdb76586173d02e78406a9519a4362",
+      "sourceHash": "287abfed2dc58a24e1756a8848c07cfbd4bff3a380b2f62f6f054dd552c3aa8c"
+    },
+    "sourceRevision": "131fbe250dcdb76586173d02e78406a9519a4362",
+    "sourceHash": "287abfed2dc58a24e1756a8848c07cfbd4bff3a380b2f62f6f054dd552c3aa8c",
+    "isolation": {
+      "storageMode": "isolated-temporary-cache-and-registry",
+      "researchCacheReuse": "disabled-by-fresh-cache-and-force-refresh",
+      "registryStorage": "isolated-temporary-directory",
+      "auditStorage": "in-memory",
+      "productionResearchStateRead": false,
+      "productionResearchStateWritten": false
+    },
+    "scope": {
+      "categories": [
+        "project-identity",
+        "grid"
+      ],
+      "discoveryRequestedCategories": [
+        "project-identity",
+        "grid"
+      ],
+      "retrievalOnly": true,
+      "groundedDiscoveryRequests": 1,
+      "structuredProviderCalls": 0,
+      "totalProviderRequests": 1,
+      "physicalDocumentOpens": 4,
+      "limits": {
+        "groundedDiscoveryRequests": 1,
+        "structuredProviderCalls": 0,
+        "totalProviderRequests": 1,
+        "physicalDocumentOpens": 8,
+        "followUps": 0,
+        "openAIFallback": false,
+        "correctiveRetries": false,
+        "providerRetries": false,
+        "secConnectorDefault": false,
+        "failureRehearsal": false,
+        "researchTimeoutMs": 75000,
+        "invocationTimeoutMs": 90000
+      }
+    },
+    "retrievalOnlyCallLimitPassed": true,
+    "timeout": {
+      "researchDeadlineReached": false,
+      "invocationCancellationStarted": false,
+      "hardDeadlineAt": "2026-10-01T00:18:02.710Z"
+    },
+    "contentQualityObservations": {
+      "applicationErrorFilter": {
+        "enabledAtExtractionBoundary": true,
+        "observedLive": false,
+        "observedCandidateCount": 0
+      },
+      "corruptedTextFilter": {
+        "enabledAtExtractionBoundary": true,
+        "observedLive": false,
+        "observedCandidateCount": 0
+      }
+    },
+    "gridAnalysisPackets": [],
+    "retrievalOnlyPassageAudit": {
+      "identityBasis": "canonical-source-url-plus-passage-sha256",
+      "classificationBasis": "retained-passage-identity-result-not-discovery-or-acquisition-rank",
+      "usablePassageCount": 1,
+      "exactProjectPassageCount": 0,
+      "usableNonExactPassageCount": 1,
+      "usablePassages": [
+        {
+          "sourceUrl": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+          "passageSha256": "aff6f9aa0b08f77d39f802ea8c6ec9040f66d6ab3008aca68c3baa2e241ad939",
+          "excerpt": "DataBank Announces Development of 480MW Data Center Campus in South Dallas Third land acquisition in the past year creates total expansion capacity of 450+ acres, 5.8M square feet of data center space and more than 750MWs of critical IT load across the three sites DALLAS , Sept. 10, 2024 /PRNewswire/ -- DataBank , a leading provider of enterprise-class edge colocation, interconnection, and managed services, today announced the development of a 480MW data center campus on 292 acres of land in Red Oak, TX , dramatically expanding its capacity and ability to meet growing demand for data center space and power being driven by A.I. applications. The South Dallas land will become home to the new \" Red Oak Campus \" accommodating up to eight, 2-story data centers of 425,000 gross square feet, each totaling as much as 3.4M square feet. The Phase 1 design of the site will feature 4 buildings and a 400MW sub-station from Oncor that can deliver up to 240MW of critical IT power with the ability to increase this in Phase 2 for a total of 480MW across all 8 buildings. Construction at the site has already commenced with an initial Ready for Service date of Q2-2026. Red Oak has become a major sub-market in Dallas attracting the world's largest cloud and technology providers. DataBank's campus adds to its already significant presence in the market which includes its headquarters location (DFW1) and 6 other data centers in the metro. This announcement is DataBank's third new campus announcement",
+          "exactProject": false,
+          "identityState": "unresolved"
+        }
+      ],
+      "exactProjectPassages": []
+    },
+    "requestLocalDiagnostics": {
+      "captureStatus": "request-local-sanitized-bounded-passage-excerpts-no-full-document-payloads",
+      "discoveryCandidateCount": 4,
+      "discoveryCandidateSnapshotCount": 4,
+      "discoveryCandidatesTruncated": false,
+      "discoveryCandidates": [
+        {
+          "candidateId": "discovery-1",
+          "candidateIndex": 1,
+          "discoveryRank": 1,
+          "acquisitionRank": 1,
+          "categoryId": null,
+          "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-7c9e6881ce31e234",
+          "originalUrl": null,
+          "canonicalUrl": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-7c9e6881ce31e234",
+          "resolvedUrl": null,
+          "title": "databank.com",
+          "sourceChannel": "google-grounded-search",
+          "searchDomain": null,
+          "sourceType": null,
+          "categoryIds": [],
+          "sourceState": null,
+          "exactProject": false,
+          "identitySignals": [],
+          "acquisitionPriority": 100,
+          "acquisitionPriorityReasons": [
+            "operator-match",
+            "text-source",
+            "no-exact-project-identity-signal"
+          ],
+          "candidateLimitSelected": true,
+          "acquisitionSelected": true,
+          "acquisitionSelectionReason": "awaiting-physical-open-admission",
+          "physicalOpenAdmission": "authorized",
+          "selectedForOpening": true,
+          "selectionDecision": {
+            "decision": "selected",
+            "selected": true,
+            "reason": "Physical document open was attempted.",
+            "physicalOpenPosition": 1
+          },
+          "physicalOpenPosition": 1
+        },
+        {
+          "candidateId": "discovery-3",
+          "candidateIndex": 3,
+          "discoveryRank": 3,
+          "acquisitionRank": 2,
+          "categoryId": null,
+          "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-ee0b2dc63c82031b",
+          "originalUrl": null,
+          "canonicalUrl": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-ee0b2dc63c82031b",
+          "resolvedUrl": null,
+          "title": "prnewswire.com",
+          "sourceChannel": "google-grounded-search",
+          "searchDomain": null,
+          "sourceType": null,
+          "categoryIds": [],
+          "sourceState": null,
+          "exactProject": false,
+          "identitySignals": [],
+          "acquisitionPriority": 100,
+          "acquisitionPriorityReasons": [
+            "text-source",
+            "no-exact-project-identity-signal"
+          ],
+          "candidateLimitSelected": true,
+          "acquisitionSelected": true,
+          "acquisitionSelectionReason": "awaiting-physical-open-admission",
+          "physicalOpenAdmission": "authorized",
+          "selectedForOpening": true,
+          "selectionDecision": {
+            "decision": "selected",
+            "selected": true,
+            "reason": "Physical document open was attempted.",
+            "physicalOpenPosition": 2
+          },
+          "physicalOpenPosition": 2
+        },
+        {
+          "candidateId": "discovery-7",
+          "candidateIndex": 7,
+          "discoveryRank": 7,
+          "acquisitionRank": 3,
+          "categoryId": null,
+          "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-2c5df885fee18ade",
+          "originalUrl": null,
+          "canonicalUrl": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-2c5df885fee18ade",
+          "resolvedUrl": null,
+          "title": "databank.com",
+          "sourceChannel": "google-grounded-search",
+          "searchDomain": null,
+          "sourceType": null,
+          "categoryIds": [],
+          "sourceState": null,
+          "exactProject": false,
+          "identitySignals": [],
+          "acquisitionPriority": 100,
+          "acquisitionPriorityReasons": [
+            "operator-match",
+            "text-source",
+            "no-exact-project-identity-signal"
+          ],
+          "candidateLimitSelected": true,
+          "acquisitionSelected": true,
+          "acquisitionSelectionReason": "awaiting-physical-open-admission",
+          "physicalOpenAdmission": "authorized",
+          "selectedForOpening": true,
+          "selectionDecision": {
+            "decision": "selected",
+            "selected": true,
+            "reason": "Physical document open was attempted.",
+            "physicalOpenPosition": 3
+          },
+          "physicalOpenPosition": 3
+        },
+        {
+          "candidateId": "discovery-13",
+          "candidateIndex": 13,
+          "discoveryRank": 13,
+          "acquisitionRank": 4,
+          "categoryId": null,
+          "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-cfdb940e8648d68e",
+          "originalUrl": null,
+          "canonicalUrl": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-cfdb940e8648d68e",
+          "resolvedUrl": null,
+          "title": "databank.com",
+          "sourceChannel": "google-grounded-search",
+          "searchDomain": null,
+          "sourceType": null,
+          "categoryIds": [],
+          "sourceState": null,
+          "exactProject": false,
+          "identitySignals": [],
+          "acquisitionPriority": 100,
+          "acquisitionPriorityReasons": [
+            "operator-match",
+            "text-source",
+            "no-exact-project-identity-signal"
+          ],
+          "candidateLimitSelected": true,
+          "acquisitionSelected": true,
+          "acquisitionSelectionReason": "awaiting-physical-open-admission",
+          "physicalOpenAdmission": "authorized",
+          "selectedForOpening": true,
+          "selectionDecision": {
+            "decision": "selected",
+            "selected": true,
+            "reason": "Physical document open was attempted.",
+            "physicalOpenPosition": 4
+          },
+          "physicalOpenPosition": 4
+        }
+      ],
+      "physicalOpenAuthorizationCount": 4,
+      "physicalOpenAuthorizations": [
+        {
+          "physicalOpenIndex": 1,
+          "categoryId": "project-identity",
+          "source": {
+            "candidateId": "discovery-1",
+            "candidateIndex": 1,
+            "discoveryRank": 1,
+            "acquisitionRank": 1,
+            "categoryId": "project-identity",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-7c9e6881ce31e234",
+            "originalUrl": null,
+            "canonicalUrl": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-7c9e6881ce31e234",
+            "resolvedUrl": null,
+            "title": "databank.com",
+            "sourceChannel": "google-grounded-search",
+            "searchDomain": null,
+            "sourceType": null,
+            "categoryIds": [],
+            "sourceState": null,
+            "exactProject": false,
+            "identitySignals": []
+          }
+        },
+        {
+          "physicalOpenIndex": 2,
+          "categoryId": "project-identity",
+          "source": {
+            "candidateId": "discovery-3",
+            "candidateIndex": 3,
+            "discoveryRank": 3,
+            "acquisitionRank": 2,
+            "categoryId": "project-identity",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-ee0b2dc63c82031b",
+            "originalUrl": null,
+            "canonicalUrl": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-ee0b2dc63c82031b",
+            "resolvedUrl": null,
+            "title": "prnewswire.com",
+            "sourceChannel": "google-grounded-search",
+            "searchDomain": null,
+            "sourceType": null,
+            "categoryIds": [],
+            "sourceState": null,
+            "exactProject": false,
+            "identitySignals": []
+          }
+        },
+        {
+          "physicalOpenIndex": 3,
+          "categoryId": "project-identity",
+          "source": {
+            "candidateId": "discovery-7",
+            "candidateIndex": 7,
+            "discoveryRank": 7,
+            "acquisitionRank": 3,
+            "categoryId": "project-identity",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-2c5df885fee18ade",
+            "originalUrl": null,
+            "canonicalUrl": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-2c5df885fee18ade",
+            "resolvedUrl": null,
+            "title": "databank.com",
+            "sourceChannel": "google-grounded-search",
+            "searchDomain": null,
+            "sourceType": null,
+            "categoryIds": [],
+            "sourceState": null,
+            "exactProject": false,
+            "identitySignals": []
+          }
+        },
+        {
+          "physicalOpenIndex": 4,
+          "categoryId": "project-identity",
+          "source": {
+            "candidateId": "discovery-13",
+            "candidateIndex": 13,
+            "discoveryRank": 13,
+            "acquisitionRank": 4,
+            "categoryId": "project-identity",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-cfdb940e8648d68e",
+            "originalUrl": null,
+            "canonicalUrl": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-cfdb940e8648d68e",
+            "resolvedUrl": null,
+            "title": "databank.com",
+            "sourceChannel": "google-grounded-search",
+            "searchDomain": null,
+            "sourceType": null,
+            "categoryIds": [],
+            "sourceState": null,
+            "exactProject": false,
+            "identitySignals": []
+          }
+        }
+      ],
+      "physicalReceiptObservedCount": 4,
+      "physicalReceiptCount": 4,
+      "physicalReceiptsTruncated": false,
+      "physicalReceipts": [
+        {
+          "receiptId": "receipt-1",
+          "phase": "grounded-discovery-prefetch",
+          "candidate": {
+            "candidateId": "discovery-1",
+            "candidateIndex": 1,
+            "discoveryRank": 1,
+            "acquisitionRank": 1,
+            "categoryId": null,
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-7c9e6881ce31e234",
+            "originalUrl": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-7c9e6881ce31e234",
+            "canonicalUrl": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-7c9e6881ce31e234",
+            "resolvedUrl": "https://www.databank.com/data-centers/dallas/red-oak-campus/",
+            "title": "databank.com",
+            "sourceChannel": "google-grounded-search",
+            "searchDomain": null,
+            "sourceType": null,
+            "categoryIds": [],
+            "sourceState": null,
+            "exactProject": false,
+            "identitySignals": []
+          },
+          "attempted": true,
+          "reused": false,
+          "state": "blocked",
+          "reason": "private-destination",
+          "physicalOpenIndexes": [
+            1
+          ],
+          "originalUrl": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-7c9e6881ce31e234",
+          "resolvedUrl": "https://www.databank.com/data-centers/dallas/red-oak-campus/",
+          "canonicalUrl": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-7c9e6881ce31e234",
+          "underlyingDocumentUrl": null,
+          "referringUrls": [
+            "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-7c9e6881ce31e234"
+          ],
+          "contentHash": null,
+          "passageSha256": null,
+          "passageLength": 0,
+          "passageExcerpt": null,
+          "extractionMethod": null,
+          "extractionOutcome": null,
+          "transportDiagnostic": {
+            "stage": "dns-validation",
+            "responseReceived": false,
+            "httpStatus": null,
+            "contentType": null,
+            "redirectChain": [
+              "https://www.databank.com/data-centers/dallas/red-oak-campus/"
+            ],
+            "addressValidationReason": "prohibited-address-class",
+            "addressValidationCategory": "dns-answer-policy",
+            "addressValidationRule": "ipv4-special-purpose",
+            "addressValidationTelemetry": {
+              "answerCount": 2,
+              "addressFamilies": [
+                4,
+                6
+              ],
+              "addressFamilyCounts": {
+                "ipv4": 1,
+                "ipv6": 1,
+                "other": 0
+              },
+              "publicAnswerCount": 1,
+              "prohibitedAnswerCount": 1,
+              "rejectingRules": [
+                "ipv4-special-purpose"
+              ]
+            },
+            "elapsedMs": 28
+          }
+        },
+        {
+          "receiptId": "receipt-2",
+          "phase": "grounded-discovery-prefetch",
+          "candidate": {
+            "candidateId": "discovery-7",
+            "candidateIndex": 7,
+            "discoveryRank": 7,
+            "acquisitionRank": 3,
+            "categoryId": null,
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-2c5df885fee18ade",
+            "originalUrl": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-2c5df885fee18ade",
+            "canonicalUrl": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-2c5df885fee18ade",
+            "resolvedUrl": "https://www.databank.com/resources/blogs/building-the-future-inside-databanks-red-oak-campus-construction/",
+            "title": "databank.com",
+            "sourceChannel": "google-grounded-search",
+            "searchDomain": null,
+            "sourceType": null,
+            "categoryIds": [],
+            "sourceState": null,
+            "exactProject": false,
+            "identitySignals": []
+          },
+          "attempted": true,
+          "reused": false,
+          "state": "blocked",
+          "reason": "private-destination",
+          "physicalOpenIndexes": [
+            3
+          ],
+          "originalUrl": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-2c5df885fee18ade",
+          "resolvedUrl": "https://www.databank.com/resources/blogs/building-the-future-inside-databanks-red-oak-campus-construction/",
+          "canonicalUrl": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-2c5df885fee18ade",
+          "underlyingDocumentUrl": null,
+          "referringUrls": [
+            "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-2c5df885fee18ade"
+          ],
+          "contentHash": null,
+          "passageSha256": null,
+          "passageLength": 0,
+          "passageExcerpt": null,
+          "extractionMethod": null,
+          "extractionOutcome": null,
+          "transportDiagnostic": {
+            "stage": "dns-validation",
+            "responseReceived": false,
+            "httpStatus": null,
+            "contentType": null,
+            "redirectChain": [
+              "https://www.databank.com/resources/blogs/building-the-future-inside-databanks-red-oak-campus-construction/"
+            ],
+            "addressValidationReason": "prohibited-address-class",
+            "addressValidationCategory": "dns-answer-policy",
+            "addressValidationRule": "ipv4-special-purpose",
+            "addressValidationTelemetry": {
+              "answerCount": 2,
+              "addressFamilies": [
+                4,
+                6
+              ],
+              "addressFamilyCounts": {
+                "ipv4": 1,
+                "ipv6": 1,
+                "other": 0
+              },
+              "publicAnswerCount": 1,
+              "prohibitedAnswerCount": 1,
+              "rejectingRules": [
+                "ipv4-special-purpose"
+              ]
+            },
+            "elapsedMs": 29
+          }
+        },
+        {
+          "receiptId": "receipt-3",
+          "phase": "grounded-discovery-prefetch",
+          "candidate": {
+            "candidateId": "discovery-13",
+            "candidateIndex": 13,
+            "discoveryRank": 13,
+            "acquisitionRank": 4,
+            "categoryId": null,
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-cfdb940e8648d68e",
+            "originalUrl": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-cfdb940e8648d68e",
+            "canonicalUrl": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-cfdb940e8648d68e",
+            "resolvedUrl": "https://www.databank.com/resources/videos/inside-databanks-red-oak-campus-data-centers/",
+            "title": "databank.com",
+            "sourceChannel": "google-grounded-search",
+            "searchDomain": null,
+            "sourceType": null,
+            "categoryIds": [],
+            "sourceState": null,
+            "exactProject": false,
+            "identitySignals": []
+          },
+          "attempted": true,
+          "reused": false,
+          "state": "blocked",
+          "reason": "private-destination",
+          "physicalOpenIndexes": [
+            4
+          ],
+          "originalUrl": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-cfdb940e8648d68e",
+          "resolvedUrl": "https://www.databank.com/resources/videos/inside-databanks-red-oak-campus-data-centers/",
+          "canonicalUrl": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-cfdb940e8648d68e",
+          "underlyingDocumentUrl": null,
+          "referringUrls": [
+            "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-cfdb940e8648d68e"
+          ],
+          "contentHash": null,
+          "passageSha256": null,
+          "passageLength": 0,
+          "passageExcerpt": null,
+          "extractionMethod": null,
+          "extractionOutcome": null,
+          "transportDiagnostic": {
+            "stage": "dns-validation",
+            "responseReceived": false,
+            "httpStatus": null,
+            "contentType": null,
+            "redirectChain": [
+              "https://www.databank.com/resources/videos/inside-databanks-red-oak-campus-data-centers/"
+            ],
+            "addressValidationReason": "prohibited-address-class",
+            "addressValidationCategory": "dns-answer-policy",
+            "addressValidationRule": "ipv4-special-purpose",
+            "addressValidationTelemetry": {
+              "answerCount": 2,
+              "addressFamilies": [
+                4,
+                6
+              ],
+              "addressFamilyCounts": {
+                "ipv4": 1,
+                "ipv6": 1,
+                "other": 0
+              },
+              "publicAnswerCount": 1,
+              "prohibitedAnswerCount": 1,
+              "rejectingRules": [
+                "ipv4-special-purpose"
+              ]
+            },
+            "elapsedMs": 28
+          }
+        },
+        {
+          "receiptId": "receipt-4",
+          "phase": "grounded-discovery-prefetch",
+          "candidate": {
+            "candidateId": "discovery-3",
+            "candidateIndex": 3,
+            "discoveryRank": 3,
+            "acquisitionRank": 2,
+            "categoryId": null,
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-ee0b2dc63c82031b",
+            "originalUrl": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-ee0b2dc63c82031b",
+            "canonicalUrl": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+            "resolvedUrl": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+            "title": "prnewswire.com",
+            "sourceChannel": "google-grounded-search",
+            "searchDomain": null,
+            "sourceType": null,
+            "categoryIds": [],
+            "sourceState": null,
+            "exactProject": false,
+            "identitySignals": []
+          },
+          "attempted": true,
+          "reused": false,
+          "state": "accessible",
+          "reason": "retrieved",
+          "physicalOpenIndexes": [
+            2
+          ],
+          "originalUrl": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-ee0b2dc63c82031b",
+          "resolvedUrl": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+          "canonicalUrl": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+          "underlyingDocumentUrl": null,
+          "referringUrls": [
+            "https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-ee0b2dc63c82031b"
+          ],
+          "contentHash": "3a596deedcadab06f38116ef11a9a0fb74210d2f4d39332fe0229aa800f518a5",
+          "passageSha256": "aff6f9aa0b08f77d39f802ea8c6ec9040f66d6ab3008aca68c3baa2e241ad939",
+          "passageLength": 4000,
+          "passageExcerpt": "DataBank Announces Development of 480MW Data Center Campus in South Dallas Third land acquisition in the past year creates total expansion capacity of 450+ acres, 5.8M square feet of data center space and more than 750MWs of critical IT load across the three sites DALLAS , Sept. 10, 2024 /PRNewswire/ -- DataBank , a leading provider of enterprise-class edge colocation, interconnection, and managed services, today announced the development of a 480MW data center campus on 292 acres of land in Red Oak, TX , dramatically expanding its capacity and ability to meet growing demand for data center space and power being driven by A.I. applications. The South Dallas land will become home to the new \" Red Oak Campus \" accommodating up to eight, 2-story data centers of 425,000 gross square feet, each totaling as much as 3.4M square feet. The Phase 1 design of the site will feature 4 buildings and a 400MW sub-station from Oncor that can deliver up to 240MW of critical IT power with the ability to increase this in Phase 2 for a total of 480MW across all 8 buildings. Construction at the site has already commenced with an initial Ready for Service date of Q2-2026. Red Oak has become a major sub-market in Dallas attracting the world's largest cloud and technology providers. DataBank's campus adds to its already significant presence in the market which includes its headquarters location (DFW1) and 6 other data centers in the metro. This announcement is DataBank's third new campus announcement",
+          "extractionMethod": "html",
+          "extractionOutcome": "extracted",
+          "transportDiagnostic": {
+            "stage": "complete",
+            "responseReceived": true,
+            "httpStatus": 200,
+            "contentType": "text/html",
+            "redirectChain": [
+              "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html"
+            ],
+            "addressValidationReason": null,
+            "addressValidationCategory": null,
+            "addressValidationRule": null,
+            "addressValidationTelemetry": null,
+            "elapsedMs": 203
+          }
+        }
+      ]
+    },
+    "physicalReceiptCompleteness": {
+      "state": "complete",
+      "physicalOpenBudgetUsed": 4,
+      "expectedPhysicalOpenIndexes": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "capturedPhysicalOpenIndexes": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "authorizedPhysicalOpenIndexes": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "authorizedButReceiptMissingIndexes": [],
+      "legacyVisibleIndexes": [
+        2
+      ],
+      "visiblePhysicalOpenIndexes": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "missingPhysicalOpenIndexes": [],
+      "missingDetailsUnavailable": false,
+      "reconstructionAttempted": false,
+      "refetchAttempted": false,
+      "explanation": "Every consumed physical-open index has a request-local receipt snapshot."
+    },
+    "remainingBlockers": {
+      "mode": "retrieval-only",
+      "intentionalStopReason": "Retrieval-only mode stops after grounded discovery and document access, before structured analysis.",
+      "analysisAbsenceClassification": "intentional-retrieval-only-stop-not-retrieval-failure",
+      "analysisCategoriesNotRun": [
+        "project-identity",
+        "grid"
+      ],
+      "unresolvedCategories": [],
+      "missingStructuredAnalysisPacketIsRetrievalFailure": false,
+      "structuredProviderCalls": 0,
+      "structuredProviderCallLimitPassed": true,
+      "gridAnalysisPacketCount": 0,
+      "gridAnalysisPassageCount": 0,
+      "noUsableGroundedPassageAvailableForAnalysis": null,
+      "noUsablePassageAssessment": "not-applicable-structured-analysis-intentionally-not-run",
+      "passageIdentityAudit": {
+        "identityBasis": "canonical-source-url-plus-passage-sha256",
+        "classificationBasis": "retained-passage-identity-result-not-discovery-or-acquisition-rank",
+        "usablePassageCount": 1,
+        "exactProjectPassageCount": 0,
+        "usableNonExactPassageCount": 1,
+        "usablePassages": [
+          {
+            "sourceUrl": "https://www.prnewswire.com/news-releases/databank-announces-development-of-480mw-data-center-campus-in-south-dallas-302240719.html",
+            "passageSha256": "aff6f9aa0b08f77d39f802ea8c6ec9040f66d6ab3008aca68c3baa2e241ad939",
+            "excerpt": "DataBank Announces Development of 480MW Data Center Campus in South Dallas Third land acquisition in the past year creates total expansion capacity of 450+ acres, 5.8M square feet of data center space and more than 750MWs of critical IT load across the three sites DALLAS , Sept. 10, 2024 /PRNewswire/ -- DataBank , a leading provider of enterprise-class edge colocation, interconnection, and managed services, today announced the development of a 480MW data center campus on 292 acres of land in Red Oak, TX , dramatically expanding its capacity and ability to meet growing demand for data center space and power being driven by A.I. applications. The South Dallas land will become home to the new \" Red Oak Campus \" accommodating up to eight, 2-story data centers of 425,000 gross square feet, each totaling as much as 3.4M square feet. The Phase 1 design of the site will feature 4 buildings and a 400MW sub-station from Oncor that can deliver up to 240MW of critical IT power with the ability to increase this in Phase 2 for a total of 480MW across all 8 buildings. Construction at the site has already commenced with an initial Ready for Service date of Q2-2026. Red Oak has become a major sub-market in Dallas attracting the world's largest cloud and technology providers. DataBank's campus adds to its already significant presence in the market which includes its headquarters location (DFW1) and 6 other data centers in the metro. This announcement is DataBank's third new campus announcement",
+            "exactProject": false,
+            "identityState": "unresolved"
+          }
+        ],
+        "exactProjectPassages": []
+      },
+      "physicalOpenBudgetExhausted": false,
+      "physicalOpensUsed": 4,
+      "physicalOpenLimit": 8,
+      "deadlineCauseAsserted": false
+    },
+    "candidateCount": 3,
+    "clientParsing": {
+      "state": "skipped-retrieval-only",
+      "evidenceCount": null,
+      "proposalCount": null,
+      "selectedProposalCount": null,
+      "errorType": null
+    },
+    "claimTrace": {
+      "version": 1,
+      "sanitized": true,
+      "responses": [],
+      "claims": [],
+      "analysisPassages": []
+    },
+    "documentTransport": "production-default-pinned-public-transport",
+    "capacitySemantics": {
+      "campusItLoad480Mw": "context-only; not grid-interconnection or backup-power evidence",
+      "dfw9Dfw10Dfw11Capacity180Mw": "phase/building-group capacity only unless a source explicitly supports a grid or backup-power claim"
+    },
+    "totalRuntimeMs": 6551,
+    "finalization": {
+      "cleanupStatus": "completed",
+      "reportPersistedBeforeCleanup": true
+    }
+  }
+}

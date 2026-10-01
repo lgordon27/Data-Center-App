@@ -11,11 +11,14 @@ import {
 } from "./researchProjectProxy.mjs";
 import {
   RED_OAK_GRID_CANARY_LIMITS,
+  RED_OAK_RETRIEVAL_ONLY_CANARY_LIMITS,
   buildAcceptanceReport,
   buildRedOakGridCanaryRequestOptions,
   canaryCandidateCount,
   canaryContentQualityObservations,
   canaryPhysicalReceiptCompleteness,
+  canaryRemainingBlockers,
+  canaryRetrievalPassageAudit,
   createRedOakCanaryDiagnosticCollector,
   createRedOakCanaryResources,
   markGridSuppliedCandidates,
@@ -62,11 +65,50 @@ test("Red Oak canary request options encode the exact isolated scope and hard li
   assert.equal(RED_OAK_GRID_CANARY_LIMITS.invocationTimeoutMs, 90_000);
 });
 
+test("Red Oak retrieval-only canary stops after one discovery and eight bounded physical opens", () => {
+  const options = buildRedOakGridCanaryRequestOptions({
+    apiKey: null,
+    googleApiKey: "offline",
+    cache: {},
+    registry: {},
+    auditRepository: {},
+    rateLimiter: {},
+    claimTrace: {},
+    signal: new AbortController().signal,
+    retrievalOnly: true,
+  });
+
+  assert.equal(options.retrievalOnly, true);
+  assert.equal(options.apiKey, null);
+  assert.deepEqual(options.categoryIds, ["project-identity", "grid"]);
+  assert.equal(options.researchBudgetOverrides.maxProviderRequests, 1);
+  assert.equal(options.researchBudgetOverrides.maxPhysicalDocumentOpens, 8);
+  assert.equal(options.researchBudgetOverrides.maxFollowUps, 0);
+  assert.equal(options.allowGoogleFallback, false);
+  assert.equal(options.allowCorrectiveRetries, false);
+  assert.equal(options.allowProviderRetries, false);
+  assert.equal(options.researchTimeoutMs, 75_000);
+  assert.equal(RED_OAK_RETRIEVAL_ONLY_CANARY_LIMITS.structuredProviderCalls, 0);
+  assert.equal(RED_OAK_RETRIEVAL_ONLY_CANARY_LIMITS.totalProviderRequests, 1);
+  assert.equal(RED_OAK_RETRIEVAL_ONLY_CANARY_LIMITS.invocationTimeoutMs, 90_000);
+  assert.match(options.googleDiscoveryPrompt, /only exact project identity and electric grid\/interconnection evidence/i);
+});
+
 test("pnpm-forwarded separator is accepted before the canary live and gates options", () => {
   assert.deepEqual(
     parseRedOakCanaryCliArguments(["--", "--live", "--gates", "/tmp/red-oak-gates.json"]),
     {
       optIn: true,
+      retrievalOnly: false,
+      preconditionsPath: "/tmp/red-oak-gates.json",
+      outputPath: undefined,
+    },
+  );
+  assert.deepEqual(
+    parseRedOakCanaryCliArguments(["--", "--live", "--retrieval-only", "--gates", "/tmp/red-oak-gates.json"]),
+    {
+      optIn: true,
+      retrievalOnly: true,
       preconditionsPath: "/tmp/red-oak-gates.json",
       outputPath: undefined,
     },
@@ -82,7 +124,7 @@ test("request-local canary collector preserves bounded discovery and receipt met
     categoryIds: ["grid"],
     excerpt: "This payload must not be retained.",
   };
-  const passage = "The source passage is represented only by a hash and length.";
+  const passage = `The source passage is represented by a bounded excerpt and full hash. ${"x".repeat(2_000)}`;
   collector.recordDiscoveryCandidates([candidate]);
   collector.recordPhysicalOpenAuthorization({
     categoryId: "grid",
@@ -108,15 +150,21 @@ test("request-local canary collector preserves bounded discovery and receipt met
   const serialized = JSON.stringify(captured);
   assert.equal(captured.discoveryCandidateCount, 1);
   assert.equal(captured.discoveryCandidates[0].candidateId, "discovery-1");
-  assert.equal(captured.discoveryCandidates[0].url, "https://vertexaisearch.cloud.google.com/grounding-api-redirect/[redacted]");
+  const opaquePathHash = createHash("sha256").update("opaque-token").digest("hex").slice(0, 16);
+  assert.equal(
+    captured.discoveryCandidates[0].url,
+    `https://vertexaisearch.cloud.google.com/grounding-api-redirect/redacted-${opaquePathHash}`,
+  );
   assert.equal(captured.physicalOpenAuthorizations[0].physicalOpenIndex, 1);
   assert.equal(captured.physicalReceipts[0].physicalOpenIndexes[0], 1);
   assert.equal(captured.physicalReceipts[0].passageLength, passage.length);
   assert.equal(captured.physicalReceipts[0].passageSha256, createHash("sha256").update(passage).digest("hex"));
+  assert.equal(captured.physicalReceipts[0].passageExcerpt.length, 1_500);
+  assert.equal(serialized.includes(captured.physicalReceipts[0].passageExcerpt), true);
   assert.equal(serialized.includes(passage), false);
   assert.equal(serialized.includes("This payload must not be retained"), false);
   assert.equal(serialized.includes("opaque-token"), false);
-  assert.match(captured.captureStatus, /no-document-payloads/);
+  assert.match(captured.captureStatus, /bounded-passage-excerpts-no-full-document-payloads/);
 
   const completeness = canaryPhysicalReceiptCompleteness({
     canary: { scope: { physicalDocumentOpens: 2 } },
@@ -128,6 +176,207 @@ test("request-local canary collector preserves bounded discovery and receipt met
   assert.deepEqual(completeness.authorizedButReceiptMissingIndexes, []);
   assert.equal(completeness.reconstructionAttempted, false);
   assert.equal(completeness.refetchAttempted, false);
+});
+
+test("full acceptance report redacts Google grounding redirect tokens without conflating URLs", () => {
+  const rawUrls = [
+    "https://vertexaisearch.cloud.google.com/grounding-api-redirect/opaque-google-token-one?keep=public&token=secret-one",
+    "https://vertexaisearch.cloud.google.com/grounding-api-redirect/opaque-google-token-two?keep=public&token=secret-two",
+  ];
+  const report = buildAcceptanceReport({
+    project: { name: "Red Oak Campus", location: "Red Oak, Texas" },
+    liveRun: {
+      statusCode: 200,
+      payload: {
+        researchAudit: {
+          categories: [],
+          providerAttempts: [],
+          candidateLineage: rawUrls.map((url, index) => ({
+            categoryId: "grid",
+            url,
+            canonicalUrl: url,
+            discoveryRank: index + 1,
+            accessOutcome: { state: "not-attempted", reason: "candidate-limit" },
+          })),
+        },
+        researchCoverage: {
+          discoveryAcceptedCitationUrls: rawUrls,
+        },
+        sourceLedger: rawUrls.map((url) => ({
+          url,
+          canonicalUrl: url,
+          accessOutcome: { state: "not-attempted", reason: "candidate-limit" },
+        })),
+        evidence: [],
+      },
+    },
+  });
+  const serialized = JSON.stringify(report);
+  const projectedUrls = [
+    ...report.sourceStates.normalizedCandidates.map((candidate) => candidate.url),
+    ...report.candidateLineage.map((candidate) => candidate.url),
+    ...report.discovery.acceptedCitationUrls,
+  ];
+
+  for (const rawUrl of rawUrls) assert.doesNotMatch(serialized, new RegExp(rawUrl.split("/").at(-1).split("?")[0]));
+  assert.equal(new Set(projectedUrls).size, 2);
+  assert.ok(projectedUrls.every((url) => /\/grounding-api-redirect\/redacted-[a-f0-9]{16}/.test(url)));
+  assert.ok(projectedUrls.every((url) => url.includes("?keep=public")));
+  assert.ok(projectedUrls.every((url) => !url.includes("token=")));
+});
+
+test("request-local canary audit records ranked selection and unopened candidates without document payloads", () => {
+  const collector = createRedOakCanaryDiagnosticCollector();
+  const exactProject = {
+    url: "https://records.example/project/red-oak?token=url-secret-value",
+    title: "Red Oak Campus project filing",
+    sourceChannel: "official-record",
+    categoryIds: ["grid"],
+    acquisitionPriority: 100,
+    acquisitionPriorityReasons: ["exact project title", "official project-specific filing"],
+  };
+  const genericRoot = {
+    url: "https://records.example/",
+    title: "Records homepage",
+    sourceChannel: "official-record",
+    categoryIds: ["grid"],
+    acquisitionPriority: 5,
+    acquisitionPriorityReasons: ["generic authority root"],
+    acquisitionSelected: true,
+    acquisitionSelectionReason: "ranked-within-candidate-limit",
+  };
+  const reusedCandidate = {
+    url: "https://records.example/shared-source?token=reused-secret",
+    title: "Previously retrieved official record",
+    acquisitionPriority: 10,
+    acquisitionSelected: true,
+    selectedForOpen: true,
+    acquisitionSelectionReason: "ranked-within-candidate-limit",
+  };
+  collector.recordDiscoveryCandidates([exactProject, genericRoot, reusedCandidate]);
+  collector.recordPhysicalOpenAuthorization({
+    categoryId: "grid",
+    source: { ...exactProject, discoveryCandidateRank: 1 },
+    canonicalUrl: exactProject.url,
+    physicalOpenIndex: 1,
+  });
+  collector.recordPhysicalReceipt({
+    phase: "grounded-discovery-prefetch",
+    candidateIndex: 1,
+    candidate: { ...exactProject, discoveryCandidateRank: 1 },
+    accessOutcome: {
+      state: "accessible",
+      passage: "Red Oak Campus grid filing. Contact https://records.example/private?token=secret-value",
+      physicalOpenIndex: 1,
+    },
+    attempted: true,
+  });
+  collector.recordPhysicalReceipt({
+    phase: "grounded-discovery-prefetch",
+    candidateIndex: 2,
+    candidate: { ...genericRoot, discoveryCandidateRank: 2 },
+    accessOutcome: { state: "not-attempted", reason: "protected-opportunity" },
+    attempted: false,
+  });
+  collector.recordPhysicalReceipt({
+    phase: "grounded-discovery-prefetch",
+    candidateIndex: 3,
+    candidate: { ...reusedCandidate, discoveryCandidateRank: 3 },
+    accessOutcome: {
+      state: "accessible",
+      reason: "canonical-document-receipt-reused",
+      reused: true,
+      physicalOpenIndex: 1,
+    },
+    attempted: false,
+    reused: true,
+  });
+
+  const captured = collector.toJSON();
+  assert.equal(captured.discoveryCandidateCount, 3);
+  assert.equal(captured.discoveryCandidates.length, 3);
+  assert.equal(captured.discoveryCandidates[0].acquisitionPriority, 100);
+  assert.equal(captured.discoveryCandidates[0].acquisitionSelected, true);
+  assert.deepEqual(captured.discoveryCandidates[0].acquisitionPriorityReasons, [
+    "exact project title",
+    "official project-specific filing",
+  ]);
+  assert.deepEqual(captured.discoveryCandidates[0].selectionDecision, {
+    decision: "selected",
+    selected: true,
+    reason: "Physical document open was attempted.",
+    physicalOpenPosition: 1,
+  });
+  assert.equal(captured.discoveryCandidates[0].selectionDecision.physicalOpenPosition, 1);
+  assert.match(captured.physicalReceipts[0].passageExcerpt, /Red Oak Campus grid filing/);
+  assert.doesNotMatch(captured.physicalReceipts[0].passageExcerpt, /secret-value/);
+  assert.equal(captured.discoveryCandidates[1].selectedForOpening, false);
+  assert.equal(captured.discoveryCandidates[1].candidateLimitSelected, true);
+  assert.equal(captured.discoveryCandidates[1].acquisitionSelected, false);
+  assert.equal(captured.discoveryCandidates[1].selectionDecision.decision, "not-selected");
+  assert.equal(captured.discoveryCandidates[1].selectionDecision.reason, "protected-opportunity");
+  assert.equal(captured.discoveryCandidates[1].physicalOpenPosition, null);
+  assert.equal(captured.discoveryCandidates[2].candidateLimitSelected, true);
+  assert.equal(captured.discoveryCandidates[2].acquisitionSelected, false);
+  assert.equal(captured.discoveryCandidates[2].selectedForOpening, false);
+  assert.equal(captured.discoveryCandidates[2].physicalOpenAdmission, "reused-receipt");
+  assert.equal(captured.discoveryCandidates[2].selectionDecision.decision, "reused");
+  assert.equal(captured.discoveryCandidates[2].selectionDecision.selected, false);
+  assert.equal(captured.discoveryCandidates[2].physicalOpenPosition, 1);
+  const serialized = JSON.stringify(captured);
+  assert.doesNotMatch(serialized, /url-secret-value/);
+  assert.doesNotMatch(serialized, /token=/);
+});
+
+test("retrieval-only blocker report distinguishes usable and exact-project passages without treating absent analysis as failure", () => {
+  const exactHash = createHash("sha256").update("Red Oak Campus is served by the disclosed substation.").digest("hex");
+  const contextHash = createHash("sha256").update("Ellis County has several electric utilities.").digest("hex");
+  const report = {
+    candidateLineage: [
+      {
+        url: "https://records.example/red-oak/grid",
+        acquisitionRank: 80,
+        identityResult: { exactProject: true, state: "project-specific" },
+        passageResult: {
+          state: "retained",
+          passageSha256: exactHash,
+          excerpt: "Red Oak Campus is served by the disclosed substation.",
+        },
+        usablePassage: true,
+        passageExcerpt: "Red Oak Campus is served by the disclosed substation.",
+      },
+      {
+        url: "https://records.example/ellis-county/utility",
+        acquisitionRank: 1,
+        identityResult: { exactProject: false, state: "unresolved" },
+        passageResult: {
+          state: "retained",
+          passageSha256: contextHash,
+          excerpt: "Ellis County has several electric utilities.",
+        },
+        usablePassage: true,
+        passageExcerpt: "Ellis County has several electric utilities.",
+      },
+    ],
+  };
+
+  const passageAudit = canaryRetrievalPassageAudit(report);
+  const blockers = canaryRemainingBlockers(
+    report,
+    { structuredProviderCalls: 0 },
+    [],
+    true,
+  );
+  assert.equal(passageAudit.usablePassageCount, 2);
+  assert.equal(passageAudit.exactProjectPassageCount, 1);
+  assert.equal(passageAudit.exactProjectPassages[0].passageSha256, exactHash);
+  assert.equal(passageAudit.exactProjectPassages[0].excerpt, "Red Oak Campus is served by the disclosed substation.");
+  assert.equal(blockers.analysisAbsenceClassification, "intentional-retrieval-only-stop-not-retrieval-failure");
+  assert.equal(blockers.missingStructuredAnalysisPacketIsRetrievalFailure, false);
+  assert.deepEqual(blockers.unresolvedCategories, []);
+  assert.equal(blockers.noUsableGroundedPassageAvailableForAnalysis, null);
+  assert.equal(blockers.passageIdentityAudit.usablePassageCount, 2);
+  assert.equal(blockers.passageIdentityAudit.exactProjectPassageCount, 1);
 });
 
 test("canary cache and registry resources always use distinct temporary directories", async () => {
@@ -195,6 +444,105 @@ test("reports bounded citation acceptance and rejection states distinctly", () =
   });
 });
 
+test("diagnostic report preserves duplicate annotation summaries from research audit fallback and marks absent telemetry unavailable", () => {
+  const duplicateUrl = "https://records.example/grid-filing";
+  const rawAnnotationSummaries = [
+    {
+      discoveryRank: 1,
+      type: "url_citation",
+      title: "Grid filing",
+      url: duplicateUrl,
+      canonicalUrl: duplicateUrl,
+      accepted: true,
+      rejectionReason: null,
+    },
+    {
+      discoveryRank: 2,
+      type: "url_citation",
+      title: "Duplicate grid filing",
+      url: duplicateUrl,
+      canonicalUrl: duplicateUrl,
+      accepted: false,
+      rejectionReason: "duplicate-canonical-url",
+    },
+  ];
+  const report = buildAcceptanceReport({
+    project: { name: "Red Oak Campus", location: "Red Oak, Texas" },
+    liveRun: {
+      statusCode: 200,
+      payload: {
+        researchAudit: {
+          categories: [],
+          providerAttempts: [],
+          discovery: {
+            provider: "google-gemini-grounding",
+            model: "gemini-3.8-flash",
+            status: "completed",
+            candidateCount: 1,
+            annotationCount: 2,
+            rawAnnotationSummaries,
+            acceptedCitationUrls: [duplicateUrl],
+            rejectedCitationUrls: [
+              { discoveryRank: 2, url: duplicateUrl, reason: "duplicate-canonical-url" },
+            ],
+          },
+        },
+        researchCoverage: {
+          discoveryStatus: "completed",
+          discoveryRawAnnotationSummaries: [],
+          discoveryAcceptedCitationUrls: [],
+          discoveryRejectedCitationUrls: [],
+        },
+        sourceLedger: [],
+        evidence: [],
+      },
+    },
+  });
+  assert.equal(report.discovery.rawAnnotationSummariesAvailability, "reported");
+  assert.equal(report.discovery.rawAnnotationSummariesSource, "researchAudit.discovery");
+  assert.equal(report.discovery.annotationCount, 2);
+  assert.deepEqual(report.discovery.rawAnnotationSummaries, [
+    {
+      discoveryRank: 1,
+      type: "url_citation",
+      title: "Grid filing",
+      url: duplicateUrl,
+      canonicalUrl: duplicateUrl,
+      accepted: true,
+      rejectionReason: null,
+    },
+    {
+      discoveryRank: 2,
+      type: "url_citation",
+      title: "Duplicate grid filing",
+      url: duplicateUrl,
+      canonicalUrl: duplicateUrl,
+      accepted: false,
+      rejectionReason: "duplicate-canonical-url",
+    },
+  ]);
+  assert.deepEqual(report.discovery.acceptedCitationUrls, [duplicateUrl]);
+  assert.deepEqual(report.discovery.rejectedCitationUrls, [
+    { discoveryRank: 2, url: duplicateUrl, reason: "duplicate-canonical-url" },
+  ]);
+  assert.deepEqual(report.run.discovery.rawAnnotationSummaries, report.discovery.rawAnnotationSummaries);
+
+  const unavailable = buildAcceptanceReport({
+    project: { name: "Red Oak Campus", location: "Red Oak, Texas" },
+    liveRun: {
+      statusCode: 200,
+      payload: {
+        researchAudit: { categories: [], providerAttempts: [] },
+        researchCoverage: { discoveryStatus: "completed" },
+        sourceLedger: [],
+        evidence: [],
+      },
+    },
+  });
+  assert.equal(unavailable.discovery.rawAnnotationSummariesAvailability, "unavailable-not-retained-in-report");
+  assert.deepEqual(unavailable.discovery.rawAnnotationSummaries, []);
+});
+
 test("canary quality and supplied-to-Grid reporting consume actual report and packet fields", () => {
   const suppliedPassage = "Project Atlas planning filing describes an interconnection milestone.";
   const notSuppliedPassage = "Project Atlas planning filing discusses another topic.";
@@ -214,6 +562,15 @@ test("canary quality and supplied-to-Grid reporting consume actual report and pa
               categoryId: "grid",
               url: suppliedUrl,
               canonicalUrl: suppliedUrl,
+              discoveryRank: 3,
+              acquisitionRank: 1,
+              acquisitionPriority: 90,
+              acquisitionReasons: ["exact project name"],
+              acquisitionSelected: true,
+              acquisitionSelectionReason: "ranked-within-candidate-limit",
+              physicalOpenAdmission: "authorized",
+              accessOutcome: { state: "blocked", reason: "document-blocked", physicalOpenIndex: 1 },
+              identityResult: { exactProject: true, state: "project-specific" },
               passageResult: {
                 state: "retained",
                 passageSha256: createHash("sha256").update(suppliedPassage).digest("hex"),
@@ -223,10 +580,51 @@ test("canary quality and supplied-to-Grid reporting consume actual report and pa
               categoryId: "grid",
               url: notSuppliedUrl,
               canonicalUrl: notSuppliedUrl,
+              discoveryRank: 1,
+              acquisitionRank: 2,
+              acquisitionPriority: 5,
+              acquisitionReasons: ["generic root"],
+              acquisitionSelected: false,
+              acquisitionSelectionReason: "candidate-limit",
+              physicalOpenAdmission: "not-selected",
+              accessOutcome: { state: "not-attempted", reason: "candidate-limit" },
+              identityResult: { exactProject: false, state: "unresolved" },
               passageResult: {
                 state: "retained",
                 passageSha256: createHash("sha256").update(notSuppliedPassage).digest("hex"),
               },
+            },
+            {
+              categoryId: "grid",
+              url: "https://records.example/deferred",
+              discoveryRank: 2,
+              acquisitionRank: 3,
+              acquisitionPriority: 7,
+              acquisitionReasons: ["official-source-type"],
+              acquisitionSelected: true,
+              acquisitionSelectionReason: "ranked-within-candidate-limit",
+              physicalOpenAdmission: "deferred",
+              accessOutcome: { state: "not-attempted", reason: "physical-open-budget" },
+              identityResult: { exactProject: false, state: "unresolved" },
+              passageResult: { state: "not-retained", reason: "physical-open-budget" },
+            },
+            {
+              categoryId: "grid",
+              url: "https://records.example/reused",
+              discoveryRank: 4,
+              acquisitionRank: 4,
+              acquisitionSelected: true,
+              selectedForOpen: true,
+              acquisitionSelectionReason: "ranked-within-candidate-limit",
+              physicalOpenAdmission: "reused-receipt",
+              accessOutcome: {
+                state: "accessible",
+                reason: "canonical-document-receipt-reused",
+                reused: true,
+                physicalOpenIndex: 1,
+              },
+              identityResult: { exactProject: false, state: "unresolved" },
+              passageResult: { state: "retained", passageSha256: createHash("sha256").update("reused passage").digest("hex") },
             },
           ],
         },
@@ -296,6 +694,26 @@ test("canary quality and supplied-to-Grid reporting consume actual report and pa
   assert.equal(candidates.find((candidate) => candidate.url === notSuppliedUrl).suppliedToGrid, false);
   assert.equal(report.candidateLineage[0].suppliedToGrid, true);
   assert.equal(report.candidateLineage[1].suppliedToGrid, false);
+  assert.equal(report.candidateLineage[0].acquisitionPriority, 90);
+  assert.deepEqual(report.candidateLineage[0].acquisitionPriorityReasons, ["exact project name"]);
+  assert.equal(report.candidateLineage[0].selectionDecision.physicalOpenPosition, 1);
+  assert.equal(report.candidateLineage[0].discoveryRank, 3);
+  assert.equal(report.candidateLineage[0].acquisitionRank, 1);
+  assert.equal(report.candidateLineage[0].usablePassage, true);
+  assert.equal(report.candidateLineage[0].exactProjectPassage, true);
+  assert.equal(report.candidateLineage[0].passageExcerpt, suppliedPassage);
+  assert.equal(report.candidateLineage[1].exactProjectPassage, false);
+  assert.equal(report.candidateLineage[2].candidateLimitSelected, true);
+  assert.equal(report.candidateLineage[2].acquisitionSelected, false);
+  assert.equal(report.candidateLineage[2].selectedForOpening, false);
+  assert.equal(report.candidateLineage[2].selectionDecision.decision, "deferred");
+  assert.equal(report.candidateLineage[3].candidateLimitSelected, true);
+  assert.equal(report.candidateLineage[3].acquisitionSelected, false);
+  assert.equal(report.candidateLineage[3].selectedForOpening, false);
+  assert.equal(report.candidateLineage[3].physicalOpenAdmission, "reused-receipt");
+  assert.equal(report.candidateLineage[3].selectionDecision.decision, "reused");
+  assert.equal(report.candidateLineage[1].selectionDecision.decision, "not-selected");
+  assert.equal(report.candidateLineage[1].selectedForOpening, false);
   assert.equal(packets[0].passages[0].quoteSha256, createHash("sha256").update(suppliedPassage).digest("hex"));
   assert.ok(packets[0].packetSha256);
   assert.equal(packets[0].passageCount, packet.length);

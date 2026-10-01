@@ -181,6 +181,9 @@ function sourceFromUrlCitation(annotation, queries) {
     sourceChannel: "google-grounded-search",
     origin: "google-grounded-search",
     discoveryOnly: true,
+    discoveryCandidateRank: Number.isInteger(annotation?.discoveryCandidateRank)
+      ? annotation.discoveryCandidateRank
+      : null,
     referringQueries: [...new Set(queries)].slice(0, 12),
     ...categoryIdsForCitation(annotation),
     relevanceNote: "Google grounding discovered this URL; generated summaries and snippets are not evidence.",
@@ -258,13 +261,14 @@ export function parseGoogleGroundedDiscoveryResponse(body) {
   ).filter((annotation) => annotation?.type === "url_citation");
   const sources = [];
   const seen = new Set();
-  const annotationDiagnostics = annotations.map((annotation) => {
+  const annotationDiagnostics = annotations.map((annotation, index) => {
     const rawUrl = typeof annotation?.url === "string" ? annotation.url.trim() : "";
     const url = safeCandidateUrl(rawUrl);
     const canonicalUrl = url ? canonicalizeSourceUrl(url) : null;
     const duplicate = Boolean(canonicalUrl && seen.has(canonicalUrl));
     if (canonicalUrl) seen.add(canonicalUrl);
     return {
+      discoveryRank: index + 1,
       type: "url_citation",
       title: normalizeText(annotation?.title, 240) || null,
       url: rawUrl || null,
@@ -274,7 +278,10 @@ export function parseGoogleGroundedDiscoveryResponse(body) {
     };
   });
   for (const [index, annotation] of annotations.entries()) {
-    const source = sourceFromUrlCitation(annotation, queries);
+    const source = sourceFromUrlCitation({
+      ...annotation,
+      discoveryCandidateRank: index + 1,
+    }, queries);
     if (source && annotationDiagnostics[index]?.accepted) {
       sources.push(source);
     }
@@ -297,7 +304,11 @@ export function parseGoogleGroundedDiscoveryResponse(body) {
     acceptedCitationUrls: sources.map((source) => source.url),
     rejectedCitationUrls: annotationDiagnostics
       .filter((annotation) => !annotation.accepted)
-      .map((annotation) => ({ url: annotation.url, reason: annotation.rejectionReason })),
+      .map((annotation) => ({
+        discoveryRank: annotation.discoveryRank,
+        url: annotation.url,
+        reason: annotation.rejectionReason,
+      })),
   };
 }
 

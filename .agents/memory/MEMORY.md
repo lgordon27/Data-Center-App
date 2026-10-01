@@ -37,3 +37,4 @@
 - [Canonical dossier session restoration](canonical-dossier-session-restoration.md) — persist the selected dossier summary with its evidence baseline so reset survives reloads without database writes.
 - [AI evidence downgrade signal](ai-evidence-downgrade-signal.md) — compute downgrades from the safeguarded final class and have Evidence Room consume that service signal.
 - [Saved research content quality](saved-research-content-quality.md) — recheck legacy passages before findings, analysis, and eligibility without rewriting their fetch receipts.
+- [Acquisition ranking boundary](acquisition-ranking-boundary.md) — project-specific discovery signals guide opens, not evidence; opaque redirects and missing historical receipts stay unknown.

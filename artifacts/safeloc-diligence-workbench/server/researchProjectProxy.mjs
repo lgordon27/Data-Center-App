@@ -29,12 +29,14 @@ import { defaultProjectResearchRegistry } from "./projectResearchRegistry.mjs";
 import { discoverOfficialSources } from "./officialSourceDiscovery.mjs";
 import {
   discoverGoogleGroundedProject,
+  GOOGLE_GROUNDED_DISCOVERY_MAX_CANDIDATES,
   GOOGLE_GEMINI_MODEL,
 } from "./googleGroundedDiscovery.mjs";
 import {
   extractResearchDocument,
   normalizePublicationDate,
 } from "./researchDocumentExtraction.mjs";
+import { rankAcquisitionCandidates } from "./researchAcquisitionRanking.mjs";
 import { createSecConnector } from "./secConnector.mjs";
 import { releaseIdentity } from "./version.mjs";
 
@@ -91,6 +93,9 @@ function boundedResearchBudget(overrides) {
 }
 const MAX_RESEARCH_PROVIDER_ATTEMPT_RECORDS = 64;
 const MAX_RESEARCH_PROVIDER_RESPONSE_IDS = RESEARCH_RUN_BUDGET.maxProviderRequests;
+const MAX_RESEARCH_DISCOVERY_AUDIT_CANDIDATES = GOOGLE_GROUNDED_DISCOVERY_MAX_CANDIDATES;
+const MAX_RESEARCH_SOURCE_ATTEMPT_AUDIT_RECORDS =
+  MAX_RESEARCH_DISCOVERY_AUDIT_CANDIDATES + MAX_RESEARCH_PROVIDER_ATTEMPT_RECORDS;
 export const PROTECTED_SOURCE_OPPORTUNITIES = Object.freeze([
   "exact-project-identity",
   "company-developer",
@@ -583,6 +588,19 @@ function safePublicSourceUrl(value) {
       || hostname === "metadata.google.internal" || isPrivateNetworkHostname(hostname)) {
       return null;
     }
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
+function safePublicDiagnosticUrl(value) {
+  const safeUrl = safePublicSourceUrl(value);
+  if (!safeUrl) return null;
+  try {
+    const url = new URL(safeUrl);
+    url.search = "";
+    url.hash = "";
     return url.href;
   } catch {
     return null;
@@ -2179,7 +2197,7 @@ function buildResearchAudit({
   const sourceAttemptRecords = [
     ...(Array.isArray(coverage.sourceAttemptRecords) ? coverage.sourceAttemptRecords : []),
     ...sources,
-  ].slice(0, runBudget.maxTotalCandidates + 64);
+  ].slice(0, MAX_RESEARCH_SOURCE_ATTEMPT_AUDIT_RECORDS);
   const categories = plan.categories.map((category) => {
     const supplied = isRecord(executions[category.categoryId]) ? executions[category.categoryId] : {};
     const executedQueries = normalizeSearchTerms(
@@ -2376,6 +2394,43 @@ function buildResearchAudit({
         model: coverage.discoveryModel ?? null,
       },
     },
+    discovery: {
+      provider: coverage.discoveryProvider ?? "google-gemini-grounding",
+      model: coverage.discoveryModel ?? null,
+      status: coverage.discoveryStatus ?? null,
+      state: coverage.discoveryState ?? null,
+      queries: normalizeSearchTerms(coverage.discoveryQueries, 24),
+      candidateCount: Number.isInteger(coverage.discoveryCandidateCount)
+        ? coverage.discoveryCandidateCount
+        : 0,
+      annotationCount: Number.isInteger(coverage.discoveryAnnotationCount)
+        ? coverage.discoveryAnnotationCount
+        : Array.isArray(coverage.discoveryRawAnnotationSummaries)
+          ? coverage.discoveryRawAnnotationSummaries.length
+          : 0,
+      rawAnnotationSummaries: Array.isArray(coverage.discoveryRawAnnotationSummaries)
+        ? coverage.discoveryRawAnnotationSummaries.slice(0, 80).map((annotation, index) => ({
+          discoveryRank: Number.isInteger(annotation?.discoveryRank) ? annotation.discoveryRank : index + 1,
+          type: sanitizeTransportText(annotation?.type, 80),
+          title: sanitizeTransportText(annotation?.title, 240),
+          url: safePublicDiagnosticUrl(annotation?.url),
+          canonicalUrl: safePublicDiagnosticUrl(annotation?.canonicalUrl),
+          accepted: annotation?.accepted === true,
+          rejectionReason: sanitizeTransportText(annotation?.rejectionReason, 120),
+        }))
+        : [],
+      acceptedCitationUrls: Array.isArray(coverage.discoveryAcceptedCitationUrls)
+        ? coverage.discoveryAcceptedCitationUrls.slice(0, 80)
+          .map(safePublicDiagnosticUrl).filter(Boolean)
+        : [],
+      rejectedCitationUrls: Array.isArray(coverage.discoveryRejectedCitationUrls)
+        ? coverage.discoveryRejectedCitationUrls.slice(0, 80).map((entry) => ({
+          discoveryRank: Number.isInteger(entry?.discoveryRank) ? entry.discoveryRank : null,
+          url: safePublicDiagnosticUrl(entry?.url),
+          reason: sanitizeTransportText(entry?.reason, 120),
+        }))
+        : [],
+    },
     providerResponseId: providerResponseIds[0] ?? null,
     terminalState: coverage.terminalState ?? null,
     terminalReasonCodes: Array.isArray(coverage.terminalReasonCodes) ? coverage.terminalReasonCodes.slice(0, 16) : [],
@@ -2431,6 +2486,15 @@ function buildResearchAudit({
     physicalOpenBudgetExceeded: coverage.physicalOpenBudgetExceeded === true,
     sourceAttempts: sourceAttemptRecords.map((source, index) => ({
       discoveryRank: Number.isInteger(source.discoveryCandidateRank) ? source.discoveryCandidateRank : index + 1,
+      acquisitionRank: Number.isInteger(source.acquisitionRank) ? source.acquisitionRank : null,
+      acquisitionPriority: Number.isFinite(source.acquisitionPriority) ? source.acquisitionPriority : null,
+      acquisitionReasons: Array.isArray(source.acquisitionReasons) ? source.acquisitionReasons.slice(0, 12) : [],
+      candidateLimitSelected: typeof source.acquisitionCandidateSelected === "boolean"
+        ? source.acquisitionCandidateSelected
+        : null,
+      acquisitionSelected: typeof source.acquisitionSelected === "boolean" ? source.acquisitionSelected : null,
+      acquisitionSelectionReason: source.acquisitionSelectionReason ?? null,
+      physicalOpenAdmission: source.physicalOpenAdmission ?? null,
       categoryId: source.categoryId ?? null,
       url: safePublicSourceUrl(source.canonicalUrl ?? source.resolvedUrl ?? source.originalUrl ?? source.url),
       sourceChannel: source.sourceChannel ?? source.origin ?? null,
@@ -2442,6 +2506,33 @@ function buildResearchAudit({
         : [],
       fetchMetrics: isRecord(source.accessOutcome?.fetchMetrics) ? source.accessOutcome.fetchMetrics : null,
     })),
+    discoveryCandidates: Array.isArray(coverage.discoveryCandidates)
+      ? coverage.discoveryCandidates.slice(0, MAX_RESEARCH_DISCOVERY_AUDIT_CANDIDATES).map((candidate, index) => ({
+        discoveryRank: Number.isInteger(candidate.discoveryRank) ? candidate.discoveryRank : index + 1,
+        acquisitionRank: Number.isInteger(candidate.acquisitionRank) ? candidate.acquisitionRank : null,
+        acquisitionPriority: Number.isFinite(candidate.acquisitionPriority) ? candidate.acquisitionPriority : null,
+        acquisitionReasons: Array.isArray(candidate.acquisitionReasons)
+          ? candidate.acquisitionReasons.slice(0, 12).map((reason) => sanitizeTransportText(reason, 100))
+          : [],
+        candidateLimitSelected: candidate.candidateLimitSelected === true,
+        selectedForOpen: candidate.selectedForOpen === true,
+        selectionReason: sanitizeTransportText(candidate.selectionReason, 100),
+        physicalOpenAdmission: sanitizeTransportText(candidate.physicalOpenAdmission, 80),
+        url: safePublicSourceUrl(candidate.url),
+        originalUrl: safePublicSourceUrl(candidate.originalUrl),
+        resolvedUrl: safePublicSourceUrl(candidate.resolvedUrl),
+        title: sanitizeTransportText(candidate.title, 300),
+        categoryIds: Array.isArray(candidate.categoryIds)
+          ? candidate.categoryIds.slice(0, 8).map((categoryId) => sanitizeTransportText(categoryId, 100))
+          : [],
+        accessState: sanitizeTransportText(candidate.accessOutcome?.state, 80),
+        accessReason: sanitizeTransportText(candidate.accessOutcome?.reason, 160),
+        physicalOpenIndex: Number.isInteger(candidate.accessOutcome?.physicalOpenIndex)
+          ? candidate.accessOutcome.physicalOpenIndex
+          : null,
+      }))
+      : [],
+    retrievalOnlyStop: coverage.retrievalOnlyStop ?? null,
     eligibilityReview: {
       version: CLAIM_REVIEW_VERSION,
       claims: eligibilityReviews,
@@ -2465,6 +2556,7 @@ async function orchestrateCategoryResearch(project, {
   deadlineState = { expired: false },
   concurrent = false,
   categoryIds = null,
+  retrievalOnly = false,
 } = {}) {
   if (typeof retrieveCategory !== "function") throw new Error("A bounded category retrieval function is required.");
   const startedAtMs = now();
@@ -2482,6 +2574,48 @@ async function orchestrateCategoryResearch(project, {
   const categories = Array.isArray(categoryIds) && categoryIds.length
     ? plannedCategories.filter((category) => categoryIds.includes(category.categoryId))
     : plannedCategories;
+  if (retrievalOnly) {
+    for (const category of categories) {
+      categoryExecutions[category.categoryId] = {
+        issuedPrimaryQuery: null,
+        providerObservedPrimaryQueries: [],
+        issuedFollowUpQuery: null,
+        providerObservedFollowUpQueries: [],
+        followUpTriggerEvidenceIds: [],
+        followUpSkipReason: "retrieval-only-stop",
+        returnedDomains: [],
+        openedDocuments: [],
+        state: "Not searched",
+        executedQueries: [],
+        unresolvedGaps: category.evidenceIds,
+        providerFailure: null,
+        providerFailureType: null,
+        providerRequestCount: 0,
+      };
+    }
+    const finishedAtMs = now();
+    return {
+      policyVersion: RESEARCH_POLICY_VERSION,
+      startedAt: new Date(startedAtMs).toISOString(),
+      finishedAt: new Date(finishedAtMs).toISOString(),
+      elapsedMs: Math.max(0, finishedAtMs - startedAtMs),
+      providerRequests: 0,
+      toolCalls: 0,
+      toolCallBudgetExceeded: false,
+      followUps: 0,
+      followUpLimit: budget.maxFollowUps,
+      followUpLimitPerCategory: budget.maxFollowUpsPerCategory ?? 1,
+      physicalOpensUsed: Number.isInteger(budget.physicalOpensUsed) ? budget.physicalOpensUsed : 0,
+      physicalOpenBudgetExceeded: false,
+      resolvedEvidenceIds: [],
+      candidates: [],
+      categoryResults: [],
+      lastError: null,
+      categoryExecutions,
+      budget: { ...budget },
+      retrievalOnlyStop: "discovery-prefetch-complete",
+    };
+  }
   const prefetchedPrimary = new Map();
   const prefetchPrimaryCategories = (targetCategories) => {
     for (const category of targetCategories) {
@@ -3586,6 +3720,31 @@ function parseResearchResponse(
       discoveryStatus: coverage?.discoveryStatus ?? null,
       discoveryQueries: Array.isArray(coverage?.discoveryQueries) ? coverage.discoveryQueries.slice(0, 24) : [],
       discoveryCandidateCount: Number.isInteger(coverage?.discoveryCandidateCount) ? coverage.discoveryCandidateCount : 0,
+      discoveryCandidates: Array.isArray(coverage?.discoveryCandidates)
+        ? coverage.discoveryCandidates.slice(0, MAX_RESEARCH_DISCOVERY_AUDIT_CANDIDATES).map((candidate, index) => ({
+          discoveryRank: Number.isInteger(candidate.discoveryRank) ? candidate.discoveryRank : index + 1,
+          acquisitionRank: Number.isInteger(candidate.acquisitionRank) ? candidate.acquisitionRank : null,
+          acquisitionPriority: Number.isFinite(candidate.acquisitionPriority) ? candidate.acquisitionPriority : null,
+          acquisitionReasons: Array.isArray(candidate.acquisitionReasons)
+            ? candidate.acquisitionReasons.slice(0, 12)
+            : [],
+          candidateLimitSelected: candidate.candidateLimitSelected === true,
+          selectedForOpen: candidate.selectedForOpen === true,
+          selectionReason: candidate.selectionReason ?? null,
+          physicalOpenAdmission: candidate.physicalOpenAdmission ?? null,
+          url: safePublicSourceUrl(candidate.url),
+          originalUrl: safePublicSourceUrl(candidate.originalUrl),
+          resolvedUrl: safePublicSourceUrl(candidate.resolvedUrl),
+          title: sanitizeTransportText(candidate.title, 300),
+          categoryIds: Array.isArray(candidate.categoryIds) ? candidate.categoryIds.slice(0, 8) : [],
+          accessState: candidate.accessOutcome?.state ?? null,
+          accessReason: candidate.accessOutcome?.reason ?? null,
+          physicalOpenIndex: Number.isInteger(candidate.accessOutcome?.physicalOpenIndex)
+            ? candidate.accessOutcome.physicalOpenIndex
+            : null,
+        }))
+        : [],
+      retrievalOnlyStop: coverage?.retrievalOnlyStop ?? null,
       fallbackProvider: coverage?.fallbackProvider ?? null,
       fallbackReason: coverage?.fallbackReason ?? null,
       fallbackRequestCount: Number.isInteger(coverage?.fallbackRequestCount) ? coverage.fallbackRequestCount : 0,
@@ -5320,6 +5479,13 @@ function candidateLineageForRun(result, orchestration) {
     ].filter(Boolean))];
     return {
       categoryId: source.categoryId ?? null,
+      discoveryRank: Number.isInteger(source.discoveryCandidateRank) ? source.discoveryCandidateRank : null,
+      acquisitionRank: Number.isInteger(source.acquisitionRank) ? source.acquisitionRank : null,
+      acquisitionPriority: Number.isFinite(source.acquisitionPriority) ? source.acquisitionPriority : null,
+      acquisitionReasons: Array.isArray(source.acquisitionReasons) ? source.acquisitionReasons.slice(0, 12) : [],
+      acquisitionSelected: typeof source.acquisitionSelected === "boolean" ? source.acquisitionSelected : null,
+      acquisitionSelectionReason: source.acquisitionSelectionReason ?? null,
+      physicalOpenAdmission: source.physicalOpenAdmission ?? null,
       url: source.canonicalUrl ?? source.resolvedUrl ?? source.url ?? null,
       sourceChannel: source.sourceChannel ?? null,
       acquisitionPath: source.provenance ?? null,
@@ -5403,6 +5569,7 @@ async function runValidatedResearch(project, {
   researchBudgetOverrides = null,
   allowProviderRetries = true,
   useDefaultSecConnector = true,
+  retrievalOnly = false,
   runCorrelationId: requestedRunCorrelationId = null,
   auditStartedAt = null,
   auditDeadlineAt = null,
@@ -5423,7 +5590,7 @@ async function runValidatedResearch(project, {
       ? maxConcurrentDocumentOpens
       : RESEARCH_DOCUMENT_MAX_CONCURRENCY),
   );
-  if (!apiKey) {
+  if (!apiKey && !retrievalOnly) {
     const error = new Error("Project research not configured.");
     error.name = "ConfigurationError";
     error.researchErrorType = "not-configured";
@@ -5579,7 +5746,11 @@ async function runValidatedResearch(project, {
     if (authorization.allowed && !authorization.reused) {
       canaryDiagnosticCollector?.recordPhysicalOpenAuthorization?.({
         categoryId: details.categoryId,
-        source: details.source,
+        source: {
+          ...details.source,
+          acquisitionSelected: true,
+          acquisitionSelectionReason: "physical-open-authorized",
+        },
         canonicalUrl: details.canonicalUrl,
         physicalOpenIndex: authorization.physicalOpenIndex,
       });
@@ -5593,13 +5764,74 @@ async function runValidatedResearch(project, {
   const retainedDocumentReceipts = [];
   const documentAuditReceipts = [];
   const prefetchGoogleGroundedSources = async (candidates) => {
-    const boundedCandidates = (Array.isArray(candidates) ? candidates : [])
-      .slice(0, researchBudget.maxTotalCandidates);
-    await Promise.all(boundedCandidates.map(async (source, candidateIndex) => {
+    const rankedCandidates = rankAcquisitionCandidates(
+      Array.isArray(candidates) ? candidates : [],
+      project,
+    );
+    const identityOpportunityIndex = activeCategoryIds.includes("project-identity")
+      ? rankedCandidates.findIndex((source) => {
+        const categories = Array.isArray(source.categoryIds) ? source.categoryIds : [];
+        const routedCategory = categories.find((categoryId) => activeCategoryIds.includes(categoryId))
+          ?? "project-identity";
+        return routedCategory === "project-identity";
+      })
+      : -1;
+    if (identityOpportunityIndex > 0) {
+      rankedCandidates.unshift(rankedCandidates.splice(identityOpportunityIndex, 1)[0]);
+      rankedCandidates.forEach((source, index) => { source.acquisitionRank = index + 1; });
+    }
+    const boundedRankedCandidates = rankedCandidates.map((source, index) => ({
+      ...source,
+      acquisitionCandidateSelected: index < researchBudget.maxTotalCandidates,
+      candidateLimitSelected: index < researchBudget.maxTotalCandidates,
+      acquisitionSelected: false,
+      acquisitionSelectionReason: index < researchBudget.maxTotalCandidates
+        ? "awaiting-physical-open-admission"
+        : "candidate-limit",
+    }));
+    canaryDiagnosticCollector?.recordDiscoveryCandidates?.(boundedRankedCandidates);
+    const openedCandidates = await Promise.all(boundedRankedCandidates.map(async (source) => {
       throwIfResearchCancelled(controller.signal);
+      const candidateRank = source.discoveryCandidateRank;
       const originalUrl = source.originalUrl ?? source.url ?? null;
       const originalCanonicalUrl = canonicalizeSourceUrl(originalUrl);
       const announcedCanonicalUrl = canonicalizeSourceUrl(source.canonicalUrl ?? source.resolvedUrl ?? source.url);
+      if (!source.acquisitionCandidateSelected) {
+        const accessOutcome = {
+          state: "not-attempted",
+          reason: "candidate-limit",
+          attempted: false,
+          originalUrl,
+          resolvedUrl: source.resolvedUrl ?? null,
+          canonicalUrl: announcedCanonicalUrl,
+          referringUrls: [originalUrl].filter(Boolean),
+          extractionLimitations: [
+            "The candidate remained auditable but was not selected within the governed candidate limit.",
+          ],
+        };
+        const deferredSource = {
+          ...source,
+          originalUrl,
+          accessOutcome,
+          acquisitionSelected: false,
+          acquisitionSelectionReason: "candidate-limit",
+          documentAccessReused: false,
+          physicalOpenAdmission: "not-selected",
+          accessibilityState: accessOutcome.state,
+          parsingState: "not-attempted",
+        };
+        documentAuditReceipts.push(deferredSource);
+        canaryDiagnosticCollector?.recordPhysicalReceipt?.({
+          phase: "grounded-discovery-prefetch",
+          candidateIndex: candidateRank,
+          categoryId: source.searchDomain ?? null,
+          candidate: deferredSource,
+          accessOutcome,
+          attempted: false,
+          reused: false,
+        });
+        return deferredSource;
+      }
       const previousAccess = (originalCanonicalUrl && (
         openedDocumentsByCanonicalUrl.get(originalCanonicalUrl)
         ?? documentAccessPromisesByCanonicalUrl.get(originalCanonicalUrl)
@@ -5611,6 +5843,9 @@ async function runValidatedResearch(project, {
         || null;
       let accessOutcome;
       let documentAccessReused = false;
+      let physicalOpenAdmission = "authorized";
+      let acquisitionSelected = true;
+      let acquisitionSelectionReason = "physical-open-authorized";
       if (previousAccess) {
         const reusedAccess = await previousAccess;
         accessOutcome = {
@@ -5622,6 +5857,8 @@ async function runValidatedResearch(project, {
           ].filter(Boolean))],
         };
         documentAccessReused = true;
+        physicalOpenAdmission = "reused-receipt";
+        acquisitionSelectionReason = "existing-receipt-reused";
       } else {
         const categoryId = (Array.isArray(source.categoryIds)
           ? source.categoryIds.find((candidate) => activeCategoryIds.includes(candidate))
@@ -5630,12 +5867,16 @@ async function runValidatedResearch(project, {
         const authorization = authorizePhysicalOpen({
           categoryId,
           canonicalUrl: announcedCanonicalUrl ?? originalUrl,
-          source: { ...source, discoveryCandidateRank: candidateIndex + 1 },
+          source,
         });
         if (!authorization.allowed) {
+          physicalOpenAdmission = "deferred";
+          acquisitionSelected = false;
+          acquisitionSelectionReason = authorization.reason;
           accessOutcome = {
             state: "not-attempted",
             reason: authorization.reason,
+            attempted: false,
             originalUrl,
             resolvedUrl: null,
             canonicalUrl: announcedCanonicalUrl,
@@ -5646,11 +5887,30 @@ async function runValidatedResearch(project, {
                 : "The document was deferred so protected source-acquisition roles retain an opportunity.",
           ],
           };
+        } else if (authorization.reused) {
+          physicalOpenAdmission = "reused-receipt";
+          documentAccessReused = true;
+          acquisitionSelectionReason = "existing-physical-open-receipt-reused";
+          accessOutcome = {
+            ...physicalOpenScheduler.getReceipt(announcedCanonicalUrl ?? originalUrl),
+            state: "not-attempted",
+            reason: "physical-open-receipt-reused-without-document-access-receipt",
+            attempted: false,
+            reused: true,
+            originalUrl,
+            resolvedUrl: announcedCanonicalUrl,
+            canonicalUrl: announcedCanonicalUrl,
+            referringUrls: [originalUrl].filter(Boolean),
+            extractionLimitations: [
+              "This canonical source already has a physical-open receipt, but no reusable document-access receipt was retained.",
+            ],
+          };
         } else {
           const physicalOpenIndex = authorization.physicalOpenIndex;
           const accessTask = openDocumentWithBudget(source)
             .then((outcome) => ({
               ...outcome,
+              attempted: true,
               physicalOpenIndex,
               originalUrl,
               referringUrls: [...new Set([...(outcome.referringUrls ?? []), originalUrl].filter(Boolean))],
@@ -5670,7 +5930,7 @@ async function runValidatedResearch(project, {
       const openedSource = {
         ...source,
         ...choosePublicationMetadata(accessOutcome, source),
-        discoveryCandidateRank: candidateIndex + 1,
+        discoveryCandidateRank: candidateRank,
         originalUrl,
         canonicalUrl: source.canonicalIdentityExplicit === true
           ? announcedCanonicalUrl
@@ -5678,30 +5938,37 @@ async function runValidatedResearch(project, {
         resolvedUrl: accessOutcome.resolvedUrl ?? accessOutcome.canonicalUrl ?? announcedCanonicalUrl,
         accessOutcome,
         documentAccessReused,
+        physicalOpenAdmission,
+        acquisitionSelected,
+        acquisitionSelectionReason,
         documentReferringUrls: accessOutcome.referringUrls ?? [originalUrl].filter(Boolean),
         accessibilityState: accessOutcome.state,
         parsingState: accessOutcome.state === "accessible" ? "parsed" : "failed",
         ...(accessOutcome.passage ? { excerpt: accessOutcome.passage, claimPassage: accessOutcome.passage } : {}),
         ...(NON_RETAINED_DOCUMENT_OUTCOMES.has(accessOutcome.state) ? { excerpt: null, claimPassage: null } : {}),
       };
+      documentAuditReceipts.push(openedSource);
+      if (hasRetrievedPassage(openedSource)) retainedDocumentReceipts.push(openedSource);
       canaryDiagnosticCollector?.recordPhysicalReceipt?.({
         phase: "grounded-discovery-prefetch",
-        candidateIndex: candidateIndex + 1,
-        candidate: source,
+        candidateIndex: candidateRank,
+        categoryId: source.searchDomain ?? null,
+        candidate: openedSource,
         accessOutcome,
         attempted: Number.isInteger(accessOutcome.physicalOpenIndex)
           && !documentAccessReused
           && accessOutcome.reused !== true,
         reused: documentAccessReused,
       });
-      openedGoogleDocuments.push(openedSource);
-      documentAuditReceipts.push(openedSource);
-      if (hasRetrievedPassage(openedSource)) retainedDocumentReceipts.push(openedSource);
+      return openedSource;
     }));
+    openedCandidates.forEach((openedSource) => {
+      openedGoogleDocuments.push(openedSource);
+    });
     return openedGoogleDocuments;
   };
   let activeSecConnector = secConnector;
-  if (!activeSecConnector && useDefaultSecConnector && process.env.SEC_USER_AGENT) {
+  if (!retrievalOnly && !activeSecConnector && useDefaultSecConnector && process.env.SEC_USER_AGENT) {
     activeSecConnector = createSecConnector({
       userAgent: process.env.SEC_USER_AGENT,
       cache: SEC_CONNECTOR_CACHE,
@@ -5739,7 +6006,6 @@ async function runValidatedResearch(project, {
           : {}),
         analysisTracker,
       });
-      canaryDiagnosticCollector?.recordDiscoveryCandidates?.(discovery.candidates ?? []);
       const groundedSources = await prefetchGoogleGroundedSources(discovery.candidates ?? []);
       googleDiscovery = {
         ...googleDiscovery,
@@ -5813,7 +6079,8 @@ async function runValidatedResearch(project, {
       signal: controller.signal,
       deadlineState,
       concurrent: true,
-    categoryIds,
+      categoryIds,
+      retrievalOnly,
       retrieveCategory: async ({ categoryId, query, attempt, remainingToolCalls, authorizeAdditionalProviderRequest }) => {
         const category = buildResearchCategoryPlan(project).categories.find((candidate) => candidate.categoryId === categoryId);
         const activeCategory = {
@@ -6126,7 +6393,10 @@ async function runValidatedResearch(project, {
             sourceChannel: candidate.sourceChannel,
             origin: "official-domain-discovery",
             discoveryOnly: true,
-            exactProject: Boolean(candidate.matchedAlias),
+            discoveryCandidateRank: candidate.discoveryCandidateRank,
+            acquisitionRank: candidate.acquisitionRank,
+            acquisitionPriority: candidate.acquisitionPriority,
+            acquisitionReasons: candidate.acquisitionReasons,
             relevanceNote: "Discovered through a bounded official-domain index; the document still requires access, passage retention, and claim mapping.",
           })));
         }
@@ -6608,19 +6878,30 @@ async function runValidatedResearch(project, {
              : "provider-response-without-search-proof",
         discoveryQueries: googleDiscovery.queries,
          discoveryRawAnnotationSummaries: googleDiscovery.rawAnnotationSummaries ?? [],
+          discoveryAnnotationCount: googleDiscovery.urlCitationCount ?? googleDiscovery.rawAnnotationSummaries?.length ?? 0,
          discoveryAcceptedCitationUrls: googleDiscovery.acceptedCitationUrls ?? [],
          discoveryRejectedCitationUrls: googleDiscovery.rejectedCitationUrls ?? [],
         discoveryCandidateCount: googleDiscovery.candidates.length,
         discoveryCandidates: googleDiscovery.candidates.map((source) => ({
           discoveryRank: source.discoveryCandidateRank ?? null,
+          acquisitionRank: source.acquisitionRank ?? null,
+          acquisitionPriority: source.acquisitionPriority ?? null,
+          acquisitionReasons: source.acquisitionReasons ?? [],
+          candidateLimitSelected: source.acquisitionCandidateSelected === true,
+          selectedForOpen: source.acquisitionSelected === true,
+          selectionReason: source.acquisitionSelectionReason ?? null,
+          physicalOpenAdmission: source.physicalOpenAdmission ?? null,
           url: source.canonicalUrl ?? source.url ?? null,
+          originalUrl: source.originalUrl ?? source.url ?? null,
+          resolvedUrl: source.resolvedUrl ?? null,
           title: source.title ?? null,
           referringQueries: source.referringQueries ?? [],
           categoryIds: source.categoryIds ?? [],
           accessOutcome: source.accessOutcome ?? null,
           skipReason: source.accessOutcome?.reason ?? null,
         })),
-        sourceAttemptRecords: documentAuditReceipts.slice(0, RESEARCH_RUN_BUDGET.maxTotalCandidates),
+        retrievalOnlyStop: retrievalOnly ? "discovery-prefetch-complete" : null,
+        sourceAttemptRecords: documentAuditReceipts.slice(0, MAX_RESEARCH_SOURCE_ATTEMPT_AUDIT_RECORDS),
         fallbackProvider: googleDiscovery.fallbackUsed ? "openai-web-search" : null,
         fallbackReason: googleDiscovery.fallbackReason,
         fallbackRequestCount: googleDiscovery.fallbackUsed ? 1 : 0,
@@ -6655,6 +6936,9 @@ async function runValidatedResearch(project, {
       parsed.researchAudit.terminalState = canonicalOutcome;
       parsed.researchAudit.terminalReasonCodes = technicalReasonCodes;
       parsed.researchAudit.candidateLineage = candidateLineageForRun(parsed, orchestration);
+      if (retrievalOnly) {
+        parsed.researchAudit.retrievalOnlyStop = "discovery-prefetch-complete";
+      }
       parsed.researchStatus = canonicalOutcome === RESEARCH_OUTCOMES.TECHNICAL ? researchStatus : "completed";
       if (canonicalOutcome === RESEARCH_OUTCOMES.TECHNICAL) {
         const primaryTechnicalReason = technicalReasonCodes[0] ?? "upstream";
@@ -6696,8 +6980,8 @@ async function runValidatedResearch(project, {
             : {}),
         };
       });
-      parsed.cacheable = researchStatus === "completed";
-      if (orchestration.categoryResults.length > 0 && !deadlineState.expired) parsed.cacheable = true;
+      parsed.cacheable = !retrievalOnly && researchStatus === "completed";
+      if (!retrievalOnly && orchestration.categoryResults.length > 0 && !deadlineState.expired) parsed.cacheable = true;
       return parsed;
     } catch (error) {
       console.warn(
@@ -6752,7 +7036,7 @@ async function runValidatedResearch(project, {
         categoryExecutions: error.partialCategoryExecutions ?? {},
         inFlightAnalysisCount: analysisTracker.inFlight,
         peakInFlightAnalysisCount: analysisTracker.peak,
-        sourceAttemptRecords: documentAuditReceipts.slice(0, RESEARCH_RUN_BUDGET.maxTotalCandidates),
+        sourceAttemptRecords: documentAuditReceipts.slice(0, MAX_RESEARCH_SOURCE_ATTEMPT_AUDIT_RECORDS),
         deadlineAt: auditDeadlineAt,
         phaseTiming,
         terminalState: RESEARCH_OUTCOMES.TECHNICAL,
@@ -6819,6 +7103,7 @@ export async function handleResearchProjectRequest(
     researchBudgetOverrides = null,
     allowProviderRetries = true,
     useDefaultSecConnector = true,
+    retrievalOnly = false,
     signal = null,
   } = {},
 ) {
@@ -6850,8 +7135,15 @@ export async function handleResearchProjectRequest(
   }
 
   let project;
+  let retrievalOnlyRequest = retrievalOnly === true;
   try {
-    project = parseResearchProjectBody(await readRequestBody(req));
+    const requestBody = await readRequestBody(req);
+    if (!isRecord(requestBody)) throw new Error("Research project body must be a JSON object.");
+    if (requestBody.retrievalOnly !== undefined && typeof requestBody.retrievalOnly !== "boolean") {
+      throw new Error('Research field "retrievalOnly" must be a boolean.');
+    }
+    retrievalOnlyRequest ||= requestBody.retrievalOnly === true;
+    project = parseResearchProjectBody(requestBody);
   } catch (error) {
     sendJson(res, 400, { error: error instanceof Error ? error.message : "Invalid research project request." });
     return;
@@ -6862,7 +7154,7 @@ export async function handleResearchProjectRequest(
   const containedRetained = retained ? { ...retained, result: containResearchResult(retained.result) } : null;
   const retainedState = retained ? cache.age(retained) : "expired";
   const retainedNeedsRevalidation = retained?.needsRevalidation === true;
-  if (!project.forceRefresh && containedRetained && !retainedNeedsRevalidation && (retainedState === "fresh" || retainedState === "recent")) {
+  if (!retrievalOnlyRequest && !project.forceRefresh && containedRetained && !retainedNeedsRevalidation && (retainedState === "fresh" || retainedState === "recent")) {
     sendJson(res, 200, withCacheMetadata(containedRetained, cacheMetadata(key, containedRetained, retainedState)));
     return;
   }
@@ -7038,6 +7330,7 @@ export async function handleResearchProjectRequest(
         researchBudgetOverrides: requestBudget,
         allowProviderRetries,
         useDefaultSecConnector,
+        retrievalOnly: retrievalOnlyRequest,
         dnsLookup,
         signal: foreground ? requestController.signal : undefined,
         runCorrelationId: runId,
@@ -7157,7 +7450,7 @@ export async function handleResearchProjectRequest(
       }).catch((failure) => console.warn("[research-project] Audit persistence failed:", failure instanceof Error ? failure.message : "unknown error"));
     }
   };
-  if (!project.forceRefresh && containedRetained && !retainedNeedsRevalidation && retainedState === "stale") {
+  if (!retrievalOnlyRequest && !project.forceRefresh && containedRetained && !retainedNeedsRevalidation && retainedState === "stale") {
     const background = refresh(false, { deferRunUntilResponse: true });
     if (background.started) {
       try {

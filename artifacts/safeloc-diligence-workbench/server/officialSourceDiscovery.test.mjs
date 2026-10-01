@@ -30,6 +30,32 @@ test("zero-provider-URL fallback discovers an exact-project official URL", async
   assert.deepEqual(calls.slice(0, 2), ["https://developer.example/", "https://developer.example/sitemap.xml"]);
 });
 
+test("ranked exact official project endpoints receive physical admission before a generic declared root", async () => {
+  const calls = [];
+  const result = await discoverOfficialSources({
+    projectIdentity: { name: "Project Atlas", location: "Taylor County, Texas" },
+    knownData: {
+      sourceUrl: "https://developer.example/",
+      companyDomains: ["developer.example"],
+      knownOfficialEndpoints: ["https://developer.example/projects/project-atlas/"],
+    },
+    category: "project-identity",
+    maxAttempts: 2,
+    fetchImpl: async (url) => {
+      calls.push(url);
+      return response("");
+    },
+  });
+
+  assert.deepEqual(calls, [
+    "https://developer.example/projects/project-atlas/",
+    "https://developer.example/",
+  ]);
+  assert.deepEqual(result.attempts.map((attempt) => attempt.physicalOpenIndex), [null, null]);
+  assert.equal(result.candidateUrls[0].url, "https://developer.example/");
+  assert.equal(result.discoveryIsEvidence, false);
+});
+
 test("preserves a named authority with an unknown domain without probing it", async () => {
   const calls = [];
   const result = await discoverOfficialSources({

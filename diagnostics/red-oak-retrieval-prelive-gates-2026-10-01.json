@@ -1,0 +1,33 @@
+{
+  "sourceRevision": "131fbe250dcdb76586173d02e78406a9519a4362",
+  "sourceHash": "287abfed2dc58a24e1756a8848c07cfbd4bff3a380b2f62f6f054dd552c3aa8c",
+  "offlineSuite": {
+    "status": "passed",
+    "testCount": 469,
+    "logPath": "/tmp/task316-offline-suite-final.log"
+  },
+  "standaloneDataMjs": {
+    "status": "passed",
+    "testCount": 29,
+    "logPath": "/tmp/task316-data-mjs-final.log"
+  },
+  "typecheck": {
+    "status": "passed",
+    "logPath": "/tmp/task316-typecheck-final.log"
+  },
+  "productionBuild": {
+    "status": "passed",
+    "logPath": "/tmp/task316-build-final.log"
+  },
+  "redOakContentQualityFixesIncluded": true,
+  "googleGroundingFixtureSynchronized": true,
+  "recordedAt": "2026-10-01T00:16:17.979Z",
+  "focusedRegressions": {
+    "status": "passed",
+    "includedInFinalOfflineSuite": true
+  },
+  "initialGateFailure": {
+    "offlineSuite": "466/468 passed; source-family and protected identity first-open regressions fixed before final gates",
+    "logPath": "/tmp/task316-offline-suite.log"
+  }
+}

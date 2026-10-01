@@ -34,7 +34,13 @@ export type EvidenceRecord = Record<
     value: string | number;
     classification: Classification;
      modelClassification?: Classification;
-     origin?: "dossier" | "synthetic-default";
+     /** Explicit underwriting treatment, kept separate from source classification. */
+     modelTreatment?: Classification | "source-neutral";
+     /** Preserve pre-session confidence treatment separately from source classification. */
+     modelConfidenceTreatment?: Classification;
+     /** Actual source class (for example primary-utility), not a verification decision. */
+     sourceClassification?: string;
+     origin?: "dossier" | "synthetic-default" | "session-only";
     numericValue?: number;
     qualitativeValue?: QualitativeEvidenceValue;
     sourceSupportConfidence?: number;
@@ -512,7 +518,10 @@ export const EFFECTIVE_SUPPORT_CONFIDENCE_THRESHOLD = 70;
 export const UNRESOLVED_SUPPORT_CONFIDENCE_THRESHOLD = 50;
 
 export function getEffectiveSupportState(item: EvidenceRecord[string]) {
-  if (item.classification === "Missing Evidence") return "unresolved" as const;
+  const effectiveClassification = item.modelTreatment === "source-neutral"
+    ? item.modelClassification ?? item.classification
+    : item.classification;
+  if (effectiveClassification === "Missing Evidence") return "unresolved" as const;
   if (typeof item.sourceSupportConfidence !== "number") return "unmeasured" as const;
   if (item.sourceSupportConfidence < UNRESOLVED_SUPPORT_CONFIDENCE_THRESHOLD) return "unresolved" as const;
   if (item.sourceSupportConfidence < EFFECTIVE_SUPPORT_CONFIDENCE_THRESHOLD) return "conditional" as const;
@@ -798,9 +807,13 @@ function runModel(
   const waterSourceItem = evidence.water_source_resilience;
   const downtimeCostItem = evidence.downtime_cost;
 
-  const electricityQuality = QUALITY_POLICY[electricityItem.classification];
-  const waterQuality = QUALITY_POLICY[waterConsumptionItem.classification];
-  const gridQuality = QUALITY_POLICY[gridItem.classification];
+  const qualityForFinancialInput = (item: EvidenceRecord[string]) =>
+    item.modelTreatment === "source-neutral"
+      ? { costMultiplier: 1, waterConsumptionMultiplier: 1, timelineAdder: 0 }
+      : QUALITY_POLICY[item.modelTreatment ?? item.classification];
+  const electricityQuality = qualityForFinancialInput(electricityItem);
+  const waterQuality = qualityForFinancialInput(waterConsumptionItem);
+  const gridQuality = qualityForFinancialInput(gridItem);
   const waterEscalationQuality = QUALITY_POLICY[waterEscalationItem.classification];
   const communityQuality = QUALITY_POLICY[communityItem.classification];
   const renewableQuality = QUALITY_POLICY[renewableItem.classification];
@@ -1103,7 +1116,7 @@ function runModel(
         ? "CONDITIONAL"
         : "READY FOR REVIEW";
   const totalConfidence = Object.values(evidence).reduce(
-    (total, item) => total + CONFIDENCE_WEIGHTS[item.classification],
+    (total, item) => total + CONFIDENCE_WEIGHTS[item.modelConfidenceTreatment ?? item.classification],
     0,
   );
   const confidenceScore = Math.round(

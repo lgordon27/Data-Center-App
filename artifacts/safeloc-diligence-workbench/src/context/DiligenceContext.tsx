@@ -25,6 +25,13 @@ import {
   type FinancialScenarioMatrix,
 } from "@/model/financialScenarioContract";
 import {
+  applySessionFinancialDecisions,
+  buildSessionFinancialPreview,
+  decideSessionFinancialPreview,
+  emptySessionFinancialHistory,
+  restoreSessionFinancialHistory,
+} from "@/model/sessionFinancialTransmission";
+import {
   sourceStateMap,
   type SourceId,
   type SourceState,
@@ -386,6 +393,22 @@ function capacityProjectKey(project: Pick<ProjectContext, "name" | "location">):
   return `${project.name.trim().toLocaleLowerCase()}|${project.location.trim().toLocaleLowerCase()}`;
 }
 
+function sessionFinancialProjectKey(project: ProjectContext): string {
+  return [
+    project.kind,
+    project.name.trim().toLocaleLowerCase(),
+    project.location.trim().toLocaleLowerCase(),
+    project.canonicalDossier?.slug?.trim().toLocaleLowerCase() ?? "",
+  ].join("|");
+}
+
+const EMPTY_SESSION_FINANCIAL_SCOPE = { facility: "", phase: "" };
+const SESSION_FINANCIAL_TARGET_IDS = [
+  "electricity_cost",
+  "water_consumption",
+  "grid_interconnection",
+] as const;
+
 function approvedScenarioBinding(
   slug: keyof typeof APPROVED_DOSSIER_SCENARIOS | "default-stargate",
 ): CapacityBindingResult {
@@ -496,6 +519,15 @@ type DiligenceState = {
     proposal: CustomEvidenceRecord,
     replacement: { value: string; classification: Classification; rationale: string },
   ) => boolean;
+  financialSessionScope: Parameters<typeof emptySessionFinancialHistory>[1];
+  setFinancialSessionScope: (scope: Parameters<typeof emptySessionFinancialHistory>[1]) => void;
+  financialSessionHistory: ReturnType<typeof emptySessionFinancialHistory>;
+  financialSessionIgnoredReasons: Record<string, string>;
+  previewSessionFinancialFinding: (id: string) => ReturnType<typeof buildSessionFinancialPreview>;
+  reviewSessionFinancialFinding: (
+    preview: ReturnType<typeof buildSessionFinancialPreview>,
+    action: "accept" | "reject" | "evidence-only",
+  ) => boolean;
   persistResearchReview: (
     proposals: Record<string, CustomEvidenceRecord>,
     dispositions: Record<string, ResearchProposalDisposition>,
@@ -547,9 +579,13 @@ type DiligenceState = {
   capacityDecisionTrail: CapacityReviewTrailEntry[];
 };
 
+type SessionFinancialCandidate = Parameters<typeof buildSessionFinancialPreview>[0]["candidate"];
+type SessionFinancialPreview = ReturnType<typeof buildSessionFinancialPreview>;
+
 export const CURRENT_SESSION_STORAGE_KEY = 'safeloc:diligence:current-session:v1';
 export const COMMUNITY_REVIEW_STORAGE_KEY = 'safeloc:diligence:community-review:v1';
 export const EVIDENCE_TIP_DISMISSED_STORAGE_KEY = 'safeloc:diligence:evidence-room-tip-dismissed:v1';
+export const FINANCIAL_REVIEW_SESSION_STORAGE_KEY = "safeloc:financial-review:session:v1";
 export const CURRENT_PROVENANCE_VERSION = 2;
 const LEGACY_AGENT_RUN_STORAGE_KEY = 'safeloc:diligence:agent-run:v1';
 const INITIAL_EVIDENCE_SOURCE: Record<string, Omit<EvidenceItem, "impactRole">> = {
@@ -656,6 +692,13 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     retireLegacyAgentRunStorage();
     return loadCurrentSession();
   }, []);
+  const initialProject: ProjectContext = initialSession.project ?? {
+    kind: "curated",
+    name: "Stargate Abilene",
+    location: "Taylor County, TX",
+    description: "A public-source diligence case paired with clearly labeled synthetic acquisition economics.",
+    capacityMW: DEFAULT_CAPACITY_MW,
+  };
   const [state, setState] = useState({
     evidence: initialSession.evidence,
     modelEvidence: initialSession.modelEvidence,
@@ -670,15 +713,33 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   const [capacityReview, setCapacityReview] = useState<CapacityReviewState | null>(initialSession.capacityReview);
   const capacityReviewRef = useRef<CapacityReviewState | null>(capacityReview);
   capacityReviewRef.current = capacityReview;
-  const [project, setProject] = useState<ProjectContext>({
-    ...(initialSession.project ?? {
-      kind: "curated" as const,
-      name: "Stargate Abilene",
-      location: "Taylor County, TX",
-      description: "A public-source diligence case paired with clearly labeled synthetic acquisition economics.",
-      capacityMW: DEFAULT_CAPACITY_MW,
-    }),
-  });
+  const [project, setProject] = useState<ProjectContext>(initialProject);
+  const [financialSessionHistory, setFinancialSessionHistoryState] = useState(
+    () => readSessionFinancialHistory(sessionFinancialProjectKey(initialProject))
+      ?? emptySessionFinancialHistory(
+        sessionFinancialProjectKey(initialProject),
+        EMPTY_SESSION_FINANCIAL_SCOPE,
+      ),
+  );
+  const financialSessionHistoryRef = useRef(financialSessionHistory);
+  financialSessionHistoryRef.current = financialSessionHistory;
+  const financialProjectKey = sessionFinancialProjectKey(project);
+  const activeFinancialSessionHistory = financialSessionHistory.projectKey === financialProjectKey
+    ? financialSessionHistory
+    : emptySessionFinancialHistory(financialProjectKey, EMPTY_SESSION_FINANCIAL_SCOPE);
+  const sessionFinancialPreviewCandidatesRef = useRef(
+    new WeakMap<object, SessionFinancialCandidate>(),
+  );
+  const resetFinancialSessionForProject = useCallback((nextProject: ProjectContext) => {
+    const nextHistory = emptySessionFinancialHistory(
+      sessionFinancialProjectKey(nextProject),
+      EMPTY_SESSION_FINANCIAL_SCOPE,
+    );
+    writeSessionFinancialHistory(nextHistory, true);
+    financialSessionHistoryRef.current = nextHistory;
+    setFinancialSessionHistoryState(nextHistory);
+    sessionFinancialPreviewCandidatesRef.current = new WeakMap();
+  }, []);
   const [communityReview, setCommunityReview] = useState<CommunityReviewState>(() => loadCommunityReview(initialSession.project ?? {
     kind: "curated",
     name: "Stargate Abilene",
@@ -696,10 +757,6 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     "ercot-queue": ercotQueue.sourceMetadata,
     eia: eiaData.sourceMetadata,
   }), [eiaData.sourceMetadata, ercotQueue.sourceMetadata]);
-  const effectiveEvidence = useMemo(
-    () => project.kind === "custom" ? state.modelEvidence : state.evidence,
-    [state.evidence, state.modelEvidence, project.kind],
-  );
   const effectiveModelEvidence = useMemo(
     () => state.modelEvidence,
     [state.modelEvidence],
@@ -793,7 +850,57 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       : null,
     [eiaData, project.kind, state.modelEvidence],
   );
-  const financialScenarios = useMemo(
+  const sessionFinancialCandidates = useMemo<Record<string, SessionFinancialCandidate>>(() => {
+    if (project.kind !== "custom") return {};
+    const byId: Record<string, SessionFinancialCandidate> = {
+      ...(project.researchProposals ?? {}),
+    };
+    for (const id of SESSION_FINANCIAL_TARGET_IDS) {
+      if (!byId[id] && state.evidence[id]?.sourceUrl) {
+        byId[id] = state.evidence[id] as SessionFinancialCandidate;
+      }
+    }
+    return byId;
+  }, [project.kind, project.researchProposals, state.evidence]);
+  const sessionFinancialTransmission = useMemo(
+    () => applySessionFinancialDecisions({
+      projectKey: financialProjectKey,
+      projectName: project.name,
+      scope: activeFinancialSessionHistory.scope,
+      candidates: sessionFinancialCandidates,
+      baseEvidence: state.modelEvidence as EvidenceRecord,
+      capacityMW: capacityBinding.modelInput.capacityMW,
+      history: activeFinancialSessionHistory,
+    }),
+    [
+      activeFinancialSessionHistory,
+      capacityBinding.modelInput.capacityMW,
+      financialProjectKey,
+      project.kind,
+      project.name,
+      sessionFinancialCandidates,
+      state.modelEvidence,
+    ],
+  );
+  const effectiveEvidence = useMemo(
+    () => project.kind === "custom"
+      ? sessionFinancialTransmission.evidence as Record<string, EvidenceItem>
+      : state.evidence,
+    [project.kind, sessionFinancialTransmission.evidence, state.evidence],
+  );
+  const providerSessionEvidence = useMemo<EvidenceRecord | null>(() => {
+    if (!providerModelEvidence) return null;
+    return {
+      ...providerModelEvidence,
+      ...(sessionFinancialTransmission.evidence.water_consumption
+        ? { water_consumption: sessionFinancialTransmission.evidence.water_consumption }
+        : {}),
+      ...(sessionFinancialTransmission.evidence.grid_interconnection
+        ? { grid_interconnection: sessionFinancialTransmission.evidence.grid_interconnection }
+        : {}),
+    } as EvidenceRecord;
+  }, [providerModelEvidence, sessionFinancialTransmission.evidence]);
+  const baseFinancialScenarios = useMemo(
     () => buildFinancialScenarioMatrix({
       syntheticEvidence: state.modelEvidence as EvidenceRecord,
       providerEvidence: providerModelEvidence as EvidenceRecord | null,
@@ -803,6 +910,30 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     }),
     [capacityBinding.modelInput.capacityMW, eiaData, providerModelEvidence, providerState, state.modelEvidence],
   );
+  const sessionOverlayScenarios = useMemo(
+    () => buildFinancialScenarioMatrix({
+      syntheticEvidence: sessionFinancialTransmission.evidence as EvidenceRecord,
+      providerEvidence: providerSessionEvidence,
+      eiaData,
+      providerState,
+      capacityMW: capacityBinding.modelInput.capacityMW,
+    }),
+    [
+      capacityBinding.modelInput.capacityMW,
+      eiaData,
+      providerSessionEvidence,
+      providerState,
+      sessionFinancialTransmission.evidence,
+    ],
+  );
+  const financialScenarios = useMemo<FinancialScenarioMatrix>(() => ({
+    ...baseFinancialScenarios,
+    scenarios: {
+      ...baseFinancialScenarios.scenarios,
+      "synthetic-current": sessionOverlayScenarios.scenarios["synthetic-current"],
+      "eia-current": sessionOverlayScenarios.scenarios["eia-current"],
+    },
+  }), [baseFinancialScenarios, sessionOverlayScenarios]);
 
   const financialInputState = useMemo<FinancialInputState>(() => {
     return buildFinancialInputState({
@@ -834,6 +965,18 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (financialSessionHistoryRef.current.projectKey === financialProjectKey) return;
+    const nextHistory = emptySessionFinancialHistory(
+      financialProjectKey,
+      EMPTY_SESSION_FINANCIAL_SCOPE,
+    );
+    writeSessionFinancialHistory(nextHistory);
+    financialSessionHistoryRef.current = nextHistory;
+    setFinancialSessionHistoryState(nextHistory);
+    sessionFinancialPreviewCandidatesRef.current = new WeakMap();
+  }, [financialProjectKey]);
 
   useEffect(() => {
     if (!sessionRestored) return undefined;
@@ -950,6 +1093,98 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     stateRef.current = nextState;
     setState(nextState);
   }, []);
+
+  const setFinancialSessionScope = useCallback((
+    scope: Parameters<typeof emptySessionFinancialHistory>[1],
+  ) => {
+    const nextScope = {
+      facility: typeof scope?.facility === "string" ? scope.facility.trim() : "",
+      phase: typeof scope?.phase === "string" ? scope.phase.trim() : "",
+    };
+    const currentHistory = financialSessionHistoryRef.current.projectKey === financialProjectKey
+      ? financialSessionHistoryRef.current
+      : emptySessionFinancialHistory(financialProjectKey, EMPTY_SESSION_FINANCIAL_SCOPE);
+    if (
+      currentHistory.scope.facility === nextScope.facility &&
+      currentHistory.scope.phase === nextScope.phase
+    ) return;
+    const nextHistory = emptySessionFinancialHistory(financialProjectKey, nextScope);
+    writeSessionFinancialHistory(nextHistory, true);
+    financialSessionHistoryRef.current = nextHistory;
+    setFinancialSessionHistoryState(nextHistory);
+    sessionFinancialPreviewCandidatesRef.current = new WeakMap();
+  }, [financialProjectKey]);
+
+  const previewSessionFinancialFinding = useCallback((id: string) => {
+    if (project.kind !== "custom") {
+      throw new Error("Session financial previews are available only for current custom-research findings.");
+    }
+    const candidate = sessionFinancialCandidates[id];
+    if (!candidate) {
+      throw new Error(`No current research finding is available for ${id}.`);
+    }
+    const currentHistory = financialSessionHistoryRef.current.projectKey === financialProjectKey
+      ? financialSessionHistoryRef.current
+      : emptySessionFinancialHistory(financialProjectKey, EMPTY_SESSION_FINANCIAL_SCOPE);
+    const preview = buildSessionFinancialPreview({
+      projectKey: financialProjectKey,
+      projectName: project.name,
+      scope: currentHistory.scope,
+      currentCandidates: sessionFinancialCandidates,
+      candidate,
+      baseEvidence: stateRef.current.modelEvidence as EvidenceRecord,
+      capacityMW: capacityBinding.modelInput.capacityMW,
+      history: currentHistory,
+    });
+    sessionFinancialPreviewCandidatesRef.current.set(preview, candidate);
+    return preview;
+  }, [
+    capacityBinding.modelInput.capacityMW,
+    financialProjectKey,
+    project.kind,
+    project.name,
+    sessionFinancialCandidates,
+  ]);
+
+  const reviewSessionFinancialFinding = useCallback((
+    preview: SessionFinancialPreview,
+    action: "accept" | "reject" | "evidence-only",
+  ) => {
+    const candidate = sessionFinancialPreviewCandidatesRef.current.get(preview);
+    if (!candidate) return false;
+    const currentCandidate = sessionFinancialCandidates[candidate.id];
+    if (!currentCandidate) return false;
+    const currentHistory = financialSessionHistoryRef.current.projectKey === financialProjectKey
+      ? financialSessionHistoryRef.current
+      : emptySessionFinancialHistory(financialProjectKey, EMPTY_SESSION_FINANCIAL_SCOPE);
+    try {
+      const nextHistory = decideSessionFinancialPreview({
+        preview,
+        action,
+        candidate: currentCandidate,
+        currentContext: {
+          projectKey: financialProjectKey,
+          projectName: project.name,
+          scope: currentHistory.scope,
+          currentCandidates: sessionFinancialCandidates,
+          baseEvidence: stateRef.current.modelEvidence as EvidenceRecord,
+          capacityMW: capacityBinding.modelInput.capacityMW,
+        },
+        history: currentHistory,
+      });
+      writeSessionFinancialHistory(nextHistory, true);
+      financialSessionHistoryRef.current = nextHistory;
+      setFinancialSessionHistoryState(nextHistory);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [
+    capacityBinding.modelInput.capacityMW,
+    financialProjectKey,
+    project.name,
+    sessionFinancialCandidates,
+  ]);
 
   const setOriginatingCompany = useCallback((company: CompanyKey | null) => {
     const nextSelection = selectedProjectContextRef.current?.company === company
@@ -1078,10 +1313,9 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
          review: { kind: correction.reviewKind ?? "ai-accepted", reviewedAt: new Date().toISOString() },
       },
     };
-    const nextModelEvidence = {
-      ...currentState.modelEvidence,
-      ...(proposal?.eligibleForModel ? { [id]: nextEvidence[id] } : {}),
-    };
+    // Proposal acceptance changes the reviewer-facing evidence only. Financial
+    // activation is gated separately by the session financial review workflow.
+    const nextModelEvidence = currentState.modelEvidence;
     const nextState = {
       evidence: nextEvidence,
       modelEvidence: nextModelEvidence,
@@ -1188,6 +1422,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   const resetToDefault = useCallback((company: string | null = "Oracle") => {
     const currentState = stateRef.current;
     if (project.canonicalDossier && currentState.canonicalBaseline) {
+      resetFinancialSessionForProject(project);
       const baselineEvidence = cloneEvidence(currentState.canonicalBaseline);
       const nextState = {
         evidence: withDossierReviewState(baselineEvidence),
@@ -1225,18 +1460,20 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     const nextCompany = parseOriginatingCompany(company);
-    const nextState = { evidence: cloneEvidence(INITIAL_EVIDENCE), modelEvidence: cloneEvidence(INITIAL_EVIDENCE), canonicalBaseline: null, hasChangedClassification: false, lastChange: null };
-    stateRef.current = nextState;
-    setState(nextState);
-    capacityReviewRef.current = null;
-    setCapacityReview(null);
-    setProject({
+    const nextProject: ProjectContext = {
       kind: "curated",
       name: "Stargate Abilene",
       location: "Taylor County, TX",
       description: "A public-source diligence case paired with clearly labeled synthetic acquisition economics.",
       capacityMW: DEFAULT_CAPACITY_MW,
-    });
+    };
+    resetFinancialSessionForProject(nextProject);
+    const nextState = { evidence: cloneEvidence(INITIAL_EVIDENCE), modelEvidence: cloneEvidence(INITIAL_EVIDENCE), canonicalBaseline: null, hasChangedClassification: false, lastChange: null };
+    stateRef.current = nextState;
+    setState(nextState);
+    capacityReviewRef.current = null;
+    setCapacityReview(null);
+    setProject(nextProject);
     setOriginatingCompanyState(nextCompany);
     const nextCommunityReview = createCommunityReview({
       kind: "curated",
@@ -1272,7 +1509,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       nextCompany,
       nextSelection,
     ));
-  }, [originatingCompany, project]);
+  }, [originatingCompany, project, resetFinancialSessionForProject]);
 
   const loadCustomProject = useCallback((research: CustomResearchResponse, company: string | null = null, projectSelection?: ProjectSelectionContext | null) => {
     const researchById = new Map(research.evidence.map((item) => [item.id, item]));
@@ -1305,7 +1542,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         }];
       }),
     ) as Record<string, EvidenceItem>;
-    const containedModelEvidence = Object.fromEntries(
+    const uncontainedModelEvidence = Object.fromEntries(
       Object.entries(customEvidence).map(([id, item]) => [
         id,
         {
@@ -1317,9 +1554,8 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
         },
       ]),
     ) as Record<string, EvidenceItem>;
+    const containedModelEvidence = containCustomModelEvidence(uncontainedModelEvidence);
     const nextState = { evidence: customEvidence, modelEvidence: containedModelEvidence, canonicalBaseline: null, hasChangedClassification: false, lastChange: null as FinancialMetrics["lastChange"] };
-    stateRef.current = nextState;
-    setState(nextState);
     const researchProposals = selectResearchProposals(research.proposedInputs ?? []);
     const researchProposalDispositions = Object.fromEntries(
       Object.keys(researchProposals).map((id) => [id, "pending" as const]),
@@ -1356,6 +1592,9 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       illustrativeCapacityMW: null,
       trail: [],
     };
+    resetFinancialSessionForProject(nextProject);
+    stateRef.current = nextState;
+    setState(nextState);
     capacityReviewRef.current = nextCapacityReview;
     setCapacityReview(nextCapacityReview);
     setProject(nextProject);
@@ -1393,7 +1632,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       undefined,
       nextCapacityReview,
     ));
-  }, []);
+  }, [resetFinancialSessionForProject]);
 
   const loadCanonicalDossier = useCallback((
     dossier: CanonicalDossierSummary,
@@ -1456,8 +1695,6 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       hasChangedClassification: Object.keys(overrides).length > 0,
       lastChange: null as FinancialMetrics["lastChange"],
     };
-    capacityReviewRef.current = null;
-    setCapacityReview(null);
     const nextProject: ProjectContext = {
       kind: "curated",
       name: dossier.name,
@@ -1470,8 +1707,11 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       canonicalDossier: dossier,
       canonicalProvenance: research.canonicalProvenance,
     };
+    resetFinancialSessionForProject(nextProject);
     stateRef.current = nextState;
     setState(nextState);
+    capacityReviewRef.current = null;
+    setCapacityReview(null);
     setProject(nextProject);
     setOriginatingCompanyState(company);
     setSelectedProjectContext(selection);
@@ -1498,7 +1738,13 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       undefined,
       createCanonicalReviewSnapshot(nextProject, nextState),
     ));
-  }, [initialSession.canonicalReview, initialSession.decisionHistory, originatingCompany, project]);
+  }, [
+    initialSession.canonicalReview,
+    initialSession.decisionHistory,
+    originatingCompany,
+    project,
+    resetFinancialSessionForProject,
+  ]);
 
   const saveScenario = (name: string): SaveScenarioResult => {
     const trimmedName = name.trim();
@@ -1761,7 +2007,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   }, [persistCapacityReview, project]);
 
   return (
-    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, researchEvidence: project.kind === "custom" ? state.evidence : effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, applyEvidenceCorrection, applyResearchProposalOverride, persistResearchReview, clearLastChange, metrics, financialInputState, financialScenarios, financialModeling, resetToDefault, setOriginatingCompany, setProjectSelection, loadCustomProject, loadCanonicalDossier, project, originatingCompany, selectedProjectContext, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading, downloadReturnDiscrepancyRecord, communityReview, communityUnresolvedCount, reviewCommunityTerm, capacityClaimCandidate, acceptCapacityClaim, rejectCapacityClaim, illustrativeCapacityMW, setIllustrativeCapacityMW, capacityBinding, capacityExplanation: capacityBinding.explanation, capacityDecisionTrail: matchingCapacityReview?.trail ?? [] }}>
+    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, researchEvidence: project.kind === "custom" ? state.evidence : effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, applyEvidenceCorrection, applyResearchProposalOverride, financialSessionScope: activeFinancialSessionHistory.scope, setFinancialSessionScope, financialSessionHistory: activeFinancialSessionHistory, financialSessionIgnoredReasons: sessionFinancialTransmission.ignoredReasons, previewSessionFinancialFinding, reviewSessionFinancialFinding, persistResearchReview, clearLastChange, metrics, financialInputState, financialScenarios, financialModeling, resetToDefault, setOriginatingCompany, setProjectSelection, loadCustomProject, loadCanonicalDossier, project, originatingCompany, selectedProjectContext, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading, downloadReturnDiscrepancyRecord, communityReview, communityUnresolvedCount, reviewCommunityTerm, capacityClaimCandidate, acceptCapacityClaim, rejectCapacityClaim, illustrativeCapacityMW, setIllustrativeCapacityMW, capacityBinding, capacityExplanation: capacityBinding.explanation, capacityDecisionTrail: matchingCapacityReview?.trail ?? [] }}>
       {children}
     </DiligenceContext.Provider>
   );
@@ -1856,6 +2102,23 @@ export function buildDossierModelEvidence(
     if (item.origin !== "dossier") modelEvidence[id] = { ...item, origin: "synthetic-default" };
   }
   return modelEvidence;
+}
+
+export function containCustomModelEvidence(
+  evidence: Record<string, EvidenceItem>,
+): Record<string, EvidenceItem> {
+  const disabledEvidence = Object.fromEntries(
+    Object.entries(evidence).map(([id, item]) => [
+      id,
+      {
+        ...item,
+        acceptedForModel: false,
+        eligibleForModel: false,
+        researchState: "retrieved-lead" as const,
+      },
+    ]),
+  ) as Record<string, EvidenceItem>;
+  return containEvidenceForModel(disabledEvidence as EvidenceRecord).evidence as Record<string, EvidenceItem>;
 }
 
 function withDossierReviewState(
@@ -2072,6 +2335,29 @@ function writeStorage(key: string, value: unknown) {
     window.localStorage.setItem(key, JSON.stringify(value));
   } catch {
     // Storage is optional. A private browsing quota or disabled storage must not break diligence.
+  }
+}
+
+function readSessionFinancialHistory(projectKey: string) {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(FINANCIAL_REVIEW_SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    return restoreSessionFinancialHistory(JSON.parse(raw) as unknown, projectKey);
+  } catch {
+    return null;
+  }
+}
+
+function writeSessionFinancialHistory(history: ReturnType<typeof emptySessionFinancialHistory>, required = false) {
+  if (typeof window === "undefined") {
+    if (required) throw new Error("Session storage is unavailable; no financial decision was applied.");
+    return;
+  }
+  try {
+    window.sessionStorage.setItem(FINANCIAL_REVIEW_SESSION_STORAGE_KEY, JSON.stringify(history));
+  } catch {
+    if (required) throw new Error("Could not save this tab's financial decision; nothing was applied.");
   }
 }
 
@@ -2594,10 +2880,11 @@ export function loadCurrentSession(): LoadedSession {
       const projectCapacityReview = capacityReview?.projectKey === capacityProjectKey(persistedCustomResearch.project)
         ? capacityReview
         : null;
+      const safeModelEvidence = containCustomModelEvidence(persistedCustomResearch.modelEvidence);
       restoreDecisionHistory(decisionHistory);
       return {
         evidence: persistedCustomResearch.evidence,
-        modelEvidence: persistedCustomResearch.modelEvidence,
+        modelEvidence: safeModelEvidence,
         canonicalBaseline: null,
         hasChangedClassification: true,
         originatingCompany: parseOriginatingCompany(parsedRecord?.originatingCompany),

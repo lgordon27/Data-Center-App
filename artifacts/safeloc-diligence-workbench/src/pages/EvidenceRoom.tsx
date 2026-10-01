@@ -726,7 +726,7 @@ function EvidenceRow({
             </span>
               {project.kind === "custom" && (
                 <span data-testid={`research-state-${item.id}`} className={`rounded-full px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.06em] ${item.acceptedForModel ? "bg-[#e0f4ed] text-[#08644f]" : item.eligibleForModel ? "bg-[#e5efff] text-[#255bb7]" : "bg-[#fde8eb] text-[#ba2f45]"}`}>
-                  {item.acceptedForModel ? "Accepted model input" : item.eligibleForModel ? "Proposal · acceptance required" : "Unverified lead · quarantined"}
+                  {item.acceptedForModel ? "Accepted in my scenario" : item.eligibleForModel ? "Source finding · separate model review required" : "Unverified lead · quarantined"}
                 </span>
               )}
           </span>
@@ -818,7 +818,7 @@ function EvidenceRow({
                          Open {sourceProposal.sourceTitle ?? "retrieved source"}<ExternalLink aria-hidden="true" className="h-3 w-3" />
                        </a>
                        <span className="mt-3 flex flex-wrap gap-2">
-                            {canReviewProposal && <button data-testid={`button-accept-source-proposal-${item.id}`} type="button" onClick={() => onAcceptSourceProposal(sourceProposal)} className="rounded bg-[#08644f] px-3 py-2 font-mono text-[8px] font-bold uppercase text-white">Accept source and finding</button>}
+                            {canReviewProposal && <button data-testid={`button-accept-source-proposal-${item.id}`} type="button" onClick={() => onAcceptSourceProposal(sourceProposal)} className="rounded bg-[#08644f] px-3 py-2 font-mono text-[8px] font-bold uppercase text-white">Keep source and finding · evidence only</button>}
                             {canReviewProposal && <button data-testid={`button-override-source-proposal-${item.id}`} type="button" onClick={() => setProposalOverrideOpen((open) => !open)} className="rounded border border-[#255bb7] bg-white px-3 py-2 font-mono text-[8px] font-bold uppercase text-[#255bb7]">Override</button>}
                            {canReviewProposal && <button data-testid={`button-reject-source-proposal-${item.id}`} type="button" onClick={() => onRejectSourceProposal(item.id)} className="rounded border border-[#9aaec0] bg-white px-3 py-2 font-mono text-[8px] font-bold uppercase text-[#52616b]">Reject</button>}
                            {canReviewProposal && <button data-testid={`button-unresolve-source-proposal-${item.id}`} type="button" onClick={() => onMarkSourceUnresolved(item.id)} className="rounded border border-[#efabb8] bg-[#fff3f4] px-3 py-2 font-mono text-[8px] font-bold uppercase text-[#ba2f45]">Leave unresolved</button>}
@@ -863,7 +863,7 @@ function EvidenceRow({
                         <span data-testid={`correction-proposal-${item.id}`} className="mt-3 block rounded border border-[#b9d43a] bg-[#f8fbe8] p-3">
                           <span className="flex flex-wrap items-center gap-2"><ClassificationBadge value={correctionAssessment.classification} compact /><span className="text-[9px] text-[#52616b]">{correctionAssessment.reasoning}</span></span>
                           <span className="mt-3 flex gap-2">
-                            <button data-testid={`button-accept-correction-${item.id}`} type="button" onClick={acceptCorrection} className="rounded bg-[#08644f] px-3 py-2 font-mono text-[8px] font-bold uppercase text-white">Accept source and proposal</button>
+                            <button data-testid={`button-accept-correction-${item.id}`} type="button" onClick={acceptCorrection} className="rounded bg-[#08644f] px-3 py-2 font-mono text-[8px] font-bold uppercase text-white">Keep correction · evidence only</button>
                             <button type="button" onClick={() => setCorrectionAssessment(null)} className="rounded border border-[#cbd8d4] bg-white px-3 py-2 font-mono text-[8px] font-bold uppercase text-[#52616b]">Revise</button>
                           </span>
                         </span>
@@ -1503,7 +1503,7 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
       {customProject && <ResearchSearchAudit coverage={searchCoverage} audit={project.researchAudit} evidence={items} researchCache={project.researchCache} />}
       {customProject && (
         <aside data-testid="custom-research-containment-status" role="status" className="mb-5 rounded-lg border-2 border-[#ba2f45] bg-[#fff3f4] px-4 py-3 text-[10px] leading-5 text-[#7f2635]">
-          <strong>Custom research is not yet accepted into the model.</strong> Eligible proposals: {project.eligibleEvidenceCount ?? 0} / {items.length}. Unverified leads: {project.retrievedLeadCount ?? 0}. Numeric values with incompatible or unknown units remain visible for review but are quarantined from cash flow until a validated proposal is explicitly accepted.
+          <strong>Evidence review does not accept a financial input.</strong> Eligible source proposals: {project.eligibleEvidenceCount ?? 0} / {items.length}. Unverified leads: {project.retrievedLeadCount ?? 0}. Keep findings here as evidence; separately preview and accept eligible electricity, annual cooling water, or interconnection values in My session financial review. These choices affect only your own scenario, never canonical SafeLoc history.
         </aside>
       )}
       {customProject && sourceResearchError && (

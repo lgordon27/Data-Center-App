@@ -26,3 +26,9 @@ Ledger eligibility and a recognized state label do not establish claim-specific 
 **Why:** A structurally valid observation can describe an announcement without proving operation, or contain a cost figure without proving total project CAPEX. Trusting eligibility metadata alone lets valid records acquire unsupported meaning downstream.
 
 **How to apply:** Preserve the frozen ledger contract, but qualify each consumer's interpretation independently. Treat contradictory, ambiguous, future-effective, or unsupported interpretations as unresolved rather than promoting them.
+
+Financial point-value acceptance requires an affirmative, unambiguous assertion for the scoped financial measure. A number and matching unit appearing beside the project's name are not sufficient; negations, comparison values, bounds, and ranges are not supported point values.
+
+**Why:** Shared claim support can establish project relevance without proving that the specific number is the project's asserted rate, annual quantity, or duration. Sentence-wide co-occurrence incorrectly admitted a negated tariff and a neighboring market comparison as accepted model inputs.
+
+**How to apply:** Bind the quantity to its own affirmative measure and scoped subject, independently of generic claim-support metadata. Keep ranges and competing quantities unresolved, and test refusal through preview, acceptance, and replay rather than checking eligibility flags alone.

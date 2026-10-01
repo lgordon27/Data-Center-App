@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ChevronDown, Save, Scale } from "lucide-react";
+import { SessionFinancialReview } from "@/components/conference/SessionFinancialReview";
 import { useDiligence } from "@/context/DiligenceContext";
 import { FinancialMateriality } from "@/pages/FinancialMateriality";
 import { DecisionReview } from "@/pages/DecisionReview";
@@ -34,6 +35,8 @@ export function FinancialTransmission({ onNavigate, onResolveEvidence }: { onNav
       <p data-testid="transmission-return-boundary" className="text-xs leading-5 text-[#60707d]">{project.kind === "custom" && financialModeling.status === "modeled"
         ? `Illustrative — not project economics. The ${project.name} scenario uses synthetic transaction assumptions, not reported project terms, issuer valuation or investment advice.`
         : `Synthetic ${project.name} scenario economics are not reported transaction terms, issuer valuation or investment advice.`} Any EIA electricity overlay below is statewide market context only—not a disclosed {project.name} tariff or an issuer/portfolio return.</p>
+      {project.canonicalDossier && financialModeling.status === "not-modeled" && <p data-testid="financial-session-model-unavailable" className="text-xs leading-5 text-[#805000]">Model not available for this dossier: previews will show as blocked and cannot be accepted into a scenario. You can still reject or keep findings evidence-only.</p>}
+      <SessionFinancialReview />
       {!(project.canonicalDossier && financialModeling.status === "not-modeled") && <div className="rounded-xl border border-[#cbd8d4] bg-white">
         <button type="button" data-testid={incomplete && !showStressTest ? "button-opt-in-scenario" : "button-illustrative-stress-test"} aria-expanded={showStressTest} aria-controls="illustrative-stress-test"
           onClick={() => { setShowStressTest(!showStressTest); setScenarioOpen(false); setRequestedAction(null); }} className="flex min-h-14 w-full items-center justify-between gap-3 p-5 text-left">

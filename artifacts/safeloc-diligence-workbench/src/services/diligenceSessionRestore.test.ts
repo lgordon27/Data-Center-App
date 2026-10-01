@@ -3,7 +3,12 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { CUSTOM_EVIDENCE_IDS } from "./researchProjectService";
-import { CURRENT_SESSION_STORAGE_KEY, loadCurrentSession } from "../context/DiligenceContext";
+import {
+  CURRENT_SESSION_STORAGE_KEY,
+  INITIAL_EVIDENCE,
+  containCustomModelEvidence,
+  loadCurrentSession,
+} from "../context/DiligenceContext";
 
 const redOakQualityFixtures = JSON.parse(readFileSync(
   new URL("../../server/fixtures/red-oak-quality.json", import.meta.url),
@@ -117,4 +122,36 @@ test("saved session reload excludes exact legacy application-error and corrupted
     if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
     else Reflect.deleteProperty(globalThis, "window");
   }
+});
+
+test("custom model baseline containment is identical on initial load and legacy-session restore", () => {
+  const initialCandidates = Object.fromEntries(CUSTOM_EVIDENCE_IDS.map((id) => [
+    id,
+    {
+      ...INITIAL_EVIDENCE[id],
+      acceptedForModel: false,
+      eligibleForModel: false,
+      researchState: "retrieved-lead" as const,
+    },
+  ]));
+  const legacyPersistedCandidates = Object.fromEntries(CUSTOM_EVIDENCE_IDS.map((id) => [
+    id,
+    {
+      ...INITIAL_EVIDENCE[id],
+      acceptedForModel: true,
+      eligibleForModel: true,
+      researchState: "accepted" as const,
+    },
+  ]));
+
+  const initialBaseline = containCustomModelEvidence(initialCandidates);
+  const restoredBaseline = containCustomModelEvidence(legacyPersistedCandidates);
+
+  assert.deepEqual(restoredBaseline, initialBaseline);
+  assert.equal(restoredBaseline.electricity_cost.numericValue, undefined);
+  assert.equal(restoredBaseline.electricity_cost.modelClassification, "Missing Evidence");
+
+  const contextSource = readFileSync(new URL("../context/DiligenceContext.tsx", import.meta.url), "utf8");
+  assert.match(contextSource, /containCustomModelEvidence\(uncontainedModelEvidence\)/);
+  assert.match(contextSource, /containCustomModelEvidence\(persistedCustomResearch\.modelEvidence\)/);
 });

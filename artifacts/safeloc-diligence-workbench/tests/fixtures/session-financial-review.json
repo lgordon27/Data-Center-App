@@ -1,0 +1,195 @@
+{
+  "fixtureNotice": "Illustrative unit-test/browser-QA seed only. Values, publisher, URL, and source text are fictional; never import into application runtime or treat as real project evidence.",
+  "now": "2026-09-10T12:00:00.000Z",
+  "context": {
+    "projectKey": "session-project-orion",
+    "projectName": "Orion Compute Data Center",
+    "scope": {
+      "facility": "North Hall",
+      "phase": "Phase 2"
+    },
+    "capacityMW": 1200
+  },
+  "candidates": [
+    {
+      "id": "electricity_cost",
+      "label": "electricity_cost",
+      "value": 78,
+      "numericValue": 78,
+      "rawValue": 78,
+      "unit": "USD/MWh",
+      "rawUnit": "USD/MWh",
+      "classification": "Verified Evidence",
+      "citation": "Orion Compute Data Center North Hall Phase 2 electricity tariff is $78/MWh.",
+      "description": "Orion Compute Data Center North Hall Phase 2 electricity tariff is $78/MWh.",
+      "sourceRole": "Illustrative unit-test source",
+      "sourceUrl": "https://utility.example.test/records/orion-north-hall",
+      "sourceTitle": "Illustrative utility service statement",
+      "sourcePublisher": "Illustrative Regional Utility",
+      "sourcePublishedAt": "2026-09-01",
+      "sourcePublishedAtBasis": "visible-publication-line",
+      "sourceSupportConfidence": 95,
+      "sourceRelevance": "exact-project",
+      "coverageStatus": "supported",
+      "eligibleForModel": false,
+      "acceptedForModel": false,
+      "researchState": "eligible-evidence",
+      "sources": [
+        {
+          "url": "https://utility.example.test/records/orion-north-hall",
+          "title": "Illustrative utility service statement",
+          "publisher": "Illustrative Regional Utility",
+          "publishedAt": "2026-09-01",
+          "publishedAtBasis": "visible-publication-line",
+          "publicationDateStatus": "resolved",
+          "accessedAt": "2026-09-10T12:00:00.000Z",
+          "accessStatus": "accessible",
+          "excerpt": "Orion Compute Data Center North Hall Phase 2 electricity tariff is $78/MWh.",
+          "claimPassage": "Orion Compute Data Center North Hall Phase 2 electricity tariff is $78/MWh.",
+          "sourceClass": "primary-utility",
+          "searchDomain": "utility.example.test",
+          "relationship": "primary",
+          "exactProject": true,
+          "sourceState": "retained",
+          "facilityScope": "exact-facility",
+          "phaseScope": "exact-phase",
+          "timePeriod": "2026 operating period",
+          "accessOutcome": {
+            "state": "accessible",
+            "reason": "Illustrative unit fixture only.",
+            "publicationDate": "2026-09-01",
+            "publicationDateBasis": "visible-publication-line",
+            "publicationDateStatus": "resolved",
+            "passage": "Orion Compute Data Center North Hall Phase 2 electricity tariff is $78/MWh."
+          }
+        }
+      ],
+      "sourceValidation": {
+        "policyVersion": 1,
+        "state": "claim-supported",
+        "rejectionCodes": [],
+        "claimMappings": []
+      }
+    },
+    {
+      "id": "water_consumption",
+      "label": "water_consumption",
+      "value": 12,
+      "numericValue": 12,
+      "rawValue": 12,
+      "unit": "Mgal/year",
+      "rawUnit": "Mgal/year",
+      "classification": "Verified Evidence",
+      "citation": "Orion Compute Data Center North Hall Phase 2 annual water consumption is 12 Mgal/year.",
+      "description": "Orion Compute Data Center North Hall Phase 2 annual water consumption is 12 Mgal/year.",
+      "sourceRole": "Illustrative unit-test source",
+      "sourceUrl": "https://utility.example.test/records/orion-north-hall",
+      "sourceTitle": "Illustrative utility service statement",
+      "sourcePublisher": "Illustrative Regional Utility",
+      "sourcePublishedAt": "2026-09-01",
+      "sourcePublishedAtBasis": "visible-publication-line",
+      "sourceSupportConfidence": 95,
+      "sourceRelevance": "exact-project",
+      "coverageStatus": "supported",
+      "eligibleForModel": false,
+      "acceptedForModel": false,
+      "researchState": "eligible-evidence",
+      "sources": [
+        {
+          "url": "https://utility.example.test/records/orion-north-hall",
+          "title": "Illustrative utility service statement",
+          "publisher": "Illustrative Regional Utility",
+          "publishedAt": "2026-09-01",
+          "publishedAtBasis": "visible-publication-line",
+          "publicationDateStatus": "resolved",
+          "accessedAt": "2026-09-10T12:00:00.000Z",
+          "accessStatus": "accessible",
+          "excerpt": "Orion Compute Data Center North Hall Phase 2 annual water consumption is 12 Mgal/year.",
+          "claimPassage": "Orion Compute Data Center North Hall Phase 2 annual water consumption is 12 Mgal/year.",
+          "sourceClass": "primary-utility",
+          "searchDomain": "utility.example.test",
+          "relationship": "primary",
+          "exactProject": true,
+          "sourceState": "retained",
+          "facilityScope": "exact-facility",
+          "phaseScope": "exact-phase",
+          "timePeriod": "2026 operating period",
+          "accessOutcome": {
+            "state": "accessible",
+            "reason": "Illustrative unit fixture only.",
+            "publicationDate": "2026-09-01",
+            "publicationDateBasis": "visible-publication-line",
+            "publicationDateStatus": "resolved",
+            "passage": "Orion Compute Data Center North Hall Phase 2 annual water consumption is 12 Mgal/year."
+          }
+        }
+      ],
+      "sourceValidation": {
+        "policyVersion": 1,
+        "state": "claim-supported",
+        "rejectionCodes": [],
+        "claimMappings": []
+      }
+    },
+    {
+      "id": "grid_interconnection",
+      "label": "grid_interconnection",
+      "value": 18,
+      "numericValue": 18,
+      "rawValue": 18,
+      "unit": "months",
+      "rawUnit": "months",
+      "classification": "Verified Evidence",
+      "citation": "Orion Compute Data Center North Hall Phase 2 grid interconnection timeline is 18 months.",
+      "description": "Orion Compute Data Center North Hall Phase 2 grid interconnection timeline is 18 months.",
+      "sourceRole": "Illustrative unit-test source",
+      "sourceUrl": "https://utility.example.test/records/orion-north-hall",
+      "sourceTitle": "Illustrative utility service statement",
+      "sourcePublisher": "Illustrative Regional Utility",
+      "sourcePublishedAt": "2026-09-01",
+      "sourcePublishedAtBasis": "visible-publication-line",
+      "sourceSupportConfidence": 95,
+      "sourceRelevance": "exact-project",
+      "coverageStatus": "supported",
+      "eligibleForModel": false,
+      "acceptedForModel": false,
+      "researchState": "eligible-evidence",
+      "sources": [
+        {
+          "url": "https://utility.example.test/records/orion-north-hall",
+          "title": "Illustrative utility service statement",
+          "publisher": "Illustrative Regional Utility",
+          "publishedAt": "2026-09-01",
+          "publishedAtBasis": "visible-publication-line",
+          "publicationDateStatus": "resolved",
+          "accessedAt": "2026-09-10T12:00:00.000Z",
+          "accessStatus": "accessible",
+          "excerpt": "Orion Compute Data Center North Hall Phase 2 grid interconnection timeline is 18 months.",
+          "claimPassage": "Orion Compute Data Center North Hall Phase 2 grid interconnection timeline is 18 months.",
+          "sourceClass": "primary-utility",
+          "searchDomain": "utility.example.test",
+          "relationship": "primary",
+          "exactProject": true,
+          "sourceState": "retained",
+          "facilityScope": "exact-facility",
+          "phaseScope": "exact-phase",
+          "timePeriod": "2026 operating period",
+          "accessOutcome": {
+            "state": "accessible",
+            "reason": "Illustrative unit fixture only.",
+            "publicationDate": "2026-09-01",
+            "publicationDateBasis": "visible-publication-line",
+            "publicationDateStatus": "resolved",
+            "passage": "Orion Compute Data Center North Hall Phase 2 grid interconnection timeline is 18 months."
+          }
+        }
+      ],
+      "sourceValidation": {
+        "policyVersion": 1,
+        "state": "claim-supported",
+        "rejectionCodes": [],
+        "claimMappings": []
+      }
+    }
+  ]
+}

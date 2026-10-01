@@ -1,0 +1,63 @@
+Task: Reconcile current environment and prepare the next live Red Oak acceptance run
+Do not add features. Do not deploy. Do not make provider calls until the read-only checks are complete.
+Part 1 — Verify the active development database
+We have a contradiction:
+- Task #339 reported CURRENT DEVELOPMENT PROOF LEDGER VERIFIED on development heliumdb, fingerprint cac77afa, with both proof tables, 32 columns, both functions, 7 indexes, 5 triggers, and startup requiredSchema: complete.
+- Task #331 later reported missing required columns in proof_ledger_events and proof_user_decisions.
+Read-only verify the currently active development workflow:
+- database name;
+- endpoint fingerprint;
+- schema/search path;
+- presence of both proof tables;
+- all required columns;
+- functions/indexes/triggers required by migration 0005;
+- current startup schema status.
+Compare the result with #339’s durable receipt:
+diagnostics/current-development-proof-ledger-receipt-2026-10-01.json
+Do not replay the migration unless the active DB is proven to be the intended development instance and genuinely lacks the verified schema.
+Report one conclusion:
+- SAME VERIFIED DB / #331 WARNING STALE OR MISREAD
+- DIFFERENT DEVELOPMENT ATTACHMENT
+- VERIFIED DB HAS REGRESSED
+- INSUFFICIENT EVIDENCE
+Part 2 — Diagnose the failed Red Oak live run
+Do not make another provider call yet.
+Inspect the previous failed live acceptance at revision:
+385b1c696e5b33f5c12c8caaffecfc75bd3ee875
+That run used an 8-open override instead of the normal 24-open default.
+Report:
+1. Which 8 candidates consumed the open budget, in order.
+2. For each:
+   - search/query source;
+   - source class;
+   - project relevance;
+   - access result;
+   - whether it produced a retained passage;
+   - why it ranked ahead of later candidates.
+3. Whether the TDLR DFW10 record was discovered.
+4. If discovered, its rank and why it was not opened.
+5. Whether blocked DataBank URLs consumed open slots.
+6. Whether low-value/error/boilerplate sources consumed slots.
+7. Whether the normal 24-open configuration would have attempted additional authoritative candidates.
+8. Whether candidate ranking should more strongly prioritize:
+   - official government records;
+   - utility/regulatory records;
+   - highly project-specific sources;
+   - structured records such as TDLR.
+Recommend the smallest safe change, if any, needed before the next live run.
+Preserve all SSRF/DNS protections.
+Do not allowlist DataBank.
+Do not force IPv6.
+Do not weaken identity or eligibility rules.
+Part 3 — Next-run readiness
+If both environment verification and acquisition diagnosis are clean, state whether the system is ready for:
+one live Red Oak acceptance run using the normal 24-open default
+Success criterion for that future run:
+real source → retained passage → correct project/facility scope → eligible claim
+Do not run that live request in this task unless separately authorized.
+Report:
+- DB conclusion;
+- acquisition diagnosis;
+- any minimal code/config repair required;
+- tests run;
+- whether the next live acceptance is ready.

@@ -1,0 +1,187 @@
+Implement the live-research reliability gate for the SafeLoc proof-of-system.
+
+This task owns the existing research/retrieval pipeline only. Do not implement Expected Evidence, maturity models, financial transmission, new UI, company exposure, or portfolio analytics.
+
+## Objective
+
+A real project research run must reliably carry a strong retrieved source all the way into an eligible evidence record.
+
+The immediate acceptance case is DataBank Red Oak / DFW10.
+
+A prior run retrieved a strong TDLR record containing:
+
+- Project: DataBank Red Oak – DFW10
+- Owner: DB Data Center Red Oak, LLC
+- Estimated cost: $301M
+- Area: 221,434 sq ft
+- Start: 2/1/2025
+- Completion: 1/31/2027
+
+but the evidence died later in the pipeline.
+
+The milestone is not merely retrieving this document again. The relevant claims must survive into eligible evidence with correct project/facility scope.
+
+## Preserve these hard rules
+
+- Project identity must come from retained source passages.
+- Search snippets/provider summaries cannot independently establish identity.
+- Unknown stays unknown.
+- Research never modifies financial assumptions.
+- Do not weaken SSRF, DNS or redirect protections.
+- Do not make unrelated architecture changes.
+- Do not deploy or push.
+- No live/paid provider calls until deterministic tests pass.
+
+## Work required
+
+### 1. Reduce category-analysis context
+
+Do not send whole pages or giant passage bundles.
+
+For each analysis category:
+
+- select only passages assigned/relevant to that category;
+- retain sentences surrounding project identity/value/date/status mentions;
+- preserve enough context to establish scope;
+- keep structured government-record fields intact.
+
+Target approximately <=5,000 estimated input tokens per category unless existing provider-specific constraints justify a smaller cap.
+
+Record estimated request tokens.
+
+### 2. Provider-rate-limit scheduling
+
+The application has encountered an OpenAI 30,000 TPM limit.
+
+Implement/configure provider-aware pacing rather than assuming higher account limits.
+
+Use an environment-configurable TPM ceiling with a conservative default matching the observed limit.
+
+On HTTP 429:
+
+- respect Retry-After where available;
+- retry at most once when the global deadline leaves enough time;
+- never create an unbounded retry loop.
+
+Audit:
+
+- estimated category tokens;
+- rate-limit wait time;
+- retries;
+- completed / failed / skipped / deadline reason.
+
+### 3. Deadline/category scheduling
+
+Prioritize foundational analysis first:
+
+1. project identity
+2. grid/power/interconnection
+3. construction/capital
+4. permitting/entitlement/community
+5. water/cooling
+6. tenant/counterparty
+7. electricity/tariff
+8. climate/operational
+
+If the codebase uses different canonical category names, preserve them and document the mapping.
+
+A category that never runs must be explicitly recorded as NOT RUN / SEARCH INCOMPLETE rather than appearing as missing evidence.
+
+### 4. Preserve useful retrieval on downstream failure
+
+If:
+
+- category analysis fails;
+- provider returns 429;
+- global deadline expires;
+- later structured analysis fails;
+
+retain the successfully fetched:
+
+- URL
+- canonical/redirect lineage
+- access receipt
+- publisher/source class
+- publication/as-of date where known
+- cleaned passages
+- project attribution information
+
+Do not discard good retrieval because downstream structured analysis failed.
+
+### 5. Clean retained documents
+
+Coordinate with existing extraction utilities rather than adding duplicate extraction logic.
+
+Required behavior:
+
+- strip HTML tags/attributes from retained text;
+- preserve meaningful structured fields such as “Project Name:”, “Estimated Cost:”, “Start Date:”;
+- reject obvious application-error / 404 / page-not-found responses as error pages;
+- reject or down-rank obvious boilerplate/navigation-only passages;
+- avoid treating duplicate telemetry entries as separate evidence.
+
+### 6. DNS / DataBank
+
+Diagnose the existing DataBank private/special-purpose DNS result without weakening SSRF protections.
+
+If this can be safely corrected under the existing validation model, implement only a demonstrably safe solution with tests.
+
+If not, leave the fetch blocked and return a precise diagnostic.
+
+Never connect to an unvalidated address merely because another DNS answer was public.
+
+### 7. Candidate/query attribution
+
+A prior canary lacked candidate-to-query attribution.
+
+Restore/preserve enough provenance to answer:
+
+- which search produced this candidate;
+- which category/family requested it;
+- whether the candidate was opened;
+- access result;
+- why it was used/rejected/deferred.
+
+## Tests
+
+Use stubbed providers first.
+
+At minimum prove:
+
+- eight categories can be scheduled under simulated 30k TPM without uncontrolled 429s;
+- 429 Retry-After is honored once;
+- per-category input stays within configured cap;
+- category skip/failure reasons are preserved;
+- successful passages survive later provider failure;
+- structured TDLR-like fields remain readable and tag-free;
+- error pages are not accessible evidence;
+- project/phase scope remains attached;
+- no SSRF regression.
+
+## Acceptance gate
+
+Do not call this task complete merely because tests pass.
+
+After deterministic tests pass, STOP and report readiness for one separately authorized live Red Oak acceptance run.
+
+The future live acceptance criterion is:
+
+A real Red Oak run produces at least one eligible evidence claim from a retained source with:
+
+- correct project/facility identity;
+- passage;
+- source;
+- date where available;
+- scope;
+- value/unit where applicable;
+- eligibility rationale.
+
+Report:
+
+- files changed;
+- tests added/changed;
+- test results;
+- unresolved risks;
+- whether a live acceptance run is ready.
+
+Do not deploy, push, or make a paid/live provider request.

@@ -1,0 +1,233 @@
+Define and implement the versioned SafeLoc proof-of-system contract and minimal append-only assessment ledger.
+
+This task must not modify the live research acquisition/retrieval logic. Do not deploy, push, or make provider calls.
+
+## Objective
+
+Freeze the shared contracts that the Expected Evidence, project-state, transmission and reviewer tasks will consume.
+
+Do not build the full intelligence behavior yet.
+
+## 1. Stable project identity
+
+Define a durable project identifier suitable for joining assessments across research runs.
+
+Support scope explicitly:
+
+- campus
+- phase
+- building/facility
+- unknown
+
+A campus and one of its buildings must not silently share a maturity state or financial value.
+
+## 2. Freeze the dimension vocabulary
+
+Use one canonical dimension list.
+
+It must support at least:
+
+- project-identity
+- power-grid-interconnection
+- electricity-tariff
+- water-cooling
+- land-site-civil
+- permitting-entitlement
+- community-local-government
+- environmental-air-generation
+- climate-operational-hazard
+- construction-phasing
+- financing-capital
+- tenant-counterparty
+- incentives-taxes
+
+Do not create overlapping synonyms elsewhere.
+
+## 3. Search-state contract
+
+Before evaluating missing evidence, record whether the relevant search was:
+
+- complete
+- partial
+- not-run
+- blocked
+- failed
+
+A partial/not-run/blocked search must never become “searched and not found.”
+
+## 4. Evidence record
+
+Define a versioned record capable of containing:
+
+- project ID
+- project scope
+- dimension
+- claim
+- value
+- unit
+- estimate-versus-actual status
+- development/status qualifier
+- as-of/publication date
+- retained passage ID(s)
+- source ID(s)
+- source class / existing evidence-quality classification
+- eligibility
+- eligibility reason
+- conflict/superseded relationship if applicable
+- research run ID
+- observation timestamp
+- policy/schema version
+
+Reuse existing governed evidence concepts wherever possible instead of creating competing vocabularies.
+
+## 5. Evidence resolution
+
+Keep this separate from source quality.
+
+Internally support:
+
+- established
+- located-insufficient
+- conflicting
+- searched-not-found
+- expected-likely-non-public
+- not-applicable
+- not-expected-yet
+- search-incomplete
+- superseded/stale
+- scope-mismatch
+
+These may later map to simpler public labels.
+
+## 6. Project-state record
+
+Project state must be separate from evidence quality.
+
+Record:
+
+- project ID
+- scope
+- dimension
+- state
+- Unknown / Not Applicable support
+- as-of date
+- supporting evidence IDs
+- state/policy version
+
+Do not define “no evidence” as the lowest project maturity state.
+
+States must be able to move backward over time.
+
+## 7. Financial-transmission proposal
+
+Define a record containing:
+
+- project ID
+- scope
+- source evidence IDs
+- affected model variable
+- current value
+- proposed value
+- unit
+- transmission mechanism
+- quantification class
+- formula where applicable
+- transmission support level
+- status
+- mapping-policy version
+
+Use simple internal concepts. Avoid conflicting “T” nomenclature between tenant state and transmission confidence.
+
+Quantification classes:
+
+- sourced-direct
+- mechanically-derived
+- illustrative-scenario
+- unresolved
+
+Transmission support should distinguish at minimum:
+
+- none
+- directional/project-specific
+- quantifiable
+
+Do not allow an LLM probability or arbitrary financial magnitude.
+
+## 8. Decision record
+
+Keep user decisions separate from canonical system observations.
+
+Record:
+
+- decision ID
+- session/user scope where available
+- transmission/evidence reference
+- accept
+- reject
+- evidence-only
+- timestamp
+- model version
+- resulting scenario/input reference
+
+Anonymous user decisions must never become SafeLoc canonical project history.
+
+## 9. Append-only assessment ledger
+
+Use the existing PostgreSQL architecture.
+
+Do not overwrite prior system observations.
+
+Persist enough to later answer:
+
+“What did SafeLoc know about this project at time X?”
+
+without building any history UI now.
+
+At minimum preserve:
+
+- observations;
+- state changes;
+- supersession links;
+- accepted model inputs;
+- model/policy/schema versions.
+
+Derive current state rather than destructively replacing history where practical.
+
+Use minimal migrations and preserve backward compatibility with current dossiers/runs.
+
+## 10. Vocabulary constraint
+
+Do not introduce a second public-facing classification system that competes with the app’s existing evidence vocabulary.
+
+The internal contract can be detailed, but expose a clear mapping for later UI.
+
+## Tests
+
+Use fixtures only.
+
+Prove:
+
+- campus/phase/building scope stays distinct;
+- Unknown differs from early-stage state;
+- Search Incomplete cannot become Searched Not Found;
+- estimated cost differs from actual cost;
+- scope mismatch is preserved;
+- old evidence can be superseded without deletion;
+- state can regress;
+- anonymous user decision does not mutate canonical observation;
+- current state can be deterministically derived from append-only records;
+- schema/version metadata survives.
+
+## Deliverable
+
+Return:
+
+- exact contract/types/schema added;
+- database migration details;
+- files changed;
+- compatibility impact;
+- tests/results;
+- recommended interfaces for the Expected Evidence and Transmission tasks;
+- hotspot files they should avoid.
+
+Do not implement Expected Evidence rules, maturity inference, transmission mappings, UI, or provider logic in this task.

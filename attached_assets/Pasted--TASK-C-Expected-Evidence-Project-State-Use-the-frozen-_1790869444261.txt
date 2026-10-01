@@ -1,0 +1,300 @@
+## TASK C — Expected Evidence + Project State
+
+Use the frozen SafeLoc proof contract. Do not modify provider/search/retrieval logic or financial-model calculations.
+
+### Objective
+
+Implement Expected Evidence across the entire proof taxonomy while keeping project-state depth intentionally limited.
+
+### Required dimensions
+
+- power/grid/interconnection
+- electricity/tariffs
+- water/cooling
+- land/site/civil infrastructure
+- permitting/entitlement
+- community/local-government
+- environmental/air/generation
+- climate/operational hazards
+- construction/phasing
+- financing/capital
+- tenant/counterparty
+- incentives/taxes
+
+### Expected Evidence
+
+Implement as versioned configuration/data rather than sprawling conditional branches.
+
+Rules should consider where known:
+
+- project stage
+- scale
+- project type
+- jurisdiction
+- cooling/design characteristics
+
+For each expected item, produce:
+
+- expected
+- not expected
+- unknown expectation
+- reason
+- whether normally public versus likely confidential
+
+Resolve evidence only using the frozen evidence/search states.
+
+Never return “searched-not-found” where search was partial, blocked, failed or not run.
+
+### Project state
+
+Implement deeper deterministic state inference only for:
+
+1. facility/construction lifecycle
+2. power-delivery progression
+
+Keep evidence quality separate.
+
+Support:
+
+- Unknown
+- Not Applicable
+- regression
+- campus/phase/building scope
+
+Other dimensions should expose evidence/resolution without forced maturity ladders.
+
+### Full-risk proof requirement
+
+Although only power/construction receive deeper state models, every required dimension must produce a valid Expected Evidence/evidence-resolution result in fixtures.
+
+### Fixtures/tests
+
+Use real-style retained passages, not provider calls.
+
+Include at least:
+
+- Red Oak
+- Stargate Abilene
+- non-Texas hyperscale
+- small colo
+- sparse-evidence case
+
+Test cases must include:
+
+- expected and found;
+- expected but likely confidential;
+- search incomplete;
+- blocked source;
+- insufficient evidence;
+- conflicting evidence;
+- scope mismatch;
+- not applicable;
+- regression/supersession.
+
+Return files, configuration, tests/results and integration interface.
+
+Do not modify UI or model.
+
+---
+
+## TASK D — Financial Transmission Engine
+
+Use the frozen SafeLoc proof contract.
+
+Do not modify live research logic or UI.
+
+### Objective
+
+Implement deterministic, versioned mappings from eligible evidence to a controlled set of financial/model proposals.
+
+### Initial model-active allowlist
+
+Support when evidence is eligible and project/scope match is correct:
+
+- COD / completion / energization timing
+- planned/delivered/contracted MW where the linkage is explicit
+- documented project/civil/grid/water/generation capex
+- tenant commencement timing
+- existing governed electricity-rate inputs
+- existing governed annual water-volume inputs
+- existing governed interconnection-month inputs
+
+Everything else must remain:
+
+- context only;
+- directional transmission;
+- or unresolved.
+
+### Rules
+
+Never invent a magnitude.
+
+Mechanically derived values must use a whitelisted formula whose:
+
+- inputs all reference eligible evidence IDs;
+- units are validated;
+- scope matches;
+- formula is stored and displayed.
+
+Examples permitted:
+
+documented old COD + documented new COD
+→ exact schedule delta
+
+documented old project cost + documented revised project cost
+→ capex delta
+
+Do NOT derive:
+
+total campus MW / building count
+→ building MW
+
+unless a source explicitly establishes equal allocation.
+
+### Community/climate/etc.
+
+These categories may establish a pathway without generating a model value.
+
+Example:
+
+community opposition alone
+→ no model-active proposal
+
+formal hearing delayed 90 days because of dispute
+→ project-specific schedule pathway
+
+Only propose COD if the evidence actually supports the relationship/timing required by policy.
+
+### Output classes
+
+Use the frozen contract:
+
+- sourced-direct
+- mechanically-derived
+- illustrative-scenario
+- unresolved
+
+Never allow illustrative scenarios into the baseline automatically.
+
+### Synthetic model warning
+
+The current financial model contains illustrative assumptions.
+
+Preserve or add metadata so outputs clearly distinguish:
+
+- sourced project input
+- accepted derived input
+- illustrative assumption
+
+Do not present an IRR as fully project-evidenced if major drivers remain synthetic.
+
+If straightforward under the frozen contract, expose a count such as:
+
+“X of Y material model drivers currently sourced/accepted”
+
+but do not invent a quality score.
+
+### Tests
+
+Fixtures only.
+
+Test:
+
+- COD change;
+- MW change;
+- capex change;
+- tenant commencement;
+- existing power/water/interconnection destinations;
+- unsupported community risk;
+- unsupported climate risk;
+- scope mismatch;
+- estimate vs actual;
+- conflicting evidence;
+- non-whitelisted derivation;
+- human acceptance required.
+
+Return files, mappings, tests/results and integration interface.
+
+Do not modify reviewer UI.
+
+---
+
+## TASK E — Reviewer Workflow Integration
+
+Start only after Tasks C and D are merged and the live evidence gate is proven ready.
+
+Integrate the frozen contract, Expected Evidence, project state and transmission output into the existing reviewer/human-decision workflow.
+
+### Required reviewer surface
+
+For each material dimension show, in compact language:
+
+1. What SafeLoc searched / whether search completed.
+2. What evidence was found.
+3. Source passage and provenance.
+4. Project/phase/building scope.
+5. Evidence resolution.
+6. Project state where implemented.
+7. Project implication.
+8. Financial transmission:
+   - none
+   - directional/unresolved
+   - quantifiable
+9. Current model value if applicable.
+10. Proposed model value if applicable.
+11. Whether the model value is sourced, derived or illustrative.
+12. Human controls:
+   - Accept into scenario
+   - Reject
+   - Evidence only
+
+No research result may change the model before explicit acceptance.
+
+### Public vocabulary
+
+Do not expose all internal codes.
+
+Use a small understandable label set with expandable technical detail.
+
+### Full-risk proof
+
+All required dimensions must appear in the analysis even when their result is:
+
+- no qualifying public evidence;
+- search incomplete;
+- likely non-public;
+- no financial impact established.
+
+Sparse evidence must look honest, not broken.
+
+### History behavior
+
+Write canonical observations append-only.
+
+Keep anonymous/user decisions separate.
+
+No time-series dashboard.
+
+### Fixture matrix
+
+Run the complete UI workflow offline against:
+
+- Red Oak
+- Stargate Abilene
+- a non-Texas hyperscale project
+- a smaller colo
+- sparse evidence
+
+Fixtures must be clearly marked as fixtures in testing and never presented publicly as live research.
+
+### Deliverable
+
+Report:
+
+- files changed;
+- merge conflicts resolved;
+- tests/results;
+- screenshots or component test results if available;
+- outstanding blockers before a live end-to-end acceptance run.
+
+Do not deploy or push.

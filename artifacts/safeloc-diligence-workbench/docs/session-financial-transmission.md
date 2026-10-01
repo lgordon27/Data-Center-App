@@ -26,7 +26,7 @@ Opening a proposal captures a model-neutral disclosure: raw and normalized value
 
 Eligibility is fail-closed for unresolved identity, unsupported or inaccessible passages, missing/unknown dates, stale/future evidence, old policies, wrong units, contradictory or context-only claims, ambiguous quantities, and mismatched/unknown scope. Planned searches are never manufactured as executed search telemetry.
 
-A passage must affirm one point value for the scoped financial measure. A negated value, range, bound, general-market comparison, or competing quantity cannot become a financial point merely because it shares a sentence with the project name and matching unit. Stronger session policies invalidate decisions made under an older, weaker gate.
+A passage must affirm one point value for the scoped financial measure, including its sentence prefix and modality. A denied proposition, hypothetical assumption, question, range, bound, general-market comparison, or competing quantity cannot become a financial point merely because it shares a sentence with the project name and matching unit. Unknown introductory prose stays evidence-only; an explicit forecast label is allowed only with independently qualified forecast-period disclosure. Stronger session policies invalidate decisions made under an older, weaker gate.
 
 Accepted values receive a separate source-neutral point-value treatment for the three supported destinations, not an artificial source-quality upgrade. Existing confidence treatment is retained. Annual water is an absolute facility amount, not multiplied by synthetic capacity scaling.
 

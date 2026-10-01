@@ -10,6 +10,7 @@ import {
   decideSessionFinancialPreview,
   emptySessionFinancialHistory,
   restoreSessionFinancialHistory,
+  SESSION_FINANCIAL_POLICY_VERSION,
   type SessionFinancialCurrentContext,
   type SessionFinancialHistory,
   type SessionFinancialTarget,
@@ -199,7 +200,7 @@ test("builds eligible current-policy previews for the exact three-point slice", 
     assert.equal(result.target, item.id);
     assert.equal(result.sourcePassage, item.citation);
     assert.equal(result.sourceDate, SOURCE_DATE);
-    assert.equal(result.policyVersion, 2);
+    assert.equal(result.policyVersion, SESSION_FINANCIAL_POLICY_VERSION);
     assert.equal(item.eligibleForModel, false);
     assert.equal(item.acceptedForModel, false);
     assert.equal(result.hasModelChange, result.beforeModelFingerprint !== result.afterModelFingerprint);
@@ -660,9 +661,16 @@ test("fails closed on competing, denied, ranged, qualified, and wrong-recipient 
     const trailingRecipient = exactQuote.replace(/\.$/, " for a different customer.");
     const competingAssertion = `${exactQuote} ${quoteFor(target, competingPoint, unit)}`;
     const contradictingAssertion = `${exactQuote} ${denied}`;
+    const deniedPrefix = `It is false that ${exactQuote}`;
+    const hypotheticalPrefix = `Hypothetically, ${exactQuote}`;
+    const assumedPrefix = `Assume ${exactQuote}`;
+    const supposePrefix = `Suppose ${exactQuote}`;
+    const unknownPrefix = `As an example, ${exactQuote}`;
+    const question = exactQuote.replace(/\.$/, "?");
+    const speculativeMeasure = exactQuote.replace(" electricity tariff ", " electricity guesstimated tariff ");
     const accepted = decide(candidate(target, value, unit), emptyHistory());
 
-    for (const quote of [competitor, denied, range, qualified, uncertain, wrongRecipient, wrongSubjectScope, hypotheticalBridge, trailingRecipient, competingAssertion, contradictingAssertion]) {
+    for (const quote of [competitor, denied, range, qualified, uncertain, wrongRecipient, wrongSubjectScope, hypotheticalBridge, trailingRecipient, competingAssertion, contradictingAssertion, deniedPrefix, hypotheticalPrefix, assumedPrefix, supposePrefix, unknownPrefix, question, ...(target === "electricity_cost" ? [speculativeMeasure] : [])]) {
       const item = candidate(target, value, unit, { quote });
       const result = preview(item);
       assert.equal(result.eligible, false, `${target} unexpectedly accepted: ${quote}`);
@@ -683,6 +691,15 @@ test("fails closed on competing, denied, ranged, qualified, and wrong-recipient 
     quote: "Regional prices are compared with a national benchmark. Orion Compute Data Center North Hall Phase 2 electricity tariff is $78/MWh.",
   });
   assert.equal(preview(pointWithSeparateContext).eligible, true);
+  for (const { target, value, unit } of targets) {
+    const forecast = candidate(target, value, unit, {
+      quote: `Forecast: ${quoteFor(target, value, unit).replace(" is ", " will be ")}`,
+      timePeriod: "2027 forecast",
+    });
+    const projected = preview(forecast);
+    assert.equal(projected.eligible, true, `${target} explicit forecast was rejected: ${projected.blockedReasons.join(" ")}`);
+    assert.equal(projected.sourceTimeScope, "forward-forecast");
+  }
 });
 
 test("history changes invalidate old previews and restored histories retain only valid local decisions", () => {

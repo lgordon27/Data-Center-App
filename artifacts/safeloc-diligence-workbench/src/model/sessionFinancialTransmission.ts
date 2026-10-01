@@ -19,7 +19,7 @@ import {
 } from "@/data/sourceValidationPolicy.mjs";
 import { hasUsableResearchPassage } from "@/data/researchContentQuality.mjs";
 
-export const SESSION_FINANCIAL_POLICY_VERSION = 2;
+export const SESSION_FINANCIAL_POLICY_VERSION = 3;
 export const SESSION_FINANCIAL_MODEL_VERSION = "cash-flow-engine-session-v1";
 export const SESSION_FINANCIAL_MAX_EVIDENCE_AGE_DAYS = 365;
 
@@ -410,6 +410,7 @@ function targetSourceValidation({
     facility: scope.facility,
     phase: scope.phase,
     normalizedValue: semanticValue,
+    claimTimePeriod: timePeriod.period,
   });
   if (!personalScopeAndMeasureBoundQuantity) {
     reasons.push("The retained quotation does not bind the exact quantity, unit, measure, facility, phase, and project in one assertion.");

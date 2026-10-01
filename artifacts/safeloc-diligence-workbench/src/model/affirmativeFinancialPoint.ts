@@ -48,7 +48,7 @@ type PointQuantity = {
 };
 
 const NUMBER_PATTERN = /[-+]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?/g;
-const NEGATED_OR_UNCERTAIN = /\b(?:not|no|never|without|denied|denies|denial|unknown|unclear|uncertain|unconfirmed|unverified|pending|missing|absent|unavailable|disputed|contested|cannot|could\s+not|may|might|could|alleged|reportedly)\b|n't\b/i;
+const NEGATED_OR_UNCERTAIN = /\b(?:not|no|never|without|denied|denies|denial|unknown|unclear|uncertain|unconfirmed|unverified|pending|missing|absent|unavailable|disputed|contested|cannot|could\s+not|may|might|could|alleged|reportedly|false|falsely|untrue|incorrect|inaccurate|hypothetical|hypothetically|assume|assumed|suppose|supposed|supposing|imagine|imagined|fictitious|fictional|fabricated|speculative|potential|illustrative)\b|n't\b/i;
 const NON_POINT_QUALIFIER = /\b(?:at\s+least|at\s+most|up\s+to|no\s+more\s+than|no\s+less\s+than|less\s+than|more\s+than|over|under|approximately|approx\.?|about|around|roughly|minimum\s+of|maximum\s+of|between|from)\b|(?:<=|>=|≤|≥|<|>)/i;
 const COMPARATIVE_CONTEXT = /\b(?:compared|versus|vs\.?|benchmark|market|industry\s+average|regional\s+average|general\s+(?:market\s+)?rate|other\s+(?:facility|project|site|hall)|than|whereas|however|but|while|unlike|against|higher|lower|greater|less|relative\s+to|in\s+contrast|rather\s+than|if|unless|assuming|provided\s+that|subject\s+to)\b/i;
 const SUBJECT_SCOPE_TAIL = /\b(?:hall|phase|facility|building|campus|site|unit|center|centre|plant)\b/i;
@@ -86,9 +86,9 @@ function measureMatches(
   text: string,
 ): Array<{ start: number; end: number }> {
   const patterns: Record<AffirmativeFinancialPointTarget, RegExp> = {
-    electricity_cost: /\b(?:(?:electricity|power)\b[\p{L}\p{N}\s-]{0,28}\b(?:tariff|rate|price|cost)\b|(?:tariff|rate|price|cost)\b[\p{L}\p{N}\s-]{0,28}\b(?:electricity|power)\b)/giu,
-    water_consumption: /\bwater\b[\p{L}\p{N}\s-]{0,28}\b(?:consum(?:e|ed|ption)|use|withdraw(?:al|n)?)\b/giu,
-    grid_interconnection: /\b(?:grid|interconnection|utility connection)\b[\p{L}\p{N}\s-]{0,28}\b(?:timeline|delay|interconnection|connection)\b/giu,
+    electricity_cost: /\b(?:(?:electricity|power)\s+(?:(?:industrial|contract|contracted|regulated|published|documented|fixed|effective|utility)\s+)*(?:tariff|rate|price|cost)|(?:tariff|rate|price|cost)\s+(?:for\s+)?(?:electricity|power))\b/giu,
+    water_consumption: /\bwater\s+(?:(?:annual|annualized|cooling|consumptive)\s+)*(?:consum(?:e|ed|ption)|use|withdraw(?:al|n)?)\b/giu,
+    grid_interconnection: /\b(?:(?:grid\s+(?:interconnection\s+|connection\s+)?|interconnection\s+|utility\s+connection\s+)(?:timeline|delay)|grid\s+(?:interconnection|connection)|utility\s+connection)\b/giu,
   };
   return [...text.matchAll(patterns[target])].map((match) => {
     const start = match.index ?? 0;
@@ -155,10 +155,12 @@ function affirmativeSubjectAndQuantity(
   facility: string,
   phase: string,
   expectedNormalizedValue: number,
+   claimTimePeriod: string,
 ): boolean {
   const text = canonicalText(assertion);
   if (
     !text ||
+     text.includes("?") ||
     NEGATED_OR_UNCERTAIN.test(text) ||
     NON_POINT_QUALIFIER.test(text) ||
     COMPARATIVE_CONTEXT.test(text) ||
@@ -191,10 +193,20 @@ function affirmativeSubjectAndQuantity(
     scopedPhase[0].end > measure.start ||
     !/^\s*$/.test(text.slice(project[0].end, scopedFacility[0].start)) ||
     !/^\s*$/.test(text.slice(scopedFacility[0].end, scopedPhase[0].start)) ||
-    !/^[\p{L}\p{N}\s-]*$/u.test(subjectModifiers) ||
-    subjectModifiers.split(/\s+/).filter(Boolean).length > 4 ||
-    /\b(?:for|in|at|with|but|and|to|of|has|had|is|was|were|reports?|says|claims?|according)\b/i.test(subjectModifiers)
+     !/^(?:(?:annual|annually|yearly|current|forecast|projected|expected|planned|scheduled|contracted|published|documented|fixed|regulated)\s*)*$/i.test(subjectModifiers)
   ) return false;
+   // Unknown propositional prefixes must not inherit an affirmative body:
+   // "It is false that <project ... rate is X>" denies that very proposition.
+   // Permit only a direct assertion or an explicit forecast label, never
+   // arbitrary introductory prose. Source metadata cannot override modality.
+   const assertionPrefix = text.slice(0, project[0].start).trim();
+   if (!/^(?:(?:forecast|projected|planned|expected|scheduled)\s*:|(?:the\s+)?(?:19|20)\d{2}\s+(?:forecast|projection|plan|schedule)\s+for)?$/i.test(assertionPrefix)) return false;
+   const prefixYear = assertionPrefix.match(/\b(?:19|20)\d{2}\b/)?.[0];
+   if (prefixYear && !new RegExp(`\\b${prefixYear}\\b`).test(claimTimePeriod)) return false;
+   if (
+     /\b(?:forecast|projection|projected|expected|planned|plan|scheduled|schedule|will\s+be)\b/i.test(text) &&
+     !/\b(?:forecast|projected|planned|proposed|expected|scheduled|will\s+be)\b/i.test(claimTimePeriod)
+   ) return false;
 
   // Do not let a second facility/phase/project recipient appear after the
   // scoped subject. The exact project/facility/phase must be the subject.
@@ -209,7 +221,7 @@ function affirmativeSubjectAndQuantity(
    // A trailing recipient, condition, omitted second endpoint, or competing
    // explanation cannot silently qualify the scoped point. Retain such text
    // as evidence-only until an independently clear assertion is available.
-   return /^[\s.!?]*$/.test(text.slice(quantity.unitEnd));
+   return /^[\s.!]*$/.test(text.slice(quantity.unitEnd));
 }
 
 export function hasAffirmativeScopedFinancialPoint(input: {
@@ -219,6 +231,7 @@ export function hasAffirmativeScopedFinancialPoint(input: {
   facility: string;
   phase: string;
   normalizedValue: number;
+   claimTimePeriod: string;
 }): boolean {
   if (!Number.isFinite(input.normalizedValue)) return false;
   const assertions = splitAssertions(input.passage);
@@ -239,6 +252,7 @@ export function hasAffirmativeScopedFinancialPoint(input: {
       input.facility,
       input.phase,
       input.normalizedValue,
+       input.claimTimePeriod,
     ),
   );
 }

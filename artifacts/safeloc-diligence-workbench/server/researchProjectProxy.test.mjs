@@ -57,6 +57,7 @@ import {
   classifyCanonicalResearchOutcome,
   createPhysicalOpenScheduler,
   sourceEstablishesProjectIdentity,
+  sourceEstablishesRelatedFacilityIdentity,
   evaluateCanaryGridIdentityGate,
   PROTECTED_SOURCE_OPPORTUNITIES,
   selectResearchPassagesForStructuredAnalysis,
@@ -2188,10 +2189,40 @@ test("canary Grid request is withheld unless a retained passage establishes exac
     sourceChannel: "synthetic-public-record",
   };
   const identityPassage = "The Red Oak Campus, located in Red Oak, Ellis County, Texas, is owned and operated by DataBank.";
+  const relatedFacilityPassage = "DataBank's DFW9 building is part of the Red Oak Campus in Red Oak, Ellis County, Texas.";
   assert.equal(sourceEstablishesProjectIdentity({
     ...candidate,
     accessOutcome: { state: "accessible", passage: identityPassage },
   }, project), true);
+  const relatedSource = {
+    ...candidate,
+    accessOutcome: { state: "accessible", passage: relatedFacilityPassage },
+  };
+  assert.equal(sourceEstablishesProjectIdentity(relatedSource, project), false,
+    "related building identity must not be silently promoted to exact campus identity");
+  assert.equal(sourceEstablishesRelatedFacilityIdentity(relatedSource, project), true);
+  assert.deepEqual(evaluateCanaryGridIdentityGate([relatedSource], project), {
+    required: true,
+    state: "related-facility",
+    usableRetainedPassageCount: 1,
+    exactProjectPassageCount: 0,
+    relatedFacilityPassageCount: 1,
+    relatedFacilityIdentifiers: ["DFW9"],
+    reason: "A successfully retrieved retained passage establishes a named facility related to the requested project, but not exact campus identity.",
+  });
+  for (const [identifier, passage] of [
+    ["DFW9", "DataBank's DFW9 building is part of the Red Oak Campus in Red Oak, Ellis County, Texas."],
+    ["DFW10", "DataBank DFW10 is a building of the Red Oak Campus located in Red Oak, Ellis County, Texas."],
+    ["DFW11", "The Red Oak Campus includes DFW11, operated by DataBank, in Red Oak, Ellis County, Texas."],
+  ]) {
+    const gate = evaluateCanaryGridIdentityGate([{
+      ...candidate,
+      accessOutcome: { state: "accessible", passage },
+    }], project);
+    assert.equal(gate.state, "related-facility", identifier);
+    assert.equal(gate.exactProjectPassageCount, 0, identifier);
+    assert.deepEqual(gate.relatedFacilityIdentifiers, [identifier]);
+  }
   assert.equal(evaluateCanaryGridIdentityGate([{
     ...candidate,
     accessOutcome: { state: "accessible", passage: "DataBank operates data centers across Texas." },
@@ -2291,6 +2322,7 @@ test("incidental announcement venues and nearby campuses cannot authorize canary
     exactProject: true,
   };
   const passages = [
+    "DataBank's DFW14 Base Building is in Red Oak, Ellis County, Texas; the filing does not connect it to Red Oak Campus.",
     "DataBank announced the development of a logistics warehouse with a press conference at Red Oak Campus in Red Oak, Texas.",
     "DataBank announced the development of Cedar Campus near Red Oak Campus in Red Oak, Texas.",
     "DataBank announced the development of a data center campus near Red Oak Campus in Red Oak, Texas.",
@@ -2330,8 +2362,56 @@ test("incidental announcement venues and nearby campuses cannot authorize canary
     });
     assert.equal(structuredCalls, 0, passage);
     assert.notEqual(result.researchAudit.canaryIdentityGate.state, "exact-project", passage);
+    assert.notEqual(result.researchAudit.canaryIdentityGate.state, "related-facility", passage);
     assert.equal(result.researchAudit.providerAttempts.filter((a) => a.categoryId === "grid").length, 0, passage);
   }
+});
+
+test("canary Grid analysis may use a retained related-facility identity without upgrading campus scope", async () => {
+  const project = {
+    name: "Red Oak Campus",
+    location: "Red Oak, Ellis County, Texas",
+    knownData: { operator: "DataBank", city: "Red Oak", county: "Ellis County", state: "Texas" },
+  };
+  const candidate = {
+    url: "https://records.example.test/red-oak-dfw9",
+    title: "DFW9 building filing",
+    categoryIds: ["project-identity"],
+    exactProject: true,
+  };
+  const passage = "DataBank's DFW9 building is part of the Red Oak Campus in Red Oak, Ellis County, Texas.";
+  let structuredCalls = 0;
+  const result = await runValidatedResearch(project, {
+    apiKey: "synthetic-test-key",
+    req: request({}),
+    categoryIds: ["grid"],
+    canaryGridIdentityGate: true,
+    allowGoogleFallback: false,
+    allowCorrectiveRetries: false,
+    allowProviderRetries: false,
+    useDefaultSecConnector: false,
+    researchBudgetOverrides: {
+      maxProviderRequests: 2,
+      maxPhysicalDocumentOpens: 8,
+      maxFollowUps: 0,
+      maxFollowUpsPerCategory: 0,
+    },
+    rateLimiter: { allow: () => ({ allowed: true, retryAfterSeconds: 0 }) },
+    googleDiscoveryImpl: completedGoogleDiscovery([candidate]),
+    documentFetchImpl: async (url) => substantiveHtmlResponse(passage, url),
+    fetchImpl: async (_url, init) => {
+      structuredCalls += 1;
+      assert.ok(init.body.includes(passage), "the facility connection must come from the retained passage");
+      assert.match(init.body, /Keep every claim scoped to the specifically named building or facility/);
+      return singleCallResponse();
+    },
+  });
+  assert.equal(structuredCalls, 1);
+  assert.equal(result.researchAudit.canaryIdentityGate.state, "related-facility");
+  assert.equal(result.researchAudit.canaryIdentityGate.exactProjectPassageCount, 0);
+  assert.equal(result.researchAudit.canaryIdentityGate.relatedFacilityPassageCount, 1);
+  assert.deepEqual(result.researchAudit.canaryIdentityGate.relatedFacilityIdentifiers, ["DFW9"]);
+  assert.equal(result.researchAudit.followUpCount, 0);
 });
 
 test("enforces one gap follow-up per category and records the limit", async () => {

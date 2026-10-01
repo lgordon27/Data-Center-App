@@ -216,6 +216,93 @@ function contextStrings(...values) {
   return [...unique.values()];
 }
 
+export function extractDfwFacilityIdentifiers(passages = []) {
+  const seen = new Set();
+  const identifiers = [];
+  for (const passage of Array.isArray(passages) ? passages : [passages]) {
+    for (const match of String(passage ?? "").matchAll(/\bDFW\s*[- ]?\s*(\d{1,2})\b/giu)) {
+      const identifier = `DFW${match[1]}`;
+      const key = identifier.toLocaleLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      identifiers.push(identifier);
+      if (identifiers.length >= 8) return identifiers;
+    }
+  }
+  return identifiers;
+}
+
+/**
+ * Produces bounded navigation aliases. Retained-passage aliases are explicitly
+ * labeled as such, but every alias remains a search hint rather than identity
+ * evidence or an evidence-eligibility signal.
+ */
+export function buildGoogleGroundedDiscoveryAliasSet(project = {}, retainedPassages = []) {
+  const knownData = project?.knownData ?? {};
+  const aliases = [];
+  const seen = new Set();
+  const add = (kind, source, values, maxForKind) => {
+    for (const value of contextStrings(...values).slice(0, maxForKind)) {
+      const key = value.toLocaleLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      aliases.push({
+        value,
+        kind,
+        source,
+        navigationHintOnly: true,
+        identityEvidence: false,
+      });
+    }
+  };
+
+  add("project", "submitted-context", [
+    project?.name,
+    project?.projectName,
+    project?.aliases,
+    project?.projectAliases,
+    knownData?.aliases,
+    knownData?.projectAliases,
+  ], 4);
+  add("operator", "submitted-context", [
+    project?.operator,
+    knownData?.operator,
+    project?.owner,
+    knownData?.owner,
+    knownData?.developer,
+    knownData?.companyName,
+    project?.operatorAliases,
+    knownData?.operatorAliases,
+    project?.ownerAliases,
+    knownData?.ownerAliases,
+  ], 3);
+  add("location", "submitted-context", [
+    project?.city,
+    project?.county,
+    project?.state,
+    project?.location,
+    knownData?.city,
+    knownData?.county,
+    knownData?.state,
+  ], 6);
+  add("facility-identifier", "submitted-context", [
+    project?.facilityIdentifiers,
+    project?.facilityIds,
+    project?.buildingIdentifiers,
+    project?.buildingIds,
+    project?.campusIdentifiers,
+    knownData?.facilityIdentifiers,
+    knownData?.facilityIds,
+    knownData?.buildingIdentifiers,
+    knownData?.buildingIds,
+    knownData?.campusIdentifiers,
+  ], 6);
+  add("facility-identifier", "retained-passage", [
+    extractDfwFacilityIdentifiers(retainedPassages),
+  ], 8);
+  return aliases.slice(0, 24);
+}
+
 function domainForSearch(value) {
   const text = normalizeText(value, 180);
   if (!text) return "";
@@ -235,39 +322,14 @@ function domainForSearch(value) {
  */
 export function buildGoogleGroundedDiscoveryQueryPlan(project = {}) {
   const knownData = project?.knownData ?? {};
-  const names = contextStrings(
-    project?.name,
-    project?.projectName,
-    project?.aliases,
-    project?.projectAliases,
-    knownData?.aliases,
-    knownData?.projectAliases,
-  ).slice(0, 3);
+  const aliases = buildGoogleGroundedDiscoveryAliasSet(project);
+  const names = aliases.filter((alias) => alias.kind === "project").map((alias) => alias.value).slice(0, 3);
   const name = names[0] ?? (normalizeText(project?.name ?? project?.projectName, 120) || "the submitted project");
-  const operatorNames = contextStrings(
-    project?.operator,
-    knownData?.operator,
-    project?.owner,
-    knownData?.owner,
-    knownData?.developer,
-    knownData?.companyName,
-    project?.operatorAliases,
-    knownData?.operatorAliases,
-    project?.ownerAliases,
-    knownData?.ownerAliases,
-  ).slice(0, 2);
-  const identifiers = contextStrings(
-    project?.facilityIdentifiers,
-    project?.facilityIds,
-    project?.buildingIdentifiers,
-    project?.buildingIds,
-    project?.campusIdentifiers,
-    knownData?.facilityIdentifiers,
-    knownData?.facilityIds,
-    knownData?.buildingIdentifiers,
-    knownData?.buildingIds,
-    knownData?.campusIdentifiers,
-  ).slice(0, 6);
+  const operatorNames = aliases.filter((alias) => alias.kind === "operator").map((alias) => alias.value).slice(0, 2);
+  const identifiers = aliases
+    .filter((alias) => alias.kind === "facility-identifier")
+    .map((alias) => alias.value)
+    .slice(0, 6);
   const location = contextStrings(project?.location)[0]
     ?? (contextStrings(knownData?.city, knownData?.county, knownData?.state).join(", ")
       || "the submitted project location");

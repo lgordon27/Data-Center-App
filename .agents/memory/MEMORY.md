@@ -38,3 +38,4 @@
 - [AI evidence downgrade signal](ai-evidence-downgrade-signal.md) — compute downgrades from the safeguarded final class and have Evidence Room consume that service signal.
 - [Saved research content quality](saved-research-content-quality.md) — recheck legacy passages before findings, analysis, and eligibility without rewriting their fetch receipts.
 - [Acquisition ranking boundary](acquisition-ranking-boundary.md) — project-specific discovery signals guide opens, not evidence; opaque redirects and missing historical receipts stay unknown.
+- [One-shot canary persistence](one-shot-canary-persistence.md) — persist request telemetry before assembling a report; a run-once guard makes late report failures unrecoverable.

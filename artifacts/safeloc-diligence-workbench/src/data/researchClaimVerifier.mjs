@@ -338,6 +338,22 @@ function findNameMatches(text, variants) {
   const words = tokenSpans(text);
   const matches = findVariantMatches(text, nameVariants);
   for (const variant of nameVariants) {
+    const orderedTokens = variant.tokens ?? [];
+    if (orderedTokens.length > 1) {
+      for (let startIndex = 0; startIndex <= words.length - orderedTokens.length; startIndex += 1) {
+        if (!orderedTokens.every((token, offset) => words[startIndex + offset].value === token)) continue;
+        const matchingTokens = [...new Set(variant.matchingTokens ?? variant.tokens)];
+        matches.push({
+          variant,
+          start: words[startIndex].start,
+          end: words[startIndex + orderedTokens.length - 1].end,
+          tokenSpan: orderedTokens.length,
+          matchedTokenCount: matchingTokens.length,
+          requiredTokenCount: matchingTokens.length,
+          explicitNamePhrase: true,
+        });
+      }
+    }
     const requiredTokens = [...new Set(variant.matchingTokens ?? variant.tokens)];
     if (!requiredTokens.length) continue;
     const minimumMatches = Math.min(2, requiredTokens.length);
@@ -703,6 +719,174 @@ function compareLocation(expected, actual) {
   return { conflicts, matches };
 }
 
+function facilityIdentifierMatches(text) {
+  return [...String(text ?? "").matchAll(/\bDFW\s*[- ]?\s*(\d{1,2})\b/giu)].map((match) => ({
+    value: `DFW${match[1]}`,
+    start: match.index,
+    end: match.index + match[0].length,
+  }));
+}
+
+function facilityIdentityLink(fragment, identifier, identityMatch) {
+  const distance = identityMatch.start >= identifier.end
+    ? identityMatch.start - identifier.end
+    : identifier.start - identityMatch.end;
+  if (distance < 0 || distance > 120) return false;
+  const between = identityMatch.start >= identifier.end
+    ? fragment.slice(identifier.end, identityMatch.start)
+    : fragment.slice(identityMatch.end, identifier.start);
+  return /\b(?:part\s+of|building\s+(?:of|at|within)|facility\s+(?:of|at|within)|component\s+of|included\s+in|belongs?\s+to|member\s+of|within|comprises?|includes?|contains?|consists\s+of|located\s+(?:in|at|within)|sited\s+(?:in|at|within)|on\s+the\s+campus|(?:data\s+center|data\s+centre)\s+building|campus\s+(?:building|facility|site))\b/i.test(between)
+    || identityMatch.start < identifier.start
+      && /(?:['’]s\s*)?(?:building|facility|data\s+center|data\s+centre|site|phase|component|unit)\s*$/i.test(between);
+}
+
+function operatorExplicitlyConnectedToFacility(fragment, expectedOperator, identifier, identityMatches) {
+  const tokens = operatorTokens(expectedOperator);
+  if (!tokens.length) return false;
+  const operatorVariant = {
+    kind: "operator",
+    label: expectedOperator,
+    tokens,
+    matchingTokens: tokens,
+  };
+  const operatorMatches = findVariantMatches(fragment, [operatorVariant]);
+  for (const operatorMatch of operatorMatches) {
+    if (!operatorsMatch(expectedOperator, normalizeWords(fragment.slice(operatorMatch.start, operatorMatch.end)))) continue;
+    for (const anchor of [identifier, ...identityMatches]) {
+      if (operatorMatch.start < anchor.end && operatorMatch.end > anchor.start) return true;
+      const operatorPrecedesAnchor = operatorMatch.end <= anchor.start;
+      const left = operatorPrecedesAnchor
+        ? fragment.slice(operatorMatch.end, anchor.start)
+        : fragment.slice(anchor.end, operatorMatch.start);
+      if (left.length > 72) continue;
+      if (operatorPrecedesAnchor
+        && /^(?:['’]s)?(?:\s*(?:data\s+center|data\s+centre|building|facility|campus|site|project|operator|owner|developer))?\s*$/i.test(left)) {
+        return true;
+      }
+      if (!operatorPrecedesAnchor
+        && /\b(?:operated|owned|developed|managed|built|constructed|sponsored)\s+by\s*$/i.test(left)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function explicitFacilityOperatorConflict(fragments, sentenceIndex, expectedOperator) {
+  const sentence = fragments
+    .filter((item) => item.sentenceIndex === sentenceIndex)
+    .map((item) => item.text)
+    .join(" ");
+  const company = "[A-Z][\\p{L}\\p{N}&.'’'-]*(?:\\s+[A-Z][\\p{L}\\p{N}&.'’'-]*){0,3}";
+  const asserted = [
+    ...sentence.matchAll(new RegExp(`\\b(?:operated|owned|developed|managed|built|constructed|sponsored)\\s+by\\s+(${company})`, "gu")),
+    ...sentence.matchAll(new RegExp(`\\b(${company})\\s+(?:operates|owns|develops|manages|builds|constructs|sponsors)\\s+(?:the\\s+)?(?:DFW\\s*[- ]?\\s*\\d{1,2}|Red\\s+Oak\\s+Campus|facility|building|site)\\b`, "gu")),
+  ].map((match) => normalizeWords(match[1]));
+  return asserted.some((actual) => !operatorsMatch(expectedOperator, actual));
+}
+
+function relatedFacilityAssessment(fragments, variants, expectedOperator, expectedLocation, expectedLocationText) {
+  if (!expectedOperator) return null;
+  for (const [fragmentIndex, { text: fragment, sentenceIndex }] of fragments.entries()) {
+    const identifiers = facilityIdentifierMatches(fragment);
+    if (!identifiers.length) continue;
+    const connectedLocations = detailedLocations(fragment)
+      .filter((location) => hasLocationConnector(fragment, location));
+    const identityMatches = findNameMatches(fragment, variants)
+      .filter((match) => match.variant.kind !== "operator")
+      .filter((match) => !connectedLocations.some((location) =>
+        match.start < location.end && match.end > location.start));
+    for (const identifier of identifiers) {
+      const identifierMatch = {
+        variant: {
+          kind: "name",
+          label: identifier.value,
+          tokens: [identifier.value.toLocaleLowerCase()],
+          matchingTokens: [identifier.value.toLocaleLowerCase()],
+        },
+        start: identifier.start,
+        end: identifier.end,
+      };
+      const linkedNames = identityMatches.filter((match) =>
+        facilityIdentityLink(fragment, identifier, match));
+      if (!linkedNames.length) continue;
+      const sentenceContext = fragments
+        .filter((item) => item.sentenceIndex === sentenceIndex)
+        .map((item) => item.text)
+        .join(" ");
+      if (/\b(?:not|never|no)\s+(?:(?:directly|explicitly)\s+)?(?:part\s+of|building\s+of|facility\s+of|component\s+of|connected\s+to|linked\s+to|associated\s+with|within)\s+(?:(?:the|that|this)\s+)?(?:red\s+oak\s+campus|campus)\b/i.test(sentenceContext)) {
+        return {
+          verdict: "unrelated",
+          reason: `The passage explicitly denies that named facility ${identifier.value} is part of the requested campus.`,
+        };
+      }
+
+      const localLocations = detailedLocations(fragment)
+        .filter((location) => hasLocationConnector(fragment, location))
+        .filter((location) => {
+          const start = Math.min(identifier.start, ...linkedNames.map((match) => match.start));
+          const end = Math.max(identifier.end, ...linkedNames.map((match) => match.end));
+          return location.end >= start - 80 && location.start <= end + 160;
+        });
+      const comparisons = localLocations.map((location) => compareLocation(expectedLocation, location.location));
+      const conflict = comparisons.find((comparison) => comparison.conflicts.length);
+      if (conflict) {
+        return {
+          verdict: "unrelated",
+          reason: `The named facility ${identifier.value} is associated with ${conflict.conflicts.join(" and ")}, not the requested location${expectedLocationText ? ` (${expectedLocationText})` : ""}.`,
+        };
+      }
+
+      const operatorEvidence = assertedOperators(
+        fragment,
+        [identifierMatch, ...linkedNames],
+        expectedOperator,
+        expectedLocation,
+        !fragments.some((item, index) => index !== fragmentIndex && item.sentenceIndex === sentenceIndex),
+      );
+      const explicitExpectedOperator = operatorExplicitlyConnectedToFacility(
+        fragment,
+        expectedOperator,
+        identifierMatch,
+        linkedNames,
+      );
+      const explicitConflictingOperators = operatorEvidence.filter((actual) =>
+        !operatorsMatch(expectedOperator, actual)
+        && !/\bdfw\s*[- ]?\s*\d{1,2}\b/i.test(actual)
+        && !/\b(?:building|facility|data center|data centre|campus|site|phase|component|unit)\b/i.test(actual));
+      if (
+        explicitConflictingOperators.length
+        || explicitFacilityOperatorConflict(fragments, sentenceIndex, expectedOperator)
+      ) {
+        return {
+          verdict: "unrelated",
+          reason: `The named facility ${identifier.value} has an operator or developer that conflicts with the requested operator (${expectedOperator}).`,
+        };
+      }
+      const operatorMatches = explicitExpectedOperator
+        || operatorEvidence.some((actual) => operatorsMatch(expectedOperator, actual));
+      const matchingDimensions = [...new Set(comparisons.flatMap((comparison) => comparison.matches))];
+      const requestedLocalityMatches = matchingDimensions.some((dimension) =>
+        dimension === "city" || dimension === "county");
+      if (!operatorMatches || !requestedLocalityMatches) {
+        return {
+          verdict: "ambiguous",
+          reason: !operatorMatches
+            ? `The passage links ${identifier.value} to the requested project name, but does not connect that facility to the requested operator (${expectedOperator}).`
+            : `The passage links ${identifier.value} to the requested project name, but does not establish the requested city or county${expectedLocationText ? ` (${expectedLocationText})` : ""}.`,
+        };
+      }
+      return {
+        verdict: "related-facility",
+        reason: `The passage explicitly links named facility ${identifier.value} to the requested project, operator, and city or county; it does not establish exact campus identity.`,
+        facilityIdentifier: identifier.value,
+        facilityScope: "building-or-facility",
+      };
+    }
+  }
+  return null;
+}
+
 function formatExpectedLocation(location) {
   return [location.city, location.county, location.state].filter(Boolean).join(", ");
 }
@@ -710,7 +894,7 @@ function formatExpectedLocation(location) {
 /**
  * Classifies whether a passage refers to the requested project.
  *
- * @returns {{ verdict: "exact-project" | "ambiguous" | "unrelated", reason: string }}
+ * @returns {{ verdict: "exact-project" | "related-facility" | "ambiguous" | "unrelated", reason: string }}
  */
 export function matchProject(passage, project = {}) {
   const text = typeof passage === "string" ? passage : "";
@@ -737,6 +921,15 @@ export function matchProject(passage, project = {}) {
     };
   }
 
+  const facilityAssessment = relatedFacilityAssessment(
+    fragments,
+    variants,
+    expectedOperator,
+    expectedLocation,
+    expectedLocationText,
+  );
+  if (facilityAssessment) return facilityAssessment;
+
   const identified = [];
   const allAttachedLocations = [];
   for (const [fragmentIndex, { text: fragment, sentenceIndex }] of fragments.entries()) {
@@ -754,8 +947,15 @@ export function matchProject(passage, project = {}) {
   }
 
   for (const subject of identified) {
-    const nameMatch = subject.identityMatches.some((match) => match.variant.kind !== "operator");
-    const strongNameMatch = subject.identityMatches.some((match) =>
+    const identityMatchesOutsideLocation = subject.identityMatches;
+    if (
+      facilityIdentifierMatches(subject.fragment).length
+      && !identityMatchesOutsideLocation.some((match) => match.explicitNamePhrase === true)
+    ) {
+      continue;
+    }
+    const nameMatch = identityMatchesOutsideLocation.some((match) => match.variant.kind !== "operator");
+    const strongNameMatch = identityMatchesOutsideLocation.some((match) =>
       match.variant.kind !== "operator" && match.matchedTokenCount >= 2);
     const subjectLocations = subject.attached
       .filter((location) => subject.identityMatches.some((match) =>

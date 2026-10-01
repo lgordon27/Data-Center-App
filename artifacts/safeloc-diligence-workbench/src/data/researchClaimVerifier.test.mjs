@@ -387,6 +387,127 @@ test("campus identity does not collapse its buildings or other metro facilities 
   );
 });
 
+test("DFW9, DFW10, and DFW11 resolve only as named facilities related to Red Oak Campus", () => {
+  const project = {
+    name: "Red Oak Campus",
+    aliases: ["DataBank Red Oak Campus", "DataBank Red Oak Data Center"],
+    operator: "DataBank",
+    city: "Red Oak",
+    county: "Ellis County",
+    state: "Texas",
+  };
+  const cases = [
+    [
+      "DFW9",
+      "DataBank's DFW9 building is part of the Red Oak Campus in Red Oak, Ellis County, Texas.",
+    ],
+    [
+      "DFW10",
+      "DataBank DFW10 is a building of the Red Oak Campus located in Red Oak, Ellis County, Texas.",
+    ],
+    [
+      "DFW11",
+      "The Red Oak Campus includes DFW11, operated by DataBank, in Red Oak, Ellis County, Texas.",
+    ],
+  ];
+  for (const [identifier, passage] of cases) {
+    const result = matchProject(passage, project);
+    assert.equal(result.verdict, "related-facility", passage);
+    assert.equal(result.facilityIdentifier, identifier);
+    assert.equal(result.facilityScope, "building-or-facility");
+    assert.equal(
+      assessResearchProjectIdentity(passage, {
+        exactProject: true,
+        entityMatch: "exact",
+        title: "Red Oak Campus",
+      }, project),
+      "related-facility",
+      "provider identity metadata cannot upgrade the named building to the campus",
+    );
+  }
+
+  assert.equal(
+    matchProject(
+      "The Red Oak Campus is located in Red Oak, Ellis County, Texas and is operated by DataBank.",
+      project,
+    ).verdict,
+    "exact-project",
+    "the explicit campus name with matching location and operator remains exact campus identity",
+  );
+});
+
+test("DFW14, incidental facility mentions, and identity conflicts do not establish campus identity", () => {
+  const project = {
+    name: "Red Oak Campus",
+    aliases: ["DataBank Red Oak Campus", "DataBank Red Oak Data Center"],
+    operator: "DataBank",
+    city: "Red Oak",
+    county: "Ellis County",
+    state: "Texas",
+  };
+  const dfw14Filing = [
+    "Texas Department of Licensing and Regulation Project Details.",
+    "Project Name: DataBank Red Oak - DFW14 Base Building; Facility Name: DB DFW14.",
+    "Location Address: 3600 Batchler Road, Red Oak, Texas; Location County: Ellis.",
+    "Owner Name: DB Data Center Red Oak, LLC.",
+  ].join(" ");
+  assert.notEqual(matchProject(dfw14Filing, project).verdict, "exact-project");
+  assert.notEqual(matchProject(dfw14Filing, project).verdict, "related-facility");
+  assert.equal(
+    assessResearchProjectIdentity(dfw14Filing, {
+      exactProject: true,
+      entityMatch: "exact",
+      title: "Red Oak Campus",
+    }, project),
+    "unrelated",
+    "DFW14 title, owner, location, and provider flags do not supply the missing campus connection",
+  );
+
+  for (const passage of [
+    "DataBank operates DFW14 in Red Oak, Ellis County, Texas. The separate Red Oak Campus is in Dallas, Texas.",
+    "DataBank's DFW9 filing mentions Red Oak Campus, but does not identify DFW9 as a building or part of that campus.",
+    "DataBank's DFW9 building is part of the Red Oak Campus in Houston, Texas.",
+    "The DFW10 building, owned by Compass, is part of DataBank's Red Oak Campus in Red Oak, Ellis County, Texas.",
+    "DataBank's DFW9 building is part of the Red Oak Campus in Red Oak, Texas, but is explicitly not part of that campus.",
+  ]) {
+    assert.notEqual(matchProject(passage, project).verdict, "exact-project", passage);
+    assert.notEqual(matchProject(passage, project).verdict, "related-facility", passage);
+    const identityResult = assessResearchProjectIdentity(passage, {
+      exactProject: true,
+      entityMatch: "exact",
+      title: "Red Oak Campus",
+    }, project);
+    assert.notEqual(identityResult, "exact-project", passage);
+    assert.notEqual(identityResult, "related-facility", passage);
+  }
+
+  assert.notEqual(
+    matchProject(
+      "DataBank operates a DFW9 records filing in Red Oak, Texas.",
+      { ...project, aliases: ["DataBank DFW9 Red Oak Campus"] },
+    ).verdict,
+    "exact-project",
+    "a submitted alias and matching operator/location remain hints without a passage-level campus link",
+  );
+  assert.notEqual(
+    assessResearchProjectIdentity(
+      "DataBank operates a DFW9 records filing in Red Oak, Texas.",
+      { exactProject: true, entityMatch: "exact", title: "DataBank DFW9 Red Oak Campus" },
+      { ...project, aliases: ["DataBank DFW9 Red Oak Campus"] },
+    ),
+    "exact-project",
+  );
+  assert.equal(
+    assessResearchProjectIdentity("DataBank operates DFW14 in Red Oak, Ellis County, Texas.", {
+      exactProject: true,
+      entityMatch: "exact",
+      title: "Red Oak Campus",
+    }, project),
+    "ambiguous",
+    "metadata alone cannot turn an incidental DataBank/DFW mention into project identity",
+  );
+});
+
 test("recognizes an operator directly before a facility name and in the full requested name", () => {
   const location = {
     city: "Red Oak",

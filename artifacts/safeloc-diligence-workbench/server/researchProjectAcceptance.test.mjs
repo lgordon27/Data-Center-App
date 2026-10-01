@@ -19,6 +19,7 @@ import {
   canaryPhysicalReceiptCompleteness,
   canaryRemainingBlockers,
   canaryRetrievalPassageAudit,
+  buildCanaryDiscoveryAliasAudit,
   createRedOakCanaryDiagnosticCollector,
   createRedOakCanaryResources,
   markGridSuppliedCandidates,
@@ -469,6 +470,55 @@ test("reports bounded citation acceptance and rejection states distinctly", () =
     outputTokens: 34,
     totalTokens: 154,
   });
+});
+
+test("reports facility aliases and query terms without inventing candidate-to-query attribution", () => {
+  const audit = buildCanaryDiscoveryAliasAudit({
+    name: "Red Oak Campus",
+    location: "Red Oak, Ellis County, Texas",
+    knownData: {
+      operator: "DataBank",
+      city: "Red Oak",
+      county: "Ellis County",
+      state: "Texas",
+      facilityIdentifiers: ["DFW9", "DFW10", "DFW11"],
+    },
+  }, {
+    discovery: {
+      requestedQueryPlan: [
+        '"Red Oak Campus" DataBank Red Oak Ellis County Texas DFW9 DFW10 DFW11',
+      ],
+      queries: [
+        "Red Oak Campus DataBank Red Oak Ellis County Texas DFW9",
+      ],
+    },
+    sourceStates: {
+      normalizedCandidates: [{ title: "DFW10 candidate title hint" }],
+    },
+  }, {
+    physicalReceipts: [{
+      state: "accessible",
+      passageExcerpt: "Texas filing: DataBank DFW14 Base Building in Red Oak, Texas.",
+    }],
+  });
+  const retainedFacility = audit.aliases.find((alias) =>
+    alias.value === "DFW14" && alias.source === "retained-passage");
+  assert.ok(retainedFacility);
+  assert.equal(retainedFacility.identityEvidence, false);
+  assert.equal(retainedFacility.queryTerms[0].execution, "not-executed-after-the-single-discovery-phase");
+  assert.deepEqual(retainedFacility.candidateAttribution, {
+    status: "unavailable",
+    candidateRanks: [],
+    reason: "Discovery telemetry does not map individual candidates to individual queries or aliases.",
+  });
+  assert.deepEqual(audit.facilitiesInRetainedPassages, ["DFW14"]);
+  assert.deepEqual(audit.facilityIdentifiersFound, {
+    DFW9: false,
+    DFW10: false,
+    DFW11: false,
+  });
+  assert.deepEqual(audit.candidateTitleFacilityHints, ["DFW10"]);
+  assert.equal(audit.aliases.every((alias) => alias.candidateAttribution.status === "unavailable"), true);
 });
 
 test("diagnostic report preserves duplicate annotation summaries from research audit fallback and marks absent telemetry unavailable", () => {

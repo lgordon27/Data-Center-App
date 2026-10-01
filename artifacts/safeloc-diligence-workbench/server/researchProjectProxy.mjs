@@ -2033,7 +2033,9 @@ function prepareCategoryAnalysisPassages(category, sources = [], project = {}) {
   const relevant = candidates.filter((source) =>
     categorySourceMatchesForAnalysis(category, source)
     || (category?.includeExactProjectIdentityContext === true
-      && sourceEstablishesProjectIdentity(source, project)));
+      && sourceEstablishesProjectIdentity(source, project))
+    || (category?.includeRelatedFacilityIdentityContext === true
+      && sourceEstablishesRelatedFacilityIdentity(source, project)));
   const unique = [];
   for (const source of relevant) {
     const passage = source.accessOutcome.passage;
@@ -2113,33 +2115,53 @@ function categoryOpenedDocuments(sources = [], category = null) {
 }
 
 export function sourceEstablishesProjectIdentity(source, project = {}) {
-  const identityMetadata = { ...source };
-  delete identityMetadata.exactProject;
-  delete identityMetadata.entityMatch;
-  if (!isSourceProjectSpecific(identityMetadata, project)) return false;
+  return retainedSourceIdentityVerdict(source, project) === "exact-project";
+}
+
+export function sourceEstablishesRelatedFacilityIdentity(source, project = {}) {
+  return retainedSourceIdentityVerdict(source, project) === "related-facility";
+}
+
+function retainedSourceIdentityVerdict(source, project = {}) {
+  if (!hasRetrievedPassage(source)) return "ambiguous";
   const passage = [
     source?.accessOutcome?.passage,
     source?.claimPassage,
     source?.excerpt,
   ].find((value) => typeof value === "string" && value.trim()) ?? "";
-  return assessResearchProjectIdentity(passage, {
-    exactProject: source?.exactProject === true || source?.entityMatch === "exact",
-    entityMatch: source?.entityMatch,
-  }, project) === "exact-project";
+  return assessResearchProjectIdentity(passage, {}, project);
 }
 
 export function evaluateCanaryGridIdentityGate(sources = [], project = {}) {
   const retainedPassages = (Array.isArray(sources) ? sources : []).filter(hasRetrievedPassage);
   const exactProjectPassages = retainedPassages.filter((source) =>
     sourceEstablishesProjectIdentity(source, project));
+  const relatedFacilityPassages = retainedPassages.filter((source) =>
+    sourceEstablishesRelatedFacilityIdentity(source, project));
+  const relatedFacilityIdentifiers = [...new Set(relatedFacilityPassages.flatMap((source) => {
+    const passage = source?.accessOutcome?.passage ?? source?.claimPassage ?? source?.excerpt ?? "";
+    return [...String(passage).matchAll(/\bDFW\s*[- ]?\s*(\d{1,2})\b/giu)]
+      .map((match) => `DFW${match[1]}`);
+  }))].slice(0, 8);
+  const state = exactProjectPassages.length
+    ? "exact-project"
+    : relatedFacilityPassages.length
+      ? "related-facility"
+      : retainedPassages.length
+        ? "unresolved"
+        : "no-usable-retained-passage";
   return {
     required: true,
-    state: exactProjectPassages.length ? "exact-project" : retainedPassages.length ? "unresolved" : "no-usable-retained-passage",
+    state,
     usableRetainedPassageCount: retainedPassages.length,
     exactProjectPassageCount: exactProjectPassages.length,
-    reason: exactProjectPassages.length
+    relatedFacilityPassageCount: relatedFacilityPassages.length,
+    relatedFacilityIdentifiers,
+    reason: state === "exact-project"
       ? "At least one successfully retrieved retained passage establishes the exact requested project identity."
-      : retainedPassages.length
+      : state === "related-facility"
+        ? "A successfully retrieved retained passage establishes a named facility related to the requested project, but not exact campus identity."
+        : state === "unresolved"
         ? "No successfully retrieved retained passage establishes the exact requested project identity."
         : "No successfully retrieved usable passage is available to establish exact-project identity.",
   };
@@ -2478,6 +2500,15 @@ function buildResearchAudit({
         exactProjectPassageCount: Number.isInteger(coverage.canaryIdentityGate.exactProjectPassageCount)
           ? Math.max(0, coverage.canaryIdentityGate.exactProjectPassageCount)
           : 0,
+        relatedFacilityPassageCount: Number.isInteger(coverage.canaryIdentityGate.relatedFacilityPassageCount)
+          ? Math.max(0, coverage.canaryIdentityGate.relatedFacilityPassageCount)
+          : 0,
+        relatedFacilityIdentifiers: Array.isArray(coverage.canaryIdentityGate.relatedFacilityIdentifiers)
+          ? coverage.canaryIdentityGate.relatedFacilityIdentifiers
+            .slice(0, 8)
+            .map((identifier) => sanitizeTransportText(identifier, 24))
+            .filter(Boolean)
+          : [],
         reason: sanitizeTransportText(coverage.canaryIdentityGate.reason, 240) || null,
       }
       : null,
@@ -4780,7 +4811,9 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
     ? groundedSources.filter((source) =>
       categorySourceMatchesForAnalysis(activeCategory, source)
       || (activeCategory?.includeExactProjectIdentityContext === true
-        && sourceEstablishesProjectIdentity(source, project)))
+        && sourceEstablishesProjectIdentity(source, project))
+      || (activeCategory?.includeRelatedFacilityIdentityContext === true
+        && sourceEstablishesRelatedFacilityIdentity(source, project)))
     : groundedSources;
   const categoryAnalysisSources = categoryPassagePreparation.sources;
   const categoryAnalysisPacket = buildGroundedSourceContext(categoryAnalysisSources);
@@ -4798,7 +4831,9 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
           role: "system",
           content: `${RESEARCH_PROJECT_SYSTEM_PROMPT}${WEB_SEARCH_SOURCE_BOUNDARY_PROMPT}${identityOnly
             ? "\nFor project-identity discovery, establish or reject the exact project name, location, and operator only. Do not create modeled evidence or infer financial inputs."
-            : ""}`,
+            : activeCategory?.includeRelatedFacilityIdentityContext === true
+              ? "\nAt least one supplied identity passage establishes only a named facility related to the requested campus, not exact campus identity. Keep every claim scoped to the specifically named building or facility; do not generalize its status, capacity, schedule, or impacts to the campus or other buildings."
+              : ""}`,
         },
         { role: "user", content: `${buildResearchProjectPrompt({ ...project, activeCategory })}${groundedContext}` },
       ],
@@ -6165,7 +6200,10 @@ async function runValidatedResearch(project, {
           const canaryIdentityGate = canaryGridIdentityGate && categoryId === "grid"
             ? evaluateCanaryGridIdentityGate(usableGroundedSources, project)
             : null;
-          if (canaryIdentityGate && canaryIdentityGate.state !== "exact-project") {
+          if (
+            canaryIdentityGate
+            && !["exact-project", "related-facility"].includes(canaryIdentityGate.state)
+          ) {
             return {
               research: createPartialResearchBody(project),
               sources: usableGroundedSources,
@@ -6186,7 +6224,9 @@ async function runValidatedResearch(project, {
           }
           const gridAnalysisSources = canaryIdentityGate
             ? [...new Map([
-              ...usableGroundedSources.filter((source) => sourceEstablishesProjectIdentity(source, project)),
+              ...usableGroundedSources.filter((source) =>
+                sourceEstablishesProjectIdentity(source, project)
+                || sourceEstablishesRelatedFacilityIdentity(source, project)),
               ...categoryUsableGroundedSources,
             ].map((source) => [
               canonicalizeSourceUrl(source.canonicalUrl ?? source.resolvedUrl ?? source.url) ?? source,
@@ -6194,10 +6234,14 @@ async function runValidatedResearch(project, {
             ])).values()]
             : categoryUsableGroundedSources;
            if (groundedMode && categoryUsableGroundedSources.length === 0) {
-             if (canaryIdentityGate && canaryIdentityGate.state === "exact-project" && gridAnalysisSources.length > 0) {
-               // A verified identity passage is allowed as context for the one
-               // bounded Grid result even if the provider supplied no category
-               // routing labels. This does not promote the passage to evidence.
+             if (
+               canaryIdentityGate
+               && ["exact-project", "related-facility"].includes(canaryIdentityGate.state)
+               && gridAnalysisSources.length > 0
+             ) {
+                // Verified retained identity context can support the one bounded
+                // Grid analysis even when the provider supplied no category labels.
+                // Related-facility passages remain facility-scoped, not evidence.
              } else {
              const categoryGroundedSources = googleDiscovery.candidates.filter((source) =>
                categorySourceMatches(activeCategory, source));
@@ -6227,6 +6271,12 @@ async function runValidatedResearch(project, {
               ...(canaryIdentityGate?.state === "exact-project"
                 ? {
                   includeExactProjectIdentityContext: true,
+                  canaryRetainedSourceBoundary: true,
+                }
+                : {}),
+              ...(canaryIdentityGate?.state === "related-facility"
+                ? {
+                  includeRelatedFacilityIdentityContext: true,
                   canaryRetainedSourceBoundary: true,
                 }
                 : {}),

@@ -18,6 +18,10 @@ import { createResearchProjectCache } from "./researchProjectCache.mjs";
 import { createProjectResearchRegistry } from "./projectResearchRegistry.mjs";
 import { createRedOakClaimTrace } from "./redOakClaimTrace.mjs";
 import { sourceUrlAliases } from "../src/data/sourceValidationPolicy.mjs";
+import {
+  buildGoogleGroundedDiscoveryAliasSet,
+  extractDfwFacilityIdentifiers,
+} from "./googleGroundedDiscovery.mjs";
 
 const REPORT_MAX_TEXT = 1_200;
 const REPORT_MAX_PASSAGE = 1_500;
@@ -1886,6 +1890,74 @@ export function canaryRetrievalPassageAudit(report) {
   };
 }
 
+export function buildCanaryDiscoveryAliasAudit(project, report, requestLocalDiagnostics) {
+  const passages = (requestLocalDiagnostics?.physicalReceipts ?? [])
+    .filter((receipt) => receipt?.state === "accessible")
+    .map((receipt) => receipt.passageExcerpt)
+    .filter((passage) => typeof passage === "string" && passage.trim());
+  const aliases = buildGoogleGroundedDiscoveryAliasSet(project, passages);
+  const requestedQueryPlan = Array.isArray(report?.discovery?.requestedQueryPlan)
+    ? report.discovery.requestedQueryPlan
+    : [];
+  const executedQueries = Array.isArray(report?.discovery?.queries)
+    ? report.discovery.queries
+    : [];
+  const queryContainsAlias = (query, alias) => {
+    const normalizedQuery = String(query ?? "").slice(0, REPORT_MAX_TEXT)
+      .toLocaleLowerCase().replace(/\s+/g, " ").trim();
+    const normalizedAlias = String(alias ?? "").slice(0, 120)
+      .toLocaleLowerCase().replace(/\s+/g, " ").trim();
+    return Boolean(normalizedQuery && normalizedAlias && normalizedQuery.includes(normalizedAlias));
+  };
+  const operator = project?.knownData?.operator ?? project?.operator ?? "DataBank";
+  const location = project?.location ?? [
+    project?.knownData?.city,
+    project?.knownData?.county,
+    project?.knownData?.state,
+  ].filter(Boolean).join(", ");
+  return {
+    aliasBasis: "submitted project context and DFW identifiers found in physically retained passage excerpts",
+    identityBoundary: "All aliases are search-navigation hints only; none establishes identity or evidence eligibility.",
+    requestedQueryPlan,
+    executedQueries,
+    aliases: aliases.map((alias) => {
+      const requestedIndexes = requestedQueryPlan.flatMap((query, index) =>
+        queryContainsAlias(query, alias.value) ? [index] : []);
+      const executedIndexes = executedQueries.flatMap((query, index) =>
+        queryContainsAlias(query, alias.value) ? [index] : []);
+      const passageDerived = alias.source === "retained-passage";
+      const queryTerms = passageDerived
+        ? [{
+          text: `${alias.value} ${operator} ${project?.name ?? "Red Oak Campus"} ${location} facility building filing`,
+          execution: "not-executed-after-the-single-discovery-phase",
+        }]
+        : requestedIndexes.map((index) => ({
+          text: requestedQueryPlan[index],
+          execution: executedIndexes.includes(index) ? "observed-executed" : "not-observed-as-executed",
+        }));
+      return {
+        ...alias,
+        requestedQueryIndexes: requestedIndexes,
+        executedQueryIndexes: executedIndexes,
+        queryTerms,
+        candidateAttribution: {
+          status: "unavailable",
+          candidateRanks: [],
+          reason: "Discovery telemetry does not map individual candidates to individual queries or aliases.",
+        },
+      };
+    }),
+    facilitiesInRetainedPassages: extractDfwFacilityIdentifiers(passages),
+    facilityIdentifiersFound: Object.fromEntries(["DFW9", "DFW10", "DFW11"].map((identifier) => [
+      identifier,
+      extractDfwFacilityIdentifiers(passages).includes(identifier),
+    ])),
+    candidateTitleFacilityHints: [...new Set((report?.sourceStates?.normalizedCandidates ?? [])
+      .flatMap((candidate) => extractDfwFacilityIdentifiers([candidate?.title ?? ""])))].slice(0, 8),
+    candidateTitleHintBoundary: "Candidate-title identifiers are reported as discovery hints, not retained-passage identity evidence.",
+  };
+}
+
 export function canaryPhysicalReceiptCompleteness(report, requestLocalDiagnostics = null) {
   const used = Number.isInteger(report?.canary?.scope?.physicalDocumentOpens)
     ? Math.max(0, report.canary.scope.physicalDocumentOpens)
@@ -2284,6 +2356,12 @@ export async function runRedOakGridCanary({
     const claimTraceReport = claimTrace.toJSON();
     const gridAnalysisPackets = markGridSuppliedCandidates(report, claimTraceReport);
     const requestLocalDiagnostics = canaryDiagnosticCollector.toJSON();
+    const discoveryAliasAudit = buildCanaryDiscoveryAliasAudit(
+      project,
+      report,
+      requestLocalDiagnostics,
+    );
+    const identityGate = report.canaryIdentityGate ?? null;
     report.canary = {
       mode: retrievalOnly ? "red-oak-retrieval-only" : "red-oak-grid",
       retrievalOnly,
@@ -2317,7 +2395,17 @@ export async function runRedOakGridCanary({
           "trade-local-community-reporting",
         ],
         identityGateRequired: !retrievalOnly,
-        identityGateState: report.canaryIdentityGate?.state ?? "unavailable",
+        identityGateState: identityGate?.state ?? "unavailable",
+        identityOutcome: identityGate?.state ?? "unavailable",
+        identityScope: identityGate?.state === "exact-project"
+          ? "exact-campus"
+          : identityGate?.state === "related-facility"
+            ? "named-related-facility-only; exact-campus-identity-not-established"
+            : "unresolved",
+        exactProjectPassageCount: identityGate?.exactProjectPassageCount ?? 0,
+        relatedFacilityPassageCount: identityGate?.relatedFacilityPassageCount ?? 0,
+        relatedFacilityIdentifiers: identityGate?.relatedFacilityIdentifiers ?? [],
+        structuredAnalysisIssued: counts.structuredProviderCalls > 0,
         retrievalOnly,
         groundedDiscoveryRequests: counts.discoveryRequests,
         structuredProviderCalls: counts.structuredProviderCalls,
@@ -2347,6 +2435,7 @@ export async function runRedOakGridCanary({
         hardDeadlineAt: new Date(hardDeadlineAt).toISOString(),
       },
       contentQualityObservations: canaryContentQualityObservations(report),
+      discoveryAliasAudit,
       gridAnalysisPackets,
       retrievalOnlyPassageAudit: retrievalOnly ? canaryRetrievalPassageAudit(report) : null,
       requestLocalDiagnostics,

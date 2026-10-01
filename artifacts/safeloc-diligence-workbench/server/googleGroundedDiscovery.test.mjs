@@ -7,9 +7,11 @@ import {
   GOOGLE_DISCOVERY_CATEGORY_ROUTING,
   GOOGLE_GROUNDED_PREFLIGHT_PROMPT,
   assertGoogleGroundedPreflightResult,
+  buildGoogleGroundedDiscoveryAliasSet,
   buildGoogleGroundedDiscoveryQueryPlan,
   buildGoogleGroundedDiscoveryRequestBody,
   discoverGoogleGroundedProject,
+  extractDfwFacilityIdentifiers,
   parseGoogleGroundedDiscoveryResponse,
   resolveGoogleGeminiModel,
   sanitizeGoogleGroundedRequest,
@@ -181,6 +183,35 @@ test("builds bounded exact-project, facility, official-record, and reporting que
     knownData: { operator: "Atlas Compute" },
   });
   assert.doesNotMatch(unrelatedPlan.join("\n"), /Red Oak|DFW9|DFW10|DFW11/);
+});
+
+test("builds bounded navigation aliases from submitted context and retained facility passages only", () => {
+  const context = {
+    name: "Red Oak Campus",
+    aliases: ["DataBank Red Oak Campus"],
+    operator: "DataBank",
+    location: "Red Oak, Ellis County, Texas",
+    knownData: {
+      city: "Red Oak",
+      county: "Ellis County",
+      state: "Texas",
+      facilityIdentifiers: ["DFW9", "DFW10", "DFW11"],
+    },
+  };
+  const passage = "The DataBank DFW14 Base Building filing is in Red Oak, Texas.";
+  const aliases = buildGoogleGroundedDiscoveryAliasSet(context, [passage]);
+  assert.ok(aliases.some((alias) => alias.value === "Red Oak Campus" && alias.kind === "project"));
+  assert.ok(aliases.some((alias) => alias.value === "DataBank" && alias.kind === "operator"));
+  assert.ok(aliases.some((alias) => alias.value === "Ellis County" && alias.kind === "location"));
+  assert.ok(aliases.some((alias) =>
+    alias.value === "DFW14" && alias.kind === "facility-identifier" && alias.source === "retained-passage"));
+  assert.ok(aliases.every((alias) => alias.navigationHintOnly && alias.identityEvidence === false));
+  assert.equal(aliases.length <= 24, true);
+  assert.deepEqual(extractDfwFacilityIdentifiers([passage, "DFW9, DFW11, and DFW14"]), [
+    "DFW14",
+    "DFW9",
+    "DFW11",
+  ]);
 });
 
 test("keeps requested discovery coverage separate from actually executed Google queries", async () => {

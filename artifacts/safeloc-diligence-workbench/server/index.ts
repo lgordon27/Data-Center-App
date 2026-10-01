@@ -18,6 +18,7 @@ import {
   createExclusiveResearchAdmission,
   evidenceSpendConfig,
 } from "./publicLimits.js";
+import { handleShowcaseDossiersRequest, handleShowcaseDossierRequest } from "./showcaseDossierApi.js";
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
 const artifactDir = path.resolve(serverDir, "..");
@@ -230,6 +231,8 @@ export async function createApp(): Promise<Express> {
   app.get("/api/version", handleVersionRequest);
   app.get("/api/dossiers", handleDossiersRequest);
   app.get("/api/dossiers/:slug", handleDossierRequest);
+  app.get("/api/showcase", handleShowcaseDossiersRequest);
+  app.get("/api/showcase/:slug", handleShowcaseDossierRequest);
   app.get("/api/research-audits/:runId", async (request: Request, response: Response) => {
     await handleResearchAuditDownload(request, response);
   });

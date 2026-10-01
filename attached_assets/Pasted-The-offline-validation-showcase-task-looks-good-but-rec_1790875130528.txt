@@ -1,0 +1,45 @@
+The offline validation/showcase task looks good, but reconcile the shared environment before treating it as merge-ready.
+
+Do not add features, make provider calls, deploy, or publish showcase dossiers.
+
+Please do the following:
+
+1. Diagnose the development database mismatch.
+   - Task #328 applied `0005_safeloc_proof_ledger.sql` to `heliumdb` and verified it.
+   - The current development workflow startup now reports missing proof-ledger and user-decision columns.
+   - Identify exactly which database/schema/connection the current workflow is using versus the one migrated in #328.
+   - Do not reapply the migration blindly.
+   - Confirm whether this is a different database, schema/search_path issue, stale workflow, or connection configuration issue.
+   - If the current development workflow is supposed to use `heliumdb`, correct the configuration or safely apply the already-approved migration to the actual intended development database.
+   - Production must remain untouched.
+
+2. Treat the frozen #328 contract as authoritative.
+   - The canonical dimension list contains 13 dimensions.
+   - Update/flag #329 so it conforms to all 13 rather than creating a 12-dimension parallel taxonomy.
+   - Do not change the frozen contract unless a concrete defect is proven.
+
+3. Clarify #330 compatibility.
+   - The contract exposes 11 possible transmission destinations.
+   - #330 may intentionally implement only a safe subset initially.
+   - Confirm unsupported destinations fail closed and remain represented by the contract rather than being deleted or redefined.
+
+4. Do not modify the validation/showcase behavior unless required for compatibility.
+   - The empty showcase catalog is correct.
+   - Cached showcase dossiers must still require explicit human-review provenance.
+
+5. After the database issue is resolved and #329 finishes its own scope fixes, rerun:
+   - typecheck;
+   - focused validation/showcase tests;
+   - full provider-free workbench suite;
+   - fixture matrix CLI.
+
+Report:
+- actual development DB/schema being used;
+- whether migration/configuration was corrected;
+- status of the seven #329 failures;
+- canonical 13-dimension compatibility;
+- #330 destination compatibility;
+- final test count;
+- whether this validation/showcase task is now safe to merge.
+
+Do not start #331.

@@ -43,3 +43,4 @@
 - [Offline provider fixtures](offline-provider-fixtures.md) — isolate provider selection from workspace credentials; fresh gates still need simulated time for multi-call fixtures.
 - [Open-use scenario decisions](open-use-scenario-decisions.md) — human financial reviews affect only personal session scenarios; never add sign-in or write human decisions to canonical history.
 - [Development migration receipts](development-migration-receipts.md) — require execution evidence tied to instance identity; database names and endpoint hashes cannot prove historical continuity.
+- [Offline validation and showcase boundaries](offline-validation-showcase.md) — keep saved-output annotations outside the proof contract; only explicitly reviewed, provenance-complete snapshots may be public examples.

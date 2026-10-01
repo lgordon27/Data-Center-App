@@ -1,0 +1,566 @@
+{
+  "schemaVersion": 1,
+  "fixtureStatus": "offline-validation-only",
+  "cases": [
+    {
+      "caseId": "databank-red-oak-dfw10",
+      "displayName": "DataBank Red Oak / DFW10",
+      "origin": "retained-repository-material",
+      "project": {
+        "projectReference": "databank-red-oak",
+        "name": "DataBank Red Oak",
+        "scope": { "kind": "campus", "key": "red-oak-campus", "label": "Red Oak campus" }
+      },
+      "researchAsOfDate": null,
+      "sources": [
+        {
+          "sourceId": "red-oak-retained-article",
+          "title": "DataBank $2B Red Oak Data Center: 2026 CRE Analysis",
+          "publisher": "The AI Consulting Network (secondary reporting)",
+          "url": "https://www.theaiconsultingnetwork.com/blog/databank-2b-red-oak-dallas-data-center-oracle-cre-investors-2026",
+          "publishedAt": null,
+          "accessedAt": null,
+          "fixturePath": "server/fixtures/red-oak-retained.txt",
+          "passages": [
+            {
+              "passageId": "red-oak-site-campus",
+              "text": "The DataBank Red Oak data center campus is a 292-acre, eight-building hyperscale development located 20 miles south of Dallas in Red Oak, Texas."
+            },
+            {
+              "passageId": "red-oak-three-building-phase",
+              "text": "On April 21, 2026, DataBank closed a $2 billion construction loan, the largest in company history, to fund the first three buildings (DFW9, DFW10, and DFW11), which together total 600,000 square feet and 180 megawatts of power."
+            },
+            {
+              "passageId": "red-oak-full-campus-capacity",
+              "text": "The full campus will deliver up to 480 megawatts of power across eight buildings."
+            },
+            {
+              "passageId": "red-oak-dfw10-cost-and-target",
+              "text": "DFW10 alone has a registered interior build-out cost of $301 million, with completion targeted for January 2027."
+            }
+          ]
+        }
+      ],
+      "assertions": [
+        {
+          "id": "red-oak-identity",
+          "kind": "identity-match",
+          "target": "identity",
+          "expectedValue": "DataBank Red Oak",
+          "scope": { "kind": "campus", "key": "red-oak-campus", "label": "Red Oak campus" },
+          "asOfDate": null,
+          "provenance": { "sourceId": "red-oak-retained-article", "passageId": "red-oak-site-campus", "fixturePath": "server/fixtures/red-oak-retained.txt", "attribution": "Secondary reporting; not independent validation." },
+          "severity": "BLOCKER"
+        },
+        {
+          "id": "red-oak-campus-capacity",
+          "kind": "capacity",
+          "target": "campus-capacity",
+          "expectedValue": 480,
+          "unit": "MW",
+          "expectedStatus": "forecast",
+          "scope": { "kind": "campus", "key": "red-oak-campus", "label": "Planned full campus" },
+          "asOfDate": null,
+          "tolerance": 0,
+          "provenance": { "sourceId": "red-oak-retained-article", "passageId": "red-oak-full-campus-capacity", "fixturePath": "server/fixtures/red-oak-retained.txt", "attribution": "Reported as a future full-campus capacity; not an operating value." },
+          "severity": "BLOCKER"
+        },
+        {
+          "id": "red-oak-phase-capacity",
+          "kind": "capacity",
+          "target": "dfw9-dfw10-dfw11-phase-capacity",
+          "expectedValue": 180,
+          "unit": "MW",
+          "expectedStatus": "forecast",
+          "scope": { "kind": "phase", "key": "dfw9-dfw10-dfw11", "label": "DFW9, DFW10, and DFW11 together" },
+          "asOfDate": "2026-04-21",
+          "tolerance": 0,
+          "provenance": { "sourceId": "red-oak-retained-article", "passageId": "red-oak-three-building-phase", "fixturePath": "server/fixtures/red-oak-retained.txt", "attribution": "Secondary reporting; the dated sentence scopes this to the first three buildings." },
+          "severity": "BLOCKER"
+        },
+        {
+          "id": "red-oak-loan-date",
+          "kind": "date",
+          "target": "construction-loan-close-date",
+          "expectedValue": "2026-04-21",
+          "expectedStatus": "actual",
+          "scope": { "kind": "campus", "key": "red-oak-campus", "label": "Red Oak campus financing" },
+          "asOfDate": "2026-04-21",
+          "provenance": { "sourceId": "red-oak-retained-article", "passageId": "red-oak-three-building-phase", "fixturePath": "server/fixtures/red-oak-retained.txt", "attribution": "The article reports the loan closing date; financing is not project capex." },
+          "severity": "MAJOR"
+        },
+        {
+          "id": "red-oak-dfw10-registered-cost",
+          "kind": "capex",
+          "target": "dfw10-registered-interior-buildout-cost",
+          "expectedValue": 301,
+          "unit": "USD millions",
+          "expectedStatus": "estimate",
+          "scope": { "kind": "facility", "key": "dfw10", "label": "DFW10 only" },
+          "asOfDate": null,
+          "tolerance": 0,
+          "provenance": { "sourceId": "red-oak-retained-article", "passageId": "red-oak-dfw10-cost-and-target", "fixturePath": "server/fixtures/red-oak-retained.txt", "attribution": "Reported registered interior build-out cost; not actual spend or whole-project direct capex." },
+          "severity": "MAJOR"
+        },
+        {
+          "id": "red-oak-dfw10-completion-target",
+          "kind": "date",
+          "target": "dfw10-completion-target",
+          "expectedValue": "2027-01",
+          "expectedStatus": "forecast",
+          "scope": { "kind": "facility", "key": "dfw10", "label": "DFW10 only" },
+          "asOfDate": null,
+          "provenance": { "sourceId": "red-oak-retained-article", "passageId": "red-oak-dfw10-cost-and-target", "fixturePath": "server/fixtures/red-oak-retained.txt", "attribution": "A completion target, not an observed completion date." },
+          "severity": "MAJOR"
+        },
+        {
+          "id": "red-oak-dfw10-scope-trap",
+          "kind": "scope-trap",
+          "target": "dfw10-capacity",
+          "expectedState": "not-asserted",
+          "scope": { "kind": "facility", "key": "dfw10", "label": "DFW10 only" },
+          "asOfDate": null,
+          "provenance": { "sourceId": "red-oak-retained-article", "passageId": "red-oak-three-building-phase", "fixturePath": "server/fixtures/red-oak-retained.txt", "attribution": "The 180 MW figure is for three buildings together; no DFW10-only MW value is stated." },
+          "severity": "MAJOR"
+        },
+        {
+          "id": "red-oak-dfw10-value-status",
+          "kind": "estimate-vs-actual",
+          "target": "dfw10-registered-interior-buildout-cost",
+          "expectedState": "not-actual",
+          "expectedStatus": "estimate",
+          "scope": { "kind": "facility", "key": "dfw10", "label": "DFW10 only" },
+          "asOfDate": null,
+          "provenance": { "sourceId": "red-oak-retained-article", "passageId": "red-oak-dfw10-cost-and-target", "fixturePath": "server/fixtures/red-oak-retained.txt", "attribution": "Retain the reported cost as an estimate, not a statement of actual expenditure." },
+          "severity": "MAJOR"
+        },
+        {
+          "id": "red-oak-live-capacity-unknown",
+          "kind": "unresolved-dimension",
+          "target": "current-operating-capacity",
+          "expectedState": "unknown / not asserted",
+          "scope": { "kind": "campus", "key": "red-oak-campus", "label": "Red Oak campus" },
+          "asOfDate": null,
+          "provenance": { "sourceId": "red-oak-retained-article", "passageId": "red-oak-full-campus-capacity", "fixturePath": "server/fixtures/red-oak-retained.txt", "attribution": "A future capacity target does not establish current operating capacity." },
+          "severity": "MAJOR"
+        }
+      ],
+      "intentionallyUnknown": [
+        "DFW10-specific MW capacity or energization",
+        "Current operating capacity for the campus",
+        "Whether the registered DFW10 interior build-out cost was spent",
+        "Article publication date and article access date"
+      ],
+      "illustrativeRegressionInputs": {
+        "sourceFixture": "server/fixtures/expected-evidence-cases.json",
+        "status": "illustrative; never ground truth",
+        "values": {
+          "stage": "construction",
+          "scale": { "category": "hyperscale", "itLoadMW": 500 },
+          "jurisdiction": { "countryCode": "US", "subdivisionCode": "TX", "locality": "Abilene" },
+          "coolingDesign": { "technology": "hybrid", "waterUse": "process-water" }
+        }
+      }
+    },
+    {
+      "caseId": "stargate-abilene",
+      "displayName": "Stargate Abilene",
+      "origin": "retained-repository-material",
+      "project": {
+        "projectReference": "stargate-abilene",
+        "name": "Stargate Abilene",
+        "scope": { "kind": "campus", "key": "abilene-campus", "label": "Abilene campus" }
+      },
+      "researchAsOfDate": "2025-09-30",
+      "sources": [
+        {
+          "sourceId": "crusoe-abilene-announcement",
+          "title": "Crusoe announces flagship Abilene data center is live",
+          "publisher": "Crusoe",
+          "url": "https://www.crusoe.ai/resources/newsroom/crusoe-announces-flagship-abilene-data-center-is-live",
+          "publishedAt": "2025-09-30",
+          "accessedAt": "2026-09-17",
+          "fixturePath": "server/dossiers.seed.json",
+          "passages": [
+            {
+              "passageId": "stargate-first-phase-and-plan",
+              "text": "The first phase of Stargate’s flagship data center campus in Abilene, Texas, is now up and running on Oracle Cloud Infrastructure (OCI). At completion, the planned eight building campus will be able to support hundreds of thousands of GPUs."
+            },
+            {
+              "passageId": "stargate-oracle-collaboration",
+              "text": "The Abilene campus is part of a long-term collaboration with Oracle."
+            }
+          ]
+        },
+        {
+          "sourceId": "stargate-retained-water-review",
+          "title": "Reviewed Stargate Abilene source set",
+          "publisher": "SafeLoc retained dossier review",
+          "url": "https://www.crusoe.ai/resources/newsroom/crusoe-announces-flagship-abilene-data-center-is-live",
+          "publishedAt": "2025-09-30",
+          "accessedAt": "2026-09-17",
+          "fixturePath": "server/dossiers.seed.json",
+          "passages": [
+            {
+              "passageId": "stargate-water-not-disclosed",
+              "text": "The reviewed exact-campus announcement describes liquid and air cooling but does not disclose facility-level water rights or allocation."
+            }
+          ]
+        }
+      ],
+      "assertions": [
+        {
+          "id": "stargate-identity",
+          "kind": "identity-match",
+          "target": "identity",
+          "expectedValue": "Stargate Abilene",
+          "scope": { "kind": "campus", "key": "abilene-campus", "label": "Abilene campus" },
+          "asOfDate": "2025-09-30",
+          "provenance": { "sourceId": "crusoe-abilene-announcement", "passageId": "stargate-first-phase-and-plan", "fixturePath": "server/dossiers.seed.json", "attribution": "Company announcement; retained scope is the Abilene campus." },
+          "severity": "BLOCKER"
+        },
+        {
+          "id": "stargate-first-phase-status",
+          "kind": "phase",
+          "target": "first-phase-status",
+          "expectedValue": "operating",
+          "expectedStatus": "actual",
+          "scope": { "kind": "phase", "key": "first-phase", "label": "First phase only" },
+          "asOfDate": "2025-09-30",
+          "provenance": { "sourceId": "crusoe-abilene-announcement", "passageId": "stargate-first-phase-and-plan", "fixturePath": "server/dossiers.seed.json", "attribution": "Crusoe describes its first phase as operating on the publication date." },
+          "severity": "BLOCKER"
+        },
+        {
+          "id": "stargate-campus-building-plan",
+          "kind": "phase",
+          "target": "planned-campus-building-count",
+          "expectedValue": 8,
+          "unit": "buildings",
+          "expectedStatus": "forecast",
+          "scope": { "kind": "campus", "key": "abilene-campus", "label": "Planned eight-building campus" },
+          "asOfDate": "2025-09-30",
+          "tolerance": 0,
+          "provenance": { "sourceId": "crusoe-abilene-announcement", "passageId": "stargate-first-phase-and-plan", "fixturePath": "server/dossiers.seed.json", "attribution": "Planned completion scope; not a count of currently operating buildings." },
+          "severity": "MAJOR"
+        },
+        {
+          "id": "stargate-oracle-relationship",
+          "kind": "phase",
+          "target": "oracle-relationship",
+          "expectedValue": "long-term collaboration",
+          "expectedStatus": "actual",
+          "scope": { "kind": "campus", "key": "abilene-campus", "label": "Abilene campus" },
+          "asOfDate": "2025-09-30",
+          "provenance": { "sourceId": "crusoe-abilene-announcement", "passageId": "stargate-oracle-collaboration", "fixturePath": "server/dossiers.seed.json", "attribution": "Relationship context only; no lease economics or ownership is established." },
+          "severity": "MAJOR"
+        },
+        {
+          "id": "stargate-water-unknown",
+          "kind": "unresolved-dimension",
+          "target": "water-rights-and-allocation",
+          "expectedState": "unknown / not asserted",
+          "scope": { "kind": "campus", "key": "abilene-campus", "label": "Operating core campus" },
+          "asOfDate": "2025-09-30",
+          "provenance": { "sourceId": "stargate-retained-water-review", "passageId": "stargate-water-not-disclosed", "fixturePath": "server/dossiers.seed.json", "attribution": "Retained source review notes this facility-level detail is not disclosed; this is not a claim that rights do not exist." },
+          "severity": "MAJOR"
+        },
+        {
+          "id": "stargate-capacity-unknown",
+          "kind": "unresolved-dimension",
+          "target": "current-campus-capacity",
+          "expectedState": "unknown / not asserted",
+          "scope": { "kind": "campus", "key": "abilene-campus", "label": "Abilene campus" },
+          "asOfDate": "2025-09-30",
+          "provenance": { "sourceId": "crusoe-abilene-announcement", "passageId": "stargate-first-phase-and-plan", "fixturePath": "server/dossiers.seed.json", "attribution": "This retained passage does not give an MW value; other seed summaries are not treated as an exact retained capacity passage." },
+          "severity": "MAJOR"
+        }
+      ],
+      "intentionallyUnknown": [
+        "Facility-level water rights, allocation, and consumption",
+        "Exact current campus MW capacity and energized MW by phase",
+        "Expansion capacity or economics",
+        "Oracle contract economics and tenant concentration"
+      ],
+      "illustrativeRegressionInputs": {
+        "sourceFixture": "server/fixtures/expected-evidence-cases.json",
+        "status": "illustrative; never ground truth",
+        "values": {
+          "stage": "commissioning",
+          "scale": { "category": "hyperscale", "itLoadMW": null },
+          "jurisdiction": { "countryCode": "US", "subdivisionCode": "TX", "locality": "Abilene" }
+        }
+      }
+    },
+    {
+      "caseId": "microsoft-el-mirage-non-texas-hyperscale-profile",
+      "displayName": "Non-Texas hyperscale profile / Microsoft El Mirage",
+      "origin": "retained-repository-material",
+      "project": {
+        "projectReference": "microsoft-el-mirage",
+        "name": "Microsoft El Mirage datacenter campus",
+        "scope": { "kind": "campus", "key": "el-mirage-campus", "label": "2019 announced El Mirage campus" }
+      },
+      "researchAsOfDate": "2019-07-30",
+      "sources": [
+        {
+          "sourceId": "el-mirage-city-announcement",
+          "title": "Microsoft Builds World-Class Datacenter Campus in Goodyear",
+          "publisher": "City of Goodyear, quoting the City of El Mirage",
+          "url": "https://www.goodyearaz.gov/Home/Components/News/News/9847/32?arch=1",
+          "publishedAt": "2019-07-30",
+          "accessedAt": "2026-09-17",
+          "fixturePath": "server/dossiers.seed.json",
+          "passages": [
+            {
+              "passageId": "el-mirage-announced-boundary",
+              "text": "Microsoft is building a 254,000 SF world-class, sustainable datacenter campus on 150 acres in southern El Mirage."
+            },
+            {
+              "passageId": "el-mirage-regional-renewable-plan",
+              "text": "Microsoft intends to develop the datacenter campuses in El Mirage and Goodyear, Arizona to be among the most sustainably designed and operated in the world – powered with 100% renewable energy."
+            },
+            {
+              "passageId": "el-mirage-regional-jobs",
+              "text": "Microsoft expected more than 100 permanent jobs and more than 1,000 construction jobs across the initial Arizona campuses."
+            }
+          ]
+        },
+        {
+          "sourceId": "el-mirage-regional-water-review",
+          "title": "Microsoft datacenters in Arizona",
+          "publisher": "Microsoft",
+          "url": "https://local.microsoft.com/wp-content/uploads/2025/10/Microsoft-datacenters-in-Arizona.pdf",
+          "publishedAt": "2025-10-01",
+          "accessedAt": "2026-09-17",
+          "fixturePath": "server/dossiers.seed.json",
+          "passages": [
+            {
+              "passageId": "el-mirage-water-not-allocated",
+              "text": "Microsoft reports regional Arizona water and cooling practices; the publication does not allocate an exact-campus water total to El Mirage."
+            }
+          ]
+        }
+      ],
+      "assertions": [
+        {
+          "id": "el-mirage-identity",
+          "kind": "identity-match",
+          "target": "identity",
+          "expectedValue": "Microsoft El Mirage datacenter campus",
+          "scope": { "kind": "campus", "key": "el-mirage-campus", "label": "El Mirage campus" },
+          "asOfDate": "2019-07-30",
+          "provenance": { "sourceId": "el-mirage-city-announcement", "passageId": "el-mirage-announced-boundary", "fixturePath": "server/dossiers.seed.json", "attribution": "City announcement; preserve the 2019 scope." },
+          "severity": "BLOCKER"
+        },
+        {
+          "id": "el-mirage-developer",
+          "kind": "developer",
+          "target": "developer",
+          "expectedValue": "Microsoft",
+          "expectedStatus": "forecast",
+          "scope": { "kind": "campus", "key": "el-mirage-campus", "label": "2019 announced campus" },
+          "asOfDate": "2019-07-30",
+          "provenance": { "sourceId": "el-mirage-city-announcement", "passageId": "el-mirage-announced-boundary", "fixturePath": "server/dossiers.seed.json", "attribution": "The announcement says Microsoft is building the campus at that time; it does not establish present operating status." },
+          "severity": "MAJOR"
+        },
+        {
+          "id": "el-mirage-land-area",
+          "kind": "capacity",
+          "target": "announced-site-area",
+          "expectedValue": 150,
+          "unit": "acres",
+          "expectedStatus": "forecast",
+          "scope": { "kind": "campus", "key": "el-mirage-campus", "label": "2019 announced campus" },
+          "asOfDate": "2019-07-30",
+          "tolerance": 0,
+          "provenance": { "sourceId": "el-mirage-city-announcement", "passageId": "el-mirage-announced-boundary", "fixturePath": "server/dossiers.seed.json", "attribution": "Announced campus site area; not IT capacity." },
+          "severity": "MAJOR"
+        },
+        {
+          "id": "el-mirage-building-area",
+          "kind": "capacity",
+          "target": "announced-building-area",
+          "expectedValue": 254000,
+          "unit": "sqft",
+          "expectedStatus": "forecast",
+          "scope": { "kind": "campus", "key": "el-mirage-campus", "label": "2019 announced campus" },
+          "asOfDate": "2019-07-30",
+          "tolerance": 0,
+          "provenance": { "sourceId": "el-mirage-city-announcement", "passageId": "el-mirage-announced-boundary", "fixturePath": "server/dossiers.seed.json", "attribution": "Announced building area; not IT load or completed area." },
+          "severity": "MAJOR"
+        },
+        {
+          "id": "el-mirage-regional-renewable-scope-trap",
+          "kind": "scope-trap",
+          "target": "el-mirage-exact-campus-renewable-share",
+          "expectedState": "not-asserted",
+          "scope": { "kind": "campus", "key": "el-mirage-campus", "label": "El Mirage campus only" },
+          "asOfDate": "2019-07-30",
+          "provenance": { "sourceId": "el-mirage-city-announcement", "passageId": "el-mirage-regional-renewable-plan", "fixturePath": "server/dossiers.seed.json", "attribution": "The retained claim covers multiple Arizona campuses and states intent, not an El Mirage delivered percentage." },
+          "severity": "MAJOR"
+        },
+        {
+          "id": "el-mirage-current-status-unknown",
+          "kind": "unresolved-dimension",
+          "target": "current-operating-status",
+          "expectedState": "unknown / not asserted",
+          "scope": { "kind": "campus", "key": "el-mirage-campus", "label": "El Mirage campus" },
+          "asOfDate": "2019-07-30",
+          "provenance": { "sourceId": "el-mirage-city-announcement", "passageId": "el-mirage-announced-boundary", "fixturePath": "server/dossiers.seed.json", "attribution": "This source is an announcement and does not establish present-day status." },
+          "severity": "MAJOR"
+        },
+        {
+          "id": "el-mirage-water-unknown",
+          "kind": "unresolved-dimension",
+          "target": "exact-campus-water-use",
+          "expectedState": "unknown / not asserted",
+          "scope": { "kind": "campus", "key": "el-mirage-campus", "label": "El Mirage campus" },
+          "asOfDate": "2025-10-01",
+          "provenance": { "sourceId": "el-mirage-regional-water-review", "passageId": "el-mirage-water-not-allocated", "fixturePath": "server/dossiers.seed.json", "attribution": "Regional practice is not allocated to this campus; this is not proof of zero use." },
+          "severity": "MAJOR"
+        }
+      ],
+      "intentionallyUnknown": [
+        "Exact-campus IT or utility capacity",
+        "Current operating/completion status",
+        "Exact-campus water use",
+        "El Mirage-only renewable-energy share",
+        "El Mirage-only regional jobs or tax figures"
+      ],
+      "illustrativeRegressionInputs": {
+        "sourceFixture": "server/fixtures/expected-evidence-cases.json",
+        "status": "illustrative non-Texas profile only; not facts about El Mirage",
+        "values": {
+          "stage": "pre-construction",
+          "scale": { "category": "large", "itLoadMW": 180 },
+          "jurisdiction": { "countryCode": "US", "subdivisionCode": "VA", "locality": null },
+          "coolingDesign": { "technology": "direct-liquid", "waterUse": "process-water" }
+        }
+      }
+    },
+    {
+      "caseId": "illustrative-small-colocation-profile",
+      "displayName": "Smaller colocation profile (test-only)",
+      "origin": "illustrative-test-only",
+      "project": {
+        "projectReference": "small-colocation-example",
+        "name": "Small Colocation Example (illustrative)",
+        "scope": { "kind": "facility", "key": "colo-1", "label": "Illustrative facility profile" }
+      },
+      "researchAsOfDate": null,
+      "sources": [],
+      "assertions": [
+        {
+          "id": "small-colo-identity-not-asserted",
+          "kind": "identity-match",
+          "target": "identity",
+          "expectedState": "unknown / not asserted",
+          "scope": { "kind": "facility", "key": "colo-1", "label": "Illustrative facility profile" },
+          "asOfDate": null,
+          "provenance": { "sourceId": null, "passageId": null, "fixturePath": "server/fixtures/expected-evidence-cases.json", "attribution": "Test fixture label only; no real project identity or location asserted." },
+          "severity": "MAJOR"
+        },
+        {
+          "id": "small-colo-capacity-unknown",
+          "kind": "unresolved-dimension",
+          "target": "facility-it-capacity",
+          "expectedState": "unknown / not asserted",
+          "scope": { "kind": "facility", "key": "colo-1", "label": "Illustrative facility profile" },
+          "asOfDate": null,
+          "provenance": { "sourceId": null, "passageId": null, "fixturePath": "server/fixtures/expected-evidence-cases.json", "attribution": "The existing 8 MW regression input is illustrative only and is not ground truth." },
+          "severity": "MAJOR"
+        },
+        {
+          "id": "small-colo-financing-unknown",
+          "kind": "unresolved-dimension",
+          "target": "facility-financing-and-tenant-terms",
+          "expectedState": "unknown / not asserted",
+          "scope": { "kind": "facility", "key": "colo-1", "label": "Illustrative facility profile" },
+          "asOfDate": null,
+          "provenance": { "sourceId": null, "passageId": null, "fixturePath": "server/fixtures/expected-evidence-cases.json", "attribution": "Private facility terms are not supplied by this illustrative fixture." },
+          "severity": "MAJOR"
+        }
+      ],
+      "intentionallyUnknown": [
+        "Real project identity, operator, and location",
+        "Facility capacity, dates, costs, utility or water terms",
+        "Tenant/lease, financing, and private diligence fields"
+      ],
+      "illustrativeRegressionInputs": {
+        "sourceFixture": "server/fixtures/expected-evidence-cases.json",
+        "status": "illustrative only; never ground truth",
+        "values": {
+          "stage": "operational",
+          "scale": { "category": "small", "itLoadMW": 8 },
+          "jurisdiction": { "countryCode": "US", "subdivisionCode": "WA", "locality": "Seattle" },
+          "projectType": "colocation-provider",
+          "coolingDesign": { "technology": "air-cooled", "waterUse": "none" }
+        }
+      }
+    },
+    {
+      "caseId": "sparse-unresolved-project",
+      "displayName": "Sparse / unresolved project (test-only)",
+      "origin": "illustrative-test-only",
+      "project": {
+        "projectReference": "sparse-evidence-example",
+        "name": "Sparse Evidence Example (illustrative)",
+        "scope": { "kind": "unknown", "key": "unknown", "label": "Unknown project scope" }
+      },
+      "researchAsOfDate": null,
+      "sources": [],
+      "assertions": [
+        {
+          "id": "sparse-identity-not-asserted",
+          "kind": "identity-match",
+          "target": "identity",
+          "expectedState": "unknown / not asserted",
+          "scope": { "kind": "unknown", "key": "unknown", "label": "Unknown project scope" },
+          "asOfDate": null,
+          "provenance": { "sourceId": null, "passageId": null, "fixturePath": "server/fixtures/expected-evidence-cases.json", "attribution": "Synthetic placeholder only; no real project identity is asserted." },
+          "severity": "MAJOR"
+        },
+        {
+          "id": "sparse-power-unknown",
+          "kind": "unresolved-dimension",
+          "target": "power-grid-interconnection",
+          "expectedState": "unknown / not asserted",
+          "scope": { "kind": "unknown", "key": "unknown", "label": "Unknown project scope" },
+          "asOfDate": null,
+          "provenance": { "sourceId": null, "passageId": null, "fixturePath": "server/fixtures/expected-evidence-cases.json", "attribution": "Sparse fixture has no retained evidence; missing is not searched-not-found." },
+          "severity": "MAJOR"
+        },
+        {
+          "id": "sparse-phase-unknown",
+          "kind": "unresolved-dimension",
+          "target": "construction-phasing",
+          "expectedState": "unknown / not asserted",
+          "scope": { "kind": "unknown", "key": "unknown", "label": "Unknown project scope" },
+          "asOfDate": null,
+          "provenance": { "sourceId": null, "passageId": null, "fixturePath": "server/fixtures/expected-evidence-cases.json", "attribution": "Sparse fixture has no retained evidence; do not infer stage." },
+          "severity": "MAJOR"
+        },
+        {
+          "id": "sparse-water-unknown",
+          "kind": "unresolved-dimension",
+          "target": "water-cooling",
+          "expectedState": "unknown / not asserted",
+          "scope": { "kind": "unknown", "key": "unknown", "label": "Unknown project scope" },
+          "asOfDate": null,
+          "provenance": { "sourceId": null, "passageId": null, "fixturePath": "server/fixtures/expected-evidence-cases.json", "attribution": "Sparse fixture has no retained evidence; unknown does not mean no water use." },
+          "severity": "MAJOR"
+        }
+      ],
+      "intentionallyUnknown": [
+        "Project identity, operator, and location",
+        "Capacity, construction phase, dates, and capex",
+        "Every evidence dimension not explicitly supported by a retained source"
+      ],
+      "illustrativeRegressionInputs": {
+        "sourceFixture": "server/fixtures/expected-evidence-cases.json",
+        "status": "all profile signals explicitly unknown",
+        "values": {}
+      }
+    }
+  ]
+}

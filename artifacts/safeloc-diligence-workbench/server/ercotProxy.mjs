@@ -38,9 +38,9 @@ function validatePayload(key, payload) {
   }
   if (
     key === "siteFreshness" &&
-    (typeof payload.generated_at !== "string" || !Number.isFinite(Date.parse(payload.generated_at)))
+    (!payload || typeof payload !== "object" || Array.isArray(payload))
   ) {
-    throw new Error("site freshness payload does not contain a valid generated_at timestamp");
+    throw new Error("site freshness payload is not an object");
   }
 }
 
@@ -80,11 +80,11 @@ export async function fetchErcotQueueSnapshot({
       data[key] = result.payload;
       responses.push(result.metadata);
     }
-    const sourceUpdatedAt =
-      data.siteFreshness.generated_at ||
-      data.loadQueueSummary.generated_at ||
-      data.projects.generated_at ||
-      fetchedAt;
+    const sourceUpdatedAt = [
+      data.siteFreshness.generated_at,
+      data.loadQueueSummary.generated_at,
+      data.projects.generated_at,
+    ].find((value) => typeof value === "string" && Number.isFinite(Date.parse(value))) ?? null;
     const successful = {
       status: "live",
       fetchedAt,

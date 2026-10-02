@@ -209,6 +209,13 @@ export function dossierToResearchResponse(
   const capacityMW = dossier.canonicalData.identity.capacityMW;
   const hasDirectoryCapacity = typeof capacityMW === "number" && Number.isFinite(capacityMW);
   return {
+    projectIdentity: {
+      projectId: dossier.slug,
+      providerId: null,
+      name: dossier.name,
+      location: dossier.canonicalData.identity.location,
+      operator: dossier.canonicalData.identity.operator,
+    },
     projectSummary: {
       name: dossier.name,
       location: dossier.canonicalData.identity.location,

@@ -1069,7 +1069,14 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
   const [sourceCacheNotice, setSourceCacheNotice] = useState<string | null>(null);
   const sourceResearchAbortRef = useRef<AbortController | null>(null);
   const sourceResearchRunRef = useRef(0);
-  const sourceResearchProjectKey = `${project.kind}:${project.name}:${project.location}`;
+  const sourceResearchProjectKey = JSON.stringify([
+    project.kind,
+    project.name,
+    project.location,
+    project.kind === "custom" ? project.projectIdentity?.projectId ?? null : null,
+    project.kind === "custom" ? project.projectIdentity?.providerId ?? null : null,
+    project.kind === "custom" ? project.projectIdentity?.operator ?? null : null,
+  ]);
   const sourceResearchProjectKeyRef = useRef(sourceResearchProjectKey);
   const [searchCoverage, setSearchCoverage] = useState(project.researchCoverage);
   const [decisionHistory, setDecisionHistory] = useState<DecisionHistoryEntry[]>(getDecisionHistory);
@@ -1324,6 +1331,7 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
     setSourceResearchError(null);
     setSourceCacheNotice(null);
     const runId = sourceResearchRunRef.current + 1;
+    const requestProjectKey = sourceResearchProjectKey;
     sourceResearchRunRef.current = runId;
     sourceResearchAbortRef.current?.abort();
     setSourceResearchProgress("researching");
@@ -1331,6 +1339,7 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
     sourceResearchAbortRef.current = controller;
     try {
       const result = await researchProject(project.name, project.location, {
+        projectIdentity: project.kind === "custom" ? project.projectIdentity : undefined,
         focusIds,
         currentEvidence: items.map((item) => ({
           id: item.id,
@@ -1343,7 +1352,10 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
         signal: controller.signal,
         onProgress: setSourceResearchProgress,
       });
-      if (sourceResearchRunRef.current !== runId) return;
+      if (
+        sourceResearchRunRef.current !== runId
+        || sourceResearchProjectKeyRef.current !== requestProjectKey
+      ) return;
       setSearchCoverage(result.researchCoverage);
       const proposals = Object.fromEntries(
         result.evidence

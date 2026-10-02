@@ -1,12 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { blockUnmockedProviderRequests } from "./offline-provider-reads";
 import { readFileSync } from "node:fs";
-import { mkdtemp } from "node:fs/promises";
-import { EventEmitter } from "node:events";
-import os from "node:os";
-import path from "node:path";
-import { handleResearchProjectRequest } from "../server/researchProjectProxy.mjs";
-import { createResearchProjectCache } from "../server/researchProjectCache.mjs";
 
 const syntheticResearchFixture = JSON.parse(
   readFileSync(new URL("./fixtures/research-project-synthetic.json", import.meta.url), "utf8"),
@@ -44,38 +38,6 @@ const evidenceIds = [
   "downtime_cost",
 ];
 const scenariosKey = "safeloc:diligence:scenarios:v1";
-
-async function invokeResearchHandler(project: Record<string, unknown>, options: Record<string, unknown>) {
-  const request: any = new EventEmitter();
-  request.method = "POST";
-  request.body = { ...project, forceRefresh: true };
-  request.ip = "198.51.100.52";
-  request.headers = { "x-safeloc-research-policy": "single-shot" };
-  request.get = (name: string) => request.headers[name.toLowerCase()];
-
-  const response: any = {
-    statusCode: 200,
-    headers: {},
-    body: "",
-    writableEnded: false,
-    destroyed: false,
-    setHeader(name: string, value: string) {
-      this.headers[name.toLowerCase()] = value;
-    },
-    end(body = "") {
-      this.body = body;
-      this.writableEnded = true;
-    },
-  };
-  const directory = await mkdtemp(path.join(os.tmpdir(), "safeloc-browser-handler-"));
-  await handleResearchProjectRequest(request, response, {
-    ...options,
-    cache: createResearchProjectCache({ directory }),
-    registry: { retain: async () => {} },
-    rateLimiter: { allow: () => ({ allowed: true, retryAfterSeconds: 0 }) },
-  });
-  return { statusCode: response.statusCode, body: JSON.parse(response.body) as Record<string, unknown> };
-}
 
 async function openCustomProjectDialog(page: import("@playwright/test").Page) {
   const paths = page.getByTestId("home-explore-panel");
@@ -391,10 +353,17 @@ test.describe("custom project research", () => {
     await blockUnmockedProviderRequests(page);
     await page.route("**/api/research-project", async (route) => {
       await new Promise((resolve) => setTimeout(resolve, 150));
-      const request = route.request().postDataJSON() as { name: string; location: string; focusIds?: string[]; forceRefresh?: boolean };
+      const request = route.request().postDataJSON() as { name: string; location: string; projectIdentity?: { projectId: string | null; providerId: string | null; name: string; location: string; operator: string | null }; knownData?: { providerId?: string; operator?: string }; focusIds?: string[]; forceRefresh?: boolean };
       const response = customResponse();
       response.projectSummary.name = request.name;
       response.projectSummary.location = request.location;
+      response.projectIdentity = request.projectIdentity ?? {
+        projectId: null,
+        providerId: request.knownData?.providerId ?? null,
+        name: request.name,
+        location: request.location,
+        operator: request.knownData?.operator ?? null,
+      };
       const electricity = response.evidence.find((item) => item.id === "electricity_cost")!;
       const electricityPassage = `${request.name} is located in ${request.location}. The facility electricity cost is 48 USD/MWh.`;
       const electricitySource = electricity.sources?.[0] as Record<string, any> | undefined;
@@ -537,67 +506,81 @@ test.describe("custom project research", () => {
     expect(researchRequests).toBe(1);
   });
 
-  test("hands a handler-produced partial response to Project Reality and Advisor Brief", async ({ page }) => {
-    const categoryIds = [
-      "project-identity",
-      "grid",
-      "electricity",
-      "water",
-      "permitting-community",
-      "construction-capital",
-      "tenant-counterparty",
-      "climate-operational-hazard",
-    ];
-    const source = {
-      ...partialReceiptsFixture.accessibleReceipt,
-      categoryIds,
-      excerpt: partialReceiptsFixture.accessibleReceipt.passage,
+  test("renders retained project evidence in the incomplete custom research flow", async ({ page }) => {
+    const response = customResponse() as Record<string, any>;
+    response.projectSummary.name = partialReceiptsFixture.project.name;
+    response.projectSummary.location = partialReceiptsFixture.project.location;
+    response.projectSummary.capacityMW = null;
+    response.projectSummary.capacityProvenance = "unknown";
+    response.projectIdentity = {
+      projectId: null,
+      providerId: null,
+      name: partialReceiptsFixture.project.name,
+      location: partialReceiptsFixture.project.location,
+      operator: null,
     };
-    let providerCalls = 0;
-    const serverResponse = await invokeResearchHandler(partialReceiptsFixture.project, {
-      apiKey: "synthetic-browser-test-key",
-      categoryIds,
-      allowGoogleFallback: false,
-      allowCorrectiveRetries: false,
-      googleDiscoveryImpl: async () => ({
-        status: "completed",
-        provider: "google-gemini-grounding",
-        model: "synthetic-offline-model",
-        queries: ["synthetic exact-project public record"],
-        candidates: [{
-          ...source,
-          referringQueries: ["synthetic exact-project public record"],
-          origin: "synthetic-offline-discovery",
-          discoveryOnly: true,
-        }],
-        groundingMetadataPresent: true,
-        groundingSearchExecuted: true,
-        usableCitationMetadataPresent: true,
-        googleSearchCallCount: 1,
-        googleSearchResultCount: 1,
-        urlCitationCount: 1,
-        citationCount: 1,
-        providerRequestCount: 1,
-      }),
-      fetchImpl: async () => {
-        providerCalls += 1;
-        return new Response(JSON.stringify({ error: { message: "synthetic provider unavailable" } }), { status: 503 });
+    response.researchStatus = "partial";
+    delete response.researchOutcome;
+
+    const receipt = partialReceiptsFixture.accessibleReceipt;
+    const passage = receipt.passage;
+    const url = receipt.url;
+    const waterRights = response.evidence.find((item: { id: string }) => item.id === "water_rights");
+    const waterSource = {
+      url,
+      originalUrl: url,
+      canonicalUrl: url,
+      resolvedUrl: url,
+      title: receipt.title,
+      publisher: new URL(url).hostname,
+      sourceClass: "primary-government",
+      searchDomain: "water",
+      relationship: "primary",
+      exactProject: true,
+      facilityScope: "unknown",
+      phaseScope: "unknown",
+      timePeriod: null,
+      accessStatus: "open",
+      excerpt: passage,
+      claimPassage: passage,
+      accessOutcome: {
+        state: "accessible",
+        reason: "open",
+        format: "html",
+        passage,
+        resolvedUrl: url,
+        canonicalUrl: url,
+        publicationDate: receipt.date,
+        publicationDateBasis: "provider-source-metadata",
+        publicationDateStatus: "resolved",
+        retrievalTime: "2026-09-03T12:00:00.000Z",
       },
-      documentFetchImpl: async () => new Response(
-        `<html><body>${partialReceiptsFixture.accessibleReceipt.passage}</body></html>`,
-        { status: 200, headers: { "content-type": "text/html" } },
-      ),
+    };
+    Object.assign(waterRights, {
+      value: "Not established",
+      unit: "Project evidence",
+      classification: "Missing Evidence",
+      citation: `A dated water-planning record was retrieved: ${url}`,
+      description: "The passage documents water planning, not water rights.",
+      sourceUrl: url,
+      sourceTitle: waterSource.title,
+      sourcePublisher: waterSource.publisher,
+      sourcePublishedAt: receipt.date,
+      sourceAccessedAt: "2026-09-03T12:00:00.000Z",
+      sourceAccessStatus: "open",
+      sourceRelevance: "unresolved",
+      coverageStatus: "partial",
+      sourceSupportConfidence: 0,
+      claimPassage: passage,
+      sources: [waterSource],
     });
-    expect(serverResponse.statusCode).toBe(200);
-    expect(serverResponse.body).toMatchObject({ researchStatus: "partial" });
-    expect(providerCalls).toBe(categoryIds.length);
-    expect((serverResponse.body.researchAudit as any).categories).toHaveLength(categoryIds.length);
+    response.sourceLedger = [waterSource];
 
     await page.unroute("**/api/research-project");
     await page.route("**/api/research-project", (route) => route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify(serverResponse.body),
+      body: JSON.stringify(response),
     }));
     await page.goto("/");
     await openCustomProjectDialog(page);
@@ -605,17 +588,21 @@ test.describe("custom project research", () => {
     await page.getByTestId("input-custom-project-location").fill(partialReceiptsFixture.project.location);
     await page.getByTestId("button-submit-custom-project").click();
 
-    await expect(page.getByTestId("custom-research-banner")).toContainText("RESEARCH INCOMPLETE · no eligible sources");
+    await expect(page.getByTestId("custom-research-banner")).toContainText("Search incomplete");
+    await expect(page.getByTestId("custom-research-banner")).not.toContainText("600 MW");
     await page.getByTestId("tab-reality").click();
     const realityFindings = page.getByTestId("retained-research-findings");
-    await expect(realityFindings).toContainText(partialReceiptsFixture.accessibleReceipt.passage);
-    await expect(realityFindings).toContainText(partialReceiptsFixture.accessibleReceipt.date);
+    await expect(realityFindings).toContainText(passage);
+    await expect(realityFindings).toContainText(receipt.date);
     await expect(realityFindings).toContainText("0 financially eligible");
 
     await page.getByTestId("tab-advisor").click();
     const advisorFindings = page.getByTestId("advisor-retained-research");
-    await expect(advisorFindings).toContainText(partialReceiptsFixture.accessibleReceipt.passage);
+    await expect(advisorFindings).toContainText(passage);
     await expect(advisorFindings).toContainText("Financial eligibility unresolved");
+
+    await page.getByTestId("tab-transmission").click();
+    await expect(page.getByTestId("button-opt-in-scenario")).toBeVisible();
   });
 
   test("launches research from Home, preserves 16 items, and resets to Stargate", async ({ page }) => {
@@ -875,6 +862,13 @@ test.describe("custom project research", () => {
     const researchRequests: Array<{
       name: string;
       location: string;
+      projectIdentity?: {
+        projectId: string | null;
+        providerId: string | null;
+        name: string;
+        location: string;
+        operator: string | null;
+      };
       knownData?: { capacity?: number; operator?: string; status?: string; sourceUrl?: string };
     }> = [];
     page.on("request", (request) => {
@@ -928,10 +922,19 @@ test.describe("custom project research", () => {
     await page.getByTestId("button-submit-custom-project").click();
     await expect(page).toHaveURL(/#analysis$/);
     await expect(page.getByTestId("conference-summary")).toContainText("QTS Irving 1");
+    await expect(page.getByTestId("custom-research-banner")).toContainText("Researching");
+    await expect(page.getByTestId("canonical-dossier-select")).toHaveCount(0);
     expect(researchRequests).toHaveLength(1);
     expect(researchRequests[0]).toEqual({
       name: "QTS Irving 1",
       location: "Irving, Dallas County, Texas",
+      projectIdentity: {
+        projectId: "qts-irving-1",
+        providerId: "qts-irving-1",
+        name: "QTS Irving 1",
+        location: "Irving, Dallas County, Texas",
+        operator: "QTS Data Centers",
+      },
       knownData: {
         capacity: 165,
         operator: "QTS Data Centers",
@@ -943,6 +946,24 @@ test.describe("custom project research", () => {
         state: "TX",
       },
     });
+    await page.getByTestId("tab-market").click();
+    await expect(page.getByTestId("conference-research-status")).toContainText("Research Incomplete");
+    await expect(page.getByTestId("custom-project-operator")).toHaveText("Operator: QTS Data Centers");
+    await expect(page.getByTestId("custom-project-id")).toHaveText("Project ID: qts-irving-1");
+    await expect(page.getByTestId("custom-project-provider-id")).toHaveText("Provider ID: qts-irving-1");
+    const restoredSession = await page.evaluate(() =>
+      JSON.parse(window.localStorage.getItem("safeloc:diligence:current-session:v1") ?? "{}"),
+    );
+    expect(restoredSession.customResearch.project.projectIdentity).toEqual({
+      projectId: "qts-irving-1",
+      providerId: "qts-irving-1",
+      name: "QTS Irving 1",
+      location: "Irving, Dallas County, Texas",
+      operator: "QTS Data Centers",
+    });
+    await page.reload();
+    await page.getByTestId("tab-market").click();
+    await expect(page.getByTestId("custom-project-id")).toHaveText("Project ID: qts-irving-1");
 
     await page.goto("/#evidence");
     await expect(page.getByTestId("button-analyze-all-ai")).toHaveText("Research Missing Sources");
@@ -952,6 +973,13 @@ test.describe("custom project research", () => {
     expect(assessmentRequests).toHaveLength(0);
     expect(researchRequests[1].focusIds).toContain("grid_interconnection");
     expect(researchRequests[1].focusIds).toContain("water_consumption");
+    expect(researchRequests[1].projectIdentity).toEqual({
+      projectId: "qts-irving-1",
+      providerId: "qts-irving-1",
+      name: "QTS Irving 1",
+      location: "Irving, Dallas County, Texas",
+      operator: "QTS Data Centers",
+    });
     await expect(page.getByTestId("source-research-status")).toContainText("no new project-specific source passed validation");
     await expect(page.getByTestId("source-research-summary")).toHaveCount(0);
     await expect(page.getByTestId("button-accept-source-proposal-grid_interconnection")).toHaveCount(0);
@@ -966,10 +994,17 @@ test.describe("custom project research", () => {
   test("labels the standardized capacity fallback when research returns no usable capacity", async ({ page }) => {
     await page.unroute("**/api/research-project");
     await page.route("**/api/research-project", async (route) => {
-      const request = route.request().postDataJSON() as { name: string; location: string };
+      const request = route.request().postDataJSON() as { name: string; location: string; projectIdentity?: { projectId: string | null; providerId: string | null; name: string; location: string; operator: string | null } };
       const response = customResponse();
       response.projectSummary.name = request.name;
       response.projectSummary.location = request.location;
+      response.projectIdentity = request.projectIdentity ?? {
+        projectId: null,
+        providerId: null,
+        name: request.name,
+        location: request.location,
+        operator: null,
+      };
       response.projectSummary.capacityMW = 0;
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(response) });
     });
@@ -1145,5 +1180,85 @@ test.describe("custom project research", () => {
       "eia-verified": null,
       "eia-current": null,
     });
+  });
+
+  test("ignores an older project result when a newer research request finishes first", async ({ page }) => {
+    type RequestIdentity = {
+      projectId: string | null;
+      providerId: string | null;
+      name: string;
+      location: string;
+      operator: string | null;
+    };
+    type ResearchRequest = { name: string; location: string; projectIdentity: RequestIdentity };
+    const heldResponses = new Map<string, {
+      request: ResearchRequest;
+      reply: (response: Record<string, any>) => void;
+    }>();
+    await page.unroute("**/api/research-project");
+    await page.route("**/api/research-project", async (route) => {
+      const request = route.request().postDataJSON() as ResearchRequest;
+      let reply!: (response: Record<string, any>) => void;
+      const responseReady = new Promise<Record<string, any>>((resolve) => { reply = resolve; });
+      heldResponses.set(request.name, { request, reply });
+      const response = await responseReady;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(response),
+      });
+    });
+
+    const completeResearch = (name: string) => {
+      const held = heldResponses.get(name);
+      if (!held) throw new Error(`No held research request for ${name}.`);
+      const response = customResponse() as Record<string, any>;
+      response.projectSummary.name = held.request.name;
+      response.projectSummary.location = held.request.location;
+      response.projectIdentity = held.request.projectIdentity;
+      held.reply(response);
+    };
+    const firstProject = "Northstar East";
+    const secondProject = "QTS Irving 1";
+    const firstLocation = "Phoenix, Arizona";
+    const secondLocation = "Irving, Dallas County, Texas";
+
+    await page.goto("/");
+    await openCustomProjectDialog(page);
+    await page.getByTestId("input-custom-project-name").fill(firstProject);
+    await page.getByTestId("input-custom-project-location").fill(firstLocation);
+    await page.getByTestId("button-submit-custom-project").click();
+    await expect(page.getByTestId("custom-research-banner")).toContainText("Researching");
+    await expect.poll(() => heldResponses.size).toBe(1);
+
+    await page.goto("/#home");
+    await openCustomProjectDialog(page);
+    await page.getByTestId("input-custom-project-name").fill(secondProject);
+    await page.getByTestId("input-custom-project-location").fill(secondLocation);
+    await page.getByTestId("button-submit-custom-project").click();
+    await expect.poll(() => heldResponses.size).toBe(2);
+
+    expect(heldResponses.get(firstProject)?.request.projectIdentity).toEqual({
+      projectId: null,
+      providerId: null,
+      name: firstProject,
+      location: firstLocation,
+      operator: null,
+    });
+    completeResearch(secondProject);
+    await expect(page.getByTestId("conference-summary")).toContainText(secondProject);
+
+    const firstResponseFinished = page.waitForEvent("requestfinished", (request) =>
+      new URL(request.url()).pathname.endsWith("/api/research-project")
+      && request.postDataJSON().name === firstProject);
+    completeResearch(firstProject);
+    await firstResponseFinished;
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    await expect(page.getByTestId("conference-summary")).toContainText(secondProject);
+    await expect(page.getByTestId("conference-summary")).not.toContainText(firstProject);
+    const restoredSession = await page.evaluate(() =>
+      JSON.parse(window.localStorage.getItem("safeloc:diligence:current-session:v1") ?? "{}"),
+    );
+    expect(restoredSession.customResearch.project.projectIdentity.name).toBe(secondProject);
   });
 });

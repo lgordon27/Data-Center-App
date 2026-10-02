@@ -249,7 +249,7 @@ export class FileShowcaseDossierRepository implements ShowcaseDossierRepository 
     }
     const currentRegistry = await readFile(this.registryPath, "utf8").then((raw) => parseRegistry(JSON.parse(raw)))
       .catch((error: unknown) => {
-        if (isRecord(error) && error.code === "ENOENT") return [];
+        if (isRecord(error) && error.code === "ENOENT") return [] as ShowcaseCatalogEntry[];
         throw error;
       });
     const existing = currentRegistry.find((candidate) =>

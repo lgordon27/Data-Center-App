@@ -42,6 +42,7 @@ import {
   type EvidenceCompletenessTier
 } from "@/model/advisorLens";
 import { CustomProjectDialog } from "@/pages/Home";
+import type { ResearchProjectIdentity } from "@/services/researchProjectService";
 import {
   getResearchStatusPresentation,
   type KnownProjectData,
@@ -338,12 +339,12 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
     evidenceCount: Object.values(project.researchProposals ?? {}).length,
   });
   const [customProjectOpen, setCustomProjectOpen] = useState(false);
-  const [customProjectPrefill, setCustomProjectPrefill] = useState<{ name: string; location: string; knownData?: KnownProjectData } | null>(null);
+  const [customProjectPrefill, setCustomProjectPrefill] = useState<{ name: string; location: string; knownData?: KnownProjectData; projectIdentity?: Pick<ResearchProjectIdentity, "projectId" | "providerId" | "operator"> } | null>(null);
   const [customProjectSelection, setCustomProjectSelection] = useState<{ company: CompanyKey | null; selection: ProjectSelectionContext | null } | null>(null);
   const dialogReturnFocus = useRef<HTMLElement | null>(null);
   const activeResearchRequestKey = useRef<string | null>(null);
   const activeResearchCancel = useRef<(() => void) | null>(null);
-  const activeResearchRequestContext = useRef<{ name: string; location: string; knownData?: KnownProjectData } | null>(null);
+  const activeResearchRequestContext = useRef<{ name: string; location: string; knownData?: KnownProjectData; projectIdentity?: ResearchProjectIdentity } | null>(null);
   const activeResearchSelection = useRef<{ company: CompanyKey | null; selection: ProjectSelectionContext | null } | null>(null);
   const [researchFailureKind, setResearchFailureKind] = useState<"busy" | "failed" | null>(null);
   const [researchCooldownUntil, setResearchCooldownUntil] = useState<number | null>(null);
@@ -356,7 +357,7 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
     ? canonicalIdentity.operator
     : selectedProjectContext?.projectName === projectName
       ? selectedProjectContext.operator
-      : undefined;
+      : project.kind === "custom" ? project.projectIdentity?.operator ?? undefined : undefined;
   useEffect(() => {
     if (!researchCooldownUntil) return undefined;
     storeCooldownUntil("safeloc-custom-research-cooldown", researchCooldownUntil);
@@ -368,8 +369,15 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
   }, [researchCooldownUntil]);
   const openCustomProject = (event?: Event) => {
     dialogReturnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const detail = event instanceof CustomEvent ? event.detail as { name?: string; location?: string; knownData?: KnownProjectData; company?: CompanyKey | null; selection?: ProjectSelectionContext | null } : undefined;
-    setCustomProjectPrefill(detail?.name && detail?.location ? { name: detail.name, location: detail.location, knownData: detail.knownData } : null);
+    const detail = event instanceof CustomEvent ? event.detail as { name?: string; location?: string; knownData?: KnownProjectData; company?: CompanyKey | null; selection?: ProjectSelectionContext | null; projectIdentity?: Pick<ResearchProjectIdentity, "projectId" | "providerId" | "operator"> } : undefined;
+    const projectIdentity = detail?.projectIdentity ?? {
+      projectId: detail?.selection?.projectId ?? detail?.knownData?.providerId ?? null,
+      providerId: detail?.selection?.providerId ?? detail?.knownData?.providerId ?? null,
+      operator: detail?.selection?.operator ?? detail?.knownData?.operator ?? null,
+    };
+    setCustomProjectPrefill(detail?.name && detail?.location
+      ? { name: detail.name, location: detail.location, knownData: detail.knownData, projectIdentity }
+      : null);
     setCustomProjectSelection(detail?.selection || detail?.company ? { company: detail.company ?? null, selection: detail.selection ?? null } : null);
     setCustomProjectOpen(true);
   };
@@ -490,7 +498,7 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
         setResearchCooldownUntil(null);
         const selection = customProjectSelection;
         activeResearchSelection.current = selection;
-        loadCustomProject(provisional, selection?.company);
+        loadCustomProject(provisional, selection?.company, selection?.selection);
         closeCustomProject();
         window.location.hash = "analysis";
       }}

@@ -22,7 +22,7 @@ import { useDiligence, type EvidenceItem } from "@/context/DiligenceContext";
 import { formatImpactDelta } from "@/model/cashFlowEngine";
 import { classifyConferenceEvidence } from "@/model/conferenceEvidence";
 import { getEvidenceImpactRoleDefinition } from "@/data/evidenceImpactRoles";
-import { formatElectricityCostAttribution } from "@/data/sources";
+import { formatElectricityCostAttribution, sourceStatusLabel } from "@/data/sources";
 import { CAPACITY_MW_MAX, type CapacityScope } from "@/model/assumptionBinding";
 import {
   getFinancialInputProvenance,
@@ -416,11 +416,9 @@ export function FinancialMateriality({ onNavigate }: { onNavigate: (screen: Scre
   const calculationTimestamp = financialInputState.calculatedAt
     ? new Date(financialInputState.calculatedAt).toLocaleString()
     : "not reported";
-  const providerAvailability = sourceStates.eia.status === "live"
-    ? "live EIA response available"
-    : sourceStates.eia.status === "cached"
-      ? "cached EIA response available"
-      : "bundled EIA estimate available";
+  const providerAvailability = sourceStates.eia.dataOrigin === "provider"
+    ? `EIA provider data · ${sourceStatusLabel(sourceStates.eia)}`
+    : "bundled EIA estimate available";
   const providerApplicability = project.kind === "custom"
     ? "not applied to this custom project"
     : "optional sensitivity only";

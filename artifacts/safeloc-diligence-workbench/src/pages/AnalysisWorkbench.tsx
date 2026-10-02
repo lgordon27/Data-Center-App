@@ -138,7 +138,7 @@ function ConferenceWorkbench({ onResolveEvidence, onReset, focusSectionId }: Pro
                 <span data-testid="conference-research-status" className="rounded-md bg-[#e5eeea] px-3 py-2 text-[11px] font-semibold text-[#365b4c]">
                   Canonical evidence review
                 </span>
-                {dossiers.length > 0 && (
+                {project.kind !== "custom" && dossiers.length > 0 && (
                   <label className="flex items-center gap-2 text-[10px] font-semibold text-[#60707d]">
                     <span>Change dossier</span>
                     <select
@@ -226,16 +226,23 @@ function ConferenceWorkbench({ onResolveEvidence, onReset, focusSectionId }: Pro
               </div>
             </div>
             {project.kind === "custom" && (
-              <div className="mt-3">
-                <ResearchTelemetryStatus
-                  compact
-                  audit={project.researchAudit}
-                  coverage={project.researchCoverage}
-                  researchCache={project.researchCache}
-                />
-              </div>
+              <>
+                <div data-testid="custom-project-identity" className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-[#52616b]">
+                  <span data-testid="custom-project-id">Project ID: {project.projectIdentity?.projectId ?? "not supplied"}</span>
+                  <span data-testid="custom-project-provider-id">Provider ID: {project.projectIdentity?.providerId ?? "not supplied"}</span>
+                  <span data-testid="custom-project-operator">Operator: {project.projectIdentity?.operator ?? "not supplied"}</span>
+                </div>
+                <div className="mt-3">
+                  <ResearchTelemetryStatus
+                    compact
+                    audit={project.researchAudit}
+                    coverage={project.researchCoverage}
+                    researchCache={project.researchCache}
+                  />
+                </div>
+              </>
             )}
-            {dossiers.length > 0 && (
+            {project.kind !== "custom" && dossiers.length > 0 && (
               <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#d9e0e4] pt-3">
                 <label htmlFor="canonical-dossier-select" className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#60707d]">
                   Open canonical dossier

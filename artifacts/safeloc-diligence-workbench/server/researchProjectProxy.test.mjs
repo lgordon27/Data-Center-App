@@ -3566,6 +3566,29 @@ test("uses collision-resistant normalized project cache keys and deterministic a
     researchProjectCacheKey({ name: "Project Atlas", location: "Texas" }),
     researchProjectCacheKey({ name: "Project Atlas", location: "Virginia" }),
   );
+  const firstIdentity = {
+    projectId: "atlas-facility-1",
+    providerId: "compute-atlas-1",
+    name: "Project Atlas",
+    location: "Texas",
+    operator: "Atlas Compute",
+  };
+  assert.notEqual(
+    researchProjectCacheKey({ name: "Project Atlas", location: "Texas", projectIdentity: firstIdentity }),
+    researchProjectCacheKey({
+      name: "Project Atlas",
+      location: "Texas",
+      projectIdentity: { ...firstIdentity, projectId: "atlas-facility-2", providerId: "compute-atlas-2" },
+    }),
+  );
+  assert.equal(
+    researchProjectCacheKey({ name: "Atlas", location: "Texas" }),
+    researchProjectCacheKey({
+      name: "Atlas",
+      location: "Texas",
+      projectIdentity: { projectId: null, providerId: null, name: "Atlas", location: "Texas", operator: null },
+    }),
+  );
   const now = Date.parse("2026-09-03T12:00:00.000Z");
   assert.equal(classifyResearchCacheAge("2026-09-03T10:00:00.000Z", now), "fresh");
   assert.equal(classifyResearchCacheAge("2026-09-03T00:00:00.000Z", now), "recent");
@@ -3617,6 +3640,42 @@ test("serves fresh cached research without another provider call", async () => {
   assert.equal(second.statusCode, 200);
   assert.equal(second.json().researchCache.state, "fresh");
   assert.equal(providerCalls, 1);
+});
+
+test("echoes the exact selected identity from a cached research response", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "safeloc-research-identity-cache-"));
+  const cache = createResearchProjectCache({ directory });
+  const project = parseResearchProjectBody({
+    name: "QTS Irving 1",
+    location: "Irving, Texas",
+    projectIdentity: {
+      projectId: "qts-irving-1",
+      providerId: "compute-atlas-qts-irving-1",
+      name: "QTS Irving 1",
+      location: "Irving, Texas",
+      operator: "QTS Data Centers",
+    },
+    knownData: {
+      providerId: "compute-atlas-qts-irving-1",
+      operator: "QTS Data Centers",
+    },
+  });
+  const result = containResearchResult({
+    ...validResearchResponse(),
+    projectSummary: {
+      ...validResearchResponse().projectSummary,
+      name: project.name,
+      location: project.location,
+    },
+    projectIdentity: project.projectIdentity,
+  });
+  await cache.write(cache.keyFor(project), result);
+
+  const response = responseRecorder();
+  await handleResearchProjectRequest(request(project), response, { cache });
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.json().projectIdentity, project.projectIdentity);
+  assert.equal(response.json().researchCache.state, "fresh");
 });
 
 test("retains physical-open diagnostics through a cached handoff", async () => {
@@ -3861,6 +3920,13 @@ test("validates and preserves optional Compute Atlas known data", () => {
   }), {
     name: "Atlas",
     location: "Texas",
+    projectIdentity: {
+      projectId: null,
+      providerId: null,
+      name: "Atlas",
+      location: "Texas",
+      operator: "Atlas Compute",
+    },
     knownData: {
       capacity: 840,
       operator: "Atlas Compute",
@@ -3874,6 +3940,17 @@ test("validates and preserves optional Compute Atlas known data", () => {
     },
   });
   assert.throws(() => parseResearchProjectBody({ name: "Atlas", location: "Texas", knownData: "bad" }), /knownData/);
+  assert.throws(() => parseResearchProjectBody({
+    name: "Atlas",
+    location: "Texas",
+    projectIdentity: {
+      projectId: "other-project",
+      providerId: null,
+      name: "Different project",
+      location: "Texas",
+      operator: null,
+    },
+  }), /identity does not match/i);
 });
 
 test("preserves validated owner/operator aliases and facility identifiers as discovery context", () => {
@@ -3911,6 +3988,13 @@ test("validates focused unresolved evidence requests and current evidence contex
   }), {
     name: "Atlas",
     location: "Texas",
+    projectIdentity: {
+      projectId: null,
+      providerId: null,
+      name: "Atlas",
+      location: "Texas",
+      operator: null,
+    },
     focusIds: ["grid_interconnection", "water_rights"],
     currentEvidence: [{
       id: "grid_interconnection",

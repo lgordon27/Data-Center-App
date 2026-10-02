@@ -360,6 +360,7 @@ export type FinancialModelingState =
     };
 
 export type ProjectContext = Omit<CustomResearchResponse["projectSummary"], "capacityProvenance"> & {
+  projectIdentity?: CustomResearchResponse["projectIdentity"];
   capacityProvenance?: CapacityProvenance;
   researchMode?: CustomResearchResponse["researchMode"];
   researchStatus?: CustomResearchResponse["researchStatus"];
@@ -1584,6 +1585,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     ) as Record<string, ResearchProposalDisposition>;
     const nextProject: ProjectContext = {
       kind: "custom",
+      projectIdentity: research.projectIdentity,
       name: research.projectSummary.name,
       location: research.projectSummary.location,
       description: research.projectSummary.description,
@@ -2828,8 +2830,26 @@ function parsePersistedCustomResearch(value: unknown): PersistedCustomResearch |
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([reason, count]) => ({ reason, count })),
   };
+  const storedIdentity = projectRecord.projectIdentity && typeof projectRecord.projectIdentity === "object" && !Array.isArray(projectRecord.projectIdentity)
+    ? projectRecord.projectIdentity as Record<string, unknown>
+    : null;
+  const projectIdentity = storedIdentity
+    && storedIdentity.name === projectRecord.name
+    && storedIdentity.location === projectRecord.location
+    && (storedIdentity.projectId === null || typeof storedIdentity.projectId === "string")
+    && (storedIdentity.providerId === null || typeof storedIdentity.providerId === "string")
+    && (storedIdentity.operator === null || typeof storedIdentity.operator === "string")
+    ? {
+        projectId: storedIdentity.projectId as string | null,
+        providerId: storedIdentity.providerId as string | null,
+        name: projectRecord.name,
+        location: projectRecord.location,
+        operator: storedIdentity.operator as string | null,
+      }
+    : { projectId: null, providerId: null, name: projectRecord.name, location: projectRecord.location, operator: null };
   const safeProject = {
     ...projectRecord,
+    projectIdentity,
     description: "Generated project-summary prose is withheld. Review the accessible, attributed source passages and claim-level evidence separately.",
     capacityMW: persistedCapacity,
     capacityProvenance: persistedCapacity === null ? "unknown" : "directory-reported",

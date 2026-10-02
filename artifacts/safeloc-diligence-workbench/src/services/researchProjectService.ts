@@ -177,6 +177,7 @@ export type ResearchSourceValidation = {
 };
 
 export type CustomResearchResponse = {
+  projectIdentity: ResearchProjectIdentity;
   projectSummary: {
     name: string;
     location: string;
@@ -723,6 +724,13 @@ export type ResearchStatusResponse = {
 
 export type CapacityProvenance = "ai-reported" | "directory-reported" | "standardized-default" | "unknown";
 export type ResearchMode = "ai-researched" | "partial-public-source" | "default-assumptions" | "research-incomplete";
+export type ResearchProjectIdentity = {
+  projectId: string | null;
+  providerId: string | null;
+  name: string;
+  location: string;
+  operator: string | null;
+};
 export type KnownProjectData = {
   capacity?: number | null;
   operator?: string | null;
@@ -749,6 +757,7 @@ export type KnownProjectData = {
 export type ResearchProgress = "researching" | "retrying";
 export type ResearchProjectOptions = {
   knownData?: KnownProjectData;
+  projectIdentity?: Pick<ResearchProjectIdentity, "projectId" | "providerId" | "operator">;
   onProgress?: (progress: ResearchProgress) => void;
   signal?: AbortSignal;
   focusIds?: string[];
@@ -770,16 +779,25 @@ export function summarizeSourceCoverage(evidence: CustomEvidenceRecord[]) {
 }
 
 export function summarizeResearchAudit(evidence: CustomEvidenceRecord[]) {
-  const uniqueSources = new Set(
-    evidence.flatMap((item) => [
-      ...(item.sourceValidation?.state === "financially-eligible" || item.sourceValidation?.state === "claim-supported"
-        ? (item.sources ?? []).map((source) => source.canonicalUrl ?? source.resolvedUrl ?? source.url)
-        : []),
-      ...(item.sourceValidation?.state === "financially-eligible" || item.sourceValidation?.state === "claim-supported"
-        ? (item.sourceUrl ? [item.sourceUrl] : [])
-        : []),
-    ]),
-  );
+  const uniqueSources = new Set<string>();
+  for (const item of evidence) {
+    if (item.sourceValidation?.state !== "financially-eligible" && item.sourceValidation?.state !== "claim-supported") continue;
+    const supportedMappings = item.sourceValidation.claimMappings.filter((mapping) => mapping.supportStatus === "supported");
+    for (const source of item.sources ?? []) {
+      const sourceUrl = source.canonicalUrl ?? source.resolvedUrl ?? source.url;
+      const passage = source.accessOutcome?.passage;
+      if (
+        source.accessOutcome?.state !== "accessible" ||
+        typeof passage !== "string" ||
+        !passage.trim() ||
+        !supportedMappings.some((mapping) => mapping.sourceId === sourceUrl
+          || mapping.sourceId === source.url
+          || mapping.sourceId === source.resolvedUrl
+          || mapping.sourceId === source.canonicalUrl)
+      ) continue;
+      uniqueSources.add(sourceUrl);
+    }
+  }
   const confidenceTotal = evidence.reduce((total, item) => total + (item.sourceSupportConfidence ?? 0), 0);
   return {
     uniqueValidatedSourceCount: uniqueSources.size,
@@ -823,7 +841,25 @@ export type ResearchIdentity = {
   name?: string;
   location?: string;
   knownData?: KnownProjectData;
+  projectIdentity?: ResearchProjectIdentity;
 };
+
+function makeResearchProjectIdentity(
+  name: string,
+  location: string,
+  knownData?: KnownProjectData,
+  identity?: Pick<ResearchProjectIdentity, "projectId" | "providerId" | "operator">,
+): ResearchProjectIdentity {
+  const clean = (value: unknown): string | null =>
+    typeof value === "string" && value.trim() ? value.trim().slice(0, 160) : null;
+  return {
+    projectId: identity?.projectId !== undefined ? clean(identity.projectId) : null,
+    providerId: identity?.providerId !== undefined ? clean(identity.providerId) : clean(knownData?.providerId),
+    name: name.trim().slice(0, 160),
+    location: location.trim().slice(0, 160),
+    operator: identity?.operator !== undefined ? clean(identity.operator) : clean(knownData?.operator),
+  };
+}
 
 function findingApplicability(
   passage: string,
@@ -1756,6 +1792,26 @@ function parseResponse(
     location: identity.location ?? (isNonEmptyString(summary.location) ? summary.location : undefined),
     knownData: normalizeKnownData(identity.knownData),
   };
+  const projectIdentity = makeResearchProjectIdentity(
+    requestedIdentity.name ?? "",
+    requestedIdentity.location ?? "",
+    requestedIdentity.knownData,
+    identity.projectIdentity,
+  );
+  if (identity.projectIdentity) {
+    const returnedIdentity = isRecord(value.projectIdentity) ? value.projectIdentity : null;
+    if (
+      !returnedIdentity ||
+      returnedIdentity.projectId !== projectIdentity.projectId ||
+      returnedIdentity.providerId !== projectIdentity.providerId ||
+      returnedIdentity.name !== projectIdentity.name ||
+      returnedIdentity.location !== projectIdentity.location ||
+      returnedIdentity.operator !== projectIdentity.operator
+    ) {
+      recordClientFailure("project-identity-mismatch");
+      throw new Error("Project research returned an identity for a different project.");
+    }
+  }
   const retainedFindingReport = deriveRetainedResearchFindingReport(value.sourceLedger, requestedIdentity);
   const retainedFindings = retainedFindingReport.findings;
   const directoryCapacityMW = normalizeReportedCapacityMW(requestedIdentity.knownData?.capacity);
@@ -1912,6 +1968,7 @@ function parseResponse(
       }
     : undefined;
   return {
+    projectIdentity,
     projectSummary: {
       name: requestedIdentity.name ?? summary.name as string,
       location: requestedIdentity.location ?? summary.location as string,
@@ -2038,6 +2095,7 @@ export function createDefaultAssumptionResearch(
   name: string,
   location: string,
   knownData?: KnownProjectData,
+  projectIdentity?: Pick<ResearchProjectIdentity, "projectId" | "providerId" | "operator">,
 ): CustomResearchResponse {
   const normalizedKnownData = normalizeKnownData(knownData);
   const capacityMW = normalizeReportedCapacityMW(normalizedKnownData?.capacity);
@@ -2047,6 +2105,7 @@ export function createDefaultAssumptionResearch(
     normalizedKnownData?.sourceUrl ? `Compute Atlas discovery record: ${normalizedKnownData.sourceUrl}` : null,
   ].filter(Boolean).join(" ");
   return {
+    projectIdentity: makeResearchProjectIdentity(name, location, normalizedKnownData, projectIdentity),
     projectSummary: {
       name: name.trim(),
       location: location.trim(),
@@ -2096,6 +2155,7 @@ export function createProvisionalResearch(
   name: string,
   location: string,
   knownData?: KnownProjectData,
+  projectIdentity?: Pick<ResearchProjectIdentity, "projectId" | "providerId" | "operator">,
 ): CustomResearchResponse {
   const normalizedKnownData = normalizeKnownData({
     ...deriveLocationContext(location),
@@ -2103,6 +2163,7 @@ export function createProvisionalResearch(
   });
   const capacityMW = normalizeReportedCapacityMW(normalizedKnownData?.capacity);
   return {
+    projectIdentity: makeResearchProjectIdentity(name, location, normalizedKnownData, projectIdentity),
     projectSummary: {
       name: name.trim(),
       location: location.trim(),
@@ -2167,6 +2228,7 @@ async function requestResearchProject(
   name: string,
   location: string,
   knownData: KnownProjectData | undefined,
+  projectIdentity: ResearchProjectIdentity,
   focusIds: string[] | undefined,
   currentEvidence: ResearchProjectOptions["currentEvidence"],
   forceRefresh: boolean,
@@ -2190,6 +2252,7 @@ async function requestResearchProject(
       body: JSON.stringify({
         name,
         location,
+        projectIdentity,
         ...(knownData ? { knownData } : {}),
         ...(focusIds?.length ? { focusIds } : {}),
         ...(currentEvidence?.length ? { currentEvidence } : {}),
@@ -2206,7 +2269,7 @@ async function requestResearchProject(
     }
     if (!response.ok) {
       if (isRecord(body) && isRecord(body.result)) {
-        const partial = parseResponse(body.result, { name, location, knownData });
+        const partial = parseResponse(body.result, { name, location, knownData, projectIdentity });
         const researchMode: ResearchMode = partial.researchMode === "default-assumptions" || partial.researchMode === "research-incomplete"
           ? partial.researchMode
           : "partial-public-source";
@@ -2225,7 +2288,7 @@ async function requestResearchProject(
         capacityRejection ? parseBoundedRetryAfter(response.headers.get("retry-after")) : null,
       );
     }
-    return parseResponse(body, { name, location, knownData });
+    return parseResponse(body, { name, location, knownData, projectIdentity });
   } catch (error) {
     if (signal?.aborted) throw new ResearchCancelledError();
     if (error instanceof ResearchTimeoutError) throw error;
@@ -2250,12 +2313,14 @@ export async function researchProject(
     ...deriveLocationContext(location),
     ...options.knownData,
   });
+  const projectIdentity = makeResearchProjectIdentity(name, location, knownData, options.projectIdentity);
   const focusIds = options.focusIds?.filter((id) => CUSTOM_EVIDENCE_IDS.includes(id as (typeof CUSTOM_EVIDENCE_IDS)[number]));
   if (options.signal?.aborted) throw new ResearchCancelledError();
   return requestResearchProject(
     name,
     location,
     knownData,
+    projectIdentity,
     focusIds,
     options.currentEvidence,
     options.forceRefresh === true,

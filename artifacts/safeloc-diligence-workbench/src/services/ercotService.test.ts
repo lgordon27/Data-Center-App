@@ -66,6 +66,9 @@ test("normalizes live aggregate metrics and a named project without inventing re
   assert.equal(result.matchingProject?.totalDaysSlipped, 365);
   assert.equal(result.matchingProject?.explicitDelayOrCancellation, true);
   assert.equal(result.sourceMetadata.status, "live");
+  assert.equal(result.sourceMetadata.retrievedAt, "2026-08-30T12:00:00.000Z");
+  assert.equal(result.sourceMetadata.sourceAsOf, "2026-08-07T17:27:53.695Z");
+  assert.equal(result.sourceMetadata.freshness, "unknown");
 });
 
 test("preserves cached provider metadata", () => {
@@ -113,7 +116,7 @@ test("falls back when the proxy reports an upstream failure", async () => {
   assert.equal(result.diagnostics.responseStatus, 502);
 });
 
-test("rejects a provider result without parseable freshness", () => {
+test("keeps provider data with an unparseable as-of date but marks freshness unknown", () => {
   const result = normalizeErcotProxyEnvelope(liveEnvelope({
     sourceUpdatedAt: "not-a-date",
     diagnostics: {
@@ -137,7 +140,9 @@ test("rejects a provider result without parseable freshness", () => {
       },
     },
   }));
-  assert.equal(result.status, "embedded");
-  assert.equal(result.providerStatus, "embedded");
-  assert.equal(result.sourceMetadata.status, "embedded");
+  assert.equal(result.status, "live");
+  assert.equal(result.providerStatus, "live");
+  assert.equal(result.sourceMetadata.status, "live");
+  assert.equal(result.sourceMetadata.sourceAsOf, undefined);
+  assert.equal(result.sourceMetadata.freshness, "unknown");
 });

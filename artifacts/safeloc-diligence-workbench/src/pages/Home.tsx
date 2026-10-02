@@ -25,6 +25,7 @@ import {
   type CustomResearchResponse,
   type KnownProjectData,
   type ResearchProgress,
+  type ResearchProjectIdentity,
 } from "@/services/researchProjectService";
 import { getPublicResearchFailure } from "@/services/publicResearchPresentation";
 import { boundedCooldownUntil, getStoredCooldownUntil, storeCooldownUntil } from "@/services/clientCooldown";
@@ -78,7 +79,7 @@ type CustomProjectFormProps = {
     research: CustomResearchResponse,
     requestKey: string,
     cancel: () => void,
-    requestContext?: { name: string; location: string; knownData?: KnownProjectData },
+    requestContext?: { name: string; location: string; knownData?: KnownProjectData; projectIdentity?: ResearchProjectIdentity },
   ) => void;
   onSuccess: (research: CustomResearchResponse, requestKey: string) => void;
   onResearchError?: (research: CustomResearchResponse, error: unknown, requestKey: string) => void;
@@ -88,6 +89,7 @@ type CustomProjectFormProps = {
     name: string;
     location: string;
     knownData?: KnownProjectData;
+    projectIdentity?: Pick<ResearchProjectIdentity, "projectId" | "providerId" | "operator">;
   };
 };
 
@@ -167,7 +169,14 @@ export function CustomProjectForm({ onStart, onSuccess, onResearchError, compact
     if (enteredOperator) knownData.operator = enteredOperator;
     else delete knownData.operator;
     const researchKnownData = Object.keys(knownData).length > 0 ? knownData : undefined;
-    const provisional = createProvisionalResearch(name.trim(), location.trim(), researchKnownData);
+    const projectIdentity: ResearchProjectIdentity = {
+      projectId: initialValues?.projectIdentity?.projectId ?? null,
+      providerId: initialValues?.projectIdentity?.providerId ?? researchKnownData?.providerId ?? null,
+      name: name.trim(),
+      location: location.trim(),
+      operator: enteredOperator || null,
+    };
+    const provisional = createProvisionalResearch(name.trim(), location.trim(), researchKnownData, projectIdentity);
     requestGeneration.current = generation;
     requestController.current = controller;
     cancelRequested.current = false;
@@ -178,11 +187,13 @@ export function CustomProjectForm({ onStart, onSuccess, onResearchError, compact
     }, {
       name: name.trim(),
       location: location.trim(),
+      projectIdentity,
       ...(researchKnownData ? { knownData: researchKnownData } : {}),
     });
     try {
       const result = await researchProject(name.trim(), location.trim(), {
         knownData: researchKnownData,
+        projectIdentity,
         onProgress: setProgress,
         signal: controller.signal,
       });
@@ -956,21 +967,30 @@ export function ComputeAtlasDirectory({ onCurated, onResearchSuccess }: { onCura
       operator: facility.operator,
       status: statusLabel(facility.status),
       sourceUrl: facility.sourceUrl,
+      providerId: facility.id,
       city: facility.city,
       county: facility.county,
       state: facility.state,
       authorityDomains: facility.authorityDomains,
       companyDomains: facility.companyDomains,
     };
+    const projectIdentity: ResearchProjectIdentity = {
+      projectId: facility.id,
+      providerId: facility.id,
+      name: facility.name,
+      location: locationLabel(facility),
+      operator: facility.operator ?? null,
+    };
     const generation = (researchGeneration.current[facility.id] ?? 0) + 1;
     researchGeneration.current[facility.id] = generation;
     // Directory facts are immediately useful discovery context. Show a
     // provisional, non-model result while public-source research continues.
-    onResearchSuccess(createDefaultAssumptionResearch(facility.name, locationLabel(facility), knownData));
+    onResearchSuccess(createDefaultAssumptionResearch(facility.name, locationLabel(facility), knownData, projectIdentity));
     setResearching((current) => ({ ...current, [facility.id]: { busy: true, error: null, progress: "researching" } }));
     try {
       const result = await researchProject(facility.name, locationLabel(facility), {
         knownData,
+        projectIdentity,
         onProgress: (progress) => setResearching((current) => ({
           ...current,
           [facility.id]: { busy: true, error: null, progress },
@@ -1262,6 +1282,11 @@ function LegacyHome({ onNavigate }: { onNavigate?: (route: HomeRoute) => void } 
                setCompanyResearchingId(project.id);
                setCompanyResearchError(null);
                 void researchProject(project.name, project.location, {
+                  projectIdentity: {
+                    projectId: project.id,
+                    providerId: project.facility.id,
+                    operator: project.operator ?? null,
+                  },
                   knownData: {
                     capacity: project.capacityMW,
                     operator: project.operator,
@@ -1599,6 +1624,11 @@ export function LegacyCompanyExploration({ onNavigate }: { onNavigate?: (route: 
               setCompanyResearchingId(companyProject.id);
               setCompanyResearchError(null);
               void researchProject(companyProject.name, companyProject.location, {
+                projectIdentity: {
+                  projectId: companyProject.id,
+                  providerId: companyProject.facility.id,
+                  operator: companyProject.operator ?? null,
+                },
                 knownData: { capacity: companyProject.capacityMW, operator: companyProject.operator, status: companyProject.status, sourceUrl: companyProject.facility.sourceUrl },
               }).then((research) => handleResearchSuccess(research, company, companyProject.id, companyProject.kind))
                 .catch(() => setCompanyResearchError("AI research is unavailable. Try again."))

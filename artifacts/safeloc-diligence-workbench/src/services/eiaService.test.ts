@@ -47,7 +47,28 @@ test("normalizes a schema-valid provider envelope and month windows", () => {
   assert.equal(result.priceHistory.length, 24);
   assert.equal(result.generationHistory.length, 1);
   assert.equal(result.sourceMetadata.dataOrigin, "provider");
-  assert.equal(result.sourceMetadata.timestamp, "2026-08-01T00:00:00.000Z");
+  assert.equal(result.sourceMetadata.timestamp, "2026-08-30T12:00:00.000Z");
+  assert.equal(result.sourceMetadata.retrievedAt, "2026-08-30T12:00:00.000Z");
+  assert.equal(result.sourceMetadata.sourceAsOf, "2026-08-01T00:00:00.000Z");
+  assert.equal(result.sourceMetadata.freshness, "unknown");
+});
+
+test("keeps valid provider data when retrieval or source-as-of timestamps are absent", () => {
+  const fixture = envelope();
+  const result = normalizeEiaEnvelope({ ...fixture, fetchedAt: undefined, sourceUpdatedAt: undefined });
+  assert.ok(result);
+  assert.equal(result.status, "live");
+  assert.equal(result.sourceMetadata.retrievedAt, undefined);
+  assert.equal(result.sourceMetadata.sourceAsOf, undefined);
+  assert.equal(result.sourceMetadata.freshness, "unknown");
+});
+
+test("preserves an explicit stale source state independently from retrieval", () => {
+  const result = normalizeEiaEnvelope({ ...envelope(), freshness: "stale" });
+  assert.ok(result);
+  assert.equal(result.status, "live");
+  assert.equal(result.sourceMetadata.freshness, "stale");
+  assert.equal(result.sourceMetadata.retrievedAt, "2026-08-30T12:00:00.000Z");
 });
 
 test("calculates latest YoY and acceleration from structured prices", () => {
@@ -96,6 +117,10 @@ test("uses a prior successful browser cache after a proxy failure", async () => 
     }), { status: 503, headers: { "content-type": "application/json" } }));
     assert.equal(cached.status, "cached");
     assert.equal(cached.latestPrice, live.latestPrice);
+    assert.equal(cached.fetchedAt, live.fetchedAt);
+    assert.equal(cached.sourceUpdatedAt, live.sourceUpdatedAt);
+    assert.equal(cached.sourceMetadata.retrievedAt, live.sourceMetadata.retrievedAt);
+    assert.equal(cached.sourceMetadata.sourceAsOf, live.sourceMetadata.sourceAsOf);
     assert.match(cached.error ?? "", /not configured/);
   } finally {
     if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);

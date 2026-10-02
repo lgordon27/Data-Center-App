@@ -26,12 +26,26 @@ function stableValue(value) {
 }
 
 export function researchProjectCacheKey(project) {
+  const projectIdentity = project?.projectIdentity ?? {
+    projectId: null,
+    providerId: project?.knownData?.providerId ?? null,
+    name: project?.name ?? "",
+    location: project?.location ?? "",
+    operator: project?.knownData?.operator ?? null,
+  };
   const identity = {
     cacheContractVersion: RESEARCH_CACHE_VERSION,
     researchPolicyVersion: RESEARCH_CACHE_RESEARCH_POLICY_VERSION,
     modelVersion: RESEARCH_CACHE_MODEL_VERSION,
     name: normalizedText(project?.name),
     location: normalizedText(project?.location),
+    projectIdentity: {
+      projectId: projectIdentity.projectId ?? null,
+      providerId: projectIdentity.providerId ?? null,
+      name: normalizedText(projectIdentity.name),
+      location: normalizedText(projectIdentity.location),
+      operator: normalizedText(projectIdentity.operator) || null,
+    },
     knownData: stableValue(project?.knownData ?? null),
     focusIds: [...(project?.focusIds ?? [])].sort(),
     currentEvidence: stableValue(project?.currentEvidence ?? null),

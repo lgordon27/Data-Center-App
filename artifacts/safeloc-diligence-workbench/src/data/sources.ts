@@ -7,8 +7,9 @@ export const SOURCE_IDS = [
 ] as const;
 
 export type SourceId = (typeof SOURCE_IDS)[number];
-export type SourceStatus = "embedded" | "live" | "cached";
+export type SourceStatus = "embedded" | "live" | "cached" | "unknown";
 export type SourceDataOrigin = "embedded" | "provider";
+export type SourceFreshness = "fresh" | "stale" | "unknown";
 
 export type SourceDefinition = {
   id: SourceId;
@@ -25,6 +26,9 @@ export type SourceDefinition = {
 export type ProviderSourceMetadata = {
   status: SourceStatus;
   dataOrigin?: SourceDataOrigin;
+  retrievedAt?: string;
+  sourceAsOf?: string;
+  freshness?: SourceFreshness;
   timestamp?: string;
   version?: string;
 };
@@ -58,7 +62,7 @@ export const sourceDefinitions: readonly SourceDefinition[] = [
     description: "Grid interconnection queue and timing context.",
     role: "Interconnection evidence",
     icon: "ercot",
-    supportedStatuses: ["embedded", "live", "cached"],
+    supportedStatuses: ["embedded", "live", "cached", "unknown"],
     fallbackText: "The latest available queue response is retained when a live demonstration is unavailable.",
     statusMeaning: "Embedded means bundled case context; Live means returned by the provider; Cached means a retained provider response.",
   },
@@ -69,7 +73,7 @@ export const sourceDefinitions: readonly SourceDefinition[] = [
     description: "Electricity market and price context.",
     role: "Electricity-cost evidence",
     icon: "eia",
-    supportedStatuses: ["embedded", "live", "cached"],
+    supportedStatuses: ["embedded", "live", "cached", "unknown"],
     fallbackText: "The latest available electricity data is retained when a live demonstration is unavailable.",
     statusMeaning: "Embedded means a bundled estimate; Live means returned by the provider; Cached means a retained provider response.",
   },
@@ -104,11 +108,12 @@ export function resolveSourceState(
   const live = boundary.live
     ? mergeValidProviderMetadata(source, boundary.live)
     : source;
-  if (live.status === "live") return live;
+  if (live.status === "live" && live.freshness === "fresh") return live;
   const cached = boundary.cached
     ? mergeValidProviderMetadata(source, boundary.cached)
     : source;
-  return cached.status === "cached" ? cached : source;
+  if (cached.status === "cached" || cached.status === "unknown") return cached;
+  return live.status === "live" || live.status === "unknown" ? live : source;
 }
 
 function mergeValidProviderMetadata(
@@ -116,15 +121,29 @@ function mergeValidProviderMetadata(
   override: ProviderSourceMetadata,
 ): SourceState {
   const validStatus = source.supportedStatuses.includes(override.status);
-  const providerState = override.status === "live" || override.status === "cached";
-  const timestampRequired = override.status === "live" || override.status === "cached";
-  const validTimestamp = !timestampRequired || (
-    typeof override.timestamp === "string" &&
-    Number.isFinite(Date.parse(override.timestamp))
-  );
+  const providerState = override.status === "live" || override.status === "cached" || override.status === "unknown";
   const validOrigin = !providerState || override.dataOrigin === "provider";
-  return validStatus && validTimestamp && validOrigin
-    ? { ...source, ...override }
+  const retrievedAt = override.retrievedAt ?? override.timestamp;
+  const validRetrievedAt = typeof retrievedAt === "string" && Number.isFinite(Date.parse(retrievedAt))
+    ? retrievedAt
+    : undefined;
+  const sourceAsOf = typeof override.sourceAsOf === "string" && Number.isFinite(Date.parse(override.sourceAsOf))
+    ? override.sourceAsOf
+    : undefined;
+  const freshness = sourceAsOf
+    ? override.freshness === "fresh" || override.freshness === "stale" ? override.freshness : "unknown"
+    : "unknown";
+  const status = providerState && !validRetrievedAt ? "unknown" : override.status;
+  return validStatus && validOrigin
+    ? {
+        ...source,
+        ...override,
+        status,
+        timestamp: validRetrievedAt,
+        retrievedAt: validRetrievedAt,
+        sourceAsOf,
+        freshness,
+      }
     : source;
 }
 
@@ -140,7 +159,10 @@ export function formatSourceTimestamp(timestamp?: string): string {
   }).format(date);
 }
 
-export function sourceStatusLabel(source: Pick<SourceState, "status">): string {
+export function sourceStatusLabel(source: Pick<SourceState, "status"> & Partial<Pick<SourceState, "freshness">>): string {
+  if (source.freshness === "stale") return "Stale";
+  if (source.status === "unknown") return "Freshness unknown";
+  if (source.status === "live" && source.freshness !== "fresh") return "Freshness unknown";
   return source.status.charAt(0).toUpperCase() + source.status.slice(1);
 }
 
@@ -163,8 +185,10 @@ export function sourceApplicabilityText(
 
 export function formatElectricityCostAttribution(rate: number, source: SourceState): string {
   const formattedRate = `$${rate.toFixed(rate % 1 === 0 ? 0 : 1)}/MWh`;
-  if (source.id === "eia" && (source.status === "live" || source.status === "cached") && source.dataOrigin === "provider" && source.timestamp) {
-    return `Electricity cost: ${formattedRate} (U.S. Energy Information Administration Open Data, ${source.status} · ${formatSourceTimestamp(source.timestamp)})`;
+  if (source.id === "eia" && source.status !== "embedded" && source.dataOrigin === "provider") {
+    const retrieved = source.retrievedAt ? `retrieved ${formatSourceTimestamp(source.retrievedAt)}` : "retrieval time unknown";
+    const asOf = source.sourceAsOf ? `source as of ${formatSourceTimestamp(source.sourceAsOf)}` : "source date unknown";
+    return `Electricity cost: ${formattedRate} (U.S. Energy Information Administration Open Data, ${sourceStatusLabel(source)} · ${retrieved} · ${asOf})`;
   }
   return `Electricity cost: ${formattedRate} (embedded estimate)`;
 }

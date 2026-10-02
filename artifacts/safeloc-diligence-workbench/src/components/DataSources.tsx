@@ -24,19 +24,28 @@ const statusColors = {
   embedded: { dot: "#a65a00", text: "#7c4c00", bg: "#fff0d6" },
   live: { dot: "#0b7a63", text: "#08644f", bg: "#e0f4ed" },
   cached: { dot: "#a65a00", text: "#7c4c00", bg: "#fff0d6" },
+  unknown: { dot: "#60707d", text: "#52616b", bg: "#edf1f3" },
   connected: { dot: "#0b7a63", text: "#08644f", bg: "#e0f4ed" },
   disconnected: { dot: "#ba2f45", text: "#9b263b", bg: "#fde8eb" },
 } as const;
 
 export function SourceStatusBadge({ source, compact = false, testId }: { source: SourceState; compact?: boolean; testId?: string }) {
-  const colors = statusColors[source.status];
-  const timestamp = source.timestamp && (source.status === "live" || source.status === "cached")
-    ? ` · ${formatSourceTimestamp(source.timestamp)}`
+  const colorStatus = source.status === "live" && source.freshness !== "fresh" ? "cached" : source.status;
+  const colors = statusColors[colorStatus];
+  const providerSource = source.dataOrigin === "provider";
+  const timestamp = providerSource
+    ? ` · retrieved ${source.retrievedAt ? formatSourceTimestamp(source.retrievedAt) : "unknown"}`
     : "";
+  const sourceAsOf = providerSource
+    ? ` · source as of ${source.sourceAsOf ? formatSourceTimestamp(source.sourceAsOf) : "unknown"}`
+    : source.sourceAsOf ? ` · source as of ${formatSourceTimestamp(source.sourceAsOf)}` : "";
+  const freshness = ` · freshness ${source.freshness ?? "unknown"}`;
   const accessibleDetails = [
     source.fullName,
     sourceStatusLabel(source),
-    source.timestamp ? formatSourceTimestamp(source.timestamp) : "timestamp unavailable",
+    source.retrievedAt ? `retrieved at ${formatSourceTimestamp(source.retrievedAt)}` : "retrieval time unknown",
+    source.sourceAsOf ? `source as of ${formatSourceTimestamp(source.sourceAsOf)}` : "source-as-of time unknown",
+    `freshness ${source.freshness ?? "unknown"}`,
     source.version ? `version ${source.version}` : null,
     source.dataOrigin === "provider" ? "provider response" : "embedded data",
   ].filter(Boolean).join(", ");
@@ -48,7 +57,7 @@ export function SourceStatusBadge({ source, compact = false, testId }: { source:
       style={{ color: colors.text, backgroundColor: colors.bg }}
     >
       <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: colors.dot }} />
-      {sourceStatusLabel(source)}{timestamp}
+      {sourceStatusLabel(source)}{timestamp}{sourceAsOf}{freshness}
     </span>
   );
 }
@@ -67,9 +76,11 @@ function SourceDetail({ source, applicability }: { source: SourceState; applicab
         </div>
         <SourceStatusBadge source={source} testId={`source-detail-status-${source.id}`} />
       </div>
-      <dl className="mt-3 grid gap-1 border-t border-[#e5eae8] pt-2 text-[10px] sm:grid-cols-2 lg:grid-cols-4">
+      <dl className="mt-3 grid gap-1 border-t border-[#e5eae8] pt-2 text-[10px] sm:grid-cols-2 lg:grid-cols-5">
         <div><dt className="font-bold uppercase tracking-[0.1em] text-[#7d898f]">Meaning</dt><dd className="mt-1 text-[#344550]">{source.statusMeaning}</dd></div>
-        <div><dt className="font-bold uppercase tracking-[0.1em] text-[#7d898f]">Timestamp / version</dt><dd className="mt-1 font-mono text-[#344550]">{formatSourceTimestamp(source.timestamp)} · {source.version ?? "Not provided"}</dd></div>
+        <div><dt className="font-bold uppercase tracking-[0.1em] text-[#7d898f]">Retrieved at</dt><dd data-testid={`source-retrieved-at-${source.id}`} className="mt-1 font-mono text-[#344550]">{formatSourceTimestamp(source.retrievedAt)} · {source.version ?? "Not provided"}</dd></div>
+        <div><dt className="font-bold uppercase tracking-[0.1em] text-[#7d898f]">Source as of</dt><dd data-testid={`source-as-of-${source.id}`} className="mt-1 font-mono text-[#344550]">{formatSourceTimestamp(source.sourceAsOf)}</dd></div>
+        <div><dt className="font-bold uppercase tracking-[0.1em] text-[#7d898f]">Freshness</dt><dd data-testid={`source-freshness-${source.id}`} className="mt-1 text-[#344550]">{source.freshness ?? "unknown"}</dd></div>
         <div><dt className="font-bold uppercase tracking-[0.1em] text-[#7d898f]">Data role</dt><dd className="mt-1 text-[#344550]">{source.role}</dd></div>
         <div><dt className="font-bold uppercase tracking-[0.1em] text-[#7d898f]">Project applicability</dt><dd data-testid={`source-applicability-${source.id}`} className="mt-1 text-[#344550]">{applicability}</dd></div>
       </dl>

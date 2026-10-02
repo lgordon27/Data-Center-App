@@ -1,4 +1,4 @@
-import type { ProviderSourceMetadata } from "@/data/sources";
+import type { ProviderSourceMetadata, SourceFreshness } from "@/data/sources";
 
 export type ErcotProjectRecord = {
   inr: string;
@@ -50,6 +50,7 @@ type ProxyEnvelope = {
   status?: string;
   fetchedAt?: unknown;
   sourceUpdatedAt?: unknown;
+  freshness?: SourceFreshness;
   data?: {
     projects?: unknown;
     codHistory?: unknown;
@@ -94,6 +95,8 @@ export const FALLBACK_ERCOT_RESULT: ErcotQueueResult = {
     status: "embedded",
     dataOrigin: "embedded",
     timestamp: undefined,
+    sourceAsOf: FALLBACK_SOURCE_TIMESTAMP,
+    freshness: "unknown",
     version: "Bundled public aggregate baseline",
   },
 };
@@ -264,12 +267,15 @@ export function normalizeErcotProxyEnvelope(envelope: unknown): ErcotQueueResult
     };
   }
   const sourceUpdatedAt = validDate(typed.sourceUpdatedAt) ?? validDate(typed.diagnostics?.sourceFreshness) ?? validDate(stats.sourceRefreshDate);
-  if (!sourceUpdatedAt) return FALLBACK_ERCOT_RESULT;
   const status = typed.status === "live" ? "live" : "cached";
+  const fetchedAt = validDate(typed.fetchedAt);
+  const freshness = sourceUpdatedAt && (typed.freshness === "fresh" || typed.freshness === "stale")
+    ? typed.freshness
+    : "unknown";
   return {
     status,
     providerStatus: status,
-    fetchedAt: validDate(typed.fetchedAt),
+    fetchedAt,
     sourceUpdatedAt,
     stats,
     matchingProject: findMatchingProject(data.projects, data.codHistory),
@@ -277,7 +283,10 @@ export function normalizeErcotProxyEnvelope(envelope: unknown): ErcotQueueResult
     sourceMetadata: {
       status,
       dataOrigin: "provider",
-      timestamp: sourceUpdatedAt,
+      timestamp: fetchedAt ?? undefined,
+      retrievedAt: fetchedAt ?? undefined,
+      sourceAsOf: sourceUpdatedAt ?? undefined,
+      freshness,
     },
   };
 }

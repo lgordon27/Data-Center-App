@@ -7,6 +7,7 @@ const liveEiaResponse = {
   status: "live",
   fetchedAt: "2026-09-10T12:00:00.000Z",
   sourceUpdatedAt: "2026-06-01T00:00:00.000Z",
+  freshness: "stale",
   data: {
     priceHistory: [{ period: "2026-05", pricePerMwh: 55 }],
     latestPrice: 55,
@@ -40,9 +41,9 @@ test("shows the expandable three-source bar only on workbench routes", async ({ 
   }
 
   await page.goto("/#analysis");
-  await expect(page.getByTestId("data-source-status-fema-nri")).toHaveText("Embedded");
+  await expect(page.getByTestId("data-source-status-fema-nri")).toContainText("Embedded");
   await expect(page.getByTestId("data-source-status-ercot-queue")).toContainText(/Live|Cached|Embedded/);
-  await expect(page.getByTestId("data-source-status-eia")).toHaveText("Embedded");
+  await expect(page.getByTestId("data-source-status-eia")).toContainText("Embedded");
   await page.getByTestId("data-sources-toggle").click();
   await expect(page.getByTestId("data-sources-details")).toBeVisible();
   await expect(page.getByTestId("source-detail-fema-nri")).toContainText("v1.20");
@@ -57,7 +58,33 @@ test("shows the expandable three-source bar only on workbench routes", async ({ 
     body: JSON.stringify(liveEiaResponse),
   }));
   await page.reload();
-  await expect(page.getByTestId("data-source-status-eia")).toHaveText("Live · Jun 1, 2026");
+  await expect(page.getByTestId("data-source-status-eia")).toContainText(
+    "Stale · retrieved Sep 10, 2026 · source as of Jun 1, 2026 · freshness stale",
+  );
+  await page.getByTestId("data-sources-toggle").click();
+  await expect(page.getByTestId("source-retrieved-at-eia")).toContainText("Sep 10, 2026");
+  await expect(page.getByTestId("source-as-of-eia")).toContainText("Jun 1, 2026");
+  await expect(page.getByTestId("source-freshness-eia")).toHaveText("stale");
+
+  await page.unroute(eiaEndpoint);
+  await page.route(eiaEndpoint, (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ ...liveEiaResponse, fetchedAt: undefined, sourceUpdatedAt: undefined }),
+  }));
+  await page.reload();
+  await expect(page.getByTestId("data-source-status-eia")).toContainText("Freshness unknown");
+
+  await page.unroute(eiaEndpoint);
+  await page.route(eiaEndpoint, (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ ...liveEiaResponse, freshness: "fresh" }),
+  }));
+  await page.reload();
+  await expect(page.getByTestId("data-source-status-eia")).toContainText(
+    "Live · retrieved Sep 10, 2026 · source as of Jun 1, 2026 · freshness fresh",
+  );
 
   for (const route of nonWorkbenchRoutes) {
     await page.goto(`/#${route}`);

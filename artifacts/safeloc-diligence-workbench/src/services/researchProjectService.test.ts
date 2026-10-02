@@ -846,6 +846,38 @@ test("aggregates unique sources and support quality without counting missing ite
   });
 });
 
+test("counts only distinct accessible pages that supported retained claims", () => {
+  const canonical = "https://example.com/atlas/permit";
+  const source = (url: string, state: "accessible" | "blocked", passage?: string, canonicalUrl?: string) => ({
+    url,
+    canonicalUrl,
+    accessOutcome: { state, reason: state === "accessible" ? "open" : "blocked", passage },
+  });
+  const item = (sourceId: string, sources: unknown[]) => ({
+    ...response.evidence[0],
+    sourceUrl: sourceId,
+    sources,
+    sourceValidation: {
+      policyVersion: 1,
+      state: "claim-supported",
+      rejectionCodes: [],
+      claimMappings: [{ sourceId, supportStatus: "supported" }],
+    },
+  });
+  const audit = summarizeResearchAudit([
+    item(canonical, [
+      source(canonical, "accessible", "The permit record names Atlas and its Cedar facility."),
+      source("https://example.com/atlas/redirect", "accessible", "Same underlying permit.", canonical),
+      source("https://example.com/blocked", "blocked", "Blocked page."),
+      source("https://example.com/no-passage", "accessible"),
+    ]) as any,
+    item("https://example.com/unmapped-claim", [
+      source("https://example.com/landing", "accessible", "Generic landing page."),
+    ]) as any,
+  ]);
+  assert.equal(audit.uniqueValidatedSourceCount, 1);
+});
+
 test("aligns the browser request budget with the server-owned research deadline", () => {
   assert.equal(RESEARCH_PROJECT_TIMEOUT_MS, 90_000);
 });
@@ -858,6 +890,13 @@ test("returns the first timeout without issuing an automatic retry", async () =>
     assert.deepEqual(JSON.parse(String(init?.body)), {
       name: "Atlas",
       location: "Texas",
+      projectIdentity: {
+        projectId: null,
+        providerId: null,
+        name: "Atlas",
+        location: "Texas",
+        operator: "Atlas Compute",
+      },
       knownData: {
         capacity: 800,
         operator: "Atlas Compute",
@@ -898,6 +937,41 @@ test("does not retry non-timeout failures", async () => {
   assert.equal(calls, 1);
 });
 
+test("binds the request and response to the selected project identity", async () => {
+  const requestIdentity = {
+    projectId: "qts-irving-1",
+    providerId: "compute-atlas-qts-irving-1",
+    operator: "QTS Data Centers",
+  };
+  let sentBody: Record<string, any> | null = null;
+  const fetchImpl = async (_input: string | URL | Request, init?: RequestInit) => {
+    sentBody = JSON.parse(String(init?.body));
+    return new Response(JSON.stringify({ ...response, projectIdentity: sentBody!.projectIdentity }), { status: 200 });
+  };
+  const result = await researchProject("QTS Irving 1", "Irving, Texas", fetchImpl as typeof fetch, {
+    knownData: { providerId: "compute-atlas-qts-irving-1", operator: "QTS Data Centers" },
+    projectIdentity: requestIdentity,
+  });
+  assert.deepEqual(sentBody?.projectIdentity, {
+    ...requestIdentity,
+    name: "QTS Irving 1",
+    location: "Irving, Texas",
+  });
+  assert.deepEqual(result.projectIdentity, sentBody?.projectIdentity);
+
+  const mismatchedFetch = async () => new Response(JSON.stringify({
+    ...response,
+    projectIdentity: { ...result.projectIdentity, projectId: "different-project" },
+  }), { status: 200 });
+  await assert.rejects(
+    researchProject("QTS Irving 1", "Irving, Texas", mismatchedFetch as typeof fetch, {
+      knownData: { providerId: "compute-atlas-qts-irving-1", operator: "QTS Data Centers" },
+      projectIdentity: requestIdentity,
+    }),
+    /Research did not return a usable update/i,
+  );
+});
+
 test("preserves cache freshness metadata and sends explicit force refresh", async () => {
   let requestBody: Record<string, unknown> | null = null;
   const cacheKey = "a".repeat(64);
@@ -905,6 +979,7 @@ test("preserves cache freshness metadata and sends explicit force refresh", asyn
     requestBody = JSON.parse(String(init?.body));
     return new Response(JSON.stringify({
       ...response,
+      projectIdentity: requestBody.projectIdentity,
       researchCache: {
         key: cacheKey,
         state: "stale",
@@ -916,7 +991,12 @@ test("preserves cache freshness metadata and sends explicit force refresh", asyn
     }), { status: 200 });
   };
   const result = await researchProject("Atlas", "Texas", fetchImpl as typeof fetch, { forceRefresh: true });
-  assert.deepEqual(requestBody, { name: "Atlas", location: "Texas", forceRefresh: true });
+  assert.deepEqual(requestBody, {
+    name: "Atlas",
+    location: "Texas",
+    projectIdentity: { projectId: null, providerId: null, name: "Atlas", location: "Texas", operator: null },
+    forceRefresh: true,
+  });
   assert.deepEqual(result.researchCache, {
     key: cacheKey,
     state: "stale",

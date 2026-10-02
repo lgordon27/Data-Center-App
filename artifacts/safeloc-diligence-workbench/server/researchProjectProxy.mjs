@@ -992,9 +992,49 @@ function parseResearchProjectBody(body) {
       }))
       .filter((item) => RESEARCH_EVIDENCE_IDS.includes(item.id) && item.label && item.value);
   }
+  const normalizedName = nonEmptyString(name, "name", 160);
+  const rawProjectIdentity = body.projectIdentity;
+  if (rawProjectIdentity !== undefined && !isRecord(rawProjectIdentity)) {
+    throw new Error('Research field "projectIdentity" must be an object.');
+  }
+  const identityText = (value, field) => {
+    if (value === null || value === undefined) return null;
+    return nonEmptyString(value, field, 160);
+  };
+  const projectIdentity = rawProjectIdentity
+    ? {
+        projectId: identityText(rawProjectIdentity.projectId, "projectIdentity.projectId"),
+        providerId: identityText(rawProjectIdentity.providerId, "projectIdentity.providerId"),
+        name: nonEmptyString(rawProjectIdentity.name, "projectIdentity.name", 160),
+        location: nonEmptyString(rawProjectIdentity.location, "projectIdentity.location", 160),
+        operator: identityText(rawProjectIdentity.operator, "projectIdentity.operator"),
+      }
+    : {
+        projectId: null,
+        providerId: knownData?.providerId ?? null,
+        name: normalizedName,
+        location: displayLocation,
+        operator: knownData?.operator ?? null,
+      };
+  if (
+    projectIdentity.name !== normalizedName ||
+    projectIdentity.location !== displayLocation ||
+    (knownData?.operator !== undefined && projectIdentity.operator !== knownData.operator) ||
+    (knownData?.providerId !== undefined && projectIdentity.providerId !== knownData.providerId)
+  ) {
+    throw new Error("Research project identity does not match the submitted project.");
+  }
+  if (projectIdentity.operator || projectIdentity.providerId) {
+    knownData = {
+      ...(knownData ?? {}),
+      ...(!knownData?.operator && projectIdentity.operator ? { operator: projectIdentity.operator } : {}),
+      ...(!knownData?.providerId && projectIdentity.providerId ? { providerId: projectIdentity.providerId } : {}),
+    };
+  }
   return {
-    name: nonEmptyString(name, "name", 160),
+    name: normalizedName,
     location: displayLocation,
+    projectIdentity,
     ...(knownData ? { knownData } : {}),
     ...(focusIds ? { focusIds } : {}),
     ...(currentEvidence ? { currentEvidence } : {}),
@@ -3777,6 +3817,7 @@ function createPartialResearchBody(project, categoryResults = []) {
         : []),
   );
   return {
+    projectIdentity: project.projectIdentity,
     projectSummary: {
       name: stringOrFallback(projectSummary.name, project.name, 160),
       location: stringOrFallback(projectSummary.location, project.location, 160),
@@ -8339,7 +8380,7 @@ export async function handleResearchProjectRequest(
         throw error;
       }
       await launchGate;
-      return runValidatedResearch(project, {
+      const researchResult = await runValidatedResearch(project, {
         apiKey,
         googleApiKey,
         googleDiscoveryImpl,
@@ -8372,6 +8413,7 @@ export async function handleResearchProjectRequest(
         claimTrace,
         providerGate,
       });
+      return { ...researchResult, projectIdentity: project.projectIdentity };
     });
     if (!refreshResult.started) {
       resolveStartReady();

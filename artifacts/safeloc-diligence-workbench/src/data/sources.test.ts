@@ -5,6 +5,7 @@ import {
   formatElectricityCostAttribution,
   formatSourceTimestamp,
   sourceApplicabilityText,
+  sourceStatusLabel,
   sourceStateMap,
 } from "./sources";
 
@@ -19,14 +20,22 @@ test("the default source registry is truthful about bundled provider state", () 
   );
 });
 
-test("provider metadata can promote EIA to a timestamped live response", () => {
+test("provider metadata separates retrieval time from source-as-of time", () => {
   const eia = sourceStateMap({
-    eia: { status: "live", dataOrigin: "provider", timestamp: "2026-08-29T12:00:00.000Z", version: "series-2025" },
+    eia: {
+      status: "live",
+      dataOrigin: "provider",
+      retrievedAt: "2026-08-30T12:00:00.000Z",
+      sourceAsOf: "2026-08-29T12:00:00.000Z",
+      freshness: "fresh",
+      version: "series-2025",
+    },
   }).eia;
-  assert.equal(formatSourceTimestamp(eia.timestamp), "Aug 29, 2026");
+  assert.equal(formatSourceTimestamp(eia.retrievedAt), "Aug 30, 2026");
+  assert.equal(formatSourceTimestamp(eia.sourceAsOf), "Aug 29, 2026");
   assert.equal(
     formatElectricityCostAttribution(42, eia),
-    "Electricity cost: $42/MWh (U.S. Energy Information Administration Open Data, live · Aug 29, 2026)",
+    "Electricity cost: $42/MWh (U.S. Energy Information Administration Open Data, Live · retrieved Aug 30, 2026 · source as of Aug 29, 2026)",
   );
 });
 
@@ -36,8 +45,22 @@ test("cached EIA observations retain provider attribution", () => {
   }).eia;
   assert.equal(
     formatElectricityCostAttribution(42.5, eia),
-    "Electricity cost: $42.5/MWh (U.S. Energy Information Administration Open Data, cached · Aug 29, 2026)",
+    "Electricity cost: $42.5/MWh (U.S. Energy Information Administration Open Data, Cached · retrieved Aug 29, 2026 · source date unknown)",
   );
+});
+
+test("stale provider data is not labeled live", () => {
+  const eia = sourceStateMap({
+    eia: {
+      status: "live",
+      dataOrigin: "provider",
+      retrievedAt: "2026-09-10T12:00:00.000Z",
+      sourceAsOf: "2026-06-01T00:00:00.000Z",
+      freshness: "stale",
+    },
+  }).eia;
+  assert.equal(sourceStatusLabel(eia), "Stale");
+  assert.match(formatElectricityCostAttribution(55, eia), /Stale · retrieved Sep 10, 2026 · source as of Jun 1, 2026/);
 });
 
 test("unsupported or incomplete provider states do not create false live claims", () => {
@@ -46,8 +69,10 @@ test("unsupported or incomplete provider states do not create false live claims"
     eia: { status: "live", dataOrigin: "provider" },
   });
   assert.equal(sources["fema-nri"].status, "embedded");
-  assert.equal(sources.eia.status, "embedded");
+  assert.equal(sources.eia.status, "unknown");
   assert.equal(sources.eia.timestamp, undefined);
+  assert.equal(sources.eia.freshness, "unknown");
+  assert.equal(sourceStatusLabel(sources.eia), "Freshness unknown");
 });
 
 test("bundled EIA values remain embedded estimates", () => {
@@ -57,9 +82,16 @@ test("bundled EIA values remain embedded estimates", () => {
   );
 });
 
-test("cached status requires a timestamped provider response", () => {
+test("missing or malformed timestamps remain unknown without relabeling provider data as embedded", () => {
   assert.equal(sourceStateMap({ eia: { status: "cached", dataOrigin: "embedded", timestamp: "2026-08-29T12:00:00.000Z" } }).eia.status, "embedded");
-  assert.equal(sourceStateMap({ eia: { status: "cached", dataOrigin: "provider", timestamp: "not-a-date" } }).eia.status, "embedded");
+  const withoutTimestamp = sourceStateMap({ eia: { status: "cached", dataOrigin: "provider" } }).eia;
+  assert.equal(withoutTimestamp.status, "unknown");
+  assert.equal(withoutTimestamp.timestamp, undefined);
+  assert.equal(withoutTimestamp.freshness, "unknown");
+  const malformedTimestamp = sourceStateMap({ eia: { status: "cached", dataOrigin: "provider", timestamp: "not-a-date" } }).eia;
+  assert.equal(malformedTimestamp.status, "unknown");
+  assert.equal(malformedTimestamp.timestamp, undefined);
+  assert.equal(malformedTimestamp.freshness, "unknown");
   assert.equal(sourceStateMap({ eia: { status: "cached", dataOrigin: "provider", timestamp: "2026-08-29T12:00:00.000Z" } }).eia.status, "cached");
 });
 

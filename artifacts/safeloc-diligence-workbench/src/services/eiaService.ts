@@ -1,4 +1,4 @@
-import type { ProviderSourceMetadata } from "@/data/sources";
+import type { ProviderSourceMetadata, SourceFreshness } from "@/data/sources";
 
 export const EIA_PROXY_ENDPOINT = "/api/eia/electricity";
 export const EIA_ATTRIBUTION = "Electricity data: U.S. Energy Information Administration Open Data";
@@ -20,6 +20,7 @@ export type EiaElectricityData = {
   dataOrigin: "provider" | "embedded";
   fetchedAt?: string;
   sourceUpdatedAt?: string;
+  freshness?: SourceFreshness;
   priceHistory: EiaPricePoint[];
   priceCalculationHistory?: EiaPricePoint[];
   generationHistory: EiaGenerationMonth[];
@@ -40,6 +41,7 @@ type ProxyEnvelope = {
   status?: string;
   fetchedAt?: string;
   sourceUpdatedAt?: string | null;
+  freshness?: SourceFreshness;
   data?: {
     priceHistory?: unknown;
     priceCalculationHistory?: unknown;
@@ -146,16 +148,28 @@ export function normalizeEiaEnvelope(envelope: unknown): EiaElectricityData | nu
   const generationHistory = normalizeMixHistory(payload.data?.generationHistory);
   const consumptionHistory = normalizeConsumptionHistory(payload.data?.consumptionHistory);
   const latestPrice = number(payload.data?.latestPrice) ?? priceHistory.at(-1)?.pricePerMwh;
-  const sourceUpdatedAt = validTimestamp(payload.sourceUpdatedAt) ? payload.sourceUpdatedAt : null;
+  const sourceUpdatedAt = validTimestamp(payload.sourceUpdatedAt) ? payload.sourceUpdatedAt : undefined;
   const providerStatus = payload.status === "cached" ? "cached" : payload.status === "live" ? "live" : null;
-  if (!providerStatus || latestPrice === undefined || latestPrice === null || priceHistory.length === 0 || generationHistory.length === 0 || consumptionHistory.length === 0 || !sourceUpdatedAt) return null;
+  if (!providerStatus || latestPrice === undefined || latestPrice === null || priceHistory.length === 0 || generationHistory.length === 0 || consumptionHistory.length === 0) return null;
   const acceleration = calculateAcceleration(priceCalculationHistory.length ? priceCalculationHistory : priceHistory);
-  const sourceMetadata: ProviderSourceMetadata = { status: providerStatus, dataOrigin: "provider", timestamp: sourceUpdatedAt };
+  const fetchedAt = validTimestamp(payload.fetchedAt) ? payload.fetchedAt : undefined;
+  const freshness = sourceUpdatedAt && (payload.freshness === "fresh" || payload.freshness === "stale")
+    ? payload.freshness
+    : "unknown";
+  const sourceMetadata: ProviderSourceMetadata = {
+    status: providerStatus,
+    dataOrigin: "provider",
+    timestamp: fetchedAt,
+    retrievedAt: fetchedAt,
+    sourceAsOf: sourceUpdatedAt,
+    freshness,
+  };
   return {
     status: providerStatus,
     dataOrigin: "provider",
-    fetchedAt: validTimestamp(payload.fetchedAt) ? payload.fetchedAt : undefined,
+    fetchedAt,
     sourceUpdatedAt,
+    freshness,
     priceHistory,
     priceCalculationHistory: priceCalculationHistory.length ? priceCalculationHistory : undefined,
     generationHistory,
@@ -191,7 +205,14 @@ function readCache(): EiaElectricityData | null {
   if (typeof window === "undefined") return null;
   try {
     const value: unknown = JSON.parse(window.localStorage.getItem(EIA_CACHE_KEY) ?? "null");
-    const normalized = normalizeEiaEnvelope({ status: value && typeof value === "object" ? (value as { status?: string }).status : undefined, data: value, sourceUpdatedAt: value && typeof value === "object" ? (value as { sourceUpdatedAt?: string }).sourceUpdatedAt : undefined });
+    const stored = value && typeof value === "object" ? value as EiaElectricityData : null;
+    const normalized = normalizeEiaEnvelope({
+      status: stored?.status,
+      fetchedAt: stored?.fetchedAt,
+      data: value,
+      sourceUpdatedAt: stored?.sourceUpdatedAt,
+      freshness: stored?.sourceMetadata?.freshness,
+    });
     return normalized ? { ...normalized, status: "cached", sourceMetadata: { ...normalized.sourceMetadata, status: "cached" } } : null;
   } catch {
     return null;

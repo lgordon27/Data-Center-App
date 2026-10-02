@@ -23,7 +23,7 @@ import type {
   Screen
 } from "@/components/Shell";
 import { useDiligence } from "@/context/DiligenceContext";
-import { formatSourceTimestamp } from "@/data/sources";
+import { formatSourceTimestamp, sourceStatusLabel } from "@/data/sources";
 import {
   ACTIVE_FEMA_NRI_PROFILE,
   FEMA_NRI_ATTRIBUTION,
@@ -82,10 +82,11 @@ function CustomCaseBrief({ project, onNavigate, onFocusCommunity }: { project: R
   const sourceCoverage = summarizeSourceCoverage(researchItems);
   const researchAudit = summarizeResearchAudit(researchItems);
   const isDefaultAssumptions = project.researchMode === "default-assumptions";
-  const isResearchIncomplete = project.researchMode === "research-incomplete"
+  const isResearching = project.researchStatus === "researching";
+  const isResearchIncomplete = !isResearching && (project.researchMode === "research-incomplete"
     || project.researchStatus === "timed-out"
     || project.researchStatus === "failed"
-    || project.researchStatus === "cancelled";
+    || project.researchStatus === "cancelled");
   const isPartialResearch = project.researchMode === "partial-public-source" || project.researchStatus === "partial";
   const eligibleEvidenceCount = project.eligibleEvidenceCount ?? 0;
   const retrievedLeadCount = project.retrievedLeadCount ?? 0;
@@ -104,12 +105,12 @@ function CustomCaseBrief({ project, onNavigate, onFocusCommunity }: { project: R
       <PageIntro
         eyebrow="01 / frame the opportunity"
         title={project.name}
-        description={isDefaultAssumptions ? "Review the default project setup, capacity basis, and unresolved evidence scope before using the model." : isResearchIncomplete ? "Research Incomplete: review source coverage before treating any generated lead as evidence." : isPartialResearch ? "Partial public-source research: review retained passages, scope assessments, and eligibility separately." : "Review the researched project summary, capacity basis, and evidence scope before relying on the return."}
-        right={<div data-testid="custom-project-status" className="flex items-center gap-2 self-start rounded-full border border-[#f1cb8b] bg-[#fff8e9] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#6f460e] md:self-auto"><span className="h-2 w-2 rounded-full bg-[#a65a00]" /> {isDefaultAssumptions ? "Default assumptions · research unavailable" : isResearchIncomplete ? "Research Incomplete" : isPartialResearch ? "Partial public-source research" : "Research reviewed · claims remain quarantined"}</div>}
+        description={isResearching ? "Research is in progress for this exact project. No synthetic economics or canonical-dossier facts are being applied." : isDefaultAssumptions ? "Review the default project setup, capacity basis, and unresolved evidence scope before using the model." : isResearchIncomplete ? "Research Incomplete: review retained, attributable passages and source coverage before treating any lead as evidence." : isPartialResearch ? "Partial public-source research: review retained passages, scope assessments, and eligibility separately." : "Review the researched project summary, capacity basis, and evidence scope before relying on the return."}
+        right={<div data-testid="custom-project-status" role="status" aria-live="polite" className="flex items-center gap-2 self-start rounded-full border border-[#f1cb8b] bg-[#fff8e9] px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[#6f460e] md:self-auto"><span className={`h-2 w-2 rounded-full bg-[#a65a00] ${isResearching ? "animate-pulse" : ""}`} /> {isResearching ? "Researching this project" : isDefaultAssumptions ? "Default assumptions · research unavailable" : isResearchIncomplete ? "Research Incomplete" : isPartialResearch ? "Partial public-source research" : "Research reviewed · claims remain quarantined"}</div>}
       />
       <section data-testid="custom-project-summary" className="rounded-xl border border-[#cbd8d4] bg-white p-5 md:p-7">
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[#e5eae8] pb-5">
-          <div><SectionKicker>Custom project summary</SectionKicker><h2 className="text-[29px] font-semibold tracking-[-0.04em] text-[#122232]">{project.name}</h2><p className="mt-2 flex items-center gap-2 text-[12px] text-[#52616b]"><MapPin className="h-3.5 w-3.5 text-[#ba2f45]" />{project.location}</p></div>
+          <div><SectionKicker>Custom project summary</SectionKicker><h2 className="text-[29px] font-semibold tracking-[-0.04em] text-[#122232]">{project.name}</h2><p className="mt-2 flex items-center gap-2 text-[12px] text-[#52616b]"><MapPin className="h-3.5 w-3.5 text-[#ba2f45]" />{project.location}</p>{project.projectIdentity?.operator && <p data-testid="custom-project-operator" className="mt-1 text-[11px] text-[#52616b]">Operator: {project.projectIdentity.operator}</p>}{(project.projectIdentity?.projectId || project.projectIdentity?.providerId) && <p data-testid="custom-project-id" className="mt-1 font-mono text-[9px] text-[#60707d]">Project ID: {project.projectIdentity.projectId ?? project.projectIdentity.providerId}</p>}</div>
           <div className="rounded-lg bg-[#122232] px-4 py-3 text-right text-white"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#a4b4bd]">{capacityLabel}</div><div data-testid="custom-project-capacity" className="mt-1 font-mono text-xl font-bold text-[#d4e86b]">{project.capacityMW === null ? "Unknown" : `${project.capacityMW.toLocaleString()} MW`}</div><div data-testid="custom-project-capacity-note" className="mt-1 max-w-[180px] text-[9px] leading-4 text-[#c4d0d6]">{capacityNote}</div></div>
         </div>
         {isResearchIncomplete ? (
@@ -168,10 +169,14 @@ export function CaseBrief({ onNavigate, onFocusCommunity }: { onNavigate: (scree
   const { ercotQueue, project } = useDiligence();
   if (project.kind === "custom") return <CustomCaseBrief project={project} onNavigate={onNavigate} onFocusCommunity={onFocusCommunity} />;
   const topHazards = getTopFemaHazards(ACTIVE_FEMA_NRI_PROFILE);
-  const queueStatus = ercotQueue.status === "live" ? "Live" : ercotQueue.status === "cached" ? "Cached" : "Embedded";
-  const queueStatusClasses = ercotQueue.status === "live"
+  const queueSource = ercotQueue.sourceMetadata;
+  const queueStatus = sourceStatusLabel(queueSource);
+  const queueIsFreshLive = queueSource.status === "live" && queueSource.freshness === "fresh";
+  const queueStatusClasses = queueIsFreshLive
     ? "bg-[#e0f4ed] text-[#08644f]"
-    : "bg-[#fff0d6] text-[#7c4c00]";
+    : queueSource.status === "unknown"
+      ? "bg-[#edf1f3] text-[#52616b]"
+      : "bg-[#fff0d6] text-[#7c4c00]";
   return (
     <div>
       <PageIntro
@@ -267,7 +272,7 @@ export function CaseBrief({ onNavigate, onFocusCommunity }: { onNavigate: (scree
             <h2 id="ercot-queue-title" className="text-[18px] font-semibold tracking-[-0.025em] text-[#122232]">Public aggregate demand pressure</h2>
           </div>
           <span data-testid="ercot-queue-status" className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-mono text-[9px] font-bold uppercase tracking-[0.1em] ${queueStatusClasses}`}>
-            <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${ercotQueue.status === "live" ? "bg-[#0b7a63]" : "bg-[#a65a00]"}`} />
+            <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${queueIsFreshLive ? "bg-[#0b7a63]" : queueSource.status === "unknown" ? "bg-[#60707d]" : "bg-[#a65a00]"}`} />
             {queueStatus}
           </span>
         </div>

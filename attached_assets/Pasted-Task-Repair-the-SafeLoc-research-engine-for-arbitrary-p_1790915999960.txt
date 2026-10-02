@@ -1,0 +1,130 @@
+Task: Repair the SafeLoc research engine for arbitrary projects
+Do not run another live acceptance project yet.
+The IREN Sweetwater live run proved that arbitrary-project binding is largely working, but the research engine is still failing to convert retrieval into eligible evidence.
+Observed behavior:
+- one user action produced one controlled request, but workflow logs showed a second successful research run with unknown origin;
+- 13 discovery candidates;
+- 70 raw source-record occurrences;
+- 24/24 physical opens consumed;
+- 12 unique retained URLs;
+- all retained URLs classified as secondary reporting;
+- supplied official IREN project link remained discovery-only;
+- 46 passage instances;
+- 0 eligible findings;
+- 0 proposed inputs;
+- several categories timed out or remained partial.
+Treat this as a systemic research-engine problem, not an IREN-specific defect.
+Goal
+Make one arbitrary-project research action:
+1. create exactly one research run;
+2. prioritize high-value primary/project-specific sources;
+3. convert retained passages into eligible project evidence more reliably;
+4. finish more categories within the research budget;
+5. avoid spending most opens on low-value or redundant sources.
+1. Eliminate duplicate/ghost research runs
+Trace every place that can start a project research request.
+Ensure one user click creates exactly one run unless the user explicitly retries.
+Add a run-deduplication/idempotency key based on:
+- project ID;
+- user/session request;
+- request timestamp/window or explicit request ID.
+Prevent:
+- route effects;
+- background refreshes;
+- restored sessions;
+- page transitions;
+- retries;
+- duplicate button handlers
+from silently creating a second live research run.
+Record the initiator for every run:
+- user-click;
+- explicit retry;
+- background refresh;
+- restored job;
+- other.
+Acceptance test:
+one click → one run ID.
+2. Improve source-family prioritization
+Do not optimize for raw candidate/open count.
+Prioritize sources in roughly this order when relevant:
+1. official operator/developer project pages and announcements;
+2. government / city / county / state records;
+3. utility / PUC / interconnection / transmission records;
+4. permits / planning / zoning / construction records;
+5. financing / lender / bond / SEC records;
+6. water / environmental / air-permit records;
+7. credible local/national reporting;
+8. generic secondary pages / aggregators.
+Do not hard-code IREN-specific logic.
+Supplied official project URLs from the directory should receive explicit priority and should be opened unless blocked by the existing safety system.
+Generic regulator roots, generic landing pages, duplicate articles, and low-specificity pages should rank below project-specific records.
+3. Protect the open budget
+With a 24-open budget:
+- blocked URLs should not repeatedly consume opportunities;
+- duplicates from the same canonical URL should not consume multiple opens;
+- generic landing pages should not crowd out project-specific records;
+- preserve reasonable source-family diversity.
+Add tests showing that a project-specific government or first-party record outranks a generic landing page or duplicated media article.
+4. Improve passage usefulness
+For opened documents:
+- retain project-specific sentences/structured fields;
+- preserve facility/phase identifiers;
+- remove redundant boilerplate;
+- deduplicate equivalent passages before category analysis;
+- attach source/project/scope metadata before analysis.
+The analysis stage should receive a smaller set of high-value, project-specific passages rather than dozens of repeated passage instances.
+5. Improve category completion
+Inspect why categories timed out despite retained passages.
+Keep the existing bounded architecture, but ensure:
+- category inputs are compact;
+- project identity and highest-value categories run first;
+- duplicate passage instances do not consume analysis budget;
+- provider deadlines leave enough time for structured analysis after discovery/opening.
+Do not increase cost simply by increasing timeouts or token limits unless clearly necessary.
+6. Eligibility conversion
+Using fixtures, trace:
+retained passage → structured claim → identity/scope check → eligibility
+Identify the most common reasons good-looking project-specific passages fail to become eligible findings.
+Fix only clearly systemic conversion problems.
+Do not weaken:
+- project identity rules;
+- source attribution;
+- scope requirements;
+- fail-closed behavior.
+7. Metrics that matter
+Replace emphasis on raw volume with:
+- unique project-specific sources opened;
+- unique usable retained sources;
+- unique retained passages;
+- eligible claims;
+- source families represented;
+- category completion;
+- blocked/duplicate/irrelevant exclusions.
+Keep raw candidate/open counts available for diagnostics but not as the main success signal.
+8. Tests
+Offline/mocked tests must cover:
+- one click creates exactly one run;
+- official supplied project URL is prioritized;
+- government/project-specific record beats generic landing page;
+- duplicates do not consume multiple meaningful opportunities;
+- blocked sources do not repeatedly exhaust the budget;
+- secondary-reporting-only discovery does not prevent later primary-source candidates from being opened;
+- duplicate passages are reduced before category analysis;
+- project identity/scope remains strict;
+- good structured project evidence can reach eligibility.
+Run:
+- focused tests;
+- full provider-free suite;
+- typecheck;
+- production build.
+Do not run another paid/live project test automatically.
+Deliverable
+Report:
+- root cause of duplicate run;
+- root cause(s) of poor source yield;
+- source-ranking/open-budget changes;
+- analysis-budget changes;
+- eligibility-conversion changes;
+- tests/results;
+- whether the engine is ready for another arbitrary-project live test.
+Do not add new product features, backtesting, historical comparison, authentication, or portfolio analytics.

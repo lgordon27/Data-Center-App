@@ -267,14 +267,16 @@ export function LowConfidenceWarning({ testId }: { testId: string }) {
   );
 }
 export function ProgressNav({ current, onNavigate }: { current: Screen; onNavigate: (screen: Screen) => void }) {
-  const { project, originatingCompany } = useDiligence();
+  const { activeProjectContext, originatingCompany } = useDiligence();
   const currentIndex = screens.findIndex((screen) => screen.id === current);
   return (
     <div className="border-b border-[#d9e0e4] bg-[#f9faf8]/90 px-4 backdrop-blur-md md:px-8">
       <div className="mx-auto flex max-w-[1480px] items-center justify-between">
         <div className="hidden items-center gap-2 py-3 text-[10px] font-bold uppercase tracking-[0.17em] text-[#52616b] md:flex">
           <span data-testid="workbench-breadcrumb" className="font-mono text-[#122232]">
-            {originatingCompany ? `${originatingCompany} → ${project.name} → ${screens.find((screen) => screen.id === current)?.label}` : "WORKBENCH / CASE ABI-26-001"}
+            {activeProjectContext
+              ? `${originatingCompany ? `${originatingCompany} → ` : ""}${activeProjectContext.name} → ${screens.find((screen) => screen.id === current)?.label}`
+              : "No active project selected"}
           </span>
         </div>
         <nav aria-label="Diligence progress" className="flex w-full items-stretch justify-between gap-1 md:w-auto md:gap-2">
@@ -317,7 +319,7 @@ export function ProgressNav({ current, onNavigate }: { current: Screen; onNaviga
 }
 
 export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, onDirectory, onWorkbench, route, sessionRestored, mobileOpen, menuButtonRef }: { onMenu: () => void; onReset: () => void; onHome: () => void; onHowItWorks: () => void; onValueChain: () => void; onDirectory: () => void; onWorkbench: () => void; onAnalyzeCustom?: () => void; route: AppRoute; sessionRestored: boolean; mobileOpen: boolean; menuButtonRef: RefObject<HTMLButtonElement | null> }) {
-  const { sessionMigrated, project, selectedProjectContext, loadCustomProject } = useDiligence();
+  const { sessionMigrated, project, activeProjectContext, loadCustomProject } = useDiligence();
   const researchPresentation = getResearchStatusPresentation({
     outcome: project.researchOutcome,
     researchMode: project.researchMode,
@@ -340,24 +342,19 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
   });
   const [customProjectOpen, setCustomProjectOpen] = useState(false);
   const [customProjectPrefill, setCustomProjectPrefill] = useState<{ name: string; location: string; knownData?: KnownProjectData; projectIdentity?: Pick<ResearchProjectIdentity, "projectId" | "providerId" | "operator"> } | null>(null);
-  const [customProjectSelection, setCustomProjectSelection] = useState<{ company: CompanyKey | null; selection: ProjectSelectionContext | null } | null>(null);
+  const [customProjectSelection, setCustomProjectSelection] = useState<{ company: CompanyKey | null; selection: ProjectSelectionContext | null; selectionSource: "directory" | "market-exposure" | "custom-project-dialog" } | null>(null);
   const dialogReturnFocus = useRef<HTMLElement | null>(null);
   const activeResearchRequestKey = useRef<string | null>(null);
   const activeResearchCancel = useRef<(() => void) | null>(null);
   const activeResearchRequestContext = useRef<{ name: string; location: string; knownData?: KnownProjectData; projectIdentity?: ResearchProjectIdentity } | null>(null);
-  const activeResearchSelection = useRef<{ company: CompanyKey | null; selection: ProjectSelectionContext | null } | null>(null);
+  const activeResearchSelection = useRef<{ company: CompanyKey | null; selection: ProjectSelectionContext | null; selectionSource: "directory" | "market-exposure" | "custom-project-dialog" } | null>(null);
   const [researchFailureKind, setResearchFailureKind] = useState<"busy" | "failed" | null>(null);
   const [researchCooldownUntil, setResearchCooldownUntil] = useState<number | null>(null);
   const previousRoute = useRef(route);
   const isHome = route === "home";
-  const canonicalIdentity = project.canonicalDossier?.canonicalData.identity;
-  const projectName = project.canonicalDossier?.name ?? project.name;
-  const projectLocation = canonicalIdentity?.location ?? project.location;
-  const projectOperator = canonicalIdentity
-    ? canonicalIdentity.operator
-    : selectedProjectContext?.projectName === projectName
-      ? selectedProjectContext.operator
-      : project.kind === "custom" ? project.projectIdentity?.operator ?? undefined : undefined;
+  const projectName = activeProjectContext?.name ?? "No active project selected";
+  const projectLocation = activeProjectContext?.location ?? "";
+  const projectOperator = activeProjectContext?.operator ?? undefined;
   useEffect(() => {
     if (!researchCooldownUntil) return undefined;
     storeCooldownUntil("safeloc-custom-research-cooldown", researchCooldownUntil);
@@ -369,7 +366,7 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
   }, [researchCooldownUntil]);
   const openCustomProject = (event?: Event) => {
     dialogReturnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const detail = event instanceof CustomEvent ? event.detail as { name?: string; location?: string; knownData?: KnownProjectData; company?: CompanyKey | null; selection?: ProjectSelectionContext | null; projectIdentity?: Pick<ResearchProjectIdentity, "projectId" | "providerId" | "operator"> } : undefined;
+    const detail = event instanceof CustomEvent ? event.detail as { name?: string; location?: string; knownData?: KnownProjectData; company?: CompanyKey | null; selection?: ProjectSelectionContext | null; selectionSource?: "directory" | "market-exposure" | "custom-project-dialog"; projectIdentity?: Pick<ResearchProjectIdentity, "projectId" | "providerId" | "operator"> } : undefined;
     const projectIdentity = detail?.projectIdentity ?? {
       projectId: detail?.selection?.projectId ?? detail?.knownData?.providerId ?? null,
       providerId: detail?.selection?.providerId ?? detail?.knownData?.providerId ?? null,
@@ -378,7 +375,9 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
     setCustomProjectPrefill(detail?.name && detail?.location
       ? { name: detail.name, location: detail.location, knownData: detail.knownData, projectIdentity }
       : null);
-    setCustomProjectSelection(detail?.selection || detail?.company ? { company: detail.company ?? null, selection: detail.selection ?? null } : null);
+    const selectionSource = detail?.selectionSource
+      ?? (detail?.selection || detail?.company ? "market-exposure" : "custom-project-dialog");
+    setCustomProjectSelection({ company: detail?.company ?? null, selection: detail?.selection ?? null, selectionSource });
     setCustomProjectOpen(true);
   };
   useEffect(() => {
@@ -426,8 +425,8 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
         </div>
         <div className={`hidden flex-1 items-center justify-center lg:flex ${isHome ? "opacity-0" : ""}`} aria-hidden={isHome}>
           <div className="text-center">
-              <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-[#b9d43a]">{project.kind === "custom" ? `Custom research Beta · ${researchPresentation.proposalReview ? "proposal review" : publicHeaderPresentation.label}` : project.canonicalDossier ? "Maintainer-reviewed canonical dossier" : "Curated starting case"}</div>
-              <div data-testid="header-project-identity" className="mt-1 text-[10px] text-[#96a4ad]">{projectName}{projectOperator ? ` · ${projectOperator}` : ""} / {projectLocation} · Evidence before conclusion</div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-[#b9d43a]">{!activeProjectContext ? "No active project selected" : project.kind === "custom" ? `Custom research Beta · ${researchPresentation.proposalReview ? "proposal review" : publicHeaderPresentation.label}` : project.canonicalDossier ? "Maintainer-reviewed canonical dossier" : "Curated starting case"}</div>
+              <div data-testid="header-project-identity" className="mt-1 text-[10px] text-[#96a4ad]">{activeProjectContext ? `${projectName}${projectOperator ? ` · ${projectOperator}` : ""} / ${projectLocation} · Evidence before conclusion` : "No active project selected"}</div>
           </div>
         </div>
         <div className="flex items-center gap-1 sm:gap-2">
@@ -498,7 +497,11 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
         setResearchCooldownUntil(null);
         const selection = customProjectSelection;
         activeResearchSelection.current = selection;
-        loadCustomProject(provisional, selection?.company, selection?.selection);
+        loadCustomProject(provisional, selection?.company, selection?.selection, {
+          requestId: requestKey,
+          selectionSource: selection?.selectionSource ?? "custom-project-dialog",
+          phase: "start",
+        });
         closeCustomProject();
         window.location.hash = "analysis";
       }}
@@ -507,7 +510,11 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
         activeResearchCancel.current = null;
         setResearchFailureKind(null);
         setResearchCooldownUntil(null);
-        loadCustomProject(research, activeResearchSelection.current?.company, activeResearchSelection.current?.selection);
+        loadCustomProject(research, activeResearchSelection.current?.company, activeResearchSelection.current?.selection, {
+          requestId: requestKey,
+          selectionSource: activeResearchSelection.current?.selectionSource ?? "custom-project-dialog",
+          phase: "result",
+        });
         trackEvent("research_handoff_completed", {
           company: customProjectSelection?.company?.toLowerCase() ?? "none",
           project_id: "custom_project",
@@ -538,7 +545,11 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
               ? "The 90-second research deadline was reached. Valid findings were retained where available; retry the same project to continue."
               : failure.message,
           },
-        }, activeResearchSelection.current?.company, activeResearchSelection.current?.selection);
+        }, activeResearchSelection.current?.company, activeResearchSelection.current?.selection, {
+          requestId: requestKey,
+          selectionSource: activeResearchSelection.current?.selectionSource ?? "custom-project-dialog",
+          phase: "result",
+        });
       }}
     />
     <CustomResearchBanner
@@ -554,7 +565,7 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
 }
 
 export function ShellAside({ screen, metrics, onNavigate, onReset }: { screen: Screen; metrics: ReturnType<typeof useDiligence>["metrics"]; onNavigate: (screen: Screen) => void; onReset: () => void }) {
-  const { project } = useDiligence();
+  const { project, activeProjectContext } = useDiligence();
   const researchPresentation = getResearchStatusPresentation({
     outcome: project.researchOutcome,
     researchMode: project.researchMode,
@@ -572,12 +583,12 @@ export function ShellAside({ screen, metrics, onNavigate, onReset }: { screen: S
     <aside className="hidden w-[246px] shrink-0 border-r border-[#d9e0e4] bg-[#eef2f1] px-5 py-7 lg:block">
       <SectionKicker>Active mandate</SectionKicker>
       <div className="mb-7">
-         <div className="font-mono text-[11px] font-bold text-[#122232]">{project.kind === "custom" ? "CUSTOM RESEARCH / BETA" : project.canonicalDossier ? "CANONICAL / REVIEWED" : "CURATED STARTING CASE"}</div>
-          <div className="mt-1 text-xs leading-5 text-[#52616b]">{project.kind === "custom" ? researchPresentation.proposalReview ? "AI research proposal · human acceptance required" : publicPresentation.label : project.canonicalDossier ? "Maintainer-reviewed PostgreSQL dossier" : "AI infrastructure diligence case"}</div>
+         <div className="font-mono text-[11px] font-bold text-[#122232]">{!activeProjectContext ? "NO ACTIVE PROJECT" : project.kind === "custom" ? "CUSTOM RESEARCH / BETA" : project.canonicalDossier ? "CANONICAL / REVIEWED" : "CURATED STARTING CASE"}</div>
+          <div className="mt-1 text-xs leading-5 text-[#52616b]">{!activeProjectContext ? "No active project selected" : project.kind === "custom" ? researchPresentation.proposalReview ? "AI research proposal · human acceptance required" : publicPresentation.label : project.canonicalDossier ? "Maintainer-reviewed PostgreSQL dossier" : "AI infrastructure diligence case"}</div>
       </div>
       <div className="mb-8 rounded-lg border border-[#cbd8d4] bg-[#f9faf8] p-3.5">
         <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#60707d]">
-           <MapPin className="h-3.5 w-3.5 text-[#ba2f45]" /> {project.location}
+          <MapPin className="h-3.5 w-3.5 text-[#ba2f45]" /> {activeProjectContext?.location ?? "No active project selected"}
         </div>
         <div className="mt-3 h-px bg-[#dfe6e3]" />
         <div className="mt-3 flex justify-between text-[10px]">

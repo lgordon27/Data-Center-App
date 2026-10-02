@@ -922,7 +922,13 @@ test.describe("custom project research", () => {
     await page.getByTestId("button-submit-custom-project").click();
     await expect(page).toHaveURL(/#analysis$/);
     await expect(page.getByTestId("conference-summary")).toContainText("QTS Irving 1");
-    await expect(page.getByTestId("custom-research-banner")).toContainText("Researching");
+    const activeContext = page.getByTestId("project-context-binding");
+    await expect(activeContext).toHaveAttribute("data-project-id", "qts-irving-1");
+    await expect(activeContext).toHaveAttribute("data-classification", "arbitrary");
+    await expect(activeContext).toHaveAttribute("data-lifecycle", "researching");
+    await expect(activeContext).toContainText("Selected via: Directory selection");
+    await expect(activeContext).toHaveAttribute("data-research-run-id", /^.+$/);
+    await expect(page.getByTestId("custom-research-banner")).toContainText("Search incomplete");
     await expect(page.getByTestId("canonical-dossier-select")).toHaveCount(0);
     expect(researchRequests).toHaveLength(1);
     expect(researchRequests[0]).toEqual({

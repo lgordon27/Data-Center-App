@@ -21,7 +21,7 @@ function canonicalSlug(id: string, name: string) {
 }
 
 export function MarketExposure() {
-  const { project, originatingCompany, selectedProjectContext, setOriginatingCompany, setProjectSelection } = useDiligence();
+  const { project, activeProjectContext, originatingCompany, selectedProjectContext, setOriginatingCompany, setProjectSelection } = useDiligence();
   const canonicalDossier = project.canonicalDossier ?? null;
   const [facilities, setFacilities] = useState<DirectoryFacility[]>([]);
   const [directoryStatus, setDirectoryStatus] = useState<"idle" | "loading" | "ready" | "unavailable">("idle");
@@ -54,7 +54,12 @@ export function MarketExposure() {
     return () => { active = false; };
   }, [relationship.company?.key, canonicalDossier?.slug]);
   return (
-    <section data-testid="conference-view-market" className="space-y-5">
+    <section
+      data-testid="conference-view-market"
+      data-project-id={activeProjectContext?.projectId ?? ""}
+      data-research-run-id={activeProjectContext?.researchRunId ?? ""}
+      className="space-y-5"
+    >
       <div>
         <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#607500]">01 / Company and project relationship</p>
         <h2 className="mt-2 text-2xl font-semibold tracking-tight">What connects the company to this project?</h2>

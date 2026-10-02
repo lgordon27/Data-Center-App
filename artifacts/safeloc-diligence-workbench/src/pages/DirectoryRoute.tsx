@@ -9,7 +9,6 @@ import {
   type DirectoryResponse,
   type DirectoryStatsResponse,
 } from "@/services/directoryService";
-import { createDefaultAssumptionResearch, type CustomResearchResponse } from "@/services/researchProjectService";
 import { listCanonicalDossiers, type CanonicalDossierSummary } from "@/services/canonicalDossierService";
 import {
   canonicalDisplayIdentityForSlug,
@@ -110,10 +109,9 @@ function DirectoryRecord({
 }
 
 export default function DirectoryRoute({
-  onCurated, onResearchSuccess,
+  onCurated,
 }: {
   onCurated: (slug: string) => void;
-  onResearchSuccess: (research: CustomResearchResponse) => void;
 }) {
   if (window.__safelocForceDirectoryRenderError) throw new Error("Forced directory render failure.");
   const [directory, setDirectory] = useState<DirectoryResponse | null>(null);
@@ -174,6 +172,7 @@ export default function DirectoryRoute({
       detail: {
         name: facility.name,
         location: researchLocationLabel(facility),
+        selectionSource: "directory",
         knownData: {
           capacity: facility.capacityMW,
           operator: facility.operator,

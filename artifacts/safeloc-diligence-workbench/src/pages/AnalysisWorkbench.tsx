@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, BookOpen, Building2, Globe2, Zap, type LucideIcon } from "lucide-react";
 import { useDiligence } from "@/context/DiligenceContext";
+import { ActiveProjectContextSummary } from "@/components/ActiveProjectContextSummary";
 import { WorkbenchDrawerProvider } from "@/components/ContextDrawer";
 import { MarketExposure } from "@/components/conference/MarketExposure";
 import { ProjectReality } from "@/components/conference/ProjectReality";
@@ -47,7 +48,7 @@ export function AnalysisWorkbench(props: Props) {
 
 function ConferenceWorkbench({ onResolveEvidence, onReset, focusSectionId }: Props) {
   const diligence = useDiligence();
-  const { project, evidence, originatingCompany, metrics, financialScenarios, financialModeling } = diligence;
+  const { project, activeProjectContext, evidence, originatingCompany, metrics, financialScenarios, financialModeling } = diligence;
   const incomplete = isConferenceResearchIncomplete(project, evidence);
   const researchPresentation = getResearchStatusPresentation({
     outcome: project.researchOutcome,
@@ -120,8 +121,23 @@ function ConferenceWorkbench({ onResolveEvidence, onReset, focusSectionId }: Pro
     else if (screen === "materiality") navigateView("transmission");
   };
 
+  if (!activeProjectContext) {
+    return (
+      <section data-testid="no-active-project-selected" className="rounded-xl border border-[#cbd8d4] bg-white p-6">
+        <h1 className="text-lg font-semibold text-[#122232]">No active project selected</h1>
+        <p className="mt-2 text-sm leading-6 text-[#52616b]">
+          Choose a project from the directory or open a reviewed case before reviewing evidence or financials.
+        </p>
+        <a href="#directory" className="mt-4 inline-flex min-h-10 items-center rounded-md bg-[#122232] px-4 text-sm font-semibold text-white">
+          Browse projects
+        </a>
+      </section>
+    );
+  }
+
   return (
     <div data-testid="analysis-workbench" className="min-w-0 pb-4">
+      <ActiveProjectContextSummary />
       <div
         data-testid="conference-summary"
         className={`${canonicalDossier ? "" : "sticky top-[72px] z-10"} mb-5 rounded-lg border border-[#d9e0e4] bg-[#f9faf8]/95 px-4 py-3 backdrop-blur-md`}

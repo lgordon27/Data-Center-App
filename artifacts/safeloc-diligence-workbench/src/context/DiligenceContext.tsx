@@ -359,6 +359,40 @@ export type FinancialModelingState =
       requiredInputs: string[];
     };
 
+export type ProjectContextLifecycle =
+  | "idle"
+  | "researching"
+  | "partial"
+  | "complete"
+  | "failed"
+  | "superseded";
+
+export type ProjectContextSelectionSource =
+  | "directory"
+  | "market-exposure"
+  | "home-custom-form"
+  | "custom-project-dialog"
+  | "canonical-route"
+  | "reviewed-starting-case"
+  | "restored";
+
+export type ActiveProjectContext = {
+  projectId: string;
+  name: string;
+  operator: string | null;
+  location: string;
+  scope: string;
+  selectionSource: ProjectContextSelectionSource;
+  researchRunId: string | null;
+  lifecycle: ProjectContextLifecycle;
+  activeResultRef: string | null;
+  classification: "canonical-reviewed" | "reviewed-starting-case" | "arbitrary";
+  /** Client request identity used only to reject late results from superseded work. */
+  requestId: string | null;
+  /** Preserve the server-owned terminal outcome rather than flattening it into lifecycle. */
+  researchOutcome: CustomResearchResponse["researchOutcome"] | null;
+};
+
 export type ProjectContext = Omit<CustomResearchResponse["projectSummary"], "capacityProvenance"> & {
   projectIdentity?: CustomResearchResponse["projectIdentity"];
   capacityProvenance?: CapacityProvenance;
@@ -381,7 +415,77 @@ export type ProjectContext = Omit<CustomResearchResponse["projectSummary"], "cap
   quarantineReasons?: string[];
   kind: "curated" | "custom";
   canonicalDossier?: CanonicalDossierSummary;
+  activeContext?: ActiveProjectContext | null;
 };
+
+function stableFallbackProjectId(name: string, location: string) {
+  const identity = `${name.trim().toLocaleLowerCase()}|${location.trim().toLocaleLowerCase()}`;
+  return `project:${encodeURIComponent(identity).replaceAll("%", "_")}`;
+}
+
+export function createActiveProjectContext(
+  project: ProjectContext,
+  {
+    selectionSource = "restored",
+    requestId = null,
+  }: {
+    selectionSource?: ProjectContextSelectionSource;
+    requestId?: string | null;
+  } = {},
+): ActiveProjectContext {
+  const identity = project.projectIdentity;
+  const dossierIdentity = project.canonicalDossier?.canonicalData.identity;
+  const projectId = identity?.projectId
+    || identity?.providerId
+    || project.canonicalDossier?.slug
+    || stableFallbackProjectId(project.name, project.location);
+  const researchRunId = project.researchAudit?.runCorrelationId || requestId || null;
+  const serverOutcome = project.researchOutcome ?? null;
+  const status = project.researchStatus;
+  let lifecycle: ProjectContextLifecycle;
+  if (serverOutcome?.state === "complete-with-eligible-evidence" || serverOutcome?.state === "complete-no-eligible-evidence") {
+    lifecycle = "complete";
+  } else if (serverOutcome?.state === "incomplete-technical-limitation") {
+    lifecycle = "partial";
+  } else if (status === "researching") {
+    lifecycle = "researching";
+  } else if (status === "failed" || status === "cancelled" || status === "timed-out") {
+    lifecycle = "failed";
+  } else if (status === "partial" || project.researchMode === "partial-public-source" || project.researchMode === "research-incomplete") {
+    lifecycle = "partial";
+  } else if (status === "completed" || project.kind === "curated") {
+    lifecycle = "complete";
+  } else {
+    lifecycle = "idle";
+  }
+  const activeResultRef = lifecycle === "researching"
+    ? requestId ? `research-request:${requestId}` : null
+    : researchRunId
+      ? `research-run:${researchRunId}`
+      : project.canonicalDossier
+        ? `dossier:${project.canonicalDossier.slug}`
+        : lifecycle === "failed" || lifecycle === "partial" || lifecycle === "complete"
+          ? `project-result:${projectId}`
+          : null;
+  return {
+    projectId,
+    name: project.name,
+    operator: identity?.operator ?? dossierIdentity?.operator ?? null,
+    location: dossierIdentity?.location ?? project.location,
+    scope: dossierIdentity?.scope ?? project.description,
+    selectionSource,
+    researchRunId,
+    lifecycle,
+    activeResultRef,
+    classification: project.kind === "custom"
+      ? "arbitrary"
+      : project.canonicalDossier
+        ? "canonical-reviewed"
+        : "reviewed-starting-case",
+    requestId,
+    researchOutcome: serverOutcome,
+  };
+}
 
 export const APPROVED_DOSSIER_SCENARIOS = {
   "stargate-abilene": {
@@ -436,6 +540,7 @@ type PersistedCanonicalReview = {
     description: string;
     capacityMW: number | null;
     canonicalDossier: CanonicalDossierSummary;
+    activeContext?: ActiveProjectContext | null;
   };
   baselineEvidence: Record<string, EvidenceItem>;
   overrides: Record<string, Classification>;
@@ -542,12 +647,18 @@ type DiligenceState = {
   resetToDefault: (originatingCompany?: string | null) => void;
   setOriginatingCompany: (originatingCompany: CompanyKey | null) => void;
   setProjectSelection: (selection: ProjectSelectionContext | null) => void;
-  loadCustomProject: (research: CustomResearchResponse, originatingCompany?: string | null, projectSelection?: ProjectSelectionContext | null) => void;
+  loadCustomProject: (
+    research: CustomResearchResponse,
+    originatingCompany?: string | null,
+    projectSelection?: ProjectSelectionContext | null,
+    options?: { requestId?: string; selectionSource?: ProjectContextSelectionSource; phase?: "start" | "result" },
+  ) => boolean;
   loadCanonicalDossier: (
     dossier: CanonicalDossierSummary,
     selection?: Partial<Pick<ProjectSelectionContext, "company" | "relationshipType">>,
   ) => void;
   project: ProjectContext;
+  activeProjectContext: ActiveProjectContext | null;
   originatingCompany: string | null;
   selectedProjectContext: ProjectSelectionContext | null;
   sessionRestored: boolean;
@@ -693,12 +804,18 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     retireLegacyAgentRunStorage();
     return loadCurrentSession();
   }, []);
-  const initialProject: ProjectContext = initialSession.project ?? {
+  const initialProjectBase: ProjectContext = initialSession.project ?? {
     kind: "curated",
     name: "Stargate Abilene",
     location: "Taylor County, TX",
     description: "A public-source diligence case paired with clearly labeled synthetic acquisition economics.",
     capacityMW: DEFAULT_CAPACITY_MW,
+  };
+  const initialProject: ProjectContext = {
+    ...initialProjectBase,
+    activeContext: initialProjectBase.activeContext ?? createActiveProjectContext(initialProjectBase, {
+      selectionSource: initialSession.project ? "restored" : "reviewed-starting-case",
+    }),
   };
   const initialProjectWithCustomReview: ProjectContext = initialSession.customResearch
     ? {
@@ -723,6 +840,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   const capacityReviewRef = useRef<CapacityReviewState | null>(capacityReview);
   capacityReviewRef.current = capacityReview;
   const [project, setProject] = useState<ProjectContext>(initialProjectWithCustomReview);
+  const projectRef = useRef(project);
   const [financialSessionHistory, setFinancialSessionHistoryState] = useState(
     () => readSessionFinancialHistory(sessionFinancialProjectKey(initialProject))
       ?? emptySessionFinancialHistory(
@@ -1397,6 +1515,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       researchProposalDispositions: dispositions,
       researchProposalOverrides: overrides,
     };
+    projectRef.current = nextProject;
     setProject(nextProject);
     writeStorage(CURRENT_SESSION_STORAGE_KEY, createSessionPayload(
       currentState.evidence,
@@ -1490,12 +1609,16 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       description: "A public-source diligence case paired with clearly labeled synthetic acquisition economics.",
       capacityMW: DEFAULT_CAPACITY_MW,
     };
+    nextProject.activeContext = createActiveProjectContext(nextProject, {
+      selectionSource: "reviewed-starting-case",
+    });
     resetFinancialSessionForProject(nextProject);
     const nextState = { evidence: cloneEvidence(INITIAL_EVIDENCE), modelEvidence: cloneEvidence(INITIAL_EVIDENCE), canonicalBaseline: null, hasChangedClassification: false, lastChange: null };
     stateRef.current = nextState;
     setState(nextState);
     capacityReviewRef.current = null;
     setCapacityReview(null);
+    projectRef.current = nextProject;
     setProject(nextProject);
     setOriginatingCompanyState(nextCompany);
     const nextCommunityReview = createCommunityReview({
@@ -1534,7 +1657,36 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     ));
   }, [originatingCompany, project, resetFinancialSessionForProject]);
 
-  const loadCustomProject = useCallback((research: CustomResearchResponse, company: string | null = null, projectSelection?: ProjectSelectionContext | null) => {
+  const loadCustomProject = useCallback((
+    research: CustomResearchResponse,
+    company: string | null = null,
+    projectSelection?: ProjectSelectionContext | null,
+    options: { requestId?: string; selectionSource?: ProjectContextSelectionSource; phase?: "start" | "result" } = {},
+  ) => {
+    const currentActiveContext = projectRef.current.activeContext ?? null;
+    if (options.requestId && options.phase !== "start" && currentActiveContext?.requestId !== options.requestId) return false;
+    const responseIdentity = {
+      ...research.projectIdentity,
+      projectId: research.projectIdentity.projectId ?? projectSelection?.projectId ?? null,
+      providerId: research.projectIdentity.providerId ?? projectSelection?.providerId ?? null,
+      operator: research.projectIdentity.operator ?? projectSelection?.operator ?? null,
+    };
+    if (options.requestId && options.phase !== "start" && currentActiveContext) {
+      const returnedProject = createActiveProjectContext({
+        kind: "custom",
+        name: research.projectSummary.name,
+        location: research.projectSummary.location,
+        description: research.projectSummary.description,
+        capacityMW: research.projectSummary.capacityMW,
+        projectIdentity: responseIdentity,
+      }, { requestId: options.requestId });
+      if (
+        returnedProject.projectId !== currentActiveContext.projectId
+        || returnedProject.name.trim().toLocaleLowerCase() !== currentActiveContext.name.trim().toLocaleLowerCase()
+        || returnedProject.location.trim().toLocaleLowerCase() !== currentActiveContext.location.trim().toLocaleLowerCase()
+        || (returnedProject.operator ?? "").trim().toLocaleLowerCase() !== (currentActiveContext.operator ?? "").trim().toLocaleLowerCase()
+      ) return false;
+    }
     const researchById = new Map(research.evidence.map((item) => [item.id, item]));
     const customEvidence = Object.fromEntries(
       CUSTOM_EVIDENCE_IDS.map((id) => {
@@ -1585,7 +1737,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     ) as Record<string, ResearchProposalDisposition>;
     const nextProject: ProjectContext = {
       kind: "custom",
-      projectIdentity: research.projectIdentity,
+      projectIdentity: responseIdentity,
       name: research.projectSummary.name,
       location: research.projectSummary.location,
       description: research.projectSummary.description,
@@ -1608,6 +1760,12 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       retainedFindingAudit: research.retainedFindingAudit,
       replay: research.replay,
     };
+    nextProject.activeContext = createActiveProjectContext(nextProject, {
+      selectionSource: options.selectionSource
+        ?? currentActiveContext?.selectionSource
+        ?? (projectSelection ? "market-exposure" : "home-custom-form"),
+      requestId: options.requestId ?? currentActiveContext?.requestId ?? null,
+    });
     const nextCapacityReview: CapacityReviewState = {
       projectKey: capacityProjectKey(nextProject),
       decision: null,
@@ -1621,6 +1779,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
     setState(nextState);
     capacityReviewRef.current = nextCapacityReview;
     setCapacityReview(nextCapacityReview);
+    projectRef.current = nextProject;
     setProject(nextProject);
     const customCommunityProject: CommunityProjectInput = {
       kind: "custom",
@@ -1656,6 +1815,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       undefined,
       nextCapacityReview,
     ));
+    return true;
   }, [resetFinancialSessionForProject]);
 
   const loadCanonicalDossier = useCallback((
@@ -1731,11 +1891,15 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       canonicalDossier: dossier,
       canonicalProvenance: research.canonicalProvenance,
     };
+    nextProject.activeContext = createActiveProjectContext(nextProject, {
+      selectionSource: "canonical-route",
+    });
     resetFinancialSessionForProject(nextProject);
     stateRef.current = nextState;
     setState(nextState);
     capacityReviewRef.current = null;
     setCapacityReview(null);
+    projectRef.current = nextProject;
     setProject(nextProject);
     setOriginatingCompanyState(company);
     setSelectedProjectContext(selection);
@@ -2031,7 +2195,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
   }, [persistCapacityReview, project]);
 
   return (
-    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, researchEvidence: project.kind === "custom" ? state.evidence : effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, applyEvidenceCorrection, applyResearchProposalOverride, financialSessionScope: activeFinancialSessionHistory.scope, setFinancialSessionScope, financialSessionHistory: activeFinancialSessionHistory, financialSessionIgnoredReasons: sessionFinancialTransmission.ignoredReasons, previewSessionFinancialFinding, reviewSessionFinancialFinding, persistResearchReview, clearLastChange, metrics, financialInputState, financialScenarios, financialModeling, resetToDefault, setOriginatingCompany, setProjectSelection, loadCustomProject, loadCanonicalDossier, project, originatingCompany, selectedProjectContext, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading, downloadReturnDiscrepancyRecord, communityReview, communityUnresolvedCount, reviewCommunityTerm, capacityClaimCandidate, acceptCapacityClaim, rejectCapacityClaim, illustrativeCapacityMW, setIllustrativeCapacityMW, capacityBinding, capacityExplanation: capacityBinding.explanation, capacityDecisionTrail: matchingCapacityReview?.trail ?? [] }}>
+    <DiligenceContext.Provider value={{ evidence: effectiveEvidence, researchEvidence: project.kind === "custom" ? state.evidence : effectiveEvidence, hasChangedClassification: state.hasChangedClassification, updateClassification, applyEvidenceCorrection, applyResearchProposalOverride, financialSessionScope: activeFinancialSessionHistory.scope, setFinancialSessionScope, financialSessionHistory: activeFinancialSessionHistory, financialSessionIgnoredReasons: sessionFinancialTransmission.ignoredReasons, previewSessionFinancialFinding, reviewSessionFinancialFinding, persistResearchReview, clearLastChange, metrics, financialInputState, financialScenarios, financialModeling, resetToDefault, setOriginatingCompany, setProjectSelection, loadCustomProject, loadCanonicalDossier, project, activeProjectContext: project.activeContext ?? null, originatingCompany, selectedProjectContext, sessionRestored, sessionMigrated, scenarios, saveScenario, renameScenario, removeScenario, sourceStates, ercotQueue, eiaData, eiaLoading, downloadReturnDiscrepancyRecord, communityReview, communityUnresolvedCount, reviewCommunityTerm, capacityClaimCandidate, acceptCapacityClaim, rejectCapacityClaim, illustrativeCapacityMW, setIllustrativeCapacityMW, capacityBinding, capacityExplanation: capacityBinding.explanation, capacityDecisionTrail: matchingCapacityReview?.trail ?? [] }}>
       {children}
     </DiligenceContext.Provider>
   );
@@ -2189,6 +2353,7 @@ function createCanonicalReviewSnapshot(
       description: project.description,
       capacityMW: project.capacityMW ?? null,
       canonicalDossier: dossier,
+      activeContext: project.activeContext ?? null,
     },
     baselineEvidence: cloneEvidence(baselineEvidence),
     overrides,
@@ -2611,6 +2776,7 @@ function parseCanonicalReview(value: unknown): PersistedCanonicalReview | null {
       capacityMW: projectRecord.capacityMW as number | null,
       canonicalDossier: dossier as unknown as CanonicalDossierSummary,
     };
+    project.activeContext = createActiveProjectContext(project, { selectionSource: "restored" });
   }
   return {
     slug: candidate.slug,
@@ -2847,15 +3013,65 @@ function parsePersistedCustomResearch(value: unknown): PersistedCustomResearch |
         operator: storedIdentity.operator as string | null,
       }
     : { projectId: null, providerId: null, name: projectRecord.name, location: projectRecord.location, operator: null };
+  const inFlightAtRestore = projectRecord.researchStatus === "researching";
   const safeProject = {
     ...projectRecord,
     projectIdentity,
+    ...(inFlightAtRestore ? {
+      researchStatus: "failed",
+      researchMode: "research-incomplete",
+      researchError: {
+        type: "cancelled",
+        message: "Research stopped when this tab was reloaded. Start research again to continue.",
+      },
+    } : {}),
     description: "Generated project-summary prose is withheld. Review the accessible, attributed source passages and claim-level evidence separately.",
     capacityMW: persistedCapacity,
     capacityProvenance: persistedCapacity === null ? "unknown" : "directory-reported",
     retainedFindings,
     retainedFindingAudit,
   } as unknown as ProjectContext;
+  const storedContext = projectRecord.activeContext && typeof projectRecord.activeContext === "object"
+    && !Array.isArray(projectRecord.activeContext)
+    ? projectRecord.activeContext as Record<string, unknown>
+    : null;
+  const storedSource = storedContext?.selectionSource;
+  const selectionSource: ProjectContextSelectionSource = [
+    "directory",
+    "market-exposure",
+    "home-custom-form",
+    "custom-project-dialog",
+    "canonical-route",
+    "reviewed-starting-case",
+    "restored",
+  ].includes(String(storedSource))
+    ? storedSource as ProjectContextSelectionSource
+    : "restored";
+  const calculatedActiveContext = createActiveProjectContext(safeProject, {
+    selectionSource,
+    requestId: null,
+  });
+  const restoredRunId = typeof storedContext?.researchRunId === "string" && storedContext.researchRunId.trim()
+    ? storedContext.researchRunId
+    : calculatedActiveContext.researchRunId;
+  safeProject.activeContext = {
+    ...calculatedActiveContext,
+    ...(typeof storedContext?.projectId === "string" ? { projectId: storedContext.projectId } : {}),
+    ...(typeof storedContext?.name === "string" ? { name: storedContext.name } : {}),
+    ...(typeof storedContext?.operator === "string" || storedContext?.operator === null
+      ? { operator: storedContext.operator as string | null }
+      : {}),
+    ...(typeof storedContext?.location === "string" ? { location: storedContext.location } : {}),
+    ...(typeof storedContext?.scope === "string" ? { scope: storedContext.scope } : {}),
+    researchRunId: restoredRunId,
+    lifecycle: inFlightAtRestore ? "failed" : calculatedActiveContext.lifecycle,
+    activeResultRef: inFlightAtRestore && restoredRunId
+      ? `research-run:${restoredRunId}`
+      : typeof storedContext?.activeResultRef === "string"
+        ? storedContext.activeResultRef
+        : calculatedActiveContext.activeResultRef,
+    requestId: null,
+  };
   return {
     project: safeProject,
     evidence: evidence as Record<string, EvidenceItem>,

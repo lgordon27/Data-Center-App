@@ -60,7 +60,13 @@ export function SessionFinancialReview() {
   };
 
   return (
-    <section data-testid="financial-session-review" aria-labelledby="fsr-h" className="rounded-xl border border-[#cbd8d4] bg-white p-5">
+    <section
+      data-testid="financial-session-review"
+      data-project-id={d.activeProjectContext?.projectId ?? ""}
+      data-research-run-id={d.activeProjectContext?.researchRunId ?? ""}
+      aria-labelledby="fsr-h"
+      className="rounded-xl border border-[#cbd8d4] bg-white p-5"
+    >
       <h3 id="fsr-h" className="font-semibold">My session financial review</h3>
       <p className="mt-2 text-xs leading-5 text-[#60707d]">Open-use workbench: decisions here live in this tab only and survive reload, never written to canonical SafeLoc history. Choosing a finding is not source verification, and the retained source scope must match the facility and phase you model. Previews are preview-only and do not apply anything until you accept.</p>
 

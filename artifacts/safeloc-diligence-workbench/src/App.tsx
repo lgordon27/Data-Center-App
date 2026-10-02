@@ -105,6 +105,7 @@ function AppShell() {
   const [evidenceFocusId, setEvidenceFocusId] = useState<string | null>(null);
   const [pendingSection, setPendingSection] = useState<string | null>(null);
   const [analysisEpoch, setAnalysisEpoch] = useState(0);
+  const [dossierRouteError, setDossierRouteError] = useState(false);
   const [pendingTourSection, setPendingTourSection] = useState<string | null>(null);
   const [pendingDossierSlug, setPendingDossierSlug] = useState<string | null>(() => {
     const [route, slug] = typeof window === "undefined" ? [] : window.location.hash.replace(/^#/, "").split("/");
@@ -142,6 +143,7 @@ function AppShell() {
       if (!next) {
         window.history.replaceState(null, "", "#home");
         setPendingDossierSlug(null);
+        setDossierRouteError(false);
         setRoute("home");
       } else {
         if (legacySectionRoutes[rawRoute]) {
@@ -151,9 +153,11 @@ function AppShell() {
           setPendingTourSection(null);
         } else if (next === "analysis" && rawTourSection) {
           setPendingDossierSlug(rawTourSection);
+          setDossierRouteError(false);
           setPendingTourSection(null);
         } else {
           setPendingDossierSlug(null);
+          setDossierRouteError(false);
           if (next === "how-it-works" && rawTourSection) {
             setPendingTourSection(rawTourSection);
           } else {
@@ -177,6 +181,8 @@ function AppShell() {
     void getCanonicalDossier(requestedSlug).then((dossier) => {
       const routeSlug = window.location.hash.replace(/^#analysis\/?/, "");
       if (active && routeSlug === requestedSlug) diligence.loadCanonicalDossier(dossier);
+    }).catch(() => {
+      if (active) setDossierRouteError(true);
     }).finally(() => {
       if (active) setPendingDossierSlug(null);
     });
@@ -414,11 +420,25 @@ function AppShell() {
                    {route === "directory" && (
                      <ErrorBoundary resetKey={route} FallbackComponent={DirectoryFailure}>
                        <Suspense fallback={<DirectoryLoading />}>
-                        <DirectoryRoute onCurated={(slug) => { window.location.hash = `analysis/${slug}`; }} onResearchSuccess={(research) => { diligence.loadCustomProject(research); go("analysis"); }} />
+                        <DirectoryRoute onCurated={(slug) => { window.location.hash = `analysis/${slug}`; }} />
                        </Suspense>
                      </ErrorBoundary>
                    )}
-                  {route === "analysis" && (
+                  {route === "analysis" && pendingDossierSlug && (
+                    <section data-testid="canonical-route-loading" role="status" className="rounded-xl border border-[#cbd8d4] bg-white p-6">
+                      Loading reviewed project context for {pendingDossierSlug}…
+                    </section>
+                  )}
+                  {route === "analysis" && dossierRouteError && !pendingDossierSlug && (
+                    <section data-testid="canonical-route-error" role="alert" className="rounded-xl border border-[#efabb8] bg-[#fff3f4] p-6 text-[#7f2635]">
+                      <h1 className="font-semibold">Reviewed project context unavailable</h1>
+                      <p className="mt-2 text-sm leading-6">No other project or dossier has been substituted.</p>
+                      <button type="button" onClick={() => go("directory")} className="mt-4 min-h-10 rounded-md bg-[#122232] px-4 text-sm font-semibold text-white">
+                        Browse projects
+                      </button>
+                    </section>
+                  )}
+                  {route === "analysis" && !pendingDossierSlug && !dossierRouteError && (
                     <ErrorBoundary resetKey={`${route}:${analysisEpoch}`} FallbackComponent={PublicWorkbenchFailure}>
                       <AnalysisWorkbench key={analysisEpoch} focusSectionId={pendingSection ?? undefined} onResolveEvidence={resolveEvidence} onReset={() => setResetOpen(true)} />
                     </ErrorBoundary>

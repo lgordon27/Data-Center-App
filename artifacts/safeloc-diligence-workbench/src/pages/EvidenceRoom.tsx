@@ -1047,6 +1047,7 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
     eiaLoading,
     sourceStates,
     project,
+    activeProjectContext,
   } = useDiligence();
   const customProject = project.kind === "custom";
   const items = useMemo(() => Object.values(project.kind === "custom" ? (researchEvidence ?? evidence) : evidence), [evidence, project.kind, researchEvidence]);
@@ -1519,7 +1520,12 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
   );
 
   return (
-    <div ref={rootRef}>
+    <div
+      ref={rootRef}
+      data-testid="evidence-room"
+      data-project-id={activeProjectContext?.projectId ?? ""}
+      data-research-run-id={activeProjectContext?.researchRunId ?? ""}
+    >
       <PageIntro
         eyebrow="02 / source the conviction"
         title="Evidence is not a footnote. It is an active model input."

@@ -28,6 +28,7 @@ export function ProjectReality({ evidenceOpen, onEvidenceOpenChange, onNavigate 
   const {
     evidence,
     project,
+    activeProjectContext,
     capacityClaimCandidate,
     acceptCapacityClaim,
     rejectCapacityClaim,
@@ -55,7 +56,12 @@ export function ProjectReality({ evidenceOpen, onEvidenceOpenChange, onNavigate 
     setCapacityInputError(null);
   };
   return (
-    <section data-testid="conference-view-reality" className="space-y-5">
+    <section
+      data-testid="conference-view-reality"
+      data-project-id={activeProjectContext?.projectId ?? ""}
+      data-research-run-id={activeProjectContext?.researchRunId ?? ""}
+      className="space-y-5"
+    >
       <div><p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#607500]">02 / Check the physical reality</p><h2 className="mt-2 text-2xl font-semibold tracking-tight">What is established—and what is still open?</h2><p className="mt-2 text-xs text-[#60707d]">{project.name} · Public facts and unresolved terms</p></div>
       {project.kind === "custom" && <section data-testid="reality-capacity-review" className="rounded-xl border border-[#aac6f4] bg-white p-5">
         <h3 className="font-semibold text-[#122232]">Capacity review · illustrative modeling only</h3>

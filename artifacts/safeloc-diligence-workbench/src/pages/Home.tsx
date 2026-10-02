@@ -75,6 +75,8 @@ const homeEntryPoints = [
 ] as const;
 
 type CustomProjectFormProps = {
+  onRequestStart?: (research: CustomResearchResponse, requestKey: string) => void;
+  onRequestFailure?: (research: CustomResearchResponse, error: unknown, requestKey: string) => void;
   onStart?: (
     research: CustomResearchResponse,
     requestKey: string,
@@ -98,7 +100,7 @@ type CustomProjectFormProps = {
  * Research validation, loading, errors, and the service call therefore remain
  * one shared flow while the home can make analysis the primary entry point.
  */
-export function CustomProjectForm({ onStart, onSuccess, onResearchError, compact = false, initialValues, onReturnToCurated }: CustomProjectFormProps) {
+export function CustomProjectForm({ onRequestStart, onRequestFailure, onStart, onSuccess, onResearchError, compact = false, initialValues, onReturnToCurated }: CustomProjectFormProps) {
   const [name, setName] = useState(initialValues?.name ?? "");
   const [location, setLocation] = useState(initialValues?.location ?? "");
   const [operator, setOperator] = useState(initialValues?.knownData?.operator ?? "");
@@ -181,6 +183,7 @@ export function CustomProjectForm({ onStart, onSuccess, onResearchError, compact
     requestController.current = controller;
     cancelRequested.current = false;
     handedOff.current = Boolean(onStart);
+    onRequestStart?.(provisional, requestKey);
     onStart?.(provisional, requestKey, () => {
       cancelRequested.current = true;
       controller.abort();
@@ -202,10 +205,11 @@ export function CustomProjectForm({ onStart, onSuccess, onResearchError, compact
       }
     } catch (requestError) {
       if (controller.signal.aborted) {
-        if (cancelRequested.current && handedOff.current) {
+        if (cancelRequested.current) {
           const cancelled = new Error("Project research was cancelled.");
           cancelled.name = "ResearchCancelledError";
-          onResearchError?.(provisional, cancelled, requestKey);
+          if (handedOff.current) onResearchError?.(provisional, cancelled, requestKey);
+          else onRequestFailure?.(provisional, cancelled, requestKey);
         }
         return;
       }
@@ -213,6 +217,7 @@ export function CustomProjectForm({ onStart, onSuccess, onResearchError, compact
         onResearchError?.(provisional, requestError, requestKey);
         return;
       }
+      onRequestFailure?.(provisional, requestError, requestKey);
       if (requestGeneration.current !== generation) return;
       if (!mounted.current) return;
       const failure = getPublicResearchFailure(requestError);

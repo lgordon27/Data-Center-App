@@ -9,6 +9,7 @@
 - [E2E baseline comparison](e2e-suite-baseline.md) — the workbench Playwright suite is red at rest; compare failures against a clean tree before attributing them to your change.
 - [Project posture vs. fund materiality](project-posture-vs-fund-materiality.md) — project evidence completeness must not be presented as fund-level risk or materiality.
 - [AI research contract resilience](ai-research-contract-resilience.md) — keep 16 evidence IDs strict, but safely normalize empty narrative fields to Missing Evidence instead of failing the project.
+- [Async research context guards](async-research-context-guards.md) — compare completion IDs against the latest synchronously updated project, not a render-captured context.
 - [Bounded multi-pass research](bounded-multi-pass-research.md) — cap each retrieval call and never discard a valid first synthesis when an optional follow-up exceeds the request budget.
 - [Research confidence and query audit](research-confidence-query-audit.md) — self-ratings are not probabilities; search plans are not observed searches; directory hints must not restrict discovery.
 - [Source vs modeled classification](source-vs-modeled-classification.md) — an evidence item can be source-verified while its underwriting treatment remains a separate model inference.

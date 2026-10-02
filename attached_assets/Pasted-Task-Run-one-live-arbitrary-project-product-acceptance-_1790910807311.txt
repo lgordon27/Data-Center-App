@@ -1,0 +1,303 @@
+Task: Run one live arbitrary-project product acceptance test after Task #344
+
+Task #344 is complete and should already be applied before starting this task.
+
+This is a product acceptance test, not a diagnostic/backtesting exercise.
+
+Do not add new product features during this task.
+Do not redesign the app.
+Do not change ranking, eligibility, identity, proof-contract, Expected Evidence, financial-transmission, or session-decision rules unless a genuine launch-blocking defect is reproduced and isolated.
+Do not deploy or push automatically.
+
+## Goal
+
+Prove that the arbitrary-project workflow now works the way a public LinkedIn/network user would expect:
+
+1. a user selects a non-seeded data-center project;
+2. clicks “Research this project — Beta”;
+3. a real research request actually starts for that exact project;
+4. research stays bound to that project;
+5. returned evidence is project-specific;
+6. canonical/seed dossier facts do not bleed into the result;
+7. incomplete research renders honestly rather than looking broken;
+8. useful source coverage and freshness are visible;
+9. eligible evidence can flow into the existing evidence/review experience.
+
+## Project selection
+
+Use one real project that is NOT one of the canonical/seed showcase cases.
+
+Do not use:
+- DataBank Red Oak
+- Stargate Abilene
+- Stargate Project Jupiter
+- any other dossier that is already seeded/canonical in the app
+
+Choose a project that already exists in the directory data and has enough public footprint that a normal user would reasonably expect some evidence to exist.
+
+Before starting, report the selected:
+- project name;
+- operator/developer if known;
+- city/state;
+- directory/project identifier.
+
+Do not hard-code any expected answer into the product.
+
+## Acceptance flow
+
+### Step 1 — Start from the normal public UI
+
+Use the actual public-facing project directory/search experience.
+
+Navigate to the selected non-seeded project exactly as a normal user would.
+
+Confirm:
+- the correct project is selected;
+- no canonical dossier is manually opened;
+- the app is not carrying a previously opened Red Oak/Stargate analysis state.
+
+### Step 2 — Click Research this project — Beta
+
+Click the real button.
+
+Verify that clicking it:
+- initiates an actual live research request;
+- does not merely navigate to Market Exposure;
+- sends the selected project identity in the research request;
+- carries the selected project through active research state;
+- does not replace it with a canonical project.
+
+Record:
+- request project identity;
+- research run ID if available;
+- source revision/SHA;
+- start time.
+
+### Step 3 — Research-in-progress behavior
+
+While research runs, verify the user sees an intentional research state.
+
+The page should not:
+- show stale analysis from another project;
+- show canonical dossier facts;
+- imply research already completed;
+- display a broken model/capacity panel as if it were sourced.
+
+If partial evidence becomes available before completion, it may render, but it must be labeled partial/incomplete.
+
+### Step 4 — Project binding
+
+When the result returns, verify every major result remains bound to the selected project.
+
+Check:
+- active project header;
+- project name;
+- operator/developer;
+- city/state;
+- project/campus/phase/building scope;
+- restored state after navigating away/back or refreshing where supported.
+
+FAIL the acceptance test if substantive facts from Red Oak, Stargate, Jupiter, or another canonical dossier appear without belonging to the selected project.
+
+A custom project must never inherit:
+- capacity;
+- capex;
+- dates;
+- financial assumptions;
+- evidence;
+- source passages;
+- risk classifications;
+- model overrides
+
+from a canonical dossier unless the user explicitly opened that canonical dossier.
+
+### Step 5 — Source quality and coverage
+
+Report the live run’s actual research yield.
+
+Do not focus on raw discovery volume alone.
+
+Report:
+- total discovered candidates;
+- total source opens attempted;
+- unique accessible sources;
+- unique retained relevant sources;
+- retained relevant passages;
+- eligible findings/claims;
+- blocked sources;
+- duplicate/unrelated sources excluded.
+
+Also report which source families actually contributed usable evidence, for example:
+- official developer/operator;
+- city/county/state government;
+- utility/PUC/interconnection;
+- permits/planning;
+- financing/lender;
+- credible local/national media;
+- environmental/water;
+- construction/contractor;
+- tax/incentive records.
+
+If 50 candidates are found but only one unique source supplies all findings, say that clearly.
+
+Do not present duplicate pages or generic landing pages as meaningful source breadth.
+
+### Step 6 — Diligence category coverage
+
+For the selected project, report whether qualifying evidence was found for each major product dimension:
+
+- project identity / phase;
+- power / grid / interconnection;
+- electricity / tariff;
+- water / cooling;
+- land / site / civil infrastructure;
+- permitting / entitlement;
+- community / local-government action;
+- environmental / air / generation;
+- climate / operational hazards;
+- construction / phasing;
+- financing / capital;
+- tenant / counterparty;
+- incentives / taxes.
+
+For each dimension, distinguish:
+- qualifying evidence found;
+- located but insufficient;
+- search incomplete;
+- blocked;
+- likely non-public;
+- not applicable;
+- no qualifying evidence after completed search.
+
+Do not convert failed/blocked/not-run research into “not found.”
+
+### Step 7 — Incomplete-result behavior
+
+If the run is incomplete, sparse, blocked, or partially successful:
+
+Verify the page:
+- clearly says research is incomplete/partial;
+- preserves any good retained evidence;
+- does not look like a broken page;
+- does not show empty capacity review/model sections as if they are required inputs;
+- does not imply capacity/capex/financial facts are known when they are not.
+
+If no qualifying capacity evidence exists:
+- sourced-looking capacity review should not appear;
+- any manual scenario option must be explicitly illustrative and optional.
+
+### Step 8 — Financial/review flow
+
+If eligible model-active evidence exists, verify it can enter the normal session-only evidence review flow.
+
+Confirm:
+- evidence source/passages are visible;
+- project/scope matches;
+- proposed financial impact is labeled sourced, derived, illustrative, or unresolved;
+- Accept / Reject / Evidence Only are available where appropriate;
+- nothing changes the model without explicit user acceptance;
+- session decisions remain session-scoped;
+- no authentication/sign-in is required;
+- no canonical project history is modified by the user decision.
+
+If no model-active evidence is found, that is acceptable.
+Do not fabricate a financial proposal just to demonstrate the feature.
+
+### Step 9 — Data-source freshness
+
+Inspect the external data-source/freshness UI used by this project.
+
+Verify that where metadata is available, the app shows or can represent:
+- retrieved_at;
+- source_as_of;
+- last successful refresh;
+- freshness/status.
+
+Do not label data “Live” if the last successful refresh is outside its expected cadence.
+
+If an API/source has stale data:
+- preserve the last known good snapshot;
+- show that it is stale;
+- do not silently present old data as current.
+
+Report any data source that appears materially outdated.
+
+### Step 10 — Basic public usability
+
+Check desktop and one mobile-sized viewport for the result page.
+
+Look only for launch blockers:
+- wrong project;
+- broken routing;
+- stale/canonical bleed-through;
+- unusable research progress;
+- empty/broken analysis panels;
+- hidden source attribution;
+- unreadable mobile layout;
+- raw provider error text;
+- model output presented with false certainty.
+
+Do not spend time polishing minor cosmetic issues.
+
+## Success criteria
+
+The acceptance test PASSES if:
+
+1. Research this project — Beta launches a real live run.
+2. The correct arbitrary project remains bound throughout.
+3. No canonical/seed facts leak into the custom project.
+4. At least one meaningful real source is retained, OR the app honestly reports why no usable evidence was obtained.
+5. Partial/incomplete research renders cleanly.
+6. Source coverage is represented by meaningful unique sources rather than inflated counts.
+7. Freshness labels do not misrepresent stale data.
+8. Any financial/model change remains evidence-backed and session-gated.
+9. The public page is understandable without developer intervention.
+
+The test does NOT require:
+- every diligence category to have evidence;
+- an IRR change;
+- a minimum number of eligible claims;
+- complete market-wide coverage.
+
+The goal is to prove the product flow, not force a success result.
+
+## Failure criteria
+
+Treat any of these as a product blocker:
+
+- clicking Research this project does not initiate live research;
+- wrong project identity after the click;
+- canonical dossier facts appear in the custom project;
+- stale result from another project is restored;
+- failed/blocked research is presented as definitive missing evidence;
+- incomplete research renders a broken capacity/model page;
+- sourced-looking financial numbers appear without qualifying evidence;
+- stale API data is labeled Live/current;
+- raw internal/provider errors appear publicly.
+
+## Final report
+
+Return a concise product acceptance report with:
+
+1. Selected project.
+2. Whether live research actually started.
+3. Whether project identity remained correct.
+4. Research run ID/revision if available.
+5. Unique usable source count.
+6. Retained passage count.
+7. Eligible finding count.
+8. Diligence categories with usable evidence.
+9. Diligence categories incomplete/unresolved.
+10. Any canonical/seed data bleed-through.
+11. Whether incomplete-state rendering worked.
+12. Whether freshness labels were accurate.
+13. Whether financial review behavior was correct.
+14. Desktop/mobile result.
+15. PASS or FAIL.
+16. Only genuine launch-blocking defects that should be fixed next.
+
+Do not automatically start a repair task.
+Do not start category-specific retries.
+Do not compare historical source snapshots.
+Do not perform backtesting.
+Stop after reporting the product acceptance result.

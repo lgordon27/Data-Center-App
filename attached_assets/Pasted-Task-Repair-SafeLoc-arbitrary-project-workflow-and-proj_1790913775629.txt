@@ -1,0 +1,109 @@
+Task: Repair SafeLoc arbitrary-project workflow and project-context engine
+We are seeing systemic failures across non-seeded projects. Stop treating these as isolated project-specific defects.
+The app must behave consistently for arbitrary data-center projects, not only seeded cases like Red Oak/Stargate.
+Goal
+Establish one authoritative project context that persists through the entire user workflow:
+directory/project selection → research → Market Exposure → Project Reality → Evidence → financial review → navigation/restore
+Every view must consume the same selected project identity and research state.
+Reproduce first
+Before changing code, reproduce the current failure using at least:
+- one Amazon/AWS data-center project;
+- one additional non-seeded operator/project.
+Confirm whether:
+- Market Exposure routes back into the directory list;
+- Project Reality has no bound research result;
+- clicking research starts the wrong project or no usable run;
+- seeded/canonical/default state replaces the selected project;
+- refresh/back navigation loses the project;
+- one page reads a different project source than another.
+Do not hard-code fixes for Amazon.
+Build one canonical project-context contract
+Define one runtime project context containing at minimum:
+- stable project ID;
+- project name;
+- operator/developer;
+- location;
+- project scope;
+- source of selection;
+- research run ID;
+- research state;
+- active evidence/result reference;
+- whether the project is canonical/reviewed or arbitrary/custom.
+There must be one authoritative source of truth.
+Eliminate competing page-local project reconstruction where practical.
+Required workflow behavior
+Project selection
+Selecting a directory project sets the active project context.
+Research this project
+Clicking the button:
+- starts research for that exact active project;
+- does not merely navigate;
+- attaches the resulting run to the active project context;
+- prevents prior-project results from being reused.
+Market Exposure
+Market Exposure must render for the active selected project.
+It must not fall back to the directory listing unless the user explicitly exits the project workflow.
+Project Reality
+Project Reality must render:
+- the active project;
+- current research state;
+- retained evidence/results if available;
+- clean partial/incomplete state if research is not complete.
+It must not render blank because another page stored the result under a different project key.
+Evidence / financial review
+Evidence and review must use the same project/run reference.
+No canonical dossier facts may appear unless the active project is that canonical dossier.
+Navigation / restore
+Back, forward, refresh, tab/page switching, and route changes must preserve the active project and its research result where the app supports restoration.
+Stale results from a prior project must be rejected.
+Remove directory bleed-through
+Once a user enters a project workflow, the directory should not continue to dominate the content area unless it is intentionally shown as navigation.
+Do not render the full directory list inside Market Exposure or Project Reality as a fallback state.
+If project context is missing, show:
+No active project selected
+rather than silently dropping the user back into the directory.
+Canonical dossier behavior
+Canonical/reviewed dossiers may remain available internally or as explicit examples.
+They must not be used as fallback data for arbitrary projects.
+Remove/hide any automatic canonical-dossier substitution in the public arbitrary-project workflow.
+Research state contract
+Standardize:
+- idle
+- researching
+- partial
+- complete
+- failed
+- superseded
+Each state must remain attached to a specific project ID and research run ID.
+Acceptance tests
+Create generic browser tests, not project-specific hacks.
+At minimum test:
+1. Seeded project flow.
+2. Amazon/AWS arbitrary project flow.
+3. Another arbitrary project/operator.
+4. Switching from Project A to Project B rejects A’s stale results.
+5. Refresh preserves the active project where supported.
+6. Market Exposure stays bound to selected project.
+7. Project Reality stays bound to selected project.
+8. Incomplete research renders an incomplete state rather than a directory fallback or blank page.
+9. Evidence/review uses the same project/run.
+10. Canonical data never leaks into arbitrary project views.
+Do not
+- hard-code Amazon-specific behavior;
+- add new product categories;
+- change financial-transmission policy;
+- change source-ranking policy unless required to fix project binding;
+- perform historical/backtesting work;
+- add authentication;
+- deploy automatically.
+Deliverable
+Report:
+- root cause(s) of the cross-page project-context failure;
+- files changed;
+- the single authoritative project-context mechanism;
+- pages migrated to it;
+- stale/fallback paths removed;
+- browser tests and results;
+- typecheck/build status;
+- any remaining launch blocker.
+Do not run a live provider acceptance test until the generic workflow tests pass.

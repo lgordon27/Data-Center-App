@@ -136,3 +136,79 @@ test("prioritizes only bridge candidates whose trusted metadata combines a submi
   assert.ok(!unavailableAttribution.acquisitionReasons.includes("facility-project-bridge-discovery-metadata"),
     "a planned-looking query string is ignored unless the provider attribution is explicit");
 });
+
+test("prioritizes a supplied official project URL and project-specific government records over generic pages", () => {
+  const project = {
+    name: "Northshore Compute Park",
+    location: "Harris County, Texas",
+    knownData: {
+      knownOfficialEndpoints: ["https://permits.example.gov/projects/northshore/"],
+    },
+  };
+  const candidates = [
+    { url: "https://permits.example.gov/", title: "Permitting agency home", sourceChannel: "government" },
+    {
+      url: "https://permits.example.gov/projects/northshore/",
+      title: "Project information",
+      sourceChannel: "submitted-project-endpoint",
+    },
+    {
+      url: "https://records.example.gov/permit/4491",
+      title: "Northshore Compute Park construction permit record",
+      sourceType: "permit record",
+    },
+  ];
+  const ranked = rankAcquisitionCandidates(candidates, project);
+  assert.equal(ranked[0].url, "https://permits.example.gov/projects/northshore/");
+  assert.ok(ranked[0].acquisitionReasons.includes("submitted-official-project-endpoint"));
+  assert.equal(ranked[1].url, "https://records.example.gov/permit/4491");
+  assert.ok(ranked[1].acquisitionPriority > ranked.find((candidate) => candidate.url === "https://permits.example.gov/").acquisitionPriority);
+});
+
+test("does not demote a supplied official project endpoint because it is a root or policy path", () => {
+  const [ranked] = rankAcquisitionCandidates([{
+    url: "https://city.example.gov/",
+    title: "Official privacy policy",
+    sourceChannel: "government",
+  }], {
+    name: "Harbor Point Compute",
+    location: "Maine",
+    knownData: { knownOfficialEndpoints: ["https://city.example.gov/"] },
+  });
+  assert.equal(ranked.acquisitionPriority, 560);
+  assert.ok(ranked.acquisitionReasons.includes("submitted-official-project-endpoint"));
+});
+
+test("interleaves equal-priority candidates across source families without replacing relevance ranking", () => {
+  const ranked = rankAcquisitionCandidates([
+    { url: "https://news-one.example/a", title: "Regional article", sourceChannel: "news-report" },
+    { url: "https://news-two.example/b", title: "Independent article", sourceChannel: "news-report" },
+    { url: "https://grid.example/interconnection", title: "Grid service overview", sourceChannel: "utility" },
+    { url: "https://general.example/project", title: "Project information" },
+  ], { name: "Cedar Ridge Compute", location: "Texas" });
+  assert.deepEqual(ranked.slice(0, 3).map((source) => source.sourceFamily), [
+    "utility-regulator",
+    "independent-reporting",
+    "other",
+  ]);
+});
+
+test("generic secondary discoveries cannot crowd a later project-specific official record out of the candidate head", () => {
+  const secondary = Array.from({ length: 24 }, (_, index) => ({
+    url: `https://news-${index + 1}.example/market-update`,
+    title: `Regional data center market update ${index + 1}`,
+    sourceChannel: "news-aggregator",
+  }));
+  const primary = {
+    url: "https://records.example.gov/permits/cedar-ridge-204",
+    title: "Cedar Ridge Compute project construction permit",
+    sourceType: "government permit record",
+  };
+  const ranked = rankAcquisitionCandidates([...secondary, primary], {
+    name: "Cedar Ridge Compute",
+    location: "Texas",
+  });
+  assert.equal(ranked[0].url, primary.url);
+  assert.equal(ranked[0].acquisitionRank, 1);
+  assert.ok(ranked[0].acquisitionPriority > ranked[1].acquisitionPriority);
+});

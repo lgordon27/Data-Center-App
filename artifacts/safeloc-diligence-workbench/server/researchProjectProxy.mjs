@@ -46,6 +46,51 @@ import { releaseIdentity } from "./version.mjs";
 const RESEARCH_PROJECT_PROMPT_VERSION = "safeloc-project-research-prompt-v1";
 const GOOGLE_DISCOVERY_PROMPT_VERSION = "safeloc-google-grounding-prompt-v3";
 const CLAIM_REVIEW_VERSION = "policy-check-trace-v2";
+const RESEARCH_REQUEST_IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
+const RESEARCH_REQUEST_IDEMPOTENCY_MAX_ENTRIES = 1_024;
+const RESEARCH_RUN_INITIATORS = new Set([
+  "user-action",
+  "user-retry",
+  "background-refresh",
+  "api-client",
+]);
+const researchRunRequests = new Map();
+
+function parseResearchRequestIdentity(body) {
+  const requestId = body.requestId === undefined ? randomUUID() : body.requestId;
+  if (typeof requestId !== "string" || !/^[A-Za-z0-9._:-]{1,128}$/.test(requestId)) {
+    throw new Error('Research field "requestId" must be a 1–128 character request identifier.');
+  }
+  const initiator = body.initiator === undefined ? "api-client" : body.initiator;
+  if (typeof initiator !== "string" || !RESEARCH_RUN_INITIATORS.has(initiator)) {
+    throw new Error('Research field "initiator" is not supported.');
+  }
+  return { requestId, initiator };
+}
+
+function researchRunRequestKey(projectCacheKey, { requestId, initiator }) {
+  return `${projectCacheKey}:${initiator}:${requestId}`;
+}
+
+function findResearchRunRequest(key) {
+  const now = Date.now();
+  for (const [entryKey, entry] of researchRunRequests) {
+    if (now - entry.createdAt > RESEARCH_REQUEST_IDEMPOTENCY_TTL_MS) researchRunRequests.delete(entryKey);
+  }
+  const entry = researchRunRequests.get(key);
+  if (!entry) return null;
+  researchRunRequests.delete(key);
+  researchRunRequests.set(key, entry);
+  return entry;
+}
+
+function rememberResearchRunRequest(key, entry) {
+  researchRunRequests.delete(key);
+  researchRunRequests.set(key, { ...entry, createdAt: Date.now() });
+  while (researchRunRequests.size > RESEARCH_REQUEST_IDEMPOTENCY_MAX_ENTRIES) {
+    researchRunRequests.delete(researchRunRequests.keys().next().value);
+  }
+}
 
 function sourceStateTransition(from, to, reason) {
   return { from, to, reason };
@@ -508,6 +553,9 @@ function cacheMetadata(key, entry, state, refreshStatus = "idle", extras = {}) {
     revalidated: entry?.needsRevalidation === true,
     ...(extras.errorType ? { errorType: extras.errorType } : {}),
     ...(extras.providerDiagnostic ? { providerDiagnostic: extras.providerDiagnostic } : {}),
+    ...(typeof extras.runId === "string" ? { runId: extras.runId } : {}),
+    ...(typeof extras.initiator === "string" ? { initiator: extras.initiator } : {}),
+    ...(typeof extras.requestId === "string" ? { requestId: extras.requestId } : {}),
     ...(Array.isArray(extras.providerAttempts)
       ? { providerAttempts: extras.providerAttempts.slice(0, RESEARCH_RUN_BUDGET.maxProviderRequests) }
       : {}),
@@ -2703,6 +2751,78 @@ function buildResearchAudit({
       })) : [],
     };
   });
+  const uniqueOpenedSources = new Map();
+  sourceAttemptRecords.forEach((source, index) => {
+    const physicalOpenIndex = source?.accessOutcome?.physicalOpenIndex ?? source?.physicalOpenIndex;
+    if (!Number.isInteger(physicalOpenIndex)) return;
+    const canonicalUrl = canonicalizeSourceUrl(
+      source.canonicalUrl ?? source.resolvedUrl ?? source.originalUrl ?? source.url,
+    );
+    uniqueOpenedSources.set(canonicalUrl ?? `physical-open-${physicalOpenIndex}-${index}`, source);
+  });
+  const uniqueRetainedSources = [...uniqueOpenedSources.values()].filter(hasRetrievedPassage);
+  const uniqueRetainedPassageHashes = new Set(uniqueRetainedSources.map((source) => {
+    const passage = String(source?.accessOutcome?.passage ?? "").normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
+    return passage ? createHash("sha256").update(passage).digest("hex") : null;
+  }).filter(Boolean));
+  const sourceFamilies = new Map();
+  for (const source of uniqueOpenedSources.values()) {
+    const family = [
+      "declared-project-endpoint",
+      "government-project-record",
+      "utility-regulator",
+      "project-operator",
+      "independent-reporting",
+      "government-agency",
+      "news-aggregator",
+      "other",
+    ].includes(source.sourceFamily) ? source.sourceFamily : "other";
+    sourceFamilies.set(family, (sourceFamilies.get(family) ?? 0) + 1);
+  }
+  const duplicateOccurrenceKeys = new Set();
+  for (const [index, source] of sourceAttemptRecords.entries()) {
+    if (source.documentAccessReused !== true && source.accessOutcome?.reused !== true
+      && source.acquisitionSelectionReason !== "existing-receipt-reused") continue;
+    const canonicalUrl = canonicalizeSourceUrl(
+      source.canonicalUrl ?? source.resolvedUrl ?? source.originalUrl ?? source.url,
+    ) ?? `duplicate-${index}`;
+    duplicateOccurrenceKeys.add(`${source.discoveryCandidateRank ?? source.discoveryRank ?? index}:${source.categoryId ?? ""}:${canonicalUrl}`);
+  }
+  const irrelevantExclusionCount = (Array.isArray(coverage.discoveryCandidates) ? coverage.discoveryCandidates : sourceAttemptRecords)
+    .filter((source) => /(?:irrelevant|unrelated|low-specificity)/i.test([
+      source.selectionReason,
+      source.rejectionReason,
+      source.projectSpecificityState,
+      source.relevanceState,
+    ].filter((value) => typeof value === "string").join(" "))).length;
+  const outcomeMetrics = {
+    uniqueSourcesOpened: uniqueOpenedSources.size,
+    uniqueProjectSpecificSourcesOpened: [...uniqueOpenedSources.values()]
+      .filter((source) => sourceEstablishesProjectIdentity(source, project)).length,
+    uniqueUsableRetainedSources: uniqueRetainedSources.length,
+    uniqueRetainedPassages: uniqueRetainedPassageHashes.size,
+    eligibleClaims: eligibilityReviews.filter((review) => review.eligibleForModel).length,
+    sourceFamilyCounts: Object.fromEntries(sourceFamilies),
+    categoryCompletion: {
+      requested: categories.length,
+      executed: categories.filter((category) => category.executionOutcome === "completed"
+        || category.issuedPrimaryQuery !== null).length,
+      complete: categories.filter((category) => category.state === "Complete").length,
+      partial: categories.filter((category) => category.state === "Partial").length,
+      conclusiveNoEvidence: categories.filter((category) => category.state === "No eligible evidence").length,
+      technicalIncomplete: categories.filter((category) => category.state === "Provider failure"
+        || category.state === "Timed out"
+        || category.executionOutcome === "failed"
+        || category.analysisOutcome === "failed").length,
+      notSearched: categories.filter((category) => category.state === "Not searched").length,
+    },
+    exclusions: {
+      blocked: [...uniqueOpenedSources.values()].filter((source) =>
+        String(source.accessOutcome?.state ?? source.accessibilityState ?? "").startsWith("blocked")).length,
+      duplicateOccurrencesReused: duplicateOccurrenceKeys.size,
+      irrelevantCandidates: irrelevantExclusionCount,
+    },
+  };
   return {
     version: RESEARCH_CATEGORY_AUDIT_VERSION,
     policyVersion: RESEARCH_POLICY_VERSION,
@@ -2981,6 +3101,7 @@ function buildResearchAudit({
     followUpLimitPerCategory: runBudget.maxFollowUpsPerCategory,
     categories,
     categoryGaps: categories.filter((category) => category.state !== "Complete").map((category) => category.categoryId),
+    outcomeMetrics,
     providerLimitations: Array.isArray(coverage.providerLimitations) ? coverage.providerLimitations.slice(0, 12) : [],
   };
 }
@@ -6693,6 +6814,17 @@ async function runValidatedResearch(project, {
   const activeCategoryIds = buildResearchCategoryPlan(project).categories
     .filter((category) => !Array.isArray(categoryIds) || !categoryIds.length || categoryIds.includes(category.categoryId))
     .map((category) => category.categoryId);
+  const declaredProjectEndpointCandidates = (project.knownData?.knownOfficialEndpoints ?? [])
+    .map((url, index) => ({
+      url,
+      discoveryCandidateUrl: url,
+      title: "Supplied official project endpoint",
+      sourceChannel: "submitted-project-endpoint",
+      sourceType: "declared-project-endpoint",
+      categoryIds: activeCategoryIds,
+      searchDomain: "project-identity",
+      discoveryCandidateRank: index + 1,
+    }));
   const openedGoogleDocuments = [];
   const retainedDocumentReceipts = [];
   const documentAuditReceipts = [];
@@ -6941,7 +7073,16 @@ async function runValidatedResearch(project, {
           : {}),
         analysisTracker,
       });
-      const groundedSources = await prefetchGoogleGroundedSources(discovery.candidates ?? []);
+      const discoveredCandidates = Array.isArray(discovery.candidates) ? discovery.candidates : [];
+      const discoveredUrls = new Set(discoveredCandidates
+        .map((source) => canonicalizeSourceUrl(source?.url ?? source?.canonicalUrl ?? source?.resolvedUrl))
+        .filter(Boolean));
+      const suppliedCandidates = declaredProjectEndpointCandidates.filter((source) =>
+        !discoveredUrls.has(canonicalizeSourceUrl(source.url)));
+      const groundedSources = await prefetchGoogleGroundedSources([
+        ...discoveredCandidates,
+        ...suppliedCandidates,
+      ]);
       googleDiscovery = {
         ...googleDiscovery,
         ...discovery,
@@ -8197,6 +8338,9 @@ export async function handleResearchProjectRequest(
       researchCache: cacheMetadata(key, containedEntry, containedEntry ? cache.age(containedEntry) : "expired", status.refreshStatus, {
         providerAvailable: status.refreshStatus !== "failed",
         errorType: status.errorType,
+        runId: status.runId,
+        initiator: status.initiator,
+        requestId: status.requestId,
       }),
       ...(status.refreshStatus === "completed" && containedStatusResult ? { result: containedStatusResult } : {}),
     });
@@ -8208,6 +8352,7 @@ export async function handleResearchProjectRequest(
   }
 
   let project;
+  let requestIdentity;
   let retrievalOnlyRequest = retrievalOnly === true;
   try {
     const requestBody = await readRequestBody(req);
@@ -8216,6 +8361,7 @@ export async function handleResearchProjectRequest(
       throw new Error('Research field "retrievalOnly" must be a boolean.');
     }
     retrievalOnlyRequest ||= requestBody.retrievalOnly === true;
+    requestIdentity = parseResearchRequestIdentity(requestBody);
     project = parseResearchProjectBody(requestBody);
   } catch (error) {
     sendJson(res, 400, { error: error instanceof Error ? error.message : "Invalid research project request." });
@@ -8223,12 +8369,49 @@ export async function handleResearchProjectRequest(
   }
 
   const key = cache.keyFor(project);
+  const requestKey = researchRunRequestKey(key, requestIdentity);
+  const existingRequest = findResearchRunRequest(requestKey);
+  if (existingRequest) {
+    try {
+      const entry = await existingRequest.promise;
+      const contained = { ...entry, result: containResearchResult(entry.result) };
+      sendJson(res, 200, withCacheMetadata(contained, cacheMetadata(
+        key,
+        contained,
+        "updated",
+        "completed",
+        {
+          runId: existingRequest.runId,
+          initiator: existingRequest.initiator,
+          requestId: existingRequest.requestId,
+        },
+      )));
+    } catch (error) {
+      const failure = classifyResearchFailure(error);
+      sendJson(res, failure.status, {
+        error: failure.message,
+        errorType: failure.type,
+        researchStatus: "failed",
+        researchOutcome: {
+          state: RESEARCH_OUTCOMES.TECHNICAL,
+          eligibleEvidenceCount: 0,
+          reasonCodes: [failure.type],
+        },
+      });
+    }
+    return;
+  }
   const retained = await cache.read(key);
   const containedRetained = retained ? { ...retained, result: containResearchResult(retained.result) } : null;
   const retainedState = retained ? cache.age(retained) : "expired";
   const retainedNeedsRevalidation = retained?.needsRevalidation === true;
   if (!retrievalOnlyRequest && !project.forceRefresh && containedRetained && !retainedNeedsRevalidation && (retainedState === "fresh" || retainedState === "recent")) {
-    sendJson(res, 200, withCacheMetadata(containedRetained, cacheMetadata(key, containedRetained, retainedState)));
+    const priorAudit = containedRetained.result?.researchAudit ?? {};
+    sendJson(res, 200, withCacheMetadata(containedRetained, cacheMetadata(key, containedRetained, retainedState, "idle", {
+      runId: priorAudit.runCorrelationId,
+      initiator: priorAudit.initiator,
+      requestId: priorAudit.requestId,
+    })));
     return;
   }
 
@@ -8296,7 +8479,11 @@ export async function handleResearchProjectRequest(
   attachResponseLifecycle();
 
   let runContext = null;
-  const refresh = (foreground = true, { deferRunUntilResponse = false } = {}) => {
+  const refresh = (foreground = true, {
+    deferRunUntilResponse = false,
+    initiator = requestIdentity.initiator,
+    requestId = requestIdentity.requestId,
+  } = {}) => {
     const startedAtMs = Date.now();
     const startedAt = new Date(startedAtMs).toISOString();
     const deadlineAtMs = startedAtMs + boundedResearchTimeoutMs;
@@ -8316,6 +8503,9 @@ export async function handleResearchProjectRequest(
       runId,
       startedAt,
       deadlineAt: new Date(deadlineAtMs).toISOString(),
+      projectCacheKey: key,
+      initiator,
+      requestId,
       auditRowPersisted: false,
       startReady,
       resolveStartReady,
@@ -8325,6 +8515,9 @@ export async function handleResearchProjectRequest(
       version: RESEARCH_CATEGORY_AUDIT_VERSION,
       policyVersion: RESEARCH_POLICY_VERSION,
       runCorrelationId: runId,
+      projectCacheKey: key,
+      initiator,
+      requestId,
       startedAt,
       deadlineAt: context.deadlineAt,
       finishedAt: null,
@@ -8413,8 +8606,29 @@ export async function handleResearchProjectRequest(
         claimTrace,
         providerGate,
       });
-      return { ...researchResult, projectIdentity: project.projectIdentity };
+      const completedResult = { ...researchResult, projectIdentity: project.projectIdentity };
+      if (isRecord(completedResult.researchAudit)) {
+        completedResult.researchAudit.projectCacheKey = key;
+        completedResult.researchAudit.initiator = initiator;
+        completedResult.researchAudit.requestId = requestId;
+      }
+      return completedResult;
+    }, {
+      flightKey: `${key}:${initiator}:${requestId}`,
+      runId,
+      initiator,
+      requestId,
     });
+    const refreshRequestKey = researchRunRequestKey(key, { requestId, initiator });
+    const existingRefreshRequest = refreshResult.started ? null : findResearchRunRequest(refreshRequestKey);
+    const effectiveRunId = existingRefreshRequest?.runId ?? runId;
+    if (refreshResult.started || !existingRefreshRequest) {
+      rememberResearchRunRequest(
+        refreshRequestKey,
+        { promise: refreshResult.promise, runId: effectiveRunId, requestId, initiator },
+      );
+    }
+    context.runId = effectiveRunId;
     if (!refreshResult.started) {
       resolveStartReady();
       if (runContext === context) runContext = null;
@@ -8443,6 +8657,9 @@ export async function handleResearchProjectRequest(
       phaseTiming: null,
     };
     audit.runCorrelationId = context?.runId ?? audit.runCorrelationId;
+    audit.projectCacheKey = context?.projectCacheKey ?? key;
+    audit.initiator = context?.initiator ?? requestIdentity.initiator;
+    audit.requestId = context?.requestId ?? requestIdentity.requestId;
     audit.deadlineAt = audit.deadlineAt ?? context?.deadlineAt ?? null;
     audit.response = { ...responseDelivery };
     audit.responseStartedAt = responseDelivery.responseStartedAt;
@@ -8527,7 +8744,16 @@ export async function handleResearchProjectRequest(
     }
   };
   if (!retrievalOnlyRequest && !project.forceRefresh && containedRetained && !retainedNeedsRevalidation && retainedState === "stale") {
-    const background = refresh(false, { deferRunUntilResponse: true });
+    const background = refresh(false, {
+      deferRunUntilResponse: true,
+      initiator: "background-refresh",
+    });
+    rememberResearchRunRequest(requestKey, {
+      promise: background.promise,
+      runId: background.context.runId,
+      requestId: requestIdentity.requestId,
+      initiator: background.context.initiator,
+    });
     if (background.started) {
       try {
         await background.startReady;
@@ -8548,7 +8774,12 @@ export async function handleResearchProjectRequest(
       }
     }
     req.removeListener?.("aborted", onRequestAborted);
-    sendTrackedJson(200, withCacheMetadata(containedRetained, cacheMetadata(key, containedRetained, "stale", "running")));
+    const backgroundStatus = cache.status(key);
+    sendTrackedJson(200, withCacheMetadata(containedRetained, cacheMetadata(key, containedRetained, "stale", "running", {
+      runId: backgroundStatus.runId,
+      initiator: backgroundStatus.initiator,
+      requestId: backgroundStatus.requestId,
+    })));
     background.launch();
     if (background.started) void background.promise.then((entry) => retainRun(entry.result), (error) => {
       retainRun(null, error);
@@ -8562,7 +8793,11 @@ export async function handleResearchProjectRequest(
     activeRefresh = refresh();
     const entry = await activeRefresh.promise;
     if (!res.writableEnded && !res.destroyed) {
-      sendTrackedJson(200, withCacheMetadata(entry, cacheMetadata(key, entry, "updated")));
+      sendTrackedJson(200, withCacheMetadata(entry, cacheMetadata(key, entry, "updated", "completed", {
+        runId: activeRefresh.context.runId,
+        initiator: activeRefresh.context.initiator,
+        requestId: activeRefresh.context.requestId,
+      })));
     }
     if (activeRefresh.started) retainRun(entry.result);
   } catch (error) {

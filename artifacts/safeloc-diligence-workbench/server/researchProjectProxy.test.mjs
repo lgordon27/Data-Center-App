@@ -3901,6 +3901,123 @@ test("exposes observable completion status for a background stale refresh", asyn
   assert.equal(status.json().result.evidence.length, 16);
 });
 
+test("replays one run for a repeated request identity and assigns an explicit retry a new run ID", async () => {
+  let discoveryCalls = 0;
+  const cache = createResearchProjectCache();
+  const options = {
+    apiKey: null,
+    googleApiKey: null,
+    retrievalOnly: true,
+    cache,
+    googleDiscoveryImpl: async () => {
+      discoveryCalls += 1;
+      return {
+        status: "completed",
+        candidates: [],
+        queries: [],
+        urlCitationCount: 0,
+        rawAnnotationSummaries: [],
+        usableCitationMetadataPresent: false,
+        groundingSearchExecuted: false,
+      };
+    },
+  };
+  const project = {
+    name: "Request Identity Offline Fixture",
+    location: "Texas",
+    retrievalOnly: true,
+    requestId: "request-identity-one-click",
+    initiator: "user-action",
+  };
+  const firstResponse = responseRecorder();
+  await handleResearchProjectRequest({
+    ...request(project),
+    ip: "198.51.100.201",
+  }, firstResponse, options);
+  const firstBody = firstResponse.json();
+
+  const duplicateResponse = responseRecorder();
+  await handleResearchProjectRequest({
+    ...request(project),
+    ip: "198.51.100.202",
+  }, duplicateResponse, options);
+  const duplicateBody = duplicateResponse.json();
+
+  assert.equal(discoveryCalls, 1);
+  assert.equal(duplicateBody.researchAudit.runCorrelationId, firstBody.researchAudit.runCorrelationId);
+  assert.equal(duplicateBody.researchCache.runId, firstBody.researchCache.runId);
+  assert.equal(duplicateBody.researchAudit.initiator, "user-action");
+  assert.equal(duplicateBody.researchAudit.requestId, "request-identity-one-click");
+
+  const retryResponse = responseRecorder();
+  await handleResearchProjectRequest({
+    ...request({
+      ...project,
+      forceRefresh: true,
+      requestId: "request-identity-explicit-retry",
+      initiator: "user-retry",
+    }),
+    ip: "198.51.100.203",
+  }, retryResponse, options);
+  const retryBody = retryResponse.json();
+  assert.equal(discoveryCalls, 2);
+  assert.notEqual(retryBody.researchAudit.runCorrelationId, firstBody.researchAudit.runCorrelationId);
+  assert.equal(retryBody.researchAudit.initiator, "user-retry");
+  assert.equal(retryBody.researchAudit.requestId, "request-identity-explicit-retry");
+});
+
+test("a repeated stale-cache action reuses its explicitly marked background run", async () => {
+  let now = Date.parse("2026-09-01T00:00:00.000Z");
+  const cache = createResearchProjectCache({ now: () => now });
+  const project = { name: "Stale Request Identity Fixture", location: "Texas" };
+  const cacheKey = cache.keyFor(project);
+  await cache.write(cacheKey, parseResearchResponse(validResearchResponse(), [retrievedSource]));
+  now += 2 * 24 * 60 * 60 * 1000;
+  let admissionChecks = 0;
+  const options = {
+    apiKey: "offline-fixture-key",
+    googleApiKey: null,
+    cache,
+    rateLimiter: {
+      allow() {
+        admissionChecks += 1;
+        return { allowed: false, retryAfterSeconds: 1 };
+      },
+    },
+  };
+  const body = {
+    ...project,
+    requestId: "stale-request-identity-fixture",
+    initiator: "user-action",
+  };
+  const staleResponse = responseRecorder();
+  await handleResearchProjectRequest({
+    ...request(body),
+    ip: "198.51.100.204",
+  }, staleResponse, options);
+  const firstRunId = staleResponse.json().researchCache.runId;
+  assert.ok(firstRunId);
+  assert.equal(staleResponse.json().researchCache.initiator, "background-refresh");
+
+  const duplicateResponse = responseRecorder();
+  await handleResearchProjectRequest({
+    ...request(body),
+    ip: "198.51.100.205",
+  }, duplicateResponse, options);
+  assert.equal(duplicateResponse.statusCode, 429);
+  assert.equal(admissionChecks, 1);
+
+  const status = responseRecorder();
+  await handleResearchProjectRequest({
+    method: "GET",
+    url: `/api/research-project?cacheKey=${cacheKey}`,
+  }, status, { cache });
+  assert.equal(status.json().researchCache.refreshStatus, "failed");
+  assert.equal(status.json().researchCache.runId, firstRunId);
+  assert.equal(status.json().researchCache.initiator, "background-refresh");
+  assert.equal(status.json().researchCache.requestId, body.requestId);
+});
+
 test("validates and preserves optional Compute Atlas known data", () => {
   assert.deepEqual(parseResearchProjectBody({
     name: "Atlas",
@@ -5481,6 +5598,38 @@ test("retains blocked access receipts and prevents blocked passages from becomin
   assert.ok(body.evidence.every((item) => item.eligibleForModel !== true));
   assert.ok(body.researchAudit.categories.every((category) => category.stageCounts.accessed === 0));
   assert.ok(body.researchAudit.categories.some((category) => category.state === "No eligible evidence" || category.state === "Partial"));
+  assert.ok(body.researchAudit.outcomeMetrics.exclusions.blocked >= 1);
+  assert.equal(body.researchAudit.outcomeMetrics.eligibleClaims, 0);
+});
+
+test("a finalized blocked canonical receipt is reused without another physical open", () => {
+  const scheduler = createPhysicalOpenScheduler({
+    maxPhysicalOpens: 2,
+    activeCategoryIds: ["grid"],
+  });
+  const canonicalUrl = "https://records.example.gov/project/blocked";
+  const first = scheduler.authorize({
+    categoryId: "grid",
+    canonicalUrl,
+    source: { sourceRole: "grid" },
+  });
+  assert.equal(first.allowed, true);
+  assert.equal(first.reused, false);
+  scheduler.registerReceipt({
+    canonicalUrl,
+    receipt: { ...first, state: "blocked", reason: "http-403" },
+  });
+
+  const duplicate = scheduler.authorize({
+    categoryId: "grid",
+    canonicalUrl,
+    source: { sourceRole: "grid" },
+  });
+  assert.equal(duplicate.allowed, true);
+  assert.equal(duplicate.reused, true);
+  assert.equal(duplicate.physicalOpenIndex, first.physicalOpenIndex);
+  assert.equal(scheduler.used, 1);
+  assert.equal(scheduler.getReceipt(canonicalUrl).state, "blocked");
 });
 
 test("enforces per-category and run-wide candidate caps before document access", async () => {
@@ -7397,16 +7546,19 @@ test("retrievalOnly request body runs without OpenAI credentials, stops before o
 
   assert.equal(discoveryCalls, 1);
   assert.equal(structuredCalls, 0);
-  assert.deepEqual(documentFetches, [candidate.url], "official-source continuation must not run after prefetch receipts");
+  assert.deepEqual(documentFetches, [
+    body.knownData.knownOfficialEndpoints[0],
+    candidate.url,
+  ], "the supplied endpoint and discovery candidate are prefetched once; no continuation runs afterward");
   assert.equal(startedAudit.researchStatus, "running");
   assert.ok(completedAudit.finishedAt);
   assert.equal(completedAudit.audit.retrievalOnlyStop, "discovery-prefetch-complete");
-  assert.equal(completedAudit.audit.physicalOpensUsed, 1);
+  assert.equal(completedAudit.audit.physicalOpensUsed, 2);
   assert.equal(payload.researchAudit.retrievalOnlyStop, "discovery-prefetch-complete");
-  assert.equal(payload.researchCoverage.discoveryCandidates.length, 1);
+  assert.equal(payload.researchCoverage.discoveryCandidates.length, 2);
   assert.equal(payload.researchCoverage.discoveryCandidates[0].selectedForOpen, true);
   assert.equal(payload.researchCoverage.discoveryCandidates[0].accessState, "blocked");
-  assert.equal(payload.researchAudit.sourceAttempts.length, 1);
+  assert.equal(payload.researchAudit.sourceAttempts.length, 2);
   assert.equal(payload.researchAudit.sourceAttempts[0].acquisitionSelected, true);
 });
 

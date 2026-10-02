@@ -43,6 +43,21 @@ function safeUrlParts(source = {}) {
   }
 }
 
+function normalizedEndpoint(value) {
+  try {
+    const url = new URL(asText(value));
+    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) return null;
+    url.hash = "";
+    for (const key of [...url.searchParams.keys()]) {
+      if (/^(?:utm_.+|gclid|fbclid|mc_cid|mc_eid)$/i.test(key)) url.searchParams.delete(key);
+    }
+    url.pathname = url.pathname.replace(/\/+$/, "") || "/";
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
 function valuesAt(objects, keys) {
   return objects.flatMap((object) => keys.flatMap((key) => {
     const value = object?.[key];
@@ -79,7 +94,10 @@ function projectIdentityValues(project = {}) {
   )
     .map((value) => asText(value).toLowerCase().replace(/^https?:\/\//, "").split("/")[0].replace(/^www\./, ""))
     .filter(Boolean);
-  for (const endpoint of valuesAt([project, knownData], ["knownOfficialEndpoints"])) {
+  const officialEndpoints = valuesAt([project, knownData], ["knownOfficialEndpoints"])
+    .map(normalizedEndpoint)
+    .filter(Boolean);
+  for (const endpoint of officialEndpoints) {
     try {
       officialDomains.push(new URL(endpoint).hostname.toLowerCase().replace(/^www\./, ""));
     } catch {
@@ -93,6 +111,7 @@ function projectIdentityValues(project = {}) {
     locationTerms: [...new Set(locationTerms)],
     companyDomains: [...new Set(companyDomains)],
     officialDomains: [...new Set(officialDomains)],
+    officialEndpoints: [...new Set(officialEndpoints)],
   };
 }
 
@@ -135,8 +154,7 @@ function rankCandidate(source, project, discoveryRank) {
     /^DFW\s*[- ]?\s*\d{1,2}$/i.test(facilityId)
     && phrasePresent(trustedBridgeText, facilityId));
   const bridgeProjectSignal =
-    /\b(?:red\s+oak|databank)\b/i.test(trustedBridgeText)
-    || identity.aliases.some((alias) => phrasePresent(trustedBridgeText, alias))
+    identity.aliases.some((alias) => phrasePresent(trustedBridgeText, alias))
     || identity.operators.some((operator) => phrasePresent(trustedBridgeText, operator))
     || identity.locationTerms.some((location) => phrasePresent(trustedBridgeText, location));
   const facilityProjectBridgeSignal = bridgeFacilitySignal && bridgeProjectSignal;
@@ -152,6 +170,9 @@ function rankCandidate(source, project, discoveryRank) {
     || (parts?.hostname && identity.operators.some((operator) =>
       normalizeWords(parts.hostname).includes(normalizeWords(operator).replaceAll(" ", ""))))
     || /(?:declared-company|company-developer)/.test(sourceChannel);
+  const declaredEndpoint = identity.officialEndpoints.includes(normalizedEndpoint(
+    source.url ?? source.canonicalUrl ?? source.resolvedUrl,
+  ));
   const projectRecord = PROJECT_RECORD_PATTERN.test(`${titleText} ${urlText} ${sourceType}`);
   const video = VIDEO_PATTERN.test(`${parts?.hostname ?? ""} ${titleText} ${urlText} ${sourceType}`)
     || /video/i.test(asText(source.contentType));
@@ -162,9 +183,32 @@ function rankCandidate(source, project, discoveryRank) {
       .test(`${titleText} ${urlText} ${sourceType}`)
     && !exactProjectSignal
     && !namedFacilitySignal;
+  const sourceFamily = declaredEndpoint
+    ? "declared-project-endpoint"
+    : /(?:^|\.)(?:gov|mil)$/.test(parts?.hostname ?? "") || /(?:^|\.)tx\.us$/.test(parts?.hostname ?? "")
+      ? projectRecord ? "government-project-record" : "government-agency"
+      : /(?:utility|regulator|ercot|puc|grid-operator|commission)/.test(`${sourceChannel} ${sourceType} ${titleText}`)
+        ? "utility-regulator"
+        : operatorDomain ? "project-operator"
+          : /(?:aggregator|newswire|press-release-distribution)/.test(`${sourceChannel} ${sourceType} ${parts?.hostname ?? ""}`)
+            ? "news-aggregator"
+            : /(?:report|news|journal|article|independent)/.test(`${sourceChannel} ${sourceType} ${titleText}`)
+              ? "independent-reporting"
+              : "other";
+  const sourceFamilyPriority = {
+    "declared-project-endpoint": 7,
+    "government-project-record": 6,
+    "utility-regulator": 5,
+    "project-operator": 5,
+    "independent-reporting": 3,
+    "government-agency": 2,
+    "news-aggregator": 1,
+    other: 0,
+  }[sourceFamily];
 
   let acquisitionPriority = 100;
   const acquisitionReasons = [];
+  if (declaredEndpoint) acquisitionReasons.push("submitted-official-project-endpoint");
   if (aliasInTitle) acquisitionReasons.push("exact-project-title");
   if (aliasInUrl) acquisitionReasons.push("exact-project-url");
   if (aliasInSnippet) acquisitionReasons.push("exact-project-discovery-metadata");
@@ -207,12 +251,13 @@ function rankCandidate(source, project, discoveryRank) {
   }
 
   if (facilityProjectBridgeSignal) acquisitionPriority += 100;
+  if (declaredEndpoint) acquisitionPriority = Math.max(acquisitionPriority, 560);
 
-  if (genericIndex) {
+  if (genericIndex && !declaredEndpoint) {
     acquisitionPriority = Math.min(acquisitionPriority, 10);
     acquisitionReasons.push("generic-root-index-feed-or-sitemap");
   }
-  if (unrelatedPolicy) {
+  if (unrelatedPolicy && !declaredEndpoint) {
     acquisitionPriority = Math.min(acquisitionPriority, 20);
     acquisitionReasons.push("unrelated-policy-or-authority-page");
   }
@@ -232,6 +277,8 @@ function rankCandidate(source, project, discoveryRank) {
       ? source.discoveryCandidateRank
       : discoveryRank,
     acquisitionPriority,
+    sourceFamily,
+    sourceFamilyPriority,
     acquisitionReasons: [...new Set(acquisitionReasons)],
   };
 }
@@ -243,10 +290,28 @@ function rankCandidate(source, project, discoveryRank) {
 export function rankAcquisitionCandidates(candidates = [], project = {}) {
   const ranked = (Array.isArray(candidates) ? candidates : [])
     .map((candidate, index) => rankCandidate(candidate ?? {}, project, index + 1));
-  return ranked
-    .sort((left, right) =>
-      right.acquisitionPriority - left.acquisitionPriority
-      || left.discoveryCandidateRank - right.discoveryCandidateRank
-      || String(left.url ?? "").localeCompare(String(right.url ?? "")))
-    .map((candidate, index) => ({ ...candidate, acquisitionRank: index + 1 }));
+  const ordered = ranked.sort((left, right) =>
+    right.acquisitionPriority - left.acquisitionPriority
+    || right.sourceFamilyPriority - left.sourceFamilyPriority
+    || left.discoveryCandidateRank - right.discoveryCandidateRank
+    || String(left.url ?? "").localeCompare(String(right.url ?? "")));
+  const diversified = [];
+  for (let start = 0; start < ordered.length;) {
+    let end = start + 1;
+    while (end < ordered.length && ordered[end].acquisitionPriority === ordered[start].acquisitionPriority) end += 1;
+    const familyQueues = new Map();
+    for (const candidate of ordered.slice(start, end)) {
+      const queue = familyQueues.get(candidate.sourceFamily) ?? [];
+      queue.push(candidate);
+      familyQueues.set(candidate.sourceFamily, queue);
+    }
+    while ([...familyQueues.values()].some((queue) => queue.length)) {
+      for (const queue of familyQueues.values()) {
+        const candidate = queue.shift();
+        if (candidate) diversified.push(candidate);
+      }
+    }
+    start = end;
+  }
+  return diversified.map((candidate, index) => ({ ...candidate, acquisitionRank: index + 1 }));
 }

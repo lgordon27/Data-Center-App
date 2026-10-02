@@ -4,6 +4,21 @@ import {
   getPublicResearchPresentation,
 } from "@/services/publicResearchPresentation";
 
+const SOURCE_FAMILY_LABELS: Record<string, string> = {
+  "declared-project-endpoint": "declared project endpoint",
+  "government-project-record": "government project record",
+  "utility-regulator": "utility or regulator",
+  "project-operator": "project operator",
+  "independent-reporting": "independent reporting",
+  "government-agency": "government agency",
+  "news-aggregator": "news aggregator",
+  other: "other",
+};
+
+function displayCount(value: unknown) {
+  return typeof value === "number" && Number.isSafeInteger(value) ? Math.max(0, value) : 0;
+}
+
 export function ResearchSearchAudit({
   coverage: _coverage,
   audit,
@@ -28,6 +43,15 @@ export function ResearchSearchAudit({
     hasRetainedEvidence: retainedPassages > 0,
     researchCache,
   });
+  const outcomeMetrics = audit?.outcomeMetrics;
+  const sourceFamilies = Object.entries(outcomeMetrics?.sourceFamilyCounts ?? {})
+    .filter(([family, count]) => Object.hasOwn(SOURCE_FAMILY_LABELS, family)
+      && typeof count === "number"
+      && Number.isSafeInteger(count)
+      && count > 0)
+    .sort(([leftFamily, leftCount], [rightFamily, rightCount]) =>
+      rightCount - leftCount || leftFamily.localeCompare(rightFamily))
+    .slice(0, 8);
 
   return (
     <details data-testid="research-search-audit" className="mb-4 rounded-lg border border-[#d9e0e4] bg-white text-[11px] text-[#52616b]">
@@ -42,6 +66,31 @@ export function ResearchSearchAudit({
             <p className="mt-1">The last refresh did not complete. Previously retained passages remain available and may be older.</p>
           )}
         </div>
+        {outcomeMetrics && (
+          <section data-testid="research-run-yield" className="rounded-lg border border-[#e5eae8] bg-[#f7f9f8] px-3 py-3">
+            <strong className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#243844]">Run yield</strong>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              <p><strong data-testid="yield-project-sources">{displayCount(outcomeMetrics.uniqueProjectSpecificSourcesOpened)}</strong> unique project-specific sources opened <span className="text-[#71808a]">({displayCount(outcomeMetrics.uniqueSourcesOpened)} total)</span></p>
+              <p><strong data-testid="yield-retained-sources">{displayCount(outcomeMetrics.uniqueUsableRetainedSources)}</strong> unique usable retained sources</p>
+              <p><strong data-testid="yield-retained-passages">{displayCount(outcomeMetrics.uniqueRetainedPassages)}</strong> unique retained passages</p>
+              <p><strong data-testid="yield-eligible-claims">{displayCount(outcomeMetrics.eligibleClaims)}</strong> eligible claims</p>
+              <p className="sm:col-span-2 lg:col-span-3">
+                Categories: {displayCount(outcomeMetrics.categoryCompletion.complete)} complete · {displayCount(outcomeMetrics.categoryCompletion.partial)} partial · {displayCount(outcomeMetrics.categoryCompletion.conclusiveNoEvidence)} conclusive no evidence · {displayCount(outcomeMetrics.categoryCompletion.technicalIncomplete)} technically incomplete · {displayCount(outcomeMetrics.categoryCompletion.notSearched)} not searched
+                <span className="text-[#71808a]"> ({displayCount(outcomeMetrics.categoryCompletion.executed)} of {displayCount(outcomeMetrics.categoryCompletion.requested)} requested work executed)</span>
+              </p>
+              <p className="sm:col-span-2 lg:col-span-3">
+                Excluded or reused: {displayCount(outcomeMetrics.exclusions.blocked)} blocked · {displayCount(outcomeMetrics.exclusions.duplicateOccurrencesReused)} duplicate occurrences reused · {displayCount(outcomeMetrics.exclusions.irrelevantCandidates)} irrelevant
+              </p>
+            </div>
+            {sourceFamilies.length > 0 && (
+              <p data-testid="yield-source-families" className="mt-2 border-t border-[#e5eae8] pt-2">
+                Source families: {sourceFamilies
+                  .map(([family, count]) => `${SOURCE_FAMILY_LABELS[family]} (${displayCount(count)})`)
+                  .join(" · ")}
+              </p>
+            )}
+          </section>
+        )}
         {categories.length > 0 ? (
           <ul className="space-y-2">
             {categories.map((category, index) => {

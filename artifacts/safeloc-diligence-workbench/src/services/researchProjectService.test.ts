@@ -903,6 +903,8 @@ test("returns the first timeout without issuing an automatic retry", async () =>
         status: "Operating",
         sourceUrl: "https://example.com/directory/atlas",
       },
+      requestId: "one-click-timeout-fixture",
+      initiator: "user-action",
     });
     return calls === 1
       ? new Response(JSON.stringify({ error: "Project research timed out." }), { status: 504 })
@@ -916,6 +918,8 @@ test("returns the first timeout without issuing an automatic retry", async () =>
         status: "Operating",
         sourceUrl: "https://example.com/directory/atlas",
       },
+      requestId: "one-click-timeout-fixture",
+      initiator: "user-action",
       onProgress: (state) => progress.push(state),
     }),
     /timed out/i,
@@ -990,12 +994,18 @@ test("preserves cache freshness metadata and sends explicit force refresh", asyn
       },
     }), { status: 200 });
   };
-  const result = await researchProject("Atlas", "Texas", fetchImpl as typeof fetch, { forceRefresh: true });
+  const result = await researchProject("Atlas", "Texas", fetchImpl as typeof fetch, {
+    forceRefresh: true,
+    requestId: "force-refresh-fixture",
+    initiator: "user-retry",
+  });
   assert.deepEqual(requestBody, {
     name: "Atlas",
     location: "Texas",
     projectIdentity: { projectId: null, providerId: null, name: "Atlas", location: "Texas", operator: null },
     forceRefresh: true,
+    requestId: "force-refresh-fixture",
+    initiator: "user-retry",
   });
   assert.deepEqual(result.researchCache, {
     key: cacheKey,
@@ -1004,6 +1014,103 @@ test("preserves cache freshness metadata and sends explicit force refresh", asyn
     refreshStatus: "failed",
     providerAvailable: false,
     errorType: "quota-exhausted",
+  });
+});
+
+test("coalesces duplicate user actions and keeps an explicit retry as a distinct run request", async () => {
+  const requestBodies: Array<Record<string, unknown>> = [];
+  let calls = 0;
+  let releaseFetch: (() => void) | undefined;
+  const fetchBarrier = new Promise<void>((resolve) => { releaseFetch = resolve; });
+  const fetchImpl = async (_input: string | URL | Request, init?: RequestInit) => {
+    calls += 1;
+    const body = JSON.parse(String(init?.body));
+    requestBodies.push(body);
+    await fetchBarrier;
+    return new Response(JSON.stringify({
+      ...response,
+      projectIdentity: body.projectIdentity,
+    }), { status: 200 });
+  };
+  const options = {
+    requestId: "same-user-action-fixture",
+    initiator: "user-action" as const,
+  };
+  const first = researchProject("Idempotent Fixture", "Texas", fetchImpl as typeof fetch, options);
+  const duplicate = researchProject("Idempotent Fixture", "Texas", fetchImpl as typeof fetch, options);
+  assert.equal(calls, 1);
+  releaseFetch?.();
+  await Promise.all([first, duplicate]);
+  assert.equal(calls, 1);
+  assert.equal(requestBodies[0].requestId, options.requestId);
+  assert.equal(requestBodies[0].initiator, "user-action");
+
+  const retry = researchProject("Idempotent Fixture", "Texas", fetchImpl as typeof fetch, {
+    requestId: "intentional-retry-fixture",
+    initiator: "user-retry",
+    forceRefresh: true,
+  });
+  await retry;
+  assert.equal(calls, 2);
+  assert.equal(requestBodies[1].requestId, "intentional-retry-fixture");
+  assert.equal(requestBodies[1].initiator, "user-retry");
+});
+
+test("preserves sanitized run identity and outcome metrics through client parsing", () => {
+  const runId = "4a35e958-e4c2-4b59-9c7e-6207cc161958";
+  const parsed = parseResponse({
+    ...response,
+    researchCache: {
+      key: "b".repeat(64),
+      state: "updated",
+      storedAt: null,
+      refreshStatus: "completed",
+      providerAvailable: true,
+      runId,
+      initiator: "background-refresh",
+      requestId: "audit-projection-fixture",
+    },
+    researchAudit: {
+      version: 1,
+      policyVersion: 1,
+      provider: "google-gemini-grounding",
+      model: "fixture",
+      providerResponseId: null,
+      runCorrelationId: runId,
+      projectCacheKey: "b".repeat(64),
+      initiator: "background-refresh",
+      requestId: "audit-projection-fixture",
+      categories: [],
+      outcomeMetrics: {
+        uniqueSourcesOpened: 7,
+        uniqueProjectSpecificSourcesOpened: 3,
+        uniqueUsableRetainedSources: 2,
+        uniqueRetainedPassages: 1,
+        eligibleClaims: 4,
+        sourceFamilyCounts: { "government-project-record": 2, "news-aggregator": 1, unrecognized: 99 },
+        categoryCompletion: {
+          requested: 8,
+          executed: 7,
+          complete: 2,
+          partial: 3,
+          conclusiveNoEvidence: 1,
+          technicalIncomplete: 1,
+          notSearched: 1,
+        },
+        exclusions: { blocked: 1, duplicateOccurrencesReused: 2, irrelevantCandidates: 3 },
+      },
+    },
+  }, {
+    name: response.projectSummary.name,
+    location: response.projectSummary.location,
+  });
+  assert.equal(parsed.researchCache?.runId, runId);
+  assert.equal(parsed.researchCache?.initiator, "background-refresh");
+  assert.equal(parsed.researchAudit?.runCorrelationId, runId);
+  assert.equal(parsed.researchAudit?.outcomeMetrics?.uniqueProjectSpecificSourcesOpened, 3);
+  assert.deepEqual(parsed.researchAudit?.outcomeMetrics?.sourceFamilyCounts, {
+    "government-project-record": 2,
+    "news-aggregator": 1,
   });
 });
 

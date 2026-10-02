@@ -36,6 +36,20 @@ export const RESEARCH_PROJECT_ENDPOINT = "/api/research-project";
 export const RESEARCH_PROJECT_TIMEOUT_MS = 90_000;
 export const MAX_RESEARCH_CAPACITY_MW = 10_000;
 
+export type ResearchRunInitiator = "user-action" | "user-retry" | "background-refresh" | "api-client";
+
+const inFlightProjectRequests = new Map<string, Promise<CustomResearchResponse>>();
+
+function stableRequestValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stableRequestValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.keys(value).sort().map((key) => [key, stableRequestValue((value as Record<string, unknown>)[key])]),
+    );
+  }
+  return value;
+}
+
 export const CUSTOM_EVIDENCE_IDS = [
   "electricity_cost",
   "water_consumption",
@@ -603,6 +617,10 @@ export type ResearchAudit = {
   model: string;
   providerResponseId: string | null;
   runCorrelationId?: string | null;
+  projectCacheKey?: string;
+  initiator?: ResearchRunInitiator;
+  requestId?: string;
+  outcomeMetrics?: ResearchAuditOutcomeMetrics;
   terminalState?: ResearchOutcomeState | null;
   terminalReasonCodes?: string[];
   identityPhysicalOpenOpportunityReserved?: boolean;
@@ -636,6 +654,29 @@ export type ResearchAudit = {
   categories: ResearchCategoryAudit[];
   categoryGaps: string[];
   providerLimitations: string[];
+};
+
+export type ResearchAuditOutcomeMetrics = {
+  uniqueSourcesOpened: number;
+  uniqueProjectSpecificSourcesOpened: number;
+  uniqueUsableRetainedSources: number;
+  uniqueRetainedPassages: number;
+  eligibleClaims: number;
+  sourceFamilyCounts: Record<string, number>;
+  categoryCompletion: {
+    requested: number;
+    executed: number;
+    complete: number;
+    partial: number;
+    conclusiveNoEvidence: number;
+    technicalIncomplete: number;
+    notSearched: number;
+  };
+  exclusions: {
+    blocked: number;
+    duplicateOccurrencesReused: number;
+    irrelevantCandidates: number;
+  };
 };
 
 function sourceMatchesMapping(source: ResearchEvidenceSource, mapping: ResearchClaimPassageMapping) {
@@ -696,6 +737,9 @@ export type ResearchCacheMetadata = {
   storedAt: string | null;
   refreshStatus: "idle" | "running" | "completed" | "failed";
   providerAvailable: boolean;
+  runId?: string;
+  initiator?: ResearchRunInitiator;
+  requestId?: string;
   validationPolicyVersion?: number;
   researchPolicyVersion?: number;
   modelVersion?: string;
@@ -763,6 +807,8 @@ export type ResearchProjectOptions = {
   focusIds?: string[];
   currentEvidence?: Array<Pick<CustomEvidenceRecord, "id" | "label" | "value" | "classification" | "citation">>;
   forceRefresh?: boolean;
+  requestId?: string;
+  initiator?: ResearchRunInitiator;
 };
 
 export function summarizeSourceCoverage(evidence: CustomEvidenceRecord[]) {
@@ -1345,6 +1391,11 @@ function parseResearchCache(value: unknown): ResearchCacheMetadata | undefined {
     ...(typeof value.researchPolicyVersion === "number" ? { researchPolicyVersion: value.researchPolicyVersion } : {}),
     ...(isNonEmptyString(value.modelVersion) ? { modelVersion: value.modelVersion } : {}),
     ...(errorTypes.includes(value.errorType as typeof errorTypes[number]) ? { errorType: value.errorType as ResearchCacheMetadata["errorType"] } : {}),
+    ...(isNonEmptyString(value.runId) && value.runId.length <= 128 ? { runId: value.runId } : {}),
+    ...(["user-action", "user-retry", "background-refresh", "api-client"].includes(String(value.initiator))
+      ? { initiator: value.initiator as ResearchRunInitiator }
+      : {}),
+    ...(isNonEmptyString(value.requestId) && value.requestId.length <= 128 ? { requestId: value.requestId } : {}),
   };
 }
 
@@ -1420,6 +1471,50 @@ function parseCategoryPromptTelemetry(value: unknown): ResearchCategoryPromptTel
     } : {}),
     ...(entry.outcome === "within-cap" || entry.outcome === "capped" ? { outcome: entry.outcome } : {}),
   }));
+}
+
+function parseResearchAuditOutcomeMetrics(value: unknown): ResearchAuditOutcomeMetrics | undefined {
+  if (!isRecord(value)) return undefined;
+  const count = (entry: unknown) => Number.isInteger(entry) ? Math.min(1_000_000, Math.max(0, Number(entry))) : 0;
+  const categoryCompletion = isRecord(value.categoryCompletion) ? value.categoryCompletion : {};
+  const exclusions = isRecord(value.exclusions) ? value.exclusions : {};
+  const sourceFamilyCounts = isRecord(value.sourceFamilyCounts)
+    ? Object.fromEntries(Object.entries(value.sourceFamilyCounts)
+      .filter(([family]) => [
+        "declared-project-endpoint",
+        "government-project-record",
+        "utility-regulator",
+        "project-operator",
+        "independent-reporting",
+        "government-agency",
+        "news-aggregator",
+        "other",
+      ].includes(family))
+      .slice(0, 8)
+      .map(([family, countValue]) => [family, count(countValue)]))
+    : {};
+  return {
+    uniqueSourcesOpened: count(value.uniqueSourcesOpened),
+    uniqueProjectSpecificSourcesOpened: count(value.uniqueProjectSpecificSourcesOpened),
+    uniqueUsableRetainedSources: count(value.uniqueUsableRetainedSources),
+    uniqueRetainedPassages: count(value.uniqueRetainedPassages),
+    eligibleClaims: count(value.eligibleClaims),
+    sourceFamilyCounts,
+    categoryCompletion: {
+      requested: count(categoryCompletion.requested),
+      executed: count(categoryCompletion.executed),
+      complete: count(categoryCompletion.complete),
+      partial: count(categoryCompletion.partial),
+      conclusiveNoEvidence: count(categoryCompletion.conclusiveNoEvidence),
+      technicalIncomplete: count(categoryCompletion.technicalIncomplete),
+      notSearched: count(categoryCompletion.notSearched),
+    },
+    exclusions: {
+      blocked: count(exclusions.blocked),
+      duplicateOccurrencesReused: count(exclusions.duplicateOccurrencesReused),
+      irrelevantCandidates: count(exclusions.irrelevantCandidates),
+    },
+  };
 }
 
 function parseResearchAudit(value: unknown): ResearchAudit | undefined {
@@ -1601,6 +1696,16 @@ function parseResearchAudit(value: unknown): ResearchAudit | undefined {
     model: isNonEmptyString(value.model) ? value.model : "unknown",
     providerResponseId: value.providerResponseId === null || isNonEmptyString(value.providerResponseId) ? value.providerResponseId as string | null : null,
     ...(isNonEmptyString(value.runCorrelationId) ? { runCorrelationId: value.runCorrelationId } : {}),
+    ...(isNonEmptyString(value.projectCacheKey) && /^[a-f0-9]{64}$/i.test(value.projectCacheKey)
+      ? { projectCacheKey: value.projectCacheKey.toLowerCase() }
+      : {}),
+    ...(["user-action", "user-retry", "background-refresh", "api-client"].includes(String(value.initiator))
+      ? { initiator: value.initiator as ResearchRunInitiator }
+      : {}),
+    ...(isNonEmptyString(value.requestId) && value.requestId.length <= 128 ? { requestId: value.requestId } : {}),
+    ...(parseResearchAuditOutcomeMetrics(value.outcomeMetrics)
+      ? { outcomeMetrics: parseResearchAuditOutcomeMetrics(value.outcomeMetrics) }
+      : {}),
     ...(["complete-with-eligible-evidence", "complete-no-eligible-evidence", "incomplete-technical-limitation"].includes(String(value.terminalState))
       ? { terminalState: value.terminalState as ResearchAudit["terminalState"] }
       : {}),
@@ -2232,6 +2337,8 @@ async function requestResearchProject(
   focusIds: string[] | undefined,
   currentEvidence: ResearchProjectOptions["currentEvidence"],
   forceRefresh: boolean,
+  requestId: string,
+  initiator: ResearchRunInitiator,
   signal: AbortSignal | undefined,
   onProgress: ResearchProjectOptions["onProgress"],
   fetchImpl: typeof fetch,
@@ -2257,6 +2364,8 @@ async function requestResearchProject(
         ...(focusIds?.length ? { focusIds } : {}),
         ...(currentEvidence?.length ? { currentEvidence } : {}),
         ...(forceRefresh ? { forceRefresh: true } : {}),
+        requestId,
+        initiator,
       }),
       signal: controller.signal,
     });
@@ -2316,18 +2425,44 @@ export async function researchProject(
   const projectIdentity = makeResearchProjectIdentity(name, location, knownData, options.projectIdentity);
   const focusIds = options.focusIds?.filter((id) => CUSTOM_EVIDENCE_IDS.includes(id as (typeof CUSTOM_EVIDENCE_IDS)[number]));
   if (options.signal?.aborted) throw new ResearchCancelledError();
-  return requestResearchProject(
+  const forceRefresh = options.forceRefresh === true || options.initiator === "user-retry";
+  const requestId = options.requestId?.trim() || globalThis.crypto.randomUUID();
+  const initiator = options.initiator ?? (forceRefresh ? "user-retry" : "user-action");
+  const requestSignature = JSON.stringify(stableRequestValue({
+    name,
+    location,
+    knownData,
+    projectIdentity,
+    focusIds,
+    currentEvidence: options.currentEvidence,
+    forceRefresh,
+  }));
+  const explicitRetry = forceRefresh || initiator === "user-retry";
+  const existing = explicitRetry ? undefined : inFlightProjectRequests.get(requestSignature);
+  if (existing) return existing;
+  const pending = requestResearchProject(
     name,
     location,
     knownData,
     projectIdentity,
     focusIds,
     options.currentEvidence,
-    options.forceRefresh === true,
+    forceRefresh,
+    requestId,
+    initiator,
     options.signal,
     options.onProgress,
     fetchImpl,
   );
+  if (explicitRetry) return pending;
+  inFlightProjectRequests.set(requestSignature, pending);
+  try {
+    return await pending;
+  } finally {
+    if (inFlightProjectRequests.get(requestSignature) === pending) {
+      inFlightProjectRequests.delete(requestSignature);
+    }
+  }
 }
 
 export async function checkResearchStatus(cacheKey: string, fetchImpl: typeof fetch = fetch): Promise<ResearchStatusResponse> {

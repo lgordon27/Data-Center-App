@@ -1318,7 +1318,13 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
 
   const researchMissingSources = async (forceRefresh = false) => {
     const storedCooldown = getStoredCooldownUntil("safeloc-custom-research-cooldown");
-    if (!customProject || isAnalysisBusy || hasResearchCooldown || Boolean(storedCooldown && storedCooldown > Date.now())) {
+    if (
+      !customProject
+      || isAnalysisBusy
+      || sourceResearchAbortRef.current
+      || hasResearchCooldown
+      || Boolean(storedCooldown && storedCooldown > Date.now())
+    ) {
       if (storedCooldown && storedCooldown > Date.now()) setResearchCooldownUntil(storedCooldown);
       return;
     }
@@ -1334,7 +1340,6 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
     const runId = sourceResearchRunRef.current + 1;
     const requestProjectKey = sourceResearchProjectKey;
     sourceResearchRunRef.current = runId;
-    sourceResearchAbortRef.current?.abort();
     setSourceResearchProgress("researching");
     const controller = new AbortController();
     sourceResearchAbortRef.current = controller;
@@ -1554,7 +1559,7 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
                 <button
                   data-testid="button-force-refresh-research"
                   type="button"
-                  disabled={isAnalysisBusy || hasResearchCooldown}
+                  disabled={isAnalysisBusy || Boolean(sourceResearchProgress) || hasResearchCooldown}
                   onClick={() => void researchMissingSources(true)}
                   className="inline-flex min-h-9 items-center justify-center gap-1 rounded-md border border-[#cbd8d4] bg-white px-3 py-2 font-mono text-[8px] font-bold uppercase tracking-[0.08em] text-[#52616b] hover:border-[#255bb7] hover:text-[#255bb7] disabled:cursor-wait disabled:opacity-60"
                 >

@@ -74,6 +74,7 @@ export function createResearchProjectCache({
   const memory = new Map();
   const inFlight = new Map();
   const statuses = new Map();
+  const statusGenerations = new Map();
 
   async function read(key) {
     const retained = memory.get(key);
@@ -119,11 +120,19 @@ export function createResearchProjectCache({
     return entry;
   }
 
-  function refresh(key, runner) {
-    const existing = inFlight.get(key);
+  function refresh(key, runner, {
+    flightKey = key,
+    runId = null,
+    initiator = null,
+    requestId = null,
+  } = {}) {
+    const existing = inFlight.get(flightKey);
     if (existing) return { promise: existing, started: false };
+    const generation = (statusGenerations.get(key) ?? 0) + 1;
+    statusGenerations.set(key, generation);
     const startedAt = new Date(now()).toISOString();
-    statuses.set(key, { refreshStatus: "running", startedAt });
+    const statusContext = { runId, initiator, requestId };
+    statuses.set(key, { refreshStatus: "running", startedAt, ...statusContext });
     const promise = Promise.resolve()
       .then(runner)
       .then(async (result) => {
@@ -138,28 +147,34 @@ export function createResearchProjectCache({
               result,
             }
           : await write(key, result);
-        statuses.set(key, {
-          refreshStatus: "completed",
-          startedAt,
-          finishedAt: new Date(now()).toISOString(),
-          storedAt: entry.storedAt,
-          result: entry.result,
-        });
+        if (statusGenerations.get(key) === generation) {
+          statuses.set(key, {
+            refreshStatus: "completed",
+            startedAt,
+            finishedAt: new Date(now()).toISOString(),
+            storedAt: entry.storedAt,
+            result: entry.result,
+            ...statusContext,
+          });
+        }
         return entry;
       })
       .catch((error) => {
-        statuses.set(key, {
-          refreshStatus: "failed",
-          startedAt,
-          finishedAt: new Date(now()).toISOString(),
-          errorType: error?.researchErrorType ?? "upstream",
-        });
+        if (statusGenerations.get(key) === generation) {
+          statuses.set(key, {
+            refreshStatus: "failed",
+            startedAt,
+            finishedAt: new Date(now()).toISOString(),
+            errorType: error?.researchErrorType ?? "upstream",
+            ...statusContext,
+          });
+        }
         throw error;
       })
       .finally(() => {
-        inFlight.delete(key);
+        if (inFlight.get(flightKey) === promise) inFlight.delete(flightKey);
       });
-    inFlight.set(key, promise);
+    inFlight.set(flightKey, promise);
     return { promise, started: true };
   }
 
@@ -178,6 +193,7 @@ export function createResearchProjectCache({
       memory.clear();
       statuses.clear();
       inFlight.clear();
+      statusGenerations.clear();
     },
   };
 }

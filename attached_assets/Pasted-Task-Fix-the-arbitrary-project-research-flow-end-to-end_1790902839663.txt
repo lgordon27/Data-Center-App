@@ -1,0 +1,31 @@
+Task: Fix the arbitrary-project research flow end to end
+Goal: when a user selects any project and clicks Research this project — Beta, SafeLoc must actually start a research run for that selected project, stay bound to that project, and render only that project’s resulting evidence/analysis.
+Do not add new product concepts. Do not redesign the whole app.
+Required fixes:
+- Clicking Research this project — Beta must trigger the research request, not merely navigate to Market Exposure.
+- Carry the selected project ID/name/location/operator through the request and result state.
+- Prevent canonical/seed dossier data from leaking into custom-project research.
+- Hide/remove the public Open canonical dossier dropdown from arbitrary-project research flow.
+- If research is still running, show a proper in-progress state.
+- If research is partial/incomplete, show retained evidence and a clear incomplete state.
+- Do not show sourced-looking capacity/model panels when there is no qualifying evidence.
+- Keep illustrative scenario controls hidden or clearly optional when research is incomplete.
+- Ensure the analysis page only renders facts/evidence tied to the selected project.
+- Preserve the current session-only Accept / Reject / Evidence Only behavior.
+Also improve source-result usefulness:
+- prioritize unique usable project-specific sources over raw candidate count;
+- keep official/government/utility/project-specific records distinct from generic landing pages;
+- surface how many unique relevant sources actually contributed evidence;
+- do not count duplicates or blocked/error pages as meaningful source coverage.
+Data-source freshness:
+- add retrieved_at, source_as_of, and freshness status to the existing data-source badges where available;
+- do not label a source “Live” if the latest successful refresh is stale;
+- preserve the last good snapshot if refresh fails.
+Acceptance test:
+1. Pick a non-seeded project.
+2. Click Research this project — Beta.
+3. Confirm a research request actually starts for that exact project.
+4. Confirm no Stargate/Red Oak/canonical facts appear unless they belong to the selected project.
+5. Confirm incomplete research shows a clean incomplete state instead of a broken capacity/model view.
+6. Confirm the result shows only retained, attributable evidence for that project.
+Use mocks/fixtures for tests first. No deployment or push until tests pass.

@@ -1,0 +1,180 @@
+Task: Instrument the SafeLoc evidence-conversion pipeline to identify the exact causal failure point
+This is now the highest-priority SafeLoc task.
+Do not implement a broad identity, eligibility, discovery, or provider repair yet.
+The latest multi-project validation established:
+- relevant passages are being retained;
+- IREN and Vantage retained passages were not reaching OpenAI;
+- AWS delivered some relevant text to OpenAI but downstream attribution/conversion remains unclear;
+- eligible yield remained zero;
+- current telemetry is insufficient to identify the first causal loss for valid claims.
+The purpose of this task is to make the evidence-conversion pipeline fully observable so the next repair targets the exact failing stage.
+Core funnel to instrument
+Trace each retained source passage through:
+retained source
+→ category routing/admission
+→ identity admission
+→ deduplication
+→ category passage window
+→ token fitting
+→ OpenAI input
+→ raw OpenAI structured output
+→ source restriction
+→ normalization/parsing
+→ identity evaluation
+→ scope evaluation
+→ eligibility
+→ claim containment
+1. Source-admission instrumentation
+At the category/source admission boundary, record for every retained source:
+- source ID / URL
+- project ID
+- category route(s)
+- whether source had explicit category labels
+- identity verdict used for admission
+- exact reason admitted/rejected
+- input text hash + length
+- output text hash + length
+- whether excluded by:
+  - category route
+  - project identity
+  - deduplication
+  - category window
+  - token clipping
+  - other
+Do not collapse these into a generic rejection.
+2. Preserve the OpenAI boundary
+Immediately before provider call, capture a sanitized snapshot of:
+- project identity supplied to OpenAI
+- category
+- source/passages supplied
+- source metadata
+- scope metadata
+- facility/phase metadata
+- prompt/schema version
+Immediately after parsing provider JSON, but BEFORE any SafeLoc source restriction or normalization, preserve:
+- original structured claim fields
+- original identity assessment
+- source references returned
+- raw normalized numeric/string fields
+Then preserve a separate AFTER snapshot following SafeLoc source restriction/normalization.
+Record explicit mutation reasons for every changed/dropped field.
+The goal is to distinguish:
+OpenAI never produced it
+from:
+OpenAI produced it but SafeLoc dropped/changed it.
+3. Identity resolver diagnostics
+For every substantive claim candidate, record:
+- exact input fragments
+- matched project-name variants
+- matched operator variants
+- matched campus/facility/phase variants
+- location matches
+- conflicting locations
+- asserted actors
+- actor roles
+- source text spans supporting each actor
+- publisher/architect/contractor/owner/operator role distinction
+- identity verdict
+- primary reason
+Prevent navigation/menu text from being treated as an asserted operator.
+Add a regression fixture for the observed Corgan case where:
+slide next slide close projects
+was interpreted as an operator conflict.
+The repair for that fixture must tighten attribution boundaries, not loosen identity matching broadly.
+4. Scope diagnostics
+For each claim, record scope result explicitly as:
+- passed
+- rejected
+- unknown
+- not evaluated
+Include:
+- campus
+- phase
+- building/facility
+- parent/child relationship
+- reason for mismatch or ambiguity
+Do not use UI/display labels as proof of scope validation.
+5. Claim-containment diagnostics
+Separate:
+- substantive claim candidate
+- no-claim result
+- unavailable-value placeholder
+- duplicate claim
+For each substantive claim, record:
+- first causal failure
+- downstream stages not evaluated
+- secondary failure reasons if applicable
+Do not use generic claim-not-mapped as the only explanation.
+6. Replay existing captures offline
+Using the existing AWS, IREN and Vantage captures:
+replay the retained passages through the newly instrumented production path without making provider calls where historical provider output is unavailable.
+For each representative passage, show:
+retained
+→ admitted/rejected
+→ reason
+→ sent to OpenAI or not
+→ provider output available or unavailable
+→ post-provider mutation
+→ identity
+→ scope
+→ eligibility
+Historical provider output that was never captured must remain explicitly unavailable.
+Do not infer missing provider fields.
+7. Determine the dominant bottleneck
+At the end, quantify:
+- retained passages
+- passages rejected before OpenAI
+- passages reaching OpenAI
+- structured claims produced
+- claims altered/dropped by SafeLoc post-processing
+- identity failures
+- scope failures
+- source-validation failures
+- eligibility failures
+- timeouts
+Rank the top 3 actual causal loss points.
+8. Negative controls
+Preserve:
+- explicit operator conflict rejection
+- explicit location conflict rejection
+- contractor/architect/publisher not substituting for owner/operator
+- same-city/same-operator not sufficient for exact campus
+- distinct campus/facility/phase handling
+- planned/conditional/energized/operational distinction
+- number/unit/status/date bound to supporting clause
+- directory/snippet/model assertion not treated as evidence
+- SSRF/DNS/admission/budget/fail-closed protections
+Verification
+Run:
+- instrumentation-specific tests
+- Corgan attribution regression
+- identity tests
+- passage/admission tests
+- claim verifier tests
+- source validation tests
+- provider-free full suite
+- typecheck
+- production build
+No paid/live provider calls.
+No deployment.
+No push unless separately instructed.
+Final deliverable
+Report:
+1. exact stage where IREN passages are lost;
+2. exact stage where Vantage passages are lost;
+3. exact stage(s) where AWS claims are lost;
+4. percentage of retained passages excluded before OpenAI;
+5. percentage of provider claims modified/dropped after OpenAI where observable;
+6. identity failures by cause;
+7. scope failures by cause;
+8. eligibility failures by cause;
+9. whether the Corgan false operator conflict is fixed;
+10. top 3 causal engine bottlenecks;
+11. ONE recommended repair task based on measured evidence.
+Final recommendation must be one of:
+- PRE-OPENAI ADMISSION IS THE DOMINANT BOTTLENECK
+- OPENAI CLAIM GENERATION IS THE DOMINANT BOTTLENECK
+- POST-OPENAI NORMALIZATION/ATTRIBUTION IS THE DOMINANT BOTTLENECK
+- IDENTITY/SCOPE VALIDATION IS THE DOMINANT BOTTLENECK
+- MULTIPLE COMPARABLE BOTTLENECKS REMAIN
+Do not implement the broad repair in this task unless required to make the instrumentation itself accurate.

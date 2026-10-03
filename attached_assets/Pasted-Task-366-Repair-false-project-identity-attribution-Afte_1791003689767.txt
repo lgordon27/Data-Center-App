@@ -1,0 +1,31 @@
+Task #366 — Repair false project identity attribution
+
+After applying completed Task 359, repair the demonstrated identity-attribution defects in the production resolver. This is an implementation task, not a test-only or diagnostic-labeling task.
+
+Use Task 359’s available, exact-hash-verified passages to reproduce the defects:
+- Butts County navigation such as “Explore” treated as owner/operator and page headings treated as location conflicts.
+- Northwise publisher/byline text and “GW” treated as owner/operator assertions.
+- ERCOT’s grid-operator role confused with ownership or operation of the data-center project.
+- Directory/index/address text and unrelated geographic references contributing false project conflicts.
+
+Requirements:
+1. Identify and fix the production logic creating those false assertions. Trace labels and the actual admission decision must use consistent attribution.
+2. Bind owner/operator and location assertions to the relevant project context. A mentioned organization or location is not automatically a project assertion.
+3. Distinguish publishers, authors, contractors, architects, utilities/grid operators, navigation, and unrelated index entries. Do not use global organization blacklists: a role must follow the supporting context.
+4. Preserve genuine explicit conflicts. Removing a false conflict must not automatically grant exact-project identity. Insufficient support stays ambiguous.
+5. Preserve the Corgan fix, AZ1/AZ2 separation, Sweetwater 1/2 separation, and all existing evidence and source safeguards.
+6. No source-specific exceptions, project hard-coding, new provider calls, or general identity-admission relaxation.
+
+Validation:
+- Add failing regressions for demonstrated defects, then fix them.
+- Include positive controls showing legitimate project-specific owner/operator and location assertions still resolve, including with harmless page noise present.
+- Replay the same 11 available passage bodies through the production admission path.
+- Report each passage’s before/after identity result, actual admission outcome, and supporting reason. Do not require all passages to pass.
+- Report whether any passage now reaches the prepared analysis packet. Distinguish false-conflict removal from evidence-conversion improvement.
+- Do not reconstruct the three unavailable bodies or expand historical investigation.
+
+Run the relevant identity, admission, and claim-trace tests, the provider-free suite, typecheck, and build. Do not change scheduling, claim schemas, database state, or financial-model behavior.
+
+Return the diff summary, source fingerprint, validation results, and concise before/after replay table. If passages remain blocked, identify their concrete remaining reasons without expanding scope.
+
+No live research, push, or deployment.

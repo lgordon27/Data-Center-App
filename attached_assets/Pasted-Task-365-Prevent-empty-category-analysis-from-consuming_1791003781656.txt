@@ -1,0 +1,26 @@
+Task #365 — Prevent empty category analysis from consuming provider resources
+
+Start after Task #366 is applied. Preserve its identity repairs.
+
+Implement the issue-boundary repair recommended by Task 359: category claim-extraction calls must not run when no retained passage text survives preparation.
+
+Requirements:
+1. Check for usable retained passage text after admission, deduplication, windowing, and token fitting. Source URLs, metadata, snippets, and prompt instructions do not count as passage text.
+2. Perform the emptiness check before reserving provider-call or TPM capacity and before entering a provider wait queue wherever the existing lifecycle permits.
+3. Recheck immediately before provider issue. If preparation becomes empty or work is cancelled, correctly release any unspent local reservation. Never refund resources for a request actually issued.
+4. Record prepared, unissued-empty, issued-with-text, and failed-before-issue distinctly using existing project/run/category/attempt lineage.
+5. An empty packet means “not assessed: no admitted passage text.” Do not report it as completed research, conclusive absence of evidence, a zero value, or a provider-generated finding.
+6. Let remaining eligible work proceed under existing limits. Do not introduce retries, change category order, enlarge budgets, bypass TPM controls, or relax identity admission.
+7. Keep discovery requests separate from this rule; they do not require retrieved passages as input.
+
+Validation:
+- Provider-free tests must show an empty category packet makes no provider request and consumes no issue slot or lasting TPM reservation.
+- Include mixed empty/nonempty categories, packets becoming empty after fitting, cancellation/deadline before issue, and legitimate nonempty requests.
+- Confirm an empty category does not prevent a later nonempty category from being considered within the existing limits.
+- Use deterministic fixtures for scheduling behavior. Do not represent simulated provider responses as live extraction success.
+
+Run the relevant scheduling, diagnostics, and research-handler tests, the provider-free suite, typecheck, and build.
+
+Return the diff summary, source fingerprint, tests, and measured scheduling effects under unchanged budgets. Identify whether a separate discovery-phase cutoff is still justified by the available evidence. Do not implement Task #363 here.
+
+No live research, database changes, push, or deployment.

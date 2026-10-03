@@ -1,0 +1,28 @@
+#366 - Catch publisher and page-chrome text misclassified as project operators
+What & Why
+The current-code replay exposed a navigation label on the Butts County ID page, Northwise byline/author text, and AZ2 directory/address/index text attributed as owner/operator actors. These sources still fail closed, but the misleading actor traces obscure the actual reason for rejection. Add targeted provider-free regression coverage without broadening identity admission.
+Done looks like
+- Bounded fixtures cover navigation/page chrome, publisher/byline, unrelated grid-operator text, and directory/index location noise.
+- Actor role and attribution provenance distinguish owner/operator assertions from publishers, contractors, grid operators, and unrelated page text.
+- Corgan navigation remains non-operator; valid project-specific owner/operator statements still resolve.
+- No general admission relaxation or source-specific exception is introduced.
+Relevant files
+- artifacts/safeloc-diligence-workbench/src/data/researchIdentity.mjs
+- artifacts/safeloc-diligence-workbench/server/researchProjectProxy.test.mjs
+- artifacts/safeloc-diligence-workbench/server/redOakClaimTrace.test.mjs
+Dependencies
+Instrument SafeLoc Evidence Conversion -- #365 - Stop category research calls when no passages survived admission
+What & Why
+The saved scheduler audit measured 8 of 12 issued category calls with no passage text. Avoid spending provider-call slots on empty packets while preserving current evidence, identity, budget, and deadline protections. This is the single repair recommended by the evidence-conversion report.
+Done looks like
+- Recheck the final packet immediately before provider issue; empty prepared work is recorded as unissued and consumes no provider-call slot.
+- Record prepared, unissued-empty, issued-with-text, and failed-before-issue distinctly with existing project/category/attempt/run lineage.
+- Preserve current token, issue, and time budgets; do not retry or relax identity admission.
+- Provider-free tests confirm empty packets are never represented as issued, and deadline/cancellation behavior remains fail-closed.
+Relevant files
+- artifacts/safeloc-diligence-workbench/server/researchProjectProxy.mjs
+- artifacts/safeloc-diligence-workbench/server/researchProjectProxy.d.mts
+- artifacts/safeloc-diligence-workbench/server/researchProjectProxy.test.mjs
+- artifacts/safeloc-diligence-workbench/server/researchFunnelDiagnostics.mjs
+Dependencies
+Instrument SafeLoc Evidence Conversion --

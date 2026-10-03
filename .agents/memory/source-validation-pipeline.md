@@ -32,3 +32,9 @@ Financial point-value acceptance requires an affirmative, unambiguous assertion 
 **Why:** Shared claim support can establish project relevance without proving that the specific number is the project's asserted rate, annual quantity, or duration. Sentence-wide co-occurrence incorrectly admitted a negated tariff and a neighboring market comparison as accepted model inputs.
 
 **How to apply:** Bind the quantity to its own affirmative measure and scoped subject, independently of generic claim-support metadata. Fail closed on unknown propositional prefixes rather than ignoring them. Keep ranges and competing quantities unresolved, and test refusal through preview, acceptance, and replay rather than checking eligibility flags alone.
+
+Historical replay must recompute the passage body's SHA-256 and exact retained length; receipt hash fields alone do not prove the attached body is the captured body.
+
+**Why:** A saved receipt can contain text beside a recorded hash even when the text does not match that hash and length. Treating the metadata label as proof can silently replay a corrupted or partial passage as exact.
+
+**How to apply:** Verify the actual body bytes, recorded hash, retained length, and URL provenance before replay. Treat a mismatch as unavailable; never repair it by reconstructing the missing text.

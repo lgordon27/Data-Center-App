@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { deflateSync } from "node:zlib";
+import { deflateSync, gunzipSync } from "node:zlib";
 import { createResearchFunnelDiagnostics } from "./researchFunnelDiagnostics.mjs";
 
 import {
@@ -525,6 +525,237 @@ test("offline replay uses production selection and token fitting but never issue
   assert.equal(JSON.stringify(replay.inputSnapshot).includes(passage), false);
   assert.equal(JSON.stringify(replay.inputSnapshot).includes("opaque-token-value"), false);
   assert.match(replay.inputSnapshot.requestBodySha256, /^[a-f0-9]{64}$/);
+});
+
+test("replays the 11 exact-hash-verified captured passages through production identity admission", () => {
+  const captureHtml = readFileSync(
+    new URL("../../../attached_assets/reports/safeloc-multi-project-engine-validation-final.html", import.meta.url),
+    "utf8",
+  );
+  const encodedBundle = captureHtml.match(
+    /<script type="application\/octet-stream" id="audit-data">([\s\S]*?)<\/script>/i,
+  )?.[1]?.trim();
+  assert.ok(encodedBundle, "the retained evidence-conversion capture must be available");
+  const bundle = JSON.parse(gunzipSync(Buffer.from(encodedBundle, "base64")).toString("utf8"));
+  const runs = bundle.reportData?.runs ?? [];
+  const available = [
+    {
+      sha256: "5c3d8f3de1a44ad51836f98d71b243b17b0037529e3237360494e96d30018ea4",
+      length: 1985,
+      url: "https://www.buttscountyida.com/",
+      before: "unrelated",
+      beforeAdmission: "explicit-identity-conflict",
+      beforeReason: "Navigation token Explore was attributed as owner/operator; Home/Explore headings became location conflicts.",
+      after: "ambiguous",
+    },
+    {
+      sha256: "76f22a011a8e5ecd88cd1f6eb27f3efc856e1cef9350cb947c523a5a56874257",
+      length: 867,
+      url: "https://www.aboutamazon.com/news/aws/aws-investment-georgia-ai-cloud-infrastructure",
+      before: "ambiguous",
+      beforeAdmission: "identity-not-established",
+      beforeReason: "No requested-name or alias match; Georgia was the only location match.",
+      after: "ambiguous",
+    },
+    {
+      sha256: "70ade4d7d8d1f5e8f25ade8d64a802ffe5c197b5f129753fa12d126199e76339",
+      length: 1827,
+      url: "https://dcatlas.io/en/explore/facilities/aws-gregory-road-data-center",
+      before: "unrelated",
+      beforeAdmission: "explicit-identity-conflict",
+      beforeReason: "Announcement was attributed as an owner/operator and directory text supplied unrelated location conflicts.",
+      after: "ambiguous",
+    },
+    {
+      sha256: "ed2bbcf4e1d45b5128da5f8ba5ebd32e9a88af6065646774e27fdff071f14db5",
+      length: 2751,
+      url: "https://barnesville.com/amazon-exploring-data-center-locations-on-huge-tract-it-bought-here-in-largest-real-estate-transaction-in-county-history",
+      before: "unrelated",
+      beforeAdmission: "explicit-identity-conflict",
+      beforeReason: "Unrelated Douglas County evidence conflicted with the requested Butts County project.",
+      after: "ambiguous",
+    },
+    {
+      sha256: "96ea2e379a9f64a9d617453a7c9acd9d6f915e60eee006e45811e2212985292b",
+      length: 1856,
+      url: "https://w.media/aws-plans-new-data-center-in-georgia-usa",
+      before: "ambiguous",
+      beforeAdmission: "identity-not-established",
+      beforeReason: "AWS was attributed as owner/operator, but the resolver did not establish the requested project/operator link.",
+      after: "ambiguous",
+    },
+    {
+      sha256: "48f2c2ac28a4d45631033d3e075864675cefc86ac79952c7de16b41da4bddd11",
+      length: 4000,
+      url: "https://northwiseproject.com/research/iren-sweetwater-site",
+      before: "unrelated",
+      beforeAdmission: "explicit-identity-conflict",
+      beforeReason: "Northwise byline text and GW were attributed as owner/operator, creating an operator conflict.",
+      after: "ambiguous",
+    },
+    {
+      sha256: "5e7c0adba59cc232ac20f38218c66db99612f8d0059fb42b967b1e5e3ffe79c7",
+      length: 4000,
+      url: "https://www.electricchoice.com/datacenters/texas",
+      before: "unrelated",
+      beforeAdmission: "explicit-identity-conflict",
+      beforeReason: "No requested-name or alias match; unrelated Texas-wide county entries created location conflicts.",
+      after: "unrelated",
+    },
+    {
+      sha256: "1c1ac3e09e7be4aabf5ce24f9dee0e1be2b017cd52d07c1b04fe3f0e2ac2d5e6",
+      length: 2772,
+      url: "https://w.media/iren-granted-conditional-base-load-status-for-2-gw-texas-campus",
+      before: "ambiguous",
+      beforeAdmission: "identity-not-established",
+      beforeReason: "ERCOT's grid-operator role was attributed as project owner/operator.",
+      after: "ambiguous",
+    },
+    {
+      sha256: "ae69bd1ace1663c463a6441f68a15ba0c9fe9b3968755f6ac695a2b054e3abe0",
+      length: 3546,
+      url: "https://www.corgan.com/projects/vantage-az1-data-center-campus",
+      before: "ambiguous",
+      beforeAdmission: "identity-not-established",
+      beforeReason: "Corgan navigation was already rejected; Project Stats Location Goodyear was recorded as a location conflict.",
+      after: "ambiguous",
+    },
+    {
+      sha256: "446beeee1bb7524c3c760bac6c73b37031f4b42bd0d8067c8a936e926e12551e",
+      length: 4000,
+      url: "https://www.interconnection.fyi/data-center/project/vantage-data-centers-az2-69904f45",
+      before: "unrelated",
+      beforeAdmission: "explicit-identity-conflict",
+      beforeReason: "AZ2 directory/address/index actors and unrelated geography produced dozens of conflict signals.",
+      after: "ambiguous",
+    },
+    {
+      sha256: "c354987dc9c8c8aef30cc92039a1d83945b4cc1c94b3c574926803e39f763bd7",
+      length: 4000,
+      url: "https://atriumdata.ai/the-first-print/maricopa-data-center-lending",
+      before: "ambiguous",
+      beforeAdmission: "identity-not-established",
+      beforeReason: "Data Center Dynamics was parsed as a city and Texas produced an unrelated location conflict.",
+      after: "ambiguous",
+    },
+  ];
+  const unavailable = [
+    {
+      sha256: "21411d0d0722273914950215829bf06a5bdd49d3469ae60f09bf2457addddfd1",
+      length: 2760,
+    },
+    {
+      sha256: "5ebcc3a738b07e7f60b9bf05e7aa1e20f7bce73b590cfd2a84c15c48c5a050dc",
+      length: 4000,
+    },
+    {
+      sha256: "5b4cc2766a18c95304f145cda6a1105ae015d1692d86fcbb074486daa3b26ce4",
+      length: 2669,
+    },
+  ];
+  const identityRuns = runs.filter((run) => run.phase === "identity-confirmation");
+  const replayed = [];
+
+  for (const expected of available) {
+    assert.equal(expected.sha256.length, 64);
+    let selected = null;
+    for (const run of identityRuns) {
+      for (const receipt of run.sourceReceipts ?? []) {
+        const passage = receipt.passage;
+        if (receipt.passageSha256 === expected.sha256 && typeof passage === "string" && passage) {
+          selected = { run, receipt, passage };
+        }
+      }
+    }
+    assert.ok(selected, `exact captured passage ${expected.sha256} must remain replayable`);
+    const { run, receipt, passage } = selected;
+    assert.equal(createHash("sha256").update(passage).digest("hex"), expected.sha256);
+    assert.equal(passage.length, expected.length);
+    assert.equal(receipt.source?.canonicalUrl ?? receipt.source?.url, expected.url);
+
+    const project = {
+      projectId: run.projectId,
+      name: run.projectName,
+      operator: run.operator,
+      location: run.location,
+    };
+    const source = {
+      sourceId: `${run.runId}:${expected.sha256}`,
+      occurrenceId: `${run.runId}:${expected.sha256}`,
+      originalUrl: expected.url,
+      url: expected.url,
+      canonicalUrl: expected.url,
+      sourceFamily: receipt.source?.sourceFamily ?? "other",
+      accessOutcome: { state: "accessible", passage },
+    };
+    const categories = buildResearchCategoryPlan(project).categories;
+    assert.equal(categories.length, 8, `${project.name} must use all eight production categories`);
+    const categoryOutcomes = [];
+
+    for (const category of categories) {
+      const replay = replayResearchCategoryPassageInput(project, category, [source]);
+      assert.equal(replay.state, "prepared-but-not-issued");
+      assert.equal(replay.candidateCount, 1);
+      assert.equal(replay.issuedPassageCount, 0);
+      assert.equal(replay.suppliedCount, 0, `${expected.sha256} must not reach analysis`);
+      assert.equal(replay.decisions.length, 1);
+      const decision = replay.decisions[0];
+      assert.equal(decision.identityAdmission.verdict, expected.after, expected.url);
+      assert.equal(decision.included, false, expected.url);
+      assert.equal(decision.decision, "excluded-before-deduplication", expected.url);
+      assert.equal(decision.finalSupplied.sha256, null, expected.url);
+      assert.equal(
+        decision.reasonCode,
+        expected.after === "unrelated" ? "explicit-identity-conflict" : "identity-not-established",
+        expected.url,
+      );
+      categoryOutcomes.push({
+        verdict: decision.identityAdmission.verdict,
+        reasonCode: decision.reasonCode,
+        reason: decision.identityAdmission.reason,
+        routeReason: decision.routeReason,
+      });
+
+      const trace = decision.identityAdmission.trace;
+      assert.ok(trace, "production admission must retain the resolver trace");
+      const attributedActors = trace.actors.filter((actor) =>
+        actor.admittedAsOperator === true).map((actor) => actor.actor.toLowerCase());
+      if (expected.sha256 === "5c3d8f3de1a44ad51836f98d71b243b17b0037529e3237360494e96d30018ea4") {
+        assert.equal(attributedActors.some((actor) => actor === "explore"), false);
+      }
+      if (expected.sha256 === "70ade4d7d8d1f5e8f25ade8d64a802ffe5c197b5f129753fa12d126199e76339") {
+        assert.equal(attributedActors.some((actor) => actor === "announcement"), false);
+      }
+      if (expected.sha256 === "48f2c2ac28a4d45631033d3e075864675cefc86ac79952c7de16b41da4bddd11") {
+        assert.equal(attributedActors.some((actor) => /northwise|\bgw\b/.test(actor)), false);
+      }
+      if (expected.sha256 === "1c1ac3e09e7be4aabf5ce24f9dee0e1be2b017cd52d07c1b04fe3f0e2ac2d5e6") {
+        assert.equal(attributedActors.some((actor) => actor === "ercot"), false);
+      }
+      if (expected.sha256 === "446beeee1bb7524c3c760bac6c73b37031f4b42bd0d8067c8a936e926e12551e") {
+        assert.equal(attributedActors.some((actor) => /alberta electric|vantage data centers/i.test(actor)), false);
+        assert.equal(trace.secondaryReasons.some((reason) => /location-conflict/.test(reason)), false);
+      }
+    }
+    assert.equal(new Set(categoryOutcomes.map((outcome) => outcome.verdict)).size, 1);
+    assert.equal(new Set(categoryOutcomes.map((outcome) => outcome.reasonCode)).size, 1);
+    assert.equal(new Set(categoryOutcomes.map((outcome) => outcome.reason)).size, 1);
+    replayed.push({ ...expected, project: project.name, reason: categoryOutcomes[0].reason });
+  }
+
+  for (const missing of unavailable) {
+    assert.equal(
+      identityRuns.some((run) => (run.sourceReceipts ?? []).some((receipt) => {
+        const passage = receipt.passage;
+        return typeof passage === "string"
+          && passage.length === missing.length
+          && createHash("sha256").update(passage).digest("hex") === missing.sha256;
+      })),
+      false,
+      `unavailable body ${missing.sha256} must not be reconstructed`,
+    );
+  }
+  assert.equal(replayed.length, 11);
 });
 
 test("grounded orchestration does not issue a structured prompt when document access yields the retained CivicEngage error page", async () => {

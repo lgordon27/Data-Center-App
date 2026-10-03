@@ -465,8 +465,8 @@ test("DFW14, incidental facility mentions, and identity conflicts do not establi
       entityMatch: "exact",
       title: "Red Oak Campus",
     }, project),
-    "unrelated",
-    "DFW14 title, owner, location, and provider flags do not supply the missing campus connection",
+    "ambiguous",
+    "a separate DFW14 owner and matching municipality do not establish or contradict a campus link",
   );
 
   for (const passage of [
@@ -549,6 +549,76 @@ test("Corgan navigation chrome beside the retained Vantage AZ1 name is not an op
       attributionRule: "rejected-navigation-page-chrome-not-operator-attribution",
     }],
   );
+});
+
+test("project identity ignores navigation, publisher, grid-operator, and directory noise", () => {
+  const awsProject = {
+    name: "AWS Butts County Data Center Campus",
+    operator: "Amazon Web Services",
+    location: "Jackson, Butts County, Georgia",
+  };
+  const buttsNavigation = [
+    "Explore Butts County’s many advantages here on our website.",
+    "Home Butts County is the perfect solution for your business.",
+  ].join(" ");
+  const buttsTrace = traceProjectMatch(buttsNavigation, awsProject);
+  assert.equal(buttsTrace.resolver.verdict, "ambiguous");
+  assert.equal(buttsTrace.actors.some((actor) => actor.admittedAsOperator === true), false);
+  assert.deepEqual(buttsTrace.secondaryReasons, []);
+
+  const northwiseProject = {
+    name: "IREN Sweetwater Campus",
+    operator: "IREN (Iris Energy)",
+    location: "Sweetwater, Nolan County, Texas",
+  };
+  const northwiseByline = [
+    "IREN Sweetwater Site: Inside the 2GW AI Infrastructure Campus.",
+    "By Northwise Research Team. GW is a measure of power capacity.",
+  ].join(" ");
+  const northwiseTrace = traceProjectMatch(northwiseByline, northwiseProject);
+  assert.equal(northwiseTrace.actors.some((actor) =>
+    /northwise|\bgw\b/i.test(actor.actor) && actor.admittedAsOperator === true), false);
+  assert.notEqual(northwiseTrace.resolver.verdict, "unrelated");
+
+  const ercotPassage = [
+    "The IREN Sweetwater Campus is located in Sweetwater, Nolan County, Texas.",
+    "ERCOT manages the large-load interconnection process for Texas.",
+  ].join(" ");
+  const ercotTrace = traceProjectMatch(ercotPassage, northwiseProject);
+  assert.equal(ercotTrace.resolver.verdict, "exact-project");
+  assert.equal(ercotTrace.actors.some((actor) =>
+    /ercot/i.test(actor.actor) && actor.admittedAsOperator === true), false);
+
+  const vantageProject = {
+    name: "Vantage Phoenix Campus (Goodyear, AZ)",
+    operator: "Vantage Data Centers",
+    location: "Goodyear, Maricopa County, Arizona",
+  };
+  const az2Index = [
+    "Vantage Data Centers (AZ2) Status Proposed City Goodyear County Maricopa State Arizona.",
+    "Interconnection requests by transmission owner: Alberta Electric System Operator, Texas.",
+  ].join(" ");
+  const az2Trace = traceProjectMatch(az2Index, vantageProject);
+  assert.notEqual(az2Trace.resolver.verdict, "exact-project");
+  assert.equal(az2Trace.actors.some((actor) =>
+    /alberta electric/i.test(actor.actor) && actor.admittedAsOperator === true), false);
+  assert.equal(az2Trace.secondaryReasons.some((reason) => /Texas/.test(reason)), false);
+
+  const contextualProject = {
+    name: "Project Atlas",
+    operator: "Atlas Compute",
+    location: "Irving, Dallas County, Texas",
+  };
+  const validProjectEvidence = [
+    "Market overview by Independent Research; Texas and Arizona are covered.",
+    "Project Atlas is located in Irving, Dallas County, Texas, and Atlas Compute operates the facility.",
+    "A separate project is planned in Portland, Maine.",
+  ].join(" ");
+  const validTrace = traceProjectMatch(validProjectEvidence, contextualProject);
+  assert.equal(validTrace.resolver.verdict, "exact-project");
+  assert.equal(validTrace.actors.some((actor) =>
+    actor.actor === "atlas compute" && actor.admittedAsOperator === true), true);
+  assert.equal(validTrace.secondaryReasons.some((reason) => /Maine|Portland/.test(reason)), false);
 });
 
 test("keeps Vantage AZ1 separate from AZ2 and Sweetwater 1 separate from Sweetwater 2", () => {

@@ -476,7 +476,63 @@ function announcementObjectEstablishesIdentity(text, announcement, identityMatch
   return false;
 }
 
-function assertedOperators(text, identityMatches = [], expectedOperator = "", expectedLocation = {}, allowDevelopmentAnnouncement = true) {
+function isProjectNameAnchor(text, match) {
+  if (!match || match.variant?.kind === "operator") return false;
+  if (match.explicitNamePhrase === true) return true;
+  if (match.matchedTokenCount < match.requiredTokenCount) return false;
+  const local = text.slice(Math.max(0, match.start - 90), Math.min(text.length, match.end + 90));
+  return /\b(?:project|campus|facilit(?:y|ies)|site|data\s+cent(?:er|re)|hyperscale|park)\b/i.test(local);
+}
+
+function assertionTargetsProject(text, match, patternIndex, identityMatches, allowStandaloneRole) {
+  const roleLabel = /^\s*(?:operator|owner|developer|builder|constructor)\s*(?:is|:|[-–—])\s*/i
+    .test(match[0]);
+  const rolePrefix = text.slice(Math.max(0, match.index - 48), match.index);
+  const gridOrUtilityRole = /\b(?:grid|power|system|transmission|utility|market|network|interconnection)\s*$/i
+    .test(rolePrefix);
+  if (gridOrUtilityRole) return false;
+
+  const anchors = identityMatches.filter((identityMatch) => isProjectNameAnchor(text, identityMatch));
+  if (!anchors.length) return allowStandaloneRole && roleLabel;
+
+  const sentenceStart = Math.max(
+    text.lastIndexOf(".", match.index),
+    text.lastIndexOf("!", match.index),
+    text.lastIndexOf("?", match.index),
+    text.lastIndexOf(";", match.index),
+    text.lastIndexOf("\n", match.index),
+  ) + 1;
+  const nextSentence = [".", "!", "?", ";", "\n"]
+    .map((delimiter) => text.indexOf(delimiter, match.index + match[0].length))
+    .filter((position) => position >= 0);
+  const sentenceEnd = nextSentence.length ? Math.min(...nextSentence) : text.length;
+  const localAnchors = anchors.filter((anchor) =>
+    anchor.start >= sentenceStart && anchor.end <= sentenceEnd);
+  if (!localAnchors.length) return false;
+
+  if (patternIndex >= 1 && patternIndex <= 3) {
+    const object = text.slice(match.index + match[0].length, sentenceEnd);
+    const directProjectObject = /^\s*(?:(?:the|this|that|its|their|a|an)\s+)?(?:requested\s+)?(?:project|facility|site|campus|data\s+cent(?:er|re)|hyperscale|park)\b/i
+      .test(object);
+    return localAnchors.some((anchor) =>
+      (anchor.start >= match.index + match[0].length && anchor.start - match.index <= 220)
+      || (directProjectObject && anchor.end <= match.index && match.index - anchor.end <= 180));
+  }
+
+  return localAnchors.some((anchor) => {
+    if (anchor.end > match.index) return false;
+    return match.index - anchor.end <= 220;
+  });
+}
+
+function assertedOperators(
+  text,
+  identityMatches = [],
+  expectedOperator = "",
+  expectedLocation = {},
+  allowDevelopmentAnnouncement = true,
+  allowStandaloneRole = false,
+) {
   const companyName = "[A-Z][\\p{L}\\p{N}&.'’'-]*(?:\\s+[A-Z][\\p{L}\\p{N}&.'’'-]*){0,4}";
   const directCompanyName = "[A-Z][\\p{L}\\p{N}&.\\-]*(?:['’][A-Z][\\p{L}\\p{N}&.\\-]*)*(?:\\s+[A-Z][\\p{L}\\p{N}&.\\-]*(?:['’][A-Z][\\p{L}\\p{N}&.\\-]*)*){0,4}";
   const patterns = [
@@ -505,8 +561,16 @@ function assertedOperators(text, identityMatches = [], expectedOperator = "", ex
       "gu",
     ),
   ];
-  const actors = patterns.flatMap((pattern) =>
-    [...text.matchAll(pattern)].map((match) => normalizeWords(match[1])));
+  const actors = patterns.flatMap((pattern, patternIndex) =>
+    [...text.matchAll(pattern)]
+      .filter((match) => assertionTargetsProject(
+        text,
+        match,
+        patternIndex,
+        identityMatches,
+        allowStandaloneRole,
+      ))
+      .map((match) => normalizeWords(match[1])));
 
   const sentenceSubjectForProject = (position) => {
     const priorSentences = [...text.slice(0, position).matchAll(/[.!?]\s+/gu)];
@@ -604,7 +668,11 @@ function assertedOperators(text, identityMatches = [], expectedOperator = "", ex
       // title in a retained page capture. Do not turn that chrome into an
       // operator assertion; preserve the general unpossessive attribution
       // rule for ordinary prose and explicit actor assertions.
+      const explicitRole = /\b(?:owner|operator|developer)\b/i.test(candidate);
       if (candidateTokens.length
+        && (possessiveAttribution
+          || operatorsMatch(expectedOperator, candidate)
+          || explicitRole)
         && (!navigationPageChrome || possessiveAttribution || operatorsMatch(expectedOperator, candidate))) {
         actors.push(candidate);
       }
@@ -702,6 +770,29 @@ function hasLocationConnector(text, location) {
     || /\bplanned\s+for\s*$/i.test(prefix)
     || /\b(?:campus|site|facility|project|data\s+center|data\s+centre|center|headquarters?)\s+(?:is|was|will\s+be|are|were)?\s*(?:located\s+|based\s+|situated\s+)?(?:in|at|near|within)\s*$/i.test(prefix)
     || /\b(?:in|at|near|within)\s*$/i.test(prefix);
+}
+
+function locationIsProjectScoped(text, location, identityMatches = []) {
+  if (!hasLocationConnector(text, location)) return false;
+  const sentenceStart = Math.max(
+    text.lastIndexOf(".", location.start),
+    text.lastIndexOf("!", location.start),
+    text.lastIndexOf("?", location.start),
+    text.lastIndexOf(";", location.start),
+    text.lastIndexOf("\n", location.start),
+  ) + 1;
+  const nextSentence = [".", "!", "?", ";", "\n"]
+    .map((delimiter) => text.indexOf(delimiter, location.end))
+    .filter((position) => position >= 0);
+  const sentenceEnd = nextSentence.length ? Math.min(...nextSentence) : text.length;
+  return identityMatches.some((match) =>
+    isProjectNameAnchor(text, match)
+    && match.start >= sentenceStart
+    && match.end <= sentenceEnd
+    && Math.min(
+      Math.abs(location.start - match.end),
+      Math.abs(match.start - location.end),
+    ) <= 220);
 }
 
 function requestedLocation(project) {
@@ -949,13 +1040,11 @@ export function matchProject(passage, project = {}) {
   if (facilityAssessment) return facilityAssessment;
 
   const identified = [];
-  const allAttachedLocations = [];
   for (const [fragmentIndex, { text: fragment, sentenceIndex }] of fragments.entries()) {
     const identityMatches = findNameMatches(fragment, variants)
       .filter((match) => !isNegatedProjectReference(fragment, match));
     const cleaned = removeAdministrativeLocations(fragment);
     const attached = detailedLocations(cleaned).filter((location) => hasLocationConnector(cleaned, location));
-    allAttachedLocations.push(...attached.map((item) => item.location));
     if (identityMatches.length) {
       identified.push({
         fragment: cleaned, identityMatches, attached, fragmentIndex, sentenceIndex,
@@ -976,8 +1065,11 @@ export function matchProject(passage, project = {}) {
     const strongNameMatch = identityMatchesOutsideLocation.some((match) =>
       match.variant.kind !== "operator" && match.matchedTokenCount >= 2);
     const subjectLocations = subject.attached
-      .filter((location) => subject.identityMatches.some((match) =>
-        location.start >= match.start - 18 || match.start - location.start <= 28))
+      .filter((location) => locationIsProjectScoped(
+        subject.fragment,
+        location,
+        subject.identityMatches,
+      ))
       .map((item) => item.location);
 
     const comparisons = subjectLocations.map((location) => compareLocation(expectedLocation, location));
@@ -1002,7 +1094,7 @@ export function matchProject(passage, project = {}) {
     const adjacentOperatorEvidence = adjacentFragment
       && adjacentFragment.sentenceIndex === subject.sentenceIndex
       && isProjectOperatorAttributionFragment(adjacentFragment.text)
-      ? assertedOperators(adjacentFragment.text, [], expectedOperator, expectedLocation)
+      ? assertedOperators(adjacentFragment.text, [], expectedOperator, expectedLocation, true, true)
       : [];
     const operatorEvidence = [...localOperatorEvidence, ...adjacentOperatorEvidence];
     if (expectedOperator && operatorConflicts(expectedOperator, operatorEvidence)) {
@@ -1033,11 +1125,6 @@ export function matchProject(passage, project = {}) {
     }
   }
 
-  const requestedTokens = [
-    expectedLocation.city,
-    expectedLocation.county,
-    expectedLocation.state,
-  ].filter(Boolean);
   if (identified.length) {
     const hasOperatorAttribution = identified.some((subject) => {
       const localEvidence = assertedOperators(
@@ -1051,7 +1138,7 @@ export function matchProject(passage, project = {}) {
       const adjacentEvidence = adjacentFragment
         && adjacentFragment.sentenceIndex === subject.sentenceIndex
         && isProjectOperatorAttributionFragment(adjacentFragment.text)
-        ? assertedOperators(adjacentFragment.text, [], expectedOperator, expectedLocation)
+        ? assertedOperators(adjacentFragment.text, [], expectedOperator, expectedLocation, true, true)
         : [];
       const evidence = [...localEvidence, ...adjacentEvidence];
       return expectedOperator && evidence.some((actual) => operatorsMatch(expectedOperator, actual));
@@ -1061,16 +1148,6 @@ export function matchProject(passage, project = {}) {
       reason: expectedOperator && !hasOperatorAttribution
         ? `The passage mentions the requested project, but does not establish attribution to the requested operator (${expectedOperator}).`
         : `The passage mentions the requested project, but does not establish its requested location${expectedLocationText ? ` (${expectedLocationText})` : ""}.`,
-    };
-  }
-
-  const locationConflict = allAttachedLocations
-    .map((location) => compareLocation(expectedLocation, location))
-    .find((comparison) => comparison.conflicts.length);
-  if (locationConflict && requestedTokens.length) {
-    return {
-      verdict: "unrelated",
-      reason: `The passage's project location conflicts with the requested location${expectedLocationText ? ` (${expectedLocationText})` : ""}: ${locationConflict.conflicts.join(" and ")}.`,
     };
   }
 
@@ -1104,20 +1181,39 @@ export function traceProjectMatch(passage, project = {}, resolverResult = null) 
       location: { ...entry.location },
       start: entry.start,
       end: entry.end,
-      attachedToProjectContext: hasLocationConnector(text, entry),
+      attachedToProjectContext: locationIsProjectScoped(text, entry, nameMatches),
       matches: comparison.matches,
       conflicts: comparison.conflicts,
     };
   });
   const actorRecords = [];
-  for (const fragment of splitSubjectFragments(text).slice(0, 80)) {
+  const fragments = splitSubjectFragments(text).slice(0, 80);
+  for (const [fragmentIndex, fragment] of fragments.entries()) {
     const matches = findNameMatches(fragment.text, variants);
-    for (const actor of assertedOperators(
+    const completeSentence = !fragments.some((item, index) =>
+      index !== fragmentIndex && item.sentenceIndex === fragment.sentenceIndex);
+    const localActors = assertedOperators(
       fragment.text,
       matches,
       project?.operator ?? project?.knownData?.operator ?? "",
       expectedLocation,
-    ).slice(0, 12)) {
+      completeSentence,
+    );
+    const previousFragment = fragments[fragmentIndex - 1];
+    const adjacentActors = !matches.length
+      && previousFragment?.sentenceIndex === fragment.sentenceIndex
+      && findNameMatches(previousFragment.text, variants).length
+      && isProjectOperatorAttributionFragment(fragment.text)
+      ? assertedOperators(
+        fragment.text,
+        [],
+        project?.operator ?? project?.knownData?.operator ?? "",
+        expectedLocation,
+        true,
+        true,
+      )
+      : [];
+    for (const actor of [...new Set([...localActors, ...adjacentActors])].slice(0, 12)) {
       const actorPattern = actor.trim()
         .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
         .replace(/\s+/gu, "\\s+");
@@ -1140,6 +1236,7 @@ export function traceProjectMatch(passage, project = {}, resolverResult = null) 
         actor: actor.slice(0, 120),
         role,
         attributionRule: "shared-resolver-assertedOperators",
+        admittedAsOperator: true,
         supportingSpan,
         spanStart: start < 0 ? null : start - supportingStart,
         spanEnd: end < 0 ? null : Math.min(supportingSpan.length, end - supportingStart),
@@ -1218,7 +1315,9 @@ export function traceProjectMatch(passage, project = {}, resolverResult = null) 
     })),
     actors: [...actorRecords, ...excludedNavigationActors].slice(0, 32),
     secondaryReasons: [
-      ...locations.flatMap((entry) => entry.conflicts.map((reason) => `location-conflict:${reason}`)),
+      ...locations
+        .filter((entry) => entry.attachedToProjectContext)
+        .flatMap((entry) => entry.conflicts.map((reason) => `location-conflict:${reason}`)),
       ...(nameMatches.length === 0 ? ["requested-name-or-alias-not-found"] : []),
     ].slice(0, 16),
   };

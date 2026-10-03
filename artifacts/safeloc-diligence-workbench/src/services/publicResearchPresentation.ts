@@ -15,6 +15,7 @@ export type PublicResearchState =
   | "provider-busy"
   | "no-qualifying-evidence"
   | "evidence-likely-non-public"
+  | "not-assessed"
   | "research-failed-safely"
   | "ready";
 
@@ -50,6 +51,11 @@ const STATE_COPY: Record<PublicResearchState, Omit<PublicResearchPresentation, "
   "search-incomplete": {
     label: "Search incomplete",
     explanation: "One or more searches did not complete. Missing results are not a conclusive finding.",
+    incomplete: true,
+  },
+  "not-assessed": {
+    label: "Not assessed",
+    explanation: "Not assessed: no admitted passage text was available. This is not a negative finding.",
     incomplete: true,
   },
   "source-blocked": {
@@ -133,6 +139,9 @@ export function getPublicCategoryPresentation(category: ResearchCategoryAudit): 
   if (category.state === "Partial") {
     return { state: "partial-results", ...STATE_COPY["partial-results"] };
   }
+  if (category.state === "Not assessed") {
+    return { state: "not-assessed", ...STATE_COPY["not-assessed"] };
+  }
   // "Not searched" and unknown legacy states must never be interpreted as a
   // completed negative search.
   return { state: "search-incomplete", ...STATE_COPY["search-incomplete"] };
@@ -169,9 +178,14 @@ export function getPublicResearchPresentation(input: PublicResearchInput): Publi
   if (input.researchStatus === "cancelled") {
     return { state: "search-incomplete", ...STATE_COPY["search-incomplete"] };
   }
-  if (outcome === "incomplete-technical-limitation" || input.researchMode === "research-incomplete") {
+  if (outcome === "incomplete-technical-limitation"
+    || (input.researchMode === "research-incomplete" && outcome !== "incomplete-not-assessed")) {
     if (hasRetainedEvidence) return { state: "partial-results", ...STATE_COPY["partial-results"] };
     return { state: "search-incomplete", ...STATE_COPY["search-incomplete"] };
+  }
+  if (outcome === "incomplete-not-assessed") {
+    if (hasRetainedEvidence) return { state: "partial-results", ...STATE_COPY["partial-results"] };
+    return { state: "not-assessed", ...STATE_COPY["not-assessed"] };
   }
   if (incompleteCategory || input.researchMode === "partial-public-source") {
     if (hasRetainedEvidence) return { state: "partial-results", ...STATE_COPY["partial-results"] };

@@ -20,3 +20,9 @@ For paid research, create the fail-closed audit start inside the single-flight r
 **Why:** Starting outside the coalesced owner can create duplicate or phantom rows, while completing before the response lifecycle ends can lose delivery timing and disconnect state.
 
 **How to apply:** Keep lifecycle ownership with the cache-runner callback, fail before any paid provider call if start persistence fails, and attach final persistence to response `finish`/premature `close` rather than the first result computation.
+
+In a concurrent category scheduler, reserve the pending primary slot before invoking retrieval code that can authorize a repair or follow-up. Promise callbacks may run synchronously up to their first `await`, so a later reservation can hide the current primary from the budget check.
+
+**Why:** If the callback can authorize extra work before its own primary is visible as pending, multiple categories can spend the same remaining request capacity.
+
+**How to apply:** Add the pending-primary reservation before calling retrieval, reconcile it to actual issued requests (including zero-call outcomes), and release only unused local reservations.

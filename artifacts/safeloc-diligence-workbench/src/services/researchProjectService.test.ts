@@ -37,6 +37,19 @@ test("uses the persisted terminal outcome for status and gates proposal review o
   assert.equal(incomplete.mode, "research-incomplete");
   assert.equal(incomplete.proposalReview, false);
 
+  const notAssessed = getResearchStatusPresentation({
+    outcome: {
+      state: "incomplete-not-assessed",
+      eligibleEvidenceCount: 0,
+      reasonCodes: ["no-admitted-passage-text"],
+    },
+    researchMode: "research-incomplete",
+    eligibleProposalCount: 0,
+  });
+  assert.equal(notAssessed.label, "Research incomplete · category not assessed");
+  assert.equal(notAssessed.mode, "research-incomplete");
+  assert.equal(notAssessed.proposalReview, false);
+
   const noProposal = getResearchStatusPresentation({
     outcome: {
       state: "complete-with-eligible-evidence",
@@ -1060,6 +1073,13 @@ test("preserves sanitized run identity and outcome metrics through client parsin
   const runId = "4a35e958-e4c2-4b59-9c7e-6207cc161958";
   const parsed = parseResponse({
     ...response,
+    researchStatus: "partial",
+    researchMode: "research-incomplete",
+    researchOutcome: {
+      state: "incomplete-not-assessed",
+      eligibleEvidenceCount: 0,
+      reasonCodes: ["no-admitted-passage-text"],
+    },
     researchCache: {
       key: "b".repeat(64),
       state: "updated",
@@ -1080,7 +1100,32 @@ test("preserves sanitized run identity and outcome metrics through client parsin
       projectCacheKey: "b".repeat(64),
       initiator: "background-refresh",
       requestId: "audit-projection-fixture",
-      categories: [],
+      terminalState: "incomplete-not-assessed",
+      terminalReasonCodes: ["no-admitted-passage-text"],
+      categories: [{
+        categoryId: "grid",
+        label: "Grid",
+        state: "Not assessed",
+        executionOutcome: "skipped",
+        analysisOutcome: "not-assessed",
+        notRunReason: "no-admitted-passage-text",
+        requestedPrimaryQuery: "Project Atlas grid",
+        evidenceIds: [],
+        providerAttempts: [{
+          attemptId: "grid-primary-attempt-1",
+          projectId: "project-atlas",
+          runId,
+          categoryId: "grid",
+          attemptType: "primary",
+          preparedAt: "2026-10-03T00:00:00.000Z",
+          requestState: "unissued-empty",
+          issueOutcome: "unissued-empty",
+          outcome: "not-assessed",
+          requestedTokenReservation: 4_100,
+          reservedTokens: 0,
+          reservationDisposition: "not-reserved",
+        }],
+      }],
       outcomeMetrics: {
         uniqueSourcesOpened: 7,
         uniqueProjectSpecificSourcesOpened: 3,
@@ -1096,6 +1141,7 @@ test("preserves sanitized run identity and outcome metrics through client parsin
           conclusiveNoEvidence: 1,
           technicalIncomplete: 1,
           notSearched: 1,
+          notAssessed: 1,
         },
         exclusions: { blocked: 1, duplicateOccurrencesReused: 2, irrelevantCandidates: 3 },
       },
@@ -1108,6 +1154,14 @@ test("preserves sanitized run identity and outcome metrics through client parsin
   assert.equal(parsed.researchCache?.initiator, "background-refresh");
   assert.equal(parsed.researchAudit?.runCorrelationId, runId);
   assert.equal(parsed.researchAudit?.outcomeMetrics?.uniqueProjectSpecificSourcesOpened, 3);
+  assert.equal(parsed.researchOutcome?.state, "incomplete-not-assessed");
+  assert.equal(parsed.researchAudit?.terminalState, "incomplete-not-assessed");
+  assert.equal(parsed.researchAudit?.outcomeMetrics?.categoryCompletion.notAssessed, 1);
+  assert.equal(parsed.researchAudit?.categories[0]?.state, "Not assessed");
+  assert.equal(parsed.researchAudit?.categories[0]?.analysisOutcome, "not-assessed");
+  assert.equal(parsed.researchAudit?.categories[0]?.providerAttempts[0]?.attemptId, "grid-primary-attempt-1");
+  assert.equal(parsed.researchAudit?.categories[0]?.providerAttempts[0]?.issueOutcome, "unissued-empty");
+  assert.equal(parsed.researchAudit?.categories[0]?.providerAttempts[0]?.runId, runId);
   assert.deepEqual(parsed.researchAudit?.outcomeMetrics?.sourceFamilyCounts, {
     "government-project-record": 2,
     "news-aggregator": 1,

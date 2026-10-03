@@ -190,6 +190,7 @@ const RESEARCH_CATEGORY_STATES = Object.freeze([
   "Complete",
   "Partial",
   "No eligible evidence",
+  "Not assessed",
   "Provider failure",
   "Timed out",
   "Not searched",
@@ -1435,6 +1436,7 @@ function createResearchBudgetError(reason, timeSliceMs = null) {
     : "Research work did not finish within its bounded time slice.");
   error.name = "ResearchBudgetExceededError";
   error.researchBudgetReason = reason;
+  if (reason === "provider-deadline-admission") error.researchErrorType = reason;
   if (Number.isFinite(timeSliceMs)) error.timeSliceMs = timeSliceMs;
   return error;
 }
@@ -2644,7 +2646,7 @@ function buildResearchAudit({
     };
     counts.successfulExtractions = counts.retainedPassages;
     const primaryWasIssued = typeof supplied.issuedPrimaryQuery === "string";
-    const explicitFailureState = ["Provider failure", "Timed out", "Not searched"].includes(supplied.state)
+    const explicitFailureState = ["Provider failure", "Timed out", "Not searched", "Not assessed"].includes(supplied.state)
       && !(supplied.state === "Not searched" && primaryWasIssued)
       ? supplied.state
       : null;
@@ -2658,7 +2660,7 @@ function buildResearchAudit({
     const executionOutcome = ["completed", "failed", "skipped", "not-run"].includes(supplied.executionOutcome)
       ? supplied.executionOutcome
       : primaryWasIssued ? "completed" : "not-run";
-    const analysisOutcome = ["completed", "failed", "skipped", "not-run"].includes(supplied.analysisOutcome)
+    const analysisOutcome = ["completed", "failed", "skipped", "not-run", "not-assessed"].includes(supplied.analysisOutcome)
       ? supplied.analysisOutcome
       : supplied.primaryAnalysisCompleted === true
         ? "completed"
@@ -2925,6 +2927,7 @@ function buildResearchAudit({
         || category.executionOutcome === "failed"
         || category.analysisOutcome === "failed").length,
       notSearched: categories.filter((category) => category.state === "Not searched").length,
+      notAssessed: categories.filter((category) => category.state === "Not assessed").length,
     },
     exclusions: {
       blocked: [...uniqueOpenedSources.values()].filter((source) =>
@@ -3292,42 +3295,57 @@ async function orchestrateCategoryResearch(project, {
     };
   }
   const prefetchedPrimary = new Map();
+  const pendingPrimaryCategories = new Set();
+  const additionalReservationsByCategory = new Map();
+  let additionalRequestsAuthorized = 0;
+  const releaseAdditionalReservations = (categoryId) => {
+    const reserved = additionalReservationsByCategory.get(categoryId) ?? 0;
+    additionalReservationsByCategory.delete(categoryId);
+    additionalRequestsAuthorized = Math.max(0, additionalRequestsAuthorized - reserved);
+  };
+  const authorizeAdditionalRequest = (categoryId) => {
+    const remainingPrimaryOpportunity = categories.filter((candidate) =>
+      candidate.categoryId !== categoryId
+      && !prefetchedPrimary.has(candidate.categoryId)
+      && !categoryExecutions[candidate.categoryId]).length;
+    if (providerRequests + pendingPrimaryCategories.size
+      + remainingPrimaryOpportunity + additionalRequestsAuthorized >= budget.maxProviderRequests) return false;
+    additionalRequestsAuthorized += 1;
+    additionalReservationsByCategory.set(
+      categoryId,
+      (additionalReservationsByCategory.get(categoryId) ?? 0) + 1,
+    );
+    return true;
+  };
   const prefetchPrimaryCategories = (targetCategories) => {
     for (const category of targetCategories) {
       const index = categories.findIndex((candidate) => candidate.categoryId === category.categoryId);
       if (
         index < 0
-        || index >= budget.maxProviderRequests
         || prefetchedPrimary.has(category.categoryId)
         || deadlineState.expired
         || signal?.aborted
+        || physicalOpenBudgetExceeded
+        || toolCalls >= budget.maxToolCalls
+        || resolvedEvidenceIds.size >= RESEARCH_EVIDENCE_IDS.length
       ) continue;
-      const primaryPromise = Promise.resolve(retrieveCategory({
-        categoryId: category.categoryId,
-        query: category.requestedPrimaryQuery,
-        attempt: "primary",
-        remainingMs: Math.max(0, budget.deadlineMs - (now() - startedAtMs)),
-        remainingToolCalls: Math.max(1, Math.floor(budget.maxToolCalls / categories.length)),
-        authorizeAdditionalProviderRequest: authorizeAdditionalRequest,
+      if (providerRequests + pendingPrimaryCategories.size + additionalRequestsAuthorized
+        >= budget.maxProviderRequests) break;
+      pendingPrimaryCategories.add(category.categoryId);
+      const primaryPromise = Promise.resolve().then(() => retrieveCategory({
+          categoryId: category.categoryId,
+          query: category.requestedPrimaryQuery,
+          attempt: "primary",
+          remainingMs: Math.max(0, budget.deadlineMs - (now() - startedAtMs)),
+          remainingToolCalls: Math.max(1, Math.floor(budget.maxToolCalls / categories.length)),
+          authorizeAdditionalProviderRequest: () => authorizeAdditionalRequest(category.categoryId),
       }));
       primaryPromise.catch(() => {});
       prefetchedPrimary.set(category.categoryId, primaryPromise);
     }
   };
-  let additionalRequestsAuthorized = 0;
-  const authorizeAdditionalRequest = () => {
-    // All category primaries are a hard reservation. Repairs and follow-ups
-    // may use only the request slots left after that reservation.
-    if (categories.length + additionalRequestsAuthorized >= budget.maxProviderRequests) return false;
-    additionalRequestsAuthorized += 1;
-    return true;
-  };
   if (concurrent) {
-    // Project identity gets the first physical-open opportunity. Remaining
-    // primaries begin only after that bounded category reaches a terminal
-    // result, preserving the same run-wide ceiling and deadline.
-    const identityCategory = categories.find((category) => category.categoryId === "project-identity");
-    prefetchPrimaryCategories(identityCategory ? [identityCategory] : categories);
+    prefetchPrimaryCategories(categories);
   }
   for (const [categoryIndex, category] of categories.entries()) {
     if (signal?.aborted && !deadlineState.expired) {
@@ -3338,7 +3356,11 @@ async function orchestrateCategoryResearch(project, {
     }
     const elapsed = now() - startedAtMs;
     const issuedPrimary = prefetchedPrimary.has(category.categoryId);
-    if (!issuedPrimary && (physicalOpenBudgetExceeded || deadlineState.expired || elapsed >= budget.deadlineMs || toolCalls >= budget.maxToolCalls || providerRequests >= budget.maxProviderRequests)) {
+    if (!issuedPrimary && (physicalOpenBudgetExceeded
+      || deadlineState.expired
+      || elapsed >= budget.deadlineMs
+      || toolCalls >= budget.maxToolCalls
+      || providerRequests + pendingPrimaryCategories.size + additionalRequestsAuthorized >= budget.maxProviderRequests)) {
       categoryExecutions[category.categoryId] = {
         issuedPrimaryQuery: null,
         providerObservedPrimaryQueries: [],
@@ -3420,18 +3442,23 @@ async function orchestrateCategoryResearch(project, {
           return true;
         },
       }));
-       const primaryRequestCost = Number.isInteger(primary?.providerRequestCount)
-         ? Math.max(1, primary.providerRequestCount)
-         : 1;
+      if (concurrent) pendingPrimaryCategories.delete(category.categoryId);
+      const primaryRequestCost = Number.isInteger(primary?.providerRequestCount)
+        ? Math.max(0, primary.providerRequestCount)
+        : 1;
       if (concurrent) providerRequests += primaryRequestCost;
-      else providerRequests += Math.max(0, primaryRequestCost - 1 - primaryAdditionalRequestsAuthorized);
+      else providerRequests = Math.max(
+        0,
+        providerRequests + primaryRequestCost - 1 - primaryAdditionalRequestsAuthorized,
+      );
+      if (concurrent) releaseAdditionalReservations(category.categoryId);
       execution.providerRequestCount += primaryRequestCost;
       if (primary?.analysisState) execution.analysisState = primary.analysisState;
       const primaryAttempts = collectProviderAttempts(primary);
       execution.providerAttempts.push(...primaryAttempts);
-       execution.categoryPromptTelemetry.push(...primaryAttempts
-         .map((attempt) => attempt?.categoryPromptTelemetry)
-         .filter(isRecord));
+      execution.categoryPromptTelemetry.push(...primaryAttempts
+        .map((attempt) => attempt?.categoryPromptTelemetry)
+        .filter(isRecord));
       execution.primaryAnalysisCompleted = primaryAttempts.some((attempt) =>
         attempt?.requestState === "completed" || attempt?.outcome === "completed");
       const primaryAnalysisFailure = primary?.categoryResult?.coverage?.analysisFailureType;
@@ -3473,30 +3500,32 @@ async function orchestrateCategoryResearch(project, {
       physicalOpenBudgetExceeded ||= primary?.physicalOpenBudgetExceeded === true;
       execution.followUpTriggerEvidenceIds = Array.isArray(primary?.unresolvedEvidenceIds) ? primary.unresolvedEvidenceIds : [];
       const globalEarlyStop = resolvedEvidenceIds.size >= RESEARCH_EVIDENCE_IDS.length;
-       // A returned candidate or a zero-evidence response is not success. Only
-       // the validated category resolver may close a category.
-       const primaryCategoryResolved = primary?.categoryResolved === true;
-       // Preserve one primary opportunity for every remaining category before
-       // spending shared request slots on a gap repair/follow-up.
-       const remainingPrimaryOpportunity = categories.length - categoryIndex - 1;
-       const additionalRequestAvailable = concurrent
-         ? categories.length + additionalRequestsAuthorized < budget.maxProviderRequests
-         : providerRequests + 1 + remainingPrimaryOpportunity <= budget.maxProviderRequests;
+      // A returned candidate or a zero-evidence response is not success. Only
+      // the validated category resolver may close a category.
+      const primaryCategoryResolved = primary?.categoryResolved === true;
+      // Preserve one primary opportunity for every remaining category before
+      // spending shared request slots on a gap repair/follow-up.
+      const remainingPrimaryOpportunity = categories.length - categoryIndex - 1;
+      const additionalRequestAvailable = concurrent
+        ? providerRequests + pendingPrimaryCategories.size + remainingPrimaryOpportunity
+          + additionalRequestsAuthorized < budget.maxProviderRequests
+        : providerRequests + 1 + remainingPrimaryOpportunity <= budget.maxProviderRequests;
       if (primary?.gapDrivenFollowUp === true
+        && primary?.analysisState !== "not-assessed-no-admitted-passage-text"
         && !globalEarlyStop
         && !primaryCategoryResolved
         && toolCalls < budget.maxToolCalls
         && followUps < budget.maxFollowUps
         && (budget.maxFollowUpsPerCategory ?? 1) > 0
-         && providerRequests < budget.maxProviderRequests
-         && additionalRequestAvailable
+        && providerRequests < budget.maxProviderRequests
+        && additionalRequestAvailable
         && !physicalOpenBudgetExceeded
-         && !deadlineState.expired
-         && !signal?.aborted
-         && now() - startedAtMs < budget.deadlineMs) {
+        && !deadlineState.expired
+        && !signal?.aborted
+        && now() - startedAtMs < budget.deadlineMs) {
         followUps += 1;
         followUpWasRun = true;
-        if (concurrent && !authorizeAdditionalRequest()) {
+        if (concurrent && !authorizeAdditionalRequest(category.categoryId)) {
           followUps -= 1;
           followUpWasRun = false;
           execution.followUpSkipReason = "provider-request-budget";
@@ -3517,9 +3546,10 @@ async function orchestrateCategoryResearch(project, {
           remainingMs: Math.max(0, budget.deadlineMs - (now() - startedAtMs)),
           remainingToolCalls: Math.max(0, budget.maxToolCalls - toolCalls),
         });
-         const followUpRequestCost = Number.isInteger(followUp?.providerRequestCount)
-           ? Math.max(1, followUp.providerRequestCount)
-           : 1;
+        if (concurrent) releaseAdditionalReservations(category.categoryId);
+        const followUpRequestCost = Number.isInteger(followUp?.providerRequestCount)
+          ? Math.max(0, followUp.providerRequestCount)
+          : 1;
         providerRequests += followUpRequestCost - 1;
         execution.providerRequestCount += followUpRequestCost - 1;
         const followUpAttempts = collectProviderAttempts(followUp);
@@ -3564,40 +3594,58 @@ async function orchestrateCategoryResearch(project, {
         });
         execution.followUpSkipReason = followUp?.categoryResolved === true ? null : "category-follow-up-limit";
       } else {
-          execution.followUpSkipReason = deadlineState.expired || now() - startedAtMs >= budget.deadlineMs
-            ? "deadline"
-            : physicalOpenBudgetExceeded
+        execution.followUpSkipReason = deadlineState.expired || now() - startedAtMs >= budget.deadlineMs
+          ? "deadline"
+          : physicalOpenBudgetExceeded
             ? "physical-open-budget"
             : globalEarlyStop
-          ? "early-stop"
-          : primaryCategoryResolved
-            ? "evidence-resolved"
-            : toolCalls >= budget.maxToolCalls || primary?.toolCallBudgetExceeded
-              ? "tool-call-budget"
-              : providerRequests >= budget.maxProviderRequests
-                  ? "provider-request-budget"
-                  : followUps >= budget.maxFollowUps
+              ? "early-stop"
+              : primaryCategoryResolved
+                ? "evidence-resolved"
+                : toolCalls >= budget.maxToolCalls || primary?.toolCallBudgetExceeded
+                  ? "tool-call-budget"
+                  : providerRequests >= budget.maxProviderRequests
                     ? "provider-request-budget"
-                    : "no-justified-gap";
+                    : followUps >= budget.maxFollowUps
+                      ? "provider-request-budget"
+                      : "no-justified-gap";
       }
-      state = categoryCandidates.length ? "Partial" : "No eligible evidence";
-       if (primaryCategoryResolved || categoryResults
-        .filter((result) => result.categoryId === category.categoryId)
-        .some((result) => result.categoryResolved === true) || followUpWasRun) state = "Complete";
-       if (followUpWasRun) {
-         const followUpResult = categoryResults.filter((result) => result.categoryId === category.categoryId).at(-1);
-         const hasSuccessfulCandidate = categoryCandidates.some((candidate) => candidate?.eligible === true);
-         state = followUpResult?.categoryResolved === true || hasSuccessfulCandidate
-           ? "Complete"
-           : categoryCandidates.length ? "Partial" : "No eligible evidence";
-       }
-       if (execution.primaryAnalysisCompleted && !primaryCategoryResolved && deadlineState.expired) {
-         state = "Partial";
-       }
-      if (primaryAnalysisFailure && !execution.primaryAnalysisCompleted) {
+      const noAdmittedPassageText = primary?.analysisState === "not-assessed-no-admitted-passage-text";
+      state = noAdmittedPassageText ? "Not assessed" : categoryCandidates.length ? "Partial" : "No eligible evidence";
+      if (noAdmittedPassageText) {
+        execution.issuedPrimaryQuery = null;
+        execution.executionOutcome = "skipped";
+        execution.analysisOutcome = "not-assessed";
+        execution.primaryAnalysisCompleted = false;
+        execution.analysisState = "not-assessed-no-admitted-passage-text";
+        execution.notRunReason = "no-admitted-passage-text";
+        execution.followUpSkipReason = "no-admitted-passage-text";
+      }
+      if (!noAdmittedPassageText && (
+        primaryCategoryResolved
+        || categoryResults
+          .filter((result) => result.categoryId === category.categoryId)
+          .some((result) => result.categoryResolved === true)
+        || followUpWasRun
+      )) state = "Complete";
+      if (!noAdmittedPassageText && followUpWasRun) {
+        const followUpResult = categoryResults.filter((result) => result.categoryId === category.categoryId).at(-1);
+        const hasSuccessfulCandidate = categoryCandidates.some((candidate) => candidate?.eligible === true);
+        state = followUpResult?.categoryResolved === true || hasSuccessfulCandidate
+          ? "Complete"
+          : categoryCandidates.length ? "Partial" : "No eligible evidence";
+      }
+      if (!noAdmittedPassageText && execution.primaryAnalysisCompleted && !primaryCategoryResolved && deadlineState.expired) {
+        state = "Partial";
+      }
+      if (primaryAnalysisFailure && !execution.primaryAnalysisCompleted && !noAdmittedPassageText) {
         state = categoryCandidates.length ? "Partial" : "Provider failure";
       }
     } catch (error) {
+      if (concurrent) {
+        pendingPrimaryCategories.delete(category.categoryId);
+        releaseAdditionalReservations(category.categoryId);
+      }
       const errorAttempts = collectProviderAttempts(error);
       const cancellationError = error?.name === "ResearchCancelledError"
         || error?.name === "AbortError"
@@ -3692,8 +3740,8 @@ async function orchestrateCategoryResearch(project, {
       cancellationToRethrow.partialCategoryExecutions = categoryExecutions;
       throw cancellationToRethrow;
     }
-    if (concurrent && category.categoryId === "project-identity") {
-      prefetchPrimaryCategories(categories.filter((candidate) => candidate.categoryId !== "project-identity"));
+    if (concurrent) {
+      prefetchPrimaryCategories(categories.filter((candidate) => !categoryExecutions[candidate.categoryId]));
     }
     if (!concurrent && (resolvedEvidenceIds.size >= RESEARCH_EVIDENCE_IDS.length || deadlineState.expired)) break;
   }
@@ -5229,6 +5277,11 @@ function buildGroundedSourceContext(sources = []) {
     .filter((source) => source.passage);
 }
 
+function hasUsableCategoryPacketText(packet) {
+  return Array.isArray(packet)
+    && packet.some((source) => typeof source?.passage === "string" && source.passage.trim().length > 0);
+}
+
 function configuredCategoryInputTokenCap() {
   const configured = Number.parseInt(process.env.RESEARCH_CATEGORY_INPUT_TOKEN_CAP ?? "", 10);
   return Number.isInteger(configured) && configured >= 1
@@ -5742,12 +5795,18 @@ function createResearchProviderGate({
       active += 1;
       waiter.cleanup();
       const reservedAt = now();
-      tokenReservations.push({ reservedAt, tokens: waiter.reservedTokens });
+      const tokenReservation = { reservedAt, tokens: waiter.reservedTokens, spent: false };
+      tokenReservations.push(tokenReservation);
       waiter.resolve({
-        release: () => {
+        release: ({ refundTokens = false } = {}) => {
+          if (refundTokens && !tokenReservation.spent) {
+            const index = tokenReservations.indexOf(tokenReservation);
+            if (index >= 0) tokenReservations.splice(index, 1);
+          }
           active = Math.max(0, active - 1);
           drain();
         },
+        markSpent: () => { tokenReservation.spent = true; },
         details: {
         admittedAt: reservedAt,
         queueWaitMs: Math.max(0, reservedAt - waiter.queuedAt),
@@ -5836,15 +5895,18 @@ function createResearchProviderGate({
         deadlineAt,
         minimumResponseMs,
       });
-      const { release, details } = admission;
+      const { release, markSpent, details } = admission;
+      let issueStarted = false;
       try {
         onStart?.({ active, blockedUntil, ...details });
+        issueStarted = true;
+        markSpent();
         return await task();
       } catch (error) {
         recordPressure(error);
         throw error;
       } finally {
-        release();
+        release({ refundTokens: !issueStarted });
       }
     },
     snapshot() {
@@ -6055,7 +6117,7 @@ function restrictResearchToAcceptedSources(research, sources) {
 }
 
 async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, activeCategory = null, providerGate = researchProviderGate) {
-  const queuedAtMs = Date.now();
+  let queuedAtMs = null;
   let issuedAtMs = null;
   let providerRequestTracked = false;
   let receivedSuccessfulResponse = false;
@@ -6065,6 +6127,7 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
     : RESEARCH_EVIDENCE_IDS;
   const identityOnly = activeCategory?.categoryId === "project-identity";
   const webSearchEnabled = activeCategory?.webSearchEnabled !== false;
+  const groundedCategoryAnalysis = Boolean(activeCategory?.categoryId && !webSearchEnabled);
   const groundedSources = Array.isArray(activeCategory?.groundedSources)
     ? activeCategory.groundedSources
     : [];
@@ -6238,26 +6301,36 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
     : null;
   const startedAt = new Date().toISOString();
   let response;
+  const preparedAt = new Date().toISOString();
+  const estimatedInputTokens = categoryInputTelemetry?.estimatedInputTokens
+    ?? estimateProviderInputTokens(requestBody);
+  const requestedTokenReservation = estimatedInputTokens + requestedOutputTokens;
   const providerAttempt = {
+    projectId: project.projectId ?? project.id ?? project.name ?? null,
+    runId: activeCategory?.runCorrelationId ?? null,
     categoryId: activeCategory?.categoryId ?? null,
     attemptType: activeCategory?.attempt ?? "primary",
-    requestState: "queued",
-    queuedAt: new Date(queuedAtMs).toISOString(),
+    requestState: "prepared",
+    issueOutcome: "prepared",
+    attemptId: randomUUID(),
+    preparedAt,
+    queuedAt: null,
     issuedAt: null,
     finishedAt: null,
     queueWaitMs: null,
     elapsedMs: null,
     status: null,
-    outcome: "cancelled-before-issue",
+    outcome: "not-assessed",
     requestedOutputTokens,
     requestBodyBytes: Buffer.byteLength(requestBody),
+    preparedRequestBodyBytes: Buffer.byteLength(requestBody),
     retryCount: activeCategory?.retryState?.retryCount ?? 0,
     rateLimitWaitMs: activeCategory?.retryState?.rateLimitWaitMs ?? 0,
     ...(categoryPromptTelemetry ? { categoryPromptTelemetry } : {}),
-    estimatedInputTokens: categoryInputTelemetry?.estimatedInputTokens
-      ?? estimateProviderInputTokens(requestBody),
-    reservedTokens: (categoryInputTelemetry?.estimatedInputTokens
-      ?? estimateProviderInputTokens(requestBody)) + requestedOutputTokens,
+    estimatedInputTokens,
+    requestedTokenReservation,
+    reservedTokens: 0,
+    reservationDisposition: "not-reserved",
     usage: null,
   };
   const preparedProviderEvent = activeCategory?.claimTrace?.recordProviderEvent?.({
@@ -6267,16 +6340,20 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
     project,
     categoryId: activeCategory.categoryId,
     attemptType: activeCategory.attempt,
+    attemptId: providerAttempt.attemptId,
     promptVersion: `${RESEARCH_PROJECT_PROMPT_VERSION}:${activeCategory.categoryId ?? "project"}`,
     schemaVersion: identityOnly ? "identity-response-v1"
       : `safeloc-research-schema-v${RESEARCH_POLICY_VERSION}:${activeCategory.categoryId}`,
-    queuedAt: providerAttempt.queuedAt,
+    preparedAt,
+    issueOutcome: "prepared",
+    queuedAt: null,
     bodyBytes: providerAttempt.requestBodyBytes,
     requestBodySha256: createHash("sha256").update(requestBody).digest("hex"),
     estimatedInputTokens: providerAttempt.estimatedInputTokens,
     packet: categoryAnalysisPacket,
     outcome: "prepared-not-yet-issued",
   }) ?? null;
+  providerAttempt.attemptId = preparedProviderEvent?.attemptId ?? providerAttempt.attemptId;
   if (activeCategory?.categoryId) {
     activeCategory.claimTrace?.recordPassageSelection?.({
       runId: activeCategory.runCorrelationId,
@@ -6289,7 +6366,95 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
     });
   }
   if (analysisTracker) analysisTracker.attempts.push(providerAttempt);
+  let unissuedEmptyRecorded = false;
+  const recordUnissuedEmpty = () => {
+    if (unissuedEmptyRecorded) throw new Error("An empty category packet was already recorded as unissued.");
+    unissuedEmptyRecorded = true;
+    const finishedAt = new Date().toISOString();
+    Object.assign(providerAttempt, {
+      requestState: "unissued-empty",
+      issueOutcome: "unissued-empty",
+      outcome: "not-assessed",
+      finishedAt,
+      elapsedMs: null,
+      queueWaitMs: providerAttempt.queueWaitMs ?? null,
+      tpmWaitMs: providerAttempt.tpmWaitMs ?? 0,
+      reservedTokens: 0,
+      reservationDisposition: providerAttempt.reservationDisposition === "reserved"
+        ? "refunded-before-issue"
+        : "not-reserved",
+      requestBodyBytes: 0,
+      requestBodySha256: null,
+      noIssueReason: "no-admitted-passage-text",
+    });
+    activeCategory?.claimTrace?.recordProviderEvent?.({
+      state: "unissued-empty",
+      runId: activeCategory.runCorrelationId,
+      projectId: project.projectId ?? project.id ?? project.name,
+      project,
+      categoryId: activeCategory.categoryId,
+      attemptType: activeCategory.attempt,
+      attemptId: providerAttempt.attemptId,
+      promptVersion: `${RESEARCH_PROJECT_PROMPT_VERSION}:${activeCategory.categoryId}`,
+      schemaVersion: identityOnly ? "identity-response-v1"
+        : `safeloc-research-schema-v${RESEARCH_POLICY_VERSION}:${activeCategory.categoryId}`,
+      preparedAt,
+      issueOutcome: "unissued-empty",
+      queuedAt: providerAttempt.queuedAt,
+      bodyBytes: 0,
+      requestBodySha256: null,
+      estimatedInputTokens: 0,
+      packet: [],
+      outcome: "not-assessed",
+      reason: "Not assessed: no admitted passage text.",
+    });
+    return {
+      research: {
+        projectSummary: {
+          name: project.name,
+          location: project.location,
+          description: "Not assessed: no admitted passage text was available for category analysis.",
+          capacityMW: null,
+          capacityProvenance: "unknown",
+        },
+        evidence: [],
+      },
+      sources: categoryGroundedSources,
+      coverage: {
+        provider: "not-issued",
+        model: RESEARCH_PROJECT_MODEL,
+        providerRequestCount: 0,
+        providerAttempts: [providerAttempt],
+        providerAttempt,
+        searchTerms: [],
+        providerLimitations: ["Not assessed: no admitted passage text."],
+        webSearchEnabled: false,
+        googleGroundedSourceCount: categoryGroundedSources.length,
+        noUsableGroundedPassages: true,
+        noAdmittedPassageText: true,
+        activeCategoryId: activeCategory.categoryId,
+        analysisState: "not-assessed-no-admitted-passage-text",
+        analysisOutcome: "not-assessed",
+        attemptType: activeCategory.attempt ?? "primary",
+        ...(categoryPromptTelemetry ? { categoryPromptTelemetry } : {}),
+      },
+    };
+  };
   try {
+    if (groundedCategoryAnalysis && !hasUsableCategoryPacketText(categoryAnalysisPacket)) {
+      return recordUnissuedEmpty();
+    }
+    if (groundedCategoryAnalysis && signal?.aborted) throw createResearchCancellationError();
+    if (groundedCategoryAnalysis
+      && Number.isFinite(activeCategory.deadlineAt)
+      && Date.now() + Math.max(0, activeCategory.minimumResponseMs ?? PROVIDER_RESPONSE_RESERVE_MS)
+        >= activeCategory.deadlineAt) {
+      throw createResearchBudgetError("provider-deadline-admission");
+    }
+    queuedAtMs = Date.now();
+    providerAttempt.queuedAt = new Date(queuedAtMs).toISOString();
+    providerAttempt.requestState = "queued";
+    providerAttempt.outcome = "cancelled-before-issue";
     response = await providerGate.run(async () => {
       try {
         const upstream = await fetchImpl(OPENAI_RESPONSES_URL, {
@@ -6313,21 +6478,37 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
       }
     }, {
       signal,
-      estimatedTokens: providerAttempt.reservedTokens,
+      estimatedTokens: providerAttempt.requestedTokenReservation,
       deadlineAt: activeCategory?.deadlineAt ?? null,
       minimumResponseMs: activeCategory?.minimumResponseMs ?? PROVIDER_RESPONSE_RESERVE_MS,
       onStart: (admission = {}) => {
-        issuedAtMs = Date.now();
-        providerAttempt.requestState = "issued";
-        providerAttempt.issuedAt = new Date(issuedAtMs).toISOString();
-        providerAttempt.queueWaitMs = admission.queueWaitMs ?? Math.max(0, issuedAtMs - queuedAtMs);
+        providerAttempt.queueWaitMs = admission.queueWaitMs
+          ?? Math.max(0, Date.now() - (queuedAtMs ?? Date.now()));
         providerAttempt.tpmWaitMs = admission.tpmWaitMs ?? 0;
         providerAttempt.rateLimitWaitMs = Math.max(
           providerAttempt.rateLimitWaitMs ?? 0,
           admission.rateLimitWaitMs ?? 0,
         );
         providerAttempt.reservedTokens = admission.reservedTokens ?? providerAttempt.reservedTokens;
+        providerAttempt.reservationDisposition = "reserved";
         providerAttempt.providerTpmCeiling = admission.tokensPerMinute ?? null;
+        if (groundedCategoryAnalysis && !hasUsableCategoryPacketText(categoryAnalysisPacket)) {
+          const error = new Error("Category packet has no admitted passage text.");
+          error.name = "UnissuedEmptyCategoryPacketError";
+          error.researchErrorType = "unissued-empty-category-input";
+          throw error;
+        }
+        if (groundedCategoryAnalysis && signal?.aborted) throw createResearchCancellationError();
+        if (groundedCategoryAnalysis
+          && Number.isFinite(activeCategory.deadlineAt)
+          && Date.now() + Math.max(0, activeCategory.minimumResponseMs ?? PROVIDER_RESPONSE_RESERVE_MS)
+            >= activeCategory.deadlineAt) {
+          throw createResearchBudgetError("provider-deadline-admission");
+        }
+        issuedAtMs = Date.now();
+        providerAttempt.requestState = "issued";
+        providerAttempt.issueOutcome = groundedCategoryAnalysis ? "issued-with-text" : "issued";
+        providerAttempt.issuedAt = new Date(issuedAtMs).toISOString();
         activeCategory?.claimTrace?.recordProviderEvent?.({
           state: "issued-to-provider",
           runId: activeCategory.runCorrelationId,
@@ -6335,17 +6516,18 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
           project,
           categoryId: activeCategory.categoryId,
           attemptType: activeCategory.attempt,
-          attemptId: preparedProviderEvent?.attemptId,
+          attemptId: providerAttempt.attemptId,
           promptVersion: `${RESEARCH_PROJECT_PROMPT_VERSION}:${activeCategory.categoryId ?? "project"}`,
           schemaVersion: identityOnly ? "identity-response-v1"
             : `safeloc-research-schema-v${RESEARCH_POLICY_VERSION}:${activeCategory.categoryId}`,
           queuedAt: providerAttempt.queuedAt,
+          preparedAt,
           providerCallStartedAt: providerAttempt.issuedAt,
           bodyBytes: providerAttempt.requestBodyBytes,
           requestBodySha256: createHash("sha256").update(requestBody).digest("hex"),
           estimatedInputTokens: providerAttempt.estimatedInputTokens,
           packet: categoryAnalysisPacket,
-          outcome: "issued",
+          outcome: providerAttempt.issueOutcome,
         });
         activeCategory?.claimTrace?.recordAnalysisPacket?.({
           categoryId: activeCategory.categoryId,
@@ -6361,6 +6543,7 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
       },
     });
   } catch (error) {
+    if (error?.researchErrorType === "unissued-empty-category-input") return recordUnissuedEmpty();
     const finishedAtMs = Date.now();
     providerAttempt.finishedAt = new Date(finishedAtMs).toISOString();
     providerAttempt.elapsedMs = issuedAtMs === null ? null : Math.max(0, finishedAtMs - issuedAtMs);
@@ -6375,23 +6558,35 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
       || error?.name === "AbortError"
       || signal?.aborted === true;
     providerAttempt.requestState = issuedAtMs === null
-      ? "cancelled-before-issue"
+      ? cancelled ? "cancelled-before-issue" : "failed-before-issue"
       : cancelled ? "cancelled-after-issue" : "failed";
+    providerAttempt.issueOutcome = issuedAtMs === null
+      ? "failed-before-issue"
+      : groundedCategoryAnalysis ? "issued-with-text" : "issued";
     providerAttempt.outcome = issuedAtMs === null
-      ? "cancelled-before-issue"
+      ? cancelled ? "cancelled-before-issue" : "failed"
       : cancelled ? "cancelled-after-issue" : "failed";
+    if (issuedAtMs === null) {
+      const reservationWasAcquired = providerAttempt.reservationDisposition === "reserved";
+      providerAttempt.reservedTokens = 0;
+      providerAttempt.reservationDisposition = reservationWasAcquired
+        ? "refunded-before-issue"
+        : "not-reserved";
+    }
     if (issuedAtMs === null) activeCategory?.claimTrace?.recordProviderEvent?.({
-      state: cancelled ? "cancelled-before-issue" : "prepared-but-unissued",
+      state: "failed-before-issue",
       runId: activeCategory.runCorrelationId,
       projectId: project.projectId ?? project.id ?? project.name,
       project,
       categoryId: activeCategory.categoryId,
       attemptType: activeCategory.attempt,
-      attemptId: preparedProviderEvent?.attemptId,
+      attemptId: providerAttempt.attemptId,
       promptVersion: `${RESEARCH_PROJECT_PROMPT_VERSION}:${activeCategory.categoryId ?? "project"}`,
       schemaVersion: identityOnly ? "identity-response-v1"
         : `safeloc-research-schema-v${RESEARCH_POLICY_VERSION}:${activeCategory.categoryId}`,
       queuedAt: providerAttempt.queuedAt,
+      preparedAt,
+      issueOutcome: providerAttempt.issueOutcome,
       bodyBytes: providerAttempt.requestBodyBytes,
       estimatedInputTokens: providerAttempt.estimatedInputTokens,
       packet: categoryAnalysisPacket,
@@ -7063,10 +7258,16 @@ const RESEARCH_OUTCOMES = Object.freeze({
   WITH_EVIDENCE: "complete-with-eligible-evidence",
   NO_ELIGIBLE: "complete-no-eligible-evidence",
   TECHNICAL: "incomplete-technical-limitation",
+  NOT_ASSESSED: "incomplete-not-assessed",
 });
 
-function classifyCanonicalResearchOutcome(eligibleEvidenceCount, technicalReasonCodes = []) {
+function classifyCanonicalResearchOutcome(
+  eligibleEvidenceCount,
+  technicalReasonCodes = [],
+  notAssessedCategoryCount = 0,
+) {
   if (technicalReasonCodes.length > 0) return RESEARCH_OUTCOMES.TECHNICAL;
+  if (notAssessedCategoryCount > 0) return RESEARCH_OUTCOMES.NOT_ASSESSED;
   return eligibleEvidenceCount > 0
     ? RESEARCH_OUTCOMES.WITH_EVIDENCE
     : RESEARCH_OUTCOMES.NO_ELIGIBLE;
@@ -7944,7 +8145,7 @@ async function runValidatedResearch(project, {
           const issue = async () => {
             providerRequestCount += 1;
             try {
-              return await researchProjectWithWebSearch(
+              const result = await researchProjectWithWebSearch(
                 project,
                 apiKey,
                 fetchImpl,
@@ -7952,9 +8153,16 @@ async function runValidatedResearch(project, {
                 requestOptions,
                 providerGate,
               );
+              if (!result.coverage?.providerAttempt?.issuedAt) {
+                providerRequestCount = Math.max(0, providerRequestCount - 1);
+              }
+              return result;
             } catch (error) {
               observedToolCallCount += Number.isInteger(error?.toolCallCount) ? error.toolCallCount : 0;
               if (error?.providerAttempt) providerAttempts.push(error.providerAttempt);
+              if (!error?.providerAttempt?.issuedAt) {
+                providerRequestCount = Math.max(0, providerRequestCount - 1);
+              }
               error.providerRequestCount = providerRequestCount;
               error.providerAttempts = [...providerAttempts];
               throw error;
@@ -7972,6 +8180,16 @@ async function runValidatedResearch(project, {
           }
         };
         const validateCategoryResult = (result) => {
+          if (result.coverage?.analysisState === "not-assessed-no-admitted-passage-text") {
+            claimTrace?.recordUnavailableStructuredResponse?.({
+              categoryId,
+              providerResponseId: null,
+              expectedEvidenceIds: category?.evidenceIds ?? [],
+              state: "not-issued",
+              reasonCode: "no-admitted-passage-text",
+            });
+            return;
+          }
           const responseId = result.coverage?.providerResponseId
             ?? result.coverage?.providerAttempts?.find((attempt) => attempt?.providerResponseId)?.providerResponseId
             ?? result.coverage?.providerAttempt?.providerResponseId
@@ -8406,20 +8624,31 @@ async function runValidatedResearch(project, {
              && Date.now() + 1_000 < runStartedAtMs + researchTimeoutMs
              && authorizeAdditionalProviderRequest?.() === true
            ) {
-             const supplementalAnalysis = await retry429Once(() => {
+              const supplementalAnalysis = await retry429Once(async () => {
                providerRequestCount += 1;
-               return researchProjectWithWebSearch(
-               project,
-               apiKey,
-               fetchImpl,
-               controller.signal,
-               {
-                 ...activeCategory,
-                 webSearchEnabled: false,
-                 groundedSources: accessedSources,
-               },
-               providerGate,
-               );
+                try {
+                  const result = await researchProjectWithWebSearch(
+                    project,
+                    apiKey,
+                    fetchImpl,
+                    controller.signal,
+                    {
+                      ...activeCategory,
+                      webSearchEnabled: false,
+                      groundedSources: accessedSources,
+                    },
+                    providerGate,
+                  );
+                  if (!result.coverage?.providerAttempt?.issuedAt) {
+                    providerRequestCount = Math.max(0, providerRequestCount - 1);
+                  }
+                  return result;
+                } catch (error) {
+                  if (!error?.providerAttempt?.issuedAt) {
+                    providerRequestCount = Math.max(0, providerRequestCount - 1);
+                  }
+                  throw error;
+                }
              }, authorizeAdditionalProviderRequest);
               validateCategoryResult(supplementalAnalysis);
              categoryResult = supplementalAnalysis;
@@ -8429,60 +8658,72 @@ async function runValidatedResearch(project, {
            ?? categoryResult.coverage?.providerAttempts?.find((attempt) => attempt?.providerResponseId)?.providerResponseId
            ?? categoryResult.coverage?.providerAttempt?.providerResponseId
            ?? null;
-          const parsedCategoryResearch = parseResearchResponse(
-            categoryResult.research,
-            accessedSources,
-            new Date().toISOString().slice(0, 10),
-            categoryResult.coverage,
-            projectClaimValidationContext(project),
-            category?.evidenceIds ?? [],
-            {
-              claimTrace,
-              categoryId,
-              providerResponseId: categoryResponseId,
-              attemptType: categoryResult.coverage?.attemptType ?? "primary",
+          const noAdmittedPassageText = categoryResult.coverage?.analysisState
+            === "not-assessed-no-admitted-passage-text";
+          const parsedCategoryResearch = noAdmittedPassageText
+            ? categoryResult.research
+            : parseResearchResponse(
+              categoryResult.research,
+              accessedSources,
+              new Date().toISOString().slice(0, 10),
+              categoryResult.coverage,
+              projectClaimValidationContext(project),
+              category?.evidenceIds ?? [],
+              {
+                claimTrace,
+                categoryId,
+                providerResponseId: categoryResponseId,
+                attemptType: categoryResult.coverage?.attemptType ?? "primary",
+                runId: runCorrelationId,
+                projectId: project.projectId ?? project.id ?? project.name,
+                requestedProject: project,
+              },
+            );
+          if (!noAdmittedPassageText) {
+            claimTrace?.recordTransformation?.({
               runId: runCorrelationId,
               projectId: project.projectId ?? project.id ?? project.name,
-              requestedProject: project,
-            },
-          );
-         claimTrace?.recordTransformation?.({
-          runId: runCorrelationId,
-          projectId: project.projectId ?? project.id ?? project.name,
-          categoryId,
-          attemptType: categoryResult.coverage?.attemptType ?? "primary",
-          providerResponseId: categoryResponseId,
-           stage: "normalization-parsing-mapping",
-           reason: "The category response was normalized against retained receipts and passed through the shared identity and source-mapping functions.",
-          before: categoryResult.research,
-           after: parsedCategoryResearch,
-        });
-          const normalizedCategoryResearch = containResearchResult(parsedCategoryResearch);
-          claimTrace?.recordTransformation?.({
-           runId: runCorrelationId,
-           projectId: project.projectId ?? project.id ?? project.name,
-           categoryId,
-           attemptType: categoryResult.coverage?.attemptType ?? "primary",
-           providerResponseId: categoryResponseId,
-           stage: "claim-containment",
-           reason: "The normalized category response was passed through the existing containment policy.",
-           before: parsedCategoryResearch,
-           after: normalizedCategoryResearch,
-          });
-         claimTrace?.recordMappingReceipts?.({
-          runId: runCorrelationId,
-          projectId: project.projectId ?? project.id ?? project.name,
-          categoryId,
-          attemptType: categoryResult.coverage?.attemptType ?? "primary",
-          evidence: normalizedCategoryResearch.evidence,
-        });
-         claimTrace?.recordValidatedEvidence?.({
-           categoryId,
-           providerResponseId: categoryResponseId,
-           evidence: normalizedCategoryResearch.evidence,
-          project,
-         });
-        const categoryResolution = categoryResult.coverage?.analysisFailureType
+              categoryId,
+              attemptType: categoryResult.coverage?.attemptType ?? "primary",
+              providerResponseId: categoryResponseId,
+              stage: "normalization-parsing-mapping",
+              reason: "The category response was normalized against retained receipts and passed through the shared identity and source-mapping functions.",
+              before: categoryResult.research,
+              after: parsedCategoryResearch,
+            });
+          }
+          const normalizedCategoryResearch = noAdmittedPassageText
+            ? parsedCategoryResearch
+            : containResearchResult(parsedCategoryResearch);
+          if (!noAdmittedPassageText) {
+            claimTrace?.recordTransformation?.({
+              runId: runCorrelationId,
+              projectId: project.projectId ?? project.id ?? project.name,
+              categoryId,
+              attemptType: categoryResult.coverage?.attemptType ?? "primary",
+              providerResponseId: categoryResponseId,
+              stage: "claim-containment",
+              reason: "The normalized category response was passed through the existing containment policy.",
+              before: parsedCategoryResearch,
+              after: normalizedCategoryResearch,
+            });
+            claimTrace?.recordMappingReceipts?.({
+              runId: runCorrelationId,
+              projectId: project.projectId ?? project.id ?? project.name,
+              categoryId,
+              attemptType: categoryResult.coverage?.attemptType ?? "primary",
+              evidence: normalizedCategoryResearch.evidence,
+            });
+            claimTrace?.recordValidatedEvidence?.({
+              categoryId,
+              providerResponseId: categoryResponseId,
+              evidence: normalizedCategoryResearch.evidence,
+              project,
+            });
+          }
+        const categoryResolution = noAdmittedPassageText
+          ? { resolved: false, unresolvedEvidenceIds: [...(category?.evidenceIds ?? [])] }
+          : categoryResult.coverage?.analysisFailureType
           ? { resolved: false, unresolvedEvidenceIds: category.evidenceIds.length ? [...category.evidenceIds] : [category.categoryId] }
           : categoryResearchIsResolved(
           category,
@@ -8494,7 +8735,8 @@ async function runValidatedResearch(project, {
         return {
           candidates: accessedSources,
           eligibleCount,
-          gapDrivenFollowUp: !categoryResolution.resolved
+          gapDrivenFollowUp: !noAdmittedPassageText
+            && !categoryResolution.resolved
             && !repairAttempted
             && !categoryResult.coverage?.providerLimitations?.some((message) => /structured category analysis failed/i.test(message)),
           followUpQuery: buildCategoryFollowUpQuery(project, category, categoryResolution.unresolvedEvidenceIds),
@@ -8610,10 +8852,15 @@ async function runValidatedResearch(project, {
       execution?.primaryAnalysisCompleted === true
       && execution?.followUpAttemptState === "failed");
     const technicalReasonCodes = technicalReasonCodesForRun({ orchestration, deadlineState });
+    const notAssessedCategoryCount = categoryExecutions.filter((execution) =>
+      execution?.state === "Not assessed"
+      || execution?.analysisOutcome === "not-assessed").length;
     const terminalState = technicalReasonCodes.length
       ? RESEARCH_OUTCOMES.TECHNICAL
-      : RESEARCH_OUTCOMES.NO_ELIGIBLE;
-    const researchStatus = terminalState === RESEARCH_OUTCOMES.TECHNICAL ? "partial" : "completed";
+      : notAssessedCategoryCount > 0
+        ? RESEARCH_OUTCOMES.NOT_ASSESSED
+        : RESEARCH_OUTCOMES.NO_ELIGIBLE;
+    const researchStatus = terminalState === RESEARCH_OUTCOMES.NO_ELIGIBLE ? "completed" : "partial";
     const providerAttemptsForRun = [...new Set([
       ...(googleDiscovery.providerAttempt ? [googleDiscovery.providerAttempt] : []),
       ...analysisTracker.attempts,
@@ -8745,19 +8992,31 @@ async function runValidatedResearch(project, {
         projectClaimValidationContext(project),
       );
       const eligibleEvidenceCount = parsed.evidence.filter((item) => item.eligibleForModel === true).length;
-      const canonicalOutcome = classifyCanonicalResearchOutcome(eligibleEvidenceCount, technicalReasonCodes);
+      const canonicalNotAssessedCount = parsed.researchAudit.categories.filter((category) =>
+        category.state === "Not assessed" || category.analysisOutcome === "not-assessed").length;
+      const canonicalOutcome = classifyCanonicalResearchOutcome(
+        eligibleEvidenceCount,
+        technicalReasonCodes,
+        canonicalNotAssessedCount,
+      );
+      const outcomeReasonCodes = canonicalOutcome === RESEARCH_OUTCOMES.NOT_ASSESSED
+        ? ["no-admitted-passage-text"]
+        : technicalReasonCodes;
       parsed.researchOutcome = {
         state: canonicalOutcome,
         eligibleEvidenceCount,
-        reasonCodes: technicalReasonCodes,
+        reasonCodes: outcomeReasonCodes,
       };
       parsed.researchAudit.terminalState = canonicalOutcome;
-      parsed.researchAudit.terminalReasonCodes = technicalReasonCodes;
+      parsed.researchAudit.terminalReasonCodes = outcomeReasonCodes;
       parsed.researchAudit.candidateLineage = candidateLineageForRun(parsed, orchestration);
       if (retrievalOnly) {
         parsed.researchAudit.retrievalOnlyStop = "discovery-prefetch-complete";
       }
-      parsed.researchStatus = canonicalOutcome === RESEARCH_OUTCOMES.TECHNICAL ? researchStatus : "completed";
+      parsed.researchStatus = canonicalOutcome === RESEARCH_OUTCOMES.TECHNICAL
+        || canonicalOutcome === RESEARCH_OUTCOMES.NOT_ASSESSED
+        ? "partial"
+        : "completed";
       if (canonicalOutcome === RESEARCH_OUTCOMES.TECHNICAL) {
         const primaryTechnicalReason = technicalReasonCodes[0] ?? "upstream";
         const malformedResponseObserved = technicalReasonCodes.includes("malformed-response")

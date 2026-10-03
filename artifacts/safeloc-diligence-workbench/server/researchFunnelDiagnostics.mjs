@@ -405,8 +405,10 @@ export function createResearchFunnelDiagnostics({ runId = null, project = {} } =
       attemptId,
       promptVersion: safeText(details.promptVersion, 80),
       schemaVersion: safeText(details.schemaVersion, 80),
+      preparedAt: safeText(details.preparedAt, 80),
       queuedAt: safeText(details.queuedAt, 80),
       providerCallStartedAt: safeText(details.providerCallStartedAt, 80),
+      issueOutcome: safeText(details.issueOutcome, 40),
       bodyBytes: Number.isInteger(details.bodyBytes) ? details.bodyBytes : null,
       requestBodySha256: /^[a-f0-9]{64}$/i.test(details.requestBodySha256 ?? "")
         ? details.requestBodySha256.toLowerCase() : null,

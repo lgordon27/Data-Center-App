@@ -45,23 +45,27 @@ export declare function calculateSourceSupportConfidence(options: {
   conflictSummary?: string;
 }): number;
 export declare function extractResponseOutputText(body: unknown): string | null;
-export declare function researchProjectWithWebSearch(project: { name: string; location: string }, apiKey: string, fetchImpl: typeof fetch, signal: AbortSignal): Promise<{
+export declare function researchProjectWithWebSearch(
+  project: { name: string; location: string; projectId?: string; id?: string },
+  apiKey: string,
+  fetchImpl: typeof fetch,
+  signal?: AbortSignal,
+  activeCategory?: Record<string, unknown>,
+  providerGate?: ReturnType<typeof createResearchProviderGate>,
+): Promise<{
   research: Record<string, unknown>;
   sources: Array<Record<string, unknown>>;
-  coverage: {
-    searchedDomains: string[];
-    failedDomains: string[];
-    retrievedSourceCount: number;
-    searchTerms: string[];
-    searchTermsSource: "tool-observed" | "ai-reported" | "unavailable";
-  };
+  coverage: Record<string, unknown>;
 }>;
 export declare function createResearchProjectRateLimiter(options?: { limit?: number; windowMs?: number; now?: () => number }): {
   allow(req: unknown): { allowed: boolean; retryAfterSeconds: number };
 };
-export declare function createResearchProviderGate(options?: { limit?: number }): {
-  run<T>(task: () => Promise<T>, options?: { signal?: AbortSignal; onStart?: () => void }): Promise<T>;
-  snapshot(): { active: number; queued: number; blockedUntil: number; limit: number };
+export declare function createResearchProviderGate(options?: Record<string, unknown>): {
+  run<T>(
+    task: () => Promise<T>,
+    options?: Record<string, unknown> & { signal?: AbortSignal; onStart?: (admission?: Record<string, unknown>) => void },
+  ): Promise<T>;
+  snapshot(): { active: number; queued: number; blockedUntil: number; limit: number; reservedTokensInWindow?: number };
 };
 export declare function handleResearchProjectRequest(
   req: unknown,

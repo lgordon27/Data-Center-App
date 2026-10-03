@@ -20,3 +20,9 @@ Retained sources and an empty modeled-evidence inventory must not override an as
 **Why:** Fixing an internal identity exception exposed a second failure: identity has no financial slots, so an “all slots eligible” check could mark it Complete even when every provider assessment failed. Existing failure/429 controls must remain stronger than that vacuous check.
 
 **How to apply:** Give explicit technical failure precedence in category status and retain independent provider-failure and unissued-analysis regression controls.
+
+A category with no usable retained passage text after admission, deduplication, windowing, and token fitting is not assessed, even when discovery ran. It must not produce a model finding, zero value, completed assessment, or conclusive no-evidence state.
+
+**Why:** Discovery can complete without producing an admitted passage, and token fitting can remove the last passage after retrieval. Treating either case as a negative finding hides that no grounded assessment occurred.
+
+**How to apply:** Skip category provider admission for empty packets, recheck immediately before issue, and preserve the not-assessed state through the audit and user-facing explanation. Account for any completed discovery request separately.

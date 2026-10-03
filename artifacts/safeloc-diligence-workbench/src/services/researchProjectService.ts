@@ -319,7 +319,8 @@ export type RetainedResearchFindingAudit = {
 export type ResearchOutcomeState =
   | "complete-with-eligible-evidence"
   | "complete-no-eligible-evidence"
-  | "incomplete-technical-limitation";
+  | "incomplete-technical-limitation"
+  | "incomplete-not-assessed";
 
 export type ResearchStatusPresentation = {
   state: ResearchOutcomeState | null;
@@ -376,6 +377,14 @@ export function getResearchStatusPresentation({
       mode: "research-incomplete",
     };
   }
+  if (state === "incomplete-not-assessed") {
+    return {
+      state,
+      label: "Research incomplete · category not assessed",
+      proposalReview: false,
+      mode: "research-incomplete",
+    };
+  }
   if (researchStatus === "researching") {
     return { state, label: "Research in progress", proposalReview: false, mode: researchMode };
   }
@@ -399,7 +408,7 @@ export function getResearchStatusPresentation({
   };
 }
 
-export type ResearchCategoryState = "Complete" | "Partial" | "No eligible evidence" | "Provider failure" | "Timed out" | "Not searched";
+export type ResearchCategoryState = "Complete" | "Partial" | "No eligible evidence" | "Not assessed" | "Provider failure" | "Timed out" | "Not searched";
 export type ResearchAuditStageCounts = {
   normalized: number;
   accessed: number;
@@ -430,6 +439,7 @@ export type ResearchProviderUsage = {
   totalTokens: number | null;
 };
 export type ResearchProviderAttempt = {
+  attemptId?: string | null;
   categoryId: string | null;
   attemptType: "primary" | "repair" | "follow-up";
   queuedAt: string | null;
@@ -438,12 +448,19 @@ export type ResearchProviderAttempt = {
   queueWaitMs: number | null;
   elapsedMs: number | null;
   status: number | null;
-  requestState?: "reserved" | "queued" | "issued" | "completed" | "failed" | "cancelled-before-issue";
-  outcome: "completed" | "failed" | "cancelled" | "cancelled-before-issue";
+  requestState?: "prepared" | "reserved" | "queued" | "issued" | "completed" | "failed" | "cancelled-before-issue" | "cancelled-after-issue" | "unissued-empty" | "failed-before-issue";
+  issueOutcome?: "prepared" | "unissued-empty" | "issued-with-text" | "issued" | "failed-before-issue";
+  outcome: "completed" | "failed" | "cancelled" | "cancelled-before-issue" | "cancelled-after-issue" | "not-assessed";
+  projectId?: string | null;
+  runId?: string | null;
+  preparedAt?: string | null;
   requestedOutputTokens: number;
   requestBodyBytes: number;
   estimatedInputTokens?: number;
+  requestedTokenReservation?: number;
   reservedTokens?: number;
+  reservationDisposition?: "not-reserved" | "reserved" | "refunded-before-issue";
+  preparedRequestBodyBytes?: number;
   providerTpmCeiling?: number;
   tpmWaitMs?: number;
   rateLimitWaitMs?: number;
@@ -549,7 +566,7 @@ export type ResearchCategoryAudit = {
   }>;
   state: ResearchCategoryState;
   executionOutcome?: "completed" | "failed" | "skipped" | "not-run";
-  analysisOutcome?: "completed" | "failed" | "skipped" | "not-run";
+  analysisOutcome?: "completed" | "failed" | "skipped" | "not-run" | "not-assessed";
   notRunReason?: string | null;
   searchCompleteness?: "observed" | "unavailable" | "incomplete";
   searchCompletenessLabel?: "SEARCH INCOMPLETE" | null;
@@ -671,6 +688,7 @@ export type ResearchAuditOutcomeMetrics = {
     conclusiveNoEvidence: number;
     technicalIncomplete: number;
     notSearched: number;
+    notAssessed: number;
   };
   exclusions: {
     blocked: number;
@@ -1412,7 +1430,11 @@ function parseProviderAttempts(value: unknown): ResearchProviderAttempt[] {
     const usage = isRecord(attempt.usage) ? attempt.usage : null;
     const nullableNumber = (candidate: unknown) => typeof candidate === "number" && Number.isFinite(candidate) ? candidate : null;
     return {
+      attemptId: isNonEmptyString(attempt.attemptId) ? attempt.attemptId : null,
       categoryId: isNonEmptyString(attempt.categoryId) ? attempt.categoryId : null,
+      projectId: isNonEmptyString(attempt.projectId) ? attempt.projectId : null,
+      runId: isNonEmptyString(attempt.runId) ? attempt.runId : null,
+      preparedAt: isNonEmptyString(attempt.preparedAt) ? attempt.preparedAt : null,
       attemptType: ["primary", "repair", "follow-up"].includes(String(attempt.attemptType))
         ? attempt.attemptType as ResearchProviderAttempt["attemptType"]
         : "primary",
@@ -1422,16 +1444,23 @@ function parseProviderAttempts(value: unknown): ResearchProviderAttempt[] {
       queueWaitMs: nullableNumber(attempt.queueWaitMs),
       elapsedMs: nullableNumber(attempt.elapsedMs),
       status: nullableNumber(attempt.status),
-      requestState: ["reserved", "queued", "issued", "completed", "failed", "cancelled-before-issue"].includes(String(attempt.requestState))
+      requestState: ["prepared", "reserved", "queued", "issued", "completed", "failed", "cancelled-before-issue", "cancelled-after-issue", "unissued-empty", "failed-before-issue"].includes(String(attempt.requestState))
         ? attempt.requestState as ResearchProviderAttempt["requestState"]
         : undefined,
-      outcome: ["completed", "failed", "cancelled", "cancelled-before-issue"].includes(String(attempt.outcome))
+      issueOutcome: ["prepared", "unissued-empty", "issued-with-text", "issued", "failed-before-issue"].includes(String(attempt.issueOutcome))
+        ? attempt.issueOutcome as ResearchProviderAttempt["issueOutcome"]
+        : undefined,
+      reservationDisposition: ["not-reserved", "reserved", "refunded-before-issue"].includes(String(attempt.reservationDisposition))
+        ? attempt.reservationDisposition as ResearchProviderAttempt["reservationDisposition"]
+        : undefined,
+      outcome: ["completed", "failed", "cancelled", "cancelled-before-issue", "cancelled-after-issue", "not-assessed"].includes(String(attempt.outcome))
         ? attempt.outcome as ResearchProviderAttempt["outcome"]
         : "failed",
       requestedOutputTokens: Math.max(0, Number(attempt.requestedOutputTokens) || 0),
       requestBodyBytes: Math.max(0, Number(attempt.requestBodyBytes) || 0),
       ...parseNonnegativeTelemetry(attempt, [
-        "estimatedInputTokens", "reservedTokens", "providerTpmCeiling", "tpmWaitMs", "rateLimitWaitMs", "retryCount",
+        "estimatedInputTokens", "requestedTokenReservation", "reservedTokens", "preparedRequestBodyBytes",
+        "providerTpmCeiling", "tpmWaitMs", "rateLimitWaitMs", "retryCount",
       ]),
       usage: usage ? {
         inputTokens: nullableNumber(usage.inputTokens),
@@ -1500,7 +1529,7 @@ function parseResearchAuditOutcomeMetrics(value: unknown): ResearchAuditOutcomeM
     uniqueRetainedPassages: count(value.uniqueRetainedPassages),
     eligibleClaims: count(value.eligibleClaims),
     sourceFamilyCounts,
-    categoryCompletion: {
+      categoryCompletion: {
       requested: count(categoryCompletion.requested),
       executed: count(categoryCompletion.executed),
       complete: count(categoryCompletion.complete),
@@ -1508,6 +1537,7 @@ function parseResearchAuditOutcomeMetrics(value: unknown): ResearchAuditOutcomeM
       conclusiveNoEvidence: count(categoryCompletion.conclusiveNoEvidence),
       technicalIncomplete: count(categoryCompletion.technicalIncomplete),
       notSearched: count(categoryCompletion.notSearched),
+      notAssessed: count(categoryCompletion.notAssessed),
     },
     exclusions: {
       blocked: count(exclusions.blocked),
@@ -1519,7 +1549,7 @@ function parseResearchAuditOutcomeMetrics(value: unknown): ResearchAuditOutcomeM
 
 function parseResearchAudit(value: unknown): ResearchAudit | undefined {
   if (!isRecord(value) || !Array.isArray(value.categories)) return undefined;
-  const states: ResearchCategoryState[] = ["Complete", "Partial", "No eligible evidence", "Provider failure", "Timed out", "Not searched"];
+  const states: ResearchCategoryState[] = ["Complete", "Partial", "No eligible evidence", "Not assessed", "Provider failure", "Timed out", "Not searched"];
   const categories = value.categories.flatMap((candidate) => {
     if (!isRecord(candidate) || !isNonEmptyString(candidate.categoryId) || !isNonEmptyString(candidate.label)) return [];
     const counts = isRecord(candidate.stageCounts) ? candidate.stageCounts : {};
@@ -1529,7 +1559,7 @@ function parseResearchAudit(value: unknown): ResearchAudit | undefined {
       label: candidate.label,
       ...(["completed", "failed", "skipped", "not-run"].includes(String(candidate.executionOutcome))
         ? { executionOutcome: candidate.executionOutcome as ResearchCategoryAudit["executionOutcome"] } : {}),
-      ...(["completed", "failed", "skipped", "not-run"].includes(String(candidate.analysisOutcome))
+      ...(["completed", "failed", "skipped", "not-run", "not-assessed"].includes(String(candidate.analysisOutcome))
         ? { analysisOutcome: candidate.analysisOutcome as ResearchCategoryAudit["analysisOutcome"] } : {}),
       ...(candidate.notRunReason === null || (typeof candidate.notRunReason === "string"
         && /^[a-z0-9-]{1,80}$/i.test(candidate.notRunReason))
@@ -1706,7 +1736,7 @@ function parseResearchAudit(value: unknown): ResearchAudit | undefined {
     ...(parseResearchAuditOutcomeMetrics(value.outcomeMetrics)
       ? { outcomeMetrics: parseResearchAuditOutcomeMetrics(value.outcomeMetrics) }
       : {}),
-    ...(["complete-with-eligible-evidence", "complete-no-eligible-evidence", "incomplete-technical-limitation"].includes(String(value.terminalState))
+    ...(["complete-with-eligible-evidence", "complete-no-eligible-evidence", "incomplete-technical-limitation", "incomplete-not-assessed"].includes(String(value.terminalState))
       ? { terminalState: value.terminalState as ResearchAudit["terminalState"] }
       : {}),
     terminalReasonCodes: Array.isArray(value.terminalReasonCodes) ? value.terminalReasonCodes.filter(isNonEmptyString).slice(0, 16) : [],
@@ -2058,6 +2088,7 @@ function parseResponse(
   const retrievedLeads = containedEvidence.filter((item) => item.researchState === "retrieved-lead" || item.researchState === "quarantined");
   const terminalOutcome = isRecord(value.researchOutcome) ? value.researchOutcome.state : null;
   const outcomeRequiresIncompleteMode = terminalOutcome === "incomplete-technical-limitation"
+    || terminalOutcome === "incomplete-not-assessed"
     || value.researchStatus === "timed-out"
     || value.researchStatus === "failed"
     || value.researchStatus === "cancelled";
@@ -2085,7 +2116,7 @@ function parseResponse(
       ? { researchStatus: value.researchStatus }
       : {}),
     ...(isRecord(value.researchOutcome)
-      && ["complete-with-eligible-evidence", "complete-no-eligible-evidence", "incomplete-technical-limitation"].includes(String(value.researchOutcome.state))
+      && ["complete-with-eligible-evidence", "complete-no-eligible-evidence", "incomplete-technical-limitation", "incomplete-not-assessed"].includes(String(value.researchOutcome.state))
       ? {
         researchOutcome: {
           state: value.researchOutcome.state as ResearchOutcomeState,

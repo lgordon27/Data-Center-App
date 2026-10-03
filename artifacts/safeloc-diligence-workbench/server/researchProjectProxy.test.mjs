@@ -1507,19 +1507,418 @@ test("omits quantity and adjacent qualification sentences as one whole group und
   const baselineEstimate = baseline.result.coverage.categoryPromptTelemetry.estimatedInputTokens;
   const tinyInputCap = baselineEstimate + 40;
   const bounded = await withResearchCategoryInputTokenCap(tinyInputCap, () => run([source]));
-  const userContent = bounded.requestBody.input.find((entry) => entry.role === "user").content;
-  const presentSentences = protectedSentences.map((sentence) => userContent.includes(sentence));
 
-  assert.deepEqual(presentSentences, [false, false, false],
-    "the quantity, its negation, and its facility/phase scope must be omitted together when their complete context window cannot fit");
-  assert.ok(protectedSentences.every((sentence) => !userContent.includes(sentence.slice(0, 44))),
-    "an over-cap candidate must not leave a clipped sentence prefix in the request");
+  assert.equal(bounded.requestBody, undefined,
+    "when the whole qualified passage cannot fit, token fitting must leave no partial packet to issue");
+  assert.equal(bounded.result.coverage.providerRequestCount, 0);
+  assert.equal(bounded.result.coverage.analysisState, "not-assessed-no-admitted-passage-text");
+  assert.equal(bounded.result.coverage.providerAttempt.issueOutcome, "unissued-empty");
   const telemetry = bounded.result.coverage.categoryPromptTelemetry;
   assert.equal(telemetry.inputTokenCap, tinyInputCap);
   assert.equal(telemetry.omittedPassageCount, 1);
   assert.equal(telemetry.windowedPassageCount, 1);
   assert.ok(telemetry.omissionReasons.includes("input-cap"));
   assert.equal(telemetry.outcome, "capped");
+});
+
+test("skips grounded category requests with no retained text and preserves the discovery path", async () => {
+  const project = { projectId: "project-atlas", name: "Project Atlas", location: "Taylor County, Texas" };
+  const gate = createResearchProviderGate({
+    tokensPerMinute: 30_000,
+    tokenWindowMs: OFFLINE_PROVIDER_TOKEN_WINDOW_MS,
+  });
+  const calls = [];
+  const tracker = { inFlight: 0, peak: 0, attempts: [] };
+  const trace = {
+    recordProviderEvent: (event) => {
+      calls.push(event);
+      return { attemptId: `attempt-${calls.length}` };
+    },
+    recordPassageSelection: () => {},
+  };
+  let providerCalls = 0;
+  const skipped = await researchProjectWithWebSearch(
+    project,
+    "fixture-provider-token",
+    async () => {
+      providerCalls += 1;
+      return singleCallResponse(validResearchResponse());
+    },
+    undefined,
+    {
+      categoryId: "grid",
+      runCorrelationId: "run-empty-grid",
+      attempt: "primary",
+      evidenceIds: ["grid_interconnection"],
+      webSearchEnabled: false,
+      groundedSources: [],
+      deadlineAt: Date.now() - 10,
+      minimumResponseMs: 0,
+      analysisTracker: tracker,
+      claimTrace: trace,
+    },
+    gate,
+  );
+  assert.equal(providerCalls, 0);
+  assert.equal(skipped.coverage.providerRequestCount, 0);
+  assert.equal(skipped.coverage.analysisOutcome, "not-assessed");
+  assert.equal(skipped.coverage.analysisState, "not-assessed-no-admitted-passage-text");
+  assert.match(skipped.research.projectSummary.description, /Not assessed: no admitted passage text/);
+  assert.deepEqual(skipped.research.evidence, []);
+  assert.equal(skipped.coverage.providerAttempt.issueOutcome, "unissued-empty");
+  assert.equal(skipped.coverage.providerAttempt.requestState, "unissued-empty");
+  assert.equal(skipped.coverage.providerAttempt.projectId, project.projectId);
+  assert.equal(skipped.coverage.providerAttempt.runId, "run-empty-grid");
+  assert.equal(skipped.coverage.providerAttempt.categoryId, "grid");
+  assert.equal(skipped.coverage.providerAttempt.attemptType, "primary");
+  assert.equal(skipped.coverage.providerAttempt.attemptId, "attempt-1");
+  assert.equal(skipped.coverage.providerAttempt.reservedTokens, 0);
+  assert.equal(skipped.coverage.providerAttempt.reservationDisposition, "not-reserved");
+  assert.equal(skipped.coverage.providerAttempt.queuedAt, null);
+  assert.equal(gate.snapshot().queued, 0);
+  assert.equal(gate.snapshot().reservedTokensInWindow, 0);
+  assert.equal(tracker.inFlight, 0);
+  assert.deepEqual(calls.map((event) => event.state), ["prepared", "unissued-empty"]);
+  assert.equal(calls[1].runId, "run-empty-grid");
+  assert.equal(calls[1].projectId, project.projectId);
+  assert.equal(calls[1].categoryId, "grid");
+  assert.equal(calls[1].attemptType, "primary");
+
+  let discoveryCalls = 0;
+  const discovery = await researchProjectWithWebSearch(
+    project,
+    "fixture-provider-token",
+    async () => {
+      discoveryCalls += 1;
+      return singleCallResponse(validResearchResponse());
+    },
+    undefined,
+    { categoryId: "grid", evidenceIds: ["grid_interconnection"], groundedSources: [] },
+    createResearchProviderGate({
+      tokensPerMinute: 30_000,
+      tokenWindowMs: OFFLINE_PROVIDER_TOKEN_WINDOW_MS,
+    }),
+  );
+  assert.equal(discoveryCalls, 1, "provider-backed discovery remains unaffected by the grounded-analysis text rule");
+  assert.equal(discovery.coverage.providerAttempt.issueOutcome, "issued");
+  assert.ok(discovery.coverage.providerAttempt.issuedAt);
+});
+
+test("token fitting that removes every passage skips queueing and retains Task 366 identity admission", async () => {
+  const project = { projectId: "project-atlas", name: "Project Atlas", location: "Taylor County, Texas" };
+  const passage = "Project Atlas is located in Taylor County, Texas. The utility record identifies its interconnection request.";
+  const source = {
+    occurrenceId: "atlas-grid-fit-removal",
+    url: "https://records.example.gov/project-atlas/grid",
+    originalUrl: "https://records.example.gov/project-atlas/grid",
+    canonicalUrl: "https://records.example.gov/project-atlas/grid",
+    title: "Project Atlas utility record",
+    sourceChannel: "county-records",
+    origin: "google-grounded-search",
+    sourceClass: "primary-government",
+    categoryRoutingUnknown: true,
+    accessOutcome: { state: "accessible", reason: "retrieved", passage, physicalOpenIndex: 1 },
+  };
+  const gate = createResearchProviderGate({
+    tokensPerMinute: 30_000,
+    tokenWindowMs: OFFLINE_PROVIDER_TOKEN_WINDOW_MS,
+  });
+  const selections = [];
+  const trace = {
+    recordProviderEvent: (event) => ({ attemptId: event.state }),
+    recordPassageSelection: (selection) => selections.push(selection),
+  };
+  let providerCalls = 0;
+  const run = (groundedSources, claimTrace = undefined) => researchProjectWithWebSearch(
+    project,
+    "fixture-provider-token",
+    async () => {
+      providerCalls += 1;
+      return singleCallResponse(validResearchResponse());
+    },
+    undefined,
+    {
+      categoryId: "grid",
+      runCorrelationId: "run-fit-empty",
+      evidenceIds: ["grid_interconnection"],
+      webSearchEnabled: false,
+      groundedSources,
+      ...(claimTrace ? { claimTrace } : {}),
+    },
+    gate,
+  );
+  const baseline = await withResearchCategoryInputTokenCap(5_000, () => run([]));
+  const result = await withResearchCategoryInputTokenCap(
+    baseline.coverage.categoryPromptTelemetry.estimatedInputTokens,
+    () => run([source], trace),
+  );
+  assert.equal(providerCalls, 0, JSON.stringify({
+    baseline: baseline.coverage.categoryPromptTelemetry,
+    fitted: result.coverage.categoryPromptTelemetry,
+    issueOutcome: result.coverage.providerAttempt.issueOutcome,
+  }));
+  assert.equal(result.coverage.analysisState, "not-assessed-no-admitted-passage-text");
+  assert.equal(result.coverage.categoryPromptTelemetry.passageCountSent, 0);
+  assert.ok(result.coverage.categoryPromptTelemetry.omissionReasons.includes("input-cap"));
+  assert.equal(result.coverage.providerRequestCount, 0);
+  assert.equal(result.coverage.providerAttempt.issueOutcome, "unissued-empty");
+  assert.equal(gate.snapshot().queued, 0);
+  assert.equal(gate.snapshot().reservedTokensInWindow, 0);
+  const selection = selections.flatMap((item) => item.records ?? [])[0];
+  assert.equal(selection?.tokenFitState, "fully-removed");
+  assert.equal(selection?.identityAdmission?.state, "passed");
+});
+
+test("eight empty packets free eight of twelve issue slots and their TPM reservations under unchanged limits", async () => {
+  const project = { name: "Project Atlas", location: "Taylor County, Texas" };
+  const source = {
+    occurrenceId: "atlas-grid-measure",
+    url: "https://records.example.gov/project-atlas/grid-measure",
+    originalUrl: "https://records.example.gov/project-atlas/grid-measure",
+    canonicalUrl: "https://records.example.gov/project-atlas/grid-measure",
+    title: "Project Atlas utility record",
+    sourceChannel: "county-records",
+    origin: "google-grounded-search",
+    sourceClass: "primary-government",
+    categoryIds: ["grid"],
+    accessOutcome: {
+      state: "accessible",
+      reason: "retrieved",
+      passage: "Project Atlas is located in Taylor County, Texas. The utility record describes its grid interconnection review.",
+      physicalOpenIndex: 1,
+    },
+  };
+  const gate = createResearchProviderGate({
+    tokensPerMinute: 30_000,
+    tokenWindowMs: 60_000,
+  });
+  const attempts = [];
+  let issuedFetches = 0;
+  for (let index = 0; index < 12; index += 1) {
+    const empty = index < 8;
+    const result = await researchProjectWithWebSearch(
+      project,
+      "fixture-provider-token",
+      async () => {
+        issuedFetches += 1;
+        return singleCallResponse(validResearchResponse());
+      },
+      undefined,
+      {
+        categoryId: "grid",
+        runCorrelationId: `run-measure-${index}`,
+        attempt: "primary",
+        evidenceIds: ["grid_interconnection"],
+        webSearchEnabled: false,
+        groundedSources: empty ? [] : [source],
+      },
+      gate,
+    );
+    attempts.push(result.coverage.providerAttempt);
+  }
+  const emptyAttempts = attempts.slice(0, 8);
+  const issuedAttempts = attempts.slice(8);
+  const actualReservation = issuedAttempts.reduce((total, attempt) => total + attempt.reservedTokens, 0);
+  const skippedReservation = emptyAttempts.reduce((total, attempt) => total + attempt.requestedTokenReservation, 0);
+  assert.equal(RESEARCH_RUN_BUDGET.maxProviderRequests, 16);
+  assert.equal(attempts.length, 12);
+  assert.equal(issuedFetches, 4);
+  assert.equal(attempts.filter((attempt) => attempt.queuedAt).length, 4);
+  assert.equal(attempts.filter((attempt) => attempt.issueOutcome === "issued-with-text").length, 4);
+  assert.equal(attempts.filter((attempt) => attempt.issueOutcome === "unissued-empty").length, 8);
+  assert.equal(issuedAttempts.length, 4);
+  assert.ok(skippedReservation > 0);
+  assert.equal(gate.snapshot().queued, 0);
+  assert.equal(gate.snapshot().reservedTokensInWindow, actualReservation);
+  assert.equal(issuedAttempts.reduce((total, attempt) => total + attempt.reservedTokens, 0), actualReservation);
+  assert.equal(emptyAttempts.reduce((total, attempt) => total + attempt.reservedTokens, 0), 0);
+  assert.ok(issuedAttempts.every((attempt) => attempt.projectId === project.name
+    && attempt.runId
+    && attempt.categoryId === "grid"
+    && attempt.attemptType === "primary"));
+  assert.equal(skippedReservation, emptyAttempts.reduce((total, attempt) =>
+    total + attempt.estimatedInputTokens + attempt.requestedOutputTokens, 0));
+  if (process.env.RESEARCH_SCHEDULING_MEASURE === "1") {
+    console.log("RESEARCH_SCHEDULING_MEASURE", JSON.stringify({
+      unchangedProviderRequestLimit: RESEARCH_RUN_BUDGET.maxProviderRequests,
+      unchangedTpmLimit: 30_000,
+      preparedCategoryPackets: attempts.length,
+      unissuedEmptyPackets: emptyAttempts.length,
+      issuedWithTextPackets: issuedAttempts.length,
+      queueAdmissionsAvoided: emptyAttempts.filter((attempt) => !attempt.queuedAt).length,
+      issueSlotsAvoided: emptyAttempts.filter((attempt) => !attempt.issuedAt).length,
+      tpmReservationTokensAvoided: skippedReservation,
+      tpmReservationTokensUsed: actualReservation,
+    }));
+  }
+});
+
+test("refunds an issue-boundary reservation for an emptied packet and for pre-issue cancellation", async () => {
+  const project = { projectId: "project-atlas", name: "Project Atlas", location: "Taylor County, Texas" };
+  const passage = "Project Atlas is located in Taylor County, Texas. The utility filing reports an interconnection review.";
+  const source = {
+    occurrenceId: "atlas-grid-boundary",
+    url: "https://records.example.gov/project-atlas/boundary",
+    originalUrl: "https://records.example.gov/project-atlas/boundary",
+    canonicalUrl: "https://records.example.gov/project-atlas/boundary",
+    title: "Project Atlas grid record",
+    sourceChannel: "county-records",
+    origin: "google-grounded-search",
+    sourceClass: "primary-government",
+    categoryIds: ["grid"],
+    accessOutcome: { state: "accessible", reason: "retrieved", passage, physicalOpenIndex: 1 },
+  };
+
+  const boundaryGate = createResearchProviderGate({
+    tokensPerMinute: 30_000,
+    tokenWindowMs: OFFLINE_PROVIDER_TOKEN_WINDOW_MS,
+  });
+  let preparedPacket;
+  let boundaryCalls = 0;
+  const boundaryTrace = {
+    recordProviderEvent: (event) => {
+      if (event.state === "prepared") preparedPacket = event.packet;
+      return { attemptId: event.state };
+    },
+    recordPassageSelection: () => {},
+  };
+  const mutatingGate = {
+    run: (task, options) => boundaryGate.run(task, {
+      ...options,
+      onStart: (admission) => {
+        preparedPacket[0].passage = "   ";
+        options.onStart(admission);
+      },
+    }),
+  };
+  const emptied = await researchProjectWithWebSearch(
+    project,
+    "fixture-provider-token",
+    async () => {
+      boundaryCalls += 1;
+      return singleCallResponse(validResearchResponse());
+    },
+    undefined,
+    {
+      categoryId: "grid",
+      runCorrelationId: "run-boundary-empty",
+      evidenceIds: ["grid_interconnection"],
+      webSearchEnabled: false,
+      groundedSources: [source],
+      claimTrace: boundaryTrace,
+    },
+    mutatingGate,
+  );
+  assert.equal(boundaryCalls, 0);
+  assert.equal(emptied.coverage.providerAttempt.issueOutcome, "unissued-empty");
+  assert.equal(emptied.coverage.providerAttempt.reservationDisposition, "refunded-before-issue");
+  assert.equal(emptied.coverage.providerAttempt.reservedTokens, 0);
+  assert.ok(emptied.coverage.providerAttempt.queuedAt);
+  assert.equal(boundaryGate.snapshot().active, 0);
+  assert.equal(boundaryGate.snapshot().queued, 0);
+  assert.equal(boundaryGate.snapshot().reservedTokensInWindow, 0);
+
+  const cancelGate = createResearchProviderGate({
+    tokensPerMinute: 30_000,
+    tokenWindowMs: OFFLINE_PROVIDER_TOKEN_WINDOW_MS,
+  });
+  const controller = new AbortController();
+  let cancelCalls = 0;
+  const cancelBeforeIssueGate = {
+    run: (task, options) => cancelGate.run(task, {
+      ...options,
+      onStart: (admission) => {
+        controller.abort();
+        options.onStart(admission);
+      },
+    }),
+  };
+  await assert.rejects(researchProjectWithWebSearch(
+    project,
+    "fixture-provider-token",
+    async () => {
+      cancelCalls += 1;
+      return singleCallResponse(validResearchResponse());
+    },
+    controller.signal,
+    {
+      categoryId: "grid",
+      runCorrelationId: "run-cancel-before-issue",
+      evidenceIds: ["grid_interconnection"],
+      webSearchEnabled: false,
+      groundedSources: [source],
+    },
+    cancelBeforeIssueGate,
+  ), (error) => {
+    assert.equal(error.providerAttempt.issueOutcome, "failed-before-issue");
+    assert.equal(error.providerAttempt.requestState, "cancelled-before-issue");
+    assert.equal(error.providerAttempt.reservationDisposition, "refunded-before-issue");
+    assert.equal(error.providerAttempt.reservedTokens, 0);
+    assert.equal(error.providerAttempt.projectId, project.projectId);
+    assert.equal(error.providerAttempt.runId, "run-cancel-before-issue");
+    assert.equal(error.providerAttempt.categoryId, "grid");
+    return true;
+  });
+  assert.equal(cancelCalls, 0);
+  assert.equal(cancelGate.snapshot().active, 0);
+  assert.equal(cancelGate.snapshot().queued, 0);
+  assert.equal(cancelGate.snapshot().reservedTokensInWindow, 0);
+});
+
+test("a pre-queue category deadline is a failed-before-issue outcome with no reservation", async () => {
+  const project = { projectId: "project-atlas", name: "Project Atlas", location: "Texas" };
+  const source = {
+    url: "https://records.example.gov/project-atlas/grid-deadline",
+    canonicalUrl: "https://records.example.gov/project-atlas/grid-deadline",
+    categoryIds: ["grid"],
+    accessOutcome: {
+      state: "accessible",
+      passage: "Project Atlas has a pending interconnection review.",
+    },
+  };
+  const gate = createResearchProviderGate({
+    tokensPerMinute: 30_000,
+    tokenWindowMs: OFFLINE_PROVIDER_TOKEN_WINDOW_MS,
+  });
+  let providerCalls = 0;
+  const trace = {
+    recordProviderEvent: () => ({ attemptId: "deadline-attempt-1" }),
+    recordPassageSelection: () => {},
+  };
+  await assert.rejects(researchProjectWithWebSearch(
+    project,
+    "fixture-provider-token",
+    async () => {
+      providerCalls += 1;
+      return singleCallResponse(validResearchResponse());
+    },
+    undefined,
+    {
+      categoryId: "grid",
+      runCorrelationId: "run-deadline-before-queue",
+      attempt: "primary",
+      evidenceIds: ["grid_interconnection"],
+      webSearchEnabled: false,
+      groundedSources: [source],
+      deadlineAt: Date.now() - 10,
+      minimumResponseMs: 0,
+      claimTrace: trace,
+    },
+    gate,
+  ), (error) => {
+    assert.equal(error.providerAttempt.issueOutcome, "failed-before-issue");
+    assert.equal(error.providerAttempt.requestState, "failed-before-issue");
+    assert.equal(error.providerAttempt.reservationDisposition, "not-reserved");
+    assert.equal(error.providerAttempt.reservedTokens, 0);
+    assert.equal(error.providerAttempt.runId, "run-deadline-before-queue");
+    assert.equal(error.providerAttempt.categoryId, "grid");
+    assert.equal(error.providerAttempt.attemptType, "primary");
+    assert.equal(error.providerAttempt.attemptId, "deadline-attempt-1");
+    return true;
+  });
+  assert.equal(providerCalls, 0);
+  assert.equal(gate.snapshot().queued, 0);
+  assert.equal(gate.snapshot().reservedTokensInWindow, 0);
 });
 
 test("scopes grounded category passages, collapses duplicates, and preserves source audit receipts", async () => {
@@ -3514,6 +3913,179 @@ test("categories skipped by the provider budget remain NOT RUN and SEARCH INCOMP
   }
 });
 
+test("an unissued-empty category frees its unchanged provider slot for later nonempty work", async () => {
+  const project = { name: "Project Atlas", location: "Taylor County, Texas" };
+  const emptyAttempt = {
+    projectId: "project-atlas",
+    runId: "run-mixed-categories",
+    categoryId: "project-identity",
+    attemptType: "primary",
+    requestState: "unissued-empty",
+    issueOutcome: "unissued-empty",
+    outcome: "not-assessed",
+    queuedAt: null,
+    issuedAt: null,
+    reservedTokens: 0,
+  };
+  for (const concurrent of [true, false]) {
+    const started = [];
+    const run = await orchestrateCategoryResearch(project, {
+      concurrent,
+      categoryIds: ["project-identity", "grid"],
+      budget: {
+        ...RESEARCH_RUN_BUDGET,
+        maxProviderRequests: 1,
+        maxFollowUps: 0,
+        maxFollowUpsPerCategory: 0,
+      },
+      retrieveCategory: async ({ categoryId }) => {
+        started.push(categoryId);
+        if (categoryId === "project-identity") {
+          return {
+            candidates: [],
+            providerRequestCount: 0,
+            analysisState: "not-assessed-no-admitted-passage-text",
+            providerAttempts: [emptyAttempt],
+            categoryResult: {
+              categoryId,
+              research: {
+                projectSummary: { name: project.name, location: project.location, description: "Not assessed." },
+                evidence: [],
+              },
+              sources: [],
+              coverage: {
+                providerRequestCount: 0,
+                providerAttempts: [emptyAttempt],
+                analysisState: "not-assessed-no-admitted-passage-text",
+              },
+            },
+          };
+        }
+        return {
+          candidates: [],
+          categoryResolved: true,
+          providerRequestCount: 1,
+          observedQueries: ["observed grid request"],
+        };
+      },
+    });
+    assert.deepEqual(started, ["project-identity", "grid"], `concurrent=${concurrent}`);
+    assert.equal(run.providerRequests, 1, `concurrent=${concurrent}`);
+    assert.equal(run.categoryExecutions["project-identity"].state, "Not assessed");
+    assert.equal(run.categoryExecutions["project-identity"].executionOutcome, "skipped");
+    assert.equal(run.categoryExecutions["project-identity"].analysisOutcome, "not-assessed");
+    assert.equal(run.categoryExecutions["project-identity"].notRunReason, "no-admitted-passage-text");
+    assert.equal(run.categoryExecutions.grid.state, "Complete");
+
+    const audit = buildResearchAudit({
+      project,
+      sources: [],
+      evidence: [],
+      coverage: { categoryExecutions: run.categoryExecutions },
+    });
+    const identityAudit = audit.categories.find((category) => category.categoryId === "project-identity");
+    assert.equal(identityAudit.state, "Not assessed");
+    assert.equal(identityAudit.executionOutcome, "skipped");
+    assert.equal(identityAudit.analysisOutcome, "not-assessed");
+    assert.equal(identityAudit.stageCounts.issuedProviderRequests, 0);
+    assert.equal(audit.outcomeMetrics.categoryCompletion.executed, 1);
+    assert.equal(audit.outcomeMetrics.categoryCompletion.notAssessed, 1);
+    const conclusiveNoEvidenceCategoryIds = audit.categories
+      .filter((category) => category.state === "No eligible evidence")
+      .map((category) => category.categoryId);
+    assert.equal(
+      audit.outcomeMetrics.categoryCompletion.conclusiveNoEvidence,
+      conclusiveNoEvidenceCategoryIds.length,
+    );
+    assert.ok(!conclusiveNoEvidenceCategoryIds.includes("project-identity"));
+  }
+});
+
+test("an issued discovery stays charged when grounded analysis has no admitted passage text", async () => {
+  const project = { name: "Project Atlas", location: "Taylor County, Texas" };
+  const discoveryAttempt = {
+    projectId: "project-atlas",
+    runId: "run-discovery-empty-grounding",
+    categoryId: "project-identity",
+    attemptType: "primary",
+    requestState: "completed",
+    issueOutcome: "issued",
+    outcome: "completed",
+    queuedAt: "2026-10-03T00:00:00.000Z",
+    issuedAt: "2026-10-03T00:00:00.010Z",
+    finishedAt: "2026-10-03T00:00:00.100Z",
+  };
+  const emptyAttempt = {
+    projectId: "project-atlas",
+    runId: "run-discovery-empty-grounding",
+    categoryId: "project-identity",
+    attemptType: "primary",
+    requestState: "unissued-empty",
+    issueOutcome: "unissued-empty",
+    outcome: "not-assessed",
+    queuedAt: null,
+    issuedAt: null,
+    reservedTokens: 0,
+  };
+  const run = await orchestrateCategoryResearch(project, {
+    concurrent: true,
+    categoryIds: ["project-identity", "grid"],
+    budget: {
+      ...RESEARCH_RUN_BUDGET,
+      maxProviderRequests: 2,
+      maxFollowUps: 0,
+      maxFollowUpsPerCategory: 0,
+    },
+    retrieveCategory: async ({ categoryId }) => categoryId === "project-identity"
+      ? {
+        candidates: [],
+        providerRequestCount: 1,
+        analysisState: "not-assessed-no-admitted-passage-text",
+        providerAttempts: [discoveryAttempt, emptyAttempt],
+        observedQueries: ["observed identity discovery"],
+        categoryResult: {
+          categoryId,
+          research: {
+            projectSummary: { name: project.name, location: project.location, description: "Not assessed." },
+            evidence: [],
+          },
+          sources: [],
+          coverage: {
+            providerRequestCount: 1,
+            providerAttempts: [discoveryAttempt, emptyAttempt],
+            analysisState: "not-assessed-no-admitted-passage-text",
+          },
+        },
+      }
+      : {
+        candidates: [],
+        categoryResolved: true,
+        providerRequestCount: 1,
+        observedQueries: ["observed grid request"],
+      },
+  });
+
+  assert.equal(run.providerRequests, 2);
+  assert.equal(run.categoryExecutions["project-identity"].providerRequestCount, 1);
+  assert.equal(run.categoryExecutions["project-identity"].primaryAnalysisCompleted, false);
+  assert.equal(run.categoryExecutions["project-identity"].state, "Not assessed");
+  assert.equal(run.categoryExecutions["project-identity"].analysisOutcome, "not-assessed");
+  assert.equal(run.categoryExecutions.grid.state, "Complete");
+
+  const audit = buildResearchAudit({
+    project,
+    sources: [],
+    evidence: [],
+    coverage: { categoryExecutions: run.categoryExecutions },
+  });
+  const identityAudit = audit.categories.find((category) => category.categoryId === "project-identity");
+  assert.equal(identityAudit.state, "Not assessed");
+  assert.equal(identityAudit.primaryAnalysisCompleted, false);
+  assert.equal(identityAudit.providerRequestCount, 1, "the discovery request remains accounted, not the unissued analysis");
+  assert.equal(identityAudit.analysisOutcome, "not-assessed");
+  assert.equal(audit.outcomeMetrics.categoryCompletion.notAssessed, 1);
+});
+
 test("malformed repairs consume request slots and cannot displace reserved primaries", async () => {
   const attempts = [];
   const run = await orchestrateCategoryResearch(
@@ -4212,7 +4784,7 @@ test("live-like unlabeled retained passages survive the production analysis pack
 test("recognized mixed citation labels still exclude other-category passages after unresolved-routing repair", async () => {
   const passage = "Cedar Campus has a water cooling agreement; this public document concerns water supply only and does not disclose any power tariff, interconnection milestone, or electricity cost.";
   let body;
-  await researchProjectWithWebSearch({ name: "Cedar Campus", location: "Arizona" }, "offline-only", async (_url, init) => {
+  const result = await researchProjectWithWebSearch({ name: "Cedar Campus", location: "Arizona" }, "offline-only", async (_url, init) => {
     body = init.body;
     return singleCallResponse();
   }, undefined, {
@@ -4220,7 +4792,10 @@ test("recognized mixed citation labels still exclude other-category passages aft
     groundedSources: [{ url: "https://records.example.gov/water", categoryIds: ["water", "unknown"],
       categoryRoutingUnknown: false, accessOutcome: { state: "accessible", passage } }],
   });
-  assert.ok(!body.includes(passage), "recognized water scope must not broaden to Grid");
+  assert.equal(body, undefined, "recognized water scope must not broaden to Grid or issue an empty category packet");
+  assert.equal(result.coverage.providerRequestCount, 0);
+  assert.equal(result.coverage.analysisState, "not-assessed-no-admitted-passage-text");
+  assert.equal(result.coverage.providerAttempt.issueOutcome, "unissued-empty");
 });
 
 test("replays one run for a repeated request identity and assigns an explicit retry a new run ID", async () => {
@@ -4745,7 +5320,7 @@ test("reuses provider-declared canonical receipts across concurrent categories w
     .every((document) => document.opened === true));
 });
 
-test("classifies exactly three canonical research outcomes", () => {
+test("classifies eligible, conclusive-no-evidence, technical, and not-assessed outcomes separately", () => {
   assert.equal(
     classifyCanonicalResearchOutcome(1, []),
     "complete-with-eligible-evidence",
@@ -4757,6 +5332,10 @@ test("classifies exactly three canonical research outcomes", () => {
   assert.equal(
     classifyCanonicalResearchOutcome(3, ["provider-rate-limit"]),
     "incomplete-technical-limitation",
+  );
+  assert.equal(
+    classifyCanonicalResearchOutcome(0, [], 1),
+    "incomplete-not-assessed",
   );
 });
 

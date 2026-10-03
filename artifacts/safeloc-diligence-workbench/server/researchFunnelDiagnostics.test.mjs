@@ -92,6 +92,8 @@ test("records occurrence-stage hashes and links prepared passages to provider is
     categoryId: "grid",
     attemptType: "primary",
     attemptId: "grid:primary:attempt-1",
+    preparedAt: "2026-10-03T00:59:59.000Z",
+    issueOutcome: "prepared",
     packet: [{
       sourceId: source.sourceId,
       canonicalUrl: source.canonicalUrl,
@@ -151,6 +153,7 @@ test("records occurrence-stage hashes and links prepared passages to provider is
     attemptId: prepared.attemptId,
     providerCallStartedAt: "2026-10-03T01:00:00.000Z",
     packet: [],
+    issueOutcome: "issued-with-text",
     outcome: "issued",
   });
 
@@ -167,9 +170,73 @@ test("records occurrence-stage hashes and links prepared passages to provider is
   assert.match(selection.original.sha256, /^[a-f0-9]{64}$/);
   assert.equal(selection.finalSupplied.length, 0);
   assert.deepEqual(capture.providerEvents.map((event) => event.state), ["prepared", "issued-to-provider"]);
+  assert.deepEqual(capture.providerEvents.map((event) => event.issueOutcome), ["prepared", "issued-with-text"]);
+  assert.ok(capture.providerEvents.every((event) =>
+    event.runId === "run-funnel-1"
+    && event.projectId === "project-funnel-1"
+    && event.categoryId === "grid"
+    && event.attemptId === prepared.attemptId));
   assert.equal(capture.providerEvents[0].sourceIds[0].passageLength, passage.length);
   assert.equal(capture.providerEvents[0].requestBodySha256, "a".repeat(64));
   assert.doesNotMatch(JSON.stringify(capture), /RAW-PASSAGE-ONLY-MARKER|OPAQUE_TOKEN|PRIVATE_SIGNATURE/);
+});
+
+test("retains distinct unissued-empty and failed-before-issue outcomes with attempt lineage", () => {
+  const diagnostics = createResearchFunnelDiagnostics({
+    runId: "run-empty-outcomes",
+    project: { projectId: "project-empty-outcomes", name: "Cedar Campus" },
+  });
+  const lineage = {
+    runId: "run-empty-outcomes",
+    projectId: "project-empty-outcomes",
+    categoryId: "grid",
+    attemptType: "primary",
+    preparedAt: "2026-10-03T00:59:59.000Z",
+  };
+  const emptyAttemptId = diagnostics.claimTrace.recordProviderEvent({
+    ...lineage,
+    state: "prepared",
+    attemptId: "grid:primary:empty-attempt",
+    issueOutcome: "prepared",
+  }).attemptId;
+  diagnostics.claimTrace.recordProviderEvent({
+    ...lineage,
+    state: "unissued-empty",
+    attemptId: emptyAttemptId,
+    issueOutcome: "unissued-empty",
+    outcome: "not-assessed",
+    reason: "Not assessed: no admitted passage text.",
+  });
+
+  const failedAttemptId = diagnostics.claimTrace.recordProviderEvent({
+    ...lineage,
+    state: "prepared",
+    attemptId: "grid:primary:failed-attempt",
+    issueOutcome: "prepared",
+  }).attemptId;
+  diagnostics.claimTrace.recordProviderEvent({
+    ...lineage,
+    state: "failed-before-issue",
+    attemptId: failedAttemptId,
+    issueOutcome: "failed-before-issue",
+    outcome: "provider-deadline-admission",
+  });
+
+  const events = diagnostics.toJSON().providerEvents;
+  assert.deepEqual(events.map((event) => event.state), [
+    "prepared", "unissued-empty", "prepared", "failed-before-issue",
+  ]);
+  assert.deepEqual(events.map((event) => event.issueOutcome), [
+    "prepared", "unissued-empty", "prepared", "failed-before-issue",
+  ]);
+  assert.deepEqual(events.map((event) => event.attemptId), [
+    emptyAttemptId, emptyAttemptId, failedAttemptId, failedAttemptId,
+  ]);
+  assert.ok(events.every((event) =>
+    event.runId === lineage.runId
+    && event.projectId === lineage.projectId
+    && event.categoryId === lineage.categoryId
+    && event.attemptType === lineage.attemptType));
 });
 
 test("keeps provider-original values immutable and distinguishes supported, wrong-passage, and placeholder records", () => {

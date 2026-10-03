@@ -36,6 +36,23 @@ test("unrun and failed categories remain incomplete, never a negative finding", 
   );
 });
 
+test("not-assessed category state is explicit and never presented as a negative result", () => {
+  const categoryPresentation = getPublicCategoryPresentation(category({ state: "Not assessed" }));
+  assert.equal(categoryPresentation.state, "not-assessed");
+  assert.equal(categoryPresentation.label, "Not assessed");
+  assert.match(categoryPresentation.explanation, /no admitted passage text/i);
+  assert.match(categoryPresentation.explanation, /not a negative finding/i);
+
+  const runPresentation = getPublicResearchPresentation({
+    categories: [],
+    evidenceCount: 0,
+    outcome: { state: "incomplete-not-assessed" },
+    researchMode: "research-incomplete",
+  });
+  assert.equal(runPresentation.state, "not-assessed");
+  assert.match(runPresentation.explanation, /not a negative finding/i);
+});
+
 test("retained evidence stays visible as partial after a failed refresh", () => {
   const presentation = getPublicResearchPresentation({
     researchStatus: "failed",

@@ -1,0 +1,46 @@
+Independently evaluate our proposed next steps against the current SafeLoc codebase. Challenge the plan where the implementation supports a better approach. This is a read-only decision review, not authorization to create duplicate tasks, modify code, or run live research.
+
+Product priority:
+Make arbitrary-project research produce useful, attributable, scope-correct findings and present them simply. The default result should explain what was found, what remains unresolved, and the appropriate next action. Avoid adding dashboards, tabs, diagnostic clutter, or features.
+
+Current baseline:
+- Task 359 instrumented evidence conversion.
+- Task 366 removed false identity conflicts, but all 11 replayable passages remained excluded before analysis.
+- Task 365 suppresses empty category calls before queue admission/reservation and records them as not assessed.
+- The Jupiter recording shows incomplete research, retained attributed reporting, contradictory summaries, and unusable modeling controls.
+- GitHub main inspected by ChatGPT was f571e8e35837c41f76b796bc36477b708a684345. Identify your current SHA and relevant differences first.
+
+Our proposed parallel tasks:
+A. Simplify the result screen, reconcile summaries, correct incomplete/missing-evidence language, and hide unavailable model controls.
+B. Repair the first demonstrated evidence-conversion failure using the existing Jupiter capture where available, otherwise exact-body fixtures. Preserve all source, identity, scope, budget, and human-acceptance safeguards.
+
+Code observations to verify independently:
+1. categorySourceMatchesForAnalysis handles explicitly routed sources differently from unlabeled sources. The latter fall back to sourceEstablishesProjectIdentity.
+2. prepareCategoryAnalysisPassages is also used for the existing project-identity category.
+3. The identity-only response schema exists, but does not require source references and supporting quotations. Determine exactly how identityAssessment is consumed downstream and whether it can help later analysis.
+4. assessResearchProjectIdentity delegates to matchProject. Its “no operator attribution” explanation may not enumerate every unmet match condition. Inspect the actual conditions rather than treating the explanation as a complete diagnosis.
+5. ProjectReality renders project.retainedFindings separately from getConferenceEvidenceSummary(evidence, project), allowing contradictory reporting summaries.
+6. Custom-project capacity controls and SessionFinancialReview can render when the result is incomplete or modeling is unavailable.
+7. “Top three open items” uses the first three open records rather than an explicit materiality ranking.
+8. The retained-findings duplicate counter counts repeated URL/passage ledger entries. Do not equate it with duplicate network fetches without evidence.
+
+Please answer:
+
+- Are Tasks A and B aimed at the correct causes? For each, say KEEP, AMEND, or REPLACE, with exact files/functions and a concrete reason.
+- What is the smallest justified engine repair? Evaluate the existing routing and identity-only path before proposing a new assessment mechanism.
+- Could that repair genuinely move a supported passage toward a reviewable finding, or would it merely change labels? Identify what would remain blocked.
+- Which shared files create parallel-work conflicts, and how should ownership be divided?
+- What should the combined user-facing acceptance criteria be?
+- Does the proof-ledger/user-decision schema warning block the proposed research or acceptance check? Identify the affected path without modifying the database.
+- What should happen now, immediately afterward, and only after live evidence conversion works? Keep the immediate roadmap to no more than three steps.
+
+Requirements:
+- Distinguish observed code behavior, fixture evidence, and unproven hypotheses.
+- Do not assume every retained passage should pass identity.
+- Do not promote model assertions, source snippets, or directory metadata into evidence.
+- Do not conflate valid research findings with eligibility to alter financial inputs.
+- Keep existing limits unless you demonstrate why a change is necessary; no budget increase is authorized here.
+- No historical capture reconstruction, broad architecture rewrite, agent feature, schema expansion, deployment, push, or live provider calls.
+- Amend existing tasks if appropriate rather than suggesting duplicates.
+
+Return a concise technical judgment and only the exact amendments needed to our existing prompts. Do not simply endorse the roadmap.

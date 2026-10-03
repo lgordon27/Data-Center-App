@@ -12,3 +12,9 @@ Preserve explicit category execution, analysis, and search-completeness outcomes
 Coarse evidence labels can make categories with no issued analysis appear conclusively searched, while a tighter acceptance budget can limit retrieval without establishing how the normal configuration behaves.
 
 **How to apply:** For any bounded live canary or production acceptance run with a no-retry/one-run rule, test the complete report-writing path offline and make failure reporting preserve the last sanitized checkpoint.
+
+Keep large audit recovery out of the persistent notebook while a paid browser action is running. Read bounded database fragments when output is truncated, save sanitized results promptly, and release raw response/parsed-record variables before starting another job.
+
+**Why:** Large retained SQL/audit objects exceeded the notebook memory ceiling and reset it, cancelling an active browser capture. The existing governed result was recoverable, but resubmission would have violated the one-action budget.
+
+**How to apply:** Treat an interrupted capture after a recorded POST as a consumed authorization. Recover the existing response and governed audit read-only; never rerun to recover telemetry. Redact bare opaque redirect pathnames as well as complete URLs before exporting diagnostics.

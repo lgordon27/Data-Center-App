@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createResearchFunnelDiagnostics } from "./researchFunnelDiagnostics.mjs";
 import {
   GOOGLE_GEMINI_DEFAULT_MODEL,
   GOOGLE_GEMINI_INTERACTIONS_URL,
@@ -568,6 +569,7 @@ test("normalizes missing, empty, unusable, unknown, mixed, and explicit citation
 });
 
 test("keeps unlabeled grounded passages in the audit without sending them to every category", async () => {
+  const diagnostics = createResearchFunnelDiagnostics();
   const sourceUrl = "https://records.example/project-atlas-routing-control";
   const passage = [
     "SYNTHETIC ROUTING CONTROL: Project Atlas appears in this offline retained passage; no real facility fact is asserted.",
@@ -579,6 +581,8 @@ test("keeps unlabeled grounded passages in the audit without sending them to eve
   let documentCalls = 0;
   const analysisInputs = new Map(CATEGORY_LABELS.map(([categoryId]) => [categoryId, []]));
   const result = await runValidatedResearch({ ...project, forceRefresh: true }, {
+    canaryDiagnosticCollector: diagnostics.collector,
+    claimTrace: diagnostics.claimTrace,
     apiKey: "fixture-openai-key",
     googleApiKey: "fixture-google-key",
     rateLimiter: { allow: () => ({ allowed: true }) },
@@ -630,6 +634,17 @@ test("keeps unlabeled grounded passages in the audit without sending them to eve
   const sourceAccess = result.researchAudit.sourceAttempts.find((attempt) => attempt.url === sourceUrl);
   assert.equal(sourceAccess.state, "accessible", "category filtering must not remove the access receipt");
   assert.ok(result.evidence.every((item) => item.eligibleForModel !== true));
+  assert.notEqual(
+    result.researchAudit.categories.find((category) => category.categoryId === "project-identity")?.state,
+    "Provider failure",
+    JSON.stringify(diagnostics.toJSON().engineFailures),
+  );
+  assert.equal(
+    result.researchAudit.categories.find((category) => category.categoryId === "project-identity")?.primaryAnalysisCompleted,
+    true,
+    "completed HTTP 200 identity assessment must reach orchestration bookkeeping",
+  );
+  assert.deepEqual(diagnostics.toJSON().engineFailures, []);
 });
 
 test("keeps mixed and recognized citation labels scoped through availability and analysis input", async () => {
@@ -930,7 +945,8 @@ test("does not issue structured category analysis when grounding has no retained
   });
   assert.equal(openAiCalls, 0);
   assert.equal(result.researchCoverage.discoveryCandidateCount, 0);
-  assert.equal(result.researchOutcome.state, "incomplete-technical-limitation");
+  assert.equal(result.researchOutcome.state, "complete-no-eligible-evidence",
+    "completed observed discovery with zero candidates is not an internal query-building failure");
   assert.ok(result.researchCoverage.phaseTiming.discoveryElapsedMs >= 20);
   assert.ok(result.researchCoverage.phaseTiming.orchestrationBudgetMs < 90_000);
   assert.equal(result.researchCoverage.phaseTiming.analysisElapsedMs, 0);
@@ -943,7 +959,7 @@ test("rejects malformed Interactions steps distinctly", () => {
   );
 });
 
-test("runs one Google discovery request before structured extraction without OpenAI web tools", async () => {
+test("runs one Google discovery request before bounded identity extraction without OpenAI web tools", async () => {
   let openAiCalls = 0;
   let documentCalls = 0;
   const passage = [
@@ -1025,14 +1041,15 @@ test("runs one Google discovery request before structured extraction without Ope
       });
     },
   });
-  assert.equal(openAiCalls, 1);
+  assert.equal(openAiCalls, 2, "unresolved identity permits one bounded follow-up now that query construction succeeds");
   assert.equal(documentCalls, 1);
   assert.equal(categoryIdFromStructuredPrompt(analysisPrompt), "project-identity");
   assert.ok(analysisPrompt.includes(passage), "identity analysis must receive the retained synthetic passage");
   assert.ok(result.evidence.every((item) => item.eligibleForModel !== true));
   assert.equal(result.researchCoverage.discoveryProvider, "google-gemini-grounding");
   assert.equal(result.researchCoverage.discoveryStatus, "completed");
-  assert.equal(result.researchAudit.providerRequestCount, 2);
+  assert.equal(result.researchAudit.providerRequestCount, 3,
+    "one discovery plus primary identity assessment and one bounded identity follow-up");
   assert.equal(result.researchAudit.providerAttempts[0].provider, "google-gemini-grounding");
   assert.equal(result.researchAudit.providerAttempts[0].outcome, "completed");
 });

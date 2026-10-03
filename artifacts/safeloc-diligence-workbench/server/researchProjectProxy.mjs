@@ -42,6 +42,7 @@ import {
 import { rankAcquisitionCandidates } from "./researchAcquisitionRanking.mjs";
 import { createSecConnector } from "./secConnector.mjs";
 import { releaseIdentity } from "./version.mjs";
+import { createResearchFunnelDiagnostics } from "./researchFunnelDiagnostics.mjs";
 
 const RESEARCH_PROJECT_PROMPT_VERSION = "safeloc-project-research-prompt-v1";
 const GOOGLE_DISCOVERY_PROMPT_VERSION = "safeloc-google-grounding-prompt-v3";
@@ -2082,29 +2083,34 @@ function categorySourceMatches(category, source) {
   return source.categoryRoutingUnknown === true || explicitCategoryIds.size === 0;
 }
 
-function categorySourceMatchesForAnalysis(category, source) {
+function categorySourceMatchesForAnalysis(category, source, project = {}) {
   if (!category || !source) return false;
   const knownCategoryIds = new Set(RESEARCH_CATEGORIES.map((candidate) => candidate.id));
   const explicitCategoryIds = new Set(Array.isArray(source.categoryIds)
     ? source.categoryIds.filter((categoryId) => knownCategoryIds.has(categoryId))
     : []);
   if (explicitCategoryIds.size > 0) return explicitCategoryIds.has(category.categoryId);
-  if (source.categoryRoutingUnknown === true) return false;
-  if (knownCategoryIds.has(source.searchDomain)) return source.searchDomain === category.categoryId;
-
-  const evidenceIds = new Set([
-    ...(Array.isArray(source.supportedEvidenceIds) ? source.supportedEvidenceIds : []),
-    ...(Array.isArray(source.claimSupport)
-      ? source.claimSupport.flatMap((support) => [support?.evidenceId, support?.variable])
-      : isRecord(source.claimSupport)
-        ? [source.claimSupport.evidenceId, source.claimSupport.variable]
-        : []),
-  ].filter((id) => RESEARCH_EVIDENCE_IDS.includes(id)));
-  if (evidenceIds.size > 0) return [...evidenceIds].some((id) => category.evidenceIds.includes(id));
-
-  const identityScoped = [source.identityRole, source.sourceRole, source.categoryRole]
-    .some((role) => typeof role === "string" && /\b(identity|project identity|facility identity)\b/i.test(role));
-  return identityScoped && category.categoryId === "project-identity";
+  if (source.categoryRoutingUnknown !== true && knownCategoryIds.has(source.searchDomain)) {
+    return source.searchDomain === category.categoryId;
+  }
+  if (source.categoryRoutingUnknown !== true) {
+    const evidenceIds = new Set([
+      ...(Array.isArray(source.supportedEvidenceIds) ? source.supportedEvidenceIds : []),
+      ...(Array.isArray(source.claimSupport)
+        ? source.claimSupport.flatMap((support) => [support?.evidenceId, support?.variable])
+        : isRecord(source.claimSupport) ? [source.claimSupport.evidenceId, source.claimSupport.variable] : []),
+    ].filter((id) => RESEARCH_EVIDENCE_IDS.includes(id)));
+    if (evidenceIds.size > 0) return [...evidenceIds].some((id) => category.evidenceIds.includes(id));
+    const identityScoped = [source.identityRole, source.sourceRole, source.categoryRole]
+      .some((role) => typeof role === "string" && /\b(identity|project identity|facility identity)\b/i.test(role));
+    if (identityScoped) return category.categoryId === "project-identity";
+  }
+  if (!hasRetrievedPassage(source)) return false;
+  // Missing labels alone must not broaden routing. Permit exact-project
+  // context only after the existing retained-text identity check passes;
+  // generic indexes, snippets, and ambiguous related campuses stay excluded.
+  // This admits context to assessment, never a claim to eligibility.
+  return sourceEstablishesProjectIdentity(source, project);
 }
 
 function hasRetrievedPassage(source) {
@@ -2269,7 +2275,7 @@ function categoryPassageWindow(source, categoryId, project = {}, maxChars = 2_40
 function prepareCategoryAnalysisPassages(category, sources = [], project = {}) {
   const candidates = sources.filter(hasRetrievedPassage);
   const relevant = candidates.filter((source) =>
-    categorySourceMatchesForAnalysis(category, source)
+    categorySourceMatchesForAnalysis(category, source, project)
     || (category?.includeExactProjectIdentityContext === true
       && sourceEstablishesProjectIdentity(source, project))
     || (category?.includeRelatedFacilityIdentityContext === true
@@ -2539,7 +2545,7 @@ function buildResearchAudit({
       ? supplied.state
       : null;
     const state = explicitFailureState ?? (
-      counts.allEvidenceEligible ? "Complete"
+      counts.allEvidenceEligible && !supplied.providerFailureType ? "Complete"
         : supplied.primaryAnalysisCompleted === true || counts.claimMapped > 0 || counts.retainedCandidates > 0 ? "Partial"
           : executedQueries.length || primaryWasIssued ? "No eligible evidence"
             : "Not searched"
@@ -3108,6 +3114,7 @@ function buildResearchAudit({
 
 async function orchestrateCategoryResearch(project, {
   retrieveCategory,
+  onCategoryFailure,
   now = () => Date.now(),
   budget = RESEARCH_RUN_BUDGET,
   signal,
@@ -3323,6 +3330,13 @@ async function orchestrateCategoryResearch(project, {
          .filter(isRecord));
       execution.primaryAnalysisCompleted = primaryAttempts.some((attempt) =>
         attempt?.requestState === "completed" || attempt?.outcome === "completed");
+      const primaryAnalysisFailure = primary?.categoryResult?.coverage?.analysisFailureType;
+      if (primaryAnalysisFailure) {
+        execution.providerFailureType = primaryAnalysisFailure;
+        execution.analysisOutcome = primary?.categoryResult?.coverage?.analysisState === "not-analyzed-429"
+          ? "not-run" : "failed";
+        providerFailure = "Structured category assessment failed; retained documents do not establish completed analysis.";
+      }
       execution.discoveryAttempts.push(...(Array.isArray(primary?.discoveryAttempts) ? primary.discoveryAttempts : []));
       execution.authorityRecords.push(...(Array.isArray(primary?.authorityRecords) ? primary.authorityRecords : []));
       execution.secConnectorAttempts.push(...(Array.isArray(primary?.secConnectorAttempts) ? primary.secConnectorAttempts : []));
@@ -3476,6 +3490,9 @@ async function orchestrateCategoryResearch(project, {
        if (execution.primaryAnalysisCompleted && !primaryCategoryResolved && deadlineState.expired) {
          state = "Partial";
        }
+      if (primaryAnalysisFailure && !execution.primaryAnalysisCompleted) {
+        state = categoryCandidates.length ? "Partial" : "Provider failure";
+      }
     } catch (error) {
       const errorAttempts = collectProviderAttempts(error);
       const cancellationError = error?.name === "ResearchCancelledError"
@@ -3527,6 +3544,7 @@ async function orchestrateCategoryResearch(project, {
         error.deadlineExpired = true;
       }
       lastError = error;
+      onCategoryFailure?.({ categoryId: category.categoryId, stage: "category-orchestration", error });
       const failure = classifyResearchFailure(error);
       execution.providerFailureType = failure.type === "timeout" ? "deadline" : failure.type;
       providerFailure = failure.type === "timeout" ? null : failure.message;
@@ -4668,13 +4686,14 @@ function buildVariableQueries({ name, location, knownData }, id) {
 }
 
 function buildCategoryQuery({ name, location, knownData }, category, attempt, evidenceId) {
-  const genericQuery = category.id === "project-identity"
+  const categoryId = category.id ?? category.categoryId;
+  const genericQuery = categoryId === "project-identity"
     ? `"${name}" "${location}" ${attempt === "follow-up" ? "alternate name owner operator filing" : "project operator facility identity permit record"}`
     : buildVariableQueries({ name, location, knownData }, evidenceId ?? category.evidenceIds[0])[attempt === "follow-up" ? 1 : 0];
   const project = { name, location, knownData };
   const identity = buildProjectIdentityContext(project);
   const state = identity.state;
-  const routing = categoryAuthorityTargets(project, category.id);
+  const routing = categoryAuthorityTargets(project, categoryId);
   const companyDomains = knownData?.companyDomains ?? [];
   const primarySites = [...new Set([
     ...routing.domains,
@@ -4718,7 +4737,7 @@ function buildCategoryQuery({ name, location, knownData }, category, attempt, ev
                 : `${RESEARCH_QUERY_ANGLES[evidenceId ?? category.evidenceIds[0]]?.[1] ?? category.label} exact project`;
     return `${operatorAndProject} ${localNames} Texas ${fallbackAngle}`.replace(/\s+/g, " ").trim();
   }
-  switch (category.id) {
+  switch (categoryId) {
     case "project-identity":
       return `${projectAndLocation} Texas project permit operator disclosure ERCOT PUCT${txPrimarySites} ${identityTerms}`;
     case "grid":
@@ -5690,7 +5709,7 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
     };
   const categoryGroundedSources = activeCategory?.categoryId
     ? groundedSources.filter((source) =>
-      categorySourceMatchesForAnalysis(activeCategory, source)
+      categorySourceMatchesForAnalysis(activeCategory, source, project)
       || (activeCategory?.includeExactProjectIdentityContext === true
         && sourceEstablishesProjectIdentity(source, project))
       || (activeCategory?.includeRelatedFacilityIdentityContext === true
@@ -7168,6 +7187,7 @@ async function runValidatedResearch(project, {
       researchTimeoutMs - (Date.now() - runStartedAtMs),
     );
     const orchestration = await orchestrateCategoryResearch(project, {
+      onCategoryFailure: (details) => canaryDiagnosticCollector?.recordEngineFailure?.(details),
       budget: {
         ...researchBudget,
         deadlineMs: phaseTiming.orchestrationBudgetMs,
@@ -7209,7 +7229,7 @@ async function runValidatedResearch(project, {
              ? selectResearchPassagesForStructuredAnalysis(googleDiscovery.candidates)
              : [];
            const categoryUsableGroundedSources = usableGroundedSources.filter((source) =>
-              categorySourceMatchesForAnalysis(activeCategory, source));
+              categorySourceMatchesForAnalysis(activeCategory, source, project));
           const canaryIdentityGate = canaryGridIdentityGate && categoryId === "grid"
             ? evaluateCanaryGridIdentityGate(usableGroundedSources, project)
             : null;
@@ -7851,7 +7871,9 @@ async function runValidatedResearch(project, {
            providerResponseId: categoryResponseId,
            evidence: normalizedCategoryResearch.evidence,
          });
-        const categoryResolution = categoryResearchIsResolved(
+        const categoryResolution = categoryResult.coverage?.analysisFailureType
+          ? { resolved: false, unresolvedEvidenceIds: category.evidenceIds.length ? [...category.evidenceIds] : [category.categoryId] }
+          : categoryResearchIsResolved(
           category,
           normalizedCategoryResearch,
           accessedSources,
@@ -8545,6 +8567,8 @@ export async function handleResearchProjectRequest(
     };
     const refreshResult = cache.refresh(key, async () => {
       runContext = context;
+      const funnelDiagnostics = createResearchFunnelDiagnostics();
+      context.funnelDiagnostics = funnelDiagnostics;
       try {
         if (auditStore?.startRun) {
           await auditStore.startRun({
@@ -8579,7 +8603,7 @@ export async function handleResearchProjectRequest(
         googleDiscoveryImpl,
         googleModel,
         googleDiscoveryPrompt,
-        canaryDiagnosticCollector,
+        canaryDiagnosticCollector: canaryDiagnosticCollector ?? funnelDiagnostics.collector,
         allowGoogleFallback: allowGoogleFallback && !singleShotRun,
         allowCorrectiveRetries: allowCorrectiveRetries && !singleShotRun,
         fetchImpl,
@@ -8603,7 +8627,7 @@ export async function handleResearchProjectRequest(
         runCorrelationId: runId,
         auditStartedAt: startedAt,
         auditDeadlineAt: context.deadlineAt,
-        claimTrace,
+        claimTrace: claimTrace ?? funnelDiagnostics.claimTrace,
         providerGate,
       });
       const completedResult = { ...researchResult, projectIdentity: project.projectIdentity };
@@ -8611,6 +8635,7 @@ export async function handleResearchProjectRequest(
         completedResult.researchAudit.projectCacheKey = key;
         completedResult.researchAudit.initiator = initiator;
         completedResult.researchAudit.requestId = requestId;
+        completedResult.researchAudit.funnelDiagnostics = funnelDiagnostics.toJSON();
       }
       return completedResult;
     }, {
@@ -8660,6 +8685,7 @@ export async function handleResearchProjectRequest(
     audit.projectCacheKey = context?.projectCacheKey ?? key;
     audit.initiator = context?.initiator ?? requestIdentity.initiator;
     audit.requestId = context?.requestId ?? requestIdentity.requestId;
+    if (context?.funnelDiagnostics) audit.funnelDiagnostics = context.funnelDiagnostics.toJSON();
     audit.deadlineAt = audit.deadlineAt ?? context?.deadlineAt ?? null;
     audit.response = { ...responseDelivery };
     audit.responseStartedAt = responseDelivery.responseStartedAt;

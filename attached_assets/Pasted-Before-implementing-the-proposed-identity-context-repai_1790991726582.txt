@@ -1,0 +1,56 @@
+Before implementing the proposed identity-context repair, I want an independent technical assessment of whether that is truly the next highest-value direction.
+
+Context:
+- Multi-project live validation is complete.
+- Eligible yield remained zero across arbitrary-project runs.
+- Replit's final verdict was: ENGINE IMPROVED BUT STILL HAS A SYSTEMIC BOTTLENECK.
+- Replit's recommended next action was: "make retained campus/phase context available to identity disambiguation without weakening eligibility controls."
+- Source discovery is no longer the main concern; the system is finding plenty of source material.
+- The critical issue is that retained evidence is not consistently surviving through parsing, identity/scope evaluation, and eligibility.
+
+Please inspect the current production-path architecture and the captured validation evidence and answer the following before making any code changes:
+
+1. Do you agree that retained campus/phase context not reaching identity disambiguation is the dominant systemic bottleneck?
+2. What exact evidence from the live validation supports that conclusion?
+3. At what precise stage is context currently lost or unavailable?
+   - extraction
+   - passage compaction
+   - structured claim generation
+   - identity input construction
+   - identity resolver
+   - scope resolver
+   - eligibility
+4. Is OpenAI structured analysis receiving the campus/phase context but failing to preserve it, or is SafeLoc dropping that context before/after OpenAI?
+5. For representative failed claims from the recent live matrix, show the actual field-level path:
+   original passage
+   → extracted metadata
+   → analysis-ready input
+   → OpenAI structured output
+   → identity inputs
+   → identity result
+   → scope result
+   → eligibility result.
+6. Quantify how many failed candidate claims were rejected primarily because of missing/insufficient identity disambiguation context versus other causes such as:
+   - no structured claim generated
+   - analysis timeout
+   - source attribution
+   - scope mismatch
+   - date/status issues
+   - unsupported inference
+   - parsing/normalization
+7. If campus/phase context propagation is repaired, is there a realistic reason to expect previously rejected valid claims to become eligible without weakening controls?
+8. Is there a different systemic bottleneck that should be fixed first?
+9. What is the smallest technically sound repair you would recommend?
+10. What negative controls must remain unchanged to avoid false project matching?
+
+Do not implement anything yet.
+Do not run another paid/live provider request.
+Do not broaden into discovery, UI, database housekeeping, financial modeling, or model-provider changes.
+
+I want a concise but rigorous answer with one final recommendation:
+
+- PROCEED WITH CAMPUS/PHASE IDENTITY-CONTEXT REPAIR
+- DIFFERENT BOTTLENECK SHOULD BE FIXED FIRST
+- INSUFFICIENT EVIDENCE; DEEPER INSTRUMENTATION NEEDED
+
+If you choose the third option, specify exactly what instrumentation is missing and where it should be added so we can identify the bottleneck conclusively.

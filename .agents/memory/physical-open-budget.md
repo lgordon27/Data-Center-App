@@ -5,6 +5,12 @@ description: Research runs enforce a distinct physical document-fetch ceiling in
 
 The research handoff must track physical document opens separately from returned candidates and provider requests. Canonical-document reuse does not replace the hard ceiling: once the ceiling is reached, later documents remain recorded as not attempted and later category work reports the budget skip truthfully.
 
+For yield reports, do not join transport authorization indexes to logical-document receipt indexes merely because both are called opens. Report source-open waste separately; leave physical-hop waste unavailable unless a trustworthy run-local relationship exists.
+
+**Why:** Cross-project live captures exposed incompatible open denominators and a cancelled-run counter that disagreed with observed authorizations. Treating those counters as interchangeable produced misleading waste estimates.
+
+**How to apply:** Preserve original metrics alongside receipt-derived denominators, define each unit, and disclose inconsistencies rather than silently reconciling them.
+
 **Why:** Candidate caps and URL reuse bound common cases but cannot guarantee a physical-fetch limit when a provider returns many distinct documents.
 
 **How to apply:** Preserve physical-open usage, remaining capacity, ceiling state, reused receipts, and budget-limited categories through the server audit, client parser, handoff summary, and search audit.

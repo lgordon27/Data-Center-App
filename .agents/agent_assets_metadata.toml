@@ -112,3 +112,31 @@ mtime_ms = 1790888088543
 storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:f36c34ed-5536-4eff-ae57-d0f347f2e42e/cbc1a937-1d8c-4454-adb5-6c195f9ffc11/5468c25f-92a1-4f2a-8388-1f1e2732505c"
 storage_version_token = "1790888219396495"
 content_type = "image/png"
+
+[[outputs]]
+id = "kxyM6qIU0sXCGf3pVL0TB"
+uri = "file://attached_assets/reports/safeloc-multi-project-engine-validation.html"
+type = "html"
+title = "SafeLoc multi-project engine validation"
+description = "Final verdict, five before/after run funnels, category outcomes, rejection lineage, verification counts, and downloadable embedded sanitized audit captures."
+logical_id = "b1157356-8f65-4f75-8b1f-8a4be83a2446"
+content_hash = "sha256:5e8ec4162382b437ea0d226cf085eaa99aa8e0bd25eec9164791264cb676edda"
+size = 6984591
+mtime_ms = 1790988449228
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:f36c34ed-5536-4eff-ae57-d0f347f2e42e/b1157356-8f65-4f75-8b1f-8a4be83a2446/4150ca62-cc53-4c3c-aa04-86b6ec311918"
+storage_version_token = "1790988589191755"
+content_type = "text/html"
+
+[[outputs]]
+id = "CHzEsAk7xOUdK4KyflHME"
+uri = "file://attached_assets/reports/safeloc-multi-project-engine-validation-final.html"
+type = "html"
+title = "SafeLoc multi-project engine validation — final"
+description = "Eight preserved runs, before/after funnels, all category outcomes, fixes, rejection lineage and verification. Includes a lossless downloadable sanitized diagnostic bundle. Verdict: engine improved but still has a systemic bottleneck."
+logical_id = "61f4776b-e61f-4435-a351-6a29715161bb"
+content_hash = "sha256:b368babb50a1ea3b823a5e96c64c1e6d5d7238f13693b89527bc7cc9c5ddc3b4"
+size = 4346950
+mtime_ms = 1790991295116
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:f36c34ed-5536-4eff-ae57-d0f347f2e42e/61f4776b-e61f-4435-a351-6a29715161bb/3ac54875-766c-472e-8863-5c10836af77e"
+storage_version_token = "1790991413730764"
+content_type = "text/html"

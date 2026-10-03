@@ -7,6 +7,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { deflateSync } from "node:zlib";
+import { createResearchFunnelDiagnostics } from "./researchFunnelDiagnostics.mjs";
 
 import {
   DEFAULT_RESEARCH_CAPACITY_MW,
@@ -598,6 +599,17 @@ test("targets the unresolved evidence item in a category follow-up", () => {
   );
   assert.match(followUp, /water right|groundwater withdrawal authorization/i);
   assert.doesNotMatch(followUp, /water demand consumption gallons usage/i);
+});
+
+test("identity follow-up accepts planned category shape without looking up a financial variable", () => {
+  for (const location of ["Sweetwater, Texas", "Jackson, Georgia", "Goodyear, Arizona"]) {
+    const project = { name: "Cedar Campus", location, knownData: { operator: "Cedar Compute" } };
+    const identity = buildResearchCategoryPlan(project).categories.find(category => category.categoryId === "project-identity");
+    const query = buildCategoryFollowUpQuery(project, identity, ["project-identity"]);
+    assert.match(query, /Cedar Campus/);
+    assert.match(query, /Cedar Compute/);
+    assert.doesNotMatch(query, /undefined|electricity price|water demand/i);
+  }
 });
 
 test("separates authoritative Texas queries from an unrestricted exact-project fallback", () => {
@@ -3901,6 +3913,42 @@ test("exposes observable completion status for a background stale refresh", asyn
   assert.equal(status.json().result.evidence.length, 16);
 });
 
+test("live-like unlabeled retained passages survive the production analysis packet boundary", async () => {
+  const project = { name: "Cedar Campus", location: "Goodyear, Arizona", knownData: { operator: "Cedar Compute" } };
+  const passage = "Cedar Compute operates Cedar Campus in Goodyear, Arizona. The project has a closed loop air-cooled water system, a planned grid interconnection and three separate construction phases. The public record does not disclose any electricity tariff or financing amount.";
+  const sources = [{
+    url: "https://records.example.gov/cedar",
+    categoryIds: [],
+    categoryRoutingUnknown: true,
+    accessOutcome: { state: "accessible", passage },
+  }];
+  for (const categoryId of ["project-identity", "grid", "water"]) {
+    const trace = createResearchFunnelDiagnostics();
+    let issued = 0;
+    await researchProjectWithWebSearch(project, "offline-only", async (_url, init) => {
+      issued += 1;
+      assert.ok(init.body.includes(passage), `unresolved citation routing must not erase retained ${categoryId} context`);
+      return singleCallResponse();
+    }, undefined, { categoryId, evidenceIds: [], groundedSources: sources, webSearchEnabled: false, claimTrace: trace.claimTrace });
+    assert.equal(issued, 1);
+    assert.equal(trace.toJSON().analysisPackets[0].passages.length, 1);
+  }
+});
+
+test("recognized mixed citation labels still exclude other-category passages after unresolved-routing repair", async () => {
+  const passage = "Cedar Campus has a water cooling agreement; this public document concerns water supply only and does not disclose any power tariff, interconnection milestone, or electricity cost.";
+  let body;
+  await researchProjectWithWebSearch({ name: "Cedar Campus", location: "Arizona" }, "offline-only", async (_url, init) => {
+    body = init.body;
+    return singleCallResponse();
+  }, undefined, {
+    categoryId: "grid", evidenceIds: ["grid_interconnection"], webSearchEnabled: false,
+    groundedSources: [{ url: "https://records.example.gov/water", categoryIds: ["water", "unknown"],
+      categoryRoutingUnknown: false, accessOutcome: { state: "accessible", passage } }],
+  });
+  assert.ok(!body.includes(passage), "recognized water scope must not broaden to Grid");
+});
+
 test("replays one run for a repeated request identity and assigns an explicit retry a new run ID", async () => {
   let discoveryCalls = 0;
   const cache = createResearchProjectCache();
@@ -3948,6 +3996,9 @@ test("replays one run for a repeated request identity and assigns an explicit re
   assert.equal(duplicateBody.researchCache.runId, firstBody.researchCache.runId);
   assert.equal(duplicateBody.researchAudit.initiator, "user-action");
   assert.equal(duplicateBody.researchAudit.requestId, "request-identity-one-click");
+  assert.equal(firstBody.researchAudit.funnelDiagnostics.captureMode, "request-local-observed-bounded");
+  assert.deepEqual(duplicateBody.researchAudit.funnelDiagnostics, firstBody.researchAudit.funnelDiagnostics,
+    "request replay must reuse the same capture rather than creating another collector");
 
   const retryResponse = responseRecorder();
   await handleResearchProjectRequest({

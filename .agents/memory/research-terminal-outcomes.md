@@ -14,3 +14,9 @@ A technically incomplete run may still have reviewer-visible retained passages, 
 **Why:** Partial research can otherwise look empty despite usable captured text, or overstate a claim merely because its source page loaded successfully.
 
 **How to apply:** Test the incomplete outcome and retained-passage handoff separately. Keep claim classification and financial eligibility unresolved unless the retained passage supports the specific claim.
+
+Retained sources and an empty modeled-evidence inventory must not override an assessment failure or prove category completeness. Keep successful acquisition separate from completed structured assessment; a provider-rejected request may be not analyzed even though a request was issued.
+
+**Why:** Fixing an internal identity exception exposed a second failure: identity has no financial slots, so an “all slots eligible” check could mark it Complete even when every provider assessment failed. Existing failure/429 controls must remain stronger than that vacuous check.
+
+**How to apply:** Give explicit technical failure precedence in category status and retain independent provider-failure and unissued-analysis regression controls.

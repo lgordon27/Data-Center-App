@@ -1,0 +1,135 @@
+Task: Static Audit of SafeLoc Research Scheduling and Analysis-Time Starvation
+
+READ-ONLY DIAGNOSIS ONLY.
+
+Run in parallel with the evidence-conversion instrumentation task.
+
+Do not change code.
+Do not increase budgets.
+Do not run provider requests.
+Do not modify category priorities.
+
+Recent live runs showed categories being deadline-cancelled or never issued even when retained evidence existed.
+
+The goal is to determine whether SafeLoc’s bounded scheduling architecture itself systematically starves structured analysis.
+
+==================================================
+1. MAP THE END-TO-END TIME BUDGET
+==================================================
+
+For the normal production run, document current ceilings for:
+
+- total request
+- discovery
+- document opening
+- extraction
+- passage processing
+- OpenAI/category analysis
+- retries, if any
+- reserved structured-analysis time
+
+Show the actual control flow that decides when no further provider/category work may start.
+
+==================================================
+2. ANALYZE SAVED RUN TIMINGS
+==================================================
+
+Using existing run captures only, report for AWS, IREN, Vantage and other recent runs where available:
+
+- total elapsed time
+- discovery duration
+- acquisition/opening duration
+- extraction duration
+- time remaining when analysis began
+- category calls issued
+- category calls never issued
+- calls cancelled by global deadline
+- provider TPM/rate-limit effects
+- categories completed
+
+Do not infer timings that were not captured.
+
+==================================================
+3. DETERMINE WHETHER RETRIEVAL STARVES ANALYSIS
+==================================================
+
+Answer:
+
+- Can discovery/opening legally consume most of the 75-second budget?
+- Is structured-analysis time genuinely reserved?
+- Can 24 document opens crowd out category analysis?
+- Are categories serialized unnecessarily?
+- Does one slow category reduce opportunity for unrelated categories?
+- Are high-value categories prioritized early enough?
+- Are empty/weak category packets consuming provider-request slots?
+- Are provider requests issued when no useful passages exist?
+
+==================================================
+4. PROVIDER-REQUEST BUDGET
+==================================================
+
+The run ceiling is 16 provider requests.
+
+Map exactly what can consume those 16 requests:
+- discovery
+- identity
+- category analysis
+- retries
+- other calls
+
+Determine whether 16 requests is sufficient under the current workflow when all categories are attempted.
+
+Do NOT recommend increasing the limit unless the architecture mathematically cannot complete within it.
+
+First identify avoidable request waste.
+
+==================================================
+5. CATEGORY SCHEDULING
+==================================================
+
+Report current ordering and dependency relationships.
+
+Especially inspect:
+- project identity
+- grid/power
+- construction/capital
+- water
+- permitting/community
+
+Determine whether strong evidence can sit unused because its category is scheduled too late.
+
+==================================================
+6. EMPTY WORK
+==================================================
+
+Identify whether SafeLoc spends time/provider calls on:
+- categories with zero admitted passages
+- placeholder-only packets
+- duplicate packets
+- categories whose required evidence is clearly unavailable
+
+Quantify where possible from fixtures/captures.
+
+==================================================
+7. FINAL REPORT
+==================================================
+
+Return:
+
+1. Production timing architecture.
+2. Provider-request allocation.
+3. Saved-run timing breakdowns.
+4. Categories never issued because of deadline.
+5. Whether retrieval is starving analysis.
+6. Whether empty/low-value work consumes meaningful time or provider slots.
+7. Top 3 scheduler/budget inefficiencies.
+8. Smallest architecture changes that would improve completion WITHOUT increasing the 75s / 24-open / 16-request ceilings.
+
+Final verdict:
+
+- ANALYSIS-TIME STARVATION IS A MAJOR SYSTEMIC BOTTLENECK
+- ANALYSIS-TIME STARVATION IS A SECONDARY BOTTLENECK
+- CURRENT BUDGET/SCHEDULER IS NOT A MATERIAL BOTTLENECK
+- INSUFFICIENT EVIDENCE
+
+Do not implement anything.

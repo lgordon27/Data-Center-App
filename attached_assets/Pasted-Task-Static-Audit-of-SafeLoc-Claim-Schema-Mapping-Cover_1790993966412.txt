@@ -1,0 +1,198 @@
+Task: Static Audit of SafeLoc Claim Schema, Mapping Coverage, and “claim-not-mapped” Failures
+
+This task runs in parallel with the evidence-conversion instrumentation task.
+
+READ-ONLY DIAGNOSIS ONLY.
+Do not change code.
+Do not run live/provider requests.
+Do not modify prompts, schemas, eligibility, identity, scope, ranking, budgets, or UI.
+
+The purpose is to determine whether SafeLoc’s current structured-analysis schema and downstream mapping layer are capable of representing the kinds of valid project facts the research engine is actually finding.
+
+Recent live validation showed:
+- 69 traced records across eight runs;
+- 51 primary `claim-not-mapped`;
+- 7 `missing-passage`;
+- zero eligible findings.
+
+We need to know whether `claim-not-mapped` is primarily:
+A. expected placeholder behavior,
+B. missing source support,
+C. a schema/mapping coverage problem,
+D. field normalization mismatch,
+E. unsupported project facts that SafeLoc currently has no destination for.
+
+==================================================
+1. MAP THE CLAIM CONTRACT
+==================================================
+
+Document the current structured claim types OpenAI is allowed to return.
+
+For each claim/variable type, report:
+- canonical field name
+- category
+- expected value type
+- accepted units
+- supported status/state fields
+- source/quotation requirements
+- scope requirements
+- time requirements
+- downstream SafeLoc destination
+- whether it can become eligible evidence
+- whether it can become model-active
+- whether it is evidence-only
+
+Do not infer intended fields that are not actually implemented.
+
+==================================================
+2. MAP CATEGORY → CLAIM COVERAGE
+==================================================
+
+For each diligence dimension:
+
+- project identity / phase
+- grid / power / interconnection
+- electricity / tariff
+- water / cooling
+- land / site / civil
+- permitting / entitlement
+- community / local government
+- environmental / air / generation
+- climate / operational hazard
+- construction / phasing
+- financing / capital
+- tenant / counterparty
+- incentives / taxes
+
+show:
+
+category
+→ facts SafeLoc asks OpenAI to extract
+→ structured claim types available
+→ downstream claim mappings
+→ eligible destination available?
+→ financial/model destination available?
+→ evidence-only destination available?
+
+Highlight categories where OpenAI can identify a useful fact but SafeLoc has no valid structured destination for it.
+
+==================================================
+3. TRACE “claim-not-mapped”
+==================================================
+
+Inspect provider-free fixtures, saved sanitized captures, and current mapping logic.
+
+Classify `claim-not-mapped` outcomes into buckets such as:
+
+- placeholder/no-value record
+- OpenAI claim type unsupported
+- field name mismatch
+- value/unit mismatch
+- source mapping failure
+- category mismatch
+- claim supported but no canonical SafeLoc destination
+- normalization changed key/type
+- claim intentionally evidence-only
+- other
+
+Do not treat all `claim-not-mapped` records as real failed claims.
+
+Report explicit counts where the saved evidence permits.
+
+==================================================
+4. COMPARE REAL RETAINED FACTS TO SCHEMA COVERAGE
+==================================================
+
+Using the saved AWS, IREN, and Vantage retained passages, identify the real project facts present.
+
+Examples may include:
+- campus MW
+- phase MW
+- planned/conditional capacity
+- construction status
+- site/phase relationships
+- cooling design
+- investment/capex
+- operator/developer
+- facility names
+- project dates
+
+For each supported fact, answer:
+
+1. Can the current OpenAI schema represent it?
+2. Is there a SafeLoc mapping for it?
+3. Can it become eligible evidence?
+4. If not model-active, can it still be retained as evidence?
+5. If it cannot survive the pipeline at all, why?
+
+This is critical.
+
+SafeLoc should not discard useful project evidence merely because it is not a financial-model input.
+
+==================================================
+5. LOOK FOR SCHEMA / NORMALIZATION MISMATCHES
+==================================================
+
+Inspect whether semantically identical fields can fail because of:
+
+- different key names
+- unit variants
+- null vs zero
+- status values
+- enum mismatch
+- casing
+- phase/facility labels
+- numerical string vs number
+- claim type aliases
+- source URL representation
+
+Identify deterministic mismatches that could turn a valid structured result into `claim-not-mapped`.
+
+==================================================
+6. MODEL-ACTIVE VS EVIDENCE-ELIGIBLE
+==================================================
+
+Confirm the architecture distinguishes:
+
+A. project evidence worth retaining
+
+from
+
+B. evidence permitted to affect the financial model.
+
+A valid fact such as:
+“Phase 1 is planned for 600 MW”
+
+should not need to map to a current financial input merely to survive as eligible/reviewable evidence.
+
+Report whether the current mapping architecture accidentally conflates:
+“not model-active”
+with
+“not a valid finding.”
+
+==================================================
+7. FINAL REPORT
+==================================================
+
+Return:
+
+1. Current structured claim inventory.
+2. Category-to-claim coverage matrix.
+3. Category-to-downstream-mapping matrix.
+4. `claim-not-mapped` breakdown.
+5. Real retained facts that current schema can represent.
+6. Real retained facts that current schema cannot represent.
+7. Deterministic normalization/mapping defects.
+8. Whether evidence-only facts can survive without a model destination.
+9. Top 3 mapping/schema bottlenecks, if any.
+
+Final verdict must be one of:
+
+- CLAIM SCHEMA / MAPPING IS A MAJOR YIELD BOTTLENECK
+- CLAIM SCHEMA / MAPPING IS A SECONDARY BOTTLENECK
+- CLAIM SCHEMA / MAPPING IS NOT A MATERIAL BOTTLENECK
+- INSUFFICIENT EVIDENCE
+
+Do not implement fixes.
+Do not run live research.
+Do not modify files.

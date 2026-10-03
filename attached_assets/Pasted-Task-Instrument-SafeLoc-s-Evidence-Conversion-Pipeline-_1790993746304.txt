@@ -1,0 +1,459 @@
+Task: Instrument SafeLoc’s Evidence-Conversion Pipeline and Identify the Exact Causal Bottleneck
+
+This is now the highest-priority SafeLoc task.
+
+Do not implement a broad repair yet.
+
+The latest multi-project validation established:
+- source discovery is not the primary problem;
+- relevant passages are being retained;
+- IREN and Vantage retained relevant project text but sent zero distinct assessment text hashes to OpenAI;
+- AWS sent some text to OpenAI but still produced zero eligible findings;
+- current diagnostics are too coarse to prove whether the dominant failure is pre-OpenAI admission, OpenAI structured analysis, post-OpenAI mutation/source mapping, identity/scope validation, or multiple comparable bottlenecks.
+
+The purpose of this task is to make the full evidence-conversion path observable enough that we can identify the first causal loss for each substantive claim and then repair the correct stage.
+
+This is not a UI task.
+This is not a discovery-ranking task.
+This is not backtesting.
+This is not database housekeeping.
+This is not a provider/model rewrite.
+
+==================================================
+PRIMARY OBJECTIVE
+==================================================
+
+Instrument the production-path funnel:
+
+retained passage
+→ category routing/admission
+→ identity admission
+→ deduplication
+→ category passage window
+→ token fitting
+→ OpenAI input
+→ raw OpenAI structured output
+→ source restriction
+→ normalization/parsing
+→ identity evaluation
+→ scope evaluation
+→ source/quotation mapping
+→ eligibility
+→ claim containment
+
+For every substantive candidate, identify:
+1. whether it reached each stage;
+2. if not, the exact first causal failure;
+3. which later stages were not evaluated;
+4. whether the failure is a legitimate evidence/scope rejection or an internal engine defect.
+
+==================================================
+1. PASSAGE-SELECTION INSTRUMENTATION
+==================================================
+
+At the boundaries around:
+- categorySourceMatchesForAnalysis()
+- prepareCategoryAnalysisPassages()
+- any category/identity admission logic
+
+record a bounded, sanitized diagnostic record for every retained source occurrence.
+
+Capture:
+- run ID
+- project ID
+- source/occurrence ID
+- source URL
+- source family
+- retained passage hash
+- retained passage length
+- category IDs / route metadata
+- facility scope metadata
+- phase scope metadata
+- project/campus/facility identifiers available
+- identity matcher verdict used for admission
+- identity matcher reason
+- admission decision
+- explicit exclusion reason
+
+Exclusion reasons must distinguish:
+- no category route
+- identity not established
+- explicit identity conflict
+- deduplicated
+- category-window exclusion
+- token clipping
+- source blocked
+- source type disallowed
+- other
+
+Do not collapse these into “not selected” or “not eligible.”
+
+Also record:
+- input text hash/length before filtering
+- output text hash/length after filtering
+- deduplicated text hash/length
+- final text hash/length sent to OpenAI
+
+The goal is to prove exactly why a retained passage did or did not reach OpenAI.
+
+==================================================
+2. IDENTITY-MATCHER DIAGNOSTICS
+==================================================
+
+Instrument deterministic identity evaluation.
+
+For each evaluated passage/claim, capture:
+- requested project name
+- requested operator/developer
+- requested city/state/county
+- requested campus
+- requested facility/building
+- requested phase
+- candidate matched name variants
+- operator variants
+- campus/facility/phase variants
+- location matches
+- location conflicts
+- actor names found
+- actor roles
+- exact supporting text spans for actor assertions
+- whether an actor came from:
+  - owner/operator text
+  - contractor/architect/publisher text
+  - navigation/menu text
+  - unrelated comparison text
+- final matcher verdict
+- primary matcher reason
+- secondary matcher reasons
+
+Do not infer identity validity later from normalized labels. Preserve the actual resolver result.
+
+Add a provider-free regression for the observed Corgan defect where navigation text such as:
+
+“slide next slide close projects”
+
+was interpreted as an asserted operator conflict.
+
+The fix for this specific fixture may only tighten attribution boundaries. Do not loosen general identity matching.
+
+==================================================
+3. OPENAI INPUT SNAPSHOT
+==================================================
+
+Immediately before each OpenAI category call, preserve a sanitized diagnostic snapshot containing:
+- run ID
+- project ID
+- category
+- source IDs included
+- source URLs included
+- exact passage hashes
+- passage lengths
+- relevant project identity supplied
+- facility/phase/scope metadata supplied
+- prompt/schema version
+- token estimate/input size
+- provider-call start time
+
+Do not store unnecessary full sensitive payloads if hashes/allowlisted fields are sufficient.
+
+The purpose is to prove exactly what OpenAI received.
+
+==================================================
+4. OPENAI OUTPUT SNAPSHOT BEFORE SAFELOC MUTATION
+==================================================
+
+Immediately after OpenAI JSON is parsed successfully, but BEFORE:
+- source restriction
+- source URL remapping
+- normalization
+- claim containment
+- eligibility transformations
+
+preserve an allowlisted sanitized “provider-original” snapshot.
+
+For each candidate claim capture:
+- category
+- variable/claim type
+- value
+- unit
+- status/classification
+- quotation
+- cited/source URLs
+- matched name/operator fields
+- identityAssessment fields
+- facility scope
+- phase scope
+- time scope
+- any provider-proposed relevance or confidence field currently used
+
+Do not infer historical provider output that was not captured.
+
+Then preserve a separate “post-SafeLoc-transformation” snapshot.
+
+For every changed or dropped field, record:
+- old value
+- new value
+- transformation stage
+- explicit mutation/drop reason
+
+The goal is to distinguish:
+
+OPENAI DID NOT PRODUCE IT
+
+from
+
+OPENAI PRODUCED IT BUT SAFELOC DROPPED/CHANGED IT.
+
+==================================================
+5. SOURCE / QUOTATION MAPPING DIAGNOSTICS
+==================================================
+
+Instrument the path from provider claim → retained source support.
+
+For every substantive claim candidate, record:
+- provider-cited URL(s)
+- resolved retained source ID(s)
+- URL canonicalization result
+- quotation supplied
+- quotation containment result
+- supporting passage ID/hash
+- source authority/type result
+- claim-support result
+- exact failure reason
+
+Distinguish:
+- no source URL returned
+- URL not resolved to retained source
+- quotation absent
+- quotation not contained
+- source retained but wrong passage
+- source not project-specific
+- source type disallowed
+- number/unit/status not supported by quoted clause
+- source successfully mapped
+
+Do not use generic “claim-not-mapped” as the only explanation.
+
+==================================================
+6. SCOPE DIAGNOSTICS
+==================================================
+
+For each substantive claim candidate, record scope result explicitly as one of:
+
+- passed
+- rejected
+- unknown
+- not evaluated
+
+Capture:
+- campus scope
+- phase scope
+- building/facility scope
+- parent/child relationship
+- requested scope
+- claimed scope
+- matched scope signals
+- conflicting scope signals
+- exact reason for rejection/ambiguity
+
+Do not treat display labels such as “exact-phase” or “exact-facility” as proof unless the actual scope resolver produced that verdict.
+
+Preserve negative controls for:
+- AZ1 vs AZ2
+- Sweetwater 1 vs Sweetwater 2
+- campus-wide vs facility-specific values
+- phase-wide vs building-specific values
+- regional/county totals vs project totals
+
+==================================================
+7. CLAIM-CONTAINMENT / ELIGIBILITY DIAGNOSTICS
+==================================================
+
+Separate records into:
+- substantive claim candidate
+- no-claim result
+- unavailable-value placeholder
+- duplicate claim
+- unsupported generated value
+
+For every substantive candidate record:
+- first causal failure
+- secondary failure reasons
+- downstream stages not evaluated
+- final eligibility result
+
+First-failure reasons should include at least:
+- rejected before OpenAI
+- no structured claim generated
+- source mapping failed
+- quotation support failed
+- identity failed
+- scope failed
+- source authority failed
+- period/status failed
+- unsupported inference
+- duplicate
+- normalization defect
+- technical timeout
+- other
+
+Required placeholders must not be counted as independently supported claims.
+
+==================================================
+8. OFFLINE REPLAY OF SAVED AWS / IREN / VANTAGE CAPTURES
+==================================================
+
+Use the existing sanitized captures from Task #355.
+
+Do not make new provider calls.
+
+Replay the production path as far as the saved evidence permits.
+
+For representative retained passages from each project, produce the trace:
+
+retained
+→ category routed?
+→ identity admission verdict
+→ admitted/rejected
+→ deduplicated?
+→ analysis-ready?
+→ sent to OpenAI?
+→ provider output available/unavailable
+→ provider-original claim
+→ SafeLoc-transformed claim
+→ source mapping
+→ identity
+→ scope
+→ eligibility
+
+Historical fields that were never captured must remain:
+UNAVAILABLE
+
+Do not infer them.
+
+Specifically verify:
+
+IREN:
+- why retained Sweetwater Hub / Sweetwater 1 / Sweetwater 2 text produced zero assessment text hashes.
+
+Vantage:
+- why retained AZ1 / AZ11–AZ14 text produced zero assessment text hashes.
+- separately preserve AZ1/AZ2 ambiguity controls.
+
+AWS:
+- why text reached analysis but claims still failed source/quotation/eligibility mapping.
+- distinguish unsupported grid values from legitimate project facts.
+
+==================================================
+9. QUANTIFY THE FULL ATTRITION FUNNEL
+==================================================
+
+For the replayed captures and new provider-free fixtures, report exact counts:
+
+- retained passages
+- rejected at category routing
+- rejected at identity admission
+- removed by deduplication
+- removed by windowing
+- removed by token clipping
+- sent to OpenAI
+- structured claims produced
+- claims altered/dropped post-OpenAI
+- source-mapped claims
+- identity-valid claims
+- scope-valid claims
+- eligible findings
+- placeholders/no-claim records
+- technical timeouts/cancellations
+
+Calculate conversion percentages with explicit denominators.
+
+Rank the top 3 causal loss points by impact.
+
+Do not rank based on speculation. Use measured counts.
+
+==================================================
+10. REQUIRED NEGATIVE CONTROLS
+==================================================
+
+All existing safeguards remain unchanged:
+
+- explicit operator conflicts reject
+- explicit location conflicts reject
+- contractor/architect/publisher cannot substitute for owner/operator
+- same city/operator alone cannot establish a particular campus
+- different campuses remain distinct
+- different facilities remain distinct
+- different phases remain distinct
+- planned / conditional / energized / operational remain distinct
+- numbers/units/statuses/dates remain tied to supporting clauses
+- directory metadata is discovery context only
+- snippets are non-evidence
+- model assertions are non-evidence
+- source silence cannot imply zero
+- SSRF/DNS protections unchanged
+- work budgets unchanged
+- fail-closed behavior unchanged
+
+==================================================
+11. TESTING
+==================================================
+
+Add provider-free tests for:
+- passage-admission instrumentation
+- identity decision tracing
+- Corgan navigation-as-operator regression
+- source/quotation mapping diagnostics
+- provider-original vs SafeLoc-transformed snapshot behavior
+- explicit scope-state diagnostics
+- first-causal-failure recording
+- placeholder/substantive-claim separation
+
+Run:
+- focused instrumentation tests
+- identity tests
+- passage/extraction tests
+- claim-verifier tests
+- source-validation tests
+- research-proxy tests
+- full provider-free suite
+- typecheck
+- production build
+
+Report exact pass/fail/skip counts.
+
+No paid/live research.
+No provider probe.
+No deployment.
+No push unless separately instructed.
+
+==================================================
+FINAL DELIVERABLE
+==================================================
+
+Return a concise but technically rigorous report containing:
+
+1. Exact stage where IREN retained passages are lost.
+2. Exact stage where Vantage retained passages are lost.
+3. Exact stage(s) where AWS claims are lost.
+4. Percentage of retained passages excluded before OpenAI.
+5. Breakdown of pre-OpenAI exclusion reasons.
+6. Number of structured claims generated where observable.
+7. Percentage of observable provider claims altered/dropped by SafeLoc after OpenAI.
+8. Source/quotation-mapping failure breakdown.
+9. Identity failures by exact cause.
+10. Scope failures by exact cause.
+11. Eligibility failures by exact cause.
+12. Whether the Corgan false operator-conflict defect is fixed.
+13. Top 3 measured causal bottlenecks.
+14. ONE recommended repair task.
+
+Final verdict must be exactly one of:
+
+- PRE-OPENAI ADMISSION IS THE DOMINANT BOTTLENECK
+- OPENAI CLAIM GENERATION IS THE DOMINANT BOTTLENECK
+- POST-OPENAI NORMALIZATION / SOURCE MAPPING IS THE DOMINANT BOTTLENECK
+- IDENTITY / SCOPE VALIDATION IS THE DOMINANT BOTTLENECK
+- MULTIPLE COMPARABLE BOTTLENECKS REMAIN
+
+Do not implement the broad repair in this task unless a minimal code change is necessary only to make the instrumentation accurate.

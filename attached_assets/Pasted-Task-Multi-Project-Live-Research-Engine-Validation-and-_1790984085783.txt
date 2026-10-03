@@ -1,0 +1,493 @@
+Task: Multi-Project Live Research Engine Validation and Root-Cause Repair
+
+This is the highest-priority SafeLoc task.
+
+The core product is the research engine:
+selected project → discovery → source acquisition → passage extraction → structured claims → identity/scope validation → eligibility → diligence category output → reviewable evidence.
+
+The current failure mode is unacceptable: SafeLoc can retrieve dozens of source records and still produce zero eligible findings.
+
+Task #351 improved request idempotency, source ranking, source-family diversity, blocked-receipt reuse, and run-yield metrics. This task must now determine whether the live engine actually works across multiple arbitrary projects and, if it does not, isolate the exact systemic conversion bottleneck and repair it.
+
+This is not a UI-polish task.
+This is not a backtest.
+This is not a historical-reconstruction exercise.
+This is not a one-project special case.
+
+Treat this as a production-engine validation and repair exercise.
+
+==================================================
+PRIMARY OBJECTIVE
+==================================================
+
+Determine whether SafeLoc can reliably convert real public evidence into eligible findings across multiple arbitrary data-center projects.
+
+Run a controlled live matrix across 3 materially different non-canonical projects.
+
+For each project, follow the full real production path:
+
+project selection
+→ live discovery
+→ candidate ranking
+→ document opening
+→ extraction
+→ passage compaction
+→ category analysis
+→ structured claim generation
+→ project identity/scope validation
+→ source validation
+→ eligibility
+→ diligence output
+→ reviewable evidence
+
+The key success metric is NOT source count.
+
+The key success metric is:
+
+credible public project evidence → attributable, scope-correct eligible findings.
+
+==================================================
+PROJECT MATRIX
+==================================================
+
+Use exactly 3 real arbitrary projects from different operators and different source environments.
+
+Requirements:
+
+Project A:
+- Amazon / AWS project
+- non-canonical
+- publicly documented enough that at least some project-specific evidence should exist
+
+Project B:
+- IREN or another large power-intensive data-center campus
+- non-canonical
+- preferably with official operator/developer material and secondary reporting available
+
+Project C:
+- different operator, preferably colo or hyperscale operator other than Amazon/IREN/DataBank/Stargate
+- non-canonical
+- different geography/source profile if possible
+
+Do NOT use:
+- Red Oak canonical dossier
+- Stargate Abilene canonical dossier
+- Stargate Project Jupiter
+- any seeded/reviewed canonical project
+
+Before each run, report:
+- project name
+- operator/developer
+- city/state
+- project ID
+- directory source
+- supplied official URL if available
+
+Do not hard-code expected facts into SafeLoc.
+
+==================================================
+PRE-RUN GATES
+==================================================
+
+Before making any paid/live request:
+
+1. Confirm Task #351 is applied/merged.
+2. Confirm one-click/one-run idempotency logic is active.
+3. Confirm run initiator is recorded.
+4. Confirm research audit can capture:
+   - run ID
+   - project ID
+   - source revision
+   - query family
+   - candidate ranking
+   - source family
+   - open order
+   - access outcome
+   - passage lineage
+   - claim outcome
+   - eligibility outcome
+5. Confirm the normal physical-open budget is active.
+6. Confirm no test-only reduced open limit is enabled.
+7. Confirm SSRF/DNS and identity/scope safeguards remain unchanged.
+8. Confirm no canonical dossier is active in the browser/session before selecting each project.
+
+If audit storage is partially unavailable, do NOT stop the task unless it prevents capturing the data required to diagnose the live engine.
+
+Do not spend the task repairing unrelated proof-ledger persistence.
+
+==================================================
+RUN POLICY
+==================================================
+
+For each of the 3 projects:
+
+- initiate exactly one intentional live research request;
+- use the normal production research path;
+- do not manually inject evidence;
+- do not add project-specific exceptions;
+- do not change code between projects unless a severe engine defect prevents the matrix from continuing;
+- do not retry automatically after a failed run;
+- do not inflate time/token/open budgets merely to force success.
+
+If one run fails because of a reproducible systemic engine bug, capture the failure completely before proceeding.
+
+==================================================
+PER-PROJECT DATA TO CAPTURE
+==================================================
+
+For each project, capture the full funnel.
+
+### A. Request identity
+- project ID
+- run ID
+- request ID/idempotency key
+- initiator
+- source revision/SHA
+- start/end time
+- total elapsed time
+
+Verify:
+one intentional action → one logical run.
+
+Any unexplained second run is a FAIL condition.
+
+### B. Discovery
+Report:
+- query families requested
+- actual queries executed
+- total candidates discovered
+- unique candidates
+- source-family distribution
+- supplied official URLs present/not present
+- official URLs ranked position
+- authoritative government/utility/permit records discovered or not
+
+Do not use raw candidate count as a success metric.
+
+### C. Source opening
+Report:
+- total opens attempted
+- successful opens
+- blocked opens
+- duplicate receipts reused
+- irrelevant/generic sources opened
+- project-specific primary sources opened
+- project-specific official/government/utility sources opened
+- remaining open capacity
+
+For each meaningful opened source, preserve:
+- URL
+- source family
+- source specificity
+- access outcome
+- why it was selected
+
+Identify open-budget waste:
+- duplicates
+- generic roots
+- boilerplate pages
+- repeatedly blocked destinations
+- weak secondary articles
+- non-project-specific results
+
+### D. Passage extraction
+Report:
+- raw passages extracted
+- unique passages after deduplication
+- analysis-ready passages
+- passages containing exact project identity
+- passages containing facility/phase/scope qualifiers
+- passages rejected as boilerplate/duplicate/unrelated
+
+For retained passages, preserve:
+- exact source lineage
+- project identifier linkage
+- scope
+- available date
+- facility/phase metadata
+- source family
+
+### E. Structured claim generation
+For every analysis-ready passage or claim candidate, record the funnel:
+
+passage
+→ structured claim generated?
+→ project identity passed?
+→ scope passed?
+→ source validation passed?
+→ time/status validation passed?
+→ eligibility passed?
+
+If a claim fails, record ONE explicit primary failure reason plus any secondary reasons.
+
+Do not collapse everything into “not eligible.”
+
+Use structured rejection categories such as:
+- no structured claim generated
+- project identity unresolved
+- scope mismatch
+- facility/campus ambiguity
+- source attribution missing
+- number/unit separation
+- status/phase ambiguity
+- unsupported inference
+- stale/superseded
+- publication date unresolved
+- technical analysis timeout
+- source inaccessible
+- unsupported source type
+- duplicate claim
+- other
+
+### F. Category outcome
+For each diligence dimension, report:
+
+- project identity / phase
+- grid / power / interconnection
+- electricity / tariff
+- water / cooling
+- land / site / civil infrastructure
+- permitting / entitlement
+- community / local-government action
+- environmental / air / generation
+- climate / operational hazard
+- construction / phasing
+- financing / capital
+- tenant / counterparty
+- incentives / taxes
+
+Outcome must distinguish:
+- eligible evidence found
+- usable evidence but no eligible claim
+- located but insufficient
+- search incomplete
+- analysis timed out
+- source blocked
+- likely non-public
+- not applicable
+- searched and no qualifying evidence
+
+Never treat blocked/failed/not-run as a negative finding.
+
+### G. Final yield metrics
+For each run, report:
+
+- unique project-specific sources opened
+- unique usable retained sources
+- unique analysis-ready passages
+- structured claims generated
+- claims passing project identity
+- claims passing scope
+- eligible findings
+- eligible findings per source
+- eligible findings per analysis-ready passage
+- source families contributing eligible evidence
+- categories with at least one eligible finding
+- technically incomplete categories
+- open-budget waste rate
+- analysis timeout count
+
+==================================================
+ROOT-CAUSE ANALYSIS
+==================================================
+
+After all 3 runs, do NOT merely summarize the projects.
+
+Build a cross-project funnel showing where evidence is being lost.
+
+Example:
+
+Across 3 projects:
+120 unique candidates
+→ 55 opened
+→ 31 usable sources
+→ 84 unique passages
+→ 46 structured claims
+→ 29 identity-valid
+→ 21 scope-valid
+→ 7 eligible findings
+
+The purpose is to identify the dominant systemic loss point.
+
+Rank the top 3 engine bottlenecks by evidence impact.
+
+Possible examples:
+- discovery fails to surface authoritative sources
+- ranking still overweights secondary pages
+- exact-project identity rejects valid aliases
+- passage extraction strips necessary facility context
+- structured analysis fails to produce claims from valid text
+- scope logic is overly brittle
+- source metadata is lost between extraction and eligibility
+- category analysis times out before claims are produced
+- valid claims are rejected by formatting/normalization bugs
+
+Do not speculate.
+
+Every claimed bottleneck must be supported by captured run evidence.
+
+==================================================
+REPAIR AUTHORIZATION
+==================================================
+
+If the 3-project matrix exposes one or more clearly systemic defects, you ARE authorized to repair them in this task, subject to these limits:
+
+Allowed:
+- generic acquisition ranking
+- duplicate handling
+- source-family prioritization
+- passage extraction/compaction
+- project alias normalization
+- claim parsing/normalization
+- source metadata preservation
+- scope metadata preservation
+- category scheduling
+- analysis-time reservation
+- eligibility plumbing defects
+- run idempotency defects
+- audit visibility required to prove the funnel
+
+Not allowed:
+- project-specific hard coding
+- lowering evidence standards
+- treating snippets as evidence
+- weakening project identity
+- weakening scope checks
+- weakening SSRF/DNS protections
+- inventing missing values
+- increasing budgets merely to improve counts
+- adding unrelated product features
+- authentication
+- portfolio analytics
+- model-provider rewrite
+
+If a repair is made:
+1. reproduce defect in provider-free fixture first;
+2. add regression test;
+3. make smallest generalized fix;
+4. rerun relevant offline tests;
+5. rerun only the affected live project if necessary to confirm the repair;
+6. do not rerun all 3 projects unless the fix materially affects all three.
+
+==================================================
+IMPORTANT: ELIGIBILITY MUST REMAIN STRICT
+==================================================
+
+The goal is not to manufacture eligible findings.
+
+A run with zero findings can be correct if public evidence is genuinely insufficient.
+
+But a run is NOT acceptable if:
+- SafeLoc opens strong project-specific sources;
+- extracts relevant passages;
+- and then loses those facts because of internal parsing, attribution, scope, timeout, or normalization failures.
+
+The task must distinguish:
+“no public evidence exists”
+from
+“SafeLoc failed to convert available evidence.”
+
+==================================================
+SUCCESS CRITERIA
+==================================================
+
+This task is a PASS only if the result demonstrates one of the following:
+
+A. The engine now produces meaningful eligible findings across multiple arbitrary projects when qualifying evidence exists;
+
+OR
+
+B. For any project producing zero eligible findings, the audit proves that the failure is due to genuine evidence insufficiency or inaccessible sources rather than an internal conversion defect.
+
+Preferred evidence of engine health:
+
+- more than one project produces eligible findings;
+- eligible evidence comes from more than one source family;
+- authoritative/project-specific sources are represented;
+- valid passages survive through identity/scope/eligibility;
+- category analysis completes for the highest-value categories;
+- open-budget waste is materially reduced;
+- one click reliably creates one run.
+
+Do not define success by:
+- candidate count
+- source-record count
+- passage count
+- UI rendering alone
+
+==================================================
+FAIL CONDITIONS
+==================================================
+
+Treat any of these as a core-engine failure:
+
+- one click creates multiple unexplained live runs
+- official/project-specific sources are discovered but consistently not opened
+- 24 opens are exhausted primarily on duplicates/generic/weak sources
+- strong exact-project passages are extracted but never become structured claims
+- structured claims repeatedly lose source/scope metadata
+- valid claims are rejected because of normalization defects
+- category analysis routinely times out before using available evidence
+- canonical facts leak into arbitrary-project evidence
+- zero eligible findings across all 3 projects despite clearly available qualifying public evidence
+- blocked/failed searches are shown as conclusive no-evidence outcomes
+
+==================================================
+POST-REPAIR TESTING
+==================================================
+
+After any code change, run:
+
+- focused research-engine tests
+- all new regression fixtures
+- relevant source-ranking tests
+- passage extraction tests
+- claim verifier tests
+- source validation tests
+- provider-free full suite
+- typecheck
+- production build
+
+Report exact pass/fail counts.
+
+Do not deploy automatically.
+Do not push automatically unless explicitly instructed.
+
+==================================================
+FINAL DELIVERABLE
+==================================================
+
+Return one concise but technically rigorous report with:
+
+1. The 3 projects tested.
+2. Run IDs and source revisions.
+3. Per-project funnel:
+   discovery
+   → opens
+   → usable sources
+   → unique passages
+   → structured claims
+   → identity-valid
+   → scope-valid
+   → eligible findings.
+4. Source-family contribution per project.
+5. Diligence category outcomes per project.
+6. Top rejection reasons.
+7. Open-budget waste analysis.
+8. Category timeout analysis.
+9. Duplicate-run/idempotency result.
+10. Cross-project top 3 engine bottlenecks.
+11. Any systemic fixes made.
+12. Regression tests added.
+13. Full verification results.
+14. Before/after yield if a repair was made.
+15. Final verdict:
+
+- ENGINE WORKING ACROSS ARBITRARY PROJECTS
+- ENGINE IMPROVED BUT STILL HAS A SYSTEMIC BOTTLENECK
+- ENGINE NOT YET RELIABLY CONVERTING PUBLIC EVIDENCE
+
+16. The single highest-value next product action, if one remains.
+
+Do not propose unrelated follow-up work.
+Do not drift into database housekeeping, backtesting, model-agnostic architecture, UI polish, or portfolio features unless directly required to make the research engine work.

@@ -142,7 +142,9 @@ test("traces a bounded structured claim through validation and proposal selectio
   assert.match(claim.supportingQuoteSha256, /^[a-f0-9]{64}$/);
   assert.equal("supportingQuote" in claim, false);
   assert.equal(claim.canonicalSourceUrl, "https://records.example/red-oak");
-  assert.equal(claim.projectIdentity.state, "exact-project");
+  assert.equal(claim.projectIdentity.state, "unknown");
+  assert.equal(claim.projectIdentity.exactProject, false);
+  assert.equal(claim.sourceMappingReceipts[0].quotation, claimPassage);
   assert.equal(claim.facilityPhaseScope.facilityScope, "project");
   assert.equal(claim.facilityPhaseScope.phaseScope, "all-phases");
   assert.equal(claim.timeScope.state, "rejected");
@@ -154,7 +156,7 @@ test("traces a bounded structured claim through validation and proposal selectio
   assert.equal(claim.firstFailedGate.gate, "exact-project-source");
   assert.equal(claim.proposalCreated, false);
   const serialized = JSON.stringify(diagnostic);
-  assert.doesNotMatch(serialized, /private-provider-token|292-acre site|provider text/);
+  assert.doesNotMatch(serialized, /private-provider-token|provider text/);
 });
 
 test("records omitted claims, no-claim responses, and malformed responses separately", () => {
@@ -191,6 +193,171 @@ test("records omitted claims, no-claim responses, and malformed responses separa
   assert.equal(diagnostic.claims[0].firstFailedGate.reasonCode, "claim-omitted-from-response");
   assert.equal(diagnostic.claims[2].structuredReceiptState, "omitted");
   assert.equal(diagnostic.claims[2].stages.clientParsing.state, "failed");
+});
+
+test("records the real source-validation scope state as not evaluated instead of treating exact labels as proof", () => {
+  const trace = createRedOakClaimTrace();
+  const providerResponseId = "resp-scope-not-evaluated";
+  const quote = "The 292-acre site will eventually host eight buildings delivering 480 MW of total IT load.";
+  const source = {
+    ...retainedSource,
+    occurrenceId: "retained-red-oak-passage",
+    claimPassage: quote,
+    facilityScope: "project",
+    phaseScope: "all-phases",
+    timePeriod: null,
+    accessOutcome: {
+      ...retainedSource.accessOutcome,
+      state: "accessible",
+      passage: retainedPassage,
+    },
+  };
+  trace.recordStructuredReceipt({
+    categoryId: "grid",
+    providerResponseId,
+    expectedEvidenceIds: ["grid_interconnection"],
+    research: {
+      projectSummary: { name: project.name },
+      evidence: { grid_interconnection: { value: 480, unit: "MW", claimPassage: quote } },
+    },
+  });
+  const mappings = buildClaimPassageMappings({
+    id: "grid_interconnection",
+    sources: [source],
+    project,
+    claim: { value: 480, numericValue: 480, description: quote },
+    onIdentityDecision: (decision) => trace.recordIdentityEvaluation({
+      categoryId: "grid",
+      providerResponseId,
+      claimId: "grid_interconnection",
+      requestedProject: project,
+      ...decision,
+    }),
+    onMappingDecision: (decision) => trace.recordMappingEvaluation({
+      categoryId: "grid",
+      providerResponseId,
+      claimId: "grid_interconnection",
+      requestedProject: project,
+      ...decision,
+      claimValue: 480,
+      claimUnit: "MW",
+      claimStatus: "reported",
+    }),
+  });
+  trace.recordValidatedEvidence({
+    categoryId: "grid",
+    providerResponseId,
+    evidence: [{
+      id: "grid_interconnection",
+      value: 480,
+      unit: "MW",
+      status: "reported",
+      claimPassage: quote,
+      sourceUrl,
+      sources: [source],
+      claimMappings: mappings,
+      eligibleForModel: false,
+      sourceValidation: { state: "rejected", rejectionCodes: mappings[0].rejectionCodes },
+    }],
+  });
+
+  const claim = trace.toJSON().claims[0];
+  const mapping = claim.sourceMappingReceipts[0];
+  assert.equal(mapping.quotationContainment, "contained-in-retained-passage");
+  assert.equal(mapping.quotationSha256, claim.supportingQuoteSha256);
+  assert.match(mapping.passageSha256, /^[a-f0-9]{64}$/);
+  assert.equal(mapping.scopeEvaluation.state, "not-evaluated");
+  assert.equal(mapping.scopeEvaluation.requestedScopeComparison, "not-evaluated-by-this-evaluator");
+  assert.ok(mapping.scopeEvaluation.ambiguityReasons.includes("missing-time-scope"));
+  assert.equal(claim.facilityPhaseScope.state, "not-evaluated");
+  assert.equal(claim.facilityPhaseScope.phaseScope, "all-phases");
+  assert.match(claim.facilityPhaseScope.reason, /requested campus\/facility\/phase comparison was not evaluated/i);
+});
+
+test("classifies source and quotation mapping failures without collapsing them into claim-not-mapped", () => {
+  const trace = createRedOakClaimTrace();
+  const categoryId = "grid";
+  const providerResponseId = "resp-mapping-failure-kinds";
+  const url = "https://records.example.gov/project/grid";
+  const quote = "The project has a 160 MW grid connection.";
+  const cases = [
+    { id: "missing-url", mapping: {}, source: {}, expected: "missing-url" },
+    { id: "unresolved-url", mapping: { sourceId: "not a URL" }, source: {}, expected: "unresolved-url" },
+    {
+      id: "absent-quotation",
+      mapping: { sourceId: url, supportStatus: "supported" },
+      source: { canonicalUrl: url, accessOutcome: { state: "accessible", passage: quote } },
+      expected: "absent-quotation",
+    },
+    {
+      id: "uncontained-quotation",
+      mapping: { sourceId: url, exactQuotation: "A different clause.", supportStatus: "supported" },
+      source: { canonicalUrl: url, accessOutcome: { state: "accessible", passage: quote } },
+      expected: "uncontained-quotation",
+    },
+    {
+      id: "non-project-specific",
+      mapping: { sourceId: url, exactQuotation: quote, supportStatus: "context-only", entityScope: "related" },
+      source: { canonicalUrl: url, accessOutcome: { state: "accessible", passage: quote } },
+      expected: "non-project-specific-source",
+    },
+    {
+      id: "disallowed-source-type",
+      mapping: { sourceId: url, exactQuotation: quote, supportStatus: "unsupported-source-type" },
+      source: { canonicalUrl: url, accessOutcome: { state: "accessible", passage: quote } },
+      expected: "disallowed-source-type",
+    },
+    {
+      id: "unsupported-quantity",
+      mapping: { sourceId: url, exactQuotation: quote, supportStatus: "claim-not-mapped" },
+      source: { canonicalUrl: url, accessOutcome: { state: "accessible", passage: quote } },
+      claimSupportEvaluation: { reasonCode: "claim-value-does-not-match-support" },
+      expected: "unsupported-quantity-value",
+    },
+    {
+      id: "unit-status-not-evaluated",
+      mapping: { sourceId: url, exactQuotation: quote, supportStatus: "claim-not-mapped" },
+      source: { canonicalUrl: url, accessOutcome: { state: "accessible", passage: quote } },
+      expected: "claim-not-mapped-unit-or-status-not-evaluated",
+    },
+    {
+      id: "mapped",
+      mapping: { sourceId: url, exactQuotation: quote, supportStatus: "supported" },
+      source: { canonicalUrl: url, accessOutcome: { state: "accessible", passage: quote } },
+      expected: "none",
+    },
+  ];
+  trace.recordStructuredReceipt({
+    categoryId,
+    providerResponseId,
+    expectedEvidenceIds: cases.map((item) => item.id),
+    research: {
+      projectSummary: { name: "Example project" },
+      evidence: Object.fromEntries(cases.map((item) => [item.id, { value: 160, unit: "MW" }])),
+    },
+  });
+  for (const item of cases) {
+    trace.recordMappingEvaluation({
+      categoryId,
+      providerResponseId,
+      claimId: item.id,
+      requestedProject: { name: "Example project" },
+      source: item.source,
+      mapping: item.mapping,
+      exactProject: item.mapping.entityScope !== "related",
+      sourceTypeAllowed: item.mapping.supportStatus !== "unsupported-source-type",
+      claimSupportEvaluation: item.claimSupportEvaluation ?? null,
+      claimValue: 160,
+      claimUnit: "MW",
+      claimStatus: "planned",
+    });
+  }
+
+  const records = trace.toJSON().claims;
+  for (const item of cases) {
+    const record = records.find((candidate) => candidate.claimId === item.id);
+    assert.equal(record.mappingEvaluations[0].failureKind, item.expected, item.id);
+  }
 });
 
 test("records category and source restrictions at the production category merge boundary", () => {

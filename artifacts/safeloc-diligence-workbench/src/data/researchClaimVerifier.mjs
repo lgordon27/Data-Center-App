@@ -595,7 +595,19 @@ function assertedOperators(text, identityMatches = [], expectedOperator = "", ex
       while (candidateTokens.length && GENERIC_PROJECT_TOKENS.has(candidateTokens.at(-1))) {
         candidateTokens.pop();
       }
-      if (candidateTokens.length) actors.push(candidateTokens.join(" "));
+      const candidate = candidateTokens.join(" ");
+      const possessiveAttribution = /['’]s\s+(?:(?:the|a|an)\s+)?(?:project|facility|site|campus|data\s+center|datacenter|hyperscale|park)?\s*$/iu
+        .test(directAttribution[0]);
+      const navigationPageChrome = /\bslide\s+next\s+slide\s+close\s+projects\b/i
+        .test(directAttribution[0]);
+      // A navigation label can be concatenated with the following project
+      // title in a retained page capture. Do not turn that chrome into an
+      // operator assertion; preserve the general unpossessive attribution
+      // rule for ordinary prose and explicit actor assertions.
+      if (candidateTokens.length
+        && (!navigationPageChrome || possessiveAttribution || operatorsMatch(expectedOperator, candidate))) {
+        actors.push(candidate);
+      }
     }
 
     // A matched requested full name that includes its operator establishes
@@ -1072,6 +1084,143 @@ export function matchProject(passage, project = {}) {
   return {
     verdict: "ambiguous",
     reason: "The passage does not provide enough project-specific context to determine whether it refers to the requested project.",
+  };
+}
+
+/**
+ * Exposes the shared resolver decision plus bounded supporting observations.
+ * The verdict and reason are always the direct matchProject result; the
+ * additional fields are diagnostic context, not extra admission rules.
+ */
+export function traceProjectMatch(passage, project = {}, resolverResult = null) {
+  const text = typeof passage === "string" ? passage : "";
+  const result = resolverResult ?? matchProject(text, project);
+  const variants = identityVariants(project);
+  const nameMatches = findNameMatches(text, variants).slice(0, 48);
+  const expectedLocation = requestedLocation(project);
+  const locations = detailedLocations(text).slice(0, 48).map((entry) => {
+    const comparison = compareLocation(expectedLocation, entry.location);
+    return {
+      location: { ...entry.location },
+      start: entry.start,
+      end: entry.end,
+      attachedToProjectContext: hasLocationConnector(text, entry),
+      matches: comparison.matches,
+      conflicts: comparison.conflicts,
+    };
+  });
+  const actorRecords = [];
+  for (const fragment of splitSubjectFragments(text).slice(0, 80)) {
+    const matches = findNameMatches(fragment.text, variants);
+    for (const actor of assertedOperators(
+      fragment.text,
+      matches,
+      project?.operator ?? project?.knownData?.operator ?? "",
+      expectedLocation,
+    ).slice(0, 12)) {
+      const actorPattern = actor.trim()
+        .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+        .replace(/\s+/gu, "\\s+");
+      const actorMatch = actorPattern
+        ? new RegExp(`(^|[^\\p{L}\\p{N}])(${actorPattern})(?![\\p{L}\\p{N}])`, "iu").exec(fragment.text)
+        : null;
+      const start = actorMatch ? actorMatch.index + actorMatch[1].length : -1;
+      const end = actorMatch ? start + actorMatch[2].length : -1;
+      const supportingStart = start < 0 ? 0 : Math.max(0, start - 80);
+      const supportingSpan = fragment.text.slice(supportingStart, supportingStart + 220);
+      const role = /\b(?:architect|architecture|contractor|builder|construction|design|publisher|writer|reporter)\b/i
+        .test(fragment.text)
+        ? "contractor-architect-publisher-or-author"
+        : /\b(?:previous\s+slide|next\s+slide|close\s+projects)\b/i.test(fragment.text)
+          ? "navigation-or-page-chrome"
+          : /\b(?:compared\s+with|versus|vs\.?|unlike|whereas|in\s+contrast|rather\s+than)\b/i.test(fragment.text)
+            ? "comparison-or-unrelated"
+            : "resolver-attributed-owner-operator-developer";
+      actorRecords.push({
+        actor: actor.slice(0, 120),
+        role,
+        attributionRule: "shared-resolver-assertedOperators",
+        supportingSpan,
+        spanStart: start < 0 ? null : start - supportingStart,
+        spanEnd: end < 0 ? null : Math.min(supportingSpan.length, end - supportingStart),
+      });
+    }
+  }
+  const excludedNavigationActors = [];
+  const navigationAttribution = /([A-Z][A-Za-z&.'’\-]*(?:\s+[A-Z][A-Za-z&.'’\-]*){0,3}?)\s+(?:Previous\s+Slide\s+)?Next\s+Slide\s+Close\s+Projects\b/gu;
+  for (const match of text.matchAll(navigationAttribution)) {
+    excludedNavigationActors.push({
+      actor: match[1].slice(0, 120),
+      role: "navigation-or-page-chrome",
+      attributionRule: "rejected-navigation-page-chrome-not-operator-attribution",
+      supportingSpan: match[0].slice(0, 220),
+      spanStart: 0,
+      spanEnd: Math.min(match[1].length, match[0].length),
+      sourceStart: match.index ?? null,
+      sourceEnd: (match.index ?? 0) + match[0].length,
+      admittedAsOperator: false,
+    });
+    if (excludedNavigationActors.length >= 16) break;
+  }
+  const requestedIdentity = {
+    name: project?.name ?? project?.projectName ?? null,
+    aliases: [...new Set([
+      ...(Array.isArray(project?.aliases) ? project.aliases : []),
+      ...(Array.isArray(project?.knownData?.aliases) ? project.knownData.aliases : []),
+    ])].slice(0, 16),
+    operator: project?.operator ?? project?.knownData?.operator ?? null,
+    city: expectedLocation.city,
+    county: expectedLocation.county,
+    state: expectedLocation.state,
+    campus: project?.campus ?? project?.campusName ?? project?.knownData?.campus ?? null,
+    facility: project?.facility ?? project?.facilityName ?? project?.knownData?.facility ?? null,
+    phase: project?.phase ?? project?.phaseName ?? project?.knownData?.phase ?? null,
+    building: project?.building ?? project?.buildingName ?? project?.knownData?.building ?? null,
+    facilityIdentifiers: requestedFacilityIdentifiers(project).slice(0, 32),
+    operatorVariants: variants.filter((variant) => variant.kind === "operator").map((variant) => variant.label).slice(0, 16),
+    campusVariants: [...new Set([
+      project?.campus, project?.campusName, project?.knownData?.campus,
+      ...(Array.isArray(project?.campusVariants) ? project.campusVariants : []),
+      ...(Array.isArray(project?.knownData?.campusVariants) ? project.knownData.campusVariants : []),
+    ].filter((value) => typeof value === "string"))].slice(0, 16),
+    facilityVariants: [...new Set([
+      project?.facility, project?.facilityName, project?.knownData?.facility,
+      ...(Array.isArray(project?.facilityVariants) ? project.facilityVariants : []),
+      ...(Array.isArray(project?.knownData?.facilityVariants) ? project.knownData.facilityVariants : []),
+    ].filter((value) => typeof value === "string"))].slice(0, 16),
+    phaseVariants: [...new Set([
+      project?.phase, project?.phaseName, project?.knownData?.phase,
+      ...(Array.isArray(project?.phaseVariants) ? project.phaseVariants : []),
+      ...(Array.isArray(project?.knownData?.phaseVariants) ? project.knownData.phaseVariants : []),
+    ].filter((value) => typeof value === "string"))].slice(0, 16),
+    buildingVariants: [...new Set([
+      project?.building, project?.buildingName, project?.knownData?.building,
+      ...(Array.isArray(project?.buildingVariants) ? project.buildingVariants : []),
+      ...(Array.isArray(project?.knownData?.buildingVariants) ? project.knownData.buildingVariants : []),
+    ].filter((value) => typeof value === "string"))].slice(0, 16),
+  };
+  return {
+    resolver: { ...result },
+    requestedIdentity,
+    matchedVariants: nameMatches.map((match) => ({
+      label: match.variant.label,
+      kind: match.variant.kind,
+      start: match.start,
+      end: match.end,
+      matchedTokenCount: match.matchedTokenCount,
+      requiredTokenCount: match.requiredTokenCount,
+    })),
+    locations,
+    facilityIdentifiers: facilityIdentifierMatches(text).slice(0, 32).map((item) => ({
+      value: item.value,
+      start: item.start,
+      end: item.end,
+    })),
+    actors: [...actorRecords, ...excludedNavigationActors].slice(0, 32),
+    secondaryReasons: [
+      ...locations.flatMap((entry) => entry.conflicts.map((reason) => `location-conflict:${reason}`)),
+      ...(nameMatches.length === 0 ? ["requested-name-or-alias-not-found"] : []),
+    ].slice(0, 16),
   };
 }
 

@@ -6,6 +6,7 @@ import {
   corroborateRelatedFacilityAcrossPassages,
   matchProject,
   parseLocations,
+  traceProjectMatch,
   verifyQuote,
 } from "./researchClaimVerifier.mjs";
 import { assessResearchProjectIdentity } from "./researchIdentity.mjs";
@@ -516,6 +517,66 @@ test("DFW14, incidental facility mentions, and identity conflicts do not establi
     "ambiguous",
     "metadata alone cannot turn an incidental DataBank/DFW mention into project identity",
   );
+});
+
+test("Corgan navigation chrome beside the retained Vantage AZ1 name is not an operator conflict", () => {
+  const project = {
+    name: "Vantage Phoenix Campus (Goodyear, AZ)",
+    operator: "Vantage Data Centers",
+    location: "Goodyear, Maricopa County, Arizona",
+    knownData: {
+      operator: "Vantage Data Centers",
+      city: "Goodyear",
+      county: "Maricopa",
+      state: "AZ",
+    },
+  };
+  // This is the exact retained-page fragment around the captured navigation defect.
+  const retainedPassage = "Vantage AZ1 Data Center Campus | Corgan Previous Slide Next Slide Close Projects Vantage AZ1 Data Center Campus Project Stats Location Goodyear, Arizona Size 144,046 SF Data Hall 56,293 SF Critical Load 16 MW";
+  assert.match(retainedPassage, /slide next slide close projects/i);
+  const trace = traceProjectMatch(retainedPassage, project);
+  assert.equal(trace.resolver.verdict, "ambiguous");
+  assert.match(trace.resolver.reason, /does not establish attribution to the requested operator/i);
+  assert.deepEqual(
+    trace.actors.filter((actor) => actor.actor === "Corgan").map((actor) => ({
+      role: actor.role,
+      admittedAsOperator: actor.admittedAsOperator,
+      attributionRule: actor.attributionRule,
+    })),
+    [{
+      role: "navigation-or-page-chrome",
+      admittedAsOperator: false,
+      attributionRule: "rejected-navigation-page-chrome-not-operator-attribution",
+    }],
+  );
+});
+
+test("keeps Vantage AZ1 separate from AZ2 and Sweetwater 1 separate from Sweetwater 2", () => {
+  const vantageAz1 = {
+    name: "Vantage AZ1 Data Center Campus",
+    facility: "AZ1",
+    operator: "Vantage Data Centers",
+    location: "Goodyear, Arizona",
+  };
+  const vantageAz1Text = "Vantage Data Centers owns and operates the Vantage AZ1 Data Center Campus in Goodyear, Arizona.";
+  const vantageAz2Text = "Vantage Data Centers owns and operates the Vantage AZ2 Data Center Campus in Goodyear, Arizona.";
+  assert.equal(traceProjectMatch(vantageAz1Text, vantageAz1).resolver.verdict, "exact-project");
+  const az2AgainstAz1 = traceProjectMatch(vantageAz2Text, vantageAz1);
+  assert.equal(az2AgainstAz1.resolver.verdict, "unrelated");
+  assert.doesNotMatch(az2AgainstAz1.resolver.reason, /exact-project/i);
+
+  const sweetwater1 = {
+    name: "Sweetwater 1 Data Center",
+    facility: "Sweetwater 1",
+    operator: "IREN",
+    location: "Sweetwater, Texas",
+  };
+  const sweetwater1Text = "IREN owns and operates Sweetwater 1 Data Center in Sweetwater, Texas.";
+  const sweetwater2Text = "IREN owns and operates Sweetwater 2 Data Center in Sweetwater, Texas.";
+  assert.equal(traceProjectMatch(sweetwater1Text, sweetwater1).resolver.verdict, "exact-project");
+  const sweetwater2Against1 = traceProjectMatch(sweetwater2Text, sweetwater1);
+  assert.equal(sweetwater2Against1.resolver.verdict, "unrelated");
+  assert.doesNotMatch(sweetwater2Against1.resolver.reason, /exact-project/i);
 });
 
 test("corroborates submitted DFW facility identity only across retained text with matching project, operator, and location", () => {

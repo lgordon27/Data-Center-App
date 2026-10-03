@@ -1,6 +1,7 @@
 import {
   corroborateRelatedFacilityAcrossPassages as corroborateRetainedFacilityIdentity,
   matchProject,
+  traceProjectMatch,
 } from "./researchClaimVerifier.mjs";
 
 const STATES = [
@@ -122,9 +123,16 @@ function operatorsConflict(expected, actuals) {
  * rules in the server and client. Provider identity flags are necessary signals,
  * not substitutes for identity text in the retained passage.
  */
-export function assessResearchProjectIdentity(passage, candidate = {}, identity = {}) {
+export function assessResearchProjectIdentity(passage, candidate = {}, identity = {}, { onDecision } = {}) {
   void candidate;
-  return matchProject(passage, identity).verdict;
+  const decision = matchProject(passage, identity);
+  if (typeof onDecision === "function") {
+    onDecision({
+      resolver: { ...decision },
+      trace: traceProjectMatch(passage, identity),
+    });
+  }
+  return decision.verdict;
 }
 
 export function corroborateRelatedFacilityAcrossPassages(passages, identity = {}) {

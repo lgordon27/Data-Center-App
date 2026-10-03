@@ -2,7 +2,7 @@ import {
   evaluateEvidenceSourceEligibility,
   getEvidenceSemanticDefinition,
 } from "./evidenceSemanticPolicy.mjs";
-import { matchProject } from "./researchClaimVerifier.mjs";
+import { matchProject, traceProjectMatch } from "./researchClaimVerifier.mjs";
 
 export const SOURCE_VALIDATION_POLICY_VERSION = 1;
 
@@ -127,12 +127,38 @@ function isPrimarySource(source) {
   return ["primary-government", "primary-utility", "primary-company"].includes(source?.sourceClass);
 }
 
-export function isSourceProjectSpecific(source, project = {}) {
+function emitDiagnostic(callback, detail) {
+  if (typeof callback !== "function") return;
+  try {
+    callback(typeof detail === "function" ? detail() : detail);
+  } catch {
+    // Diagnostic callbacks must never change the production admission result.
+  }
+}
+
+export function isSourceProjectSpecific(source, project = {}, assertedRelevance = undefined, onDecision = null) {
+  void assertedRelevance;
   const passage = source?.accessOutcome?.state === "accessible"
     ? source.accessOutcome.passage
     : "";
-  if (typeof passage !== "string" || !passage.trim()) return false;
-  return matchProject(passage, project).verdict === "exact-project";
+  if (typeof passage !== "string" || !passage.trim()) {
+    emitDiagnostic(onDecision, {
+      state: "not-evaluated",
+      reasonCode: "retained-passage-not-available",
+      resolver: null,
+      trace: null,
+    });
+    return false;
+  }
+  const resolver = matchProject(passage, project);
+  emitDiagnostic(onDecision, () => ({
+    state: resolver.verdict === "exact-project" ? "passed"
+      : resolver.verdict === "unrelated" ? "rejected" : "unknown",
+    reasonCode: resolver.reason ?? null,
+    resolver: { ...resolver },
+    trace: traceProjectMatch(passage, project, resolver),
+  }));
+  return resolver.verdict === "exact-project";
 }
 
 function capturedPassage(source, index) {
@@ -171,35 +197,78 @@ function claimValueMatches(claim, support) {
   }));
 }
 
-function passageSupportsClaim(source, claim, support) {
+function passageSupportsClaim(source, claim, support, onDecision = null) {
   const excerpt = normalizeText(source?.excerpt).toLowerCase();
   const quotedPassage = normalizeText(source?.claimPassage).toLowerCase();
-  if (!quotedPassage || !excerpt.includes(quotedPassage)) return false;
+  const quotationContained = Boolean(quotedPassage && excerpt.includes(quotedPassage));
+  if (!quotationContained) {
+    emitDiagnostic(onDecision, {
+      state: "rejected",
+      reasonCode: quotedPassage ? "quotation-not-contained-in-retained-excerpt" : "quotation-absent",
+      quotationContained: false,
+      textValueSupported: false,
+      claimValueSupported: false,
+      unitSupport: "not-evaluated",
+      statusSupport: "not-evaluated",
+    });
+    return false;
+  }
   const values = Array.isArray(support?.values) ? support.values : [support?.value ?? support?.claimText];
-  return values.some((value) => {
+  let textValueSupported = false;
+  let claimValueSupported = false;
+  let passed = false;
+  for (const value of values) {
     const normalized = String(value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
-    if (!normalized || normalized === "not disclosed") return false;
-    return quotedPassage.includes(normalized) || normalized.split(/[^a-z0-9.]+/).filter((token) => token.length > 2)
+    if (!normalized || normalized === "not disclosed") continue;
+    const textMatch = quotedPassage.includes(normalized) || normalized.split(/[^a-z0-9.]+/).filter((token) => token.length > 2)
       .every((token) => quotedPassage.includes(token));
-  }) && claimValueMatches(claim, support);
+    if (!textMatch) continue;
+    textValueSupported = true;
+    if (!claimValueMatches(claim, support)) continue;
+    claimValueSupported = true;
+    passed = true;
+    break;
+  }
+  emitDiagnostic(onDecision, {
+    state: passed ? "passed" : "rejected",
+    reasonCode: passed ? null
+      : !textValueSupported ? "claim-value-not-found-in-quotation" : "claim-value-does-not-match-support",
+    quotationContained: true,
+    textValueSupported,
+    claimValueSupported,
+    unitSupport: "not-evaluated",
+    statusSupport: "not-evaluated",
+  });
+  return passed;
 }
 
-function explicitlySupportsClaim(source, id, claim) {
-  if (source?.claimSupport === true || source?.supportsClaim === true) return false;
+function explicitlySupportsClaim(source, id, claim, onDecision = null) {
+  if (source?.claimSupport === true || source?.supportsClaim === true) {
+    emitDiagnostic(onDecision, {
+      state: "rejected",
+      reasonCode: "boolean-claim-support-assertion-not-accepted",
+      quotationContained: null,
+      textValueSupported: null,
+      claimValueSupported: null,
+      unitSupport: "not-evaluated",
+      statusSupport: "not-evaluated",
+    });
+    return false;
+  }
   if (Array.isArray(source?.claimSupport)) {
     return source.claimSupport.some((support) =>
       isRecord(support)
       && (support.evidenceId === id || support.variable === id)
-      && passageSupportsClaim(source, claim, support));
+      && passageSupportsClaim(source, claim, support, onDecision));
   }
   if (isRecord(source?.claimSupport)) {
     return (source.claimSupport.evidenceId === id || source.claimSupport.variable === id)
-      && passageSupportsClaim(source, claim, source.claimSupport);
+      && passageSupportsClaim(source, claim, source.claimSupport, onDecision);
   }
   // The provider does not emit a second claim-support schema. When its captured
   // passage contains the returned value, that is the auditable deterministic
   // claim-to-passage mapping.
-  return passageSupportsClaim(source, claim, { value: claim?.value ?? claim?.numericValue });
+  return passageSupportsClaim(source, claim, { value: claim?.value ?? claim?.numericValue }, onDecision);
 }
 
 function scopeRejectionCodes(source) {
@@ -223,13 +292,19 @@ export function buildClaimPassageMappings({
   claim = {},
   coverageStatus,
   conflictSummary,
+  onIdentityDecision = null,
+  onMappingDecision = null,
 }) {
   const mappings = [];
   for (const [index, source] of (Array.isArray(sources) ? sources : []).entries()) {
-    const exactProject = isSourceProjectSpecific(source, project, claim.sourceRelevance);
+    const exactProject = isSourceProjectSpecific(source, project, claim.sourceRelevance, (decision) =>
+      emitDiagnostic(onIdentityDecision, { source, sourceIndex: index, ...decision }));
     const passage = capturedPassage(source, index);
     const sourceTypeAllowed = Boolean(getEvidenceSemanticDefinition(id)?.eligibleSourceTypes?.includes(source.sourceClass));
-    const claimSupportedExplicitly = explicitlySupportsClaim(source, id, claim);
+    let claimSupportEvaluation = null;
+    const claimSupportedExplicitly = explicitlySupportsClaim(source, id, claim, (decision) => {
+      claimSupportEvaluation = decision;
+    });
     const scopeCodes = scopeRejectionCodes(source);
     const contradiction = coverageStatus === "conflicting" || Boolean(conflictSummary);
     const supportStatus = contradiction
@@ -245,7 +320,7 @@ export function buildClaimPassageMappings({
               : scopeCodes.length
                 ? "scope-unknown"
             : "supported";
-    mappings.push({
+    const mapping = {
       id: `${source.canonicalUrl ?? source.url ?? "source"}:${id}`,
       sourceId: source.canonicalUrl ?? source.url ?? null,
       passageId: passage?.id ?? null,
@@ -268,6 +343,27 @@ export function buildClaimPassageMappings({
         ...scopeCodes,
         ...(contradiction ? ["blocking-contradiction"] : []),
       ],
+    };
+    mappings.push(mapping);
+    emitDiagnostic(onMappingDecision, {
+      source,
+      sourceIndex: index,
+      mapping,
+      exactProject,
+      sourceTypeAllowed,
+      claimSupportedExplicitly,
+      claimSupportEvaluation,
+      scopeEvaluation: {
+        state: "not-evaluated",
+        evaluator: "production-source-validation-enum-and-time-scope",
+        evaluatedChecks: ["facility-scope-enum", "phase-scope-enum", "time-period-presence"],
+        labelAndTimeCompletenessState: scopeCodes.length ? "unknown" : "passed",
+        rejectionCodes: [...scopeCodes],
+        matchedSignals: [],
+        conflictingSignals: [],
+        ambiguityReasons: scopeCodes.length ? [...scopeCodes] : ["requested-scope-comparison-not-evaluated"],
+        requestedScopeComparison: "not-evaluated-by-this-evaluator",
+      },
     });
   }
   return mappings;

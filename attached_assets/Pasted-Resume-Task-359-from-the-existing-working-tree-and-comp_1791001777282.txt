@@ -1,0 +1,27 @@
+Resume Task 359 from the existing working tree and complete its instrumentation, offline replay, and report.
+
+Use the two completed audits as context:
+- Task 358 found major analysis-time starvation, with only 4/8 category assessments completed per final run and 8/12 issued category calls containing no passage text.
+- The claim-schema audit found secondary coverage limitations. All 51 primary `claim-not-mapped` records first failed retained-source mapping; they were not 51 demonstrated schema omissions.
+
+Do not assume either finding determines Task 359’s verdict.
+
+1. Re-run the offline production-path replay after the latest instrumentation edits. Record the current source fingerprint and distinguish current replay behavior from historical capture observations.
+
+2. Account for all 14 retained passage occurrences, grouped by AWS, IREN, and Vantage. For the 11 available bodies, show the first exclusion stage, concrete reason, and supporting matcher/routing inputs. Mark the three unavailable bodies as not replayable. Do not reconstruct them or delay completion trying to recover them.
+
+3. Separate:
+   - passages excluded before analysis;
+   - admitted passages whose analysis was prevented by scheduling, TPM reservations, or deadline;
+   - actual captured provider claims rejected downstream;
+   - placeholders and unsupported values.
+
+   Distinguish analysis-ready text from text actually sent to OpenAI. Do not present fixture-generated provider output as observed extraction success. Where original provider output is unavailable, mark the downstream cause unresolved.
+
+4. Finish the report with a per-project funnel and the strongest supported bottleneck verdict. Explain how the scheduler and schema audits affect that conclusion. Recommend exactly one bounded, generalized repair targeting the best-supported actionable failure. State what it would fix and what would remain unproven. Do not implement that repair in this task.
+
+5. Complete the already-requested focused tests, full provider-free suite, typecheck, production build, and workbench restart/smoke check. Do not initiate live research during the smoke check.
+
+Preserve existing evidence, identity, scope, SSRF/DNS, and human-acceptance safeguards. No live provider calls, budget increases, unrelated refactors, push, or deployment.
+
+Return the completed report location, source fingerprint, replay results, validation results, remaining evidence limitations, and exactly one recommended repair. Mark Task 359 complete only when these deliverables are finished.

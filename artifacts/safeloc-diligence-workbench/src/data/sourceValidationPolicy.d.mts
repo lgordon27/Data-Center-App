@@ -3,7 +3,12 @@ export const SOURCE_STATES: readonly string[];
 export const SOURCE_REJECTION_CODES: readonly string[];
 export function safeSourceUrl(value: unknown): string | null;
 export function canonicalizeSourceUrl(value: unknown): string | null;
-export function isSourceProjectSpecific(source?: Record<string, unknown>, project?: Record<string, unknown>, assertedRelevance?: unknown): boolean;
+export function isSourceProjectSpecific(
+  source?: Record<string, unknown>,
+  project?: Record<string, unknown>,
+  assertedRelevance?: unknown,
+  onDecision?: (decision: Record<string, unknown>) => void,
+): boolean;
 export function buildClaimPassageMappings(input: {
   id: string;
   sources?: readonly Record<string, unknown>[];
@@ -11,6 +16,8 @@ export function buildClaimPassageMappings(input: {
   claim?: Record<string, unknown>;
   coverageStatus?: string;
   conflictSummary?: string;
+  onIdentityDecision?: (decision: Record<string, unknown>) => void;
+  onMappingDecision?: (decision: Record<string, unknown>) => void;
 }): Array<Record<string, unknown>>;
 export function evaluateResearchEvidenceEligibility(input?: Record<string, unknown>): {
   eligible: boolean;

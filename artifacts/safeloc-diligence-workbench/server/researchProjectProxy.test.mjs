@@ -61,6 +61,7 @@ import {
   sourceEstablishesRelatedFacilityIdentity,
   evaluateCanaryGridIdentityGate,
   PROTECTED_SOURCE_OPPORTUNITIES,
+  replayResearchCategoryPassageInput,
   selectResearchPassagesForStructuredAnalysis,
 } from "./researchProjectProxy.mjs";
 import {
@@ -482,6 +483,48 @@ test("excludes old saved CivicEngage and corrupted passages before structured an
   const before = structuredClone(receipts);
   assert.deepEqual(selectResearchPassagesForStructuredAnalysis(receipts), receipts.slice(-2));
   assert.deepEqual(receipts, before, "quality filtering must not mutate immutable access receipts");
+});
+
+test("offline replay uses production selection and token fitting but never issues or stores a provider request body", () => {
+  const project = {
+    name: "Red Oak Campus",
+    location: "Red Oak, Ellis County, Texas",
+    operator: "DataBank",
+    knownData: {
+      operator: "DataBank",
+      city: "Red Oak",
+      county: "Ellis County",
+      state: "Texas",
+      capacity: 480,
+    },
+  };
+  const category = buildResearchCategoryPlan(project).categories
+    .find((candidate) => candidate.categoryId === "project-identity");
+  const passage = "DataBank's Red Oak Campus is located in Red Oak, Texas.";
+  const replay = replayResearchCategoryPassageInput(project, {
+    ...category,
+    runCorrelationId: "offline-replay-test",
+    attempt: "primary",
+  }, [{
+    sourceId: "red-oak-source",
+    occurrenceId: "red-oak-occurrence",
+    url: "https://records.example/red-oak?token=opaque-token-value",
+    canonicalUrl: "https://records.example/red-oak",
+    sourceFamily: "primary-company",
+    accessOutcome: { state: "accessible", passage },
+  }]);
+
+  assert.equal(replay.state, "prepared-but-not-issued");
+  assert.equal(replay.issuedPassageCount, 0);
+  assert.equal(replay.candidateCount, 1);
+  assert.equal(replay.suppliedCount, 1);
+  assert.equal(replay.decisions[0].identityAdmission.state, "passed");
+  assert.equal(replay.decisions[0].finalSupplied.length, passage.length);
+  assert.match(replay.decisions[0].finalSupplied.sha256, /^[a-f0-9]{64}$/);
+  assert.equal(replay.inputSnapshot.sourceIds[0].sourceUrl, "https://records.example/red-oak");
+  assert.equal(JSON.stringify(replay.inputSnapshot).includes(passage), false);
+  assert.equal(JSON.stringify(replay.inputSnapshot).includes("opaque-token-value"), false);
+  assert.match(replay.inputSnapshot.requestBodySha256, /^[a-f0-9]{64}$/);
 });
 
 test("grounded orchestration does not issue a structured prompt when document access yields the retained CivicEngage error page", async () => {
@@ -7849,7 +7892,8 @@ test("blocked discovery documents produce unavailable trace responses without fa
     const response = responseByCategory.get(categoryId);
     assert.ok(response, `Expected an explicit unavailable trace state for ${categoryId}.`);
     assert.equal(response.state, "not-issued");
-    assert.equal(response.claimCount, 0);
+    assert.equal(response.claimCount, null);
+    assert.equal(response.claimCountState, "unavailable");
     assert.equal(response.parseState, "not-evaluated");
     assert.deepEqual(response.omittedClaimIds, []);
   }

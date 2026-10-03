@@ -33,6 +33,11 @@ export declare function normalizeSearchTerms(value: unknown): string[];
 export declare function extractSearchTerms(body: unknown): string[];
 export declare function isExactProjectSource(source: Record<string, unknown>, summary: Record<string, unknown>, itemRelevance?: unknown): boolean;
 export declare function sourceEstablishesProjectIdentity(source: Record<string, unknown>, project?: Record<string, unknown>): boolean;
+export declare function replayResearchCategoryPassageInput(
+  project: Record<string, unknown>,
+  category: Record<string, unknown>,
+  sources?: Array<Record<string, unknown>>,
+): Record<string, unknown>;
 export declare function calculateSourceSupportConfidence(options: {
   classification: string;
   sources?: Array<Record<string, unknown>>;

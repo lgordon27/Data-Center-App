@@ -2083,7 +2083,7 @@ function categorySourceMatches(category, source) {
   return source.categoryRoutingUnknown === true || explicitCategoryIds.size === 0;
 }
 
-function categorySourceMatchesForAnalysis(category, source, project = {}) {
+function categorySourceMatchesForAnalysis(category, source, project = {}, onIdentityDecision = null) {
   if (!category || !source) return false;
   const knownCategoryIds = new Set(RESEARCH_CATEGORIES.map((candidate) => candidate.id));
   const explicitCategoryIds = new Set(Array.isArray(source.categoryIds)
@@ -2110,7 +2110,7 @@ function categorySourceMatchesForAnalysis(category, source, project = {}) {
   // context only after the existing retained-text identity check passes;
   // generic indexes, snippets, and ambiguous related campuses stay excluded.
   // This admits context to assessment, never a claim to eligibility.
-  return sourceEstablishesProjectIdentity(source, project);
+  return sourceEstablishesProjectIdentity(source, project, onIdentityDecision);
 }
 
 function hasRetrievedPassage(source) {
@@ -2273,29 +2273,131 @@ function categoryPassageWindow(source, categoryId, project = {}, maxChars = 2_40
 }
 
 function prepareCategoryAnalysisPassages(category, sources = [], project = {}) {
-  const candidates = sources.filter(hasRetrievedPassage);
-  const relevant = candidates.filter((source) =>
-    categorySourceMatchesForAnalysis(category, source, project)
-    || (category?.includeExactProjectIdentityContext === true
-      && sourceEstablishesProjectIdentity(source, project))
-    || (category?.includeRelatedFacilityIdentityContext === true
-      && sourceEstablishesRelatedFacilityIdentity(source, project)));
+  const indexedSources = sources.map((source, index) => ({ source, index }));
+  const candidates = indexedSources.filter(({ source }) => hasRetrievedPassage(source));
+  const decisions = [];
+  const relevant = [];
+  for (const { source, index } of candidates) {
+    let identityAdmission = { state: "not-evaluated", verdict: null, reason: null, trace: null };
+    const observeIdentity = (decision) => {
+      const accepted = decision.admissionGate === "related-facility"
+        ? decision.resolver.verdict === "related-facility"
+        : decision.resolver.verdict === "exact-project";
+      identityAdmission = {
+        state: accepted ? "passed"
+          : decision.resolver.verdict === "unrelated" ? "rejected" : "unknown",
+        admissionGate: decision.admissionGate ?? "exact-project",
+        verdict: decision.resolver.verdict,
+        reason: decision.resolver.reason,
+        trace: decision.trace,
+      };
+    };
+    const categoryMatch = categorySourceMatchesForAnalysis(category, source, project, observeIdentity);
+    let exactIdentityMatch = false;
+    if (!categoryMatch && category?.includeExactProjectIdentityContext === true) {
+      exactIdentityMatch = sourceEstablishesProjectIdentity(source, project, observeIdentity);
+    }
+    let relatedIdentityMatch = false;
+    if (!categoryMatch && !exactIdentityMatch && category?.includeRelatedFacilityIdentityContext === true) {
+      relatedIdentityMatch = sourceEstablishesRelatedFacilityIdentity(source, project, observeIdentity);
+    }
+    const included = categoryMatch || exactIdentityMatch || relatedIdentityMatch;
+    const explicitRoutes = [
+      ...(Array.isArray(source.categoryIds)
+        ? source.categoryIds.filter((id) => RESEARCH_CATEGORIES.some((item) => item.id === id))
+        : []),
+      ...(RESEARCH_CATEGORIES.some((item) => item.id === source.searchDomain) ? [source.searchDomain] : []),
+    ];
+    const routeState = categoryMatch ? "matched"
+      : exactIdentityMatch ? "matched-by-exact-project-identity-context"
+        : relatedIdentityMatch ? "matched-by-related-facility-identity-context" : "rejected";
+    const routeReason = categoryMatch
+      ? identityAdmission.state === "passed" && !explicitRoutes.length
+        ? "category-routing-matched-by-retained-exact-project-identity"
+        : "category-routing-matched"
+      : exactIdentityMatch
+        ? "category-context-included-by-retained-exact-project-identity"
+        : relatedIdentityMatch
+          ? "category-context-included-by-retained-related-facility-identity"
+      : explicitRoutes.length
+        ? "source-has-no-route-to-requested-category"
+        : identityAdmission.verdict === "unrelated"
+          ? "explicit-identity-conflict"
+          : identityAdmission.verdict === "ambiguous"
+            ? "identity-not-established"
+            : "no-category-route";
+    const record = {
+      source,
+      occurrenceId: source.occurrenceId ?? source.sourceId
+        ?? `occ-${createHash("sha256").update([
+          source.originalUrl ?? source.url ?? source.canonicalUrl ?? "source-unavailable",
+          source.accessOutcome?.contentHash ?? "",
+          createHash("sha256").update(source.accessOutcome.passage).digest("hex"),
+          index,
+        ].join("|")).digest("hex").slice(0, 24)}`,
+      included,
+      routeState,
+      routeReason,
+      identityAdmission,
+      decision: included ? "included-for-category-analysis" : "excluded-before-deduplication",
+      reasonCode: included ? null : routeReason,
+      explanation: included ? null : identityAdmission.reason ?? routeReason,
+      deduplicationState: "not-evaluated",
+      windowState: "not-evaluated",
+      tokenFitState: "not-evaluated",
+      postFilterPassage: included ? source.accessOutcome.passage : "",
+      deduplicatedPassage: "",
+      windowedPassage: "",
+      suppliedPassage: "",
+    };
+    decisions.push(record);
+    if (included) relevant.push(source);
+  }
   const unique = [];
   for (const source of relevant) {
     const passage = source.accessOutcome.passage;
-    if (unique.some((prior) => substantiallyDuplicatePassages(prior.accessOutcome.passage, passage))) continue;
+    const decision = decisions.find((item) => item.source === source);
+    const representative = unique.find((prior) =>
+      substantiallyDuplicatePassages(prior.accessOutcome.passage, passage));
+    if (representative) {
+      const representativeDecision = decisions.find((item) => item.source === representative);
+      decision.deduplicationState = "duplicate";
+      decision.reasonCode = "duplicate-passage";
+      decision.explanation = "A substantially identical retained passage was already selected for this category.";
+      decision.duplicateRepresentative = representativeDecision?.occurrenceId ?? null;
+      decision.deduplicatedPassage = "";
+      decision.decision = "excluded-as-duplicate";
+      continue;
+    }
     unique.push(source);
+    decision.deduplicationState = "unique";
+    decision.deduplicatedPassage = passage;
   }
   const analysisSources = unique.map((source) => ({
     ...source,
     analysisPassage: categoryPassageWindow(source, category.categoryId, project),
     analysisStructuredFields: structuredFieldsForCategory(source, category.categoryId, project),
   }));
+  for (const analysisSource of analysisSources) {
+    const uniqueSource = unique.find((source) =>
+      source.originalUrl === analysisSource.originalUrl
+        && source.accessOutcome.passage === analysisSource.accessOutcome.passage);
+    const decision = decisions.find((item) => item.source === uniqueSource);
+    if (!decision) continue;
+    decision.windowedPassage = analysisSource.analysisPassage;
+    decision.windowState = analysisSource.analysisPassage ? "selected" : "excluded";
+    if (!analysisSource.analysisPassage) {
+      decision.reasonCode = "category-window-exclusion";
+      decision.explanation = "The category window selector returned no complete context window.";
+      decision.decision = "excluded-by-category-window";
+    }
+  }
   return {
     candidateCount: candidates.length,
     uniqueCount: unique.length,
     suppliedCount: analysisSources.length,
     sources: analysisSources,
+    decisions,
   };
 }
 
@@ -2363,22 +2465,24 @@ function categoryOpenedDocuments(sources = [], category = null) {
   });
 }
 
-export function sourceEstablishesProjectIdentity(source, project = {}) {
-  return retainedSourceIdentityVerdict(source, project) === "exact-project";
+export function sourceEstablishesProjectIdentity(source, project = {}, onIdentityDecision = null) {
+  return retainedSourceIdentityVerdict(source, project, onIdentityDecision, "exact-project") === "exact-project";
 }
 
-export function sourceEstablishesRelatedFacilityIdentity(source, project = {}) {
-  return retainedSourceIdentityVerdict(source, project) === "related-facility";
+export function sourceEstablishesRelatedFacilityIdentity(source, project = {}, onIdentityDecision = null) {
+  return retainedSourceIdentityVerdict(source, project, onIdentityDecision, "related-facility") === "related-facility";
 }
 
-function retainedSourceIdentityVerdict(source, project = {}) {
+function retainedSourceIdentityVerdict(source, project = {}, onIdentityDecision = null, admissionGate = "exact-project") {
   if (!hasRetrievedPassage(source)) return "ambiguous";
   const passage = [
     source?.accessOutcome?.passage,
     source?.claimPassage,
     source?.excerpt,
   ].find((value) => typeof value === "string" && value.trim()) ?? "";
-  return assessResearchProjectIdentity(passage, {}, project);
+  return assessResearchProjectIdentity(passage, {}, project, {
+    onDecision: (decision) => onIdentityDecision?.({ ...decision, admissionGate }),
+  });
 }
 
 export function evaluateCanaryGridIdentityGate(sources = [], project = {}) {
@@ -3694,8 +3798,8 @@ function sourceIdentityTokens(value) {
     .filter((token) => token.length > 2 && !["the", "and", "for", "project", "data", "center"].includes(token));
 }
 
-function isExactProjectSource(source, summary, itemRelevance) {
-  return isSourceProjectSpecific(source, summary, itemRelevance);
+function isExactProjectSource(source, summary, itemRelevance, onDecision = null) {
+  return isSourceProjectSpecific(source, summary, itemRelevance, onDecision);
 }
 
 function calculateSourceSupportConfidence({
@@ -3986,6 +4090,7 @@ function parseResearchResponse(
   coverage = null,
   knownData = null,
   expectedEvidenceIds = RESEARCH_EVIDENCE_IDS,
+  claimTraceContext = null,
 ) {
   const scopedEvidenceIds = [...new Set(expectedEvidenceIds.filter((id) => RESEARCH_EVIDENCE_IDS.includes(id)))];
   if (!isRecord(body) || !isRecord(body.projectSummary) || (!Array.isArray(body.evidence) && !isRecord(body.evidence))) {
@@ -4087,8 +4192,32 @@ function parseResearchResponse(
       : null;
     const supportingSources = validatedSources.map((metadata) => {
       const jurisdictionExcluded = isJurisdictionallyExcludedSource(metadata, summary);
+      const resolverIdentity = { ...summary, knownData };
+      const reportIdentityDecision = (source, decision, evaluationPass = "claim-source-project-specificity") => {
+        claimTraceContext?.claimTrace?.recordIdentityEvaluation?.({
+          runId: claimTraceContext.runId,
+          projectId: claimTraceContext.projectId,
+          categoryId: claimTraceContext.categoryId,
+          attemptType: claimTraceContext.attemptType,
+          providerResponseId: claimTraceContext.providerResponseId,
+          claimId: id,
+          source,
+          requestedProject: claimTraceContext.requestedProject ?? {},
+          evaluationPass,
+          decision,
+        });
+      };
+      if (jurisdictionExcluded) {
+        reportIdentityDecision(metadata, {
+          state: "not-evaluated",
+          reasonCode: "jurisdiction-filtered-before-project-identity",
+          resolver: null,
+          trace: null,
+        });
+      }
       const exactProject = !jurisdictionExcluded
-        && isExactProjectSource(metadata, { ...summary, knownData }, item.sourceRelevance);
+        && isExactProjectSource(metadata, resolverIdentity, item.sourceRelevance,
+          (decision) => reportIdentityDecision(metadata, decision));
       const claimScope = mergeClaimScopeMetadata(item, metadata, extractedClaimScope);
       const resolvedUrl = canonicalizeSourceUrl(
         metadata?.accessOutcome?.canonicalUrl
@@ -4157,6 +4286,36 @@ function parseResearchResponse(
       },
       coverageStatus: item.coverageStatus,
       conflictSummary: item.conflictSummary,
+      onIdentityDecision: (decision) => {
+        const source = decision?.source;
+        claimTraceContext?.claimTrace?.recordIdentityEvaluation?.({
+          runId: claimTraceContext.runId,
+          projectId: claimTraceContext.projectId,
+          categoryId: claimTraceContext.categoryId,
+          attemptType: claimTraceContext.attemptType,
+          providerResponseId: claimTraceContext.providerResponseId,
+          claimId: id,
+          source,
+          requestedProject: claimTraceContext.requestedProject ?? {},
+          evaluationPass: "claim-passage-mapping",
+          decision,
+        });
+      },
+      onMappingDecision: (decision) => {
+        claimTraceContext?.claimTrace?.recordMappingEvaluation?.({
+          runId: claimTraceContext.runId,
+          projectId: claimTraceContext.projectId,
+          categoryId: claimTraceContext.categoryId,
+          attemptType: claimTraceContext.attemptType,
+          providerResponseId: claimTraceContext.providerResponseId,
+          claimId: id,
+          requestedProject: claimTraceContext.requestedProject ?? {},
+          claimValue: item.normalizedValue ?? item.numericValue ?? item.value,
+          claimUnit: item.normalizedUnit ?? item.unit,
+          claimStatus: item.status,
+          ...decision,
+        });
+      },
     }).map((mapping) => ({
       ...mapping,
       phaseIdentity: supportingSources.find((source) => source.canonicalUrl === mapping.sourceId)?.phaseIdentity ?? null,
@@ -5174,6 +5333,219 @@ function fitCategoryAnalysisInput(sources, buildRequestBody, category, project) 
   };
 }
 
+function buildCategoryAnalysisRequestBody({
+  project,
+  activeCategory,
+  groundedContext,
+  scopedEvidenceIds,
+  requestedOutputTokens,
+}) {
+  const identityOnly = activeCategory?.categoryId === "project-identity";
+  const webSearchEnabled = activeCategory?.webSearchEnabled !== false;
+  return JSON.stringify({
+    model: RESEARCH_PROJECT_MODEL,
+    ...(webSearchEnabled ? { tools: [{ type: "web_search_preview" }] } : {}),
+    input: [
+      {
+        role: "system",
+        content: activeCategory?.categoryId
+          ? `${RESEARCH_CATEGORY_SYSTEM_PROMPT}${identityOnly
+            ? "\nEstablish or reject exact project name, location, and operator only."
+            : ""}`
+          : `${RESEARCH_PROJECT_SYSTEM_PROMPT}${WEB_SEARCH_SOURCE_BOUNDARY_PROMPT}`,
+      },
+      {
+        role: "user",
+        content: `${activeCategory?.categoryId
+          ? buildCategoryAnalysisPrompt(project, activeCategory)
+          : buildResearchProjectPrompt({ ...project, activeCategory })}${groundedContext}`,
+      },
+    ],
+    max_output_tokens: requestedOutputTokens,
+    ...(webSearchEnabled ? { max_tool_calls: activeCategory?.maxToolCalls ?? RESEARCH_PROJECT_MAX_TOOL_CALLS } : {}),
+    ...(webSearchEnabled ? { include: ["web_search_call.action.sources"] } : {}),
+    text: {
+      format: {
+        type: "json_schema",
+        name: identityOnly ? "safeloc_project_identity" : "safeloc_research_project",
+        strict: true,
+        schema: identityOnly
+          ? RESEARCH_PROJECT_IDENTITY_RESPONSE_SCHEMA
+          : buildResearchResponseSchema(scopedEvidenceIds),
+      },
+    },
+  });
+}
+
+function safeReplayPublicUrl(value) {
+  try {
+    const url = new URL(value);
+    if (!["https:", "http:"].includes(url.protocol) || url.username || url.password) return null;
+    if (url.hostname === "vertexaisearch.cloud.google.com"
+      || /\/(?:redirect|redirection|out|click|link|url)\/[^/]{16,}$/i.test(url.pathname)) {
+      url.pathname = `/redirect/redacted-${createHash("sha256").update(url.pathname).digest("hex").slice(0, 16)}`;
+      url.search = "";
+    }
+    for (const key of [...url.searchParams.keys()]) {
+      if (/(token|secret|signature|^sig$|auth|credential|password|api.?key|session|jwt)/i.test(key)) {
+        url.searchParams.delete(key);
+      }
+    }
+    url.hash = "";
+    return url.href;
+  } catch { return null; }
+}
+
+/**
+ * Runs the production category route, identity admission, deduplication,
+ * category window, token-fit and request-serialization functions without
+ * queueing or issuing any provider call. The result deliberately contains
+ * hashes and bounded metadata, never the serialized provider request.
+ */
+export function replayResearchCategoryPassageInput(project = {}, category = {}, sources = []) {
+  if (!category?.categoryId) throw new TypeError("A categoryId is required for offline passage replay.");
+  const metaText = (value, limit = 240) => sanitizeTransportText(value, limit);
+  const fingerprint = (value) => {
+    const text = typeof value === "string" ? value : "";
+    return { sha256: text ? createHash("sha256").update(text).digest("hex") : null, length: text.length };
+  };
+  const safeIdentifier = (value, fallback, limit = 240) => {
+    if (typeof value !== "string") return fallback;
+    if (/^https?:\/\//i.test(value)) return safeReplayPublicUrl(value) ?? fallback;
+    return metaText(value, limit) ?? fallback;
+  };
+  const candidates = sources
+    .slice(0, RESEARCH_RUN_BUDGET.maxTotalCandidates)
+    .filter(hasRetrievedPassage);
+  const prepared = prepareCategoryAnalysisPassages(category, candidates, project);
+  const scopedEvidenceIds = Array.isArray(category.evidenceIds)
+    ? category.evidenceIds.filter((id) => RESEARCH_EVIDENCE_IDS.includes(id))
+    : RESEARCH_EVIDENCE_IDS;
+  const buildRequestBody = (groundedContext) => buildCategoryAnalysisRequestBody({
+    project,
+    activeCategory: category,
+    groundedContext,
+    scopedEvidenceIds,
+    requestedOutputTokens: RESEARCH_CATEGORY_MAX_TOKENS,
+  });
+  const contextFor = (selected) => selected.length
+    ? `\n\nThe following public document passages were physically retrieved by SafeLoc. Use only these passages for source-backed claims. Do not browse, call a search tool, or treat a URL, snippet, title, or generated summary as evidence. Every claimPassage must be copied exactly from one supplied passage.\n${JSON.stringify(buildGroundedSourceContext(selected))}`
+    : "";
+  const fitted = fitCategoryAnalysisInput(prepared.sources, buildRequestBody, category, project);
+  const finalPacket = buildGroundedSourceContext(fitted.sources);
+  const finalByKey = new Map(fitted.sources.map((source) => {
+    const passage = source.accessOutcome?.passage ?? "";
+    const key = `${canonicalizeSourceUrl(source.originalUrl ?? source.url ?? source.canonicalUrl) ?? ""}|${createHash("sha256").update(passage).digest("hex")}`;
+    return [key, source];
+  }));
+  const preparedBySource = new Map(prepared.decisions.map((decision) => [decision.source, decision]));
+  const decisions = candidates.map((source, index) => {
+    const decision = preparedBySource.get(source);
+    const passage = source.accessOutcome?.passage ?? "";
+    const canonicalUrl = canonicalizeSourceUrl(source.originalUrl ?? source.url ?? source.canonicalUrl) ?? "";
+    const key = `${canonicalUrl}|${createHash("sha256").update(passage).digest("hex")}`;
+    const finalSource = finalByKey.get(key);
+    const supplied = finalSource?.analysisPassage ?? "";
+    let reasonCode = decision?.reasonCode ?? null;
+    let decisionState = decision?.decision ?? "excluded-before-passage-selection";
+    let explanation = decision?.explanation ?? null;
+    let tokenFitState = "not-evaluated";
+    if (decision?.included && decision.deduplicationState === "duplicate") {
+      reasonCode = "duplicate-passage";
+    } else if (decision?.included && decision.windowState === "excluded") {
+      reasonCode = "category-window-exclusion";
+    } else if (decision?.included && !finalSource) {
+      reasonCode = "token-clipping";
+      decisionState = "excluded-by-token-fit";
+      explanation = "A category passage window existed but token fitting omitted the passage completely.";
+      tokenFitState = "fully-removed";
+    } else if (decision?.included && supplied && supplied !== decision.windowedPassage) {
+      reasonCode = "token-clipping";
+      decisionState = "included-after-token-clipping";
+      explanation = "Token fitting shortened the selected category window.";
+      tokenFitState = "partially-clipped";
+    } else if (finalSource) {
+      reasonCode = null;
+      decisionState = "included-in-prepared-packet";
+      tokenFitState = "included";
+    }
+    return {
+      sourceId: safeIdentifier(source.sourceId ?? source.occurrenceId, `occ-${index + 1}`),
+      occurrenceId: safeIdentifier(decision?.occurrenceId ?? source.occurrenceId ?? source.sourceId, `occ-${index + 1}`),
+      sourceUrl: safeReplayPublicUrl(source.originalUrl ?? source.url ?? source.canonicalUrl),
+      canonicalUrl: safeReplayPublicUrl(source.canonicalUrl ?? source.resolvedUrl ?? source.url),
+      sourceFamily: metaText(source.sourceFamily ?? source.sourceClass ?? source.sourceChannel ?? "unavailable", 100),
+      routeState: decision?.routeState ?? "not-evaluated",
+      routeReason: decision?.routeReason ?? "not-evaluated",
+      identityAdmission: decision?.identityAdmission ?? { state: "not-evaluated", verdict: null, reason: null },
+      included: Boolean(finalSource),
+      decision: decisionState,
+      reasonCode,
+      explanation,
+      duplicateRepresentative: decision?.duplicateRepresentative ?? null,
+      deduplicationState: decision?.deduplicationState ?? "not-evaluated",
+      windowState: decision?.windowState ?? "not-evaluated",
+      tokenFitState,
+      original: fingerprint(passage),
+      postFilter: fingerprint(decision?.postFilterPassage ?? ""),
+      deduplicated: fingerprint(decision?.deduplicatedPassage ?? ""),
+      windowed: fingerprint(decision?.windowedPassage ?? ""),
+      finalSupplied: fingerprint(supplied),
+      partial: Boolean(supplied && supplied !== passage),
+    };
+  });
+  const body = fitted.requestBody ?? buildRequestBody(contextFor(fitted.sources));
+  return {
+    state: "prepared-but-not-issued",
+    runId: metaText(category.runCorrelationId, 160),
+    projectId: metaText(project.projectId ?? project.id ?? project.name, 200),
+    categoryId: metaText(category.categoryId, 80),
+    attemptType: metaText(category.attempt ?? "primary", 40),
+    promptVersion: `${RESEARCH_PROJECT_PROMPT_VERSION}:${category.categoryId}`,
+    schemaVersion: category.categoryId === "project-identity" ? "identity-response-v1" : RESEARCH_POLICY_VERSION,
+    providerCallStartedAt: null,
+    inputSnapshot: {
+      sourceIds: finalPacket.map((source, index) => ({
+        sourceId: safeIdentifier(source.sourceId ?? source.occurrenceId, `packet-${index + 1}`),
+        occurrenceId: metaText(source.sourceIdentity?.occurrenceId, 240),
+        sourceUrl: safeReplayPublicUrl(source.sourceUrl ?? source.canonicalUrl),
+        passageSha256: fingerprint(source.passage).sha256,
+        passageLength: typeof source.passage === "string" ? source.passage.length : 0,
+        facilityScope: metaText(source.facilityScope, 120),
+        phaseScope: metaText(source.phaseScope, 100),
+        campusScope: metaText(source.campusScope, 120),
+        buildingScope: metaText(source.buildingScope, 120),
+      })),
+      suppliedIdentity: {
+        projectId: metaText(project.projectId ?? project.id ?? project.name, 200),
+        name: metaText(project.name ?? project.projectName, 240),
+        operator: metaText(project.operator ?? project.knownData?.operator, 200),
+        location: metaText(project.location, 240),
+        city: metaText(project.city ?? project.knownData?.city, 100),
+        county: metaText(project.county ?? project.knownData?.county, 100),
+        state: metaText(project.state ?? project.knownData?.state, 80),
+        campus: metaText(project.campus ?? project.knownData?.campus, 120),
+        facility: metaText(project.facility ?? project.knownData?.facility, 120),
+        phase: metaText(project.phase ?? project.knownData?.phase, 100),
+        building: metaText(project.building ?? project.knownData?.building, 100),
+      },
+      sourceCount: finalPacket.length,
+      estimatedInputTokens: fitted.inputTokenEstimate,
+      inputTokenCap: fitted.inputTokenCap,
+      requestBodyBytes: Buffer.byteLength(body),
+      requestBodySha256: createHash("sha256").update(body).digest("hex"),
+      omittedPassageCount: fitted.omittedPassageCount,
+      windowedPassageCount: fitted.windowedPassageCount,
+      omissionReasons: fitted.omissionReasons,
+    },
+    candidateCount: prepared.candidateCount,
+    uniqueCount: prepared.uniqueCount,
+    suppliedCount: prepared.suppliedCount,
+    issuedPassageCount: 0,
+    decisions,
+  };
+}
+
 function redactUpstreamDetail(value) {
   return String(value ?? "")
     .replace(/Bearer\s+\S+/gi, "Bearer [redacted]")
@@ -5724,44 +6096,19 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
   const groundedContextFor = (sources) => sources.length
     ? `\n\nThe following public document passages were physically retrieved by SafeLoc. Use only these passages for source-backed claims. Do not browse, call a search tool, or treat a URL, snippet, title, or generated summary as evidence. Every claimPassage must be copied exactly from one supplied passage.\n${JSON.stringify(buildGroundedSourceContext(sources))}`
     : "";
-  const buildRequestBody = (groundedContext) => JSON.stringify({
-      model: RESEARCH_PROJECT_MODEL,
-      ...(webSearchEnabled ? { tools: [{ type: "web_search_preview" }] } : {}),
-      input: [
-        {
-          role: "system",
-          content: activeCategory?.categoryId
-            ? `${RESEARCH_CATEGORY_SYSTEM_PROMPT}${identityOnly
-              ? "\nEstablish or reject exact project name, location, and operator only."
-              : ""}`
-            : `${RESEARCH_PROJECT_SYSTEM_PROMPT}${WEB_SEARCH_SOURCE_BOUNDARY_PROMPT}`,
-        },
-        {
-          role: "user",
-          content: `${activeCategory?.categoryId
-            ? buildCategoryAnalysisPrompt(project, activeCategory)
-            : buildResearchProjectPrompt({ ...project, activeCategory })}${groundedContext}`,
-        },
-      ],
-      max_output_tokens: requestedOutputTokens,
-      ...(webSearchEnabled ? { max_tool_calls: activeCategory?.maxToolCalls ?? RESEARCH_PROJECT_MAX_TOOL_CALLS } : {}),
-      ...(webSearchEnabled ? { include: ["web_search_call.action.sources"] } : {}),
-      text: {
-        format: {
-          type: "json_schema",
-          name: identityOnly ? "safeloc_project_identity" : "safeloc_research_project",
-          strict: true,
-          schema: identityOnly
-            ? RESEARCH_PROJECT_IDENTITY_RESPONSE_SCHEMA
-            : buildResearchResponseSchema(scopedEvidenceIds),
-        },
-      },
-    });
+  const buildRequestBody = (groundedContext) => buildCategoryAnalysisRequestBody({
+    project,
+    activeCategory,
+    groundedContext,
+    scopedEvidenceIds,
+    requestedOutputTokens,
+  });
   let groundedContext = categoryAnalysisSources.length
     ? `\n\nThe following public document passages were physically retrieved by SafeLoc. Use only these passages for source-backed claims. Do not browse, call a search tool, or treat a URL, snippet, title, or generated summary as evidence. Every claimPassage must be copied exactly from one supplied passage.\n${JSON.stringify(categoryAnalysisPacket)}`
     : "";
   let requestBody = buildRequestBody(groundedContext);
   let categoryInputTelemetry = null;
+  let categoryPassageSelectionRecords = [];
   if (activeCategory?.categoryId) {
     const fitted = fitCategoryAnalysisInput(
       categoryAnalysisSources,
@@ -5783,6 +6130,81 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
       omissionReasons: fitted.omissionReasons,
       outcome: fitted.omissionReasons.length > 0 ? "capped" : "within-cap",
     };
+    const preparedBySource = new Map(categoryPassagePreparation.decisions.map((item) => [item.source, item]));
+    const finalByKey = new Map(categoryAnalysisSources.map((source) => {
+      const originalPassage = source.accessOutcome?.passage ?? "";
+      const key = `${canonicalizeSourceUrl(source.originalUrl ?? source.url ?? source.canonicalUrl) ?? ""}|${createHash("sha256").update(originalPassage).digest("hex")}`;
+      return [key, source];
+    }));
+    categoryPassageSelectionRecords = groundedSources
+      .map((source, index) => {
+        const prepared = preparedBySource.get(source);
+        const originalPassage = source.accessOutcome?.passage ?? "";
+        const canonicalUrl = canonicalizeSourceUrl(source.originalUrl ?? source.url ?? source.canonicalUrl) ?? "";
+        const key = `${canonicalUrl}|${createHash("sha256").update(originalPassage).digest("hex")}`;
+        const finalSource = finalByKey.get(key);
+        const suppliedPassage = finalSource?.analysisPassage ?? "";
+        let reasonCode = prepared?.reasonCode ?? null;
+        let decision = prepared?.decision ?? "excluded-before-passage-selection";
+        let explanation = prepared?.explanation ?? null;
+        let tokenFitState = "not-evaluated";
+        if (!hasRetrievedPassage(source)) {
+          const access = source?.accessOutcome ?? {};
+          reasonCode = "blocked-source";
+          decision = "excluded-before-passage-selection";
+          explanation = `Source passage unavailable: ${access.reason ?? access.state ?? "not-retained"}.`;
+        } else if (prepared?.included && prepared.deduplicationState === "duplicate") {
+          reasonCode = "duplicate-passage";
+        } else if (prepared?.included && prepared.windowState === "excluded") {
+          reasonCode = "category-window-exclusion";
+        } else if (prepared?.included && !finalSource) {
+          reasonCode = "token-clipping";
+          decision = "excluded-by-token-fit";
+          explanation = "A category passage window existed but token fitting omitted the passage completely.";
+          tokenFitState = "fully-removed";
+        } else if (prepared?.included && suppliedPassage
+          && suppliedPassage !== prepared.windowedPassage) {
+          reasonCode = "token-clipping";
+          tokenFitState = "partially-clipped";
+          decision = "included-after-token-clipping";
+          explanation = "Token fitting shortened the selected category window; exact before/after hashes are recorded.";
+        } else if (finalSource) {
+          tokenFitState = "included";
+          decision = "included-in-prepared-packet";
+          reasonCode = null;
+          explanation = null;
+        }
+        return {
+          source,
+          sourceId: source.sourceId ?? source.occurrenceId
+            ?? prepared?.occurrenceId
+            ?? `occ-${createHash("sha256").update(`${canonicalUrl}|${source.accessOutcome?.contentHash ?? ""}|${index}`).digest("hex").slice(0, 24)}`,
+          occurrenceId: prepared?.occurrenceId
+            ?? source.occurrenceId
+            ?? `occ-${createHash("sha256").update(`${canonicalUrl}|${source.accessOutcome?.contentHash ?? ""}|${index}`).digest("hex").slice(0, 24)}`,
+          included: Boolean(finalSource),
+          decision,
+          reasonCode,
+          explanation,
+          routeState: prepared?.routeState ?? "not-evaluated",
+          routeReason: prepared?.routeReason ?? (hasRetrievedPassage(source) ? "not-evaluated" : "blocked-before-routing"),
+          identityAdmission: prepared?.identityAdmission ?? {
+            state: "not-evaluated",
+            verdict: null,
+            reason: null,
+          },
+          duplicateRepresentative: prepared?.duplicateRepresentative ?? null,
+          deduplicationState: prepared?.deduplicationState ?? "not-evaluated",
+          windowState: prepared?.windowState ?? "not-evaluated",
+          tokenFitState,
+          passageRetained: hasRetrievedPassage(source) ? "retained" : "not-retained",
+          postFilterPassage: prepared?.postFilterPassage ?? "",
+          deduplicatedPassage: prepared?.deduplicatedPassage ?? "",
+          windowedPassage: prepared?.windowedPassage ?? "",
+          suppliedPassage,
+          partial: Boolean(suppliedPassage && suppliedPassage !== originalPassage),
+        };
+      });
   } else {
     // The legacy full-project fallback has a larger schema than category
     // calls. Preserve the conservative 30k default by shrinking its output
@@ -5838,6 +6260,34 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
       ?? estimateProviderInputTokens(requestBody)) + requestedOutputTokens,
     usage: null,
   };
+  const preparedProviderEvent = activeCategory?.claimTrace?.recordProviderEvent?.({
+    state: "prepared",
+    runId: activeCategory.runCorrelationId,
+    projectId: project.projectId ?? project.id ?? project.name,
+    project,
+    categoryId: activeCategory.categoryId,
+    attemptType: activeCategory.attempt,
+    promptVersion: `${RESEARCH_PROJECT_PROMPT_VERSION}:${activeCategory.categoryId ?? "project"}`,
+    schemaVersion: identityOnly ? "identity-response-v1"
+      : `safeloc-research-schema-v${RESEARCH_POLICY_VERSION}:${activeCategory.categoryId}`,
+    queuedAt: providerAttempt.queuedAt,
+    bodyBytes: providerAttempt.requestBodyBytes,
+    requestBodySha256: createHash("sha256").update(requestBody).digest("hex"),
+    estimatedInputTokens: providerAttempt.estimatedInputTokens,
+    packet: categoryAnalysisPacket,
+    outcome: "prepared-not-yet-issued",
+  }) ?? null;
+  if (activeCategory?.categoryId) {
+    activeCategory.claimTrace?.recordPassageSelection?.({
+      runId: activeCategory.runCorrelationId,
+      projectId: project.projectId ?? project.id ?? project.name,
+      project,
+      categoryId: activeCategory.categoryId,
+      attemptType: activeCategory.attempt,
+      attemptId: preparedProviderEvent?.attemptId ?? null,
+      records: categoryPassageSelectionRecords,
+    });
+  }
   if (analysisTracker) analysisTracker.attempts.push(providerAttempt);
   try {
     response = await providerGate.run(async () => {
@@ -5878,6 +6328,25 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
         );
         providerAttempt.reservedTokens = admission.reservedTokens ?? providerAttempt.reservedTokens;
         providerAttempt.providerTpmCeiling = admission.tokensPerMinute ?? null;
+        activeCategory?.claimTrace?.recordProviderEvent?.({
+          state: "issued-to-provider",
+          runId: activeCategory.runCorrelationId,
+          projectId: project.projectId ?? project.id ?? project.name,
+          project,
+          categoryId: activeCategory.categoryId,
+          attemptType: activeCategory.attempt,
+          attemptId: preparedProviderEvent?.attemptId,
+          promptVersion: `${RESEARCH_PROJECT_PROMPT_VERSION}:${activeCategory.categoryId ?? "project"}`,
+          schemaVersion: identityOnly ? "identity-response-v1"
+            : `safeloc-research-schema-v${RESEARCH_POLICY_VERSION}:${activeCategory.categoryId}`,
+          queuedAt: providerAttempt.queuedAt,
+          providerCallStartedAt: providerAttempt.issuedAt,
+          bodyBytes: providerAttempt.requestBodyBytes,
+          requestBodySha256: createHash("sha256").update(requestBody).digest("hex"),
+          estimatedInputTokens: providerAttempt.estimatedInputTokens,
+          packet: categoryAnalysisPacket,
+          outcome: "issued",
+        });
         activeCategory?.claimTrace?.recordAnalysisPacket?.({
           categoryId: activeCategory.categoryId,
           attemptType: activeCategory.attempt,
@@ -5911,6 +6380,24 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
     providerAttempt.outcome = issuedAtMs === null
       ? "cancelled-before-issue"
       : cancelled ? "cancelled-after-issue" : "failed";
+    if (issuedAtMs === null) activeCategory?.claimTrace?.recordProviderEvent?.({
+      state: cancelled ? "cancelled-before-issue" : "prepared-but-unissued",
+      runId: activeCategory.runCorrelationId,
+      projectId: project.projectId ?? project.id ?? project.name,
+      project,
+      categoryId: activeCategory.categoryId,
+      attemptType: activeCategory.attempt,
+      attemptId: preparedProviderEvent?.attemptId,
+      promptVersion: `${RESEARCH_PROJECT_PROMPT_VERSION}:${activeCategory.categoryId ?? "project"}`,
+      schemaVersion: identityOnly ? "identity-response-v1"
+        : `safeloc-research-schema-v${RESEARCH_POLICY_VERSION}:${activeCategory.categoryId}`,
+      queuedAt: providerAttempt.queuedAt,
+      bodyBytes: providerAttempt.requestBodyBytes,
+      estimatedInputTokens: providerAttempt.estimatedInputTokens,
+      packet: categoryAnalysisPacket,
+      outcome: cancelled ? "cancelled-before-issue" : providerAttempt.failureClassification,
+      reason: error?.message,
+    });
     if (analysisTracker) providerAttempt.inFlightAnalysisCount = analysisTracker.inFlight;
     error.providerAttempt = providerAttempt;
     throw error;
@@ -6017,6 +6504,17 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
     });
     throw parseError;
   }
+  const providerOriginalResearch = research;
+  activeCategory?.claimTrace?.recordProviderOriginal?.({
+    runId: activeCategory.runCorrelationId,
+    projectId: project.projectId ?? project.id ?? project.name,
+    categoryId: activeCategory.categoryId,
+    attemptType: activeCategory.attempt,
+    providerResponseId,
+    parsedAt: new Date().toISOString(),
+    expectedEvidenceIds: scopedEvidenceIds,
+    research: providerOriginalResearch,
+  });
   providerAttempt.structuredResponseDiagnostic = createStructuredResponseDiagnostic(research, { outcome: "received" });
   if (identityOnly) {
     research = {
@@ -6024,6 +6522,17 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
       evidence: {},
       identityAssessment: research.identityAssessment ?? null,
     };
+    activeCategory?.claimTrace?.recordTransformation?.({
+      runId: activeCategory.runCorrelationId,
+      projectId: project.projectId ?? project.id ?? project.name,
+      categoryId: activeCategory.categoryId,
+      attemptType: activeCategory.attempt,
+      providerResponseId,
+      stage: "identity-only-projection",
+      reason: "The identity-only category intentionally projects away evidence after preserving the immutable provider-original snapshot.",
+      before: providerOriginalResearch,
+      after: research,
+    });
   }
   const bounded = boundProviderResponseToToolBudget(body, activeCategory?.maxToolCalls ?? RESEARCH_PROJECT_MAX_TOOL_CALLS);
   const sources = categoryGroundedSources.length
@@ -6041,7 +6550,19 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
       project,
       extractResearchSourceUrls(research),
     );
+  const beforeSourceRestriction = research;
   research = restrictResearchToAcceptedSources(research, sources);
+  activeCategory?.claimTrace?.recordTransformation?.({
+    runId: activeCategory.runCorrelationId,
+    projectId: project.projectId ?? project.id ?? project.name,
+    categoryId: activeCategory.categoryId,
+    attemptType: activeCategory.attempt,
+    providerResponseId,
+    stage: "accepted-source-restriction",
+    reason: "Provider source URLs not in the retained-source allowlist are removed before normalization.",
+    before: beforeSourceRestriction,
+    after: research,
+  });
   const searchTerms = categoryGroundedSources.length
     ? [...new Set(categoryGroundedSources.flatMap((source) => source.referringQueries ?? []))].slice(0, RESEARCH_PROJECT_MAX_TOOL_CALLS)
     : extractSearchTerms(bounded.body);
@@ -6062,6 +6583,9 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
     coverage: {
       searchedDomains: [...new Set(sources.map((source) => sourceHostname(source)).filter(Boolean))],
       failedDomains: [],
+      attemptType: activeCategory?.attempt ?? "primary",
+      runCorrelationId: activeCategory?.runCorrelationId ?? null,
+      projectId: project.projectId ?? project.id ?? project.name,
       retrievedSourceCount: sources.length,
       sourceChannelTelemetry: sources.sourceChannelTelemetry ?? [],
       searchTerms,
@@ -6304,6 +6828,10 @@ function mergeCategoryResearchResults(project, categoryResults, claimTrace = nul
   for (const result of categoryResults) {
     const category = planByCategory.get(result.categoryId);
     const retainedCategoryUrls = new Set((result.sources ?? []).flatMap((source) => sourceUrlAliases(source)));
+    const responseId = result.coverage?.providerResponseId
+      ?? result.coverage?.providerAttempts?.find((attempt) => attempt?.providerResponseId)?.providerResponseId
+      ?? result.coverage?.providerAttempt?.providerResponseId
+      ?? null;
     const rawProviderEvidence = result.rawResearch?.evidence ?? result.research?.evidence;
     const rawProviderClaims = Array.isArray(rawProviderEvidence)
       ? rawProviderEvidence
@@ -6317,14 +6845,46 @@ function mergeCategoryResearchResults(project, categoryResults, claimTrace = nul
     const categoryEvidence = Array.isArray(result.research?.evidence) ? result.research.evidence : [];
     if (!categoryEvidence.some((item) => typeof item?.eligibleForModel === "boolean")) {
       try {
-        containedResearch = containResearchResult(parseResearchResponse(
+        const parsedResearch = parseResearchResponse(
           result.research,
           result.sources ?? [],
           new Date().toISOString().slice(0, 10),
           result.coverage ?? null,
           projectClaimValidationContext(project),
           category?.evidenceIds ?? RESEARCH_EVIDENCE_IDS,
-        ));
+          {
+            claimTrace,
+            categoryId: result.categoryId,
+            providerResponseId: responseId,
+            attemptType: result.coverage?.attemptType ?? "primary",
+            runId: result.coverage?.runCorrelationId ?? null,
+            projectId: project.projectId ?? project.id ?? project.name,
+            requestedProject: project,
+          },
+        );
+        claimTrace?.recordTransformation?.({
+          runId: result.coverage?.runCorrelationId ?? null,
+          projectId: project.projectId ?? project.id ?? project.name,
+          categoryId: result.categoryId,
+          providerResponseId: responseId,
+          attemptType: result.coverage?.attemptType ?? "primary",
+          stage: "normalization-parsing-mapping",
+          reason: "The retained category response was normalized and evaluated by the shared identity and source-mapping functions.",
+          before: result.research,
+          after: parsedResearch,
+        });
+        containedResearch = containResearchResult(parsedResearch);
+        claimTrace?.recordTransformation?.({
+          runId: result.coverage?.runCorrelationId ?? null,
+          projectId: project.projectId ?? project.id ?? project.name,
+          categoryId: result.categoryId,
+          providerResponseId: responseId,
+          attemptType: result.coverage?.attemptType ?? "primary",
+          stage: "claim-containment",
+          reason: "The parsed category response was passed through the existing containment policy.",
+          before: parsedResearch,
+          after: containedResearch,
+        });
       } catch {
       // The category was independently normalized before production merges. Keep
       // the raw category result available for a diagnostic-only merge fixture.
@@ -6340,9 +6900,6 @@ function mergeCategoryResearchResults(project, categoryResults, claimTrace = nul
         ? containedResearch.evidence.map((item) => [item.id, item])
         : [],
     );
-    const responseId = result.coverage?.providerResponseId
-      ?? result.coverage?.providerAttempts?.find((attempt) => attempt?.providerResponseId)?.providerResponseId
-      ?? null;
     for (const item of rawProviderClaims.slice(0, 48)) {
       const claimId = item?.id;
       if (!category?.evidenceIds.includes(claimId)) {
@@ -6423,7 +6980,7 @@ function mergeCategoryResearchResults(project, categoryResults, claimTrace = nul
       const existingHasAccessibleSource = existing?.sources?.some((source) => source.accessOutcome?.state === "accessible") === true;
       const currentHasAccessibleSource = sourceRecords.some((source) => source.accessOutcome?.state === "accessible");
       if (existing && existingHasAccessibleSource && !currentHasAccessibleSource) continue;
-      evidenceById.set(item.id, {
+      const mergedItem = {
         ...item,
         ...containedItem,
         // A category may be normalized before its source has been physically
@@ -6448,6 +7005,20 @@ function mergeCategoryResearchResults(project, categoryResults, claimTrace = nul
           ? { claimTimePeriod: rawItem.claimTimePeriod }
           : {}),
         ...(item.sources?.length || !sourceRecords.length ? {} : { sources: sourceRecords }),
+      };
+      evidenceById.set(item.id, mergedItem);
+      claimTrace?.recordTransformation?.({
+        runId: result.coverage?.runCorrelationId ?? null,
+        projectId: project.projectId ?? project.id ?? project.name,
+        categoryId: result.categoryId,
+        providerResponseId: responseId,
+        attemptType: result.coverage?.attemptType ?? "primary",
+        stage: "category-merge",
+        reason: existing
+          ? "A category claim replaced the prior merged representative after retained-source accessibility arbitration."
+          : "The category claim and its validated source receipts were added to the merged project evidence.",
+        before: { projectSummary: first.projectSummary, evidence: [existing ?? item] },
+        after: { projectSummary: first.projectSummary, evidence: [mergedItem] },
       });
       claimTrace?.recordStage?.({
         categoryId: result.categoryId,
@@ -7854,22 +8425,62 @@ async function runValidatedResearch(project, {
              categoryResult = supplementalAnalysis;
              if (supplementalAnalysis.coverage?.providerAttempt) providerAttempts.push(supplementalAnalysis.coverage.providerAttempt);
            }
-            const normalizedCategoryResearch = containResearchResult(parseResearchResponse(
-          categoryResult.research,
-          accessedSources,
-          new Date().toISOString().slice(0, 10),
-          categoryResult.coverage,
-          projectClaimValidationContext(project),
-          category?.evidenceIds ?? [],
-        ));
          const categoryResponseId = categoryResult.coverage?.providerResponseId
            ?? categoryResult.coverage?.providerAttempts?.find((attempt) => attempt?.providerResponseId)?.providerResponseId
            ?? categoryResult.coverage?.providerAttempt?.providerResponseId
            ?? null;
+          const parsedCategoryResearch = parseResearchResponse(
+            categoryResult.research,
+            accessedSources,
+            new Date().toISOString().slice(0, 10),
+            categoryResult.coverage,
+            projectClaimValidationContext(project),
+            category?.evidenceIds ?? [],
+            {
+              claimTrace,
+              categoryId,
+              providerResponseId: categoryResponseId,
+              attemptType: categoryResult.coverage?.attemptType ?? "primary",
+              runId: runCorrelationId,
+              projectId: project.projectId ?? project.id ?? project.name,
+              requestedProject: project,
+            },
+          );
+         claimTrace?.recordTransformation?.({
+          runId: runCorrelationId,
+          projectId: project.projectId ?? project.id ?? project.name,
+          categoryId,
+          attemptType: categoryResult.coverage?.attemptType ?? "primary",
+          providerResponseId: categoryResponseId,
+           stage: "normalization-parsing-mapping",
+           reason: "The category response was normalized against retained receipts and passed through the shared identity and source-mapping functions.",
+          before: categoryResult.research,
+           after: parsedCategoryResearch,
+        });
+          const normalizedCategoryResearch = containResearchResult(parsedCategoryResearch);
+          claimTrace?.recordTransformation?.({
+           runId: runCorrelationId,
+           projectId: project.projectId ?? project.id ?? project.name,
+           categoryId,
+           attemptType: categoryResult.coverage?.attemptType ?? "primary",
+           providerResponseId: categoryResponseId,
+           stage: "claim-containment",
+           reason: "The normalized category response was passed through the existing containment policy.",
+           before: parsedCategoryResearch,
+           after: normalizedCategoryResearch,
+          });
+         claimTrace?.recordMappingReceipts?.({
+          runId: runCorrelationId,
+          projectId: project.projectId ?? project.id ?? project.name,
+          categoryId,
+          attemptType: categoryResult.coverage?.attemptType ?? "primary",
+          evidence: normalizedCategoryResearch.evidence,
+        });
          claimTrace?.recordValidatedEvidence?.({
            categoryId,
            providerResponseId: categoryResponseId,
            evidence: normalizedCategoryResearch.evidence,
+          project,
          });
         const categoryResolution = categoryResult.coverage?.analysisFailureType
           ? { resolved: false, unresolvedEvidenceIds: category.evidenceIds.length ? [...category.evidenceIds] : [category.categoryId] }
@@ -8567,7 +9178,13 @@ export async function handleResearchProjectRequest(
     };
     const refreshResult = cache.refresh(key, async () => {
       runContext = context;
-      const funnelDiagnostics = createResearchFunnelDiagnostics();
+      const funnelDiagnostics = createResearchFunnelDiagnostics({
+        runId,
+        project: {
+          ...project,
+          projectId: project.projectId ?? project.id ?? project.name,
+        },
+      });
       context.funnelDiagnostics = funnelDiagnostics;
       try {
         if (auditStore?.startRun) {

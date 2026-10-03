@@ -12,6 +12,13 @@ export function assessResearchProjectIdentity(
       state?: unknown;
     };
   },
+  options?: {
+    onDecision?: (decision: {
+      admissionGate?: "exact-project" | "related-facility";
+      resolver: { verdict: "exact-project" | "related-facility" | "ambiguous" | "unrelated"; reason: string };
+      trace: Record<string, unknown>;
+    }) => void;
+  },
 ): "exact-project" | "ambiguous" | "unrelated";
 
 export function corroborateRelatedFacilityAcrossPassages(

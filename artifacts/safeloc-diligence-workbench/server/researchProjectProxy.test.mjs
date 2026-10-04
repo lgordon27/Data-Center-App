@@ -527,6 +527,126 @@ test("offline replay uses production selection and token fitting but never issue
   assert.match(replay.inputSnapshot.requestBodySha256, /^[a-f0-9]{64}$/);
 });
 
+test("bounded conversion check preserves three captured identities, bodies and unavailable routing provenance", () => {
+  const html = readFileSync(
+    new URL("../../../attached_assets/reports/safeloc-multi-project-engine-validation-final.html", import.meta.url), "utf8",
+  );
+  assert.equal(createHash("sha256").update(html).digest("hex"),
+    "b368babb50a1ea3b823a5e96c64c1e6d5d7238f13693b89527bc7cc9c5ddc3b4");
+  const decoded = gunzipSync(Buffer.from(html.match(
+    /<script type="application\/octet-stream" id="audit-data">([\s\S]*?)<\/script>/i,
+  )[1].trim(), "base64"));
+  assert.equal(createHash("sha256").update(decoded).digest("hex"),
+    "c1a92ef53e0d8060ddb591ac215d381fe6568c93ddc7e21f73b62522bccd14a6");
+  const bundle = JSON.parse(decoded);
+  const cases = [
+    ["1f639d46-5a48-495b-a49b-64ccdde1e062", "5c3d8f3de1a44ad51836f98d71b243b17b0037529e3237360494e96d30018ea4", 1985, "https://www.buttscountyida.com/"],
+    ["528ea8f3-4603-43ac-9a99-cb8e60cca9d2", "1c1ac3e09e7be4aabf5ce24f9dee0e1be2b017cd52d07c1b04fe3f0e2ac2d5e6", 2772, "https://w.media/iren-granted-conditional-base-load-status-for-2-gw-texas-campus"],
+    ["b0793bef-1f71-4f88-96ba-1a0aa841ecb3", "ae69bd1ace1663c463a6441f68a15ba0c9fe9b3968755f6ac695a2b054e3abe0", 3546, "https://www.corgan.com/projects/vantage-az1-data-center-campus"],
+  ];
+  for (const [runId, hash, length, url] of cases) {
+    const run = bundle.reportData.runs.find((row) => row.runId === runId && row.phase === "identity-confirmation");
+    const receipt = run.sourceReceipts.find((row) => row.passageSha256 === hash);
+    const lineage = run.passageLineage.find((row) => row.hash === hash);
+    assert.equal(createHash("sha256").update(receipt.passage).digest("hex"), hash);
+    assert.equal(receipt.passage.length, length);
+    assert.equal(receipt.source.canonicalUrl, url);
+    assert.equal(lineage.source, url);
+    assert.equal(lineage.retainedLength, length);
+    assert.equal(lineage.projectId, run.projectId);
+    assert.deepEqual(receipt.source.categoryIds, []);
+    const project = { projectId: run.projectId, name: run.projectName, operator: run.operator, location: run.location };
+    // These are captured receipt fields, not reconstructed upstream provider input.
+    // The redacted discovery redirect is not a fetchable identity. Use its
+    // verified canonical URL offline; do not supply aliases or invented routes.
+    const source = {
+      ...receipt.source, url, sourceId: `${runId}:${hash}`,
+      accessOutcome: { state: "accessible", passage: receipt.passage },
+    };
+    const before = structuredClone({ project, source });
+    for (const category of buildResearchCategoryPlan(project).categories) {
+      const replay = replayResearchCategoryPassageInput(project, category, [source]);
+      assert.equal(replay.suppliedCount, 0);
+      assert.equal(replay.issuedPassageCount, 0);
+      assert.equal(replay.decisions[0].original.sha256, hash);
+      assert.equal(replay.decisions[0].identityAdmission.verdict, "ambiguous");
+      assert.equal(replay.decisions[0].reasonCode, "identity-not-established");
+      assert.equal(replay.decisions[0].finalSupplied.length, 0);
+    }
+    assert.deepEqual({ project, source }, before);
+  }
+});
+
+test("explicit category provenance survives provider normalization while unlabeled context still requires retained identity", () => {
+  // Synthetic routing controls, not historical extraction or provider findings.
+  const project = { name: "Project Atlas", location: "Irving, Dallas County, Texas", operator: "Atlas Compute" };
+  const passage = "Project Atlas is located in Irving, Dallas County, Texas and is operated by Atlas Compute. The project water plan reports consumption of 42 Mgal/year for 2026.";
+  const categories = buildResearchCategoryPlan(project).categories;
+  const water = categories.find((row) => row.categoryId === "water");
+  const grid = categories.find((row) => row.categoryId === "grid");
+  const normalized = normalizeRetrievedSources({ sources: [{
+    url: "https://records.example.gov/atlas", categoryIds: ["water"],
+    categoryRoutingUnknown: true, title: "Project Atlas water plan",
+  }] }, "grid", project)[0];
+  assert.deepEqual(normalized.categoryIds, ["water"]);
+  assert.equal(normalized.searchDomain, "grid", "searchDomain records the caller's retrieval category");
+  const explicit = { ...normalized, accessOutcome: { state: "accessible", passage } };
+  assert.equal(replayResearchCategoryPassageInput(project, water, [explicit]).suppliedCount, 1);
+  assert.equal(replayResearchCategoryPassageInput(project, grid, [explicit]).suppliedCount, 0);
+  const unlabeled = { url: explicit.url, categoryIds: [], accessOutcome: explicit.accessOutcome };
+  assert.equal(replayResearchCategoryPassageInput(project, water, [unlabeled]).suppliedCount, 1);
+  for (const unsupported of [
+    "A generic campus is located in Irving, Texas. Its water plan is under review.",
+    "Project Atlas is located in Houston, Harris County, Texas and is operated by Atlas Compute.",
+    "Project Atlas is located in Irving, Dallas County, Texas and is operated by Different Operator.",
+  ]) {
+    assert.equal(replayResearchCategoryPassageInput(project, water, [{
+      ...unlabeled, accessOutcome: { state: "accessible", passage: unsupported },
+    }]).suppliedCount, 0);
+  }
+});
+
+test("synthetic conversion controls exercise production admission and downstream mapping without provider findings", () => {
+  const project = {
+    name: "Vantage AZ1", operator: "Vantage Data Centers", location: "Goodyear, Arizona",
+    facilityIdentifiers: ["AZ1"],
+  };
+  const passage = "Vantage AZ1 is located in Goodyear, Arizona and is operated by Vantage Data Centers. The facility electricity cost is 42 USD/MWh in 2026.";
+  const category = buildResearchCategoryPlan(project).categories.find((row) => row.categoryId === "electricity");
+  const claim = { value: 42, numericValue: 42, sourceRelevance: "exact-project", description: "Fixture electricity cost" };
+  const cases = [
+    ["supported", passage, true],
+    ["ambiguous", "A data center in Goodyear, Arizona reports electricity cost of 42 USD/MWh in 2026.", false],
+    ["unrelated", "An unrelated mining facility in Iowa reports electricity cost of 42 USD/MWh in 2026.", false],
+    ["wrong-operator", passage.replace("operated by Vantage Data Centers", "operated by Different Operator"), false],
+    ["wrong-location", passage.replace("Goodyear, Arizona", "Houston, Texas"), false],
+    ["wrong-facility", passage.replace("Vantage AZ1", "Vantage AZ2"), false],
+  ];
+  for (const [label, body, supported] of cases) {
+    const url = `https://records.example.gov/fixture-${label}`;
+    const source = {
+      url, canonicalUrl: url, categoryIds: [],
+      sourceClass: "primary-government", exactProject: true,
+      excerpt: body, claimPassage: body,
+      facilityScope: "exact-facility", phaseScope: "not-applicable", timePeriod: "2026",
+      accessOutcome: { state: "accessible", passage: body },
+    };
+    const replay = replayResearchCategoryPassageInput(project, category, [source]);
+    assert.equal(replay.suppliedCount, supported ? 1 : 0, label);
+    const mappings = buildClaimPassageMappings({
+      id: "electricity_cost", sources: [source], project, claim, coverageStatus: "supported",
+    });
+    assert.equal(mappings[0].supportStatus === "supported", supported, label);
+    const eligibility = evaluateResearchEvidenceEligibility({
+      id: "electricity_cost", sourceUrl: url, sources: [source],
+      sourceRelevance: "exact-project", sourceSupportConfidence: 94,
+      classification: "Management Assertion", coverageStatus: "supported", claimMappings: mappings,
+    }, { includeCheckTrace: true });
+    assert.equal(eligibility.eligible, supported, label);
+    if (!supported) assert.ok(eligibility.checkTrace.firstFailure, label);
+  }
+});
+
 test("replays the 11 exact-hash-verified captured passages through production identity admission", () => {
   const captureHtml = readFileSync(
     new URL("../../../attached_assets/reports/safeloc-multi-project-engine-validation-final.html", import.meta.url),

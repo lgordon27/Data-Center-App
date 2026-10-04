@@ -15,6 +15,12 @@ Every saved acceptance conclusion must be bound to its exact run ID, source revi
 
 **How to apply:** Before diagnosing candidate order or budget use, match the run ID, source revision, and budget in the run-local receipt. If any link is absent, label candidate rank and per-run outcomes unavailable rather than inferring them from another canary.
 
+A sanitized receipt's empty category array is not proof that the historical upstream source was unrouted. Admission repair must preserve the original requested identity and existing metadata; plausible content alone does not authorize inventing aliases or routes.
+
+**Why:** Retained body hashes can verify passage bytes while occurrence-to-category/request links and upstream normalization input remain unavailable. Confusing those evidence levels would turn an uncertain historical cause into an unsupported production correction.
+
+**How to apply:** Diagnose current replay separately from historical routing. Require the actual upstream and normalized records to demonstrate metadata loss; when no incorrect gate is reproduced, retain fail-closed admission and identify the minimum missing evidence.
+
 For paid research, create the fail-closed audit start inside the single-flight refresh owner immediately before provider work; that same owner alone completes the row. Defer completion until the HTTP response finishes or closes, and treat an early close as a client disconnect while aborting outstanding work.
 
 **Why:** Starting outside the coalesced owner can create duplicate or phantom rows, while completing before the response lifecycle ends can lose delivery timing and disconnect state.

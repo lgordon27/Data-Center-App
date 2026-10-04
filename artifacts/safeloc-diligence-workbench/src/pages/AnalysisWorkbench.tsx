@@ -9,7 +9,7 @@ import { FinancialTransmission } from "@/components/conference/FinancialTransmis
 import { AdvisorBrief } from "@/components/conference/AdvisorBrief";
 import { getConferenceEvidenceSummary, getConferenceRelationship, isConferenceResearchIncomplete } from "@/model/conferenceEvidence";
 import { ResearchTelemetryStatus } from "@/components/ResearchHandoffSummary";
-import { getResearchStatusPresentation } from "@/services/researchProjectService";
+import { getResearchResultPresentation } from "@/model/researchResultPresentation";
 import {
   getCanonicalDossier,
   listCanonicalDossiers,
@@ -50,14 +50,8 @@ function ConferenceWorkbench({ onResolveEvidence, onReset, focusSectionId }: Pro
   const diligence = useDiligence();
   const { project, activeProjectContext, evidence, originatingCompany, metrics, financialScenarios, financialModeling } = diligence;
   const incomplete = isConferenceResearchIncomplete(project, evidence);
-  const researchPresentation = getResearchStatusPresentation({
-    outcome: project.researchOutcome,
-    researchMode: project.researchMode,
-    researchStatus: project.researchStatus,
-    eligibleProposalCount: Object.keys(project.researchProposals ?? {}).length,
-    fallbackIncomplete: incomplete,
-  });
-  const [view, setView] = useState<View>("market");
+  const result = getResearchResultPresentation(project, evidence);
+  const [view, setView] = useState<View>(project.kind === "custom" ? "reality" : "market");
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [dossiers, setDossiers] = useState<CanonicalDossierSummary[]>([]);
   const [dossierLoadState, setDossierLoadState] = useState<"idle" | "loading" | "error">("idle");
@@ -137,10 +131,9 @@ function ConferenceWorkbench({ onResolveEvidence, onReset, focusSectionId }: Pro
 
   return (
     <div data-testid="analysis-workbench" className="min-w-0 pb-4">
-      <ActiveProjectContextSummary />
       <div
         data-testid="conference-summary"
-        className={`${canonicalDossier ? "" : "sticky top-[72px] z-10"} mb-5 rounded-lg border border-[#d9e0e4] bg-[#f9faf8]/95 px-4 py-3 backdrop-blur-md`}
+        className="mb-5 rounded-lg border border-[#d9e0e4] bg-white px-4 py-3"
       >
         {canonicalDossier ? (
           <>
@@ -152,7 +145,7 @@ function ConferenceWorkbench({ onResolveEvidence, onReset, focusSectionId }: Pro
               </div>
               <div className="flex flex-wrap items-center justify-end gap-2">
                 <span data-testid="conference-research-status" className="rounded-md bg-[#e5eeea] px-3 py-2 text-[11px] font-semibold text-[#365b4c]">
-                  Canonical evidence review
+                   {result.status.label}
                 </span>
                 {project.kind !== "custom" && dossiers.length > 0 && (
                   <label className="flex items-center gap-2 text-[10px] font-semibold text-[#60707d]">
@@ -173,7 +166,8 @@ function ConferenceWorkbench({ onResolveEvidence, onReset, focusSectionId }: Pro
                 {dossierLoadState === "error" && <span role="alert" className="text-[10px] text-[#ba2f45]">Canonical dossier store unavailable.</span>}
               </div>
             </div>
-            <dl data-testid="canonical-dossier-summary" className="mt-4 grid gap-x-4 gap-y-3 border-t border-[#d9e0e4] pt-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+             <details className="mt-3 text-xs text-[#52616b]"><summary className="cursor-pointer py-2">Reviewed dossier and model details</summary>
+             <dl data-testid="canonical-dossier-summary" className="mt-4 grid gap-x-4 gap-y-3 border-t border-[#d9e0e4] pt-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
               {phaseStatus && (
                 <div data-testid="dossier-project-status" className="min-w-0">
                   <dt className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#60707d]">Phase status</dt>
@@ -217,6 +211,7 @@ function ConferenceWorkbench({ onResolveEvidence, onReset, focusSectionId }: Pro
                 <dd className="mt-1 break-words text-[9px] leading-4 text-[#60707d]">evidence as of {canonicalDossier.asOfDate ?? "unavailable"}</dd>
               </div>
             </dl>
+             </details>
           </>
         ) : (
           <>
@@ -228,21 +223,21 @@ function ConferenceWorkbench({ onResolveEvidence, onReset, focusSectionId }: Pro
               </div>
               <div className="flex flex-wrap items-center justify-end gap-2">
                 {financialModeling.status === "modeled" && (
+                   <details className="text-xs text-[#52616b]"><summary className="cursor-pointer py-2">Synthetic scenario basis</summary>
                   <span data-testid="conference-primary-case" className="rounded-md border border-[#aac6f4] bg-[#eef5ff] px-3 py-2 text-[11px] text-[#255bb7]">
                     <strong>Synthetic current-evidence primary:</strong>{" "}
                     {metrics.projectIRR === null ? "N/M" : `${metrics.projectIRR.toFixed(1)}% IRR`} · {metrics.recommendationStatus}
                     <span className="sr-only"> · Scenario {financialScenarios.primaryScenarioId}. Optional EIA sensitivities do not set this recommendation.</span>
                   </span>
+                   </details>
                 )}
                 <span data-testid="conference-research-status" className={`rounded-md px-3 py-2 text-[11px] font-semibold ${incomplete ? "bg-[#fff0d6] text-[#805000]" : "bg-[#e5eeea] text-[#365b4c]"}`}>
-                  {project.kind === "custom"
-                    ? researchPresentation.label
-                    : incomplete ? "Research Incomplete" : "Curated public-source demonstration"}
+                   {result.status.label}
                 </span>
               </div>
             </div>
             {project.kind === "custom" && (
-              <>
+               <details className="mt-3 text-xs text-[#52616b]"><summary className="cursor-pointer py-2">Technical research details</summary>
                 <div data-testid="custom-project-identity" className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-[#52616b]">
                   <span data-testid="custom-project-id">Project ID: {project.projectIdentity?.projectId ?? "not supplied"}</span>
                   <span data-testid="custom-project-provider-id">Provider ID: {project.projectIdentity?.providerId ?? "not supplied"}</span>
@@ -256,10 +251,11 @@ function ConferenceWorkbench({ onResolveEvidence, onReset, focusSectionId }: Pro
                     researchCache={project.researchCache}
                   />
                 </div>
-              </>
+                 <ActiveProjectContextSummary />
+               </details>
             )}
             {project.kind !== "custom" && dossiers.length > 0 && (
-              <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#d9e0e4] pt-3">
+               <details className="mt-2 text-xs text-[#52616b]"><summary className="cursor-pointer py-2">Change reviewed dossier</summary><div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#d9e0e4] pt-3">
                 <label htmlFor="canonical-dossier-select" className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#60707d]">
                   Open canonical dossier
                 </label>
@@ -276,9 +272,12 @@ function ConferenceWorkbench({ onResolveEvidence, onReset, focusSectionId }: Pro
                 </select>
                 {dossierLoadState === "error" && <span role="alert" className="text-[10px] text-[#ba2f45]">Canonical dossier store unavailable.</span>}
               </div>
+               <ActiveProjectContextSummary /></details>
             )}
           </>
         )}
+        <p className="mt-2 text-xs leading-5 text-[#52616b]">{result.status.description}</p>
+        {view !== "reality" && <button type="button" onClick={() => navigateView("reality")} className="mt-3 min-h-10 rounded-md bg-[#122232] px-4 text-xs font-semibold text-white">{result.nextAction}</button>}
       </div>
 
       {canonicalDossier && <p className="mb-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-[#60707d]">Dossier sections</p>}
@@ -314,7 +313,7 @@ function ConferenceWorkbench({ onResolveEvidence, onReset, focusSectionId }: Pro
         </button>
         <span className="text-[11px] text-[#60707d]">{index + 1} / 4</span>
         <button type="button" data-testid="conference-next" disabled={index === 3} onClick={() => navigateView(VIEWS[index + 1])}
-          className="inline-flex min-h-11 max-w-[65%] items-center justify-center gap-2 rounded-md bg-[#122232] px-4 py-2 text-xs font-semibold text-[#d4e86b] disabled:bg-transparent disabled:text-[#60707d]">
+          className="inline-flex min-h-11 max-w-[65%] items-center justify-center gap-2 rounded-md border border-[#cbd8d4] px-4 py-2 text-xs font-semibold text-[#52616b] disabled:opacity-40">
           {index === 3 ? "Brief complete" : META[VIEWS[index + 1]].title}<ArrowRight aria-hidden="true" className="h-4 w-4 shrink-0" />
         </button>
       </div>

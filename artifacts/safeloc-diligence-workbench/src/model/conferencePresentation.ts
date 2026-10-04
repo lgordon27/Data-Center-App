@@ -4,6 +4,7 @@ import {
   getConferenceRelationship,
   isConferenceResearchIncomplete,
 } from "./conferenceEvidence";
+import { getResearchResultPresentation, unresolvedEvidenceReason, evidenceDisplayLabel } from "./researchResultPresentation";
 
 export const FINANCIAL_ADVISOR_COVERAGE_LABELS = {
   reviewed: "Client conversation brief · evidence reviewed",
@@ -32,7 +33,7 @@ function coverageLabel(
   summary: ReturnType<typeof getConferenceEvidenceSummary>,
 ) {
   if (diligence.project.canonicalDossier) {
-    return diligence.project.canonicalDossier.coverageState === "evidence-reviewed"
+    return diligence.project.canonicalDossier.coverageState === "evidence-reviewed" && summary.open.length === 0
       ? FINANCIAL_ADVISOR_COVERAGE_LABELS.reviewed
       : FINANCIAL_ADVISOR_COVERAGE_LABELS.gaps;
   }
@@ -51,13 +52,15 @@ function coverageLabel(
 }
 
 export function generateAdvisorBrief(diligence: ReturnType<typeof useDiligence>) {
-  const summary = getConferenceEvidenceSummary(diligence.evidence, diligence.project);
+   const summary = getResearchResultPresentation(diligence.project, diligence.evidence);
   const relationship = getConferenceRelationship(diligence.project, diligence.originatingCompany);
   const dossier = diligence.project.canonicalDossier;
   const notModeled = diligence.financialModeling.status === "not-modeled";
   return {
     audience: "financial-advisor" as const,
     coverageLabel: coverageLabel(diligence, summary),
+    researchStatus: summary.status,
+    financialReadiness: summary.readiness,
     evidenceAsOf: evidenceAsOf(diligence),
     canonicalEvidence: summary.facts.map((item) => ({
       id: item.id,
@@ -84,15 +87,13 @@ export function generateAdvisorBrief(diligence: ReturnType<typeof useDiligence>)
       unresolvedFinancialDrivers: summary.unresolvedFinancialDriverCount,
     },
     whatWeKnow: summary.facts.map((item) => `${item.label}: ${String(item.value)}`),
-    whatIsReportedNotVerified: summary.reportedNotVerified.slice(0, 3).map((item) =>
-      `${item.label}: ${String(item.value)}`
-    ),
+     whatIsReportedNotVerified: summary.reported.slice(0, 3).map((item) => item.text),
     whatWeDoNotKnow: summary.unresolved.map((item) =>
-      `${item.label}: Not established by a validated project-specific source.`
+       `${evidenceDisplayLabel(item)}: ${unresolvedEvidenceReason(item, diligence.project)}`
     ),
     evidenceBuckets: {
       established: summary.facts.map((item) => item.id),
-      reportedNotVerified: summary.reportedNotVerified.slice(0, 3).map((item) => item.id),
+       reportedNotVerified: summary.reported.slice(0, 3).map((item) => item.id),
       open: summary.unresolved.map((item) => item.id),
     },
     whyItMatters: dossier ? [
@@ -118,7 +119,7 @@ export function generateAdvisorBrief(diligence: ReturnType<typeof useDiligence>)
 }
 
 export function generateAssetManagerBrief(diligence: ReturnType<typeof useDiligence>) {
-  const summary = getConferenceEvidenceSummary(diligence.evidence, diligence.project);
+   const summary = getResearchResultPresentation(diligence.project, diligence.evidence);
   const relationship = getConferenceRelationship(diligence.project, diligence.originatingCompany);
   const dossier = diligence.project.canonicalDossier;
   const projectMateriality = diligence.financialModeling.status === "not-modeled"

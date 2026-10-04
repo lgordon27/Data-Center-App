@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useDiligence } from "@/context/DiligenceContext";
 import type { SessionFinancialPreview } from "@/model/sessionFinancialTransmission";
+import { getSessionReviewAvailability } from "@/model/researchResultPresentation";
 
-const ALLOWED = ["electricity_cost", "water_consumption", "grid_interconnection"];
 type Action = "accept" | "reject" | "evidence-only";
 type Metrics = SessionFinancialPreview["before"];
 
@@ -22,17 +22,11 @@ export function SessionFinancialReview() {
 
   const proposals = project.researchProposals;
   const fallback = d.researchEvidence;
-  const candidates = useMemo(() => {
-    const out: { id: string; rec: NonNullable<typeof fallback>[string] | NonNullable<typeof proposals>[string] }[] = [];
-    for (const id of ALLOWED) {
-      const rec = proposals?.[id] ?? (fallback?.[id]?.sourceUrl ? fallback[id] : undefined);
-      if (rec) out.push({ id, rec });
-    }
-    return out;
-  }, [proposals, fallback]);
+   const availability = getSessionReviewAvailability(project, fallback ?? {}, d.financialModeling);
+   const candidates = availability.candidates;
 
   // Any change to source proposals, dispositions or scope invalidates a captured preview.
-  useEffect(() => { setPreview(null); setSelected(null); }, [proposals, project?.researchProposalDispositions, financialSessionScope?.facility, financialSessionScope?.phase]);
+   useEffect(() => { setPreview(null); setSelected(null); }, [proposals, fallback, project?.researchProposalDispositions, financialSessionScope?.facility, financialSessionScope?.phase, d.financialModeling.status]);
 
   const scopeSet = Boolean(financialSessionScope?.facility?.trim() && financialSessionScope?.phase?.trim());
   const history = financialSessionHistory?.decisions ?? [];
@@ -52,7 +46,7 @@ export function SessionFinancialReview() {
     if (!ok) { setError("The preview is no longer valid or the action was refused. Reopen the finding to build a fresh preview; nothing was applied."); return; }
     setPreview(null); setSelected(null);
   };
-  const canAccept = Boolean(preview?.eligible && scopeSet && preview.hasModelChange !== undefined && preview.normalizedValue !== null && preview.blockedReasons.length === 0);
+   const canAccept = Boolean(availability.modelAvailable && preview?.eligible && scopeSet && preview.hasModelChange !== undefined && preview.normalizedValue !== null && preview.blockedReasons.length === 0);
   const saveScope = () => {
     setError(null);
     try { setFinancialSessionScope({ facility: facility.trim(), phase: phase.trim() }); }
@@ -70,28 +64,31 @@ export function SessionFinancialReview() {
       <h3 id="fsr-h" className="font-semibold">My session financial review</h3>
       <p className="mt-2 text-xs leading-5 text-[#60707d]">Open-use workbench: decisions here live in this tab only and survive reload, never written to canonical SafeLoc history. Choosing a finding is not source verification, and the retained source scope must match the facility and phase you model. Previews are preview-only and do not apply anything until you accept.</p>
 
-      <fieldset className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+       {availability.canPreview && <><fieldset className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
         <legend className="sr-only">Personal modeled scope</legend>
         <label className="text-xs font-semibold">Modeled facility label<input data-testid="financial-session-scope-facility" className={input} value={facility} onChange={(e) => setFacility(e.target.value)} /></label>
         <label className="text-xs font-semibold">Modeled phase label<input data-testid="financial-session-scope-phase" className={input} value={phase} onChange={(e) => setPhase(e.target.value)} /></label>
         <button type="button" data-testid="financial-session-set-scope" className={btn} onClick={saveScope}>Set scope</button>
       </fieldset>
-      <p className="mt-2 text-xs text-[#805000]">{!scopeSet ? "Set both labels to enable acceptance. " : ""}Changing scope clears this history and resets my accepted inputs.</p>
+       <p className="mt-2 text-xs text-[#805000]">{!scopeSet ? "Set both labels before previewing or accepting. " : ""}Changing scope clears this history and resets my accepted inputs.</p></>}
+       {!availability.modelAvailable && <p className="mt-3 text-xs text-[#805000]">Model unavailable. Source candidates and earlier decisions remain reviewable; no acceptance controls are offered.</p>}
 
       {error && <p role="alert" data-testid="financial-session-error" className="mt-4 rounded-md bg-[#fff1ee] p-3 text-xs leading-5 text-[#8a2f1d]">{error}</p>}
 
       <ul className="mt-4 space-y-2">
         {candidates.length === 0 && <li className="rounded-md bg-[#f4f7f6] p-3 text-xs text-[#52616b]">No electricity, water or interconnection proposals in the current research.</li>}
-        {candidates.map(({ id, rec }) => {
+         {candidates.map(({ id, rec, mismatch }) => {
           const reason = financialSessionIgnoredReasons?.[id];
           const evidenceOnly = Boolean(reason) || rec.eligibleForModel === false;
           return (
             <li key={id} className="rounded-md border border-[#e5eae8] p-3 text-xs">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span><span className="font-semibold">{id.replace(/_/g, " ")}</span> <span className="text-[#60707d]">{String(rec.rawValue ?? rec.value ?? "")} {rec.rawUnit ?? rec.unit ?? ""}</span></span>
-                <button type="button" className={btn} aria-expanded={selected === id} onClick={() => open(id)}>Preview</button>
+                 <span><span className="font-semibold">{mismatch ? "Capacity assertion · field mismatch" : id.replace(/_/g, " ")}</span> <span className="text-[#60707d]">{String("rawValue" in rec ? rec.rawValue ?? rec.value ?? "" : rec.value ?? "")} {"rawUnit" in rec ? rec.rawUnit ?? rec.unit ?? "" : rec.unit ?? ""}</span></span>
+                 {availability.modelAvailable && !mismatch && <button type="button" disabled={!scopeSet} className={btn} aria-expanded={selected === id} onClick={() => open(id)}>Preview</button>}
               </div>
               {evidenceOnly && <p className="mt-1 text-[#805000]">Evidence only{reason ? `: ${reason}` : ": context-only or excluded"}. Not activated in the model.</p>}
+              {mismatch && <p className="mt-1 text-[#805000]">MW/GW is capacity, not interconnection duration. Underlying field requires correction; no conversion or model preview is offered.</p>}
+              {rec.sourceUrl && <a href={rec.sourceUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block break-all text-[#255bb7] underline">Review candidate source</a>}
               {selected === id && preview && (
                 <div data-testid={`financial-session-preview-${id}`} className="mt-3 space-y-2 rounded-md bg-[#f4f7f6] p-3 leading-5">
                   <p className="font-semibold">Preview only: does not apply until accepted. Captured snapshot.</p>

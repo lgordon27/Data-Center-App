@@ -2,6 +2,8 @@ import type {
   RetainedResearchFinding,
   RetainedResearchFindingAudit,
 } from "@/services/researchProjectService";
+import type { EvidenceItem } from "@/context/DiligenceContext";
+import { retainedFindingReason, shortSourceText } from "@/model/researchResultPresentation";
 
 const statusPresentation: Record<RetainedResearchFinding["assessment"], { label: string; style: string }> = {
   "source-supported": { label: "Source-supported passage", style: "border-[#9bd8c5] bg-[#eff8f4] text-[#08644f]" },
@@ -28,10 +30,12 @@ export function RetainedResearchFindings({
   findings,
   audit,
   testId = "retained-research-findings",
+  evidence = {},
 }: {
   findings?: RetainedResearchFinding[];
   audit?: RetainedResearchFindingAudit;
   testId?: string;
+  evidence?: Record<string, EvidenceItem>;
 }) {
   const entries = Array.isArray(findings) ? findings.filter((finding) => finding && typeof finding === "object") : [];
   if (entries.length === 0 && !audit) return null;
@@ -42,10 +46,10 @@ export function RetainedResearchFindings({
       <p className="mt-1 text-xs leading-5 text-[#52616b]">
         Exact retrieved passages remain available for review. Applicability and financial eligibility are separate assessments; none of these passages changes project capacity, cash flows, or returns.
       </p>
-      {audit && <div data-testid={`${testId}-audit`} className="mt-3 rounded-lg bg-white p-3 text-[10px] leading-5 text-[#52616b]">
-        {audit.accessiblePassagesReviewed} accessible passages reviewed · {audit.sourceSupportedCount} source-supported · {audit.attributedReportCount} attributed · {audit.ambiguousUnresolvedCount} ambiguous · {audit.unrelatedExcludedCount} unrelated excluded · {audit.duplicateExcludedCount} duplicate passages excluded · {audit.financiallyEligibleCount} financially eligible
+      {audit && <details data-testid={`${testId}-audit`} className="mt-3 rounded-lg bg-white p-3 text-[10px] leading-5 text-[#52616b]"><summary className="cursor-pointer font-semibold">Technical audit</summary>
+        {audit.accessiblePassagesReviewed} accessible passages reviewed · {audit.sourceSupportedCount} source-supported · {audit.attributedReportCount} attributed · {audit.ambiguousUnresolvedCount} ambiguous · {audit.unrelatedExcludedCount} unrelated excluded · {audit.duplicateExcludedCount} repeated URL/normalized-passage ledger entries excluded · {audit.financiallyEligibleCount} financially eligible
         {" · "}{audit.shownFindingCount} shown of {audit.totalFindingCount} retained findings (cap 8; {audit.capDiscardCount} cap-discarded)
-      </div>}
+      </details>}
       {entries.length === 0 ? (
         <p className="mt-3 rounded-lg bg-white p-3 text-xs leading-5 text-[#52616b]">No passage was retained as potentially relevant to this project. Excluded unrelated passages are not project findings.</p>
       ) : (
@@ -63,26 +67,38 @@ export function RetainedResearchFindings({
                 </span>
               </div>
               <p className="mt-2 font-semibold text-[#122232]">{finding.attribution}</p>
-              <p className="mt-1 text-[#344550]">{finding.statement}</p>
-              <p className="mt-1 text-[#52616b]">{finding.projectScope}</p>
-              <p className="mt-1 text-[#60707d]">
-                Scope metadata (unverified): {finding.phaseScope}
-                {finding.timePeriod ? ` · Claim period metadata: ${finding.timePeriod}` : ""}
-                {finding.powerClaimState === "resolved" && finding.powerClaim
-                  ? ` · Power claim: ${finding.powerClaim.quantity} · ${finding.powerClaim.measure} · status ${finding.powerClaim.status}${finding.powerClaim.phaseScope ? ` · ${finding.powerClaim.phaseScope}` : ""}${finding.powerClaim.facilityScope ? ` · ${finding.powerClaim.facilityScope}` : ""}`
-                  : finding.powerClaimState === "unresolved"
-                    ? " · Power claim unresolved; see exact passage"
-                    : ""}
+              <p className="mt-1 text-[#344550]" data-testid={`${testId}-${finding.id}-excerpt`}>
+                <span className="text-[#60707d]">Source states (attributed, not verified): </span>
+                {shortSourceText(finding.passage)}
               </p>
+              <p className="mt-1 text-[#805000]">{retainedFindingReason(finding, evidence)}</p>
               <p className="mt-1 text-[#60707d]">
-                Source publication date: {finding.reportingDate ?? "not reported"} ({reportingDateBasisLabel[finding.reportingDateBasis] ?? "not reported"}) · Accessed: {finding.accessedAt ?? "not recorded"} (retrieval time)
+                Source: {finding.sourceTitle ?? "Retained source"} · Published: {finding.reportingDate ?? "not reported"} · Scope: {finding.projectScope}
               </p>
-              <blockquote className="mt-2 whitespace-pre-wrap border-l-2 border-[#aac6f4] pl-3 text-[#344550]">
-                <span className="sr-only">Exact retained source passage: </span>{finding.passage}
-              </blockquote>
               {finding.sourceUrl
-                ? <a href={finding.sourceUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block max-w-full break-words text-[#255bb7] underline">{finding.sourceTitle ?? "Retained source"}</a>
-                : <p className="mt-2 text-[#60707d]">Source link unavailable for this retained record.</p>}
+                ? <a href={finding.sourceUrl} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block max-w-full break-words text-[#255bb7] underline">{finding.sourceTitle ?? "Retained source"}</a>
+                : <p className="mt-1 text-[#60707d]">Source link unavailable for this retained record.</p>}
+              <details className="mt-2 rounded-lg border border-[#d9e0e4] p-2">
+                <summary className="cursor-pointer font-semibold text-[#255bb7]">Exact original passage</summary>
+                <blockquote className="mt-2 whitespace-pre-wrap border-l-2 border-[#aac6f4] pl-3 text-[#344550]">
+                  <span className="sr-only">Exact retained source passage: </span>{finding.passage}
+                </blockquote>
+              </details>
+              <details className="mt-2 rounded-lg border border-[#d9e0e4] p-2">
+                <summary className="cursor-pointer font-semibold text-[#52616b]">Metadata and technical detail</summary>
+                <p className="mt-1 text-[#60707d]">
+                  Scope metadata (unverified): {finding.phaseScope}
+                  {finding.timePeriod ? ` · Claim period metadata: ${finding.timePeriod}` : ""}
+                  {finding.powerClaimState === "resolved" && finding.powerClaim
+                    ? ` · Power claim: ${finding.powerClaim.quantity} · ${finding.powerClaim.measure} · status ${finding.powerClaim.status}${finding.powerClaim.phaseScope ? ` · ${finding.powerClaim.phaseScope}` : ""}${finding.powerClaim.facilityScope ? ` · ${finding.powerClaim.facilityScope}` : ""}`
+                    : finding.powerClaimState === "unresolved"
+                      ? " · Power claim unresolved; see exact passage"
+                      : ""}
+                </p>
+                <p className="mt-1 text-[#60707d]">
+                  Date basis: {reportingDateBasisLabel[finding.reportingDateBasis] ?? "not reported"} · Accessed: {finding.accessedAt ?? "not recorded"} (retrieval time)
+                </p>
+              </details>
             </article>
           );
           })}

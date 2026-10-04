@@ -2,11 +2,11 @@ import { useState } from "react";
 import { ChevronDown, ExternalLink } from "lucide-react";
 import { useDiligence, type EvidenceItem } from "@/context/DiligenceContext";
 import { ClaimCitation } from "@/components/ClaimCitation";
-import { RetainedResearchFindings } from "@/components/RetainedResearchFindings";
 import { ClassificationBadge } from "@/components/Shell";
 import { EvidenceRoom } from "@/pages/EvidenceRoom";
-import { getCommunityDocumentation, getConferenceEvidenceSummary } from "@/model/conferenceEvidence";
 import { CAPACITY_MW_MAX } from "@/model/assumptionBinding";
+import { ResearchResultSummary } from "./ResearchResultSummary";
+import { evidenceDisplayLabel, hasCapacityDurationMismatch, getResearchResultPresentation, getCommunityResultPresentation } from "@/model/researchResultPresentation";
 
 const categories = [
   { name: "Power", ids: ["grid_interconnection", "electricity_cost", "electricity_escalation", "backup_power_capacity", "renewable_percentage"] },
@@ -37,11 +37,7 @@ export function ProjectReality({ evidenceOpen, onEvidenceOpenChange, onNavigate 
     capacityDecisionTrail,
   } = useDiligence();
   const [capacityInputError, setCapacityInputError] = useState<string | null>(null);
-  const evidenceSummary = getConferenceEvidenceSummary(evidence, project);
-  const facts = evidenceSummary.facts;
-  const reportedNotVerified = evidenceSummary.reportedNotVerified.slice(0, 3);
-  const unresolved = evidenceSummary.unresolved;
-  const community = getCommunityDocumentation(evidence, project);
+  const community = getCommunityResultPresentation(evidence, project);
   const updateIllustrativeCapacity = (rawValue: string) => {
     if (!rawValue.trim()) {
       setCapacityInputError(null);
@@ -62,8 +58,10 @@ export function ProjectReality({ evidenceOpen, onEvidenceOpenChange, onNavigate 
       data-research-run-id={activeProjectContext?.researchRunId ?? ""}
       className="space-y-5"
     >
-      <div><p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#607500]">02 / Check the physical reality</p><h2 className="mt-2 text-2xl font-semibold tracking-tight">What is established—and what is still open?</h2><p className="mt-2 text-xs text-[#60707d]">{project.name} · Public facts and unresolved terms</p></div>
-      {project.kind === "custom" && <section data-testid="reality-capacity-review" className="rounded-xl border border-[#aac6f4] bg-white p-5">
+       <div><h2 className="text-xl font-semibold tracking-tight">What was found, and what remains unresolved?</h2></div>
+       <button type="button" onClick={() => { onEvidenceOpenChange(true); requestAnimationFrame(() => document.getElementById("conference-evidence-detail")?.scrollIntoView({ block: "start" })); }} className="min-h-10 rounded-md bg-[#122232] px-4 text-xs font-semibold text-white">{getResearchResultPresentation(project, evidence).nextAction}</button>
+       <ResearchResultSummary />
+       {project.kind === "custom" && <details className="rounded-xl border border-[#aac6f4] bg-white p-4"><summary className="cursor-pointer text-sm font-semibold">Explore illustrative scenario · explicit opt-in</summary><section data-testid="reality-capacity-review" className="mt-4">
         <h3 className="font-semibold text-[#122232]">Capacity review · illustrative modeling only</h3>
         {capacityClaimCandidate ? <>
           <p className="mt-2 text-xs leading-5 text-[#52616b]">A qualifying candidate is available for a user to accept into their scenario. A candidate alone does not create a model input.</p>
@@ -77,10 +75,11 @@ export function ProjectReality({ evidenceOpen, onEvidenceOpenChange, onNavigate 
             <p><strong>Date:</strong> {capacityClaimCandidate.claim.sourceDate}</p>
             <p><strong>Source:</strong> <a href={capacityClaimCandidate.claim.sourceUrl} target="_blank" rel="noopener noreferrer" className="break-all text-[#255bb7] underline">{capacityClaimCandidate.claim.sourceTitle}</a></p>
           </div>
-          <div className="mt-3 flex flex-wrap gap-2">
+           <p className="mt-3 text-xs text-[#60707d]">This qualifying scoped capacity can enable the existing synthetic model. Accepting capacity does not accept any financial finding.</p>
+           <div className="mt-3 flex flex-wrap gap-2">
             <button data-testid="reality-capacity-accept" type="button" onClick={acceptCapacityClaim} className="min-h-10 rounded-md bg-[#0b7a63] px-3 text-xs font-semibold text-white">Accept candidate</button>
             <button data-testid="reality-capacity-reject" type="button" onClick={rejectCapacityClaim} className="min-h-10 rounded-md border border-[#ba2f45] px-3 text-xs font-semibold text-[#ba2f45]">Reject candidate</button>
-          </div>
+           </div>
         </> : <p className="mt-2 text-xs leading-5 text-[#60707d]">No qualifying whole-campus capacity candidate is available. You can still enter an explicitly illustrative scenario input below.</p>}
         <div className="mt-4 border-t border-[#e5eae8] pt-4">
           <label htmlFor="reality-illustrative-capacity" className="block text-xs font-semibold text-[#122232]">Illustrative capacity (MW)</label>
@@ -104,29 +103,9 @@ export function ProjectReality({ evidenceOpen, onEvidenceOpenChange, onNavigate 
               : "No capacity candidate decision recorded."}
           </p>
         </div>
-      </section>}
+       </section></details>}
       {project.replay?.mode === "offline-saved-response" && <div data-testid="offline-replay-label" className="rounded-lg border border-[#f1cb8b] bg-[#fff8e9] px-4 py-3 text-xs text-[#6f460e]"><strong>Offline replay of saved research</strong> · No live provider request was made. The original run remains partial, and retained passages are untrusted research material until scoped below.</div>}
-      {project.kind === "custom" && <RetainedResearchFindings
-        findings={project.retainedFindings}
-        audit={project.retainedFindingAudit}
-      />}
-      {!evidenceOpen && <><div className="grid gap-4 lg:grid-cols-3">
-        <section data-testid="reality-evidence-established" className="rounded-xl border border-[#cbd8d4] bg-white p-5">
-          <h3 className="font-semibold text-[#365b4c]">Established</h3>
-          <ul className="mt-3 space-y-3">{facts.map((item) => <li key={item.id} data-evidence-id={item.id} className="text-sm leading-5"><strong>{item.label}:</strong> {item.value}<p className="mt-1 text-[11px] text-[#60707d]">{item.sourceRole}{item.modelClassification && item.modelClassification !== "Verified Evidence" ? " · Model treatment remains an inference." : ""}</p><EvidenceCitations item={item} /></li>)}</ul>
-          {!facts.length && <p className="mt-3 text-sm text-[#60707d]">No evidence meets the established standard in this record.</p>}
-        </section>
-        <section data-testid="reality-evidence-reported" className="rounded-xl border border-[#e3d4b6] bg-[#fffbf2] p-5">
-          <h3 className="font-semibold text-[#805000]">Reported, not verified</h3>
-          <ul className="mt-3 space-y-3">{reportedNotVerified.map((item) => <li key={item.id} data-evidence-id={item.id} className="text-sm leading-5"><strong>{item.label}:</strong> {item.value}<p className="mt-1 text-xs text-[#52616b]">{item.sourceRole} · reported material is not independently established.</p><EvidenceCitations item={item} /></li>)}</ul>
-          {!reportedNotVerified.length && <p className="mt-3 text-sm text-[#60707d]">No sourced management assertions or attributed reports are recorded.</p>}
-        </section>
-        <section data-testid="reality-evidence-open" className="rounded-xl border border-[#e3d4b6] bg-[#fffbf2] p-5">
-          <h3 className="font-semibold text-[#805000]">Top three open items</h3>
-          <ul className="mt-3 space-y-3">{unresolved.map((item) => <li key={item.id} data-evidence-id={item.id} className="text-sm leading-5"><strong>{item.label}</strong><p className="mt-1 text-xs text-[#52616b]">{item.classification} · source terms require review.</p></li>)}</ul>
-          {!unresolved.length && <p className="mt-3 text-sm text-[#60707d]">No unresolved items in the available record. This is not a completeness guarantee.</p>}
-        </section>
-      </div>
+       {!evidenceOpen && <>
       {project.canonicalDossier && project.canonicalProvenance?.length ? <details data-testid="canonical-provenance" className="rounded-xl border border-[#cbd8d4] bg-white px-5">
         <summary className="cursor-pointer py-4 text-sm font-semibold">
           Canonical source lineage
@@ -163,8 +142,8 @@ export function ProjectReality({ evidenceOpen, onEvidenceOpenChange, onNavigate 
         {categories.map((category) => <details key={category.name} data-testid={`reality-category-${category.name.toLowerCase()}`} className="border-b border-[#e5eae8]">
           <summary className="cursor-pointer py-4 text-sm font-semibold">{category.name}<span className="ml-3 text-xs font-normal text-[#60707d]">Evidence &amp; citations</span></summary>
           <div className="space-y-3 pb-4">{category.ids.flatMap((id) => evidence[id] ? [evidence[id]] : []).map((item) => <article key={item.id} className="rounded-md bg-[#f6f8f6] p-3">
-            <div className="flex flex-wrap justify-between gap-2"><h4 className="text-sm font-semibold">{item.label}</h4><ClassificationBadge value={item.classification} compact /></div>
-            <p className="mt-2 text-sm">{item.value}</p><p className="mt-2 text-xs leading-5 text-[#52616b]">{item.description}</p>
+             <div className="flex flex-wrap justify-between gap-2"><h4 className="text-sm font-semibold">{evidenceDisplayLabel(item)}</h4><ClassificationBadge value={hasCapacityDurationMismatch(item) ? "Missing Evidence" : item.classification} compact /></div>
+             <p className="mt-2 text-sm">{item.value}</p><p className="mt-2 text-xs leading-5 text-[#52616b]">{hasCapacityDurationMismatch(item) ? "Capacity assertion only; incorrectly typed underlying record is not an interconnection-duration finding or model input." : item.description}</p>
             <p className="mt-2 text-xs italic text-[#60707d]">{item.citation}</p><EvidenceCitations item={item} />
           </article>)}</div>
         </details>)}

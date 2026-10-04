@@ -140,3 +140,59 @@ mtime_ms = 1790991295116
 storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:f36c34ed-5536-4eff-ae57-d0f347f2e42e/61f4776b-e61f-4435-a351-6a29715161bb/3ac54875-766c-472e-8863-5c10836af77e"
 storage_version_token = "1790991413730764"
 content_type = "text/html"
+
+[[outputs]]
+id = "YTN4RAOERzl5uYPF8zjpc"
+uri = "file://screenshots/safeloc-results-before-desktop.jpg"
+type = "image"
+title = "Desktop results — before"
+description = "Original duplicate project blocks and sticky result header."
+logical_id = "1d85c994-7182-4ca5-b4e1-9f26223cd283"
+content_hash = "sha256:54f187063278ba7d905bf9f5e615d876b5ed95d4c43578d9aced559bc46684e9"
+size = 80427
+mtime_ms = 1791070570037
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:f36c34ed-5536-4eff-ae57-d0f347f2e42e/1d85c994-7182-4ca5-b4e1-9f26223cd283/756f3315-60ee-4b5f-b523-c82db7083093"
+storage_version_token = "1791071373402382"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "8IH26wDxZOscTWEyBpBPf"
+uri = "file://screenshots/safeloc-results-after-desktop.jpg"
+type = "image"
+title = "Desktop results — after"
+description = "Compact header with shared evidence interpretation and expandable source review."
+logical_id = "6bec4073-c06f-4479-871b-ae12994ce3d6"
+content_hash = "sha256:4e2da3c27231890a224782b3b5a17dd25dc51b8faf656d1417e4c3ac0edaf948"
+size = 91717
+mtime_ms = 1791071354229
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:f36c34ed-5536-4eff-ae57-d0f347f2e42e/6bec4073-c06f-4479-871b-ae12994ce3d6/5fc3c92b-8ad9-4b55-b5ce-bc9d41f00883"
+storage_version_token = "1791071373892883"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "Tmc6vvEIhFKcq4DyxsAZ8"
+uri = "file://screenshots/safeloc-results-before-mobile.jpg"
+type = "image"
+title = "Mobile results — before"
+description = "Original project and status blocks at 390px."
+logical_id = "4a367fdf-a5ac-499b-ba09-e0703232d292"
+content_hash = "sha256:9e55caf2b0269a33a647ebc1b153042f259f1c499a6a8464d423603be3a5d588"
+size = 47910
+mtime_ms = 1791070601513
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:f36c34ed-5536-4eff-ae57-d0f347f2e42e/4a367fdf-a5ac-499b-ba09-e0703232d292/90f01de4-b12e-4cbd-b2eb-3f2b5ce711cf"
+storage_version_token = "1791071374335269"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "jN94XR5a0wbha_r6_gIJb"
+uri = "file://screenshots/safeloc-results-after-mobile.jpg"
+type = "image"
+title = "Mobile results — after"
+description = "Single compact project header and truthful reviewed-snapshot status."
+logical_id = "2f4b405a-d012-4ed2-9fdd-8e1d3afcb798"
+content_hash = "sha256:91c4fb89cd2ed30379c3246dfb50224cb33daa3de7f8d7ca99393c6a7c9c9ae6"
+size = 45996
+mtime_ms = 1791071112760
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:f36c34ed-5536-4eff-ae57-d0f347f2e42e/2f4b405a-d012-4ed2-9fdd-8e1d3afcb798/4c1e76fe-42f2-45b6-a889-d59b383aece5"
+storage_version_token = "1791071374811471"
+content_type = "image/jpeg"

@@ -10,7 +10,7 @@ import { isConferenceResearchIncomplete } from "@/model/conferenceEvidence";
 export function FinancialTransmission({ onNavigate, onResolveEvidence }: { onNavigate: (screen: string) => void; onResolveEvidence: (id: string) => void }) {
   const { project, evidence, metrics, financialInputState, financialModeling, sourceStates } = useDiligence();
   const incomplete = isConferenceResearchIncomplete(project, evidence);
-  const [showStressTest, setShowStressTest] = useState(() => !incomplete);
+   const [showStressTest, setShowStressTest] = useState(false);
   const [scenarioOpen, setScenarioOpen] = useState(false);
   const [requestedAction, setRequestedAction] = useState<"save" | "compare" | null>(null);
   const openScenario = (action: "save" | "compare" | null) => { setScenarioOpen(true); setRequestedAction(action); };
@@ -19,9 +19,9 @@ export function FinancialTransmission({ onNavigate, onResolveEvidence }: { onNav
     <section data-testid="conference-view-transmission" className="space-y-5">
       <div><p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#607500]">03 / Trace a possible financial pathway</p><h2 className="mt-2 text-2xl font-semibold tracking-tight">How could a physical constraint reach a holding?</h2></div>
       {incomplete && <div data-testid="transmission-research-incomplete" className="rounded-lg border border-[#e3d4b6] bg-[#fffbf2] p-5">
-        <h3 className="font-semibold text-[#805000]">Research Incomplete</h3><p className="mt-2 text-sm leading-6 text-[#52616b]">The custom project lacks sufficient accepted, source-backed material evidence. No return conclusion is presented. You can inspect the research or explicitly explore a synthetic scenario.</p>
+         <h3 className="font-semibold text-[#805000]">Evidence assessment remains incomplete</h3><p className="mt-2 text-sm leading-6 text-[#52616b]">Unresolved assessment does not prevent review of an available candidate. Candidate review requires matching scope and an available model; nothing applies without explicit acceptance. Synthetic returns are not project economics.</p>
       </div>}
-      {project.canonicalDossier && financialModeling.status === "not-modeled" && (
+       {financialModeling.status === "not-modeled" && (
         <section data-testid="canonical-financial-not-modeled" className="rounded-xl border border-[#e3d4b6] bg-[#fffbf2] p-5">
           <h3 className="font-semibold text-[#805000]">Not modeled</h3>
           <p data-testid="canonical-financial-not-modeled-reason" className="mt-2 text-sm leading-6 text-[#52616b]">{financialModeling.reason}</p>
@@ -35,16 +35,17 @@ export function FinancialTransmission({ onNavigate, onResolveEvidence }: { onNav
       <p data-testid="transmission-return-boundary" className="text-xs leading-5 text-[#60707d]">{project.kind === "custom" && financialModeling.status === "modeled"
         ? `Illustrative — not project economics. The ${project.name} scenario uses synthetic transaction assumptions, not reported project terms, issuer valuation or investment advice.`
         : `Synthetic ${project.name} scenario economics are not reported transaction terms, issuer valuation or investment advice.`} Any EIA electricity overlay below is statewide market context only—not a disclosed {project.name} tariff or an issuer/portfolio return.</p>
-      {project.canonicalDossier && financialModeling.status === "not-modeled" && <p data-testid="financial-session-model-unavailable" className="text-xs leading-5 text-[#805000]">Model not available for this dossier: previews will show as blocked and cannot be accepted into a scenario. You can still reject or keep findings evidence-only.</p>}
-      <SessionFinancialReview />
-      {!(project.canonicalDossier && financialModeling.status === "not-modeled") && <div className="rounded-xl border border-[#cbd8d4] bg-white">
+       {financialModeling.status === "not-modeled" && <p data-testid="financial-session-model-unavailable" className="text-xs leading-5 text-[#805000]">Model unavailable: no financial preview or acceptance controls. Findings remain available for source review in Project Reality.</p>}
+       <div className="rounded-xl border border-[#cbd8d4] bg-white">
         <button type="button" data-testid={incomplete && !showStressTest ? "button-opt-in-scenario" : "button-illustrative-stress-test"} aria-expanded={showStressTest} aria-controls="illustrative-stress-test"
           onClick={() => { setShowStressTest(!showStressTest); setScenarioOpen(false); setRequestedAction(null); }} className="flex min-h-14 w-full items-center justify-between gap-3 p-5 text-left">
-          <span><span className="block text-sm font-semibold">Illustrative Project Stress Test</span><span className="mt-1 block text-xs text-[#52616b]">{incomplete && !showStressTest ? "Explore illustrative scenario — explicitly use synthetic assumptions" : "Optional project IRR, NPV, MOIC and cash-flow schedule"}</span></span>
+          <span><span className="block text-sm font-semibold">Illustrative Project Stress Test</span><span className="mt-1 block text-xs text-[#52616b]">{financialModeling.status === "not-modeled" ? "Review source candidates and decision history · model unavailable" : incomplete && !showStressTest ? "Explore illustrative scenario — explicitly use synthetic assumptions" : "Optional project IRR, NPV, MOIC and cash-flow schedule"}</span></span>
           <ChevronDown aria-hidden="true" className={`h-4 w-4 shrink-0 ${showStressTest ? "rotate-180" : ""}`} />
         </button>
         {showStressTest && <div id="illustrative-stress-test" className="min-w-0 border-t border-[#e5eae8] p-3 sm:p-5">
           <p className="mb-4 rounded-md bg-[#fff8e9] p-3 text-xs leading-5 text-[#805000]">Illustrative only. Missing evidence uses the existing synthetic model policies; opening this view does not accept evidence or change any calculation.</p>
+           <SessionFinancialReview />
+           {financialModeling.status === "modeled" && <>
           <div className="mb-4 flex flex-wrap gap-2">
             <button data-testid="rail-save-scenario" type="button" disabled={project.kind === "custom"} onClick={() => openScenario("save")} className="inline-flex min-h-10 items-center gap-2 rounded-md border border-[#cbd8d4] px-3 text-xs disabled:opacity-40"><Save aria-hidden="true" className="h-3 w-3" />Save scenario</button>
             <button data-testid="rail-compare-scenarios" type="button" disabled={project.kind === "custom"} onClick={() => openScenario("compare")} className="inline-flex min-h-10 items-center gap-2 rounded-md border border-[#cbd8d4] px-3 text-xs disabled:opacity-40"><Scale aria-hidden="true" className="h-3 w-3" />Compare scenarios</button>
@@ -59,9 +60,10 @@ export function FinancialTransmission({ onNavigate, onResolveEvidence }: { onNav
           {scenarioOpen ? <section data-testid="conference-scenarios">
             <button type="button" onClick={() => setScenarioOpen(false)} className="mb-4 text-sm underline">Close scenario workspace</button>
             <DecisionReview onNavigate={detailNavigate} onResolve={onResolveEvidence} requestedAction={requestedAction} onRequestedActionHandled={() => setRequestedAction(null)} />
-          </section> : <FinancialMateriality onNavigate={detailNavigate} />}
+           </section> : <FinancialMateriality onNavigate={detailNavigate} />}
+           </>}
         </div>}
-      </div>}
+       </div>
     </section>
   );
 }

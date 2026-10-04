@@ -212,7 +212,7 @@ test("advisor summaries do not promote generated project prose or attributed pas
   }));
   assert.deepEqual(advisor.whatWeKnow, []);
   assert.deepEqual(advisor.whatWeDoNotKnow, [
-    "Electricity cost: Not established by a validated project-specific source.",
+    "Electricity cost: Not established in this run. No validated project-specific assessment is recorded.",
   ]);
   assert.doesNotMatch(JSON.stringify(advisor.whatWeKnow), /480 MW|operating/i);
   assert.doesNotMatch(JSON.stringify(advisor.whatWeDoNotKnow), /480 MW|operating|generated/i);

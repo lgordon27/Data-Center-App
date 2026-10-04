@@ -49,7 +49,9 @@ export function ActiveProjectContextSummary() {
           {activeProjectContext.name}
         </strong>
         <span className="font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#52616b]">
-          {LIFECYCLE_LABELS[activeProjectContext.lifecycle]}
+          {activeProjectContext.classification === "arbitrary"
+            ? LIFECYCLE_LABELS[activeProjectContext.lifecycle]
+            : "Reviewed snapshot"}
         </span>
       </div>
       <div className="mt-1 text-[10px] leading-5 text-[#52616b]">

@@ -1,7 +1,7 @@
 import { useDiligence } from "@/context/DiligenceContext";
-import { RetainedResearchFindings } from "@/components/RetainedResearchFindings";
 import { generateAdvisorBrief, generateAssetManagerBrief } from "@/model/conferencePresentation";
-import { Lightbulb, Info, HelpCircle, AlertCircle, ArrowRight } from "lucide-react";
+import { Lightbulb, AlertCircle, ArrowRight } from "lucide-react";
+import { ResearchResultSummary } from "./ResearchResultSummary";
 
 function formatAsOfDate(value: string | null) {
   if (!value) return "date unavailable";
@@ -28,21 +28,17 @@ export function AdvisorBrief() {
         <strong>{brief.coverageLabel}</strong> · No buy/sell recommendation. Project sensitivity is not an issuer, fund, or portfolio return.
       </div>
       {diligence.project.kind === "custom" && diligence.financialModeling.status === "modeled" && <div data-testid="advisor-illustrative-boundary" role="note" className="rounded-lg border border-[#f1cb8b] bg-[#fff8e9] px-4 py-2 text-xs font-semibold text-[#805000]">Illustrative — not project economics. Any return in this brief is a synthetic scenario output, not reported project economics.</div>}
-      {diligence.project.replay?.mode === "offline-saved-response" && <div data-testid="advisor-offline-replay-label" className="rounded-lg border border-[#f1cb8b] bg-[#fff8e9] px-4 py-3 text-xs text-[#6f460e]"><strong>Offline replay of saved research</strong> · No live provider request was made. Partial-run limitations and zero financial eligibility remain in force.</div>}
-      {diligence.project.kind === "custom" && <RetainedResearchFindings
-        testId="advisor-retained-research"
-        findings={diligence.project.retainedFindings}
-        audit={diligence.project.retainedFindingAudit}
-      />}
+       {diligence.project.replay?.mode === "offline-saved-response" && <div data-testid="advisor-offline-replay-label" className="rounded-lg border border-[#f1cb8b] bg-[#fff8e9] px-4 py-3 text-xs text-[#6f460e]"><strong>Offline replay of saved research</strong> · No live provider request was made. Original partial-run limitations remain; candidate review and acceptance are separate.</div>}
+       <ResearchResultSummary audience="advisor" />
       <div data-testid="advisor-gap-summary" data-decision-gate-count={brief.gapSummary.unresolvedDecisionGates} data-financial-driver-count={brief.gapSummary.unresolvedFinancialDrivers} className="grid gap-2 sm:grid-cols-2">
         <div className="rounded-lg border border-[#e3d4b6] bg-[#fffbf2] px-4 py-3 text-xs text-[#805000]"><strong className="font-semibold">Unresolved decision gates:</strong> {brief.gapSummary.unresolvedDecisionGates}</div>
         <div className="rounded-lg border border-[#f5ddd5] bg-[#fff3f4] px-4 py-3 text-xs text-[#7f2635]"><strong className="font-semibold">Unresolved financial drivers:</strong> {brief.gapSummary.unresolvedFinancialDrivers}</div>
       </div>
-      <div data-testid="advisor-primary-case" className="rounded-xl border border-[#aac6f4] bg-[#eef5ff] p-4 text-xs leading-5 text-[#344550]">
+       <details className="rounded-xl border border-[#aac6f4] bg-[#eef5ff] p-4 text-xs"><summary className="cursor-pointer font-semibold">Synthetic financial scenario · separate from research</summary><div data-testid="advisor-primary-case" className="mt-3 leading-5 text-[#344550]">
         <strong className="text-[#122232]">{brief.primaryCase.label}:</strong>{" "}
         {brief.primaryCase.projectIRR === null ? "N/M" : `${brief.primaryCase.projectIRR.toFixed(1)}% IRR`} · {brief.primaryCase.recommendationStatus}.{" "}
         {brief.primaryCase.boundary}
-      </div>
+       </div></details>
       {brief.monitoringConsiderations.length > 0 && (
         <section data-testid="advisor-monitoring-considerations" className="rounded-xl border border-[#d9e0e4] bg-white p-4">
           <h3 className="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#122232]">Monitoring considerations</h3>
@@ -51,54 +47,6 @@ export function AdvisorBrief() {
           </ul>
         </section>
       )}
-      <div className="grid gap-4 md:grid-cols-3">
-        <div data-testid="advisor-evidence-established" className="rounded-xl border border-[#d9e0e4] bg-white p-3 shadow-sm">
-          <h3 className="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#122232] mb-2 flex items-center gap-1.5">
-            <Info className="h-3.5 w-3.5 text-[#122232]" />
-            What We Know
-          </h3>
-          <ul className="space-y-1.5">
-            {brief.whatWeKnow.map((item, i) => (
-              <li key={brief.evidenceBuckets.established[i]} data-evidence-id={brief.evidenceBuckets.established[i]} className="text-[10px] text-[#122232] leading-snug flex gap-1.5">
-                <span className="text-[#d9e0e4] mt-0.5">•</span>
-                <span>{item}</span>
-              </li>
-            ))}
-          </ul>
-          {brief.whatWeKnow.length === 0 && <p className="text-[10px] leading-4 text-[#52616b]">No source-backed verified facts established. Review Project Reality for the retained research.</p>}
-        </div>
-        
-        <div data-testid="advisor-evidence-reported" className="rounded-xl border border-[#d9e0e4] bg-[#fffbf2] p-3 shadow-sm">
-          <h3 className="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#805000] mb-2 flex items-center gap-1.5">
-            <Info className="h-3.5 w-3.5 text-[#805000]" />
-            Reported, Not Verified
-          </h3>
-          <ul className="space-y-1.5">
-            {brief.whatIsReportedNotVerified.map((item, i) => (
-              <li key={brief.evidenceBuckets.reportedNotVerified[i]} data-evidence-id={brief.evidenceBuckets.reportedNotVerified[i]} className="text-[10px] text-[#52616b] leading-snug flex gap-1.5">
-                <span className="text-[#805000]/50 mt-0.5">•</span>
-                <span>{item}</span>
-              </li>
-            ))}
-          </ul>
-          {brief.whatIsReportedNotVerified.length === 0 && <p className="text-[10px] leading-4 text-[#52616b]">No sourced management assertions or attributed reports are recorded.</p>}
-        </div>
-
-        <div data-testid="advisor-evidence-open" className="rounded-xl border border-[#d9e0e4] bg-white p-3 shadow-sm">
-          <h3 className="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#122232] mb-2 flex items-center gap-1.5">
-            <HelpCircle className="h-3.5 w-3.5 text-[#ba2f45]" />
-            What We Do Not Know
-          </h3>
-          <ul className="space-y-1.5">
-            {brief.whatWeDoNotKnow.map((item, i) => (
-              <li key={brief.evidenceBuckets.open[i]} data-evidence-id={brief.evidenceBuckets.open[i]} className="text-[10px] text-[#52616b] leading-snug flex gap-1.5">
-                <span className="text-[#ba2f45]/40 mt-0.5">•</span>
-                <span>{item}</span>
-              </li>
-            ))}
-          </ul>
-          {brief.whatWeDoNotKnow.length === 0 && <p className="text-[10px] leading-4 text-[#52616b]">No unresolved items in the available record; portfolio dependence still requires confirmation.</p>}
-        </div>
       <div className="rounded-xl border border-[#d9e0e4] bg-[#f9faf8] p-4 shadow-sm">
         <h3 className="font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-[#122232] mb-2 flex items-center gap-1.5">
           <AlertCircle className="h-3.5 w-3.5 text-[#ba2f45]" />
@@ -112,7 +60,6 @@ export function AdvisorBrief() {
             </li>
           ))}
         </ul>
-      </div>
       </div>
 
       <div className="grid gap-3 rounded-xl border border-[#122232] bg-[#122232] p-3 text-white shadow-sm md:grid-cols-[0.85fr_1.15fr]">

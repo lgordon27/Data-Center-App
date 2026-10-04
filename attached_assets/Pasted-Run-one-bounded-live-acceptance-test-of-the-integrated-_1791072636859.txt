@@ -1,0 +1,73 @@
+Run one bounded live acceptance test of the integrated SafeLoc arbitrary-project research workflow.
+
+**Authorization and scope**
+
+I authorize one fresh end-to-end research run, including its normal provider requests, public-document retrieval, and normal research-audit writes. Use the existing request, token, document, concurrency, and deadline limits. No additional research runs or manual provider retries.
+
+Do not deploy, push, change database schemas, relax evidence rules, or accept findings into financial inputs.
+
+**1. Confirm readiness**
+
+- Confirm Tasks #360, #365, #366, and #368 are present in the tested revision. Record the commit and any working-tree changes.
+- Confirm #368’s missing historical Red Oak fixture failure reproduces on its unchanged baseline. Do not reconstruct the missing capture or expand into historical recovery.
+- Verify research-audit write readiness through the actual repository path using an isolated readiness record or rollback where supported. Read-only column checks alone are insufficient. Keep this separate from proof-ledger/user-decision persistence.
+- Confirm the run can preserve exact retained passage bodies, packet contents, provider claim output, and their lineage using existing capture facilities. Keep secrets out of artifacts.
+- If a prerequisite fails, stop before consuming the live run and report the specific blocker.
+
+**2. Run the actual user workflow**
+
+Use this custom project:
+
+- Project: Red Oak Campus
+- Operator: DataBank
+- Location: Red Oak, Ellis County, Texas
+
+Enter it through the arbitrary-project workflow and initiate “Research this project — Beta.” Use fresh research rather than a cached result. Do not supply source URLs, canonical dossier facts, seeded evidence, or extra aliases to help it pass.
+
+Allow the single run to finish or reach its normal deadline. Do not rerun it because the result is incomplete or empty.
+
+**3. Preserve enough evidence to explain the result**
+
+Save the run ID, revision, project identity, timestamps, final response, and a sanitized trace connecting:
+
+discovered source → retrieval result → exact retained passage → routing/admission decision → final analysis packet → provider claim → validation outcome → displayed finding.
+
+For every category, distinguish:
+
+- Not assessed because no admitted passage text was available.
+- Not issued because of budget, deadline, cancellation, or another failure.
+- Issued with passage text.
+- Assessed with or without validated findings.
+
+Record actual admission conditions and rejection reasons. Do not diagnose solely from a generic “no operator attribution” label.
+
+Report source counts, nonempty packets issued, category completion, reviewable findings, and financially eligible candidates separately. Distinguish repeated ledger entries from duplicate network fetches and reservations from actual reported token usage.
+
+**4. Check the integrated result screen**
+
+Verify that:
+
+- Results remain bound to Red Oak, with no canonical or other-project facts.
+- Retained reporting and established evidence have distinct, consistent labels across Project Reality and Advisor Brief.
+- Unassessed categories are not described as undisclosed information or negative findings.
+- Findings expose source attribution and relevant scope limitations.
+- Default presentation is concise and offers one appropriate next action.
+- Financial/scenario controls respect opt-in and model/scope availability.
+- No research finding changes financial inputs automatically.
+
+Capture the completed result on desktop and mobile using the same saved run. Do not start another research request for the second viewport.
+
+**5. Report the result and stop**
+
+The success target is useful, attributable, scope-correct findings produced by the live production path and displayed clearly. A completed request or large source count alone is not success. Financial eligibility is a separate outcome.
+
+If conversion remains blocked, identify the first demonstrated failure using this run’s actual artifacts. Distinguish missing source support from lost text, incorrect admission, scheduling failure, and downstream claim-validation limits. If the evidence cannot identify the cause, state exactly what remains unknown.
+
+Provide:
+
+- A concise outcome and whether the acceptance target was met.
+- Per-category results and links to the saved artifacts.
+- The first demonstrated blocker, if any.
+- Exactly one recommended next repair, or state that no repair is justified by this run.
+
+Do not implement that repair, add features, or initiate another audit in this task.

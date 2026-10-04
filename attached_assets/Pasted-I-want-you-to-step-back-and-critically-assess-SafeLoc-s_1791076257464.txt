@@ -1,0 +1,206 @@
+I want you to step back and critically assess SafeLoc’s product design and research architecture against the actual code and latest live capture. Do not assume our previous diagnoses, task definitions, or safeguards are correctly implemented or optimally designed.
+
+This is a read-only assessment. Do not change code, create tasks, modify the database, or run research/provider calls. Use the existing repository and Task #371 artifacts.
+
+## What we are trying to build
+
+SafeLoc is an evidence-backed intelligence and diligence platform for physical AI infrastructure projects.
+
+Its core promise is straightforward:
+
+**A user identifies a real data-center project, and SafeLoc finds relevant public information, explains what the evidence supports, shows what remains uncertain, and helps the user understand the implications.**
+
+The arbitrary-project research workflow is the core product. It must work beyond curated demonstrations or canonical dossiers.
+
+A user should be able to enter a project name, operator if known, and location, then receive useful, sourced intelligence without needing to know how our research pipeline works.
+
+### 1. Useful project intelligence
+
+The platform should investigate topics such as:
+
+- Project identity, ownership, operator, campus, facilities, and phases.
+- Announced versus operational capacity and development status.
+- Grid connection, electricity supply, and power constraints.
+- Water and cooling requirements.
+- Permits, community concerns, and development conditions.
+- Construction progress, capital commitments, and financing.
+- Tenants, counterparties, and commercial dependencies.
+- Physical hazards and operational vulnerabilities.
+
+These are research topics, not a requirement to force every fact into a financial-model field.
+
+A well-supported capacity announcement, financing event, permit condition, or construction update can be useful intelligence even when it cannot change the financial model.
+
+### 2. Evidence that users can inspect and trust
+
+A useful finding should let a user understand:
+
+- What is being asserted.
+- Which source and passage support it.
+- Which project, facility, phase, and time period it concerns.
+- Whether it is an attributed report, an established fact under our validation rules, an estimate, or unresolved.
+- Whether another source contradicts it.
+- When it was published and researched, where available.
+
+We should preserve uncertainty without making uncertainty synonymous with uselessness.
+
+An operator announcement can support “the operator announced X” without proving that X has already happened. A credible report can be shown as attributed reporting without being promoted to verified operational reality.
+
+We must prevent unrelated campuses, phases, operators, or seeded dossier facts from contaminating the result.
+
+### 3. Honest partial results
+
+Public research will sometimes be incomplete. The product should still deliver what it legitimately found.
+
+It should distinguish:
+
+- Relevant reporting found, but not independently established.
+- A category assessed with insufficient support for a conclusion.
+- A category not assessed because no suitable text reached analysis.
+- A category blocked by access, provider, time, or budget limitations.
+
+“Not assessed” must not become “the public record does not disclose this,” and zero financial candidates must not imply zero useful intelligence.
+
+### 4. Financial interpretation as a downstream capability
+
+Evidence-backed research and financial-model eligibility are separate stages.
+
+Some findings may eventually support model inputs. Those require appropriate units, scope, dates, evidentiary support, and existing eligibility checks. Only explicit human acceptance should change the model.
+
+Other findings should remain useful research without being forced into one of the existing modeled inputs.
+
+Illustrative scenarios must remain clearly labeled and optional. The default experience should not show unavailable or confusing modeling controls.
+
+### 5. A simple user experience
+
+The default result should answer three questions:
+
+1. What did we find?
+2. What remains uncertain or incomplete?
+3. What should I do next?
+
+Users should be able to inspect sources and reasoning, but should not need to read internal identifiers, routing diagnostics, token budgets, or lengthy repeated warnings to understand a project.
+
+We want depth on demand, not complexity on the default screen.
+
+### 6. Longer-term intelligence across projects
+
+Once project-level research is reliable, the platform could compare projects across the dataset to identify patterns in capacity, development progress, financing, utility constraints, counterparties, and execution risks.
+
+That requires consistent definitions, provenance, freshness, deduplication, and careful handling of missing information. Announced capacity cannot be silently combined with operational capacity, and campus totals cannot be double-counted with constituent phases.
+
+This is a future direction, not authorization to build a new analytics layer now. First we need reliable project-level conversion from sources into useful findings.
+
+An agent is optional. We do not need an agent label; we need a working research loop. If bounded adaptive research would solve a demonstrated limitation, explain precisely why.
+
+## Where we stand
+
+Tasks #365 and #366 corrected empty-packet spending and false identity attribution. Task #360 simplified presentation. Task #368 found no justified admission repair in its bounded historical replay.
+
+Task #371 then ran one fresh Red Oak acceptance through the UI:
+
+- The run ended partial with `incomplete-technical-limitation` / `document-access-failure`.
+- It returned 15 discovery candidates without category or executed-query attribution.
+- Text-bearing passages were rejected before analysis.
+- All eight categories remained not assessed.
+- No analysis packets, findings, or financially eligible candidates resulted.
+- Exact public passage bodies are now available in the capture.
+- Some UI acceptance checks and the final audit-row read-back remain unevaluated.
+
+The proposed next repair is to preserve observed query-to-category attribution. Treat that as a hypothesis, not an established solution.
+
+## What I want you to dissect
+
+### A. Are we defining the product incorrectly?
+
+Does the current architecture actually support the product described above, or is it primarily a financial-evidence validator with a broader research interface placed on top?
+
+Are useful attributed findings first-class outputs, or do they exist only as fallback text when structured validation fails?
+
+Are our eight categories and current claim schema appropriate for the intelligence we want to produce? Identify concrete mismatches, without assuming that adding fields or mechanisms is automatically the answer.
+
+### B. Have we created a circular identity requirement?
+
+Inspect whether uncertain source text must already establish exact project identity before the system can analyze the information needed to establish that identity.
+
+Distinguish:
+- Text that is safe and relevant enough to examine.
+- Text that supports a project-specific finding.
+- A finding that qualifies as established evidence.
+- A finding that qualifies for financial use.
+
+Are these boundaries appropriately separated, or are we applying a downstream proof requirement too early?
+
+Do not recommend trusting an uncited model identity answer. If a boundary should change, explain how the resulting assertion would still be tied to retrieved text and protected against wrong-project or wrong-facility contamination.
+
+### C. Is routing actually the next defect?
+
+Using Task #371’s captured data and production code:
+
+- Did query/category attribution exist upstream and get lost?
+- If not, what information did the provider actually return?
+- How does the current pipeline route an unlabeled source?
+- Which exact conditions rejected the available passages?
+- Would preserving genuinely observed routing metadata change any of those outcomes?
+- Would an independent identity or source-quality requirement still block the passage?
+
+Do not invent query associations, aliases, or source classifications to make a replay pass.
+
+If an existing offline replay can answer this, use it without changing production code. Distinguish a demonstrated defect from a plausible hypothesis.
+
+### D. Are we retrieving the wrong material or losing useful context?
+
+Inspect the actual captured passages.
+
+Did discovery find useful project sources? Did extraction preserve the relevant article body? Did trimming or selection separate a factual statement from the project identity needed to interpret it?
+
+Are we retaining navigation, directories, generic regional material, or thin excerpts while missing project-specific content?
+
+Identify the earliest demonstrated point where useful information is absent, lost, or rejected. Do not assume the first recorded rejection is the original cause.
+
+### E. Are our safeguards correctly located?
+
+Preserve the goals of:
+- Source-grounded assertions.
+- Honest uncertainty.
+- Project, facility, phase, and time specificity.
+- Retrieval security.
+- Bounded spending.
+- Explicit human acceptance of financial changes.
+
+But challenge the implementation. A rule can be well-intentioned and still be placed at the wrong stage, overly restrictive, redundant, or ineffective.
+
+For every change you recommend, explain what error it prevents, what useful behavior it enables, and what prevents false attribution.
+
+### F. Are we testing the wrong things?
+
+We have accumulated many passing tests while the live workflow still produces no findings.
+
+Which tests protect real user outcomes? Which validate internal behavior without demonstrating useful conversion? Are positive controls too artificial or easier than actual discovery output?
+
+Do not propose a large new testing framework. Identify the minimum evidence needed to prove the next repair improves the real workflow without weakening correctness.
+
+### G. Are we overcomplicating the product and repair process?
+
+Identify code paths, concepts, diagnostics, or proposed work that do not materially help the user obtain reliable intelligence.
+
+Should anything be simplified, consolidated, deferred, or removed? Distinguish small necessary changes from a broad rewrite. Do not recommend a rebuild merely because the code is large.
+
+Also assess whether our repeated instrumentation and historical replay work has reached diminishing returns.
+
+## Required response
+
+Lead with your candid verdict: **Is the intended product coherent, and is the current implementation structurally capable of delivering it?**
+
+Then provide:
+
+1. **Where our assumptions are wrong or unsupported**, including mistakes in the instructions we have given you.
+2. **What the latest capture actually proves**, with code and artifact references.
+3. **The current path versus the necessary path**, identifying the smallest meaningful architectural difference, if any.
+4. **A prioritized sequence of at most three changes**, each with a concrete user outcome and acceptance criterion.
+5. **What we should stop doing or defer.**
+6. **Your recommendation on the routing repair:** proceed, amend, or reject, with evidence.
+
+Separate observed facts, inferences, and unresolved questions. Do not claim that zero findings proves the sources contain no useful information, or that allowing a packet into analysis proves successful conversion.
+
+Do not turn this into another broad audit backlog. The purpose is to challenge our direction and identify the shortest defensible route to a useful product.

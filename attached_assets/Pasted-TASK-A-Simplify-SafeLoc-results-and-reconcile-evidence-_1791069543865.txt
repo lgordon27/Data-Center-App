@@ -1,0 +1,93 @@
+TASK A — Simplify SafeLoc results and reconcile evidence presentation
+
+Amend the existing presentation task. Implement the changes; do not conduct another broad audit.
+
+BASELINE AND GOAL
+
+Confirm the current branch includes Tasks 359, 366, and 365. The reviewed baseline was f571e8e35837c41f76b796bc36477b708a684345. Preserve subsequent changes.
+
+The default result must clearly answer:
+1. What did we find?
+2. What remains unresolved?
+3. What can I do next?
+
+Consolidate or remove redundant UI. Do not add new dashboards, tabs, materiality scoring, or another summary layer over the existing clutter.
+
+OWNERSHIP
+
+A owns presentation components, summary helpers, and presentation tests:
+- AnalysisWorkbench.tsx
+- ActiveProjectContextSummary.tsx
+- ProjectReality.tsx
+- AdvisorBrief.tsx
+- FinancialTransmission.tsx
+- SessionFinancialReview.tsx
+- RetainedResearchFindings.tsx
+- conferenceEvidence.ts
+- conferencePresentation.ts
+
+Task B owns server preparation, routing, identity/source validation, and any required researchProjectService.ts normalization changes. Coordinate shared-file changes and serialize them. Do not independently modify research contracts, financial calculations, or acceptance rules.
+
+IMPLEMENTATION
+
+1. Reconcile evidence summaries.
+- Make ProjectReality, getConferenceEvidenceSummary, and generateAdvisorBrief consistently distinguish:
+  a. established structured evidence;
+  b. retained attributed reporting or context;
+  c. unresolved applicability and missing assessment;
+  d. accepted financial inputs.
+- A retained attributed report must not coexist with an unqualified claim that no attributed reports are recorded.
+- Preserve each item’s validation level. Raw retained passages must not become established facts merely to populate a summary.
+- Use a shared presentation interpretation of existing records, not separately maintained copies of their state.
+- Keep contradictory evidence visible with its attribution.
+
+2. Correct incomplete and missing-evidence states.
+- Reuse existing outcome/category states, including “Not assessed: no admitted passage text.”
+- Never describe incomplete, skipped, failed, or unsupported assessment as proof that the public record contains no disclosure.
+- Use “Not established in this run” or the specific known reason.
+- Distinguish reviewed snapshots from completed live research.
+- Show “Not assessed,” rather than a reassuring zero, when financial readiness was not evaluated.
+- Do not invent progress percentages or live stages the server does not supply.
+
+3. Simplify the default screen.
+- Use one compact project header and one primary research status.
+- Remove the oversized sticky project card and redundant project/status blocks.
+- Put internal IDs, provider/run metadata, resource counters, and detailed diagnostics behind expandable technical details.
+- Present concise supported finding text or a short attributed excerpt, with source, date where available, and scope limitations.
+- Keep the full original passage accessible through expansion. Do not alter evidence text or hashes when shortening its display.
+- Use “Unresolved items,” initially showing up to three with expansion where useful. Do not imply materiality ranking unless an existing defensible ordering is used.
+- Present one state-appropriate primary next action.
+
+4. Keep scenario controls out of the default research result.
+- Move illustrative capacity entry and session financial controls behind the existing explicit scenario opt-in.
+- Gate actionable financial previews on actual candidates, scope requirements, and model availability, not merely whether the whole research run completed.
+- Preserve valid candidate review during partial research, explicit human acceptance, and access to decision history.
+- Do not show controls that promise acceptance when the current model cannot accept the input.
+- Do not modify calculations or weaken financial eligibility.
+
+5. Correct misleading labels.
+- Do not display an MW/GW power-capacity assertion as an interconnection-duration finding.
+- Do not convert or rebind incorrectly typed evidence into a model input.
+- Where the underlying record requires correction outside presentation scope, flag the exact issue and display only its supported meaning.
+- Treat duplicateExcludedCount as repeated URL/normalized-passage ledger entries, not duplicate network fetches.
+
+Fold Task 360’s overlapping reviewer distinction into this work rather than running a separate conflicting result-screen task.
+
+VALIDATION
+
+Use existing fixtures or a saved partial result covering:
+- retained attributed reporting with no established structured findings;
+- not-assessed categories;
+- incomplete research with a valid reviewable candidate;
+- no model availability;
+- a reviewed snapshot with material gaps.
+
+Confirm the same interpretation appears in Project Reality and Advisor Brief. Check desktop/mobile rendering, scrolling, and source expansion in the actual preview. Run focused presentation tests, typecheck, and build.
+
+The supplied recording is observational context. If it is not available in this workspace, do not claim to have watched it or reconstruct its source passages.
+
+RETURN
+
+Provide a concise change summary, before/after screenshots, validation results, source revision, and remaining shared-contract dependencies.
+
+No live research, provider calls, deployment, push, database changes, or unrelated refactors.

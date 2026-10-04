@@ -1,0 +1,127 @@
+TASK B — Repair a demonstrated evidence-conversion failure in the existing production path
+
+Amend the existing engine task. Target a reproducible incorrect decision or loss of usable evidence. Do not conduct another broad audit or force correctly rejected passages to pass.
+
+BASELINE
+
+Confirm Tasks 359, 366, and 365 are present. The reviewed baseline was f571e8e35837c41f76b796bc36477b708a684345. Preserve subsequent changes.
+
+Known results:
+- Task 366 removed false attribution conflicts, but all 11 exact-body replay passages remained excluded before analysis.
+- Task 365 prevents empty packets from consuming provider queue/issue resources.
+- Jupiter recording observations describe an incomplete run with retained attributed reporting, but its response capture has not yet been located in the inspected workspace.
+
+OWNERSHIP
+
+B owns:
+- researchProjectProxy.mjs and its declarations/tests;
+- production routing, packet preparation, and diagnostics needed for the repair;
+- researchClaimVerifier.mjs or sourceValidationPolicy.mjs only where a defect is reproduced;
+- researchProjectService.ts if normalization changes are necessary.
+
+A owns presentation components and summary helpers. Coordinate contract changes and serialize shared-file edits. Do not redesign the UI or independently rewrite DiligenceContext.tsx.
+
+1. REPRODUCE THE FIRST INCORRECT DECISION
+
+Use an unchanged, provenance-verified capture if available. Look briefly for the Jupiter capture using its existing run metadata; do not launch new research to replace it.
+
+If unavailable, use existing exact-body fixtures and label their provenance accurately. Do not reconstruct text from the video, recover unavailable historical bodies, or invent historical routing metadata.
+
+Inspect up to three substantive passages with plausible project context. Enumerate the actual unmet conditions:
+- recognized category route;
+- project name or alias;
+- project-attached location;
+- operator or distinctive-name support;
+- facility/phase identity;
+- genuine conflict;
+- retained text/context completeness.
+
+Do not diagnose solely from the resolver’s final “no operator attribution” explanation.
+
+2. TRACE AND REPAIR THE EXISTING PATH
+
+First trace recognized category provenance through source normalization and packet preparation, especially:
+- categorySourceMatchesForAnalysis;
+- prepareCategoryAnalysisPassages;
+- the existing project-identity category;
+- matchProject and its underlying attribution rules.
+
+Repair a demonstrated provenance loss, extraction/context loss, or narrowly reproduced shared-matcher false negative using the smallest generalized change.
+
+Do not infer missing historical routes, invent aliases, use source/project-specific exceptions, or require all retained passages to pass.
+
+The identity-only path already exists. Its schema does not require supporting quotations/source references, and downstream admission does not currently consume identityAssessment as proof.
+- Do not create a duplicate assessment mechanism.
+- Do not trust its Boolean or narrative answer to authorize later admission.
+- An identity-only context route, if independently justified, does not itself count as evidence-conversion improvement.
+- No new identity schema or broad schema expansion is authorized in this task. If required, explain the specific contract gap instead of silently expanding scope.
+
+If no incorrect decision is demonstrated, state whether:
+a. the retained text genuinely lacks sufficient support; or
+b. the available capture lacks the information needed to determine the cause.
+
+Those are different outcomes. Identify the minimum additional evidence needed, without starting another broad audit or implementing a speculative repair.
+
+3. PRESERVE THE SAFEGUARDS
+
+Keep:
+- genuine operator/location conflicts;
+- AZ1/AZ2 and Sweetwater 1/2 separation;
+- campus, facility, phase, capacity measure, and operating-status distinctions;
+- snippets and directory metadata as discovery context only;
+- unknown values remaining unknown;
+- exact source/quotation support;
+- human acceptance before financial changes;
+- SSRF/DNS protections;
+- Task 365’s empty-call suppression;
+- existing request, TPM, document-open, and deadline limits.
+
+No global admission relaxation, financial-model changes, broad refactoring, or unrelated scheduling redesign.
+
+4. MEASURE ACTUAL PROGRESS
+
+Add a failing regression for the demonstrated defect before implementing the fix.
+
+Report distinct milestones:
+- false rejection corrected;
+- unchanged supported passage reaches a nonempty production analysis packet;
+- attributable, scope-correct reviewable finding survives downstream validation.
+
+A changed label or identity-only packet is not full conversion success.
+
+Use supported positive controls and ambiguous, unrelated, and wrong-facility negative controls. Label mocked provider output as a fixture, never live extraction success.
+
+Report remaining blocks separately where evaluated:
+- source class;
+- exact quotation/value support;
+- entity/facility/phase/time scope;
+- canonical-field fit;
+- contradiction;
+- financial eligibility;
+- human acceptance.
+
+A valid research finding need not be a financially eligible input. Do not conflate those outcomes.
+
+5. CHECK LIVE-TEST READINESS NARROWLY
+
+Determine whether the proof-ledger/user-decision schema warning affects the intended test path.
+- Canonical proof persistence and local session review are different paths.
+- Research-audit storage has separate readiness requirements.
+- Do not infer the actual database schema from startup warnings alone.
+- Do not reset or migrate the database in this task.
+
+If a trace shows scheduling/TPM handling prevents a valid nonempty packet from being analyzed, report that as an immediate concrete blocker. Do not require successful live conversion before a proven scheduling defect can be addressed. Do not implement Tasks 363/364 here.
+
+VALIDATION AND RETURN
+
+Run relevant regressions, the existing provider-free research suite, typecheck, and build. Report the exact commands and scope, not just test totals.
+
+Return:
+- source revision/fingerprint;
+- reproduced defect and smallest repair, or why no repair is justified;
+- concise before/after passage-to-finding results;
+- remaining blockers;
+- whether the next bounded live run would confirm a repair or collect missing diagnostic evidence;
+- the specific success criteria for that run.
+
+No live/provider calls, document refetches, deployment, push, or database changes. Amend existing work rather than creating duplicate tasks.

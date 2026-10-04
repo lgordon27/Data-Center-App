@@ -1,0 +1,117 @@
+Create and execute a NEW follow-up task titled:
+
+“Repair a demonstrated evidence-conversion failure in the existing production path”
+
+Tasks #359, #366, and #365 are merged prerequisites. Task #355 is completed validation work; do not reopen it. This is a new implementation task, not a duplicate audit. Keep #360–#364 separate.
+
+GOAL
+
+Find and repair the first reproducible incorrect routing, extraction, or identity decision preventing supported project text from reaching analysis. Preserve correct rejections and all evidence safeguards.
+
+BASELINE AND OWNERSHIP
+
+Confirm the current SHA and that #359, #366, and #365 are present. The previously reviewed baseline was f571e8e35837c41f76b796bc36477b708a684345. Preserve subsequent changes.
+
+This task owns:
+- researchProjectProxy.mjs and relevant declarations/tests;
+- production source routing and packet preparation;
+- researchClaimVerifier.mjs or sourceValidationPolicy.mjs only where a defect is reproduced;
+- researchProjectService.ts if normalization changes are necessary.
+
+A parallel UI task owns presentation components and summary helpers. Coordinate contract changes and serialize shared-file edits. Do not redesign the UI or independently rewrite DiligenceContext.tsx.
+
+1. REPRODUCE A CONCRETE FAILURE
+
+Use an unchanged, provenance-verified capture where available. Briefly check for the existing Stargate Project Jupiter capture from October 3, 2026, approximately 5:44 PM America/Chicago.
+
+If unavailable, use existing exact-body fixtures and clearly identify their provenance. Do not initiate a live run, reconstruct text from the recording, recover unavailable historical bodies, or invent historical routing metadata.
+
+Inspect up to three substantive passages with plausible project context. Enumerate the actual unmet conditions:
+- recognized category route;
+- project name or alias;
+- project-attached location;
+- operator or distinctive-name support;
+- facility/phase identity;
+- genuine conflict;
+- retained text/context completeness.
+
+Do not diagnose solely from the resolver’s final “no operator attribution” explanation. Do not assume all 11 previously rejected passages should pass.
+
+2. REPAIR THE EXISTING PATH
+
+Trace category provenance through normalization and preparation, especially:
+- categorySourceMatchesForAnalysis;
+- prepareCategoryAnalysisPassages;
+- the existing project-identity category;
+- matchProject and its attribution rules.
+
+Recognized explicit routes and unlabeled sources follow different admission paths. Determine whether valid routing metadata is lost or the shared matcher incorrectly rejects supporting text.
+
+Implement the smallest generalized correction for a demonstrated provenance loss, extraction/context loss, or matcher false negative. Add a failing regression before the fix.
+
+The identity-only category already exists. Its response lacks required supporting quotations/source references, and downstream admission does not consume identityAssessment as proof.
+- Do not create a duplicate assessment mechanism.
+- Do not trust its Boolean or narrative answer to authorize admission.
+- Making uncertain text available to identity assessment alone is not evidence-conversion success.
+- No new identity schema or broad schema expansion is authorized here. If necessary, identify the specific contract gap.
+
+If no incorrect decision is reproduced, distinguish:
+a. the retained text genuinely lacks sufficient support;
+b. the capture lacks enough information to determine the cause.
+
+Report the minimum additional evidence needed. Do not implement a speculative repair or expand into another broad audit.
+
+3. PRESERVE SAFEGUARDS
+
+Maintain:
+- genuine operator/location conflicts;
+- AZ1/AZ2 and Sweetwater 1/2 separation;
+- campus, facility, phase, capacity measure, and operating-status distinctions;
+- snippets and directory metadata as discovery context only;
+- unknown values remaining unknown;
+- source/quotation support;
+- human acceptance before financial changes;
+- SSRF/DNS protections;
+- #365’s empty-packet suppression;
+- existing provider-request, TPM, document-open, and deadline limits.
+
+No project hard-coding, source exceptions, invented aliases, blanket admission relaxation, financial-model changes, or broad refactoring.
+
+4. VERIFY CONVERSION PROGRESS
+
+Report these milestones separately:
+- an incorrect rejection is corrected;
+- the unchanged supported passage reaches a nonempty production analysis packet;
+- an attributable, scope-correct reviewable finding survives downstream validation.
+
+A label change or identity-only packet does not satisfy full conversion success.
+
+Use supported positive controls and ambiguous, unrelated, and wrong-facility negative controls. Clearly label mocked provider output as fixture data, never demonstrated live extraction.
+
+Report remaining evaluated blockers separately: source class, quotation/value support, entity/facility/phase/time scope, canonical-field fit, contradictions, financial eligibility, and human acceptance. Mark unevaluated stages as unevaluated.
+
+A valid research finding need not be eligible to alter the financial model. Keep those outcomes distinct.
+
+5. CHECK READINESS FOR THE NEXT LIVE TEST
+
+Determine whether the proof-ledger/user-decision schema warning affects the intended research or acceptance path. Canonical persistence, local session review, and research-audit storage are separate concerns.
+
+Do not infer actual database readiness from a rendered home page. Do not reset, migrate, or otherwise modify the database.
+
+If valid nonempty packets are demonstrably blocked by scheduling or TPM handling, identify that concrete blocker. Do not implement #363/#364 here.
+
+VALIDATION
+
+Run relevant regressions, the existing provider-free research suite, typecheck, and build. Report exact commands and their scope.
+
+RETURN
+
+Provide:
+- current source revision/fingerprint;
+- the reproduced defect and implemented repair, or why no repair is justified;
+- concise before/after passage-to-finding results;
+- validation results and remaining blockers;
+- whether the next bounded live run would confirm a repair or collect missing diagnostic evidence;
+- specific success criteria for that run.
+
+No live/provider calls, document refetches, deployment, push, database changes, or unrelated features.

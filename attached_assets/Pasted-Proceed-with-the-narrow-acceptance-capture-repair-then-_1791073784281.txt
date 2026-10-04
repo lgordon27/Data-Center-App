@@ -1,0 +1,49 @@
+Proceed with the narrow acceptance-capture repair, then resume the previously authorized single Red Oak live run. That authorization remains available because no run was consumed.
+
+**Scope**
+
+Extend the existing request-local acceptance collector and lineage. Make capture opt-in for this acceptance run and disabled by default. Do not build a new diagnostics system, dashboard, or database schema.
+
+Capture:
+- Exact retained passage text evaluated by admission, including rejected passages.
+- The final category-analysis text actually sent to the provider after selection, windowing, and token fitting.
+- Returned provider claim content before application normalization and validation.
+
+Preserve run/project/category/attempt/source identifiers and hashes connecting these records. Full downloaded documents, raw HTTP responses, credentials, and transport headers are unnecessary.
+
+**Exactness and safety**
+
+Hash the original content before any export transformation. When redaction or truncation changes content, explicitly mark it as altered and not exactly replayable; never label sanitized text as an exact original.
+
+Use restricted local artifacts, with explicit size limits and overflow flags. Capture must not alter admission, packet preparation, scheduling, provider budgets, or financial eligibility. Do not expose these artifacts through public UI or ordinary application logs.
+
+**Focused verification**
+
+Use a provider-free fixture to verify that:
+- Unaltered passages, final analysis text, and returned claim content round-trip exactly and match their hashes.
+- Lineage remains connected through admission and validation.
+- Redaction and truncation are flagged accurately, and secrets are excluded.
+- Capture is disabled by default.
+
+Run the directly affected tests, typecheck, and build. Do not repeat unrelated historical investigations or the completed database readiness check unless the environment or relevant code changes. Continue to disclose the known missing Red Oak fixture failure separately.
+
+**Resume the live acceptance**
+
+Once capture passes, run the already authorized single fresh research workflow for:
+- Red Oak Campus
+- DataBank
+- Red Oak, Ellis County, Texas
+
+Use the arbitrary-project UI with no supplied URLs, added aliases, seeded evidence, or canonical dossier facts. Preserve existing provider, token, document, concurrency, and deadline limits. Do not start additional runs or manual provider retries.
+
+Evaluate the integrated #360 presentation using the same saved live result on desktop and mobile. Confirm useful reporting, established evidence, and unassessed categories are distinguished honestly, and financial inputs remain unchanged.
+
+Report:
+1. Whether useful, attributable, scope-correct findings were produced.
+2. Per-category completion, nonempty packets, reviewable findings, and financial eligibility separately.
+3. The first demonstrated conversion blocker, if any, supported by the saved trace.
+4. Exactly one recommended next repair, or no justified repair.
+
+If capture remains blocked, stop before the live run and identify the specific remaining issue. If the live run produces no findings, preserve that result and diagnose it without rerunning or implementing another repair.
+
+No deployment, Git push, schema changes, evidence-rule relaxation, or financial acceptance is authorized. Keep this task focused on obtaining one trustworthy end-to-end result.

@@ -196,3 +196,59 @@ mtime_ms = 1791071112760
 storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:f36c34ed-5536-4eff-ae57-d0f347f2e42e/2f4b405a-d012-4ed2-9fdd-8e1d3afcb798/4c1e76fe-42f2-45b6-a889-d59b383aece5"
 storage_version_token = "1791071374811471"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "9iEkWUXlkwivTJUIL-Ifq"
+uri = "file://artifacts/safeloc-diligence-workbench/docs/safeloc-red-oak-live-acceptance-readiness-2026-10-04.md"
+type = "text"
+title = "Red Oak live acceptance readiness report"
+description = "Pre-run readiness outcome, database receipt, exact-capture blocker, per-category status, and one justified next repair."
+logical_id = "2bb86652-e76e-48f4-9b6e-10bb8c3a9cef"
+content_hash = "sha256:eff02c182343d423a19b0d1d59655a0faa6882c788523d1a6fa0f9f5b092d89e"
+size = 8495
+mtime_ms = 1791073012407
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:f36c34ed-5536-4eff-ae57-d0f347f2e42e/2bb86652-e76e-48f4-9b6e-10bb8c3a9cef/507a028f-a011-4cb4-904b-f0a83c4385cb"
+storage_version_token = "1791073052178596"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "_NjSiC99PN5iDivPkxNXw"
+uri = "file://artifacts/safeloc-diligence-workbench/docs/safeloc-red-oak-live-acceptance-2026-10-03.md"
+type = "text"
+title = "Red Oak live research acceptance report"
+description = "Bounded one-run acceptance result, per-category outcomes, capture links, limitations, and one evidence-supported recommendation."
+logical_id = "fbc65d54-9c8e-4bc8-bca6-e016faba43ba"
+content_hash = "sha256:ae70d1d01f9f686b2eb85dbbbdefbc03257c73b865812cc07c32fdf370b61a38"
+size = 17499
+mtime_ms = 1791075538556
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:f36c34ed-5536-4eff-ae57-d0f347f2e42e/fbc65d54-9c8e-4bc8-bca6-e016faba43ba/1fce50c4-645b-4f0e-83c4-a141e61b23d2"
+storage_version_token = "1791075561217591"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "-hTmDpvUajJ-qA0po_DYB"
+uri = "file://diagnostics/safeloc-acceptance-capture/c613141f-5d2f-430c-8408-106cf043f6ed/desktop-default.png"
+type = "image"
+title = "Red Oak Project Reality — desktop"
+description = "Desktop capture of Project Reality from the single live run."
+logical_id = "2e93de58-68ba-4ee2-aa0b-a65bd60943ae"
+content_hash = "sha256:9c0d57f107a0aafc3abe67f2de3063be28953f36c8bb41ece25d3be588bff379"
+size = 312344
+mtime_ms = 1791074812663
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:f36c34ed-5536-4eff-ae57-d0f347f2e42e/2e93de58-68ba-4ee2-aa0b-a65bd60943ae/c8525907-3590-4e87-928b-64a635b80d91"
+storage_version_token = "1791075561926668"
+content_type = "image/png"
+
+[[outputs]]
+id = "btB1fcQqJH_QI3Rzn9wXH"
+uri = "file://diagnostics/safeloc-acceptance-capture/c613141f-5d2f-430c-8408-106cf043f6ed/mobile-default.png"
+type = "image"
+title = "Red Oak Project Reality — mobile"
+description = "Mobile capture of the same Project Reality run."
+logical_id = "5ca12bb0-13dd-4980-96d8-1d23a407f257"
+content_hash = "sha256:acf6705c86c49198906b813b8017784ec01cf074cd2aee82de93d71bb9ebb270"
+size = 302598
+mtime_ms = 1791074812811
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:f36c34ed-5536-4eff-ae57-d0f347f2e42e/5ca12bb0-13dd-4980-96d8-1d23a407f257/ba231f45-fc8c-4c1a-9715-131dfaae30c9"
+storage_version_token = "1791075562497620"
+content_type = "image/png"

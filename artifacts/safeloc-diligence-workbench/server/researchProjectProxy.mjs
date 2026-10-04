@@ -43,6 +43,7 @@ import { rankAcquisitionCandidates } from "./researchAcquisitionRanking.mjs";
 import { createSecConnector } from "./secConnector.mjs";
 import { releaseIdentity } from "./version.mjs";
 import { createResearchFunnelDiagnostics } from "./researchFunnelDiagnostics.mjs";
+import { consumeAcceptanceCaptureOptIn } from "./researchAcceptanceCapture.mjs";
 
 const RESEARCH_PROJECT_PROMPT_VERSION = "safeloc-project-research-prompt-v1";
 const GOOGLE_DISCOVERY_PROMPT_VERSION = "safeloc-google-grounding-prompt-v3";
@@ -1090,6 +1091,29 @@ function parseResearchProjectBody(body) {
     ...(currentEvidence ? { currentEvidence } : {}),
     ...(body.forceRefresh === true ? { forceRefresh: true } : {}),
   };
+}
+
+function extractProviderUserMessages(requestBody) {
+  try {
+    const parsed = JSON.parse(requestBody);
+    const input = Array.isArray(parsed?.input)
+      ? parsed.input
+      : typeof parsed?.input === "string"
+        ? [{ role: "user", content: parsed.input }]
+        : Array.isArray(parsed?.messages) ? parsed.messages : [];
+    return input
+      .filter((message) => message?.role === "user")
+      .flatMap((message) => {
+        if (typeof message.content === "string") return [message.content];
+        if (!Array.isArray(message.content)) return [];
+        const parts = message.content
+          .filter((part) => typeof part?.text === "string")
+          .map((part) => part.text);
+        return parts.length ? [parts.join("")] : [];
+      });
+  } catch {
+    return [];
+  }
 }
 
 function normalizeReportedCapacityMW(value) {
@@ -6533,6 +6557,9 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
           categoryId: activeCategory.categoryId,
           attemptType: activeCategory.attempt,
           packet: categoryAnalysisPacket,
+          analysisUserMessages: extractProviderUserMessages(requestBody),
+          attemptId: providerAttempt.attemptId,
+          requestBodySha256: createHash("sha256").update(requestBody).digest("hex"),
         });
         if (analysisTracker) {
           analysisTracker.inFlight += 1;
@@ -6651,6 +6678,15 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
   const content = extractResponseOutputText(body);
   const providerResponseId = normalizeProviderResponseId(body?.id);
   providerAttempt.providerResponseId = providerResponseId;
+  activeCategory?.claimTrace?.recordProviderOutput?.({
+    runId: activeCategory.runCorrelationId,
+    projectId: project.projectId ?? project.id ?? project.name,
+    categoryId: activeCategory.categoryId,
+    attemptType: activeCategory.attempt,
+    attemptId: providerAttempt.attemptId,
+    providerResponseId,
+    content,
+  });
   activeCategory?.claimTrace?.recordAnalysisPacket?.({
     categoryId: activeCategory.categoryId,
     providerResponseId,
@@ -8712,6 +8748,8 @@ async function runValidatedResearch(project, {
               projectId: project.projectId ?? project.id ?? project.name,
               categoryId,
               attemptType: categoryResult.coverage?.attemptType ?? "primary",
+              attemptId: categoryResult.coverage?.providerAttempt?.attemptId ?? null,
+              providerResponseId: categoryResponseId,
               evidence: normalizedCategoryResearch.evidence,
             });
             claimTrace?.recordValidatedEvidence?.({
@@ -9437,12 +9475,18 @@ export async function handleResearchProjectRequest(
     };
     const refreshResult = cache.refresh(key, async () => {
       runContext = context;
+      const projectForCapture = {
+        ...project,
+        projectId: project.projectId ?? project.id ?? project.name,
+      };
+      const acceptanceCapture = consumeAcceptanceCaptureOptIn({
+        project: projectForCapture,
+        runId,
+      });
       const funnelDiagnostics = createResearchFunnelDiagnostics({
         runId,
-        project: {
-          ...project,
-          projectId: project.projectId ?? project.id ?? project.name,
-        },
+        project: projectForCapture,
+        acceptanceCapture,
       });
       context.funnelDiagnostics = funnelDiagnostics;
       try {
@@ -9569,6 +9613,7 @@ export async function handleResearchProjectRequest(
     audit.clientDisconnectedAt = responseDelivery.clientDisconnectedAt;
     audit.browserDisconnectedBeforeFinish = responseDelivery.browserDisconnectedBeforeFinish;
     const status = result?.researchStatus ?? (error?.researchErrorType === "cancelled" ? "cancelled" : "failed");
+    context?.funnelDiagnostics?.finalizeAcceptanceCapture?.({ status });
     const capacityMW = result?.projectSummary?.capacityMW ?? normalizeReportedCapacityMW(project.knownData?.capacity);
     const projectSummary = result?.projectSummary ?? {
       name: project.name,

@@ -46,3 +46,4 @@
 - [Development migration receipts](development-migration-receipts.md) — require execution evidence tied to instance identity; database names and endpoint hashes cannot prove historical continuity.
 - [Offline validation and showcase boundaries](offline-validation-showcase.md) — keep saved-output annotations outside the proof contract; only explicitly reviewed, provenance-complete snapshots may be public examples.
 - [Research run idempotency](research-run-idempotency.md) — alias stale-cache user requests to the one background run they started; explicit retries require fresh request identities.
+- [Acceptance trace fidelity](acceptance-trace-fidelity.md) — exact passage bodies can coexist with depth-limited identity metadata; report the missing attribution detail without reconstructing it.

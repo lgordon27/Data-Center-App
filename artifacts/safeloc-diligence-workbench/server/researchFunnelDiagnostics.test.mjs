@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
+import { createHash, randomUUID } from "node:crypto";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { createResearchFunnelDiagnostics } from "./researchFunnelDiagnostics.mjs";
+import {
+  consumeAcceptanceCaptureOptIn,
+  createLocalAcceptanceCapture,
+} from "./researchAcceptanceCapture.mjs";
 
 test("all categories retain issued passage lineage without modifying the production packet", () => {
   const diagnostics = createResearchFunnelDiagnostics();
@@ -376,4 +384,254 @@ test("keeps provider-original values immutable and distinguishes supported, wron
     nonSubstantiveSchemaEntries: 1,
   });
   assert.doesNotMatch(JSON.stringify(capture), /PRIVATE_TOKEN|PRIVATE_SIGNATURE/);
+});
+
+test("one-use acceptance capture round-trips exact text with admission, provider, and validation lineage", () => {
+  const temporary = mkdtempSync(path.join(os.tmpdir(), "safeloc-acceptance-capture-test-"));
+  const markerPath = path.join(temporary, "opt-in.json");
+  const rootDirectory = path.join(temporary, "captures");
+  const runId = randomUUID();
+  const project = {
+    name: "Red Oak Campus",
+    location: "Red Oak, Ellis County, Texas",
+    knownData: { operator: "DataBank", city: "Red Oak", county: "Ellis County", state: "Texas" },
+    projectIdentity: {
+      projectId: null,
+      providerId: null,
+      name: "Red Oak Campus",
+      location: "Red Oak, Ellis County, Texas",
+      operator: "DataBank",
+    },
+  };
+  try {
+    writeFileSync(markerPath, JSON.stringify({
+      version: 1,
+      enabled: true,
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      projectName: "Red Oak Campus",
+      location: "Red Oak, Ellis County, Texas",
+      operator: "DataBank",
+    }), { mode: 0o600 });
+    chmodSync(markerPath, 0o600);
+    const sink = consumeAcceptanceCaptureOptIn({ project, runId, markerPath, rootDirectory });
+    assert.ok(sink);
+    assert.equal(existsSync(markerPath), false);
+    assert.equal(consumeAcceptanceCaptureOptIn({ project, runId: randomUUID(), markerPath, rootDirectory }), null);
+
+    const passage = "Red Oak Campus has a public interconnection application for 480 MW.";
+    const prompt = "Assess only the retained Red Oak passage. Do not infer other campus facts.";
+    const providerOutput = JSON.stringify({
+      evidence: [{
+        id: "grid_interconnection",
+        value: 480,
+        unit: "MW",
+        claimPassage: "Red Oak Campus has a public interconnection application for 480 MW.",
+        sourceUrl: "https://records.example.gov/red-oak/interconnection",
+      }],
+    });
+    const diagnostics = createResearchFunnelDiagnostics({
+      runId,
+      project: { ...project, projectId: "Red Oak Campus" },
+      acceptanceCapture: sink,
+    });
+    diagnostics.claimTrace.recordPassageSelection({
+      runId,
+      projectId: "Red Oak Campus",
+      categoryId: "grid",
+      attemptType: "primary",
+      attemptId: "grid:primary:attempt-1",
+      records: [{
+        source: {
+          sourceId: "red-oak-source-1",
+          occurrenceId: "red-oak-occurrence-1",
+          canonicalUrl: "https://records.example.gov/red-oak/interconnection",
+          accessOutcome: { state: "accessible", passage },
+        },
+        occurrenceId: "red-oak-occurrence-1",
+        included: false,
+        decision: "excluded-before-passage-selection",
+        reasonCode: "category-route-mismatch",
+        routeState: "excluded",
+        identityAdmission: { state: "admitted", verdict: "project-specific" },
+        passageRetained: "retained",
+      }],
+    });
+    diagnostics.claimTrace.recordAnalysisPacket({
+      runId,
+      projectId: "Red Oak Campus",
+      categoryId: "grid",
+      attemptType: "primary",
+      attemptId: "grid:primary:attempt-1",
+      requestBodySha256: "a".repeat(64),
+      packet: [{
+        sourceId: "red-oak-source-1",
+        occurrenceId: "red-oak-occurrence-1",
+        sourceUrl: "https://records.example.gov/red-oak/interconnection",
+        passage,
+      }],
+      analysisUserMessages: [prompt],
+    });
+    diagnostics.claimTrace.recordProviderOutput({
+      runId,
+      projectId: "Red Oak Campus",
+      categoryId: "grid",
+      attemptType: "primary",
+      attemptId: "grid:primary:attempt-1",
+      providerResponseId: "resp-red-oak-1",
+      content: providerOutput,
+    });
+    diagnostics.claimTrace.recordMappingReceipts({
+      runId,
+      projectId: "Red Oak Campus",
+      categoryId: "grid",
+      attemptType: "primary",
+      attemptId: "grid:primary:attempt-1",
+      providerResponseId: "resp-red-oak-1",
+      evidence: [{
+        id: "grid_interconnection",
+        value: 480,
+        unit: "MW",
+        eligibleForModel: true,
+        sources: [{
+          sourceId: "red-oak-source-1",
+          occurrenceId: "red-oak-occurrence-1",
+          url: "https://records.example.gov/red-oak/interconnection",
+        }],
+      }],
+    });
+    sink.finalize({ status: "completed" });
+
+    const filePath = sink.filePath;
+    const records = readFileSync(filePath, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+    const recordFor = (stage) => records.find((record) => record.stage === stage);
+    const admission = recordFor("admission-retained-passage");
+    const packet = recordFor("final-analysis-packet");
+    const finalPrompt = recordFor("final-analysis-user-message");
+    const rawClaim = recordFor("provider-claim-content-before-normalization");
+    const validated = recordFor("validated-evidence");
+    for (const [label, record] of Object.entries({ admission, packet, finalPrompt, rawClaim, validated })) {
+      assert.ok(record, `missing ${label} record`);
+    }
+    assert.equal(admission.content.text, passage);
+    assert.equal(admission.content.exactOriginal, true);
+    assert.equal(admission.content.originalSha256, createHash("sha256").update(passage).digest("hex"));
+    assert.equal(admission.lineage.decision, "excluded-before-passage-selection");
+    assert.equal(admission.lineage.sourceId, "red-oak-source-1");
+    assert.equal(packet.content.exactOriginal, true);
+    assert.equal(packet.content.originalSha256, createHash("sha256").update(packet.content.text).digest("hex"));
+    assert.equal(JSON.parse(packet.content.text)[0].passage, passage);
+    assert.equal(finalPrompt.content.text, prompt);
+    assert.equal(finalPrompt.content.originalSha256, createHash("sha256").update(prompt).digest("hex"));
+    assert.equal(finalPrompt.lineage.attemptId, "grid:primary:attempt-1");
+    assert.equal(rawClaim.content.text, providerOutput);
+    assert.equal(rawClaim.content.exactOriginal, true);
+    assert.equal(rawClaim.content.originalSha256, createHash("sha256").update(providerOutput).digest("hex"));
+    assert.equal(rawClaim.lineage.providerResponseId, "resp-red-oak-1");
+    assert.equal(validated.lineage.claimId, "grid_interconnection");
+    assert.equal(validated.lineage.attemptId, "grid:primary:attempt-1");
+    assert.equal(validated.lineage.providerResponseId, "resp-red-oak-1");
+    assert.deepEqual(validated.lineage.sourceIds, ["red-oak-source-1"]);
+    assert.equal(statSync(path.dirname(filePath)).mode & 0o777, 0o700);
+    assert.equal(statSync(filePath).mode & 0o777, 0o600);
+  } finally {
+    rmSync(temporary, { recursive: true, force: true });
+  }
+});
+
+test("acceptance capture flags redaction, truncation, and run-size overflow without exporting secrets", () => {
+  const temporary = mkdtempSync(path.join(os.tmpdir(), "safeloc-acceptance-capture-limits-"));
+  try {
+    const redactionCapture = createLocalAcceptanceCapture({
+      runId: randomUUID(),
+      rootDirectory: path.join(temporary, "redaction"),
+      limits: { maxTextBytes: 110 },
+    });
+    const sensitive = `Bearer bearer-secret token=private-secret https://records.example.gov/file?api_key=url-secret 192.168.1.22 ${"x".repeat(240)}`;
+    redactionCapture.writeText({ stage: "safety-test", text: sensitive });
+    redactionCapture.finalize({ status: "test" });
+    const redactedRecords = readFileSync(redactionCapture.filePath, "utf8")
+      .trim().split("\n").map((line) => JSON.parse(line));
+    const redacted = redactedRecords.find((record) => record.stage === "safety-test");
+    assert.equal(redacted.content.originalSha256, createHash("sha256").update(sensitive).digest("hex"));
+    assert.equal(redacted.content.exactOriginal, false);
+    assert.equal(redacted.content.altered, true);
+    assert.equal(redacted.content.truncated, true);
+    assert.ok(redacted.content.alterationReasons.includes("bearer-credential"));
+    assert.ok(redacted.content.alterationReasons.includes("sensitive-url-query"));
+    assert.ok(redacted.content.alterationReasons.includes("private-network-address"));
+    assert.ok(redacted.content.alterationReasons.includes("capture-size-limit"));
+    assert.doesNotMatch(redacted.content.text, /bearer-secret|private-secret|url-secret|192\.168\.1\.22/);
+
+    const overflowCapture = createLocalAcceptanceCapture({
+      runId: randomUUID(),
+      rootDirectory: path.join(temporary, "overflow"),
+      limits: { maxTextBytes: 350, maxRecordBytes: 4_096, maxTotalBytes: 4_096 },
+    });
+    for (let index = 0; index < 20; index += 1) {
+      overflowCapture.writeText({ stage: `bounded-${index}`, text: "x".repeat(300) });
+    }
+    const finalStatus = overflowCapture.finalize({ status: "overflow-test" });
+    const overflowRecords = readFileSync(overflowCapture.filePath, "utf8")
+      .trim().split("\n").map((line) => JSON.parse(line));
+    const summary = overflowRecords.find((record) => record.type === "capture-summary");
+    assert.equal(summary.overflowWritten, true);
+    assert.ok(summary.recordsDropped > 0);
+    assert.equal(finalStatus.overflowWritten, true);
+    assert.ok(finalStatus.bytesWritten <= 4_096);
+  } finally {
+    rmSync(temporary, { recursive: true, force: true });
+  }
+});
+
+test("acceptance capture remains disabled by default and adds no exact passage text to bounded diagnostics", () => {
+  const temporary = mkdtempSync(path.join(os.tmpdir(), "safeloc-acceptance-capture-disabled-"));
+  try {
+    const runId = randomUUID();
+    const passage = "DISABLED_CAPTURE_SENTINEL: source text must not enter ordinary diagnostics.";
+    const project = {
+      name: "Red Oak Campus",
+      location: "Red Oak, Ellis County, Texas",
+      knownData: { operator: "DataBank" },
+      projectIdentity: { projectId: null, providerId: null, operator: "DataBank" },
+    };
+    const disabled = createResearchFunnelDiagnostics({ runId, project });
+    assert.deepEqual(disabled.acceptanceCaptureStatus(), { enabled: false });
+    disabled.claimTrace.recordPassageSelection({
+      runId,
+      categoryId: "grid",
+      attemptId: "grid:primary:disabled",
+      records: [{
+        source: { sourceId: "source-disabled", accessOutcome: { state: "accessible", passage } },
+        included: true,
+      }],
+    });
+    assert.doesNotMatch(JSON.stringify(disabled.toJSON()), /DISABLED_CAPTURE_SENTINEL/);
+    const markerPath = path.join(temporary, "wrong-project-opt-in.json");
+    writeFileSync(markerPath, JSON.stringify({
+      version: 1,
+      enabled: true,
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      projectName: "Different Campus",
+      location: "Red Oak, Ellis County, Texas",
+      operator: "DataBank",
+    }), { mode: 0o600 });
+    chmodSync(markerPath, 0o600);
+    assert.equal(consumeAcceptanceCaptureOptIn({
+      project,
+      runId,
+      markerPath,
+      rootDirectory: path.join(temporary, "wrong-project-captures"),
+    }), null);
+    assert.equal(existsSync(markerPath), true);
+    assert.equal(existsSync(path.join(temporary, "wrong-project-captures")), false);
+    assert.equal(consumeAcceptanceCaptureOptIn({
+      project,
+      runId,
+      markerPath: path.join(temporary, "missing-opt-in.json"),
+      rootDirectory: path.join(temporary, "captures"),
+    }), null);
+    assert.equal(existsSync(path.join(temporary, "captures")), false);
+  } finally {
+    rmSync(temporary, { recursive: true, force: true });
+  }
 });

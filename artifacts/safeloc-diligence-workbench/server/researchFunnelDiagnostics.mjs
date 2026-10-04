@@ -274,7 +274,7 @@ function claimDiff(before, after) {
   return diffs;
 }
 
-export function createResearchFunnelDiagnostics({ runId = null, project = {} } = {}) {
+export function createResearchFunnelDiagnostics({ runId = null, project = {}, acceptanceCapture = null } = {}) {
   const candidates = [];
   const authorizations = [];
   const receipts = [];
@@ -310,6 +310,28 @@ export function createResearchFunnelDiagnostics({ runId = null, project = {} } =
       if (batch) batch.providerResponseId = details.providerResponseId ?? null;
       return;
     }
+    const packetLineage = {
+      runId: details.runId ?? runId,
+      projectId: details.projectId ?? projectSnapshot.projectId,
+      categoryId: details.categoryId,
+      attemptType: details.attemptType ?? "primary",
+      attemptId: details.attemptId ?? null,
+      providerResponseId: details.providerResponseId ?? null,
+      requestBodySha256: details.requestBodySha256 ?? null,
+    };
+    acceptanceCapture?.writeStructured?.({
+      stage: "final-analysis-packet",
+      value: details.packet,
+      lineage: packetLineage,
+    });
+    for (const [messageIndex, message] of (Array.isArray(details.analysisUserMessages)
+      ? details.analysisUserMessages : []).entries()) {
+      acceptanceCapture?.writeText?.({
+        stage: "final-analysis-user-message",
+        text: message,
+        lineage: { ...packetLineage, messageIndex },
+      });
+    }
     observedAnalysisPackets += 1;
     if (packets.length >= 16) return;
     packets.push({
@@ -340,6 +362,32 @@ export function createResearchFunnelDiagnostics({ runId = null, project = {} } =
       const identity = record.identityTrace
         ?? record.identityAdmission?.trace
         ?? null;
+      acceptanceCapture?.writeText?.({
+        stage: "admission-retained-passage",
+        text: passage,
+        lineage: {
+          runId: details.runId ?? runId,
+          projectId: details.projectId ?? projectSnapshot.projectId,
+          projectName: projectSnapshot.name,
+          categoryId: details.categoryId,
+          attemptType: details.attemptType ?? "primary",
+          attemptId: details.attemptId ?? null,
+          sourceId: source.sourceId ?? source.occurrenceId ?? record.sourceId ?? null,
+          occurrenceId: record.occurrenceId ?? source.occurrenceId ?? record.sourceId ?? null,
+          sourceUrl: source.originalUrl ?? source.url ?? source.canonicalUrl ?? null,
+          canonicalUrl: source.canonicalUrl ?? source.resolvedUrl ?? source.url ?? null,
+          passageRetained: record.passageRetained ?? (passage ? "retained" : "not-retained"),
+          routeState: record.routeState ?? "not-evaluated",
+          routeReason: record.routeReason ?? null,
+          identityAdmission: record.identityAdmission ?? null,
+          decision: record.decision ?? (record.included ? "included" : "excluded"),
+          reasonCode: record.reasonCode ?? null,
+          facilityScope: source.facilityScope ?? source.facility ?? null,
+          phaseScope: source.phaseScope ?? source.phase ?? null,
+          campusScope: source.campusScope ?? source.campus ?? null,
+          buildingScope: source.buildingScope ?? source.building ?? null,
+        },
+      });
       passageSelections.push({
         runId: safeText(details.runId ?? runId, 160),
         projectId: safeText(details.projectId ?? projectSnapshot.projectId, 200),
@@ -499,6 +547,21 @@ export function createResearchFunnelDiagnostics({ runId = null, project = {} } =
     const items = Array.isArray(details.evidence) ? details.evidence : [];
     observedMappingReceipts += items.length;
     for (const item of items) {
+      acceptanceCapture?.writeStructured?.({
+        stage: "validated-evidence",
+        value: item,
+        lineage: {
+          runId: details.runId ?? runId,
+          projectId: details.projectId ?? projectSnapshot.projectId,
+          categoryId: details.categoryId ?? null,
+          attemptType: details.attemptType ?? "primary",
+          attemptId: details.attemptId ?? null,
+          providerResponseId: details.providerResponseId ?? null,
+          claimId: item?.id ?? null,
+          sourceIds: (Array.isArray(item?.sources) ? item.sources : []).map((source) =>
+            source?.sourceId ?? source?.occurrenceId ?? source?.canonicalUrl ?? source?.url ?? null),
+        },
+      });
       if (mappingReceipts.length >= 256) break;
       const mappings = Array.isArray(item?.claimMappings) ? item.claimMappings.slice(0, 12) : [];
       const sources = Array.isArray(item?.sources) ? item.sources : [];
@@ -605,12 +668,26 @@ export function createResearchFunnelDiagnostics({ runId = null, project = {} } =
       });
     }
   };
+  const recordProviderOutput = (details = {}) => acceptanceCapture?.writeText?.({
+    stage: "provider-claim-content-before-normalization",
+    text: typeof details.content === "string" ? details.content : "",
+    lineage: {
+      runId: details.runId ?? runId,
+      projectId: details.projectId ?? projectSnapshot.projectId,
+      projectName: projectSnapshot.name,
+      categoryId: details.categoryId ?? null,
+      attemptType: details.attemptType ?? "primary",
+      attemptId: details.attemptId ?? null,
+      providerResponseId: details.providerResponseId ?? null,
+    },
+  }) ?? false;
   Object.assign(trace, {
     recordPassageSelection,
     recordProviderEvent,
     recordProviderOriginal,
     recordTransformation,
     recordMappingReceipts,
+    recordProviderOutput,
   });
   return {
     claimTrace: trace,
@@ -663,6 +740,13 @@ export function createResearchFunnelDiagnostics({ runId = null, project = {} } =
       recordProviderOriginal,
       recordTransformation,
       recordMappingReceipts,
+      recordProviderOutput,
+    },
+    finalizeAcceptanceCapture({ status = "unknown" } = {}) {
+      return acceptanceCapture?.finalize?.({ status }) ?? null;
+    },
+    acceptanceCaptureStatus() {
+      return acceptanceCapture?.status?.() ?? { enabled: false };
     },
     toJSON() {
       return structuredClone({

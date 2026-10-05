@@ -485,6 +485,11 @@ export type ResearchProviderUsage = {
   totalTokens: number | null;
 };
 export type ResearchProviderAttempt = {
+  model?: string | null;
+  reasoningEffort?: "low" | "medium" | "high" | null;
+  retryable?: boolean;
+  failureClassification?: string | null;
+  finishReason?: string | null;
   attemptId?: string | null;
   categoryId: string | null;
   attemptType: "primary" | "repair" | "follow-up";
@@ -621,7 +626,7 @@ export type ResearchCategoryAudit = {
   accessLimitations: string[];
   unresolvedGaps: string[];
   providerFailure?: string | null;
-  providerFailureType?: "quota-exhausted" | "provider-rate-limit" | "provider-429" | "authentication" | "deadline" | "malformed-response" | "upstream" | "provider-request-budget" | "category-input-budget" | "provider-tpm-budget" | "provider-tpm-deadline" | "provider-rate-limit-deadline" | "provider-deadline-admission" | null;
+  providerFailureType?: "quota-exhausted" | "provider-rate-limit" | "provider-429" | "authentication" | "deadline" | "malformed-response" | "upstream" | "provider-request-budget" | "category-input-budget" | "provider-tpm-budget" | "provider-tpm-deadline" | "provider-rate-limit-deadline" | "provider-deadline-admission" | "provider-output-limit" | null;
   providerRequestCount?: number;
   retryCount?: number;
   tpmWaitMs?: number;
@@ -678,6 +683,7 @@ export type ResearchAudit = {
   policyVersion: number;
   provider: string;
   model: string;
+  reasoningEffort?: "low" | "medium" | "high" | null;
   providerResponseId: string | null;
   runCorrelationId?: string | null;
   projectCacheKey?: string;
@@ -1477,6 +1483,12 @@ function parseProviderAttempts(value: unknown): ResearchProviderAttempt[] {
     const nullableNumber = (candidate: unknown) => typeof candidate === "number" && Number.isFinite(candidate) ? candidate : null;
     return {
       attemptId: isNonEmptyString(attempt.attemptId) ? attempt.attemptId : null,
+      model: isNonEmptyString(attempt.model) ? attempt.model : null,
+      reasoningEffort: ["low", "medium", "high"].includes(String(attempt.reasoningEffort))
+        ? attempt.reasoningEffort as "low" | "medium" | "high" : null,
+      retryable: attempt.retryable === true,
+      failureClassification: isNonEmptyString(attempt.failureClassification) ? attempt.failureClassification.slice(0, 80) : null,
+      finishReason: isNonEmptyString(attempt.finishReason) ? attempt.finishReason.slice(0, 80) : null,
       categoryId: isNonEmptyString(attempt.categoryId) ? attempt.categoryId : null,
       projectId: isNonEmptyString(attempt.projectId) ? attempt.projectId : null,
       runId: isNonEmptyString(attempt.runId) ? attempt.runId : null,
@@ -1753,7 +1765,7 @@ function parseResearchAudit(value: unknown): ResearchAudit | undefined {
       accessLimitations: Array.isArray(candidate.accessLimitations) ? candidate.accessLimitations.filter(isNonEmptyString).slice(0, 8) : [],
       unresolvedGaps: Array.isArray(candidate.unresolvedGaps) ? candidate.unresolvedGaps.filter(isNonEmptyString).slice(0, 8) : [],
       ...(isNonEmptyString(candidate.providerFailure) ? { providerFailure: candidate.providerFailure } : {}),
-      ...(["quota-exhausted", "provider-rate-limit", "provider-429", "authentication", "deadline", "malformed-response", "upstream", "provider-request-budget", "category-input-budget", "provider-tpm-budget", "provider-tpm-deadline", "provider-rate-limit-deadline", "provider-deadline-admission"].includes(String(candidate.providerFailureType))
+      ...(["quota-exhausted", "provider-rate-limit", "provider-429", "authentication", "deadline", "malformed-response", "upstream", "provider-request-budget", "category-input-budget", "provider-tpm-budget", "provider-tpm-deadline", "provider-rate-limit-deadline", "provider-deadline-admission", "provider-output-limit"].includes(String(candidate.providerFailureType))
         ? { providerFailureType: candidate.providerFailureType as NonNullable<ResearchCategoryAudit["providerFailureType"]> }
         : {}),
       ...(Number.isInteger(candidate.providerRequestCount) ? { providerRequestCount: Math.max(0, Number(candidate.providerRequestCount)) } : {}),
@@ -1770,6 +1782,8 @@ function parseResearchAudit(value: unknown): ResearchAudit | undefined {
     policyVersion: Number(value.policyVersion) || 1,
     provider: isNonEmptyString(value.provider) ? value.provider : "unknown",
     model: isNonEmptyString(value.model) ? value.model : "unknown",
+    reasoningEffort: ["low", "medium", "high"].includes(String(value.reasoningEffort))
+      ? value.reasoningEffort as "low" | "medium" | "high" : null,
     providerResponseId: value.providerResponseId === null || isNonEmptyString(value.providerResponseId) ? value.providerResponseId as string | null : null,
     ...(isNonEmptyString(value.runCorrelationId) ? { runCorrelationId: value.runCorrelationId } : {}),
     ...(isNonEmptyString(value.projectCacheKey) && /^[a-f0-9]{64}$/i.test(value.projectCacheKey)

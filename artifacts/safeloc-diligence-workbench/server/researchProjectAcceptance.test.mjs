@@ -8,6 +8,7 @@ import test from "node:test";
 import {
   RESEARCH_CATEGORIES,
   RESEARCH_RUN_BUDGET,
+  RESEARCH_PROJECT_MODEL,
 } from "./researchProjectProxy.mjs";
 import {
   RED_OAK_GRID_CANARY_LIMITS,
@@ -1565,7 +1566,7 @@ test("keeps provider failures diagnostic and explicit when no category audit is 
 
   assert.equal(report.run.status, "incomplete-technical-limitation");
   assert.equal(report.run.provider, "openai");
-  assert.equal(report.run.model, "gpt-4o");
+  assert.equal(report.run.model, RESEARCH_PROJECT_MODEL);
   assert.equal(report.run.elapsedMs, 90_001);
   assert.equal(report.run.wallClockElapsedMs, 90_001);
   assert.equal(report.run.elapsedWithinDeadline, false);

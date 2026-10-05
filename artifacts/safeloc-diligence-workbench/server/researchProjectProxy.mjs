@@ -1,4 +1,5 @@
 import { defaultResearchProjectCache } from "./researchProjectCache.mjs";
+import { RESEARCH_MODEL_CONFIG, resolveResearchModelConfig } from "./researchModelConfig.mjs";
 import dns from "node:dns/promises";
 import http from "node:http";
 import https from "node:https";
@@ -102,11 +103,10 @@ function sourceStateTransition(from, to, reason) {
 }
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
-const RESEARCH_PROJECT_MODEL = "gpt-4o";
-const RESEARCH_PROJECT_MAX_TOKENS = 8_000;
-const RESEARCH_CATEGORY_MAX_TOKENS = 3_500;
+const RESEARCH_PROJECT_MODEL = RESEARCH_MODEL_CONFIG.model;
+const RESEARCH_PROJECT_MAX_TOKENS = RESEARCH_MODEL_CONFIG.projectOutputTokens;
+const RESEARCH_CATEGORY_MAX_TOKENS = RESEARCH_MODEL_CONFIG.categoryOutputTokens;
 const DEFAULT_RESEARCH_CATEGORY_INPUT_TOKEN_CAP = 5_000;
-const DEFAULT_OPENAI_TPM_LIMIT = 30_000;
 const PROVIDER_TOKEN_WINDOW_MS = 60_000;
 const PROVIDER_RESPONSE_RESERVE_MS = 1_000;
 const RESEARCH_CATEGORY_ORDER = Object.freeze([
@@ -3007,8 +3007,12 @@ function buildResearchAudit({
     },
     provider: coverage.provider ?? "openai",
     model: coverage.model ?? RESEARCH_PROJECT_MODEL,
+    reasoningEffort: coverage.reasoningEffort ?? (coverage.model && coverage.model !== RESEARCH_PROJECT_MODEL
+      ? null : RESEARCH_MODEL_CONFIG.reasoningEffort),
     providers: {
-      research: { provider: coverage.provider ?? "openai", model: coverage.model ?? RESEARCH_PROJECT_MODEL },
+      research: { provider: coverage.provider ?? "openai", model: coverage.model ?? RESEARCH_PROJECT_MODEL,
+        reasoningEffort: coverage.reasoningEffort ?? (coverage.model && coverage.model !== RESEARCH_PROJECT_MODEL
+          ? null : RESEARCH_MODEL_CONFIG.reasoningEffort) },
       discovery: {
         provider: coverage.discoveryProvider ?? "google-gemini-grounding",
         model: coverage.discoveryModel ?? null,
@@ -5347,10 +5351,10 @@ function configuredCategoryInputTokenCap() {
 }
 
 function configuredOpenAiTokensPerMinute() {
-  const configured = Number.parseInt(process.env.OPENAI_TPM_LIMIT ?? "", 10);
-  return Number.isInteger(configured) && configured >= 1
-    ? Math.min(configured, 1_000_000)
-    : DEFAULT_OPENAI_TPM_LIMIT;
+  return resolveResearchModelConfig({
+    OPENAI_RESEARCH_MODEL: RESEARCH_PROJECT_MODEL,
+    OPENAI_TPM_LIMIT: process.env.OPENAI_TPM_LIMIT,
+  }).tokensPerMinute;
 }
 
 function estimateProviderInputTokens(requestBody) {
@@ -5454,6 +5458,8 @@ function buildCategoryAnalysisRequestBody({
   const webSearchEnabled = activeCategory?.webSearchEnabled !== false;
   return JSON.stringify({
     model: RESEARCH_PROJECT_MODEL,
+    ...(RESEARCH_MODEL_CONFIG.reasoningEffort
+      ? { reasoning: { effort: RESEARCH_MODEL_CONFIG.reasoningEffort } } : {}),
     ...(webSearchEnabled ? { tools: [{ type: "web_search_preview" }] } : {}),
     input: [
       {
@@ -6218,7 +6224,7 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
   const maxRequestedOutputTokens = activeCategory?.categoryId
     ? RESEARCH_CATEGORY_MAX_TOKENS
     : RESEARCH_PROJECT_MAX_TOKENS;
-  let requestedOutputTokens = maxRequestedOutputTokens;
+  let requestedOutputTokens = maxRequestedOutputTokens * (activeCategory?.retryState?.outputLimitRetry ? 2 : 1);
   const groundedContextFor = (sources) => sources.length
     ? `\n\nThe following public document passages were physically retrieved by SafeLoc. Use only these passages for source-backed claims. Do not browse, call a search tool, or treat a URL, snippet, title, or generated summary as evidence. Every claimPassage must be copied exactly from one supplied passage.\n${JSON.stringify(buildGroundedSourceContext(sources))}`
     : "";
@@ -6334,13 +6340,13 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
       });
   } else {
     // The legacy full-project fallback has a larger schema than category
-    // calls. Preserve the conservative 30k default by shrinking its output
-    // reservation to fit the serialized input estimate, with headroom for
-    // tokenization variance. The shared provider gate remains the final guard.
+    // calls. Shrink the output reservation to the configured model's TPM
+    // ceiling, retaining headroom for tokenization variance. This also keeps
+    // the conservative 30k ceiling when configured back to gpt-4o.
     const inputEstimate = estimateProviderInputTokens(requestBody);
     const outputBudget = configuredOpenAiTokensPerMinute() - inputEstimate - 512;
     requestedOutputTokens = Math.min(
-      maxRequestedOutputTokens,
+      requestedOutputTokens,
       Math.max(1_000, outputBudget),
     );
     requestBody = buildRequestBody(groundedContext);
@@ -6370,6 +6376,8 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
     ?? estimateProviderInputTokens(requestBody);
   const requestedTokenReservation = estimatedInputTokens + requestedOutputTokens;
   const providerAttempt = {
+    model: RESEARCH_PROJECT_MODEL,
+    reasoningEffort: RESEARCH_MODEL_CONFIG.reasoningEffort,
     projectId: project.projectId ?? project.id ?? project.name ?? null,
     runId: activeCategory?.runCorrelationId ?? null,
     categoryId: activeCategory?.categoryId ?? null,
@@ -6718,6 +6726,22 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
   const content = extractResponseOutputText(body);
   const providerResponseId = normalizeProviderResponseId(body?.id);
   providerAttempt.providerResponseId = providerResponseId;
+  if (["max_output_tokens", "max_tokens", "length"].includes(providerFinishReason(body))) {
+    const error = new Error("Project research provider reached its output token limit; no partial JSON was parsed.");
+    error.name = "ResearchOutputLimitError";
+    error.researchErrorType = "provider-output-limit";
+    error.retryable = true;
+    error.providerResponseId = providerResponseId;
+    Object.assign(providerAttempt, {
+      requestState: "failed", outcome: "failed", failureClassification: "provider-output-limit",
+      retryable: true, finishReason: providerFinishReason(body),
+      finishedAt: new Date().toISOString(),
+      elapsedMs: issuedAtMs === null ? null : Math.max(0, Date.now() - issuedAtMs),
+      status: response.status, usage: normalizeProviderUsage(body.usage),
+    });
+    error.providerAttempt = providerAttempt;
+    throw error;
+  }
   activeCategory?.claimTrace?.recordProviderOutput?.({
     runId: activeCategory.runCorrelationId,
     projectId: project.projectId ?? project.id ?? project.name,
@@ -6881,6 +6905,7 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
       searchTermsSource: searchTerms.length ? "tool-observed" : "unavailable",
       provider: webSearchEnabled ? "openai-web-fallback" : "openai-structured-from-grounded-passages",
       model: RESEARCH_PROJECT_MODEL,
+      reasoningEffort: RESEARCH_MODEL_CONFIG.reasoningEffort,
       webSearchEnabled,
       googleGroundedSourceCount: categoryGroundedSources.length,
       providerResponseId,
@@ -6950,6 +6975,10 @@ function createResearchProjectRateLimiter({
 const defaultRateLimiter = createResearchProjectRateLimiter();
 
 function classifyResearchFailure(error) {
+  if (error?.researchErrorType === "provider-output-limit") {
+    return { status: 502, type: "provider-output-limit",
+      message: "Research provider reached its output token limit. A larger-output retry is permitted only within the remaining run budget." };
+  }
   if (error?.researchErrorType === "category-input-budget") {
     return {
       status: 502,
@@ -7996,17 +8025,18 @@ async function runValidatedResearch(project, {
   let fallbackProjectRequest = null;
   let fallbackRequestConsumed = false;
   let fallbackRequestCost = 0;
-  const retry429Once = async (issue, reserve, retryState = { retryCount: 0, rateLimitWaitMs: 0 }) => {
+  const retryProviderLimitationOnce = async (issue, reserve, retryState = { retryCount: 0, rateLimitWaitMs: 0 }) => {
     if (!allowProviderRetries) return issue();
     try {
       return await issue();
     } catch (error) {
-      if (error?.upstreamStatus !== 429
+      const outputLimited = error?.researchErrorType === "provider-output-limit";
+      if ((!outputLimited && error?.upstreamStatus !== 429)
         || retryState.retryCount >= 1
         || controller.signal.aborted) throw error;
       const retryAfter = error?.providerDiagnostic?.rateLimit?.retryAfter;
       const parsedDelayMs = parseRetryAfterMs(retryAfter);
-      const delayMs = parsedDelayMs ?? DEFAULT_PROVIDER_RATE_LIMIT_PRESSURE_MS;
+      const delayMs = outputLimited ? 0 : parsedDelayMs ?? DEFAULT_PROVIDER_RATE_LIMIT_PRESSURE_MS;
       const waitMs = Math.max(delayMs, providerGate.snapshot().blockedUntil - Date.now());
       const deadlineAt = runStartedAtMs + researchTimeoutMs;
       // Reserve time for a response, not just for starting the retry.
@@ -8021,6 +8051,7 @@ async function runValidatedResearch(project, {
         throw error;
       }
       retryState.retryCount = 1;
+      retryState.outputLimitRetry = outputLimited;
       retryState.rateLimitWaitMs = Math.max(0, retryState.rateLimitWaitMs ?? 0) + waitMs;
       if (error.providerAttempt) {
         error.providerAttempt.retryAfterMs = parsedDelayMs;
@@ -8182,7 +8213,7 @@ async function runValidatedResearch(project, {
               throw validationError;
             }
             if (!fallbackProjectRequest) {
-              fallbackProjectRequest = retry429Once(() => {
+              fallbackProjectRequest = retryProviderLimitationOnce(() => {
                 fallbackRequestCost += 1;
                 return researchProjectWithWebSearch(
                 project,
@@ -8202,7 +8233,12 @@ async function runValidatedResearch(project, {
                   deadlineAt: runStartedAtMs + researchTimeoutMs,
                 },
                 providerGate,
-                );
+                ).catch((error) => {
+                  if (error.providerAttempt && !providerAttempts.includes(error.providerAttempt)) {
+                    providerAttempts.push(error.providerAttempt);
+                  }
+                  throw error;
+                });
               }, authorizeAdditionalProviderRequest, retryState);
             }
             try {
@@ -8222,7 +8258,9 @@ async function runValidatedResearch(project, {
                 providerRequestCount += fallbackRequestCost;
               }
               observedToolCallCount += Number.isInteger(error?.toolCallCount) ? error.toolCallCount : 0;
-              if (error?.providerAttempt) providerAttempts.push(error.providerAttempt);
+              if (error?.providerAttempt && !providerAttempts.includes(error.providerAttempt)) {
+                providerAttempts.push(error.providerAttempt);
+              }
               error.providerRequestCount = providerRequestCount;
               error.providerAttempts = [...providerAttempts];
               throw error;
@@ -8255,7 +8293,7 @@ async function runValidatedResearch(project, {
             }
           };
           try {
-            const result = await retry429Once(issue, authorizeAdditionalProviderRequest, retryState);
+            const result = await retryProviderLimitationOnce(issue, authorizeAdditionalProviderRequest, retryState);
             observedToolCallCount += Number.isInteger(result.coverage?.toolCallCount) ? result.coverage.toolCallCount : 0;
             if (result.coverage?.providerAttempt) providerAttempts.push(result.coverage.providerAttempt);
             return result;
@@ -8710,7 +8748,7 @@ async function runValidatedResearch(project, {
              && Date.now() + 1_000 < runStartedAtMs + researchTimeoutMs
              && authorizeAdditionalProviderRequest?.() === true
            ) {
-              const supplementalAnalysis = await retry429Once(async () => {
+              const supplementalAnalysis = await retryProviderLimitationOnce(async () => {
                providerRequestCount += 1;
                 try {
                   const result = await researchProjectWithWebSearch(
@@ -9526,7 +9564,7 @@ export async function handleResearchProjectRequest(
         claimEligibility: CLAIM_REVIEW_VERSION,
       },
       providers: {
-        research: { provider: "openai", model: RESEARCH_PROJECT_MODEL },
+        research: { provider: "openai", model: RESEARCH_PROJECT_MODEL, reasoningEffort: RESEARCH_MODEL_CONFIG.reasoningEffort },
         discovery: { provider: "google-gemini-grounding", model: googleModel },
       },
       budget: { ...requestBudget },

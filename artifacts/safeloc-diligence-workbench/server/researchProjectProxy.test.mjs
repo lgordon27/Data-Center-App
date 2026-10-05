@@ -8,6 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { deflateSync, gunzipSync } from "node:zlib";
 import { createResearchFunnelDiagnostics } from "./researchFunnelDiagnostics.mjs";
+import { RESEARCH_MODEL_CONFIG } from "./researchModelConfig.mjs";
 
 import {
   DEFAULT_RESEARCH_CAPACITY_MW,
@@ -83,7 +84,6 @@ const OFFLINE_PROVIDER_TOKEN_WINDOW_MS = 10;
 function runValidatedResearch(project, options = {}) {
   return runValidatedResearchWithTestGate(project, {
     providerGate: createResearchProviderGate({
-      tokensPerMinute: 30_000,
       tokenWindowMs: OFFLINE_PROVIDER_TOKEN_WINDOW_MS,
     }),
     ...options,
@@ -93,7 +93,6 @@ function runValidatedResearch(project, options = {}) {
 function handleResearchProjectRequest(req, res, options = {}) {
   return handleResearchProjectRequestWithTestGate(req, res, {
     providerGate: createResearchProviderGate({
-      tokensPerMinute: 30_000,
       tokenWindowMs: OFFLINE_PROVIDER_TOKEN_WINDOW_MS,
     }),
     ...options,
@@ -108,7 +107,6 @@ function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, active
     signal,
     activeCategory,
     providerGate ?? createResearchProviderGate({
-      tokensPerMinute: 30_000,
       tokenWindowMs: OFFLINE_PROVIDER_TOKEN_WINDOW_MS,
     }),
   );
@@ -1557,7 +1555,7 @@ test("limits provider requests globally and records honest request telemetry", a
   assert.equal(gate.snapshot().active, 0);
   assert.ok(calls.some((call) => call.coverage.providerAttempt.queueWaitMs > 0));
   assert.equal(calls[4].coverage.providerAttempt.attemptType, "repair");
-  assert.equal(RESEARCH_CATEGORY_MAX_TOKENS, 3_500);
+  assert.equal(RESEARCH_CATEGORY_MAX_TOKENS, RESEARCH_MODEL_CONFIG.categoryOutputTokens);
   assert.equal(calls[0].coverage.providerAttempt.requestedOutputTokens, RESEARCH_CATEGORY_MAX_TOKENS);
   assert.deepEqual(calls[0].coverage.providerUsage, {
     inputTokens: 120,
@@ -1789,7 +1787,7 @@ test("token fitting that removes every passage skips queueing and retains Task 3
   assert.equal(selection?.identityAdmission?.state, "passed");
 });
 
-test("eight empty packets free eight of twelve issue slots and their TPM reservations under unchanged limits", async () => {
+test("eight empty packets free eight of twelve issue slots and their TPM reservations under configured limits", async () => {
   const project = { name: "Project Atlas", location: "Taylor County, Texas" };
   const source = {
     occurrenceId: "atlas-grid-measure",
@@ -1809,7 +1807,7 @@ test("eight empty packets free eight of twelve issue slots and their TPM reserva
     },
   };
   const gate = createResearchProviderGate({
-    tokensPerMinute: 30_000,
+    tokensPerMinute: RESEARCH_MODEL_CONFIG.tokensPerMinute,
     tokenWindowMs: 60_000,
   });
   const attempts = [];
@@ -1861,7 +1859,7 @@ test("eight empty packets free eight of twelve issue slots and their TPM reserva
   if (process.env.RESEARCH_SCHEDULING_MEASURE === "1") {
     console.log("RESEARCH_SCHEDULING_MEASURE", JSON.stringify({
       unchangedProviderRequestLimit: RESEARCH_RUN_BUDGET.maxProviderRequests,
-      unchangedTpmLimit: 30_000,
+      configuredTpmLimit: RESEARCH_MODEL_CONFIG.tokensPerMinute,
       preparedCategoryPackets: attempts.length,
       unissuedEmptyPackets: emptyAttempts.length,
       issuedWithTextPackets: issuedAttempts.length,
@@ -6504,8 +6502,8 @@ test("uses the bounded OpenAI fallback with scoped strict schemas after Google i
   assert.equal(requestUrl, OPENAI_RESPONSES_URL);
   const body = JSON.parse(requestInit.body);
   assert.equal(body.model, RESEARCH_PROJECT_MODEL);
-  assert.equal(RESEARCH_PROJECT_MAX_TOKENS, 8_000);
-  assert.equal(RESEARCH_CATEGORY_MAX_TOKENS, 3_500);
+  assert.equal(RESEARCH_PROJECT_MAX_TOKENS, RESEARCH_MODEL_CONFIG.projectOutputTokens);
+  assert.equal(RESEARCH_CATEGORY_MAX_TOKENS, RESEARCH_MODEL_CONFIG.categoryOutputTokens);
   const estimatedInputTokens = Math.ceil(Buffer.byteLength(requestInit.body) / 3);
   assert.equal(
     body.max_output_tokens,

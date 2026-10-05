@@ -7,4 +7,4 @@ Offline research fixtures must explicitly choose their provider adapters rather 
 
 **Why:** Research fixtures run in an environment that can already contain provider credentials; implicit adapter selection makes their behavior environment-dependent. Fresh gates caused minute-long waits inside unrelated integration fixtures once conservative TPM accounting was introduced.
 
-**How to apply:** Supply deterministic discovery and document transports, never live fallback. For tests unrelated to pacing, inject an accelerated gate clock/window; keep dedicated pacing tests on simulated production-sized windows and ceilings. Do not increase production limits to speed tests.
+**How to apply:** Supply deterministic discovery and document transports, never live fallback. For tests unrelated to pacing, inject an accelerated gate clock/window and use the configured model's TPM ceiling: larger reasoning output reservations can otherwise be rejected before the mock transport runs. Keep dedicated pacing tests on explicit simulated production-sized windows and ceilings. Do not increase production limits to speed tests.

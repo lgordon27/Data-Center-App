@@ -3,6 +3,12 @@ type ResearchDnsLookup = (
   options: { all: true; verbatim: true },
 ) => Promise<Array<{ address: string; family: number }>>;
 
+export function buildReportedResearchFindings(
+  project: Record<string, unknown>,
+  categoryResults?: Array<Record<string, unknown>>,
+  eligibleEvidence?: Array<Record<string, unknown>>,
+): Array<import("../src/services/researchProjectService").ReportedResearchFinding>;
+
 export declare const DEFAULT_RESEARCH_CAPACITY_MW: number;
 export declare const OPENAI_RESPONSES_URL: string;
 export declare const RESEARCH_EVIDENCE_IDS: string[];
@@ -54,6 +60,7 @@ export declare function researchProjectWithWebSearch(
   providerGate?: ReturnType<typeof createResearchProviderGate>,
 ): Promise<{
   research: Record<string, unknown>;
+  rawResearch?: Record<string, unknown>;
   sources: Array<Record<string, unknown>>;
   coverage: Record<string, unknown>;
 }>;

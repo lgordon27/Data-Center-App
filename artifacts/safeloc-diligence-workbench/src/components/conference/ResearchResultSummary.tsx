@@ -1,5 +1,6 @@
 import { useDiligence, type EvidenceItem } from "@/context/DiligenceContext";
 import { RetainedResearchFindings } from "@/components/RetainedResearchFindings";
+import { ReportedResearchFindings } from "@/components/ReportedResearchFindings";
 import { ClaimCitation } from "@/components/ClaimCitation";
 import { evidenceDisplayLabel, getResearchResultPresentation, shortSourceText, unresolvedEvidenceReason } from "@/model/researchResultPresentation";
 
@@ -51,6 +52,7 @@ export function ResearchResultSummary({ audience = "reality" }: { audience?: "re
         {unresolved.length > 3 && <details className="mt-3 text-xs"><summary className="cursor-pointer py-2">Show remaining {unresolved.length - 3} unresolved items</summary>{renderUnresolved(unresolved.slice(3))}</details>}
       </section>
     </div>
+    <ReportedResearchFindings findings={project.reportedFindings} testId={`${audience}-reported-findings`} />
     <section data-testid={`${audience}-evidence-reported`} className="rounded-xl border border-[#d9e0e4] bg-white p-4">
       <h3 className="font-semibold text-[#805000]">Retained reporting and context</h3>
       <p className="mt-1 text-xs text-[#60707d]">Attribution and applicability remain separate from structured validation. No financial effect is implied.</p>

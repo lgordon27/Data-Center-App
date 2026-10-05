@@ -106,6 +106,7 @@ function sourceSnapshot(source = {}) {
     sourceFamily: source.sourceFamily ?? "unavailable",
     title: safeText(source.title, 300),
     categoryIds: source.categoryIds ?? [],
+    identityScope: source.identityScope ?? "scope-unconfirmed",
     originatingQuery: safeText(source.discoveryOriginatingQuery, 500),
     queryAttributionStatus: source.discoveryQueryAttributionStatus ?? "unavailable",
     specificity: source.projectSpecificityState ?? "unavailable",
@@ -410,6 +411,7 @@ export function createResearchFunnelDiagnostics({ runId = null, project = {}, ac
           routeState: record.routeState ?? "not-evaluated",
           routeReason: record.routeReason ?? null,
           identityAdmission: record.identityAdmission ?? null,
+          identityScope: record.identityScope ?? "scope-unconfirmed",
           decision: record.decision ?? (record.included ? "included" : "excluded"),
           reasonCode: record.reasonCode ?? null,
           facilityScope: source.facilityScope ?? source.facility ?? null,
@@ -441,6 +443,7 @@ export function createResearchFunnelDiagnostics({ runId = null, project = {}, ac
         },
         identityAdmission: safeDiagnosticValue(record.identityAdmission
           ?? { state: "not-evaluated", verdict: null, reason: null }),
+        identityScope: record.identityScope ?? "scope-unconfirmed",
         identityTrace: safeDiagnosticValue(identity),
         inclusion: {
           included: record.included === true,

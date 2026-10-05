@@ -14,3 +14,9 @@ Retained attributed reporting may be worth reviewing even when it has no matchin
 **Why:** The product's reviewer distinction explicitly requires these boundaries so results do not discard useful reporting or make unsupported financial/completeness claims.
 
 **How to apply:** Keep attribution, exact passages, scope limitations and validation level reviewable together, while describing only the assessment or mapping receipt actually retained.
+
+Operator/project and location co-occurrence authorizes examination only, not strict project identity or financial eligibility—even for an official permit. Verified quotations remain useful reporting when the particular building or phase is unresolved.
+
+**Why:** Permits can name a building identifier instead of the requested campus. Requiring financial admissibility before showing reporting discards useful diligence; treating co-occurrence as identity proof can attach the wrong building's facts to campus economics.
+
+**How to apply:** Keep examination scope, independently resolved identity, attributed reporting and financial eligibility separate. Never promote examination admission or the reported-findings tier into financial evidence.

@@ -71,6 +71,7 @@ import {
   type CapacityProvenance,
   containCustomResearchEvidence,
   selectResearchProposals,
+  parseReportedResearchFindings,
 } from "@/services/researchProjectService";
 import type { ClaimId, PublicAccessStatus } from "@/data/claimSources";
 import { researchContentRejectionReason } from "@/data/researchContentQuality.mjs";
@@ -406,6 +407,7 @@ export type ProjectContext = Omit<CustomResearchResponse["projectSummary"], "cap
   researchOutcome?: CustomResearchResponse["researchOutcome"];
   researchProposals?: Record<string, CustomEvidenceRecord>;
   retainedFindings?: CustomResearchResponse["retainedFindings"];
+  reportedFindings?: CustomResearchResponse["reportedFindings"];
   retainedFindingAudit?: CustomResearchResponse["retainedFindingAudit"];
   replay?: CustomResearchResponse["replay"];
   researchProposalDispositions?: Record<string, ResearchProposalDisposition>;
@@ -1757,6 +1759,7 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       researchProposalDispositions,
       researchProposalOverrides: {},
       retainedFindings: research.retainedFindings ?? [],
+      reportedFindings: parseReportedResearchFindings(research.reportedFindings),
       retainedFindingAudit: research.retainedFindingAudit,
       replay: research.replay,
     };
@@ -3030,6 +3033,7 @@ function parsePersistedCustomResearch(value: unknown): PersistedCustomResearch |
     capacityProvenance: persistedCapacity === null ? "unknown" : "directory-reported",
     retainedFindings,
     retainedFindingAudit,
+    reportedFindings: parseReportedResearchFindings(projectRecord.reportedFindings),
   } as unknown as ProjectContext;
   const storedContext = projectRecord.activeContext && typeof projectRecord.activeContext === "object"
     && !Array.isArray(projectRecord.activeContext)

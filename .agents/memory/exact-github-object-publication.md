@@ -8,3 +8,9 @@ When publishing an existing local commit chain through the GitHub Git Objects AP
 **Why:** Durable shell callback output can normalize line endings, remove separators, and truncate long lines. Those transformations change Git object hashes even when visible text appears equivalent.
 
 **How to apply:** Read raw Git blobs inside the authenticated execution boundary, preserve trailing commit-message LF bytes and identities, guard the starting remote SHA, and update the branch only after all exact hashes match.
+
+For an empty commit, reuse the verified parent tree rather than sending an empty delta to GitHub's create-tree endpoint.
+
+**Why:** GitHub rejects an empty tree-update request with “Invalid tree info,” although the local empty commit and its unchanged parent tree are valid.
+
+**How to apply:** When the raw tree diff has no entries, confirm the local commit tree equals its parent's tree, then create only the exact commit object.

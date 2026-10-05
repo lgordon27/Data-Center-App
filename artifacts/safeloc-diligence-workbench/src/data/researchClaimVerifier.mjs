@@ -78,7 +78,7 @@ function statePatternValues() {
 }
 
 const CAPITALIZED_WORD = "[A-Z][\\p{L}\\p{M}.'’\\-]*";
-const PLACE_NAME = `${CAPITALIZED_WORD}(?:\\s+${CAPITALIZED_WORD}){0,3}`;
+const PLACE_NAME = `${CAPITALIZED_WORD}(?:[ \\t]+${CAPITALIZED_WORD}){0,3}`;
 const STATE_VALUE_PATTERN = statePatternValues().map(escapeRegExp).join("|");
 
 function isWashingtonException(text, start, end) {
@@ -111,7 +111,7 @@ function detailedLocations(text) {
   }
 
   const pairPattern = new RegExp(
-    `\\b(?<place>${PLACE_NAME})\\s*,\\s*(?<state>${STATE_VALUE_PATTERN})\\b`,
+    `\\b(?<place>${PLACE_NAME})[ \\t]*,[ \\t]*(?<state>${STATE_VALUE_PATTERN})\\b`,
     "gu",
   );
   for (const match of input.matchAll(pairPattern)) {
@@ -125,7 +125,7 @@ function detailedLocations(text) {
 
     if (county) {
       const before = input.slice(Math.max(0, start - 80), start);
-      const cityMatch = before.match(new RegExp(`(?<city>${PLACE_NAME})\\s*,\\s*$`, "u"));
+      const cityMatch = before.match(new RegExp(`(?<city>${PLACE_NAME})[ \\t]*,[ \\t]*$`, "u"));
       if (cityMatch && !/\b(?:County|Project|Campus|Facility|Center|Site)$/i.test(cityMatch.groups.city)) {
         location.city = cityMatch.groups.city.trim();
       }
@@ -144,7 +144,7 @@ function detailedLocations(text) {
   }
 
   const abbreviationPairPattern = new RegExp(
-    `\\b(?<place>${PLACE_NAME})\\s+(?<state>${STATES.map(([, code]) => code).join("|")})(?=$|[\\s.,;)])`,
+    `\\b(?<place>${PLACE_NAME})[ \\t]+(?<state>${STATES.map(([, code]) => code).join("|")})(?=$|[\\s.,;)])`,
     "gu",
   );
   for (const match of input.matchAll(abbreviationPairPattern)) {
@@ -166,7 +166,7 @@ function detailedLocations(text) {
     occupiedStateRanges.push([stateStart, end]);
   }
 
-  const countyPattern = new RegExp(`\\b(?<county>${PLACE_NAME}\\s+County)\\b`, "gu");
+  const countyPattern = new RegExp(`\\b(?<county>${PLACE_NAME}[ \\t]+County)\\b`, "gu");
   for (const match of input.matchAll(countyPattern)) {
     const alreadyFound = found.some((item) =>
       item.location.county
@@ -200,7 +200,7 @@ function detailedLocations(text) {
   // A city before a county is part of the same location phrase, for example
   // "Irving, Dallas County, Texas".
   const cityBeforeCountyPattern = new RegExp(
-    `\\b(?:located\\s+in|based\\s+in|situated\\s+in|campus\\s+in|site\\s+in|facility\\s+in|in|at|near)\\s+(?<city>${PLACE_NAME})\\s*,\\s*(?=${PLACE_NAME}\\s+County\\b)`,
+    `\\b(?:located\\s+in|based\\s+in|situated\\s+in|campus\\s+in|site\\s+in|facility\\s+in|in|at|near)[ \\t]+(?<city>${PLACE_NAME})[ \\t]*,[ \\t]*(?=${PLACE_NAME}[ \\t]+County\\b)`,
     "gu",
   );
   for (const match of input.matchAll(cityBeforeCountyPattern)) {

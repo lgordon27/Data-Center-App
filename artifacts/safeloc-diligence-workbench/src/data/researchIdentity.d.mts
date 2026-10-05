@@ -1,3 +1,12 @@
+export function assessResearchPassageExaminationEligibility(
+  passage: unknown,
+  identity?: Record<string, unknown>,
+): {
+  eligible: boolean;
+  basis: string[];
+  reason: "exact-project" | "scope-unconfirmed";
+};
+
 export function assessResearchProjectIdentity(
   passage: unknown,
   candidate: Record<string, unknown> | undefined,

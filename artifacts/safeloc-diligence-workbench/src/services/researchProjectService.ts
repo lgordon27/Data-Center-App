@@ -203,6 +203,7 @@ export type CustomResearchResponse = {
   researchOutcome?: {
     state: ResearchOutcomeState;
     eligibleEvidenceCount: number;
+    reportedFindingCount?: number;
     reasonCodes: string[];
   };
   researchStatus?: "researching" | "completed" | "partial" | "timed-out" | "failed" | "cancelled";
@@ -262,6 +263,7 @@ export type CustomResearchResponse = {
   acceptedModelInputs?: CustomEvidenceRecord[];
   quarantineReasons?: string[];
   retainedFindings?: RetainedResearchFinding[];
+  reportedFindings?: ReportedResearchFinding[];
   retainedFindingAudit?: RetainedResearchFindingAudit;
   replay?: {
     mode: "offline-saved-response";
@@ -269,6 +271,50 @@ export type CustomResearchResponse = {
     originalResponseSha256: string | null;
   };
 };
+export type ReportedResearchFinding = {
+  id: string;
+  status: "reported";
+  categoryId: string;
+  evidenceId: string;
+  label: string;
+  statement: string;
+  exactQuotation: string;
+  quotationVerified: true;
+  sourceUrl: string;
+  sourceTitle: string;
+  publisher: string | null;
+  publicationDate: string | null;
+  retrievedAt: string | null;
+  facilityScope: string | null;
+  phaseScope: string | null;
+  identityScope: "exact-project" | "scope-unconfirmed";
+  financialEligibility: "eligible-evidence-separately-established" | "not-established";
+};
+
+/** Display-only contract; never feeds evidence normalization or proposals. */
+export function parseReportedResearchFindings(value: unknown): ReportedResearchFinding[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  return value.flatMap((finding) => {
+    if (!isRecord(finding) || finding.status !== "reported" || finding.quotationVerified !== true
+      || !["exact-project", "scope-unconfirmed"].includes(String(finding.identityScope))
+      || !["eligible-evidence-separately-established", "not-established"].includes(String(finding.financialEligibility))
+      || !["id", "categoryId", "evidenceId", "label", "statement", "exactQuotation", "sourceTitle"].every((key) => isNonEmptyString(finding[key]))
+      || !safePublicSourceUrl(finding.sourceUrl) || seen.has(finding.id as string)) return [];
+    seen.add(finding.id as string);
+    const nullableText = (key: string) => typeof finding[key] === "string" && finding[key].trim()
+      ? finding[key] as string : null;
+    return [{
+      id: finding.id, status: "reported", categoryId: finding.categoryId, evidenceId: finding.evidenceId,
+      label: finding.label, statement: finding.statement, exactQuotation: finding.exactQuotation,
+      quotationVerified: true, sourceUrl: safePublicSourceUrl(finding.sourceUrl), sourceTitle: finding.sourceTitle,
+      publisher: nullableText("publisher"), publicationDate: nullableText("publicationDate"),
+      retrievedAt: nullableText("retrievedAt"), facilityScope: nullableText("facilityScope"), phaseScope: nullableText("phaseScope"),
+      identityScope: finding.identityScope, financialEligibility: finding.financialEligibility,
+    } as ReportedResearchFinding];
+  }).slice(0, 40);
+}
+
 export type RetainedResearchFinding = {
   id: string;
   topic: string;
@@ -2121,6 +2167,7 @@ function parseResponse(
         researchOutcome: {
           state: value.researchOutcome.state as ResearchOutcomeState,
           eligibleEvidenceCount: Math.max(0, Number(value.researchOutcome.eligibleEvidenceCount) || 0),
+          reportedFindingCount: parseReportedResearchFindings(value.reportedFindings).length,
           reasonCodes: Array.isArray(value.researchOutcome.reasonCodes)
             ? value.researchOutcome.reasonCodes.filter(isNonEmptyString).slice(0, 16)
             : [],
@@ -2207,6 +2254,7 @@ function parseResponse(
      acceptedModelInputs: containedEvidence.filter((item) => item.acceptedForModel),
      quarantineReasons: [...new Set(containedEvidence.flatMap((item) => item.quarantineReasons ?? []))],
      retainedFindings,
+     reportedFindings: parseReportedResearchFindings(value.reportedFindings),
       retainedFindingAudit: retainedFindingReport.audit,
      ...(replay ? { replay } : {}),
   };

@@ -23,6 +23,45 @@ const STATES = [
 const normalize = (value) => String(value ?? "").toLocaleLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 const escaped = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+/**
+ * Co-occurrence permits examination, not identity proof or financial use.
+ * Explicit conflicts from the shared resolver still veto admission.
+ */
+export function assessResearchPassageExaminationEligibility(passage, identity = {}) {
+  const text = typeof passage === "string" ? passage : "";
+  const resolver = matchProject(text, identity);
+  if (resolver.verdict === "unrelated"
+    && /conflict|not the requested location|distinguishes/i.test(resolver.reason)) {
+    return { eligible: false, basis: [], reason: "scope-unconfirmed" };
+  }
+  const normalized = ` ${normalize(text)} `;
+  const contains = (value) => Boolean(normalize(value)
+    && normalized.includes(` ${normalize(value)} `));
+  const city = identity.city ?? requestedCity(identity);
+  const county = String(identity.county ?? requestedCounty(identity)).replace(/\bcounty\b/gi, "").trim();
+  const locationWords = new Set(normalize(`${city} ${county}`).split(" "));
+  const generic = new Set(["campus", "project", "data", "center", "centre", "datacenter",
+    "facility", "building", "site", "hyperscale", "park", "the", "of", "and", "county"]);
+  const distinctive = normalize(identity.name ?? identity.projectName).split(" ")
+    .filter((word) => word && !generic.has(word) && !locationWords.has(word));
+  const aliases = [
+    ...(Array.isArray(identity.aliases) ? identity.aliases : []),
+    ...(Array.isArray(identity.knownData?.aliases) ? identity.knownData.aliases : []),
+  ];
+  const basis = [];
+  if (contains(identity.operator ?? identity.knownData?.operator)) basis.push("requested-operator");
+  if (distinctive.length && distinctive.every((word) => contains(word))) basis.push("distinctive-project-name");
+  if (aliases.some(contains)) basis.push("requested-alias");
+  const nameSupported = basis.length > 0;
+  if (contains(city)) basis.push("requested-city");
+  if (contains(county)) basis.push("requested-county");
+  return {
+    eligible: nameSupported && basis.some((item) => item === "requested-city" || item === "requested-county"),
+    basis,
+    reason: resolver.verdict === "exact-project" ? "exact-project" : "scope-unconfirmed",
+  };
+}
+
 function stateIn(value) {
   const normalized = normalize(value);
   return STATES.find(([name]) => normalize(name) === normalized)?.[0]

@@ -26,6 +26,7 @@ import {
 } from "../src/data/researchContentQuality.mjs";
 import {
   assessResearchProjectIdentity,
+  assessResearchPassageExaminationEligibility,
   corroborateRelatedFacilityAcrossPassages,
 } from "../src/data/researchIdentity.mjs";
 import { defaultProjectResearchRegistry } from "./projectResearchRegistry.mjs";
@@ -44,6 +45,8 @@ import { createSecConnector } from "./secConnector.mjs";
 import { releaseIdentity } from "./version.mjs";
 import { createResearchFunnelDiagnostics } from "./researchFunnelDiagnostics.mjs";
 import { consumeAcceptanceCaptureOptIn } from "./researchAcceptanceCapture.mjs";
+import { buildReportedResearchFindings } from "./researchReportedFindings.mjs";
+export { buildReportedResearchFindings } from "./researchReportedFindings.mjs";
 
 const RESEARCH_PROJECT_PROMPT_VERSION = "safeloc-project-research-prompt-v1";
 const GOOGLE_DISCOVERY_PROMPT_VERSION = "safeloc-google-grounding-prompt-v3";
@@ -2327,16 +2330,37 @@ function prepareCategoryAnalysisPassages(category, sources = [], project = {}) {
     if (!categoryMatch && !exactIdentityMatch && category?.includeRelatedFacilityIdentityContext === true) {
       relatedIdentityMatch = sourceEstablishesRelatedFacilityIdentity(source, project, observeIdentity);
     }
-    const included = categoryMatch || exactIdentityMatch || relatedIdentityMatch;
+    let examination = null;
+    let examinationMatch = false;
+    if (!categoryMatch && !exactIdentityMatch && !relatedIdentityMatch
+      && source.categoryRoutingUnknown === true
+      && (!Array.isArray(source.categoryIds) || source.categoryIds.length === 0)) {
+      const fields = source.accessOutcome?.structuredFields ?? source.structuredFields ?? [];
+      const examinationText = [
+        source.accessOutcome.passage,
+        ...(Array.isArray(fields) ? fields.filter((field) =>
+          typeof field?.label === "string" && typeof field?.value === "string")
+          .map((field) => `${field.label}: ${field.value}`) : []),
+      ].join("\n");
+      examination = assessResearchPassageExaminationEligibility(examinationText, project);
+      examinationMatch = examination.eligible && (category.categoryId === "project-identity"
+        || categoryAnalysisPatterns(category.categoryId).test(examinationText));
+    }
+    const included = categoryMatch || exactIdentityMatch || relatedIdentityMatch || examinationMatch;
+    const identityScope = exactIdentityMatch || identityAdmission.verdict === "exact-project"
+      ? "exact-project" : relatedIdentityMatch ? "related-facility"
+        : categoryMatch ? "route-labeled-identity-unchecked" : "scope-unconfirmed";
     const explicitRoutes = [
       ...(Array.isArray(source.categoryIds)
         ? source.categoryIds.filter((id) => RESEARCH_CATEGORIES.some((item) => item.id === id))
         : []),
-      ...(RESEARCH_CATEGORIES.some((item) => item.id === source.searchDomain) ? [source.searchDomain] : []),
+      ...(source.categoryRoutingUnknown !== true
+        && RESEARCH_CATEGORIES.some((item) => item.id === source.searchDomain) ? [source.searchDomain] : []),
     ];
     const routeState = categoryMatch ? "matched"
       : exactIdentityMatch ? "matched-by-exact-project-identity-context"
-        : relatedIdentityMatch ? "matched-by-related-facility-identity-context" : "rejected";
+        : relatedIdentityMatch ? "matched-by-related-facility-identity-context"
+          : examinationMatch ? "matched-by-examination-eligibility" : "rejected";
     const routeReason = categoryMatch
       ? identityAdmission.state === "passed" && !explicitRoutes.length
         ? "category-routing-matched-by-retained-exact-project-identity"
@@ -2345,6 +2369,10 @@ function prepareCategoryAnalysisPassages(category, sources = [], project = {}) {
         ? "category-context-included-by-retained-exact-project-identity"
         : relatedIdentityMatch
           ? "category-context-included-by-retained-related-facility-identity"
+        : examinationMatch
+          ? "category-context-included-for-examination-scope-unconfirmed"
+        : examination?.eligible
+          ? "passage-lacks-category-subject-matter"
       : explicitRoutes.length
         ? "source-has-no-route-to-requested-category"
         : identityAdmission.verdict === "unrelated"
@@ -2365,6 +2393,8 @@ function prepareCategoryAnalysisPassages(category, sources = [], project = {}) {
       routeState,
       routeReason,
       identityAdmission,
+      identityScope,
+      examination,
       decision: included ? "included-for-category-analysis" : "excluded-before-deduplication",
       reasonCode: included ? null : routeReason,
       explanation: included ? null : identityAdmission.reason ?? routeReason,
@@ -2401,6 +2431,7 @@ function prepareCategoryAnalysisPassages(category, sources = [], project = {}) {
   }
   const analysisSources = unique.map((source) => ({
     ...source,
+    identityScope: decisions.find((decision) => decision.source === source)?.identityScope ?? "scope-unconfirmed",
     analysisPassage: categoryPassageWindow(source, category.categoryId, project),
     analysisStructuredFields: structuredFieldsForCategory(source, category.categoryId, project),
   }));
@@ -5044,6 +5075,7 @@ function buildCategoryAnalysisPrompt(project, activeCategory) {
     `Identity context: ${JSON.stringify(identityContext)}.`,
     `Category: ${activeCategory.label} (${activeCategory.categoryId}). ${identityInstruction}`,
     scopeInstruction,
+    "Scope-unconfirmed passages name the requested operator/project and location, but SafeLoc has not confirmed which facility, campus or phase they describe. Report their facility/phase labels exactly as written; do not assert requested-project identity unless the passage says so.",
     "The response schema requires projectSummary and only the supplied category evidence keys. Use Missing Evidence when the retrieved packet does not support a value.",
   ].join("\n");
 }
@@ -5271,6 +5303,7 @@ function buildGroundedSourceContext(sources = []) {
         origin: source.origin ?? null,
       },
       categoryIds: Array.isArray(source.categoryIds) ? source.categoryIds.slice(0, 12) : [],
+      identityScope: source.identityScope ?? "scope-unconfirmed",
       referringQueries: Array.isArray(source.referringQueries) ? source.referringQueries.slice(0, 12) : [],
       accessReceipt: {
         state: source.accessOutcome?.state ?? "unknown",
@@ -5555,6 +5588,7 @@ export function replayResearchCategoryPassageInput(project = {}, category = {}, 
       routeState: decision?.routeState ?? "not-evaluated",
       routeReason: decision?.routeReason ?? "not-evaluated",
       identityAdmission: decision?.identityAdmission ?? { state: "not-evaluated", verdict: null, reason: null },
+      identityScope: decision?.identityScope ?? "scope-unconfirmed",
       included: Boolean(finalSource),
       decision: decisionState,
       reasonCode,
@@ -5586,6 +5620,7 @@ export function replayResearchCategoryPassageInput(project = {}, category = {}, 
         sourceId: safeIdentifier(source.sourceId ?? source.occurrenceId, `packet-${index + 1}`),
         occurrenceId: metaText(source.sourceIdentity?.occurrenceId, 240),
         sourceUrl: safeReplayPublicUrl(source.sourceUrl ?? source.canonicalUrl),
+        identityScope: source.identityScope ?? "scope-unconfirmed",
         passageSha256: fingerprint(source.passage).sha256,
         passageLength: typeof source.passage === "string" ? source.passage.length : 0,
         facilityScope: metaText(source.facilityScope, 120),
@@ -6167,12 +6202,16 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
       sources: passageCandidates,
     };
   const categoryGroundedSources = activeCategory?.categoryId
-    ? groundedSources.filter((source) =>
-      categorySourceMatchesForAnalysis(activeCategory, source, project)
-      || (activeCategory?.includeExactProjectIdentityContext === true
-        && sourceEstablishesProjectIdentity(source, project))
-      || (activeCategory?.includeRelatedFacilityIdentityContext === true
-        && sourceEstablishesRelatedFacilityIdentity(source, project)))
+    ? groundedSources.flatMap((source) => {
+      const decision = categoryPassagePreparation.decisions.find((item) => item.source === source);
+      // Deduplication/window fitting affects the prompt, not routed source
+      // receipts. Retain admitted duplicates and inaccessible routed records.
+      if (decision?.included || (!hasRetrievedPassage(source)
+        && categorySourceMatchesForAnalysis(activeCategory, source, project))) {
+        return [{ ...source, identityScope: decision?.identityScope ?? "route-labeled-identity-unchecked" }];
+      }
+      return [];
+    })
     : groundedSources;
   const categoryAnalysisSources = categoryPassagePreparation.sources;
   let categoryAnalysisPacket = buildGroundedSourceContext(categoryAnalysisSources);
@@ -6275,6 +6314,7 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
           explanation,
           routeState: prepared?.routeState ?? "not-evaluated",
           routeReason: prepared?.routeReason ?? (hasRetrievedPassage(source) ? "not-evaluated" : "blocked-before-routing"),
+          identityScope: prepared?.identityScope ?? "scope-unconfirmed",
           identityAdmission: prepared?.identityAdmission ?? {
             state: "not-evaluated",
             verdict: null,
@@ -6818,6 +6858,7 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
   });
   return {
     research,
+    rawResearch: providerOriginalResearch,
     sources,
     coverage: {
       searchedDomains: [...new Set(sources.map((source) => sourceHostname(source)).filter(Boolean))],
@@ -8044,8 +8085,9 @@ async function runValidatedResearch(project, {
            const usableGroundedSources = groundedMode
              ? selectResearchPassagesForStructuredAnalysis(googleDiscovery.candidates)
              : [];
-           const categoryUsableGroundedSources = usableGroundedSources.filter((source) =>
-              categorySourceMatchesForAnalysis(activeCategory, source, project));
+           const categoryUsableGroundedSources = prepareCategoryAnalysisPassages(
+             activeCategory, usableGroundedSources, project,
+           ).sources;
           const canaryIdentityGate = canaryGridIdentityGate && categoryId === "grid"
             ? evaluateCanaryGridIdentityGate(usableGroundedSources, project)
             : null;
@@ -8805,7 +8847,7 @@ async function runValidatedResearch(project, {
           categoryResult: {
             categoryId,
             research: normalizedCategoryResearch,
-            rawResearch: categoryResult.research,
+            rawResearch: categoryResult.rawResearch ?? categoryResult.research,
             sources: accessedSources,
             coverage: { ...categoryResult.coverage, providerAttempts, officialDiscoveryAttempts: discoveryAttempts, authorityRecords, secConnectorAttempts: secAttempts },
           },
@@ -9038,6 +9080,9 @@ async function runValidatedResearch(project, {
         projectClaimValidationContext(project),
       );
       const eligibleEvidenceCount = parsed.evidence.filter((item) => item.eligibleForModel === true).length;
+      parsed.reportedFindings = buildReportedResearchFindings(
+        project, orchestration.categoryResults, parsed.evidence.filter((item) => item.eligibleForModel === true),
+      );
       const canonicalNotAssessedCount = parsed.researchAudit.categories.filter((category) =>
         category.state === "Not assessed" || category.analysisOutcome === "not-assessed").length;
       const canonicalOutcome = classifyCanonicalResearchOutcome(
@@ -9046,11 +9091,17 @@ async function runValidatedResearch(project, {
         canonicalNotAssessedCount,
       );
       const outcomeReasonCodes = canonicalOutcome === RESEARCH_OUTCOMES.NOT_ASSESSED
-        ? ["no-admitted-passage-text"]
+        ? [parsed.reportedFindings.length > 0 || orchestration.categoryResults.some((category) =>
+          (Array.isArray(category.coverage?.categoryPromptTelemetry)
+            ? category.coverage.categoryPromptTelemetry
+            : [category.coverage?.categoryPromptTelemetry])
+            .some((telemetry) => telemetry?.passageCountSent > 0))
+          ? "some-categories-not-assessed" : "no-admitted-passage-text"]
         : technicalReasonCodes;
       parsed.researchOutcome = {
         state: canonicalOutcome,
         eligibleEvidenceCount,
+        reportedFindingCount: parsed.reportedFindings.length,
         reasonCodes: outcomeReasonCodes,
       };
       parsed.researchAudit.terminalState = canonicalOutcome;

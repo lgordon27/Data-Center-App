@@ -17,6 +17,7 @@ export type PublicResearchState =
   | "evidence-likely-non-public"
   | "not-assessed"
   | "research-failed-safely"
+  | "research-interrupted"
   | "ready";
 
 export type PublicResearchPresentation = {
@@ -81,6 +82,11 @@ const STATE_COPY: Record<PublicResearchState, Omit<PublicResearchPresentation, "
   "research-failed-safely": {
     label: "Research failed safely",
     explanation: "Research did not return a usable update. Any previously retained evidence remains available for review.",
+    incomplete: true,
+  },
+  "research-interrupted": {
+    label: "Research interrupted",
+    explanation: "The server restarted or lost connection before returning a research result. The run can be retried; previously retained evidence remains available.",
     incomplete: true,
   },
   ready: {
@@ -158,6 +164,9 @@ export function getPublicResearchPresentation(input: PublicResearchInput): Publi
   if (input.researchStatus === "researching") {
     return { state: "researching", ...STATE_COPY.researching };
   }
+  if (knownErrorType === "interrupted") {
+    return { state: "research-interrupted", ...STATE_COPY["research-interrupted"] };
+  }
   if (knownErrorType && RATE_LIMIT_TYPES.has(knownErrorType)) {
     return { state: "provider-busy", ...STATE_COPY["provider-busy"] };
   }
@@ -206,7 +215,7 @@ export function getPublicResearchPresentation(input: PublicResearchInput): Publi
   return { state: "search-incomplete", ...STATE_COPY["search-incomplete"] };
 }
 
-export type SafeResearchFailureKind = "busy" | "failed";
+export type SafeResearchFailureKind = "busy" | "failed" | "interrupted" | "upstream";
 
 export class PublicResearchRequestError extends Error {
   readonly kind: SafeResearchFailureKind;
@@ -215,6 +224,7 @@ export class PublicResearchRequestError extends Error {
   constructor(kind: SafeResearchFailureKind, retryAfterSeconds: number | null = null) {
     super(kind === "busy"
       ? STATE_COPY["provider-busy"].explanation
+      : kind === "interrupted" ? STATE_COPY["research-interrupted"].explanation
       : STATE_COPY["research-failed-safely"].explanation);
     this.name = "PublicResearchRequestError";
     this.kind = kind;

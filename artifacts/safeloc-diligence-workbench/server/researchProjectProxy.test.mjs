@@ -2987,7 +2987,7 @@ test("actual request workflow returns retrieved receipts as HTTP 200 partial aft
     apiKey: "synthetic-test-key",
     cache: createResearchProjectCache({ directory }),
     auditRepository: { save: async (record) => {
-      assert.ok(response.body, "the HTTP response must precede the database write");
+      assert.equal(response.body, "", "the result audit must be written before the HTTP response");
       persisted(record);
     } },
     rateLimiter: { allow: () => ({ allowed: true, retryAfterSeconds: 0 }) },
@@ -7344,7 +7344,7 @@ test("returns specific safe quota, authentication, parse, and timeout errors", a
     cache,
     rateLimiter,
     auditRepository: { save: async (record) => {
-      assert.ok(providerResponse.body, "failed-run audit persistence must not hold the response open");
+      assert.equal(providerResponse.body, "", "failed-run audit writes are bounded and happen before the response");
       persistedFailure(record);
     } },
     fetchImpl: async () => new Response(JSON.stringify({
@@ -7475,7 +7475,7 @@ test("HTTP research deadline aborts a stalled provider and returns a typed timeo
     }),
     registry: { retain: async () => {} },
     auditRepository: { save: async (record) => {
-      assert.ok(response.body, "the partial response must precede persistence");
+      assert.equal(response.body, "", "the partial result must be persisted before sending it");
       persisted(record);
     } },
     rateLimiter: { allow: () => ({ allowed: true, retryAfterSeconds: 0 }) },
@@ -7896,7 +7896,7 @@ test("research audits retain policy checks, provider retries, redirects, and fet
   assert.equal(review.firstFailedGate, "phase-scope");
 });
 
-test("research refuses provider work when the audit start insert fails", async () => {
+test("research returns its result with incomplete persistence when audit start fails", async () => {
   const response = responseRecorder();
   let providerCalls = 0;
   await handleResearchProjectRequest(request({
@@ -7908,23 +7908,25 @@ test("research refuses provider work when the audit start insert fails", async (
     googleApiKey: null,
     googleDiscoveryImpl: async () => {
       providerCalls += 1;
-      throw new Error("The provider must not be called.");
+      return { sources: [], providerAvailable: true, searchQueries: [], searchTerms: [] };
     },
     fetchImpl: async () => {
       providerCalls += 1;
       throw new Error("Network access must not be attempted.");
     },
     cache: createResearchProjectCache(),
+    categoryIds: ["project-identity"], allowGoogleFallback: false,
+    allowCorrectiveRetries: false, useDefaultSecConnector: false,
     auditRepository: {
       async startRun() { throw new Error("offline audit storage failure"); },
       async finishRun() { throw new Error("No started row should be finished."); },
     },
   });
 
-  assert.equal(response.statusCode, 503);
-  assert.equal(response.json().errorType, "audit-storage");
-  assert.match(response.json().error, /No research provider request was issued/);
-  assert.equal(providerCalls, 0);
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.json().auditPersistence.state, "persistence-incomplete");
+  assert.deepEqual(response.json().auditPersistence.reasonCodes, ["audit-start-write-failed"]);
+  assert.ok(providerCalls > 0, "audit failure must not prevent the injected offline discovery");
 });
 
 test("research audit finalization retries finishRun once after transient failure", async () => {
@@ -7935,7 +7937,7 @@ test("research audit finalization retries finishRun once after transient failure
     async startRun() {},
     async finishRun(record) {
       finishCalls += 1;
-      if (finishCalls === 1) throw new Error("transient completion failure");
+      if (finishCalls === 1) throw Object.assign(new Error("terminating connection due to administrator command"), { code: "57P01" });
       markFinished(record);
     },
   });
@@ -7954,7 +7956,7 @@ test("research audit marks finalization-failed after both finish attempts fail",
     async startRun() {},
     async finishRun() {
       finishCalls += 1;
-      throw new Error("audit storage is unavailable");
+      throw Object.assign(new Error("terminating connection due to administrator command"), { code: "57P01" });
     },
     async markFinalizationFailed(record) {
       markCalls += 1;
@@ -7998,7 +8000,7 @@ test("research audit logs run ID and failure state when marker persistence also 
   assert.equal(logged.event, "research_audit_finalization_failed");
 });
 
-test("research audit finalization waits for the response finish event", async () => {
+test("research audit persists the result before response and records delivery after finish", async () => {
   const response = Object.assign(new EventEmitter(), responseRecorder());
   response.writableEnded = false;
   response.writableFinished = false;
@@ -8025,6 +8027,10 @@ test("research audit finalization waits for the response finish event", async ()
     auditRepository: {
       async startRun(record) { startedRecord = record; },
       async finishRun(record) {
+        assert.equal(response.writableEnded, false);
+        assert.equal(record.audit.responseFinishedAt, null);
+      },
+      async updateDelivery(record) {
         assert.equal(response.writableFinished, true);
         finishedRecord = record;
         markFinished(record);

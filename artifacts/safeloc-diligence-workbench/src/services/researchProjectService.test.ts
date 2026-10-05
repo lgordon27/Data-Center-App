@@ -895,7 +895,7 @@ test("aligns the browser request budget with the server-owned research deadline"
   assert.equal(RESEARCH_PROJECT_TIMEOUT_MS, 90_000);
 });
 
-test("returns the first timeout without issuing an automatic retry", async () => {
+test("returns the first gateway interruption without issuing an automatic retry", async () => {
   let calls = 0;
   const progress: string[] = [];
   const fetchImpl = async (_input: string | URL | Request, init?: RequestInit) => {
@@ -935,7 +935,7 @@ test("returns the first timeout without issuing an automatic retry", async () =>
       initiator: "user-action",
       onProgress: (state) => progress.push(state),
     }),
-    /timed out/i,
+    /server restarted or lost connection/i,
   );
   assert.equal(calls, 1);
   assert.deepEqual(progress, ["researching"]);
@@ -949,7 +949,7 @@ test("does not retry non-timeout failures", async () => {
   };
   await assert.rejects(
     () => researchProject("Atlas", "Texas", fetchImpl as typeof fetch),
-    /Research did not return a usable update/,
+    /server restarted or lost connection/i,
   );
   assert.equal(calls, 1);
 });

@@ -4,7 +4,8 @@ import { fileURLToPath } from "node:url";
 import { handleErcotQueueRequest } from "./ercotProxy.mjs";
 import { handleEiaElectricityRequest } from "./eiaProxy.mjs";
 import { handleAnalyzeEvidenceRequest } from "./aiEvidenceProxy.mjs";
-import { handleResearchProjectRequest } from "./researchProjectProxy.mjs";
+import { handleResearchProjectRequest, RESEARCH_PROJECT_TIMEOUT_MS } from "./researchProjectProxy.mjs";
+import { installDatabaseSafetyNet } from "./databaseResilience.mjs";
 import { handleDirectoryRequest, handleDirectoryStatsRequest } from "./computeAtlasProxy.mjs";
 import { handleReleaseDocumentRequest, handleVersionRequest } from "./version.mjs";
 import { handleProjectResearchRegistryRequest } from "./projectResearchRegistry.mjs";
@@ -23,12 +24,19 @@ import { handleShowcaseDossiersRequest, handleShowcaseDossierRequest } from "./s
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
 const artifactDir = path.resolve(serverDir, "..");
 const researchAuditRepositoryAdapter = {
+  connectionRetryManaged: true,
   startRun: async (record: ResearchRunAudit) =>
     (await getResearchAuditRepository()).startRun(record),
   finishRun: async (record: ResearchRunAudit) =>
     (await getResearchAuditRepository()).finishRun(record),
+  markFinalizationFailed: async (record: ResearchRunAudit) =>
+    (await getResearchAuditRepository()).markFinalizationFailed(record),
   save: async (record: ResearchRunAudit) =>
     (await getResearchAuditRepository()).save(record),
+  progressRun: async (record: ResearchRunAudit) =>
+    (await getResearchAuditRepository()).progressRun(record),
+  updateDelivery: async (record: ResearchRunAudit) =>
+    (await getResearchAuditRepository()).updateDelivery(record),
 };
 let publicControls: Promise<{
   rateLimiter: ReturnType<typeof createPublicRateLimiter>;
@@ -303,9 +311,16 @@ export async function createApp(): Promise<Express> {
 }
 
 async function start() {
+  installDatabaseSafetyNet();
   const { port } = readRuntimeConfig();
   const { logDatabaseStartupDiagnostics } = await import("./db.js");
   await logDatabaseStartupDiagnostics();
+  try {
+    const count = await (await getResearchAuditRepository()).interruptStaleRuns(RESEARCH_PROJECT_TIMEOUT_MS);
+    if (count) console.info("SafeLoc interrupted stale research audits.", { count });
+  } catch {
+    console.warn("SafeLoc interrupted research audit sweep unavailable; retry on next startup.");
+  }
   const app = await createApp();
   const server = app.listen(port, "0.0.0.0");
   const shutdown = () => server.close();

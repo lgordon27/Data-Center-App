@@ -126,6 +126,8 @@ export function getResearchResultPresentation(project: ProjectContext, evidence:
     ? { label: "Reviewed snapshot", description: "Reviewed source record, not completed live research. Unresolved items remain separate." }
     : project.replay
       ? { label: "Saved partial research", description: "Offline saved response; no live provider request. Original assessment limitations remain." }
+      : project.researchError?.type === "interrupted"
+        ? { label: "Research interrupted", description: project.researchError.message }
       : { ...getResearchStatusPresentation({
         outcome: project.researchOutcome, researchMode: project.researchMode,
         researchStatus: project.researchStatus,

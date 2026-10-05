@@ -1,12 +1,13 @@
 import { createHash } from "node:crypto";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
+import { DATABASE_POOL_SETTINGS, protectDatabasePool } from "./databaseResilience.mjs";
 import * as schema from "./dossierSchema.js";
 
-const pool = new pg.Pool({
+const pool = protectDatabasePool(new pg.Pool({
   connectionString: process.env.DATABASE_URL,
-  connectionTimeoutMillis: 2_000,
-});
+  ...DATABASE_POOL_SETTINGS,
+}));
 export const db = drizzle(pool, { schema });
 export { pool };
 

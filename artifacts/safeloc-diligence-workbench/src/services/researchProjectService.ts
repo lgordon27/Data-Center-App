@@ -208,10 +208,11 @@ export type CustomResearchResponse = {
   };
   researchStatus?: "researching" | "completed" | "partial" | "timed-out" | "failed" | "cancelled";
   researchError?: {
-    type: "timeout" | "malformed-response" | "upstream" | "cancelled";
+    type: "timeout" | "malformed-response" | "upstream" | "cancelled" | "interrupted";
     message: string;
   };
   researchCache?: ResearchCacheMetadata;
+  auditPersistence?: { state: "persisted" | "persistence-incomplete" | "not-configured"; reasonCodes: string[]; runId: string };
   semanticPolicyVersion?: number;
   sourceValidationPolicyVersion?: number;
   sourceLedger?: Array<Record<string, unknown>>;
@@ -2191,7 +2192,7 @@ function parseResponse(
     ...(isRecord(value.researchError) && isNonEmptyString(value.researchError.message)
       ? {
         researchError: {
-          type: value.researchError.type === "timeout" || value.researchError.type === "cancelled" || value.researchError.type === "upstream"
+          type: value.researchError.type === "timeout" || value.researchError.type === "cancelled" || value.researchError.type === "upstream" || value.researchError.type === "interrupted"
             ? value.researchError.type
             : "malformed-response",
           message: value.researchError.message.trim().slice(0, 500),
@@ -2222,6 +2223,15 @@ function parseResponse(
         : SOURCE_VALIDATION_POLICY_VERSION,
       ...(Array.isArray(value.sourceLedger) ? { sourceLedger: value.sourceLedger } : {}),
      ...(parseResearchAudit(value.researchAudit) ? { researchAudit: parseResearchAudit(value.researchAudit) } : {}),
+    ...(isRecord(value.auditPersistence)
+      && ["persisted", "persistence-incomplete", "not-configured"].includes(String(value.auditPersistence.state))
+      && typeof value.auditPersistence.runId === "string" ? {
+        auditPersistence: {
+          state: value.auditPersistence.state as NonNullable<CustomResearchResponse["auditPersistence"]>["state"],
+          reasonCodes: Array.isArray(value.auditPersistence.reasonCodes) ? value.auditPersistence.reasonCodes.filter(isNonEmptyString) : [],
+          runId: value.auditPersistence.runId,
+        },
+      } : {}),
     ...(isRecord(value.researchCoverage) ? {
       researchCoverage: {
          ...(parseIdentityContext(value.researchCoverage.identityContext) ? { identityContext: parseIdentityContext(value.researchCoverage.identityContext) } : {}),
@@ -2440,6 +2450,7 @@ async function requestResearchProject(
   const timeout = setTimeout(() => controller.abort(), RESEARCH_PROJECT_TIMEOUT_MS);
   const abortFromCaller = () => controller.abort();
   signal?.addEventListener("abort", abortFromCaller, { once: true });
+  let transportCompleted = false;
   try {
     onProgress?.("researching");
     const response = await fetchImpl(RESEARCH_PROJECT_ENDPOINT, {
@@ -2463,6 +2474,7 @@ async function requestResearchProject(
       signal: controller.signal,
     });
     const rawText = await response.text();
+    transportCompleted = true;
     let body: unknown;
     try {
       body = JSON.parse(rawText);
@@ -2480,13 +2492,21 @@ async function requestResearchProject(
           researchMode,
         };
       }
-      if (response.status === 504) throw new ResearchTimeoutError();
       const errorType = getPublicResearchErrorType(body);
+      // Only a structured provider diagnostic establishes a provider rejection.
+      // A gateway error with no result is an interrupted browser/server request.
+      const providerRejection = errorType === "upstream" && isRecord(body)
+        && isRecord(body.providerDiagnostic) && Number.isInteger(body.providerDiagnostic.upstreamStatus)
+        && Number(body.providerDiagnostic.upstreamStatus) >= 400 && Number(body.providerDiagnostic.upstreamStatus) <= 599;
+      if (([502, 503, 504].includes(response.status) && !providerRejection)
+        || (response.status === 500 && !isRecord(body))) {
+        throw new PublicResearchRequestError("interrupted");
+      }
       const capacityRejection = response.status === 429
         || errorType === "research-capacity-busy"
         || errorType === "research-admission-unavailable";
       throw new PublicResearchRequestError(
-        capacityRejection ? "busy" : "failed",
+        capacityRejection ? "busy" : providerRejection ? "upstream" : "failed",
         capacityRejection ? parseBoundedRetryAfter(response.headers.get("retry-after")) : null,
       );
     }
@@ -2496,7 +2516,7 @@ async function requestResearchProject(
     if (error instanceof ResearchTimeoutError) throw error;
     if (error instanceof PublicResearchRequestError) throw error;
     if (error instanceof Error && error.name === "AbortError") throw new ResearchTimeoutError();
-    throw new PublicResearchRequestError("failed");
+    throw new PublicResearchRequestError(transportCompleted ? "failed" : "interrupted");
   } finally {
     clearTimeout(timeout);
     signal?.removeEventListener("abort", abortFromCaller);

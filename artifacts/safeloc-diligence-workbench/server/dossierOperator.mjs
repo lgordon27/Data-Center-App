@@ -26,7 +26,10 @@ function sanitize(value, key = "") {
 }
 async function main() {
   if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required.");
-  const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+  const { protectDatabasePool, DATABASE_POOL_SETTINGS } = await import("./databaseResilience.mjs");
+  const pool = protectDatabasePool(new pg.Pool({
+    connectionString: process.env.DATABASE_URL, ...DATABASE_POOL_SETTINGS,
+  }));
   try {
     if (process.argv[2] === "import") {
       if (!process.argv.includes("--confirm-canonical-write")) {

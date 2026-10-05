@@ -1,5 +1,6 @@
 import { defaultResearchProjectCache } from "./researchProjectCache.mjs";
 import { RESEARCH_MODEL_CONFIG, resolveResearchModelConfig } from "./researchModelConfig.mjs";
+import { boundedAuditOperation, retryDatabaseConnectionOperation } from "./databaseResilience.mjs";
 import dns from "node:dns/promises";
 import http from "node:http";
 import https from "node:https";
@@ -9309,6 +9310,9 @@ async function runValidatedResearch(project, {
  *   startRun?: (record: ResearchRunAuditRecord) => Promise<void>,
  *   finishRun?: (record: ResearchRunAuditRecord) => Promise<void>,
  *   markFinalizationFailed?: (record: ResearchRunAuditRecord) => Promise<void>,
+ *   progressRun?: (record: ResearchRunAuditRecord) => Promise<void>,
+ *   updateDelivery?: (record: ResearchRunAuditRecord) => Promise<void>,
+ *   connectionRetryManaged?: boolean,
  *   save?: (record: ResearchRunAuditRecord) => Promise<void>,
  * }} ResearchAuditRepository
  */
@@ -9508,6 +9512,9 @@ export async function handleResearchProjectRequest(
   attachResponseLifecycle();
 
   let runContext = null;
+  const writeAudit = (method, record) => auditStore.connectionRetryManaged
+    ? auditStore[method](record)
+    : retryDatabaseConnectionOperation(() => boundedAuditOperation(() => auditStore[method](record)));
   const refresh = (foreground = true, {
     deferRunUntilResponse = false,
     initiator = requestIdentity.initiator,
@@ -9536,6 +9543,7 @@ export async function handleResearchProjectRequest(
       initiator,
       requestId,
       auditRowPersisted: false,
+      auditPersistence: { state: "pending", reasonCodes: [], runId },
       startReady,
       resolveStartReady,
       rejectStartReady,
@@ -9590,7 +9598,7 @@ export async function handleResearchProjectRequest(
       context.funnelDiagnostics = funnelDiagnostics;
       try {
         if (auditStore?.startRun) {
-          await auditStore.startRun({
+          await writeAudit("startRun", {
             runId,
             projectName: project.name,
             projectLocation: project.location,
@@ -9608,12 +9616,10 @@ export async function handleResearchProjectRequest(
         }
         resolveStartReady();
       } catch {
-        const error = new Error("Research audit storage is unavailable.");
-        error.name = "ResearchAuditStorageError";
-        error.researchErrorType = "audit-storage";
-        error.auditRunStarted = false;
-        rejectStartReady(error);
-        throw error;
+        context.auditPersistence.state = "persistence-incomplete";
+        context.auditPersistence.reasonCodes.push("audit-start-write-failed");
+        console.warn("[research-project] Audit start persistence incomplete.", { runId });
+        resolveStartReady();
       }
       await launchGate;
       const researchResult = await runValidatedResearch(project, {
@@ -9684,7 +9690,7 @@ export async function handleResearchProjectRequest(
       context,
     };
   };
-  const retainRun = (result, error = null) => {
+  const retainRun = async (result, error = null) => {
     const context = runContext;
     const audit = result?.researchAudit ?? error?.researchAudit ?? {
       version: RESEARCH_CATEGORY_AUDIT_VERSION,
@@ -9701,6 +9707,7 @@ export async function handleResearchProjectRequest(
       phaseTiming: null,
     };
     audit.runCorrelationId = context?.runId ?? audit.runCorrelationId;
+    if (result) result.researchAudit = audit;
     audit.projectCacheKey = context?.projectCacheKey ?? key;
     audit.initiator = context?.initiator ?? requestIdentity.initiator;
     audit.requestId = context?.requestId ?? requestIdentity.requestId;
@@ -9725,9 +9732,9 @@ export async function handleResearchProjectRequest(
         .catch((failure) => console.warn("[research-project] Registry retention failed:", failure instanceof Error ? failure.message : "unknown error"));
     }
     const canFinishStartedRow = Boolean(context?.auditRowPersisted && auditStore?.finishRun);
-    const canUseLegacySave = Boolean(auditStore?.save && !auditStore?.startRun);
+    const canUseLegacySave = Boolean(auditStore?.save && !canFinishStartedRow);
     if (canFinishStartedRow || canUseLegacySave) {
-      void Promise.resolve().then(waitForResponseCompletion).then(async () => {
+      await (async () => {
         const finishedAt = new Date().toISOString();
         audit.response = { ...responseDelivery };
         audit.responseStartedAt = responseDelivery.responseStartedAt;
@@ -9746,13 +9753,22 @@ export async function handleResearchProjectRequest(
           startedAt: context?.startedAt ?? audit.startedAt,
           finishedAt,
         };
+        let resultPersisted = false;
+        if (canFinishStartedRow && auditStore.progressRun) {
+          try {
+            await writeAudit("progressRun", record);
+          } catch {
+            context.auditPersistence.state = "persistence-incomplete";
+            context.auditPersistence.reasonCodes.push("audit-progress-write-failed");
+          }
+        }
         if (canFinishStartedRow) {
           try {
-            await auditStore.finishRun(record);
-          } catch (firstFailure) {
-            try {
-              await auditStore.finishRun(record);
-            } catch (retryFailure) {
+            await writeAudit("finishRun", record);
+            resultPersisted = true;
+          } catch (retryFailure) {
+              context.auditPersistence.state = "persistence-incomplete";
+              context.auditPersistence.reasonCodes.push("audit-finalize-write-failed");
               const finalizationFailureRecord = {
                 ...record,
                 researchStatus: "finalization-failed",
@@ -9760,16 +9776,13 @@ export async function handleResearchProjectRequest(
                   ...record.audit,
                   lifecycleState: "finalization-failed",
                   finalizationFailure: {
-                    firstAttempt: firstFailure instanceof Error ? firstFailure.name : "unknown",
                     retry: retryFailure instanceof Error ? retryFailure.name : "unknown",
                   },
                 },
               };
               try {
                 if (auditStore.markFinalizationFailed) {
-                  await auditStore.markFinalizationFailed(finalizationFailureRecord);
-                } else {
-                  await auditStore.finishRun(finalizationFailureRecord);
+                  await writeAudit("markFinalizationFailed", finalizationFailureRecord);
                 }
               } catch (markerFailure) {
                 console.error(JSON.stringify({
@@ -9781,12 +9794,33 @@ export async function handleResearchProjectRequest(
                   markerError: markerFailure instanceof Error ? markerFailure.name : "unknown",
                 }));
               }
-            }
           }
         } else {
-          await auditStore.save(record);
+          await writeAudit("save", record);
+          resultPersisted = true;
+          context.auditRowPersisted = true;
         }
-      }).catch((failure) => console.warn("[research-project] Audit persistence failed:", failure instanceof Error ? failure.message : "unknown error"));
+        if (resultPersisted && auditStore.updateDelivery) {
+          void waitForResponseCompletion().then(async () => {
+            audit.response = { ...responseDelivery };
+            audit.responseStartedAt = responseDelivery.responseStartedAt;
+            audit.responseFinishedAt = responseDelivery.responseFinishedAt;
+            audit.clientDisconnectedAt = responseDelivery.clientDisconnectedAt;
+            audit.browserDisconnectedBeforeFinish = responseDelivery.browserDisconnectedBeforeFinish;
+            await writeAudit("updateDelivery", { ...record, audit });
+          }).catch(() => console.warn("[research-project] Audit delivery metadata persistence incomplete.", { runId: record.runId }));
+        }
+      })().catch(() => {
+        context.auditPersistence.state = "persistence-incomplete";
+        context.auditPersistence.reasonCodes.push("audit-result-write-failed");
+        console.warn("[research-project] Audit persistence incomplete.", { runId: context.runId });
+      });
+    }
+    if (context) {
+      if (context.auditPersistence.state === "pending") {
+        context.auditPersistence.state = auditStore ? "persisted" : "not-configured";
+      }
+      if (result) result.auditPersistence = { ...context.auditPersistence, reasonCodes: [...context.auditPersistence.reasonCodes] };
     }
   };
   if (!retrievalOnlyRequest && !project.forceRefresh && containedRetained && !retainedNeedsRevalidation && retainedState === "stale") {
@@ -9838,6 +9872,7 @@ export async function handleResearchProjectRequest(
   try {
     activeRefresh = refresh();
     const entry = await activeRefresh.promise;
+    if (activeRefresh.started) await retainRun(entry.result);
     if (!res.writableEnded && !res.destroyed) {
       sendTrackedJson(200, withCacheMetadata(entry, cacheMetadata(key, entry, "updated", "completed", {
         runId: activeRefresh.context.runId,
@@ -9845,14 +9880,14 @@ export async function handleResearchProjectRequest(
         requestId: activeRefresh.context.requestId,
       })));
     }
-    if (activeRefresh.started) retainRun(entry.result);
   } catch (error) {
     const failure = classifyResearchFailure(error);
     console.error("[research-project] Request failed:", failure.type);
     if (res.writableEnded || res.destroyed) {
-      if (!activeRefresh || activeRefresh.started) retainRun(null, error);
+      if (!activeRefresh || activeRefresh.started) await retainRun(null, error);
       return;
     }
+    if (!activeRefresh || activeRefresh.started) await retainRun(null, error);
     if (failure.type === "audit-storage") {
       sendTrackedJson(failure.status, {
         error: failure.message,
@@ -9864,7 +9899,6 @@ export async function handleResearchProjectRequest(
           reasonCodes: [failure.type],
         },
       });
-      if (!activeRefresh || activeRefresh.started) retainRun(null, error);
       return;
     }
     if (containedRetained) {
@@ -9877,7 +9911,6 @@ export async function handleResearchProjectRequest(
         inFlightAnalysisCount: failure.inFlightAnalysisCount
           ?? error?.providerAttempt?.inFlightAnalysisCount,
       })));
-      if (!activeRefresh || activeRefresh.started) retainRun(null, error);
       return;
     }
     if (failure.type === "request-limit" && error?.retryAfterSeconds) {
@@ -9886,6 +9919,7 @@ export async function handleResearchProjectRequest(
     sendTrackedJson(failure.status, {
       error: failure.message,
       errorType: failure.type,
+      ...(runContext ? { auditPersistence: runContext.auditPersistence } : {}),
       researchStatus: failure.type === "timeout" ? "timed-out" : "failed",
       researchOutcome: {
         state: RESEARCH_OUTCOMES.TECHNICAL,
@@ -9908,7 +9942,6 @@ export async function handleResearchProjectRequest(
           }
         : {}),
     });
-    if (!activeRefresh || activeRefresh.started) retainRun(null, error);
   } finally {
     req.removeListener?.("aborted", onRequestAborted);
     signal?.removeEventListener("abort", abortFromExternalSignal);

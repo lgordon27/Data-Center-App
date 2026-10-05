@@ -21,11 +21,11 @@ A sanitized receipt's empty category array is not proof that the historical upst
 
 **How to apply:** Diagnose current replay separately from historical routing. Require the actual upstream and normalized records to demonstrate metadata loss; when no incorrect gate is reproduced, retain fail-closed admission and identify the minimum missing evidence.
 
-For paid research, create the fail-closed audit start inside the single-flight refresh owner immediately before provider work; that same owner alone completes the row. Defer completion until the HTTP response finishes or closes, and treat an early close as a client disconnect while aborting outstanding work.
+Create the audit start inside the single-flight refresh owner immediately before provider work; that same owner alone completes the row. Audit persistence is bounded and best-effort, not an admission gate. Persist the result before sending it so the response can disclose persistence failures; record delivery timing separately after response finish or close.
 
-**Why:** Starting outside the coalesced owner can create duplicate or phantom rows, while completing before the response lifecycle ends can lose delivery timing and disconnect state.
+**Why:** Starting outside the coalesced owner can create duplicate or phantom rows. The requested resilience policy prioritizes retaining a research result over audit availability, while preserving truthful delivery timing and an explicit persistence-incomplete response.
 
-**How to apply:** Keep lifecycle ownership with the cache-runner callback, fail before any paid provider call if start persistence fails, and attach final persistence to response `finish`/premature `close` rather than the first result computation.
+**How to apply:** Keep lifecycle ownership with the cache-runner callback and leave provider/admission controls unchanged. Retry connection-only audit failures once on a fresh connection, disclose exhausted writes without discarding results, and treat premature response close as a disconnect that aborts outstanding work.
 
 In a concurrent category scheduler, reserve the pending primary slot before invoking retrieval code that can authorize a repair or follow-up. Promise callbacks may run synchronously up to their first `await`, so a later reservation can hide the current primary from the budget check.
 

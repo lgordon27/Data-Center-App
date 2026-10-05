@@ -165,7 +165,7 @@ test("research audit repository starts and finishes the same open row", async ()
   assert.equal(calls[0].values?.[0], record.runId);
   assert.equal(calls[0].values?.[6], started.startedAt);
   assert.match(calls[1].text, /UPDATE research_run_audits SET/);
-  assert.match(calls[1].text, /WHERE run_id = \$1 AND finished_at IS NULL/);
+  assert.match(calls[1].text, /WHERE run_id = \$1 AND \(finished_at IS NULL OR finished_at = \$5::timestamptz\)/);
   assert.equal(calls[1].values?.[0], record.runId);
   assert.equal(calls[1].values?.[4], finished.finishedAt);
   assert.match(calls[2].text, /UPDATE research_run_audits SET/);

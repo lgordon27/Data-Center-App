@@ -330,6 +330,7 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
     outcome: project.researchOutcome,
     researchMode: project.researchMode,
     researchStatus: project.researchStatus,
+    errorType: project.researchError?.type,
     categories: project.researchAudit?.categories ?? [],
     evidenceCount: Object.values(project.researchProposals ?? {}).length,
   });
@@ -348,7 +349,7 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
   const activeResearchCancel = useRef<(() => void) | null>(null);
   const activeResearchRequestContext = useRef<{ name: string; location: string; knownData?: KnownProjectData; projectIdentity?: ResearchProjectIdentity } | null>(null);
   const activeResearchSelection = useRef<{ company: CompanyKey | null; selection: ProjectSelectionContext | null; selectionSource: "directory" | "market-exposure" | "custom-project-dialog" } | null>(null);
-  const [researchFailureKind, setResearchFailureKind] = useState<"busy" | "failed" | null>(null);
+  const [researchFailureKind, setResearchFailureKind] = useState<"busy" | "failed" | "interrupted" | "upstream" | null>(null);
   const [researchCooldownUntil, setResearchCooldownUntil] = useState<number | null>(null);
   const previousRoute = useRef(route);
   const isHome = route === "home";
@@ -538,7 +539,7 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
           ...provisional,
           researchStatus: cancelled ? "cancelled" : timedOut ? "timed-out" : "failed",
           researchError: {
-            type: cancelled ? "cancelled" : timedOut ? "timeout" : "upstream",
+            type: cancelled ? "cancelled" : timedOut ? "timeout" : failure.kind === "interrupted" ? "interrupted" : failure.kind === "upstream" ? "upstream" : "malformed-response",
             message: cancelled
               ? "Research was cancelled. The submitted project remains open with Missing Evidence; retry the same project when ready."
               : timedOut
@@ -639,7 +640,7 @@ export function CustomResearchBanner({
 }: {
   onCancel?: () => void;
   onRetry?: () => void;
-  failureKind?: "busy" | "failed" | null;
+  failureKind?: "busy" | "failed" | "interrupted" | "upstream" | null;
   cooldownUntil?: number | null;
 }) {
   const { project } = useDiligence();
@@ -651,6 +652,7 @@ export function CustomResearchBanner({
   const canRetry = isTimedOut || isFailed || isCancelled || project.researchMode === "research-incomplete" || failureKind === "busy";
   const publicPresentation = getPublicResearchPresentation({
     outcome: project.researchOutcome,
+    errorType: project.researchError?.type ?? failureKind ?? undefined,
     researchMode: project.researchMode,
     researchStatus: project.researchStatus,
     categories: project.researchAudit?.categories ?? [],

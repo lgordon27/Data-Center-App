@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -12,6 +12,7 @@ import {
 import {
   RED_OAK_GRID_CANARY_LIMITS,
   RED_OAK_RETRIEVAL_ONLY_CANARY_LIMITS,
+  acceptanceCaptureReportSection,
   buildAcceptanceReport,
   buildRedOakGridCanaryRequestOptions,
   canaryCandidateCount,
@@ -27,6 +28,8 @@ import {
   runRedOakGridCanary,
 } from "./researchProjectAcceptance.mjs";
 import { createRedOakClaimTrace } from "./redOakClaimTrace.mjs";
+import { createResearchFunnelDiagnostics } from "./researchFunnelDiagnostics.mjs";
+import { createLocalAcceptanceCapture } from "./researchAcceptanceCapture.mjs";
 
 test("Red Oak live canary requires explicit opt-in before inspecting gate files or issuing requests", async () => {
   await assert.rejects(
@@ -41,6 +44,8 @@ test("Red Oak live canary requires explicit opt-in before inspecting gate files 
 });
 
 test("Red Oak canary request options encode the exact isolated scope and hard limits", () => {
+  const captureRunId = "ab63ef3e-2cc6-40fa-9a7a-520f2cc198fa";
+  const acceptanceCapture = { marker: "only passed through, not used in this test" };
   const options = buildRedOakGridCanaryRequestOptions({
     apiKey: "offline",
     googleApiKey: "offline",
@@ -50,6 +55,8 @@ test("Red Oak canary request options encode the exact isolated scope and hard li
     rateLimiter: {},
     claimTrace: {},
     signal: new AbortController().signal,
+    runId: captureRunId,
+    acceptanceCapture,
   });
 
   assert.deepEqual(options.categoryIds, ["grid"]);
@@ -66,6 +73,8 @@ test("Red Oak canary request options encode the exact isolated scope and hard li
     "the canary must use the broadened one-request discovery builder");
   assert.equal(options.researchTimeoutMs, 75_000);
   assert.equal(RED_OAK_GRID_CANARY_LIMITS.invocationTimeoutMs, 90_000);
+  assert.equal(options.runId, captureRunId);
+  assert.equal(options.acceptanceCapture, acceptanceCapture);
 });
 
 test("Red Oak retrieval-only canary stops after one discovery and eight bounded physical opens", () => {
@@ -104,19 +113,152 @@ test("pnpm-forwarded separator is accepted before the canary live and gates opti
     {
       optIn: true,
       retrievalOnly: false,
+      captureExactContent: false,
       preconditionsPath: "/tmp/red-oak-gates.json",
       outputPath: undefined,
     },
   );
   assert.deepEqual(
-    parseRedOakCanaryCliArguments(["--", "--live", "--retrieval-only", "--gates", "/tmp/red-oak-gates.json"]),
+    parseRedOakCanaryCliArguments([
+      "--",
+      "--live",
+      "--retrieval-only",
+      "--capture-exact-content",
+      "--gates",
+      "/tmp/red-oak-gates.json",
+    ]),
     {
       optIn: true,
       retrievalOnly: true,
+      captureExactContent: true,
       preconditionsPath: "/tmp/red-oak-gates.json",
       outputPath: undefined,
     },
   );
+});
+
+test("bounded exact capture reads sanitized evidence into the acceptance report and is cleaned with its run directory", async () => {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), "safeloc-acceptance-report-capture-"));
+  const runId = "cc117d26-caae-4b02-a8fb-923becf68ba3";
+  const project = {
+    projectId: "Red Oak Campus",
+    name: "Red Oak Campus",
+    location: "Red Oak, Ellis County, Texas",
+    knownData: { operator: "DataBank" },
+  };
+  const capture = createLocalAcceptanceCapture({
+    runId,
+    project,
+    rootDirectory: path.join(temporary, "captures"),
+    limits: { maxTextBytes: 4_096, maxRecordBytes: 8_192, maxTotalBytes: 24_576 },
+  });
+  try {
+    const diagnostics = createResearchFunnelDiagnostics({ runId, project, acceptanceCapture: capture });
+    const passage = "The public filing identifies Red Oak Campus and an interconnection study.";
+    const attemptId = "grid:primary:bounded-test";
+    diagnostics.claimTrace.recordPassageSelection({
+      runId,
+      projectId: project.projectId,
+      categoryId: "grid",
+      attemptType: "primary",
+      attemptId,
+      records: [{
+        source: {
+          sourceId: "red-oak-source-1",
+          canonicalUrl: "https://records.example.gov/red-oak?token=transport-secret",
+          accessOutcome: { state: "accessible", passage },
+        },
+        included: true,
+        passageRetained: "retained",
+      }],
+    });
+    diagnostics.claimTrace.recordAnalysisPacket({
+      runId,
+      projectId: project.projectId,
+      categoryId: "grid",
+      attemptType: "primary",
+      attemptId,
+      packet: [{
+        sourceId: "red-oak-source-1",
+        sourceUrl: "https://records.example.gov/red-oak",
+        passage,
+      }],
+    });
+    diagnostics.claimTrace.recordProviderOriginal({
+      runId,
+      projectId: project.projectId,
+      categoryId: "grid",
+      attemptType: "primary",
+      attemptId,
+      providerResponseId: "resp-red-oak-acceptance",
+      expectedEvidenceIds: ["grid_interconnection"],
+      research: {
+        projectSummary: { name: "Red Oak Campus", location: project.location },
+        evidence: [{
+          id: "grid_interconnection",
+          value: "identified",
+          sources: [{ sourceId: "red-oak-source-1", url: "https://records.example.gov/red-oak" }],
+        }],
+      },
+    });
+    capture.finalize({ status: "provider-free-test" });
+    const captureReport = acceptanceCaptureReportSection(capture, { requested: true, runId });
+    const report = buildAcceptanceReport({
+      project,
+      liveRun: {
+        statusCode: 200,
+        payload: {
+          researchOutcome: { state: "incomplete-technical-limitation", eligibleEvidenceCount: 0, reasonCodes: [] },
+          researchAudit: { categories: [], elapsedMs: 1 },
+          evidence: [],
+          sourceLedger: [],
+        },
+      },
+    });
+    report.canary = { acceptanceCapture: captureReport };
+    const reportPath = path.join(temporary, "acceptance-report.json");
+    await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
+    const readReport = JSON.parse(await readFile(reportPath, "utf8"));
+    const captureSection = readReport.canary.acceptanceCapture;
+    assert.equal(captureSection.enabled, true);
+    assert.equal(captureSection.complete, true);
+    assert.equal(captureSection.readBackVerified, true);
+    assert.equal(captureSection.contentIntegrityVerified, true);
+    assert.equal(captureSection.runId, runId);
+    assert.ok(captureSection.readBackBytes <= captureSection.limits.maxTotalBytes);
+    assert.ok(captureSection.records.some((record) =>
+      record.stage === "admission-retained-passage"
+      && record.content.text === passage
+      && record.content.exactOriginal === true
+      && record.lineage.categoryId === "grid"
+      && record.lineage.attemptId === attemptId
+      && record.lineage.sourceId === "red-oak-source-1"));
+    assert.ok(captureSection.records.some((record) =>
+      record.stage === "final-analysis-packet"
+      && record.content.exactOriginal === true
+      && record.lineage.sourceIds.includes("red-oak-source-1")));
+    assert.ok(captureSection.records.some((record) =>
+      record.stage === "provider-original-structured-claims"
+      && record.lineage.providerResponseId === "resp-red-oak-acceptance"
+      && record.lineage.sourceIds.includes("red-oak-source-1")));
+    assert.doesNotMatch(JSON.stringify(readReport), /transport-secret/);
+
+    const cutoffCapture = createLocalAcceptanceCapture({
+      runId: "e98ce4f9-65dd-4b2e-b2a0-13096578f4a2",
+      project,
+      rootDirectory: path.join(temporary, "cutoff-captures"),
+    });
+    cutoffCapture.finalize({ status: "partial-timeout-cutoff" });
+    const cutoffSection = acceptanceCaptureReportSection(cutoffCapture, {
+      requested: true,
+      runId: cutoffCapture.status().runId,
+    });
+    assert.equal(cutoffSection.complete, false);
+    assert.equal(cutoffSection.finalizationStatus, "partial-timeout-cutoff");
+  } finally {
+    await rm(temporary, { recursive: true, force: true });
+  }
+  await assert.rejects(readFile(path.join(temporary, "acceptance-report.json")));
 });
 
 test("request-local canary collector preserves bounded discovery and receipt metadata without document payloads", () => {

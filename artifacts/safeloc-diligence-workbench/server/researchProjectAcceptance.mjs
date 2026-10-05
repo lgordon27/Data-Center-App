@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,7 +16,8 @@ import {
 } from "./researchProjectProxy.mjs";
 import { createResearchProjectCache } from "./researchProjectCache.mjs";
 import { createProjectResearchRegistry } from "./projectResearchRegistry.mjs";
-import { createRedOakClaimTrace } from "./redOakClaimTrace.mjs";
+import { createResearchFunnelDiagnostics } from "./researchFunnelDiagnostics.mjs";
+import { createLocalAcceptanceCapture } from "./researchAcceptanceCapture.mjs";
 import { sourceUrlAliases } from "../src/data/sourceValidationPolicy.mjs";
 import {
   buildGoogleGroundedDiscoveryAliasSet,
@@ -107,6 +108,8 @@ export function buildRedOakGridCanaryRequestOptions({
   rateLimiter,
   claimTrace,
   canaryDiagnosticCollector,
+  runId,
+  acceptanceCapture,
   signal,
   retrievalOnly = false,
 } = {}) {
@@ -139,7 +142,64 @@ export function buildRedOakGridCanaryRequestOptions({
     rateLimiter,
     claimTrace,
     canaryDiagnosticCollector,
+    ...(runId ? { runId } : {}),
+    ...(acceptanceCapture ? { acceptanceCapture } : {}),
     signal,
+  };
+}
+
+export function acceptanceCaptureReportSection(capture, { requested = false, runId = null } = {}) {
+  if (!capture) {
+    return {
+      enabled: false,
+      requested,
+      runId,
+      reason: requested ? "capture-unavailable" : "not-explicitly-requested",
+    };
+  }
+  const status = capture.status();
+  if (!status.closed) throw new Error("Acceptance capture must be finalized before adding it to the report.");
+  const readBack = capture.readBack();
+  const textRecords = readBack.records.filter((record) => record?.type === "text" && record?.content);
+  const structuredRecords = textRecords.filter((record) => record.lineage?.representation === "json-serialized-structured-value");
+  const alteredTextRecordCount = textRecords.filter((record) => record.content.altered === true).length;
+  const truncatedTextRecordCount = textRecords.filter((record) => record.content.truncated === true).length;
+  const finalization = readBack.records.find((record) => record?.type === "capture-summary");
+  const cutoffStatuses = new Set([
+    "partial-timeout-cutoff",
+    "request-adapter-failure",
+    "failed-before-report",
+    "report-finalization",
+  ]);
+  const complete = status.recordsDropped === 0
+    && !status.overflowWritten
+    && !status.writeError
+    && !cutoffStatuses.has(finalization?.status);
+  return {
+    enabled: true,
+    requested: true,
+    runId: readBack.runId,
+    complete,
+    finalizationStatus: finalization?.status ?? "missing-summary",
+    artifactPath: capture.filePath,
+    readBackVerified: true,
+    contentIntegrityVerified: readBack.contentIntegrityVerified,
+    readBackSha256: readBack.sha256,
+    readBackBytes: readBack.bytes,
+    recordCount: readBack.records.length,
+    recordsDropped: status.recordsDropped,
+    overflowWritten: status.overflowWritten,
+    writeError: status.writeError,
+    limits: status.limits,
+    alteredTextRecordCount,
+    truncatedTextRecordCount,
+    unchangedTextRecordCount: textRecords.filter((record) => record.content.exactOriginal === true).length,
+    unchangedProviderOutputTextRecordCount: textRecords.filter((record) =>
+      record.stage === "provider-claim-content-before-normalization" && record.content.exactOriginal === true).length,
+    structuredJsonSerializationRecordCount: structuredRecords.length,
+    alteredStructuredRecordCount: structuredRecords.filter((record) => record.content.altered === true).length,
+    records: readBack.records,
+    fidelityNote: "exactOriginal is true only when captured text is unchanged from that stage's recorded input. Structured records are JSON serializations, not provider response bytes; provider-output text does not establish raw network response bytes.",
   };
 }
 
@@ -2221,6 +2281,7 @@ function persistCanaryReport(outputPath, report) {
     encoding: "utf8",
     mode: 0o600,
   });
+  chmodSync(outputPath, 0o600);
 }
 
 async function raceWithTimeout(promise, timeoutMs, timeoutValue = null) {
@@ -2244,6 +2305,7 @@ async function raceWithTimeout(promise, timeoutMs, timeoutValue = null) {
 export async function runRedOakGridCanary({
   optIn = false,
   retrievalOnly = false,
+  captureExactContent = false,
   preconditionsPath = null,
   preconditions = null,
   apiKey = process.env.OPENAI_API_KEY,
@@ -2314,7 +2376,6 @@ export async function runRedOakGridCanary({
     },
   };
   const auditRepository = createInMemoryCanaryAuditRepository();
-  const claimTrace = createRedOakClaimTrace();
   const canaryDiagnosticCollector = createRedOakCanaryDiagnosticCollector();
   const abortController = new AbortController();
   let researchTimeoutReached = false;
@@ -2327,6 +2388,17 @@ export async function runRedOakGridCanary({
     ...RED_OAK_GRID_CANARY_PROJECT,
     forceRefresh: true,
   });
+  const captureRunId = randomUUID();
+  const captureProject = { ...project, projectId: project.projectId ?? project.name };
+  const acceptanceCapture = captureExactContent
+    ? createLocalAcceptanceCapture({ runId: captureRunId, project: captureProject })
+    : null;
+  const acceptanceDiagnostics = createResearchFunnelDiagnostics({
+    runId: captureRunId,
+    project: captureProject,
+    acceptanceCapture,
+  });
+  const claimTrace = acceptanceDiagnostics.claimTrace;
   let liveRun = null;
   let report = null;
   try {
@@ -2351,6 +2423,8 @@ export async function runRedOakGridCanary({
         rateLimiter: createResearchProjectRateLimiter(),
         claimTrace,
           canaryDiagnosticCollector,
+        runId: captureRunId,
+        acceptanceCapture,
         signal: abortController.signal,
           retrievalOnly,
       }),
@@ -2384,6 +2458,11 @@ export async function runRedOakGridCanary({
         },
       };
     }
+    acceptanceCapture?.finalize({
+      status: invocationCancellationStarted || researchTimeoutReached
+        ? "partial-timeout-cutoff"
+        : settled?.result ? "request-settled" : "request-adapter-failure",
+    });
     report = buildAcceptanceReport({
       project,
       liveRun,
@@ -2528,6 +2607,10 @@ export async function runRedOakGridCanary({
         invocationCancellationStarted,
         hardDeadlineAt: new Date(hardDeadlineAt).toISOString(),
       },
+      acceptanceCapture: acceptanceCaptureReportSection(acceptanceCapture, {
+        requested: captureExactContent,
+        runId: captureRunId,
+      }),
       contentQualityObservations: canaryContentQualityObservations(report),
       discoveryAliasAudit,
       gridAnalysisPackets,
@@ -2554,6 +2637,11 @@ export async function runRedOakGridCanary({
   } finally {
     clearTimeout(researchTimer);
     clearTimeout(invocationTimer);
+    if (acceptanceCapture && !acceptanceCapture.status().closed) {
+      acceptanceCapture.finalize({
+        status: report ? "report-finalization" : "failed-before-report",
+      });
+    }
     const cleanupPromise = Promise.allSettled([
       ...pendingRegistryWrites,
       ...auditRepository.pendingWrites,
@@ -2585,7 +2673,13 @@ function parseKnownData(rawValue) {
 }
 
 export function parseRedOakCanaryCliArguments(args) {
-  const parsed = { optIn: false, retrievalOnly: false, preconditionsPath: null, outputPath: undefined };
+  const parsed = {
+    optIn: false,
+    retrievalOnly: false,
+    captureExactContent: false,
+    preconditionsPath: null,
+    outputPath: undefined,
+  };
   const forwardedArgs = args[0] === "--" ? args.slice(1) : args;
   for (let index = 0; index < forwardedArgs.length; index += 1) {
     const argument = forwardedArgs[index];
@@ -2593,6 +2687,8 @@ export function parseRedOakCanaryCliArguments(args) {
       parsed.optIn = true;
     } else if (argument === "--retrieval-only") {
       parsed.retrievalOnly = true;
+    } else if (argument === "--capture-exact-content") {
+      parsed.captureExactContent = true;
     } else if (argument === "--gates" || argument === "--output") {
       const value = forwardedArgs[index + 1];
       if (!value || value.startsWith("--")) throw new Error(`${argument} requires a file path.`);

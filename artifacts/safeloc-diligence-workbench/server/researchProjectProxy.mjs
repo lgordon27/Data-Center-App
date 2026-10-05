@@ -6685,6 +6685,13 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
     attemptType: activeCategory.attempt,
     attemptId: providerAttempt.attemptId,
     providerResponseId,
+    sourceIds: categoryAnalysisPacket.flatMap((source) => [
+      source?.sourceId,
+      source?.occurrenceId,
+      source?.canonicalUrl,
+      source?.sourceUrl,
+      source?.url,
+    ].filter((value) => typeof value === "string" && value.length > 0)),
     content,
   });
   activeCategory?.claimTrace?.recordAnalysisPacket?.({
@@ -6741,6 +6748,7 @@ async function researchProjectWithWebSearch(project, apiKey, fetchImpl, signal, 
     projectId: project.projectId ?? project.id ?? project.name,
     categoryId: activeCategory.categoryId,
     attemptType: activeCategory.attempt,
+    attemptId: providerAttempt.attemptId,
     providerResponseId,
     parsedAt: new Date().toISOString(),
     expectedEvidenceIds: scopedEvidenceIds,
@@ -9247,6 +9255,8 @@ export async function handleResearchProjectRequest(
     useDefaultSecConnector = true,
     retrievalOnly = false,
     canaryGridIdentityGate = false,
+    runId: requestedRunId = null,
+    acceptanceCapture = null,
     signal = null,
     providerGate = researchProviderGate,
   } = {},
@@ -9417,7 +9427,7 @@ export async function handleResearchProjectRequest(
     const startedAtMs = Date.now();
     const startedAt = new Date(startedAtMs).toISOString();
     const deadlineAtMs = startedAtMs + boundedResearchTimeoutMs;
-    const runId = randomUUID();
+    const runId = requestedRunId ?? randomUUID();
     let resolveStartReady;
     let rejectStartReady;
     const startReady = new Promise((resolve, reject) => {
@@ -9479,14 +9489,14 @@ export async function handleResearchProjectRequest(
         ...project,
         projectId: project.projectId ?? project.id ?? project.name,
       };
-      const acceptanceCapture = consumeAcceptanceCaptureOptIn({
+      const captureSink = acceptanceCapture ?? consumeAcceptanceCaptureOptIn({
         project: projectForCapture,
         runId,
       });
       const funnelDiagnostics = createResearchFunnelDiagnostics({
         runId,
         project: projectForCapture,
-        acceptanceCapture,
+        acceptanceCapture: captureSink,
       });
       context.funnelDiagnostics = funnelDiagnostics;
       try {

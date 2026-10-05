@@ -33,9 +33,15 @@ export const ACCEPTANCE_CAPTURE_LIMITS = Object.freeze({
 
 const SECRET_QUERY_KEY = /(?:^|[_-])(?:api[_-]?key|key|token|secret|signature|sig|auth|credential|password|session|jwt|access[_-]?token)(?:$|[_-])/i;
 const SECRET_ASSIGNMENT = /\b(api[_ -]?key|access[_ -]?token|authorization|proxy-authorization|token|secret|password|credential|session(?:[_ -]?id)?|jwt|cookie)\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;}\]]+)/gi;
+const JSON_SECRET_PROPERTY = /(["']?)(api[_ -]?key|access[_ -]?token|authorization|proxy-authorization|token|secret|password|credential|session(?:[_ -]?id)?|jwt|cookie)\1\s*:\s*("[^"]*"|'[^']*'|[^\s,;}\]]+)/gi;
 const PROVIDER_KEY = /\b(?:sk|AIza|ghp|gho|github_pat|xox[baprs])[-_][A-Za-z0-9_-]{12,}\b/g;
 const HEADER_SECRET = /^(\s*(?:authorization|proxy-authorization|cookie|set-cookie|x-api-key|api-key|x-goog-api-key)\s*:\s*)[^\r\n]*/gim;
 const URL_TOKEN = /https?:\/\/[^\s"'<>]+/gi;
+const SENSITIVE_METADATA_KEY = /^(?:authorization|proxyauthorization|cookie|setcookie|xapikey|xgoogleapikey|apikey|accesstoken|token|secret|password|credential|session(?:id)?|jwt|headers?|requestheaders|responseheaders|transport(?:metadata)?|http(?:request|response)?(?:headers?|metadata|options|config|context|trace|diagnostic|debug|details)|request(?:metadata|options|config|context|headers?|url|id|trace|diagnostic|debug|details)|response(?:metadata|options|config|context|headers?|url|id|trace|diagnostic|debug|details)|raw(?:request|response|headers|body)|socket|tls|traceparent|tracestate|connection|useragent|host|remoteaddress|localaddress)$/i;
+
+function sensitiveMetadataKey(key) {
+  return SENSITIVE_METADATA_KEY.test(String(key).replace(/[^a-z0-9]/gi, "").toLowerCase());
+}
 
 function sha256(value) {
   return createHash("sha256").update(value, "utf8").digest("hex");
@@ -117,6 +123,10 @@ export function sanitizeAcceptanceCaptureText(value, { maxBytes = ACCEPTANCE_CAP
   const reasons = new Set();
   let sanitized = original
     .replace(URL_TOKEN, (token) => sanitizedUrlToken(token, reasons))
+    .replace(JSON_SECRET_PROPERTY, (_match, quote, key, value) => {
+      reasons.add("credential-property");
+      return `${quote}${key}${quote}:"[redacted]"`;
+    })
     .replace(HEADER_SECRET, (_match, header) => {
       reasons.add("sensitive-header-value");
       return `${header}[redacted]`;
@@ -166,26 +176,55 @@ export function sanitizeAcceptanceCaptureText(value, { maxBytes = ACCEPTANCE_CAP
 function sanitizeMetadata(value, depth = 0, alterationState = { altered: false }) {
   if (typeof value === "string") {
     const cleaned = sanitizeAcceptanceCaptureText(value, { maxBytes: 2_000 });
-    if (!cleaned.exactOriginal) alterationState.altered = true;
+    if (!cleaned.exactOriginal) {
+      alterationState.altered = true;
+      alterationState.reasons ??= new Set();
+      for (const reason of cleaned.alterationReasons) alterationState.reasons.add(reason);
+      alterationState.truncated ||= cleaned.truncated;
+    }
     return cleaned.text;
   }
   if (value === null || typeof value === "boolean" || typeof value === "number") return value;
   if (depth >= 5) {
     alterationState.altered = true;
+    alterationState.truncated = true;
+    alterationState.reasons ??= new Set();
+    alterationState.reasons.add("metadata-depth-limit");
     return "[metadata-depth-limit]";
   }
   if (Array.isArray(value)) {
-    if (value.length > 64) alterationState.altered = true;
+    if (value.length > 64) {
+      alterationState.altered = true;
+      alterationState.truncated = true;
+      alterationState.reasons ??= new Set();
+      alterationState.reasons.add("metadata-array-item-limit");
+    }
     return value.slice(0, 64).map((item) => sanitizeMetadata(item, depth + 1, alterationState));
   }
   if (value && typeof value === "object") {
     const entries = Object.entries(value);
-    if (entries.length > 64) alterationState.altered = true;
-    return Object.fromEntries(entries.slice(0, 64).map(([key, item]) => {
+    if (entries.length > 64) {
+      alterationState.altered = true;
+      alterationState.truncated = true;
+      alterationState.reasons ??= new Set();
+      alterationState.reasons.add("metadata-object-entry-limit");
+    }
+    const safeEntries = entries.slice(0, 64).flatMap(([key, item]) => {
+      if (sensitiveMetadataKey(key)) {
+        alterationState.altered = true;
+        alterationState.reasons ??= new Set();
+        alterationState.reasons.add("sensitive-structured-field-excluded");
+        return [];
+      }
       const safeKey = sanitizeAcceptanceCaptureText(key, { maxBytes: 120 });
-      if (!safeKey.exactOriginal) alterationState.altered = true;
-      return [safeKey.text, sanitizeMetadata(item, depth + 1, alterationState)];
-    }));
+      if (!safeKey.exactOriginal) {
+        alterationState.altered = true;
+        alterationState.reasons ??= new Set();
+        for (const reason of safeKey.alterationReasons) alterationState.reasons.add(reason);
+      }
+      return [[safeKey.text, sanitizeMetadata(item, depth + 1, alterationState)]];
+    });
+    return Object.fromEntries(safeEntries);
   }
   return String(value);
 }
@@ -237,12 +276,14 @@ export function createLocalAcceptanceCapture({
   let closed = false;
   let recordId = 0;
   const recordCounts = {};
-  const projectSnapshot = {
+  const projectSnapshotRaw = {
     projectId: project?.projectId ?? project?.id ?? null,
     name: project?.name ?? null,
     location: project?.location ?? null,
     operator: project?.projectIdentity?.operator ?? project?.knownData?.operator ?? project?.operator ?? null,
   };
+  const projectMetadataState = { altered: false };
+  const projectSnapshot = sanitizeMetadata(projectSnapshotRaw, 0, projectMetadataState);
 
   const writeLine = (record, { reserveSummary = true } = {}) => {
     if (closed || writeError) return false;
@@ -257,6 +298,7 @@ export function createLocalAcceptanceCapture({
           recordId: ++recordId,
           recordedAt: now(),
           type: "capture-overflow",
+          runId,
           reason: lineBytes > boundedLimits.maxRecordBytes ? "record-size-limit" : "run-size-limit",
           droppedRecordCountAtNotice: recordsDropped,
           maxRecordBytes: boundedLimits.maxRecordBytes,
@@ -294,40 +336,125 @@ export function createLocalAcceptanceCapture({
       stage,
       runId,
       project: projectSnapshot,
+      projectAltered: projectMetadataState.altered,
+      projectAlterationReasons: [...(projectMetadataState.reasons ?? [])],
       lineage: safeLineage,
       lineageAltered: metadataState.altered,
+      lineageAlterationReasons: [...(metadataState.reasons ?? [])],
       ...(content ? { content } : {}),
     };
+  };
+
+  const writeText = ({
+    stage,
+    text,
+    captureText = text,
+    lineage = {},
+    structuredAlterationReasons = [],
+    structuredTruncated = false,
+  } = {}) => {
+    if (typeof stage !== "string" || !stage.trim() || typeof text !== "string" || typeof captureText !== "string") {
+      return false;
+    }
+    const content = sanitizeAcceptanceCaptureText(captureText, { maxBytes: boundedLimits.maxTextBytes });
+    const alterationReasons = [...new Set([
+      ...content.alterationReasons,
+      ...structuredAlterationReasons,
+      ...(captureText !== text && structuredAlterationReasons.length === 0 ? ["capture-representation-changed"] : []),
+    ])];
+    const representationAltered = captureText !== text;
+    const structurallyAltered = structuredAlterationReasons.length > 0 || representationAltered;
+    return writeLine(baseRecord("text", stage, lineage, {
+      originalSha256: sha256(text),
+      originalBytes: Buffer.byteLength(text, "utf8"),
+      capturedSha256: content.capturedSha256,
+      capturedBytes: content.capturedBytes,
+      exactOriginal: content.exactOriginal && !structurallyAltered,
+      altered: content.altered || structurallyAltered,
+      truncated: content.truncated || structuredTruncated,
+      alterationReasons,
+      text: content.text,
+    }));
   };
 
   const writer = {
     filePath,
     runDirectory,
     limits: boundedLimits,
-    writeText({ stage, text, lineage = {} } = {}) {
-      if (typeof stage !== "string" || !stage.trim() || typeof text !== "string") return false;
-      const content = sanitizeAcceptanceCaptureText(text, { maxBytes: boundedLimits.maxTextBytes });
-      return writeLine(baseRecord("text", stage, lineage, {
-        originalSha256: content.originalSha256,
-        originalBytes: content.originalBytes,
-        capturedSha256: content.capturedSha256,
-        capturedBytes: content.capturedBytes,
-        exactOriginal: content.exactOriginal,
-        altered: content.altered,
-        truncated: content.truncated,
-        alterationReasons: content.alterationReasons,
-        text: content.text,
-      }));
-    },
+    writeText,
     writeStructured({ stage, value, lineage = {} } = {}) {
-      let text;
+      let originalText;
       try {
-        text = JSON.stringify(value);
+        originalText = JSON.stringify(value);
       } catch {
         return false;
       }
-      if (typeof text !== "string") return false;
-      return writer.writeText({ stage, text, lineage: { ...lineage, representation: "json" } });
+      if (typeof originalText !== "string") return false;
+      const alterationState = { altered: false };
+      const safeValue = sanitizeMetadata(value, 0, alterationState);
+      let safeText;
+      try {
+        safeText = JSON.stringify(safeValue);
+      } catch {
+        return false;
+      }
+      const structuredAlterationReasons = [...(alterationState.reasons ?? [])];
+      if (safeText !== originalText && structuredAlterationReasons.length === 0) {
+        structuredAlterationReasons.push("structured-value-representation-changed");
+      }
+      return writeText({
+        stage,
+        text: originalText,
+        captureText: safeText,
+        lineage: { ...lineage, representation: "json-serialized-structured-value" },
+        structuredAlterationReasons,
+        structuredTruncated: alterationState.truncated === true,
+      });
+    },
+    readBack() {
+      if (!closed) throw new Error("Acceptance capture must be finalized before read-back.");
+      const metadata = statSync(filePath);
+      if (!metadata.isFile() || metadata.size > boundedLimits.maxTotalBytes) {
+        throw new Error("Acceptance capture read-back exceeded its configured size limit.");
+      }
+      const serialized = readFileSync(filePath, "utf8");
+      if (Buffer.byteLength(serialized, "utf8") !== metadata.size || !serialized.endsWith("\n")) {
+        throw new Error("Acceptance capture read-back is incomplete.");
+      }
+      const lines = serialized.trimEnd().split("\n");
+      if (lines.some((line) => Buffer.byteLength(line, "utf8") + 1 > boundedLimits.maxRecordBytes)) {
+        throw new Error("Acceptance capture read-back contains an oversized record.");
+      }
+      const records = lines.map((line) => JSON.parse(line));
+      if (records.some((record) => record?.runId !== runId)) {
+        throw new Error("Acceptance capture read-back contains a mismatched run ID.");
+      }
+      for (const record of records) {
+        const content = record?.content;
+        if (!content || typeof content.text !== "string") continue;
+        const actualBytes = Buffer.byteLength(content.text, "utf8");
+        const actualSha256 = sha256(content.text);
+        if (content.capturedBytes !== actualBytes || content.capturedSha256 !== actualSha256) {
+          throw new Error("Acceptance capture read-back content hash does not match its captured text.");
+        }
+        if (content.exactOriginal === true
+          && (content.altered === true
+            || content.truncated === true
+            || content.originalBytes !== actualBytes
+            || content.originalSha256 !== actualSha256)) {
+          throw new Error("Acceptance capture labels altered content as unchanged.");
+        }
+        if (content.exactOriginal !== true && content.altered !== true) {
+          throw new Error("Acceptance capture has altered content without an explicit alteration state.");
+        }
+      }
+      return {
+        runId,
+        bytes: metadata.size,
+        sha256: sha256(serialized),
+        contentIntegrityVerified: true,
+        records,
+      };
     },
     finalize({ status = "unknown" } = {}) {
       if (closed) return this.status();

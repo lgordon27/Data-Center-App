@@ -429,6 +429,23 @@ test("one-use acceptance capture round-trips exact text with admission, provider
         sourceUrl: "https://records.example.gov/red-oak/interconnection",
       }],
     });
+    const providerOriginalClaims = {
+      projectSummary: {
+        name: "Red Oak Campus",
+        location: "Red Oak, Ellis County, Texas",
+        description: "The provider-original project summary.",
+      },
+      evidence: [{
+        id: "grid_interconnection",
+        value: 480,
+        unit: "MW",
+        claimPassage: passage,
+        sources: [{
+          sourceId: "red-oak-source-1",
+          url: "https://records.example.gov/red-oak/interconnection",
+        }],
+      }],
+    };
     const diagnostics = createResearchFunnelDiagnostics({
       runId,
       project: { ...project, projectId: "Red Oak Campus" },
@@ -478,7 +495,18 @@ test("one-use acceptance capture round-trips exact text with admission, provider
       attemptType: "primary",
       attemptId: "grid:primary:attempt-1",
       providerResponseId: "resp-red-oak-1",
+      sourceIds: ["red-oak-source-1"],
       content: providerOutput,
+    });
+    diagnostics.claimTrace.recordProviderOriginal({
+      runId,
+      projectId: "Red Oak Campus",
+      categoryId: "grid",
+      attemptType: "primary",
+      attemptId: "grid:primary:attempt-1",
+      providerResponseId: "resp-red-oak-1",
+      expectedEvidenceIds: ["grid_interconnection"],
+      research: providerOriginalClaims,
     });
     diagnostics.claimTrace.recordMappingReceipts({
       runId,
@@ -508,8 +536,16 @@ test("one-use acceptance capture round-trips exact text with admission, provider
     const packet = recordFor("final-analysis-packet");
     const finalPrompt = recordFor("final-analysis-user-message");
     const rawClaim = recordFor("provider-claim-content-before-normalization");
+    const structuredClaims = recordFor("provider-original-structured-claims");
     const validated = recordFor("validated-evidence");
-    for (const [label, record] of Object.entries({ admission, packet, finalPrompt, rawClaim, validated })) {
+    for (const [label, record] of Object.entries({
+      admission,
+      packet,
+      finalPrompt,
+      rawClaim,
+      structuredClaims,
+      validated,
+    })) {
       assert.ok(record, `missing ${label} record`);
     }
     assert.equal(admission.content.text, passage);
@@ -520,6 +556,11 @@ test("one-use acceptance capture round-trips exact text with admission, provider
     assert.equal(packet.content.exactOriginal, true);
     assert.equal(packet.content.originalSha256, createHash("sha256").update(packet.content.text).digest("hex"));
     assert.equal(JSON.parse(packet.content.text)[0].passage, passage);
+    assert.equal(packet.lineage.runId, runId);
+    assert.equal(packet.lineage.projectId, "Red Oak Campus");
+    assert.equal(packet.lineage.categoryId, "grid");
+    assert.equal(packet.lineage.attemptId, "grid:primary:attempt-1");
+    assert.deepEqual(packet.lineage.sourceIds, ["red-oak-source-1", "red-oak-occurrence-1", "https://records.example.gov/red-oak/interconnection"]);
     assert.equal(finalPrompt.content.text, prompt);
     assert.equal(finalPrompt.content.originalSha256, createHash("sha256").update(prompt).digest("hex"));
     assert.equal(finalPrompt.lineage.attemptId, "grid:primary:attempt-1");
@@ -527,12 +568,27 @@ test("one-use acceptance capture round-trips exact text with admission, provider
     assert.equal(rawClaim.content.exactOriginal, true);
     assert.equal(rawClaim.content.originalSha256, createHash("sha256").update(providerOutput).digest("hex"));
     assert.equal(rawClaim.lineage.providerResponseId, "resp-red-oak-1");
+    assert.deepEqual(rawClaim.lineage.sourceIds, ["red-oak-source-1"]);
+    assert.equal(rawClaim.lineage.sourceRepresentation, "provider-content-text-from-sdk");
+    assert.equal(structuredClaims.content.exactOriginal, true);
+    assert.deepEqual(JSON.parse(structuredClaims.content.text), providerOriginalClaims);
+    assert.equal(structuredClaims.lineage.runId, runId);
+    assert.equal(structuredClaims.lineage.projectId, "Red Oak Campus");
+    assert.equal(structuredClaims.lineage.categoryId, "grid");
+    assert.equal(structuredClaims.lineage.attemptId, "grid:primary:attempt-1");
+    assert.equal(structuredClaims.lineage.providerResponseId, "resp-red-oak-1");
+    assert.deepEqual(structuredClaims.lineage.sourceIds, ["red-oak-source-1", "https://records.example.gov/red-oak/interconnection"]);
+    assert.equal(structuredClaims.lineage.sourceRepresentation, "parsed-provider-original-structured-output");
     assert.equal(validated.lineage.claimId, "grid_interconnection");
     assert.equal(validated.lineage.attemptId, "grid:primary:attempt-1");
     assert.equal(validated.lineage.providerResponseId, "resp-red-oak-1");
     assert.deepEqual(validated.lineage.sourceIds, ["red-oak-source-1"]);
     assert.equal(statSync(path.dirname(filePath)).mode & 0o777, 0o700);
     assert.equal(statSync(filePath).mode & 0o777, 0o600);
+    const readBack = sink.readBack();
+    assert.equal(readBack.runId, runId);
+    assert.equal(readBack.sha256, createHash("sha256").update(readFileSync(filePath)).digest("hex"));
+    assert.equal(readBack.records.length, records.length);
   } finally {
     rmSync(temporary, { recursive: true, force: true });
   }
@@ -546,8 +602,20 @@ test("acceptance capture flags redaction, truncation, and run-size overflow with
       rootDirectory: path.join(temporary, "redaction"),
       limits: { maxTextBytes: 110 },
     });
-    const sensitive = `Bearer bearer-secret token=private-secret https://records.example.gov/file?api_key=url-secret 192.168.1.22 ${"x".repeat(240)}`;
+    const sensitive = `Bearer bearer-secret token=private-secret https://records.example.gov/file?api_key=url-secret 192.168.1.22 {"authorization":"Bearer json-secret","x-api-key":"header-secret"} ${"x".repeat(240)}`;
     redactionCapture.writeText({ stage: "safety-test", text: sensitive });
+    redactionCapture.writeStructured({
+      stage: "safety-structured-test",
+      value: {
+        evidence: [{ id: "safe-claim", value: 1 }],
+        authorization: "Bearer structured-secret",
+        headers: { "x-api-key": "structured-header-secret" },
+        requestId: "transport-request-id",
+        response_headers: { authorization: "response-header-secret" },
+        http_request_options: { url: "https://internal.example/private" },
+        remote_address: "10.0.0.10",
+      },
+    });
     redactionCapture.finalize({ status: "test" });
     const redactedRecords = readFileSync(redactionCapture.filePath, "utf8")
       .trim().split("\n").map((line) => JSON.parse(line));
@@ -560,7 +628,31 @@ test("acceptance capture flags redaction, truncation, and run-size overflow with
     assert.ok(redacted.content.alterationReasons.includes("sensitive-url-query"));
     assert.ok(redacted.content.alterationReasons.includes("private-network-address"));
     assert.ok(redacted.content.alterationReasons.includes("capture-size-limit"));
-    assert.doesNotMatch(redacted.content.text, /bearer-secret|private-secret|url-secret|192\.168\.1\.22/);
+    assert.ok(redacted.content.alterationReasons.includes("credential-property"));
+    assert.doesNotMatch(redacted.content.text, /bearer-secret|private-secret|url-secret|json-secret|header-secret|192\.168\.1\.22/);
+    const structuredSafetyRecord = redactedRecords.find((record) => record.stage === "safety-structured-test");
+    assert.equal(structuredSafetyRecord.content.exactOriginal, false);
+    assert.ok(structuredSafetyRecord.content.alterationReasons.includes("sensitive-structured-field-excluded"));
+    assert.equal(structuredSafetyRecord.content.truncated, false);
+    assert.doesNotMatch(
+      structuredSafetyRecord.content.text,
+      /structured-secret|structured-header-secret|response-header-secret|transport-request-id|internal\.example|10\.0\.0\.10|authorization|headers|requestId|remote_address/,
+    );
+
+    const structuredTruncationCapture = createLocalAcceptanceCapture({
+      runId: randomUUID(),
+      rootDirectory: path.join(temporary, "structured-truncation"),
+    });
+    structuredTruncationCapture.writeStructured({
+      stage: "safety-structured-truncation-test",
+      value: { claims: Array.from({ length: 65 }, (_, index) => ({ id: `claim-${index}` })) },
+    });
+    structuredTruncationCapture.finalize({ status: "test" });
+    const structuredTruncationRecord = structuredTruncationCapture.readBack().records
+      .find((record) => record.stage === "safety-structured-truncation-test");
+    assert.equal(structuredTruncationRecord.content.exactOriginal, false);
+    assert.equal(structuredTruncationRecord.content.truncated, true);
+    assert.ok(structuredTruncationRecord.content.alterationReasons.includes("metadata-array-item-limit"));
 
     const overflowCapture = createLocalAcceptanceCapture({
       runId: randomUUID(),
@@ -578,6 +670,7 @@ test("acceptance capture flags redaction, truncation, and run-size overflow with
     assert.ok(summary.recordsDropped > 0);
     assert.equal(finalStatus.overflowWritten, true);
     assert.ok(finalStatus.bytesWritten <= 4_096);
+    assert.equal(overflowCapture.readBack().bytes, finalStatus.bytesWritten);
   } finally {
     rmSync(temporary, { recursive: true, force: true });
   }

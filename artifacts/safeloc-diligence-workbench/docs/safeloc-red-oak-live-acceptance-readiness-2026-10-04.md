@@ -6,6 +6,22 @@
 
 The useful, attributable, scope-correct finding target was **not evaluated and was not met**. This is a capture-readiness blocker, not evidence of a live discovery, admission, scheduling, provider, claim-validation, or presentation failure.
 
+## Capture-readiness follow-up
+
+The capture blocker described above is now addressed in the code; this follow-up did not start another live run. Exact-content capture remains off by default and requires the dedicated live canary opt-in plus `--capture-exact-content`:
+
+```text
+pnpm --filter @workspace/safeloc-diligence-workbench research:red-oak-grid-canary -- --live --capture-exact-content --gates <passed-gates.json>
+```
+
+- The capture shares the canary's UUID run ID and remains subject to its single-invocation-per-source-revision guard, one discovery request, one structured analysis call, eight document opens, and hard runtime deadline.
+- The report includes a bounded read-back of the private JSONL trace. Captured stages include retained source passages, the actual issued category packet, raw provider claim text, parsed provider-original claims, and validated evidence.
+- Each evidence record carries project, run, category, attempt, and source lineage where available. The parsed structured-claim record is labeled as a JSON serialization; the companion provider-output text record can establish unchanged SDK-provided text content, not raw network response bytes.
+- The capture has 512 KiB per-text, 2 MiB per-record, and 32 MiB per-run limits. Redaction, truncation, dropped records, and write errors are explicit; sensitive structured fields and transport metadata are excluded.
+- The report and capture files are written with owner-only permissions. Provider-free tests cover the report round trip, record bounds, redaction, lineage, read-back integrity, and temporary-test cleanup.
+
+The flags authorize only local capture for that bounded canary invocation. They do not authorize or imply that a live run has occurred.
+
 ## Source and baseline
 
 - Tested revision: `29e81e0fc6d072fab520f172f31c28403780a6f7`.
@@ -83,8 +99,8 @@ These categories were not skipped because of run budget, deadline, cancellation,
 
 The actual failure demonstrated by this task is at **pre-run capture readiness**. Source support, passage loss in the live run, incorrect admission, scheduling, downstream validation, financial eligibility, and result presentation remain unevaluated.
 
-## One recommended next repair
+## Repair status
 
-Add and offline-validate a bounded, sanitized acceptance capture that preserves exact safe public passage bodies, the exact final analysis packet, and provider-original claim output together with run/project/category/attempt/source lineage. Mark any redaction or truncation explicitly and keep credentials and sensitive transport data out of exports. Do not authorize another live run until this capture can be demonstrated end to end.
+The bounded, sanitized capture capability above is the recommended repair and has been offline-validated. No live run was authorized or attempted as part of this implementation. Any future run still requires passing current gates and the explicit `--live --capture-exact-content` flags.
 
-No production capture changes or UI changes were made here.
+No live research or UI changes were made in this follow-up.

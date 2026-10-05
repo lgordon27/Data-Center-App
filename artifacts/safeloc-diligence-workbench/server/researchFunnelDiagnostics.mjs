@@ -204,6 +204,29 @@ function evidenceItemCount(research) {
     : evidence && typeof evidence === "object" ? Object.keys(evidence).length : 0;
 }
 
+function providerResearchSourceIds(research) {
+  const evidence = Array.isArray(research?.evidence)
+    ? research.evidence
+    : research?.evidence && typeof research.evidence === "object"
+      ? Object.values(research.evidence)
+      : [];
+  return [...new Set(evidence.flatMap((claim) => {
+    const sources = Array.isArray(claim?.sources) ? claim.sources : [];
+    return [
+      ...sources.flatMap((source) => [
+        source?.sourceId,
+        source?.occurrenceId,
+        source?.canonicalUrl,
+        source?.url,
+      ]),
+      ...(Array.isArray(claim?.sourceIds) ? claim.sourceIds : []),
+      ...(Array.isArray(claim?.sourceUrls) ? claim.sourceUrls : []),
+      claim?.sourceId,
+      claim?.sourceUrl,
+    ].filter((value) => typeof value === "string" && value.length > 0);
+  }))].slice(0, 128);
+}
+
 function safeClaimList(research) {
   const evidence = Array.isArray(research?.evidence)
     ? research.evidence
@@ -318,6 +341,13 @@ export function createResearchFunnelDiagnostics({ runId = null, project = {}, ac
       attemptId: details.attemptId ?? null,
       providerResponseId: details.providerResponseId ?? null,
       requestBodySha256: details.requestBodySha256 ?? null,
+      sourceIds: [...new Set((Array.isArray(details.packet) ? details.packet : []).flatMap((source) => [
+        source?.sourceId,
+        source?.occurrenceId,
+        source?.canonicalUrl,
+        source?.sourceUrl,
+        source?.url,
+      ].filter((value) => typeof value === "string" && value.length > 0)))].slice(0, 128),
     };
     acceptanceCapture?.writeStructured?.({
       stage: "final-analysis-packet",
@@ -487,6 +517,22 @@ export function createResearchFunnelDiagnostics({ runId = null, project = {}, ac
       providerResponseId: details.providerResponseId,
       expectedEvidenceIds: details.expectedEvidenceIds ?? [],
       research: details.research,
+    });
+    acceptanceCapture?.writeStructured?.({
+      stage: "provider-original-structured-claims",
+      value: details.research,
+      lineage: {
+        runId: details.runId ?? runId,
+        projectId: details.projectId ?? projectSnapshot.projectId,
+        categoryId: details.categoryId,
+        attemptType: details.attemptType ?? "primary",
+        attemptId: details.attemptId ?? null,
+        providerResponseId: details.providerResponseId ?? null,
+        claimIds: (Array.isArray(details.expectedEvidenceIds) ? details.expectedEvidenceIds : [])
+          .slice(0, 48),
+        sourceIds: providerResearchSourceIds(details.research),
+        sourceRepresentation: "parsed-provider-original-structured-output",
+      },
     });
     const snapshot = providerResearchSnapshot(details.research);
     providerOriginals.push({
@@ -679,6 +725,8 @@ export function createResearchFunnelDiagnostics({ runId = null, project = {}, ac
       attemptType: details.attemptType ?? "primary",
       attemptId: details.attemptId ?? null,
       providerResponseId: details.providerResponseId ?? null,
+      sourceIds: Array.isArray(details.sourceIds) ? details.sourceIds.slice(0, 128) : [],
+      sourceRepresentation: "provider-content-text-from-sdk",
     },
   }) ?? false;
   Object.assign(trace, {

@@ -47,3 +47,4 @@
 - [Offline validation and showcase boundaries](offline-validation-showcase.md) — keep saved-output annotations outside the proof contract; only explicitly reviewed, provenance-complete snapshots may be public examples.
 - [Research run idempotency](research-run-idempotency.md) — alias stale-cache user requests to the one background run they started; explicit retries require fresh request identities.
 - [Acceptance trace fidelity](acceptance-trace-fidelity.md) — exact passage bodies can coexist with depth-limited identity metadata; report the missing attribution detail without reconstructing it.
+- [Acceptance capture semantics](acceptance-capture-semantics.md) — exactness belongs to a recorded representation; distinguish unchanged text, parsed JSON, redaction, and truncation.

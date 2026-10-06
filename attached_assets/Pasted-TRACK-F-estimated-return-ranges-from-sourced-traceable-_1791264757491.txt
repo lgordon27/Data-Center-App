@@ -1,0 +1,64 @@
+TRACK F: estimated return ranges from sourced, traceable, adjustable inputs for artifacts/safeloc-diligence-workbench. Principle: the tool never presents a single hard return number. It shows an estimated range, what drives it, and how much is unsourced. Work fast with tight scope. No live research, publishing or schema changes. Pull latest main first; it must include 2eb6fa7 (Track E, which changed FinancialTransmission.tsx). Report your starting HEAD.
+
+FILE OWNERSHIP: src/model/cashFlowEngine.ts, src/model/financialInputProvenance.ts, src/model/financialTransmission.ts, src/model/stargateFinancialAudit*, financial source/claim data files, src/components/conference/FinancialTransmission.tsx, new input-controls and driver-chart components, and their tests. Do not edit the research engine (server/research*), the claim verifier, identity modules, ProjectReality.tsx, AdvisorBrief.tsx, src/services, Home/showcase files or database files. Before pushing, pull latest main and rebase; if a conflict touches a file you don't own, stop and report. Push with the authenticated GitHub App integration fallback if a normal push is rejected (non-force).
+
+1. PROVENANCE REGISTRY. Each input records:
+- value (central), low and high, and unit;
+- type: disclosed | benchmark | derived | user-assumption | blank;
+- sourceTier: primary | research-firm | secondary;
+- specificity: project | local | state | national;
+- source name, URL and as-of date;
+- applicability note;
+- resolution rule.
+Disclosed inputs have low = high = value unless a source gives a range. A test fails if any input lacks an entry.
+
+2. RESOLUTION ORDER for any project: project-disclosed, then local public, then state/national public, then blank. Rules:
+- electricity: live EIA industrial price for the project's state;
+- water: local utility's published commercial tariff, else blank;
+- lease rate: CBRE market and size tier, else national 10MW+;
+- exit cap rate: by asset type;
+- cost per MW, debt, capacity, schedule: disclosed, else blank;
+- interest rate: SOFR plus cited spread;
+- maintenance, labor, property tax: national benchmark.
+
+3. STARGATE ABILENE VALUES:
+- capacity 1,200 MW, 8 buildings; total cost $15B ($12.5M/MW); disclosed, primary (Crusoe newsroom 2025-05-21; datacenterdynamics.com Stargate analysis).
+- debt $9.6B JPMorgan and equity about $5B; Oracle 15-year lease; disclosed, secondary (spyglass.org "Stargate data center layer cake", citing FT). Size debt from the disclosed amount, not entry value.
+- interest rate: low 6.4%, central 7.5%, high 9.4%; benchmark, secondary; SOFR 3.87% on 2026-10-01 (New York Fed via sofrrate.com) plus spread 250-550 bps (hbcapitalre.com 2026; globaldatacenterhub.com 2026).
+- lease rate $/kW-month: low 160, central 172, high 185; benchmark, research-firm, national 10MW+; CBRE NA Data Center Trends H1 2026 via datacenterfrontier.com.
+- exit cap rate: low 5.5%, central 6.0%, high 6.5%; benchmark, secondary (JLL Q1 2026 via apers.app). Terminal value = forward NOI / cap rate; remove the NOI x 2.2 multiple.
+- discount rate 13% (range 13-20%) on equity cash flows; benchmark, secondary (apers.app 13-15% levered hyperscale; globaldatacenterhub.com 15-20% equity targets). User-adjustable.
+- electricity: EIA Electric Power Monthly Table 5.6.B, Texas industrial, Jan-Jun 2026 = $66.50/MWh, from the live EIA integration's industrial series. Remove the $42 illustrative input and the Track E illustrative label that explained it. If live data is unavailable, use the last stored EIA value with its date, never an invented number.
+- water: City of Abilene TX commercial water $7.70 plus sewer $3.95 per 1,000 gal, effective 2025-11-01 (abilenetx.gov/430/Billing-Structures). Never use Abilene, Kansas sources.
+- maintenance $120k/MW-yr, labor $40k/MW-yr, property tax $143M/yr per GW; benchmark, research-firm, national (Epoch AI, "Total cost of ownership of a one-gigawatt AI data center", 2026). Property tax flagged "local abatement not verified"; use low 0 and high 143 until verified.
+- delivered capacity about 206 MW in 2025 and 1,200 MW in 2026 (Crusoe; Newmark 2025-05-22); derived. Replaces the 60/80/92% utilization ramp.
+- downtime cost per day: derived = annual lease revenue / 365. Remove the $5M floor.
+- insurance 0.35% of capex: provisional, "weak source".
+
+4. LEASE STRUCTURE: electricity and water are passed through to the tenant (standard for hyperscale; many campuses also reuse cooling water through closed-loop chillers; the actual Oracle terms are not public, so label it an assumption). Remove them from landlord costs; show the tenant's power and water cost as context only.
+
+5. UNSOURCED CONSTANTS (water conversion capex 80, water multipliers 1.5, carbon fallback 20, backup power and cooling capex tables): list each as provisional "research needed". Do not invent replacements.
+
+6. OUTPUT IS A RANGE:
+- Compute cautious, central and favorable cases from each input's low, central and high (each input at its unfavorable, central and favorable end), with the hidden stress methodology applied as today.
+- Display "Estimated return: roughly X-Y%" rounded to whole percents, plus a one-line basis: "N disclosed, N benchmark, N provisional or unsourced inputs".
+- Do not display an exact IRR, NPV to the dollar, or MOIC in the public view (including the analysis left rail and Advisor Lens summaries rendered from your files); keep exact values only in code and tests.
+- If more than 3 required inputs are blank or provisional, show "Not enough sourced data for an estimate" and list what is missing.
+- If a component you don't own still renders an exact IRR from the model, report it by file and line for its owning track instead of editing it.
+
+7. DRIVERS: a simple ranked chart showing how far each input moves the central estimate when set to its low and high values. Show the top 6, in plain language. The proprietary stress rules are not shown as drivers.
+
+8. USER-ADJUSTABLE INPUTS: discount rate, exit cap rate, lease rate, electricity price, interest rate, debt share, cost per MW, delivery delay in months.
+- Each shows the sourced value, range and source.
+- An edit marks the value "Your assumption" and is logged in the session audit trail with a timestamp.
+- Each field has a reset control.
+- Out-of-range values warn but are allowed.
+- Edits never change registry defaults. The range and drivers update live.
+
+9. STRESS-TEST RULES (quality multipliers, delays, contingencies) are proprietary. Keep them in code and the registry as "methodology", but never render their values or formulas in the UI, page text or exports. Publicly show only that a stress adjustment was applied.
+
+10. DISPLAY: each input shows a type badge, specificity, source tier, source link and date. A "Couldn't directly source" panel sits beside the range.
+
+TESTS: registry completeness; resolution order; cap-rate exit; disclosed debt; no hardcoded electricity value; pass-through of power and water; range ordering (cautious <= central <= favorable); no exact IRR, NPV or MOIC rendered publicly; insufficient-data state; driver ranking; adjustable inputs log, reset and never mutate the registry; methodology absent from rendered output. Run test and typecheck. Expected failures: only the three known baseline tests, unless Track D has landed.
+
+REPORT: the cautious, central and favorable values (exact, for review), the top drivers, counts by input type, any components outside your ownership still showing exact returns, diff summary and commit SHA. Commit "Financial model: estimated ranges from traceable inputs, drivers, pass-through lease" and push to GitHub.

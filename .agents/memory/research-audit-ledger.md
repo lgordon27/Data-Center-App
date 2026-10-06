@@ -32,3 +32,9 @@ In a concurrent category scheduler, reserve the pending primary slot before invo
 **Why:** If the callback can authorize extra work before its own primary is visible as pending, multiple categories can spend the same remaining request capacity.
 
 **How to apply:** Add the pending-primary reservation before calling retrieval, reconcile it to actual issued requests (including zero-call outcomes), and release only unused local reservations.
+
+A manually reproduced SQL error is not proof that a reported HTTP failure followed that path. Check route validation and request-level evidence before attributing an endpoint error to the database; distinguish app responses from pre-listener or proxy failures.
+
+**Why:** A malformed audit ID can produce a UUID cast error when queried directly while the actual route rejects it before SQL. Startup logs may establish a pre-listener failure without proving that a specific request reached the handler.
+
+**How to apply:** Trace the request from listener readiness through route guards to repository access. If available logs omit the request path, report that limit instead of treating a query reproduction as the observed cause.

@@ -33,27 +33,32 @@ export function redactAuditAddresses(value: unknown): unknown {
 }
 
 export function createResearchAuditRepository(client: Pick<Pool, "query"> & Partial<Pick<Pool, "connect">>) {
-  // Each attempt checks out a fresh session. Never retry a transaction on the
-  // failed connection, and destroy uncertain/timed-out sessions on release.
-  const write = (text: string, values: unknown[]) => retryDatabaseConnectionOperation(async () => {
-    if (!client.connect) return boundedAuditOperation(() => client.query(text, values));
-    const connection = await client.connect();
-    let destroy = false;
-    try {
-      return await boundedAuditOperation(() => connection.query(text, values));
-    } catch (error) {
-      destroy = isDatabaseConnectionError(error);
-      throw error;
-    } finally {
-      connection.release(destroy);
+  // Pool-backed operations get a fresh session on retry. A caller-owned
+  // checked-out client stays on its transaction and is never reconnected.
+  const callerOwnsCheckedOutClient = typeof (client as { release?: unknown }).release === "function";
+  const runQuery = (text: string, values: unknown[]) => {
+    if (!client.connect || callerOwnsCheckedOutClient) {
+      return boundedAuditOperation(() => client.query(text, values));
     }
-  });
+    return retryDatabaseConnectionOperation(async () => {
+      const connection = await client.connect!();
+      let destroy = false;
+      try {
+        return await boundedAuditOperation(() => connection.query(text, values));
+      } catch (error) {
+        destroy = isDatabaseConnectionError(error);
+        throw error;
+      } finally {
+        connection.release(destroy);
+      }
+    });
+  };
   return {
     connectionRetryManaged: true,
     async startRun(record: ResearchRunAudit): Promise<void> {
       const summary = redactAuditAddresses(record.projectSummary);
       const audit = redactAuditAddresses(record.audit);
-      const result = await write(
+      const result = await runQuery(
         `INSERT INTO research_run_audits
           (run_id, project_name, project_location, research_status, project_summary, audit, started_at, finished_at)
          VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, COALESCE($7::timestamptz, now()), NULL)
@@ -63,7 +68,7 @@ export function createResearchAuditRepository(client: Pick<Pool, "query"> & Part
       );
       if (result.rowCount !== 1) {
         // A terminated connection can lose the acknowledgement after commit.
-        const existing = await write(
+        const existing = await runQuery(
           "SELECT audit FROM research_run_audits WHERE run_id = $1 AND finished_at IS NULL",
           [record.runId],
         );
@@ -76,7 +81,7 @@ export function createResearchAuditRepository(client: Pick<Pool, "query"> & Part
     async finishRun(record: ResearchRunAudit): Promise<void> {
       const summary = redactAuditAddresses(record.projectSummary);
       const audit = redactAuditAddresses(record.audit);
-      const result = await write(
+      const result = await runQuery(
         `UPDATE research_run_audits SET
            research_status = $2,
            project_summary = $3::jsonb,
@@ -93,7 +98,7 @@ export function createResearchAuditRepository(client: Pick<Pool, "query"> & Part
     async markFinalizationFailed(record: ResearchRunAudit): Promise<void> {
       const summary = redactAuditAddresses(record.projectSummary);
       const audit = redactAuditAddresses(record.audit);
-      const result = await write(
+      const result = await runQuery(
         `UPDATE research_run_audits SET
            research_status = $2,
            project_summary = $3::jsonb,
@@ -108,7 +113,7 @@ export function createResearchAuditRepository(client: Pick<Pool, "query"> & Part
     async save(record: ResearchRunAudit): Promise<void> {
       const summary = redactAuditAddresses(record.projectSummary);
       const audit = redactAuditAddresses(record.audit);
-      await write(
+      await runQuery(
         `INSERT INTO research_run_audits
           (run_id, project_name, project_location, research_status, project_summary, audit, started_at, finished_at)
          VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, COALESCE($7::timestamptz, now()), COALESCE($8::timestamptz, now()))
@@ -122,20 +127,20 @@ export function createResearchAuditRepository(client: Pick<Pool, "query"> & Part
       );
     },
     async progressRun(record: ResearchRunAudit): Promise<void> {
-      const result = await write(
+      const result = await runQuery(
         "UPDATE research_run_audits SET audit = $2::jsonb WHERE run_id = $1 AND finished_at IS NULL",
         [record.runId, JSON.stringify(redactAuditAddresses(record.audit))],
       );
       if (result.rowCount !== 1) throw new Error("Research audit progress row unavailable.");
     },
     async updateDelivery(record: ResearchRunAudit): Promise<void> {
-      await write(
+      await runQuery(
         "UPDATE research_run_audits SET audit = $2::jsonb WHERE run_id = $1 AND finished_at IS NOT NULL",
         [record.runId, JSON.stringify(redactAuditAddresses(record.audit))],
       );
     },
     async interruptStaleRuns(maxRunDurationMs: number, marginMs = 60_000): Promise<number> {
-      const result = await write(
+      const result = await runQuery(
         `UPDATE research_run_audits SET research_status = 'interrupted', finished_at = now(),
            audit = audit || jsonb_build_object(
              'terminalState', 'interrupted', 'lifecycleState', 'interrupted',
@@ -148,7 +153,7 @@ export function createResearchAuditRepository(client: Pick<Pool, "query"> & Part
       return result.rowCount ?? 0;
     },
     async get(runId: string): Promise<ResearchRunAudit | null> {
-      const result = await client.query(
+      const result = await runQuery(
         `SELECT run_id, project_name, project_location, research_status, project_summary, audit, started_at, finished_at
          FROM research_run_audits WHERE run_id = $1`,
         [runId],

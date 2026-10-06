@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import type { Request, Response } from "express";
+import { isDatabaseConnectionError } from "./databaseResilience.mjs";
 import { getResearchAuditRepository } from "./researchAuditRepository.js";
 
 const OWNER_AUDIT_DOWNLOAD_LIMIT = 10;
@@ -70,7 +71,7 @@ export async function handleResearchAuditDownload(
   }
   const runId = request.params.runId;
   if (typeof runId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(runId)) {
-    response.status(400).json({ error: "Invalid run ID." });
+    response.status(404).json({ error: "Audit not found." });
     return;
   }
   try {
@@ -82,7 +83,8 @@ export async function handleResearchAuditDownload(
     }
     response.setHeader("Content-Disposition", `attachment; filename="research-audit-${runId}.json"`);
     response.json(audit);
-  } catch {
+  } catch (error) {
+    if (!isDatabaseConnectionError(error)) throw error;
     response.status(503).json({ error: "Audit storage unavailable." });
   }
 }

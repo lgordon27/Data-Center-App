@@ -1,11 +1,12 @@
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
+import { createServer, type ServerResponse } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { handleErcotQueueRequest } from "./ercotProxy.mjs";
 import { handleEiaElectricityRequest } from "./eiaProxy.mjs";
 import { handleAnalyzeEvidenceRequest } from "./aiEvidenceProxy.mjs";
 import { handleResearchProjectRequest, RESEARCH_PROJECT_TIMEOUT_MS } from "./researchProjectProxy.mjs";
-import { installDatabaseSafetyNet } from "./databaseResilience.mjs";
+import { installDatabaseSafetyNet, isDatabaseConnectionError, logDatabaseConnectionError } from "./databaseResilience.mjs";
 import { handleDirectoryRequest, handleDirectoryStatsRequest } from "./computeAtlasProxy.mjs";
 import { handleReleaseDocumentRequest, handleVersionRequest } from "./version.mjs";
 import { handleProjectResearchRegistryRequest } from "./projectResearchRegistry.mjs";
@@ -23,6 +24,101 @@ import { handleShowcaseDossiersRequest, handleShowcaseDossierRequest } from "./s
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
 const artifactDir = path.resolve(serverDir, "..");
+
+export type ServerReadiness = { ready: boolean };
+
+const STARTUP_RETRY_AFTER_SECONDS = 2;
+const STARTING_HTML = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SafeLoc is starting</title>
+  <style>
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f5f7fa; color: #182230; font: 16px system-ui, sans-serif; }
+    main { max-width: 28rem; margin: 1.5rem; padding: 1.5rem; border: 1px solid #d8e0ea; border-radius: 0.75rem; background: #fff; }
+    h1 { margin: 0 0 0.5rem; font-size: 1.25rem; }
+    p { margin: 0; color: #526173; line-height: 1.5; }
+  </style>
+</head>
+<body><main><h1>SafeLoc is starting</h1><p>Starting up. Retry shortly.</p></main></body>
+</html>`;
+
+function sendStartupUnavailable(response: ServerResponse, pathname: string) {
+  response.statusCode = 503;
+  response.setHeader("Retry-After", String(STARTUP_RETRY_AFTER_SECONDS));
+  response.setHeader("Cache-Control", "no-store");
+  if (pathname === "/api/health" || pathname.startsWith("/api/") || pathname === "/release.json") {
+    response.setHeader("Content-Type", "application/json; charset=utf-8");
+    response.end(JSON.stringify({ status: "not-ready", message: "Starting up. Retry shortly." }));
+    return;
+  }
+  response.setHeader("Content-Type", "text/html; charset=utf-8");
+  response.end(STARTING_HTML);
+}
+
+export function createReadinessMiddleware(readiness: ServerReadiness) {
+  return (request: Request, response: Response, next: NextFunction) => {
+    if (request.path === "/api/health") {
+      response.setHeader("Cache-Control", "no-store");
+      if (!readiness.ready) {
+        response.setHeader("Retry-After", String(STARTUP_RETRY_AFTER_SECONDS));
+      }
+      response.status(readiness.ready ? 200 : 503).json({
+        status: readiness.ready ? "ready" : "not-ready",
+      });
+      return;
+    }
+    if (!readiness.ready) {
+      response.status(503);
+      response.setHeader("Retry-After", String(STARTUP_RETRY_AFTER_SECONDS));
+      response.setHeader("Cache-Control", "no-store");
+      if (request.path.startsWith("/api/") || request.path === "/release.json") {
+        response.json({ status: "not-ready", message: "Starting up. Retry shortly." });
+      } else {
+        response.type("html").send(STARTING_HTML);
+      }
+      return;
+    }
+    next();
+  };
+}
+
+export function createInitializationGateServer(
+  port: number,
+  initializeApp: (readiness: ServerReadiness) => Promise<Express>,
+  host = "0.0.0.0",
+) {
+  const readiness: ServerReadiness = { ready: false };
+  const server = createServer((request, response) => {
+    let pathname = "/";
+    try {
+      pathname = new URL(request.url ?? "/", "http://safeloc.local").pathname;
+    } catch {
+      // Keep malformed paths on the temporary not-ready response.
+    }
+    sendStartupUnavailable(response, pathname);
+  });
+  const listening = new Promise<void>((resolve, reject) => {
+    const onError = (error: Error) => {
+      server.off("error", onError);
+      reject(error);
+    };
+    server.once("error", onError);
+    server.listen(port, host, () => {
+      server.off("error", onError);
+      resolve();
+    });
+  });
+  const initialized = listening.then(async () => {
+    const app = await initializeApp(readiness);
+    server.removeAllListeners("request");
+    server.on("request", app);
+    readiness.ready = true;
+  });
+  return { server, readiness, listening, initialized };
+}
+
 const researchAuditRepositoryAdapter = {
   connectionRetryManaged: true,
   startRun: async (record: ResearchRunAudit) =>
@@ -229,11 +325,12 @@ export function createScopedApiRequestLogger(
   };
 }
 
-export async function createApp(): Promise<Express> {
+export async function createApp(readiness: ServerReadiness = { ready: true }): Promise<Express> {
   readRuntimeConfig();
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", 1);
+  app.use(createReadinessMiddleware(readiness));
   app.use(express.json());
   const logScopedApiRequest = createScopedApiRequestLogger();
   app.get("/api/version", handleVersionRequest);
@@ -310,9 +407,38 @@ export async function createApp(): Promise<Express> {
   return app;
 }
 
-async function start() {
-  installDatabaseSafetyNet();
-  const { port } = readRuntimeConfig();
+async function waitForDatabaseAvailability(signal: AbortSignal): Promise<boolean> {
+  const { pool } = await import("./db.js");
+  while (!signal.aborted) {
+    try {
+      await pool.query("SELECT 1");
+      return !signal.aborted;
+    } catch (error) {
+      if (!isDatabaseConnectionError(error)) throw error;
+      logDatabaseConnectionError(error, "startup-readiness");
+      if (signal.aborted) return false;
+      await new Promise<void>((resolve) => {
+        const finish = () => {
+          clearTimeout(timer);
+          signal.removeEventListener("abort", finish);
+          resolve();
+        };
+        const timer = setTimeout(finish, 2_000);
+        if (signal.aborted) {
+          finish();
+          return;
+        }
+        signal.addEventListener("abort", finish, { once: true });
+      });
+    }
+  }
+  return false;
+}
+
+async function initializeServerApp(readiness: ServerReadiness, signal: AbortSignal): Promise<Express> {
+  if (!(await waitForDatabaseAvailability(signal))) {
+    throw new Error("Server startup stopped before readiness.");
+  }
   const { logDatabaseStartupDiagnostics } = await import("./db.js");
   await logDatabaseStartupDiagnostics();
   try {
@@ -321,9 +447,30 @@ async function start() {
   } catch {
     console.warn("SafeLoc interrupted research audit sweep unavailable; retry on next startup.");
   }
-  const app = await createApp();
-  const server = app.listen(port, "0.0.0.0");
-  const shutdown = () => server.close();
+  return createApp(readiness);
+}
+
+function start() {
+  installDatabaseSafetyNet();
+  const { port } = readRuntimeConfig();
+  const shutdownController = new AbortController();
+  const startup = createInitializationGateServer(
+    port,
+    (readiness) => initializeServerApp(readiness, shutdownController.signal),
+  );
+  void startup.initialized.catch((error) => {
+    if (shutdownController.signal.aborted) return;
+    if (isDatabaseConnectionError(error)) {
+      logDatabaseConnectionError(error, "startup-initialization");
+      return;
+    }
+    console.error("SafeLoc server initialization failed before readiness.", error);
+  });
+  const server = startup.server;
+  const shutdown = () => {
+    shutdownController.abort();
+    server.close();
+  };
   process.once("SIGTERM", shutdown);
   process.once("SIGINT", shutdown);
 }

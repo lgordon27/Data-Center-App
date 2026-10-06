@@ -42,23 +42,28 @@ function responseHarness() {
   };
 }
 
-async function download(authorization?: string, token = ownerToken) {
+async function download(
+  authorization?: string,
+  token = ownerToken,
+  runId = record.runId,
+  getAudit?: (requestedRunId: string) => Promise<unknown>,
+) {
   const audit = { ...record, audit: { ...record.audit } };
   let lookups = 0;
   const result = responseHarness();
   await handleResearchAuditDownload(
     {
       get: () => authorization,
-      params: { runId: record.runId },
+      params: { runId },
     } as never,
     result as never,
     {
       ownerToken: token,
       repository: {
-        async get(runId) {
+        async get(requestedRunId) {
           lookups += 1;
-          assert.equal(runId, record.runId);
-          return audit;
+          assert.equal(requestedRunId, runId);
+          return getAudit ? getAudit(requestedRunId) : audit;
         },
       },
     },
@@ -93,6 +98,44 @@ test("authorized research audit download returns a JSON attachment", async () =>
   );
   assert.equal(result.headers["cache-control"], "no-store");
   assert.equal(result.headers.vary, "Authorization");
+});
+
+test("malformed and unknown audit run IDs return 404 JSON without leaking UUID parse errors", async () => {
+  const malformed = await download(`Bearer ${ownerToken}`, ownerToken, "1791211785381-cqnc9h");
+  assert.equal(malformed.result.statusCode, 404);
+  assert.deepEqual(malformed.result.body, { error: "Audit not found." });
+  assert.equal(malformed.lookups, 0);
+
+  const unknown = await download(
+    `Bearer ${ownerToken}`,
+    ownerToken,
+    randomUUID(),
+    async () => null,
+  );
+  assert.equal(unknown.result.statusCode, 404);
+  assert.deepEqual(unknown.result.body, { error: "Audit not found." });
+  assert.equal(unknown.lookups, 1);
+});
+
+test("database connection failures return sanitized 503 JSON while unexpected errors remain visible", async () => {
+  const unavailable = await download(
+    `Bearer ${ownerToken}`,
+    ownerToken,
+    record.runId,
+    async () => {
+      throw Object.assign(new Error("postgres://operator:private@db.example.test/app"), { code: "ECONNREFUSED" });
+    },
+  );
+  assert.equal(unavailable.result.statusCode, 503);
+  assert.deepEqual(unavailable.result.body, { error: "Audit storage unavailable." });
+  assert.doesNotMatch(JSON.stringify(unavailable.result.body), /postgres:|private|db\.example/);
+
+  await assert.rejects(
+    download(`Bearer ${ownerToken}`, ownerToken, record.runId, async () => {
+      throw new Error("unexpected programming error");
+    }),
+    /unexpected programming error/,
+  );
 });
 
 test("authorized audit downloads are rate limited per client", async () => {

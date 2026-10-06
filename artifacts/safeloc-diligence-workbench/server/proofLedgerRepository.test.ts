@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import pg from "pg";
 import {
   SAFELOC_PROOF_DIMENSIONS,
   createProjectIdentity,
@@ -428,6 +430,7 @@ test("repository persists policy, schema, model, source, and research-run metada
 
 test("migration is additive and protects canonical history from mutation", async () => {
   const migration = await readFile(new URL("../migrations/0005_safeloc_proof_ledger.sql", import.meta.url), "utf8");
+  const repairMigration = await readFile(new URL("../migrations/0006_reconcile_proof_ledger.sql", import.meta.url), "utf8");
   assert.match(migration, /CREATE TABLE IF NOT EXISTS proof_ledger_events/);
   assert.match(migration, /CREATE TABLE IF NOT EXISTS proof_user_decisions/);
   assert.match(migration, /BEFORE UPDATE OR DELETE ON proof_ledger_events/);
@@ -435,4 +438,76 @@ test("migration is additive and protects canonical history from mutation", async
   assert.match(migration, /BEFORE TRUNCATE ON proof_ledger_events/);
   assert.match(migration, /BEFORE TRUNCATE ON proof_user_decisions/);
   assert.doesNotMatch(migration, /ALTER TABLE (?:dossiers|research_run_audits)/);
+  assert.match(repairMigration, /CREATE TABLE IF NOT EXISTS proof_ledger_events/);
+  assert.match(repairMigration, /CREATE TABLE IF NOT EXISTS proof_user_decisions/);
+  assert.match(repairMigration, /CREATE INDEX IF NOT EXISTS proof_ledger_project_recorded_idx/);
+  assert.match(repairMigration, /proof_ledger_events_validate_references/);
+  assert.doesNotMatch(repairMigration, /DROP TRIGGER|DROP TABLE|ALTER TABLE/i);
 });
+
+if (process.env.DATABASE_URL && process.env.TEST_SAFELOC_DATABASE === "1") {
+  test("development PostgreSQL persists decisions and proof events in one transaction", async () => {
+    const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+    const client = await pool.connect();
+    let transactionStarted = false;
+    try {
+      await client.query("BEGIN");
+      transactionStarted = true;
+      const repository = createProofLedgerRepository(client as never);
+      const decision: ProofUserDecision = {
+        decisionId: randomUUID(),
+        project,
+        actor: { kind: "authenticated", actorRef: randomUUID() },
+        decision: "accept",
+        targetRef: "evidence-database-integration",
+        rationale: "Development-only transaction fixture.",
+        decidedAt: new Date().toISOString(),
+        versions,
+      };
+      await repository.recordDecision(decision);
+
+      const observed = evidence(`evidence-${randomUUID()}`);
+      const observationEventId = randomUUID();
+      await repository.appendEvent({
+        eventId: observationEventId,
+        eventType: "evidence-observation",
+        project,
+        effectiveAt: observed.observedAt,
+        researchRunId: observed.researchRunId,
+        versions,
+        decisionRef: null,
+        payload: { evidence: observed },
+      });
+      const acceptedEventId = randomUUID();
+      await repository.appendEvent({
+        eventId: acceptedEventId,
+        eventType: "accepted-model-input",
+        project,
+        effectiveAt: new Date().toISOString(),
+        researchRunId: null,
+        versions,
+        decisionRef: decision.decisionId,
+        payload: {
+          input: {
+            inputId: `input-${randomUUID()}`,
+            sourceEvidenceId: observed.evidenceId,
+            dimension: observed.dimension,
+            value: observed.value,
+            unit: observed.unit,
+            acceptanceReason: "Development-only persistence fixture.",
+          },
+        },
+      });
+
+      const restoredEvents = await repository.listEvents(project.projectId);
+      assert.deepEqual(
+        restoredEvents.map((storedEvent) => storedEvent.eventId).sort(),
+        [observationEventId, acceptedEventId].sort(),
+      );
+    } finally {
+      if (transactionStarted) await client.query("ROLLBACK");
+      client.release();
+      await pool.end();
+    }
+  });
+}

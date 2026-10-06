@@ -62,6 +62,20 @@ test("audit writes retry once with a fresh checkout and release successful and f
   assert.deepEqual(fixture.releases, [true, false]);
 });
 
+test("audit reads retry once with a fresh checkout and release successful and failed clients", async () => {
+  let queries = 0;
+  const fixture = fakePool(async () => {
+    queries += 1;
+    if (queries === 1) throw dropped();
+    return { rows: [], rowCount: 1 };
+  });
+  assert.equal(await createResearchAuditRepository(fixture.pool as unknown as Pool).get(
+    "6f9619ff-8b86-4d11-b42d-00c04fc964ff",
+  ), null);
+  assert.equal(fixture.clients.length, 2);
+  assert.deepEqual(fixture.releases, [true, false]);
+});
+
 test("non-connection audit errors are not retried", async () => {
   let calls = 0;
   await assert.rejects(retryDatabaseConnectionOperation(async () => {

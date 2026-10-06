@@ -1,8 +1,14 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
+import express from "express";
 import test from "node:test";
 import type { Request, Response } from "express";
-import { createScopedApiRequestLogger, type ScopedApiAccessLog } from "./index.js";
+import {
+  createInitializationGateServer,
+  createReadinessMiddleware,
+  createScopedApiRequestLogger,
+  type ScopedApiAccessLog,
+} from "./index.js";
 
 test("scoped API access logs contain only method, path, status, duration, and research run ID", () => {
   const entries: ScopedApiAccessLog[] = [];
@@ -51,4 +57,71 @@ test("scoped API access logs contain only method, path, status, duration, and re
     "researchRunId",
     "status",
   ]);
+});
+
+test("startup requests get retryable HTML and health remains not-ready until routes initialize", async () => {
+  let finishInitialization!: () => void;
+  const initializationPause = new Promise<void>((resolve) => {
+    finishInitialization = resolve;
+  });
+  const startup = createInitializationGateServer(
+    0,
+    async (readiness) => {
+      await initializationPause;
+      const app = express();
+      app.use(createReadinessMiddleware(readiness));
+      app.get("/api/ready-check", (_request, response) => response.json({ ok: true }));
+      app.get("/api/expected-error", (_request, _response, next) => next(new Error("post-readiness error")));
+      return app;
+    },
+    "127.0.0.1",
+  );
+
+  try {
+    await startup.listening;
+    const address = startup.server.address();
+    assert.ok(address && typeof address === "object");
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+
+    const page = await fetch(`${baseUrl}/`);
+    assert.equal(page.status, 503);
+    assert.equal(page.headers.get("retry-after"), "2");
+    assert.match(page.headers.get("content-type") ?? "", /text\/html/);
+    assert.match(await page.text(), /SafeLoc is starting/);
+
+    const health = await fetch(`${baseUrl}/api/health`);
+    assert.equal(health.status, 503);
+    assert.equal(health.headers.get("retry-after"), "2");
+    assert.deepEqual(await health.json(), {
+      status: "not-ready",
+      message: "Starting up. Retry shortly.",
+    });
+
+    const api = await fetch(`${baseUrl}/api/ready-check`);
+    assert.equal(api.status, 503);
+    assert.equal(api.headers.get("retry-after"), "2");
+    assert.deepEqual(await api.json(), {
+      status: "not-ready",
+      message: "Starting up. Retry shortly.",
+    });
+
+    finishInitialization();
+    await startup.initialized;
+    const readyHealth = await fetch(`${baseUrl}/api/health`);
+    assert.equal(readyHealth.status, 200);
+    assert.deepEqual(await readyHealth.json(), { status: "ready" });
+
+    const readyRoute = await fetch(`${baseUrl}/api/ready-check`);
+    assert.equal(readyRoute.status, 200);
+    assert.deepEqual(await readyRoute.json(), { ok: true });
+
+    const visibleError = await fetch(`${baseUrl}/api/expected-error`);
+    assert.equal(visibleError.status, 500);
+    assert.doesNotMatch(await visibleError.text(), /Starting up/);
+  } finally {
+    finishInitialization();
+    await new Promise<void>((resolve, reject) => {
+      startup.server.close((error) => error ? reject(error) : resolve());
+    });
+  }
 });

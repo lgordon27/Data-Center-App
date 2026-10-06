@@ -24,11 +24,15 @@ test("startup diagnostics report the database and missing schema without exposin
   await logDatabaseStartupDiagnostics(
     async (sql) => {
       assert.match(sql, /information_schema\.columns/);
+      assert.match(sql, /information_schema\.tables/);
       assert.match(sql, /public_request_events/);
+      assert.match(sql, /proof_user_decisions/);
+      assert.match(sql, /proof_ledger_events/);
       return {
         rows: [{
           database_name: "heliumdb",
-          missing_columns: ["public_request_events.id", "research_result_cache.result"],
+          missing_tables: ["proof_ledger_events", "proof_user_decisions"],
+          missing_columns: ["research_result_cache.result"],
         }],
       };
     },
@@ -39,7 +43,8 @@ test("startup diagnostics report the database and missing schema without exposin
   const logged = JSON.stringify(events);
   assert.match(logged, new RegExp(databaseHostFingerprint(connectionString)!));
   assert.match(logged, /heliumdb/);
-  assert.match(logged, /public_request_events\.id/);
+  assert.match(logged, /proof_ledger_events/);
+  assert.match(logged, /research_result_cache\.result/);
   assert.doesNotMatch(logged, /private-pass|operator|192\.0\.2\.44|postgresql:\/\//);
   assert.equal(events.filter((event) => event.level === "warn").length, 1);
 });

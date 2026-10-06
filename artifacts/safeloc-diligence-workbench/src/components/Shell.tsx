@@ -355,7 +355,7 @@ export function Header({ onMenu, onReset, onHome, onHowItWorks, onValueChain, on
   const isHome = route === "home";
   const projectName = activeProjectContext?.name ?? "No active project selected";
   const projectLocation = activeProjectContext?.location ?? "";
-  const projectOperator = activeProjectContext?.operator ?? undefined;
+  const projectOperator = project.canonicalDossier?.canonicalData.identity.operator ?? activeProjectContext?.operator ?? undefined;
   useEffect(() => {
     if (!researchCooldownUntil) return undefined;
     storeCooldownUntil("safeloc-custom-research-cooldown", researchCooldownUntil);

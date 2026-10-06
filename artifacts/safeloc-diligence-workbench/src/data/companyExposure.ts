@@ -151,7 +151,7 @@ const CURATED_PROJECTS: Partial<Record<CompanyKey, CompanyProject[]>> = {
     {
       id: "curated-stargate-nvidia",
       name: "Stargate Abilene",
-      operator: "OpenAI / Oracle / Crusoe",
+      operator: "Crusoe",
       location: "Taylor County, TX",
       capacityMW: 1200,
       status: "Under construction",
@@ -200,7 +200,7 @@ const CURATED_PROJECTS: Partial<Record<CompanyKey, CompanyProject[]>> = {
     {
       id: "curated-stargate-oracle",
       name: "Stargate Abilene",
-      operator: "OpenAI / Oracle / Crusoe",
+      operator: "Crusoe",
       location: "Taylor County, TX",
       capacityMW: 1200,
       status: "Under construction",

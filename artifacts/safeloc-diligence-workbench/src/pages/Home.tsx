@@ -52,7 +52,13 @@ import {
 } from "@/data/companyExposure";
 import { ClaimCitation } from "@/components/ClaimCitation";
 import { CompanyProjectSelection } from "@/components/CompanyProjectSelection";
-import { ReviewedShowcaseEntries, type ReviewedShowcaseCatalog } from "@/components/ReviewedShowcaseEntries";
+import {
+  ReviewedShowcaseEntries,
+  ReviewedShowcaseSnapshotDialog,
+  type ReviewedShowcaseCatalog,
+  type ReviewedShowcaseEntry,
+  type ReviewedShowcaseSnapshot,
+} from "@/components/ReviewedShowcaseEntries";
 import { trackEvent } from "@/services/analytics";
 import { ProviderQueueSnapshot } from "@/components/ProviderQueueSnapshot";
 import { Footer } from "@/components/Footer";
@@ -67,6 +73,173 @@ import {
 } from "@/services/canonicalDossierIdentity";
 
 type HomeRoute = "directory" | "how-it-works" | "value-chain";
+
+type ValidatedShowcaseEntry = ReviewedShowcaseEntry & {
+  canonicalProjectId: string;
+  scopeKind: string;
+  scopeKey: string;
+};
+
+function homeRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function nonEmptyHomeText(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function parseShowcaseCatalog(value: unknown): ValidatedShowcaseEntry[] {
+  const records = homeRecord(value)?.dossiers;
+  if (!Array.isArray(records)) throw new Error("The reviewed catalog response is invalid.");
+  return records.flatMap((candidate): ValidatedShowcaseEntry[] => {
+    const entry = homeRecord(candidate);
+    const project = homeRecord(entry?.project);
+    const scope = homeRecord(project?.scope);
+    const review = homeRecord(entry?.reviewProvenance);
+    if (
+      !entry ||
+      !project ||
+      !scope ||
+      !review ||
+      !nonEmptyHomeText(entry.slug) ||
+      !nonEmptyHomeText(entry.displayName) ||
+      !nonEmptyHomeText(entry.canonicalProjectId) ||
+      entry.canonicalProjectId !== project.projectId ||
+      !nonEmptyHomeText(entry.researchAsOfDate) ||
+      entry.reviewStatus !== "reviewed" ||
+      review.kind !== "human" ||
+      !nonEmptyHomeText(review.reviewerRef) ||
+      !nonEmptyHomeText(review.reviewedAt) ||
+      !nonEmptyHomeText(review.rationale) ||
+      !nonEmptyHomeText(entry.payloadReference) ||
+      (entry.origin !== "reviewed-live-derived" && entry.origin !== "reviewed-retained") ||
+      typeof entry.version !== "number" ||
+      !Number.isInteger(entry.version) ||
+      entry.version < 1 ||
+      entry.illustrative !== false ||
+      entry.presentationLabel !== "cached example" ||
+      !nonEmptyHomeText(project.projectId) ||
+      !nonEmptyHomeText(scope.kind) ||
+      !nonEmptyHomeText(scope.key)
+    ) return [];
+    const scopeLabel = nonEmptyHomeText(scope.label)
+      ? scope.label
+      : `${scope.kind} · ${scope.key}`;
+    return [{
+      slug: entry.slug,
+      name: entry.displayName,
+      location: scopeLabel,
+      asOfDate: entry.researchAsOfDate,
+      canonicalProjectId: entry.canonicalProjectId,
+      reviewStatus: "human-reviewed",
+      reviewedAt: review.reviewedAt,
+      reviewerRef: review.reviewerRef,
+      reviewRationale: review.rationale,
+      origin: entry.origin,
+      version: Number(entry.version),
+      presentationLabel: entry.presentationLabel,
+      scopeKind: scope.kind,
+      scopeKey: scope.key,
+    }];
+  });
+}
+
+function parseShowcaseDetail(
+  value: unknown,
+  expected: ValidatedShowcaseEntry,
+): ReviewedShowcaseSnapshot | null {
+  const dossier = homeRecord(homeRecord(value)?.dossier);
+  const project = homeRecord(dossier?.project);
+  const review = homeRecord(dossier?.reviewProvenance);
+  const snapshot = homeRecord(dossier?.snapshot);
+  const snapshotProject = homeRecord(snapshot?.project);
+  const snapshotScope = homeRecord(snapshotProject?.scope);
+  const sources = snapshot?.sources;
+  const payload = homeRecord(snapshot?.payload);
+  if (
+    !dossier ||
+    !project ||
+    !review ||
+    !snapshot ||
+    !snapshotProject ||
+    !snapshotScope ||
+    !Array.isArray(sources) ||
+    sources.length === 0 ||
+    !payload ||
+    dossier.slug !== expected.slug ||
+    dossier.displayName !== expected.name ||
+    dossier.canonicalProjectId !== expected.canonicalProjectId ||
+    project.projectId !== expected.canonicalProjectId ||
+    dossier.version !== expected.version ||
+    dossier.researchAsOfDate !== expected.asOfDate ||
+    dossier.reviewStatus !== "reviewed" ||
+    review.kind !== "human" ||
+    !nonEmptyHomeText(review.reviewerRef) ||
+    !nonEmptyHomeText(review.reviewedAt) ||
+    !nonEmptyHomeText(review.rationale) ||
+    snapshot.schemaVersion !== 1 ||
+    snapshot.slug !== expected.slug ||
+    snapshot.displayName !== expected.name ||
+    snapshot.canonicalProjectId !== expected.canonicalProjectId ||
+    snapshotProject.projectId !== expected.canonicalProjectId ||
+    snapshotScope.kind !== expected.scopeKind ||
+    snapshotScope.key !== expected.scopeKey ||
+    snapshot.researchAsOfDate !== expected.asOfDate ||
+    snapshot.origin !== expected.origin ||
+    snapshot.version !== expected.version ||
+    snapshot.illustrative !== false ||
+    snapshot.fixtureStatus !== "production-reviewed"
+  ) return null;
+
+  const retainedSources = sources.flatMap((value): ReviewedShowcaseSnapshot["sources"] => {
+    const source = homeRecord(value);
+    if (
+      !source ||
+      !nonEmptyHomeText(source.sourceId) ||
+      !nonEmptyHomeText(source.title) ||
+      !nonEmptyHomeText(source.publisher) ||
+      !nonEmptyHomeText(source.url) ||
+      !nonEmptyHomeText(source.retainedPassageId) ||
+      !nonEmptyHomeText(source.retainedPassage) ||
+      (source.publicationDate !== null && typeof source.publicationDate !== "string") ||
+      (source.accessDate !== null && typeof source.accessDate !== "string")
+    ) return [];
+    try {
+      const url = new URL(source.url);
+      if (url.protocol !== "https:" && url.protocol !== "http:") return [];
+    } catch {
+      return [];
+    }
+    return [{
+      sourceId: source.sourceId,
+      title: source.title,
+      publisher: source.publisher,
+      url: source.url,
+      publicationDate: source.publicationDate as string | null,
+      accessDate: source.accessDate as string | null,
+      retainedPassageId: source.retainedPassageId,
+      retainedPassage: source.retainedPassage,
+    }];
+  });
+  if (retainedSources.length !== sources.length) return null;
+
+  return {
+    slug: expected.slug,
+    name: expected.name,
+    scopeLabel: expected.location,
+    asOfDate: expected.asOfDate!,
+    reviewStatus: "human-reviewed",
+    reviewerRef: review.reviewerRef,
+    reviewedAt: review.reviewedAt,
+    reviewRationale: review.rationale,
+    origin: expected.origin!,
+    version: expected.version!,
+    sources: retainedSources,
+    payload,
+  };
+}
 
 const homeEntryPoints = [
   { id: "value-chain", title: "The AI Chain", subtitle: "Trace the infrastructure chain from chips to portfolios.", href: "#value-chain", icon: Network, accent: "blue" },
@@ -699,7 +872,14 @@ function CompanyExposure({
   const profile = profileForCompany(company);
   const provenance = getCompanyExposureProvenance(company);
   const projects = companyProjects(company, facilities)
-    .map((project) => projectWithCanonicalDisplayIdentity(project, canonicalDossiers));
+    .map((project) => {
+      const displayProject = projectWithCanonicalDisplayIdentity(project, canonicalDossiers);
+      const slug = canonicalSlugForProject(project);
+      const dossier = slug ? canonicalDossiers.find((candidate) => candidate.slug === slug) : undefined;
+      return dossier
+        ? { ...displayProject, operator: dossier.canonicalData.identity.operator }
+        : displayProject;
+    });
   const summary = projectSummary(projects);
   return (
     <section ref={sectionRef} tabIndex={-1} data-testid="company-exposure-view" aria-labelledby="company-exposure-heading" className="border-y border-[#d9e0e4] bg-[#f1f5f3] px-5 py-9 text-[#122232] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#255bb7] sm:px-8 md:py-12 xl:px-10">
@@ -733,7 +913,7 @@ function CompanyExposure({
           <div data-testid="company-summary-discovery" className="rounded-lg border border-[#8dc8e8] bg-[#e5f5fb] p-4 text-[#164c67]"><div className="font-mono text-[8px] uppercase tracking-[0.12em]">Operator discovery</div><div className="mt-2 font-mono text-[25px] font-bold">{projects.filter((project) => project.relationshipBasis === "operator-derived").length}</div></div>
         </div>
         <p data-testid="company-summary-sentence" className="mt-4 text-[11px] leading-5 text-[#52616b]">
-          {profile.displayName} has <strong>{summary.count} directory or curated records</strong> totaling <strong>{formatCapacityGW(summary.capacityMW)}</strong> in disclosed provider capacity. These records separate source-backed context from operator-derived discovery; they do not establish ownership, tenancy, materiality, or a delay classification. {summary.undisclosedCapacity > 0 ? `${summary.undisclosedCapacity} record has undisclosed capacity.` : ""}
+          {profile.displayName} has <strong>{summary.count} directory or curated {summary.count === 1 ? "record" : "records"}</strong> totaling <strong>{formatCapacityGW(summary.capacityMW)}</strong> in disclosed provider capacity. These records separate source-backed context from operator-derived discovery; they do not establish ownership, tenancy, materiality, or a delay classification. {summary.undisclosedCapacity > 0 ? `${summary.undisclosedCapacity} record${summary.undisclosedCapacity === 1 ? "" : "s"} have undisclosed capacity.` : ""}
         </p>
         <div className="mt-6 flex items-end justify-between gap-3">
           <div><div className="font-mono text-[9px] font-bold uppercase tracking-[0.16em] text-[#607500]">Connected project trail</div><h3 className="mt-1 text-[20px] font-semibold tracking-[-0.03em]">Pick one to inspect the evidence path.</h3></div>
@@ -1719,6 +1899,11 @@ export function Home({ onNavigate, reviewedShowcase }: {
   const [homeDirectoryStatus, setHomeDirectoryStatus] = useState<"idle" | "loading" | "ready" | "unavailable">("idle");
   const [canonicalDossiers, setCanonicalDossiers] = useState<CanonicalDossierSummary[]>([]);
   const [canonicalDossierStatus, setCanonicalDossierStatus] = useState<"loading" | "ready" | "unavailable">("loading");
+  const [showcaseEntries, setShowcaseEntries] = useState<ValidatedShowcaseEntry[]>([]);
+  const [showcaseState, setShowcaseState] = useState<"loading" | "ready" | "unavailable">("loading");
+  const [showcaseOpeningSlug, setShowcaseOpeningSlug] = useState<string | null>(null);
+  const [showcaseDetail, setShowcaseDetail] = useState<ReviewedShowcaseSnapshot | null>(null);
+  const [showcaseOpenError, setShowcaseOpenError] = useState<string | null>(null);
   const companyExposureRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -1734,6 +1919,32 @@ export function Home({ onNavigate, reviewedShowcase }: {
       });
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    if (reviewedShowcase) return;
+    const controller = new AbortController();
+    void fetch("/api/showcase", {
+      method: "GET",
+      cache: "no-store",
+      headers: { accept: "application/json" },
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Reviewed showcase catalog request failed.");
+        return parseShowcaseCatalog(await response.json());
+      })
+      .then((entries) => {
+        if (controller.signal.aborted) return;
+        setShowcaseEntries(entries);
+        setShowcaseState("ready");
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        setShowcaseEntries([]);
+        setShowcaseState("unavailable");
+      });
+    return () => controller.abort();
+  }, [reviewedShowcase]);
 
   useEffect(() => {
     if (!selectedCompany) {
@@ -1768,6 +1979,27 @@ export function Home({ onNavigate, reviewedShowcase }: {
     else if (selectedCompany) setOriginatingCompany(selectedCompany);
     window.location.hash = `analysis/${slug}`;
   };
+  const openReviewedShowcase = async (slug: string) => {
+    const entry = showcaseEntries.find((candidate) => candidate.slug === slug);
+    if (!entry || showcaseOpeningSlug) return;
+    setShowcaseOpeningSlug(slug);
+    setShowcaseOpenError(null);
+    try {
+      const response = await fetch(`/api/showcase/${encodeURIComponent(slug)}`, {
+        method: "GET",
+        cache: "no-store",
+        headers: { accept: "application/json" },
+      });
+      if (!response.ok) throw new Error("Reviewed snapshot request failed.");
+      const snapshot = parseShowcaseDetail(await response.json(), entry);
+      if (!snapshot) throw new Error("Reviewed snapshot did not match its approved catalog entry.");
+      setShowcaseDetail(snapshot);
+    } catch {
+      setShowcaseOpenError("This reviewed snapshot is unavailable or no longer matches its catalog record. No research or refresh was started.");
+    } finally {
+      setShowcaseOpeningSlug(null);
+    }
+  };
   const selectCompany = (company: CompanyKey) => {
     setSelectedCompany(company);
     setOriginatingCompany(company);
@@ -1790,6 +2022,12 @@ export function Home({ onNavigate, reviewedShowcase }: {
 
   return (
     <div data-testid="home-page" className="min-h-[calc(100vh-72px)] overflow-x-hidden bg-[#0a1b2a] text-[#f6f7f2]">
+      {showcaseDetail && (
+        <ReviewedShowcaseSnapshotDialog
+          snapshot={showcaseDetail}
+          onClose={() => setShowcaseDetail(null)}
+        />
+      )}
       <main>
         <section data-testid="home-hero" className="home-hero relative border-b border-white/10">
           <div className="home-hero-grid absolute inset-0 opacity-50" aria-hidden="true" />
@@ -1824,10 +2062,12 @@ export function Home({ onNavigate, reviewedShowcase }: {
                   Only examples supplied by the reviewed catalog appear here. Canonical seed cases are not public-review approval, and an unavailable example never starts research.
                 </p>
                 <ReviewedShowcaseEntries
-                  state={reviewedShowcase?.state ?? canonicalDossierStatus}
-                  entries={reviewedShowcase?.entries ?? []}
-                  onOpen={reviewedShowcase?.onOpen ?? (() => {})}
+                  state={reviewedShowcase?.state ?? showcaseState}
+                  entries={reviewedShowcase?.entries ?? showcaseEntries}
+                  onOpen={reviewedShowcase?.onOpen ?? openReviewedShowcase}
+                  openingSlug={reviewedShowcase?.openingSlug ?? showcaseOpeningSlug}
                 />
+                {showcaseOpenError && <p data-testid="home-showcase-open-error" role="alert" className="mt-3 text-[10px] leading-4 text-[#f1cb8b]">{showcaseOpenError}</p>}
               </article>
             </div>
             <details data-testid="home-explore-panel" open className="group mt-8 rounded-xl border border-white/15 bg-[#0d2435]/95">

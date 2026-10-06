@@ -302,15 +302,62 @@ test.describe("stock-first company exposure flow", () => {
   });
 
   test("keeps NVIDIA selected when opening the Stargate Abilene reviewed dossier from Home", async ({ page }) => {
+    let researchRequests = 0;
+    await page.addInitScript(() => window.localStorage.clear());
+    await page.route("**/api/eia/electricity", (route) => route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "offline test; no EIA provider call" }),
+    }));
+    await page.route("**/api/ercot/**", (route) => route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "offline test; no ERCOT provider call" }),
+    }));
+    await page.route("**/api/directory**", (route) => route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "offline test; no directory provider call" }),
+    }));
+    await page.route("**/api/showcase", (route) => route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ dossiers: [] }),
+    }));
+    await page.route("**/api/research-project", async (route) => {
+      researchRequests += 1;
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "offline test; research not allowed" }),
+      });
+    });
     await page.goto("/#home");
     await page.getByTestId("company-card-nvidia").click();
     await expect(page.getByTestId("company-exposure-view")).toBeVisible();
+    await expect(page.getByTestId("company-summary-sentence")).toContainText("1 directory or curated record");
+    await expect(page.getByTestId("company-summary-sentence")).not.toContainText("1 directory or curated records");
+    const stargateCard = page.getByTestId("company-project-curated-stargate-nvidia");
+    await expect(stargateCard.locator("p").first()).toHaveText("Crusoe");
+    await stargateCard.locator("details > summary").first().click();
+    const sourceCitations = stargateCard.getByTestId("company-project-claim-sources-curated-stargate-nvidia");
+    const gpuCitation = sourceCitations.getByTestId("claim-citation-stargate-oracle-gpus");
+    await gpuCitation.locator("summary").click();
+    const gpuSource = gpuCitation.getByTestId("claim-source-dcd-stargate-cancellation");
+    await expect(gpuSource).toContainText("Data Center Dynamics");
+    await expect(gpuSource.getByRole("link")).toHaveAttribute(
+      "href",
+      "https://www.datacenterdynamics.com/en/news/oracleopenai-drop-plans-to-expand-flagship-abilene-stargate-site-meta-in-talks-to-pick-up-crusoe-capacity-with-nvidias-help/",
+    );
+    await expect(sourceCitations.getByTestId("claim-citation-stargate-campus")).toHaveCount(1);
     await page.getByTestId("company-project-open-curated-stargate-nvidia").click();
 
     await expect(page).toHaveURL(/#analysis\/stargate-abilene$/);
     await expect(page.getByTestId("conference-summary")).toContainText("Stargate Abilene");
     await expect(page.getByTestId("market-company")).toHaveText("NVIDIA");
     await expect(page.getByTestId("market-selected-project-identity")).toContainText("Stargate Abilene");
+    await expect(page.getByTestId("header-project-identity")).toContainText("Stargate Abilene · Crusoe");
+    expect(researchRequests).toBe(0);
   });
 
   test("opens a directory facility in the shared prefilled research dialog", async ({ page }) => {

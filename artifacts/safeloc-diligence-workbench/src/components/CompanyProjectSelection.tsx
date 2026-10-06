@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, ExternalLink, Search } from "lucide-react";
+import { ClaimCitation } from "@/components/ClaimCitation";
 import {
   projectRelationshipState,
   type CompanyKey,
@@ -128,6 +129,11 @@ export function CompanyProjectSelection({ company, projects, researchingProjectI
             <details className="mt-3 min-w-0 border-t border-[#e5eae8] pt-2 text-[11px] text-[#52616b]">
               <summary className="min-h-10 cursor-pointer py-2 font-semibold text-[#255bb7] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">Evidence details and citation</summary>
               <p className="break-words leading-5">{project.description}</p>
+              {project.claimIds && project.claimIds.length > 0 && (
+                <div data-testid={`company-project-claim-sources-${project.id}`} className="mt-2 flex min-w-0 flex-wrap gap-2">
+                  {project.claimIds.map((claimId) => <ClaimCitation key={claimId} claimId={claimId} />)}
+                </div>
+              )}
               <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2 font-mono text-[8px] uppercase tracking-[0.08em] text-[#71808a]">
                 {project.facility?.sourceUrl ? (
                   <a href={project.facility.sourceUrl} target="_blank" rel="noreferrer" className="inline-flex max-w-full items-center gap-1 break-all underline underline-offset-2">

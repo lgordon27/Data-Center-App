@@ -262,6 +262,17 @@ test("valid lifecycle predecessor is upgraded, but incomplete lifecycle is not r
   assert.equal(partial.outcomes[2].reason, "partial-or-incompatible-schema");
 });
 
+test("baseline comparisons preserve case and whitespace inside SQL literals", async () => {
+  await earlier();
+  await pool.query("ALTER TABLE dossiers ALTER COLUMN coverage_state SET DEFAULT 'REVIEW'");
+  await pool.query("DROP INDEX proof_user_decisions_session_idx");
+  await pool.query(`CREATE INDEX proof_user_decisions_session_idx
+    ON proof_user_decisions (session_ref, recorded_at) WHERE actor_kind = 'ANONYMOUS-SESSION'`);
+  const report = await run();
+  assert.equal(report.outcomes[0].reason, "partial-or-incompatible-schema");
+  assert.equal(report.outcomes[4].reason, "partial-or-incompatible-schema");
+});
+
 test("late checkout after timeout is destroyed exactly once", async () => {
   let released = 0;
   const target = {

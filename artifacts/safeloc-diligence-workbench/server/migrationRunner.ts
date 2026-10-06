@@ -63,11 +63,20 @@ SELECT
 
 // These parsers only describe the six checksum-verified, reviewed files above;
 // they are not a general SQL interpreter or a way to authorize other files.
-const normalize = (value: string) => value.toLowerCase().replace(/public\./g, "")
-  .replace(/\busing btree\b/g, "").replace(/::(?:text|integer|bigint)/g, "")
-  .replace(/update or delete/g, "delete or update")
-  .replace(/\bin\s*\(([^()]+)\)/g, "=any array[$1]")
-  .replace(/["\s();]/g, "");
+function normalize(value: string) {
+  // SQL syntax is case/whitespace insensitive; quoted values are not.
+  const literals: string[] = [];
+  const syntax = value.replace(/'(?:[^']|'')*'/g, literal => {
+    literals.push(literal);
+    return `\0${literals.length - 1}\0`;
+  });
+  return syntax.toLowerCase().replace(/public\./g, "")
+    .replace(/\busing btree\b/g, "").replace(/::(?:text|integer|bigint)/g, "")
+    .replace(/update or delete/g, "delete or update")
+    .replace(/\bin\s*\(([^()]+)\)/g, "=any array[$1]")
+    .replace(/["\s();]/g, "")
+    .replace(/\0(\d+)\0/g, (_, index) => literals[Number(index)]);
+}
 
 function checkDefinitions(sql: string): string[] {
   const checks: string[] = [];
@@ -199,7 +208,7 @@ export async function runStartupMigrations(pool: Pick<Pool, "connect">, options:
     if (outcomes.has(filename)) return;
     const outcome = { filename, status, reason };
     outcomes.set(filename, outcome);
-    (status === "refused" ? logger.warn : logger.info).call(logger, "SafeLoc startup migration.", outcome);
+    (status === "refused" ? logger.warn : logger.info).call(logger, "SafeLoc startup migration.", JSON.stringify(outcome));
   };
   let client: PoolClient | undefined;
   let destroyed = false;
@@ -207,6 +216,7 @@ export async function runStartupMigrations(pool: Pick<Pool, "connect">, options:
   let terminalReason = "migration-session-unavailable";
   const deadline = Date.now() + (options.totalTimeoutMs ?? 30_000);
   const destroy = () => {
+    if (destroyed) return;
     destroyed = true;
     client?.release(true); // Destroying the session releases advisory locks, even after uncertain COMMIT.
   };

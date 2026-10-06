@@ -1,0 +1,30 @@
+TRACK G: apply reviewed database migrations automatically at server startup for artifacts/safeloc-diligence-workbench, so publishing updates production without any manual database work. Work fast with tight scope. Do not connect to the production database from the workspace, do not publish, and do not run research. Task #380 is closed; this replaces it. Report your starting HEAD.
+
+FILE OWNERSHIP: server/db.ts, server/databaseResilience.mjs, a new server/migrationRunner module, the startup sequence in server/index.ts (startup and readiness only), the migrations/ folder (read only, do not edit existing migration files), and tests for these. Do not edit research engine, UI, financial model, or showcase files. Before pushing, pull latest main and rebase; if a conflict touches a file you don't own, stop and report. If a normal push is rejected, push with the authenticated GitHub App integration fallback (non-force).
+
+BUILD:
+1. A migration runner that runs at server startup before the server reports ready.
+   - Track applied migrations in a schema_migrations table (filename, sha256, applied_at), created if missing.
+   - Apply only migrations listed in an explicit allow-list in code, each pinned to its sha256. Pin 0006_reconcile_proof_ledger.sql to 006dcdc7540f3399e9a174f3dd50ad1d97b841f7cf2bca5980fad2ddc295b150.
+   - Earlier migrations already present in the database must not be re-run. Detect them by checking their objects already exist, record them as baseline, and do not apply them.
+2. Safety:
+   - Each migration runs in a single transaction.
+   - A Postgres advisory lock means only one server instance migrates at a time; others wait briefly, then re-check.
+   - If a file's checksum doesn't match its pin, do not apply it. Log a clear error, and start the app anyway with the schema warning (do not crash or block the site).
+   - If a migration fails, roll back, log it sanitized, and keep the app running with the warning.
+   - Already-applied migrations are skipped.
+3. Readiness: the existing cold-start 503 behavior covers the migration time; the health check stays not-ready until migrations finish or are safely skipped.
+4. Logging: one startup line per migration: applied, skipped (already applied), baseline, or refused (checksum mismatch or failure). No secrets, no SQL in logs.
+5. Keep dropped-connection resilience and the interrupted-run sweep intact.
+
+TESTS (development database or test doubles only):
+- Fresh database: 0006 applied, then recorded.
+- Second start: skipped.
+- Checksum mismatch: refused, app still starts.
+- Failure mid-migration: rolled back, app still starts.
+- Two concurrent starts: applied exactly once.
+- Existing earlier migrations: recorded as baseline, not re-run.
+- Startup warning cleared after apply.
+Run test and typecheck. Expected: all tests pass.
+
+REPORT: what happens on the next publish step by step, test counts, diff summary and commit SHA. Commit "Server: apply reviewed migrations at startup with checksum pins and advisory lock" and push to GitHub.

@@ -9,6 +9,20 @@ const normalizedQuote = (value) => text(value).replace(/[‘’]/g, "'").replace
 const placeholder = (value) => !String(value ?? "").trim()
   || /^(?:not (?:disclosed|reported|established|available|known)|unknown|unavailable|missing evidence|no (?:support|evidence|passage)(?: returned)?|n\/?a|null|none)[.!]?$/i.test(String(value).trim());
 
+/** Compatibility projection only; never a financial-input proposal. */
+export function reportedFindingsFromVerifiedFindings(findings = []) {
+  return findings.map((finding) => ({
+    id: finding.findingId, status: "reported", categoryId: finding.topic, evidenceId: null,
+    label: finding.topic, statement: finding.statement, exactQuotation: finding.exactQuotation,
+    quotationVerified: finding.quotationVerified, sourceUrl: finding.source.url,
+    sourceTitle: finding.source.title ?? finding.source.url, publisher: finding.source.publisher,
+    publicationDate: finding.source.publishedAt, retrievedAt: finding.source.retrievedAt,
+    facilityScope: finding.scope.facility, phaseScope: finding.scope.phase,
+    identityScope: finding.projectMatch === "matches-requested-project" ? "exact-project" : "scope-unconfirmed",
+    financialEligibility: "not-established",
+  }));
+}
+
 function statedScope(source, passage, kind) {
   const label = kind === "facility" ? "(?:facility|building)(?: name)?" : "phase(?: name)?";
   const line = passage.match(new RegExp(`(?:^|\\n)[ \\t]*${label}[ \\t]*:[ \\t]*([^\\r\\n]+)`, "i"));

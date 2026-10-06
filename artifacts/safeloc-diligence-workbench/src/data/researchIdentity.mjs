@@ -2,7 +2,10 @@ import {
   corroborateRelatedFacilityAcrossPassages as corroborateRetainedFacilityIdentity,
   matchProject,
   traceProjectMatch,
+  extractResearchEntityRoles,
 } from "./researchClaimVerifier.mjs";
+
+export { extractResearchEntityRoles };
 
 const STATES = [
   ["Alabama", "AL"], ["Alaska", "AK"], ["Arizona", "AZ"], ["Arkansas", "AR"],
@@ -176,4 +179,34 @@ export function assessResearchProjectIdentity(passage, candidate = {}, identity 
 
 export function corroborateRelatedFacilityAcrossPassages(passages, identity = {}) {
   return corroborateRetainedFacilityIdentity(passages, identity);
+}
+
+/** Findings attribution is independent of financial eligibility and model flags. */
+export function assessResearchFindingProjectMatch(passage, identity = {}) {
+  const text = typeof passage === "string" ? passage : "";
+  // Operator attribution must not conflate a power developer with a tenant.
+  const withoutOperator = { ...identity, operator: null,
+    knownData: { ...identity.knownData, operator: null } };
+  const decision = matchProject(text, withoutOperator);
+  let conflict = decision.verdict === "unrelated"
+    && /conflict|not the requested location|distinguishes|different project/i.test(decision.reason);
+  const words = ` ${normalize(text)} `;
+  const contains = (value) => Boolean(normalize(value) && words.includes(` ${normalize(value)} `));
+  const county = identity.county ?? requestedCounty(identity);
+  const city = identity.city ?? requestedCity(identity);
+  const locationWords = new Set(normalize(`${county} ${city} ${identity.state ?? identity.knownData?.state ?? ""}`).split(" "));
+  const generic = new Set(["project", "campus", "data", "center", "centre", "facility", "site", "the", "county", "texas"]);
+  const distinctive = normalize(identity.name).split(" ")
+    .filter((word) => word && !generic.has(word) && !locationWords.has(word));
+  const aliases = [
+    ...(Array.isArray(identity.aliases) ? identity.aliases : []),
+    ...(Array.isArray(identity.knownData?.aliases) ? identity.knownData.aliases : []),
+  ].filter((alias) => typeof alias === "string");
+  const distinctiveAliases = aliases.filter((alias) => normalize(alias).split(" ")
+    .some((word) => word && !generic.has(word) && !locationWords.has(word)));
+  const named = (distinctive.length > 0 && distinctive.every(contains)) || distinctiveAliases.some(contains);
+  conflict ||= [identity.name, ...distinctiveAliases].filter((name) => typeof name === "string" && name.trim())
+    .some((name) => new RegExp(`\\b(?:not|unrelated to|different from|rather than)\\s+(?:the\\s+)?${escaped(name.trim())}\\b`, "i").test(text));
+  const located = contains(county) || contains(city);
+  return { matches: !conflict && decision.verdict === "exact-project" && named && located, conflict, reason: decision.reason };
 }

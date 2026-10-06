@@ -92,6 +92,8 @@ function runValidatedResearch(project, options = {}) {
 
 function handleResearchProjectRequest(req, res, options = {}) {
   return handleResearchProjectRequestWithTestGate(req, res, {
+    // These fixtures exercise the retained curated/category contract.
+    findingsFirst: false,
     providerGate: createResearchProviderGate({
       tokenWindowMs: OFFLINE_PROVIDER_TOKEN_WINDOW_MS,
     }),

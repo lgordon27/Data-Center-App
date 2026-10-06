@@ -47,7 +47,11 @@ import { createSecConnector } from "./secConnector.mjs";
 import { releaseIdentity } from "./version.mjs";
 import { createResearchFunnelDiagnostics } from "./researchFunnelDiagnostics.mjs";
 import { consumeAcceptanceCaptureOptIn } from "./researchAcceptanceCapture.mjs";
-import { buildReportedResearchFindings } from "./researchReportedFindings.mjs";
+import { buildReportedResearchFindings, reportedFindingsFromVerifiedFindings } from "./researchReportedFindings.mjs";
+import {
+  extractResearchFindings, findingsConfig, defaultFindingsTokenBudget,
+  boundedFindingsDiscoveryFetch,
+} from "./researchFindings.mjs";
 export { buildReportedResearchFindings } from "./researchReportedFindings.mjs";
 
 const RESEARCH_PROJECT_PROMPT_VERSION = "safeloc-project-research-prompt-v1";
@@ -2974,7 +2978,8 @@ function buildResearchAudit({
     categoryCompletion: {
       requested: categories.length,
       executed: categories.filter((category) => category.executionOutcome === "completed"
-        || category.issuedPrimaryQuery !== null).length,
+        || typeof category.issuedPrimaryQuery === "string" && Boolean(category.issuedPrimaryQuery.trim())
+        || (category.providerAttempts ?? []).some((attempt) => Boolean(attempt.issuedAt))).length,
       complete: categories.filter((category) => category.state === "Complete").length,
       partial: categories.filter((category) => category.state === "Partial").length,
       conclusiveNoEvidence: categories.filter((category) => category.state === "No eligible evidence").length,
@@ -4086,6 +4091,9 @@ function containResearchRecord(item) {
 }
 
 export function containResearchResult(result) {
+  if (result.financialMapping?.reason === "financial-mapping-not-run") {
+    return markFinancialMappingNotRun(result);
+  }
   const evidence = (result.evidence ?? []).map(containResearchRecord);
   const sourceLedger = (result.sourceLedger ?? []).map((entry) => {
     const relatedEvidence = evidence.filter((item) =>
@@ -4116,6 +4124,27 @@ export function containResearchResult(result) {
     researchMode: result.researchMode === "default-assumptions"
       ? "default-assumptions"
       : eligibleEvidence.length > 0 ? "ai-researched" : "research-incomplete",
+  };
+}
+
+function markFinancialMappingNotRun(result) {
+  return {
+    ...result,
+    financialMapping: { state: "not-assessed", reason: "financial-mapping-not-run" },
+    evidence: (result.evidence ?? []).map((item) => ({
+      ...item, classification: "Not assessed", coverageStatus: "not-assessed",
+      assessmentState: "not-assessed", assessmentReason: "financial-mapping-not-run",
+      classificationReason: "financial-mapping-not-run",
+      eligibleForModel: false, acceptedForModel: false, researchState: "not-assessed",
+      numericValue: null, normalizedValue: null, qualitativeValue: null,
+      sourceUrl: null, sourceUrls: [], sources: [], claimMappings: [],
+      quarantineReasons: ["financial-mapping-not-run"],
+      sourceValidation: {
+        ...item.sourceValidation, state: "not-assessed", rejectionCodes: ["financial-mapping-not-run"],
+        eligibilityTrace: { checks: [{ id: "financial-mapping", passed: false, reason: "financial-mapping-not-run" }] },
+      },
+    })),
+    eligibleEvidence: [], proposedInputs: [], acceptedInputs: [], acceptedModelInputs: [],
   };
 }
 
@@ -6976,6 +7005,9 @@ function createResearchProjectRateLimiter({
 const defaultRateLimiter = createResearchProjectRateLimiter();
 
 function classifyResearchFailure(error) {
+  if (error?.name === "ResearchFindingsLimitError") {
+    return { type: error.researchErrorType, message: error.message, status: error.status ?? 422, retryable: false };
+  }
   if (error?.researchErrorType === "provider-output-limit") {
     return { status: 502, type: "provider-output-limit",
       message: "Research provider reached its output token limit. A larger-output retry is permitted only within the remaining run budget." };
@@ -7388,14 +7420,14 @@ function classifyCanonicalResearchOutcome(
     : RESEARCH_OUTCOMES.NO_ELIGIBLE;
 }
 
-function technicalReasonCodesForRun({ orchestration, deadlineState }) {
+function technicalReasonCodesForRun({ orchestration, deadlineState, clientDisconnected = false }) {
   const reasons = new Set();
   if (deadlineState.expired) reasons.add("deadline");
   if (orchestration.lastError) {
     const failureType = classifyResearchFailure(orchestration.lastError).type;
     reasons.add(failureType === "timeout"
       ? "deadline"
-      : failureType === "cancelled" ? "requesting-client-cancelled" : failureType);
+      : failureType === "cancelled" ? (clientDisconnected ? "requesting-client-cancelled" : "cancelled") : failureType);
   }
   if (orchestration.toolCallBudgetExceeded) reasons.add("tool-call-budget");
   if (orchestration.physicalOpenBudgetExceeded) reasons.add("physical-open-budget");
@@ -7404,7 +7436,7 @@ function technicalReasonCodesForRun({ orchestration, deadlineState }) {
     if (execution?.providerFailureType) {
       reasons.add(execution.providerFailureType === "timeout"
         ? "deadline"
-        : execution.providerFailureType === "cancelled" ? "requesting-client-cancelled" : execution.providerFailureType);
+        : execution.providerFailureType === "cancelled" ? (clientDisconnected ? "requesting-client-cancelled" : "cancelled") : execution.providerFailureType);
     }
     if (execution?.state === "Timed out") reasons.add("deadline");
     if (execution?.state === "Not searched") reasons.add(execution.followUpSkipReason || "required-discovery-not-searched");
@@ -7534,6 +7566,8 @@ async function runValidatedResearch(project, {
   auditDeadlineAt = null,
   claimTrace = null,
   providerGate = researchProviderGate,
+  findingsFirst = false,
+  findingsOptions = {},
 }) {
   const researchBudget = boundedResearchBudget(researchBudgetOverrides);
   researchTimeoutMs = Math.min(RESEARCH_PROJECT_TIMEOUT_MS, Math.max(1,
@@ -7563,6 +7597,14 @@ async function runValidatedResearch(project, {
     error.retryAfterSeconds = rateLimit.retryAfterSeconds;
     error.researchErrorType = "request-limit";
     throw error;
+  }
+  const extractionConfig = findingsFirst ? findingsOptions.config ?? findingsConfig() : null;
+  const extractionRunBudget = findingsFirst && !retrievalOnly
+    ? (findingsOptions.tokenBudget ?? defaultFindingsTokenBudget).begin(extractionConfig)
+    : null;
+  if (extractionRunBudget) {
+    try { extractionRunBudget.reserve(extractionConfig.discoveryTokens); }
+    catch (error) { extractionRunBudget.finish(); throw error; }
   }
   const controller = new AbortController();
   const deadlineState = { expired: false };
@@ -7968,10 +8010,11 @@ async function runValidatedResearch(project, {
     googleRequestCount = 1;
     phaseTiming.discoveryStartedAt = new Date().toISOString();
     try {
+      extractionRunBudget?.issued();
       const discovery = await googleDiscoveryImpl({
         project,
         apiKey: googleApiKey,
-        fetchImpl,
+        fetchImpl: findingsFirst ? boundedFindingsDiscoveryFetch(fetchImpl, extractionConfig) : fetchImpl,
         signal: controller.signal,
         model: googleModel,
         ...(typeof googleDiscoveryPrompt === "string" && googleDiscoveryPrompt.trim()
@@ -7979,6 +8022,7 @@ async function runValidatedResearch(project, {
           : {}),
         analysisTracker,
       });
+      extractionRunBudget?.usage(discovery.providerAttempt?.usage ?? null);
       const discoveredCandidates = Array.isArray(discovery.candidates) ? discovery.candidates : [];
       const discoveredUrls = new Set(discoveredCandidates
         .map((source) => canonicalizeSourceUrl(source?.url ?? source?.canonicalUrl ?? source?.resolvedUrl))
@@ -7997,10 +8041,11 @@ async function runValidatedResearch(project, {
         physicalOpenCount: groundedSources.filter((source) => Number.isInteger(source.accessOutcome?.physicalOpenIndex)).length,
       };
     } catch (error) {
+      extractionRunBudget?.usage(error?.providerAttempt?.usage ?? null);
       googleDiscovery = {
         ...googleDiscovery,
         status: "technical-failure",
-        fallbackUsed: allowGoogleFallback,
+        fallbackUsed: findingsFirst ? false : allowGoogleFallback,
         fallbackReason: classifyResearchFailure(error).type,
         providerAttempt: error?.providerAttempt ?? {
           provider: "google-gemini-grounding",
@@ -8070,6 +8115,68 @@ async function runValidatedResearch(project, {
     }
   };
   try {
+    if (findingsFirst && !retrievalOnly) {
+      const extracted = await extractResearchFindings({
+        project, sources: googleDiscovery.candidates, apiKey, fetchImpl,
+        signal: controller.signal, deadlineAt: runStartedAtMs + researchTimeoutMs,
+        providerGate, runBudget: extractionRunBudget, config: extractionConfig,
+        evidenceIds: RESEARCH_EVIDENCE_IDS,
+      });
+      const financialExecutions = Object.fromEntries(buildResearchCategoryPlan(project).categories.map((category) => [
+        category.categoryId, {
+          state: "Not assessed", executionOutcome: "not-run", analysisOutcome: "not-assessed",
+          primaryAnalysisCompleted: false, providerRequestCount: 0, providerAttempts: [],
+          issuedPrimaryQuery: null, issuedFollowUpQuery: null,
+          notRunReason: "financial-mapping-not-run", followUpSkipReason: "financial-mapping-not-run",
+          unresolvedGaps: category.evidenceIds,
+        },
+      ]));
+      const attempts = [...(googleDiscovery.providerAttempt ? [googleDiscovery.providerAttempt] : []),
+        ...extracted.audit.providerAttempts];
+      const reasons = [...new Set(Object.values(extracted.topicCoverage)
+        .filter((topic) => topic.state === "not-analyzed").map((topic) => topic.reason))];
+      if (deadlineState.expired) reasons.push("deadline");
+      if (externalSignal?.aborted === true) reasons.push("requesting-client-cancelled");
+      if (googleDiscovery.status === "technical-failure") reasons.push("discovery-failed");
+      const coverage = {
+        provider: "findings-first", model: "gpt-6.1-sol", reasoningEffort: "low",
+        runtime: releaseIdentity, runCorrelationId,
+        startedAt: new Date(runStartedAtMs).toISOString(), finishedAt: new Date().toISOString(),
+        elapsedMs: Math.max(0, Date.now() - runStartedAtMs),
+        categoryExecutions: financialExecutions, requestedCategoryIds: RESEARCH_CATEGORY_ORDER,
+        providerAttempts: attempts, providerRequestCount: issuedProviderAttemptCount(attempts),
+        physicalOpensUsed: physicalOpensUsed,
+        googleDiscovery, terminalReasonCodes: reasons,
+        discoveryProvider: googleDiscovery.provider, discoveryModel: googleDiscovery.model,
+        discoveryStatus: googleDiscovery.status, discoveryQueries: googleDiscovery.queries,
+        discoveryRequestedQueryPlan: googleDiscovery.requestedQueryPlan ?? [],
+        discoveryState: googleDiscovery.groundingSearchExecuted ? "search-executed" : "provider-response-without-search-proof",
+        discoveryCandidateCount: googleDiscovery.candidates.length,
+        deadlineAt: new Date(runStartedAtMs + researchTimeoutMs).toISOString(),
+        phaseTiming,
+        terminalState: reasons.length ? RESEARCH_OUTCOMES.TECHNICAL : RESEARCH_OUTCOMES.NO_ELIGIBLE,
+      };
+      const parsed = parseResearchResponse(
+        createPartialResearchBody(project), googleDiscovery.candidates,
+        new Date().toISOString().slice(0, 10), coverage, projectClaimValidationContext(project),
+      );
+      parsed.findings = extracted.findings;
+      parsed.topicCoverage = extracted.topicCoverage;
+      parsed.reportedFindings = reportedFindingsFromVerifiedFindings(extracted.findings);
+      parsed.researchAudit.findingsExtraction = {
+        ...extracted.audit, tokenBudget: extractionRunBudget.snapshot(),
+        expectedCallMs: extractionConfig.expectedCallMs, inputTokenBudget: extractionConfig.inputTokens,
+      };
+      parsed.researchAudit.providerAttempts = attempts;
+      parsed.researchAudit.providerRequestCount = coverage.providerRequestCount;
+      parsed.researchAudit.terminalReasonCodes = reasons;
+      parsed.researchAudit.terminalState = coverage.terminalState;
+      parsed.researchOutcome = { state: coverage.terminalState, eligibleEvidenceCount: 0,
+        reportedFindingCount: extracted.findings.length, reasonCodes: reasons };
+      parsed.researchStatus = reasons.length ? "partial" : "completed";
+      parsed.providerAttempts = attempts;
+      return markFinancialMappingNotRun(parsed);
+    }
     phaseTiming.orchestrationStartedAt = new Date().toISOString();
     phaseTiming.orchestrationBudgetMs = Math.max(
       0,
@@ -8978,7 +9085,9 @@ async function runValidatedResearch(project, {
     const optionalFollowUpFailureAfterPrimary = categoryExecutions.some((execution) =>
       execution?.primaryAnalysisCompleted === true
       && execution?.followUpAttemptState === "failed");
-    const technicalReasonCodes = technicalReasonCodesForRun({ orchestration, deadlineState });
+    const technicalReasonCodes = technicalReasonCodesForRun({
+      orchestration, deadlineState, clientDisconnected: externalSignal?.aborted === true,
+    });
     const notAssessedCategoryCount = categoryExecutions.filter((execution) =>
       execution?.state === "Not assessed"
       || execution?.analysisOutcome === "not-assessed").length;
@@ -9288,6 +9397,7 @@ async function runValidatedResearch(project, {
     });
     throw error;
   } finally {
+    extractionRunBudget?.finish();
     clearTimeout(timeout);
     externalSignal?.removeEventListener("abort", abortFromRequest);
   }
@@ -9352,6 +9462,8 @@ export async function handleResearchProjectRequest(
     acceptanceCapture = null,
     signal = null,
     providerGate = researchProviderGate,
+    findingsFirst = null,
+    findingsOptions = {},
   } = {},
 ) {
   const requestBudget = boundedResearchBudget(researchBudgetOverrides);
@@ -9623,6 +9735,8 @@ export async function handleResearchProjectRequest(
       }
       await launchGate;
       const researchResult = await runValidatedResearch(project, {
+        findingsFirst: findingsFirst ?? (categoryIds === null && !project.focusIds?.length),
+        findingsOptions,
         apiKey,
         googleApiKey,
         googleDiscoveryImpl,

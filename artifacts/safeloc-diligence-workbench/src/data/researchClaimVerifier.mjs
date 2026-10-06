@@ -553,11 +553,11 @@ function assertedOperators(
       "gu",
     ),
     new RegExp(
-      `\\b(?:[Oo]perator|[Oo]wner|[Dd]eveloper|[Bb]uilder|[Cc]onstructor|[Cc]onstruction\\s+(?:[Cc]ompany|[Cc]ontractor|[Mm]anager))\\s*(?:[Ii]s|:|[-–—])\\s*(${companyName})`,
+      `\\b(?:[Oo]perator|[Oo]wner|[Dd]eveloper|[Oo]fftaker|[Bb]uilder|[Cc]onstructor|[Cc]onstruction\\s+(?:[Cc]ompany|[Cc]ontractor|[Mm]anager))\\s*(?:[Ii]s|:|[-–—])\\s*(${companyName})`,
       "gu",
     ),
     new RegExp(
-      `\\b(${companyName})\\s+(?:[Ii]s\\s+)?(?:[Tt]he\\s+)?(?:[Oo]perator|[Oo]wner|[Dd]eveloper|[Bb]uilder|[Cc]onstructor|[Cc]onstruction\\s+(?:[Cc]ompany|[Cc]ontractor|[Mm]anager))\\b`,
+      `\\b(${companyName})\\s+(?:[Ii]s\\s+)?(?:[Tt]he\\s+)?(?:(?:power|data-center|data center)\\s+)?(?:[Oo]perator|[Oo]wner|[Dd]eveloper|[Oo]fftaker|[Bb]uilder|[Cc]onstructor|[Cc]onstruction\\s+(?:[Cc]ompany|[Cc]ontractor|[Mm]anager))\\b`,
       "gu",
     ),
   ];
@@ -707,9 +707,41 @@ function operatorsMatch(expected, actual) {
     && expectedTokens.every((token, index) => token === actualTokens[index]);
 }
 
-function operatorConflicts(expected, actuals) {
+export function extractResearchEntityRoles(passage) {
+  const text = (typeof passage === "string" ? passage : "")
+    .replace(/([.!?])\s+(?=[A-Z])/g, "$1\n");
+  const company = "([A-Z][A-Za-z0-9&.'’'-]*(?:[ \\t]+[A-Z][A-Za-z0-9&.'’'-]*){0,4})";
+  const roles = [];
+  const add = (name, role) => {
+    name = name.trim();
+    if (!roles.some((item) => item.name === name && item.role === role)) roles.push({ name, role });
+  };
+  const words = { owner: "owner|owns|owned", developer: "developer|develops|developed",
+    operator: "operator|operates|operated", offtaker: "offtaker", contractor: "contractor", utility: "utility" };
+  for (const [role, pattern] of Object.entries(words)) {
+    for (const match of text.matchAll(new RegExp(
+      `\\b${company}\\s+(?:is\\s+)?(?:the\\s+)?(?:(?:power|data-center|data center)\\s+)?(?:${pattern})\\b`, "g",
+    ))) {
+      add(match[1], role);
+      const tail = text.slice(match.index + match[0].length).match(/^\s+and\s+(?:the\s+)?(owner|developer|operator|offtaker|contractor|utility)\b/);
+      if (tail) add(match[1], tail[1]);
+    }
+    for (const match of text.matchAll(new RegExp(`\\b(?:${pattern})\\s*(?::|by|is)\\s*${company}`, "g"))) add(match[1], role);
+  }
+  return roles.slice(0, 24);
+}
+
+function operatorConflicts(expected, actuals, passage = "") {
+  const explicitRoles = extractResearchEntityRoles(passage);
+  const expectedRoles = explicitRoles.filter((item) => operatorsMatch(expected, item.name)).map((item) => item.role);
   return operatorTokens(expected).length > 0
-    && actuals.some((actual) => !operatorsMatch(expected, actual));
+    && actuals.some((actual) => {
+      if (operatorsMatch(expected, actual)) return false;
+      const roles = explicitRoles.filter((item) => operatorsMatch(actual, item.name)).map((item) => item.role);
+      // Different actors are compatible only with explicit, distinct roles.
+      // An embedded company name alone never overrides a conflicting actor.
+      return !expectedRoles.length || !roles.length || roles.some((role) => expectedRoles.includes(role));
+    });
 }
 
 function isProjectOperatorAttributionFragment(text) {
@@ -1097,7 +1129,7 @@ export function matchProject(passage, project = {}) {
       ? assertedOperators(adjacentFragment.text, [], expectedOperator, expectedLocation, true, true)
       : [];
     const operatorEvidence = [...localOperatorEvidence, ...adjacentOperatorEvidence];
-    if (expectedOperator && operatorConflicts(expectedOperator, operatorEvidence)) {
+    if (expectedOperator && operatorConflicts(expectedOperator, operatorEvidence, text)) {
       return {
         verdict: "unrelated",
         reason: `The named project has an operator or developer that conflicts with the requested operator (${expectedOperator}).`,
@@ -1376,7 +1408,7 @@ function projectAnchorProofs(passage, project, variants, expectedOperator, expec
           variant.kind !== "operator" && fullyMatchesVariant(actual, variant)));
       proofs.push({
         conflict: comparisons.some((comparison) => comparison.conflicts.length)
-          || (explicitOperatorCue && operatorConflicts(expectedOperator, conflictingOperatorEvidence)),
+          || (explicitOperatorCue && operatorConflicts(expectedOperator, conflictingOperatorEvidence, passage)),
         identifiers: linkedFacilityIdentifiers,
       });
     }

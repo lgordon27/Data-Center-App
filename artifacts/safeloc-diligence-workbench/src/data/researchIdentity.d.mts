@@ -38,3 +38,11 @@ export function corroborateRelatedFacilityAcrossPassages(
   conflictedIdentifiers: string[];
   reason?: string | null;
 };
+
+export function assessResearchFindingProjectMatch(
+  passage: unknown, identity?: Record<string, any>,
+): { matches: boolean; conflict: boolean; reason: string };
+
+export function extractResearchEntityRoles(passage: unknown): Array<{
+  name: string; role: "owner" | "developer" | "operator" | "offtaker" | "contractor" | "utility" | "other";
+}>;

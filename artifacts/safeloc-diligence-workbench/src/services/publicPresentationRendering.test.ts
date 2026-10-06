@@ -118,7 +118,11 @@ test("older retained findings fall back to unresolved presentation without crash
   }));
   assert.match(html, /Ambiguous applicability/);
   assert.match(html, /Financial eligibility unresolved/);
-  assert.match(html, /Source publication date: not reported/);
+  // e109471 deliberately moved provenance into the compact Published row and
+  // metadata details; legacy records must still show missing dates, not invent them.
+  assert.match(html, /Source: Retained source · Published: not reported/);
+  assert.match(html, /Date basis: not reported · Accessed: not recorded \(retrieval time\)/);
+  assert.match(html, /Exact retained source passage: <\/span>Exact retained offline passage\./);
   assert.match(html, /Source link unavailable/);
   assert.doesNotMatch(html, /Invalid Date|undefined|NaN/);
 });

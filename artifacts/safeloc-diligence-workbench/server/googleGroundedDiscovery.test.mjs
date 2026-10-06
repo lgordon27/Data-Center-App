@@ -639,11 +639,18 @@ test("keeps unlabeled grounded passages in the audit without sending them to eve
     "Provider failure",
     JSON.stringify(diagnostics.toJSON().engineFailures),
   );
-  assert.equal(
-    result.researchAudit.categories.find((category) => category.categoryId === "project-identity")?.primaryAnalysisCompleted,
-    true,
-    "completed HTTP 200 identity assessment must reach orchestration bookkeeping",
-  );
+  // f571e8e deliberately stopped issuing category analysis for empty admitted
+  // packets. This unrouted control has an access receipt, not a completed assessment.
+  const identityAudit = result.researchAudit.categories.find((category) => category.categoryId === "project-identity");
+  assert.equal(identityAudit.primaryAnalysisCompleted, false);
+  assert.equal(identityAudit.state, "Not assessed");
+  assert.equal(identityAudit.analysisState, "not-assessed-no-admitted-passage-text");
+  assert.equal(identityAudit.analysisOutcome, "not-assessed");
+  assert.equal(identityAudit.executionOutcome, "skipped");
+  assert.equal(identityAudit.notRunReason, "no-admitted-passage-text");
+  assert.equal(identityAudit.providerRequestCount, 0);
+  assert.ok([...analysisInputs.values()].every((prompts) => prompts.length === 0),
+    "an unrouted passage must not consume structured-analysis provider capacity");
   assert.deepEqual(diagnostics.toJSON().engineFailures, []);
 });
 

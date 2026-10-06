@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
@@ -205,10 +206,15 @@ test("keeps Red Oak operator attribution sentence-local and follows the subject 
 });
 
 test("resolves the exact saved Red Oak announcement excerpt through shared identity policy", () => {
-  const report = JSON.parse(readFileSync(
+  const capture = readFileSync(
     new URL("../../../../diagnostics/red-oak-retrieval-canary-2026-10-01.json", import.meta.url),
-    "utf8",
-  ));
+  );
+  // Pin the authentic historical capture; reconstructed or synthetic text is not a substitute.
+  assert.equal(
+    createHash("sha256").update(capture).digest("hex"),
+    "16e89ae672a6082fac0319ed4a88bde57f02641d885cf492d4641fb923b1e91e",
+  );
+  const report = JSON.parse(capture.toString("utf8"));
   const candidate = report.sourceStates.normalizedCandidates.find((source) => source.usablePassage);
   assert.ok(candidate, "the saved canary must retain its usable announcement passage");
   assert.equal(candidate.passageExcerpt.length, 1500, "test only the saved excerpt, not unavailable captured remainder");

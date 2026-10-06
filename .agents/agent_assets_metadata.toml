@@ -252,3 +252,17 @@ mtime_ms = 1791074812811
 storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:f36c34ed-5536-4eff-ae57-d0f347f2e42e/5ca12bb0-13dd-4980-96d8-1d23a407f257/ba231f45-fc8c-4c1a-9715-131dfaae30c9"
 storage_version_token = "1791075562497620"
 content_type = "image/png"
+
+[[outputs]]
+id = "LmPAZCenzPQEgfG3LcT8o"
+uri = "file://.local/reports/track-f-financial-review-2026-10-06-5a597c9.html"
+type = "html"
+title = "Track F financial review"
+description = "Exact cautious/central/favorable calculations, input counts, top drivers, validation, unowned disclosure inventory, and verified GitHub commit."
+logical_id = "3df46ca4-9088-4ee2-80b8-2dfc104e2222"
+content_hash = "sha256:def6058bb1dcc97e4d16e60989d872cf6324790584dbeb84d4328b68e08740ab"
+size = 21981
+mtime_ms = 1791266869109
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/repl:f36c34ed-5536-4eff-ae57-d0f347f2e42e/3df46ca4-9088-4ee2-80b8-2dfc104e2222/87f41610-e285-4e2d-8dc0-54e33bed0280"
+storage_version_token = "1791266869647365"
+content_type = "text/html"

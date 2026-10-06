@@ -48,3 +48,4 @@
 - [Research run idempotency](research-run-idempotency.md) — alias stale-cache user requests to the one background run they started; explicit retries require fresh request identities.
 - [Acceptance trace fidelity](acceptance-trace-fidelity.md) — exact passage bodies can coexist with depth-limited identity metadata; report the missing attribution detail without reconstructing it.
 - [Acceptance capture semantics](acceptance-capture-semantics.md) — exactness belongs to a recorded representation; distinguish unchanged text, parsed JSON, redaction, and truncation.
+- [Startup migration authorization](startup-migration-authorization.md) — reviewed startup rollout supersedes manual-only guidance; socket destruction is not synchronous backend lock release.

@@ -140,7 +140,7 @@ export async function logDatabaseStartupDiagnostics(
   query: StartupDiagnosticsQuery = (sql) => pool.query(sql),
   databaseUrl = process.env.DATABASE_URL,
   logger: StartupDiagnosticsLogger = console,
-): Promise<void> {
+): Promise<boolean> {
   const hostSha256Prefix = databaseHostFingerprint(databaseUrl);
   try {
     const result = await query(STARTUP_DIAGNOSTICS_SQL);
@@ -153,7 +153,7 @@ export async function logDatabaseStartupDiagnostics(
       : null;
     if (typeof row?.database_name !== "string" || !missingTables || !missingColumns) {
       logger.warn("SafeLoc database startup diagnostics unavailable.");
-      return;
+      return false;
     }
 
     logger.info("SafeLoc database startup diagnostics.", {
@@ -166,7 +166,9 @@ export async function logDatabaseStartupDiagnostics(
     if (missingTables.length > 0 || missingColumns.length > 0) {
       logger.warn("SafeLoc database required tables or columns are missing.", { missingTables, missingColumns });
     }
+    return missingTables.length === 0 && missingColumns.length === 0;
   } catch {
     logger.warn("SafeLoc database startup diagnostics unavailable.");
+    return false;
   }
 }

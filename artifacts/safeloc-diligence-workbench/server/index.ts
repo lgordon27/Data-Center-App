@@ -21,11 +21,12 @@ import {
   evidenceSpendConfig,
 } from "./publicLimits.js";
 import { handleShowcaseDossiersRequest, handleShowcaseDossierRequest } from "./showcaseDossierApi.js";
+import { runStartupMigrations, type MigrationReport } from "./migrationRunner.js";
 
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
 const artifactDir = path.resolve(serverDir, "..");
 
-export type ServerReadiness = { ready: boolean };
+export type ServerReadiness = { ready: boolean; schemaWarning?: boolean; migrationWarning?: boolean };
 
 const STARTUP_RETRY_AFTER_SECONDS = 2;
 const STARTING_HTML = `<!doctype html>
@@ -66,6 +67,10 @@ export function createReadinessMiddleware(readiness: ServerReadiness) {
       }
       response.status(readiness.ready ? 200 : 503).json({
         status: readiness.ready ? "ready" : "not-ready",
+        ...(readiness.schemaWarning === undefined ? {} : {
+          schemaWarning: readiness.schemaWarning,
+          migrationWarning: readiness.migrationWarning ?? false,
+        }),
       });
       return;
     }
@@ -435,19 +440,44 @@ async function waitForDatabaseAvailability(signal: AbortSignal): Promise<boolean
   return false;
 }
 
-async function initializeServerApp(readiness: ServerReadiness, signal: AbortSignal): Promise<Express> {
-  if (!(await waitForDatabaseAvailability(signal))) {
+type StartupOperations = {
+  wait: (signal: AbortSignal) => Promise<boolean>;
+  migrate: (signal: AbortSignal) => Promise<MigrationReport>;
+  diagnose: () => Promise<boolean>;
+  sweep: () => Promise<number>;
+  app: (readiness: ServerReadiness) => Promise<Express>;
+};
+const startupOperations: StartupOperations = {
+  wait: waitForDatabaseAvailability,
+  migrate: async signal => runStartupMigrations((await import("./db.js")).pool, { signal }),
+  diagnose: async () => (await import("./db.js")).logDatabaseStartupDiagnostics(),
+  sweep: async () => (await getResearchAuditRepository()).interruptStaleRuns(RESEARCH_PROJECT_TIMEOUT_MS),
+  app: createApp,
+};
+
+export async function initializeServerApp(
+  readiness: ServerReadiness,
+  signal: AbortSignal,
+  operations: StartupOperations = startupOperations,
+): Promise<Express> {
+  if (!(await operations.wait(signal))) {
     throw new Error("Server startup stopped before readiness.");
   }
-  const { logDatabaseStartupDiagnostics } = await import("./db.js");
-  await logDatabaseStartupDiagnostics();
+  if (signal.aborted) throw new Error("Server startup stopped before readiness.");
+  // Migration warnings never replace the ordinary database-availability gate.
+  // Clear stale warnings only after this startup verifies both migration state
+  // and required schema; diagnostics cannot clear a checksum refusal.
+  readiness.migrationWarning = (await operations.migrate(signal)).warning;
+  if (signal.aborted) throw new Error("Server startup stopped before readiness.");
+  readiness.schemaWarning = !(await operations.diagnose()) || readiness.migrationWarning;
   try {
-    const count = await (await getResearchAuditRepository()).interruptStaleRuns(RESEARCH_PROJECT_TIMEOUT_MS);
+    const count = await operations.sweep();
     if (count) console.info("SafeLoc interrupted stale research audits.", { count });
   } catch {
     console.warn("SafeLoc interrupted research audit sweep unavailable; retry on next startup.");
   }
-  return createApp(readiness);
+  if (signal.aborted) throw new Error("Server startup stopped before readiness.");
+  return operations.app(readiness);
 }
 
 function start() {

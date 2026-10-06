@@ -7,6 +7,8 @@ import {
   createInitializationGateServer,
   createReadinessMiddleware,
   createScopedApiRequestLogger,
+  initializeServerApp,
+  type ServerReadiness,
   type ScopedApiAccessLog,
 } from "./index.js";
 
@@ -57,6 +59,80 @@ test("scoped API access logs contain only method, path, status, duration, and re
     "researchRunId",
     "status",
   ]);
+});
+
+test("startup holds cold-start responses through migrations, diagnostics and sweep, then exposes warning", async () => {
+  const order: string[] = [];
+  let finish!: () => void;
+  const paused = new Promise<void>(resolve => { finish = resolve; });
+  const startup = createInitializationGateServer(0, readiness => initializeServerApp(readiness, new AbortController().signal, {
+    wait: async () => { order.push("availability"); return true; },
+    migrate: async () => { order.push("migrations"); await paused; return { warning: true, outcomes: [] }; },
+    diagnose: async () => { order.push("diagnostics"); return true; },
+    sweep: async () => { order.push("sweep"); return 0; },
+    app: async state => { order.push("app"); const app = express(); app.use(createReadinessMiddleware(state)); return app; },
+  }), "127.0.0.1");
+  try {
+    await startup.listening;
+    const address = startup.server.address();
+    assert.ok(address && typeof address === "object");
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/health`);
+    assert.equal(response.status, 503);
+    assert.equal(response.headers.get("retry-after"), "2");
+    assert.deepEqual(order, ["availability", "migrations"]);
+    finish();
+    await startup.initialized;
+    assert.deepEqual(order, ["availability", "migrations", "diagnostics", "sweep", "app"]);
+    const ready = await fetch(`http://127.0.0.1:${address.port}/api/health`);
+    assert.equal(ready.status, 200);
+    assert.deepEqual(await ready.json(), { status: "ready", schemaWarning: true, migrationWarning: true });
+  } finally {
+    finish();
+    await new Promise<void>(resolve => startup.server.close(() => resolve()));
+  }
+});
+
+test("successful startup clears old schema and migration warnings; sweep failure stays nonfatal", async () => {
+  const state: ServerReadiness = { ready: false, schemaWarning: true, migrationWarning: true };
+  await initializeServerApp(state, new AbortController().signal, {
+    wait: async () => true,
+    migrate: async () => ({ warning: false, outcomes: [] }),
+    diagnose: async () => true,
+    sweep: async () => { throw new Error("private database error"); },
+    app: async () => express(),
+  });
+  assert.equal(state.schemaWarning, false);
+  assert.equal(state.migrationWarning, false);
+});
+
+test("migration-only failure and missing schema do not block route setup", async () => {
+  let appCalls = 0;
+  const state: ServerReadiness = { ready: false };
+  await initializeServerApp(state, new AbortController().signal, {
+    wait: async () => true,
+    migrate: async () => ({ warning: true, outcomes: [] }),
+    diagnose: async () => false,
+    sweep: async () => 0,
+    app: async () => { appCalls++; return express(); },
+  });
+  assert.equal(appCalls, 1);
+  assert.equal(state.schemaWarning, true);
+});
+
+test("database availability failure and shutdown never bypass startup gate", async () => {
+  let migrations = 0;
+  const controller = new AbortController();
+  const operations = {
+    wait: async () => false,
+    migrate: async () => { migrations++; return { warning: false, outcomes: [] }; },
+    diagnose: async () => true, sweep: async () => 0, app: async () => express(),
+  };
+  await assert.rejects(initializeServerApp({ ready: false }, controller.signal, operations), /stopped before readiness/);
+  assert.equal(migrations, 0);
+  controller.abort();
+  await assert.rejects(initializeServerApp({ ready: false }, controller.signal, {
+    ...operations, wait: async () => true,
+  }), /stopped before readiness/);
 });
 
 test("startup requests get retryable HTML and health remains not-ready until routes initialize", async () => {

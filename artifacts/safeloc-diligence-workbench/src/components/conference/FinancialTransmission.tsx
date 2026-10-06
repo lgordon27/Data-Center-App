@@ -9,6 +9,7 @@ import {
 import { authenticEiaObservation, type FinancialRegistryEntry } from "@/model/financialInputProvenance";
 import { FinancialAssumptionControls } from "@/components/conference/FinancialAssumptionControls";
 import { FinancialDriverChart } from "@/components/conference/FinancialDriverChart";
+import { FinancialEvidenceReviewControls } from "@/components/conference/FinancialEvidenceReviewControls";
 
 const storageKey = (k: string) => `safeloc:financial-assumptions:v1:${k}`;
 function restore(key: string): FinancialAssumptionSession {
@@ -153,6 +154,7 @@ export function FinancialTransmission({ onNavigate: _n, onResolveEvidence: _r }:
       {financialModeling.status === "not-modeled"
         ? <p data-testid="financial-session-model-unavailable" className="text-xs leading-5 text-[#805000]">Model unavailable: no financial range or controls. Findings remain available for source review in Project Reality.</p>
         : <Inner key={projectKey} projectKey={projectKey} />}
+      <FinancialEvidenceReviewControls key={`review:${projectKey}`} />
     </section>
   );
 }

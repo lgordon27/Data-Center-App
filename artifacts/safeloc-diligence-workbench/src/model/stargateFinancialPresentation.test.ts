@@ -37,6 +37,8 @@ test("owned wrapper renders rounded ranges with provenance and no inherited exac
   assert.doesNotMatch(html, /climateMultiplier|QUALITY_POLICY|costMultiplier|coolingContingency|0\.0945|NOI.*2\.2/);
   assert.doesNotMatch(html, new RegExp(String(range.cases.central.model!.projectIRR)));
   assert.match(html, /No EIA provider observation is available/);
+  assert.match(html, /data-testid="financial-session-review"/);
+  assert.match(html, /My session financial review/);
 });
 
 test("in-range edits are explicitly Your assumption; valid out-of-range edits warn and keep reset", () => {

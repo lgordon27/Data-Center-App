@@ -19,10 +19,9 @@ pin each future migration before permitting startup execution.
 Destroying a PostgreSQL client is not proof that the backend immediately releases
 its transaction and session advisory lock during an active statement.
 
-**Why:** Real isolated PostgreSQL tests showed that an executing backend can
-retain its lock until its statement finishes or times out after socket closure.
+**Why:** An executing PostgreSQL backend can retain its lock until its statement
+finishes or times out after socket closure.
 
 **How to apply:** Bound server-side statement execution as well as client waiting.
 Treat bounded lock contention on another startup as a safe refusal, not as proof
-of a leaked local client. Test eventual backend release using real transactions
-and locks rather than assuming socket destruction is synchronous cancellation.
+of a leaked local client; socket destruction is not synchronous cancellation.

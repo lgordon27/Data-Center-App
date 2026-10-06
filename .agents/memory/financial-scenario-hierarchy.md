@@ -14,3 +14,9 @@ The owned estimated-return view is an exception to the synthetic-primary present
 **Why:** The user explicitly requested estimated financial ranges while restricting ownership and preserving evidence-acceptance contracts. Reported inputs do not make the resulting modeled return a disclosed project term.
 
 **How to apply:** Keep personal assumption edits and their audit in the browser session, separate from canonical evidence acceptance. Report inherited exact-return surfaces outside ownership instead of modifying them without permission.
+
+Public metric redaction must preserve the existing source-review and personal acceptance workflow.
+
+**Why:** Removing a precise-metric renderer can also remove the only reachable preview and decision controls. Privacy and review access are independent requirements.
+
+**How to apply:** Replace the presentation with source/input-only controls over the unchanged session acceptance API; do not remove actions or widen eligibility while hiding private calculations.

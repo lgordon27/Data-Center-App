@@ -73,6 +73,12 @@ import {
   selectResearchProposals,
   parseReportedResearchFindings,
 } from "@/services/researchProjectService";
+import {
+  parseResearchFindings,
+  parseResearchTopicCoverage,
+  type ResearchFinding,
+  type ResearchTopicCoverageMap,
+} from "@/types/researchFindings";
 import type { ClaimId, PublicAccessStatus } from "@/data/claimSources";
 import { researchContentRejectionReason } from "@/data/researchContentQuality.mjs";
 import {
@@ -408,6 +414,8 @@ export type ProjectContext = Omit<CustomResearchResponse["projectSummary"], "cap
   researchProposals?: Record<string, CustomEvidenceRecord>;
   retainedFindings?: CustomResearchResponse["retainedFindings"];
   reportedFindings?: CustomResearchResponse["reportedFindings"];
+  findings?: ResearchFinding[];
+  topicCoverage?: ResearchTopicCoverageMap;
   retainedFindingAudit?: CustomResearchResponse["retainedFindingAudit"];
   replay?: CustomResearchResponse["replay"];
   researchProposalDispositions?: Record<string, ResearchProposalDisposition>;
@@ -1760,6 +1768,8 @@ export function DiligenceProvider({ children }: { children: React.ReactNode }) {
       researchProposalOverrides: {},
       retainedFindings: research.retainedFindings ?? [],
       reportedFindings: parseReportedResearchFindings(research.reportedFindings),
+       findings: research.findings,
+       topicCoverage: research.topicCoverage,
       retainedFindingAudit: research.retainedFindingAudit,
       replay: research.replay,
     };
@@ -2999,6 +3009,8 @@ function parsePersistedCustomResearch(value: unknown): PersistedCustomResearch |
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([reason, count]) => ({ reason, count })),
   };
+  const findings = parseResearchFindings(projectRecord.findings);
+  const topicCoverage = parseResearchTopicCoverage(projectRecord.topicCoverage);
   const storedIdentity = projectRecord.projectIdentity && typeof projectRecord.projectIdentity === "object" && !Array.isArray(projectRecord.projectIdentity)
     ? projectRecord.projectIdentity as Record<string, unknown>
     : null;
@@ -3034,6 +3046,8 @@ function parsePersistedCustomResearch(value: unknown): PersistedCustomResearch |
     retainedFindings,
     retainedFindingAudit,
     reportedFindings: parseReportedResearchFindings(projectRecord.reportedFindings),
+    findings,
+    topicCoverage,
   } as unknown as ProjectContext;
   const storedContext = projectRecord.activeContext && typeof projectRecord.activeContext === "object"
     && !Array.isArray(projectRecord.activeContext)

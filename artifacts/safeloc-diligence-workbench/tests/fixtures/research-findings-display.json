@@ -1,0 +1,179 @@
+{
+  "findings": [
+    {
+      "findingId": "power-reported-match",
+      "statement": "The utility reported that service planning is underway for the requested campus.",
+      "exactQuotation": "Service planning is underway for the requested campus.",
+      "quotationVerified": true,
+      "topic": "power",
+      "kind": "reported",
+      "source": {
+        "url": "https://records.example.gov/project/service-planning",
+        "title": "Utility service update",
+        "publisher": "County Utility",
+        "publishedAt": "2026-05-11",
+        "retrievedAt": "2026-06-01"
+      },
+      "scope": {
+        "entityRoles": [],
+        "facility": "Northstar Campus",
+        "phase": "Phase One",
+        "timeframe": "2026"
+      },
+      "projectMatch": "matches-requested-project",
+      "proposedModelMapping": null
+    },
+    {
+      "findingId": "grid-scope-unconfirmed",
+      "statement": "A contractor described planned grid upgrades near the project area.",
+      "exactQuotation": "Grid upgrades are planned near the project area.",
+      "quotationVerified": true,
+      "topic": "grid",
+      "kind": "estimate",
+      "source": {
+        "url": "https://records.example.gov/grid/upgrade",
+        "title": "Regional grid filing",
+        "publisher": "Regional Authority",
+        "publishedAt": null,
+        "retrievedAt": "2026-06-02"
+      },
+      "scope": {
+        "entityRoles": [
+          {
+            "name": "GridWorks",
+            "role": "contractor"
+          },
+          {
+            "name": "County Utility",
+            "role": "utility"
+          }
+        ],
+        "facility": null,
+        "phase": null,
+        "timeframe": null
+      },
+      "projectMatch": "scope-unconfirmed",
+      "proposedModelMapping": null
+    },
+    {
+      "findingId": "permitting-plan",
+      "statement": "The developer plans to submit a permit application next year.",
+      "exactQuotation": "The developer plans to submit its permit application in 2027.",
+      "quotationVerified": true,
+      "topic": "permitting",
+      "kind": "plan",
+      "source": {
+        "url": "https://records.example.gov/permits/project-plan",
+        "title": "Development plan",
+        "publisher": null,
+        "publishedAt": "2026-04-01",
+        "retrievedAt": "2026-06-03"
+      },
+      "scope": {
+        "entityRoles": [
+          {
+            "name": "Northstar Infrastructure",
+            "role": "developer"
+          }
+        ],
+        "facility": "Northstar Campus",
+        "phase": "Phase One",
+        "timeframe": "2027"
+      },
+      "projectMatch": "matches-requested-project",
+      "proposedModelMapping": null
+    },
+    {
+      "findingId": "capacity-proposed-map",
+      "statement": "A public filing estimates a potential electricity price for the project.",
+      "exactQuotation": "The filing estimates the electricity price at 48 USD/MWh.",
+      "quotationVerified": true,
+      "topic": "capacity",
+      "kind": "disputed",
+      "source": {
+        "url": "https://records.example.gov/filings/electricity-price",
+        "title": "Electricity price filing",
+        "publisher": null,
+        "publishedAt": null,
+        "retrievedAt": null
+      },
+      "scope": {
+        "entityRoles": [],
+        "facility": null,
+        "phase": null,
+        "timeframe": null
+      },
+      "projectMatch": "scope-unconfirmed",
+      "proposedModelMapping": {
+        "evidenceId": "electricity_cost",
+        "proposedValue": 48,
+        "status": "proposed-not-accepted"
+      }
+    },
+    {
+      "findingId": "tenant-report-no-source-metadata",
+      "statement": "A news report identifies a prospective tenant.",
+      "exactQuotation": "The company is considering a tenant for the site.",
+      "quotationVerified": true,
+      "topic": "tenant",
+      "kind": "reported",
+      "source": {
+        "url": "https://news.example.org/datacenter/tenant",
+        "title": "Tenant discussion",
+        "publisher": null,
+        "publishedAt": null,
+        "retrievedAt": null
+      },
+      "scope": {
+        "entityRoles": [
+          {
+            "name": "Cloud Services Inc.",
+            "role": "offtaker"
+          }
+        ],
+        "facility": null,
+        "phase": null,
+        "timeframe": null
+      },
+      "projectMatch": "matches-requested-project",
+      "proposedModelMapping": null
+    },
+    {
+      "findingId": "hazard-scope-unconfirmed-report",
+      "statement": "A regional report describes a possible hazard review for nearby sites.",
+      "exactQuotation": "Nearby sites may be included in a hazard review.",
+      "quotationVerified": true,
+      "topic": "hazard",
+      "kind": "reported",
+      "source": {
+        "url": "https://records.example.gov/hazards/region-review",
+        "title": "Regional hazard review",
+        "publisher": "Regional Authority",
+        "publishedAt": "2026-03-20",
+        "retrievedAt": "2026-06-04"
+      },
+      "scope": {
+        "entityRoles": [],
+        "facility": null,
+        "phase": null,
+        "timeframe": null
+      },
+      "projectMatch": "scope-unconfirmed",
+      "proposedModelMapping": null
+    }
+  ],
+  "topicCoverage": {
+    "power": {
+      "state": "analyzed-findings",
+      "reason": null
+    },
+    "water": {
+      "state": "analyzed-nothing-found",
+      "reason": null
+    },
+    "permitting": {
+      "state": "not-analyzed",
+      "reason": "No admitted source passage was available for this topic."
+    }
+  }
+}

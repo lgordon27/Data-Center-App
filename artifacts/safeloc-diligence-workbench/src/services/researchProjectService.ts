@@ -20,6 +20,12 @@ import {
   parseBoundedRetryAfter,
   PublicResearchRequestError,
 } from "@/services/publicResearchPresentation";
+import {
+  parseResearchFindings,
+  parseResearchTopicCoverage,
+  type ResearchFinding,
+  type ResearchTopicCoverageMap,
+} from "@/types/researchFindings";
 
 function normalizeIdentityText(value: string): string {
   return value
@@ -265,6 +271,8 @@ export type CustomResearchResponse = {
   quarantineReasons?: string[];
   retainedFindings?: RetainedResearchFinding[];
   reportedFindings?: ReportedResearchFinding[];
+  findings?: ResearchFinding[];
+  topicCoverage?: ResearchTopicCoverageMap;
   retainedFindingAudit?: RetainedResearchFindingAudit;
   replay?: {
     mode: "offline-saved-response";
@@ -2010,6 +2018,8 @@ function parseResponse(
   }
   const retainedFindingReport = deriveRetainedResearchFindingReport(value.sourceLedger, requestedIdentity);
   const retainedFindings = retainedFindingReport.findings;
+  const findings = parseResearchFindings(value.findings);
+  const topicCoverage = parseResearchTopicCoverage(value.topicCoverage);
   const directoryCapacityMW = normalizeReportedCapacityMW(requestedIdentity.knownData?.capacity);
   if (
     !isNonEmptyString(summary.name) ||
@@ -2279,6 +2289,8 @@ function parseResponse(
      quarantineReasons: [...new Set(containedEvidence.flatMap((item) => item.quarantineReasons ?? []))],
      retainedFindings,
      reportedFindings: parseReportedResearchFindings(value.reportedFindings),
+      ...(findings !== undefined ? { findings } : {}),
+      ...(topicCoverage !== undefined ? { topicCoverage } : {}),
       retainedFindingAudit: retainedFindingReport.audit,
      ...(replay ? { replay } : {}),
   };

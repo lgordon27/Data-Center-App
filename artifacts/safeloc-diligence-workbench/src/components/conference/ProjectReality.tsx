@@ -6,6 +6,7 @@ import { ClassificationBadge } from "@/components/Shell";
 import { EvidenceRoom } from "@/pages/EvidenceRoom";
 import { CAPACITY_MW_MAX } from "@/model/assumptionBinding";
 import { ResearchResultSummary } from "./ResearchResultSummary";
+import { ResearchFindingsSection } from "@/components/ResearchFindingsDisplay";
 import { evidenceDisplayLabel, hasCapacityDurationMismatch, getResearchResultPresentation, getCommunityResultPresentation } from "@/model/researchResultPresentation";
 
 const categories = [
@@ -60,6 +61,7 @@ export function ProjectReality({ evidenceOpen, onEvidenceOpenChange, onNavigate 
     >
        <div><h2 className="text-xl font-semibold tracking-tight">What was found, and what remains unresolved?</h2></div>
        <button type="button" onClick={() => { onEvidenceOpenChange(true); requestAnimationFrame(() => document.getElementById("conference-evidence-detail")?.scrollIntoView({ block: "start" })); }} className="min-h-10 rounded-md bg-[#122232] px-4 text-xs font-semibold text-white">{getResearchResultPresentation(project, evidence).nextAction}</button>
+       <ResearchFindingsSection findings={project.findings} topicCoverage={project.topicCoverage} evidenceLabels={evidence} />
        <ResearchResultSummary />
        {project.kind === "custom" && <details className="rounded-xl border border-[#aac6f4] bg-white p-4"><summary className="cursor-pointer text-sm font-semibold">Explore illustrative scenario · explicit opt-in</summary><section data-testid="reality-capacity-review" className="mt-4">
         <h3 className="font-semibold text-[#122232]">Capacity review · illustrative modeling only</h3>

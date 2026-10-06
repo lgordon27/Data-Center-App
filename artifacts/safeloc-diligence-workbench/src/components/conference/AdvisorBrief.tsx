@@ -2,6 +2,7 @@ import { useDiligence } from "@/context/DiligenceContext";
 import { generateAdvisorBrief, generateAssetManagerBrief } from "@/model/conferencePresentation";
 import { Lightbulb, AlertCircle, ArrowRight } from "lucide-react";
 import { ResearchResultSummary } from "./ResearchResultSummary";
+import { AdvisorFindingsSummary } from "@/components/ResearchFindingsDisplay";
 
 function formatAsOfDate(value: string | null) {
   if (!value) return "date unavailable";
@@ -29,6 +30,7 @@ export function AdvisorBrief() {
       </div>
       {diligence.project.kind === "custom" && diligence.financialModeling.status === "modeled" && <div data-testid="advisor-illustrative-boundary" role="note" className="rounded-lg border border-[#f1cb8b] bg-[#fff8e9] px-4 py-2 text-xs font-semibold text-[#805000]">Illustrative — not project economics. Any return in this brief is a synthetic scenario output, not reported project economics.</div>}
        {diligence.project.replay?.mode === "offline-saved-response" && <div data-testid="advisor-offline-replay-label" className="rounded-lg border border-[#f1cb8b] bg-[#fff8e9] px-4 py-3 text-xs text-[#6f460e]"><strong>Offline replay of saved research</strong> · No live provider request was made. Original partial-run limitations remain; candidate review and acceptance are separate.</div>}
+       <AdvisorFindingsSummary findings={diligence.project.findings} evidenceLabels={diligence.evidence} />
        <ResearchResultSummary audience="advisor" />
       <div data-testid="advisor-gap-summary" data-decision-gate-count={brief.gapSummary.unresolvedDecisionGates} data-financial-driver-count={brief.gapSummary.unresolvedFinancialDrivers} className="grid gap-2 sm:grid-cols-2">
         <div className="rounded-lg border border-[#e3d4b6] bg-[#fffbf2] px-4 py-3 text-xs text-[#805000]"><strong className="font-semibold">Unresolved decision gates:</strong> {brief.gapSummary.unresolvedDecisionGates}</div>

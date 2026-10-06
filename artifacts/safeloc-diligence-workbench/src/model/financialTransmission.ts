@@ -4,7 +4,136 @@ import {
   MAX_CAPACITY_MW,
   type EvidenceRecord,
   type GovernedFinancialOverrides,
+  calculateTraceableCashFlowModel,
+  inventoryFinancialMethodology,
+  type TraceableFinancialValues,
 } from "./cashFlowEngine.js";
+import {
+  buildFinancialRegistry,
+  type FinancialRegistry,
+  type FinancialRegistryContext,
+  type FinancialInputType,
+} from "./financialInputProvenance";
+
+export const ADJUSTABLE_FINANCIAL_INPUTS = [
+  "discountRate", "exitCapRate", "leaseRate", "electricityPrice", "interestRate", "debtShare", "costPerMW", "deliveryDelay",
+] as const;
+export type AdjustableFinancialInput = typeof ADJUSTABLE_FINANCIAL_INPUTS[number];
+export type FinancialAssumptionAudit = Readonly<{
+  input: AdjustableFinancialInput; action: "edit" | "reset"; value: number | null; timestamp: string;
+}>;
+export type FinancialAssumptionSession = Readonly<{
+  overrides: Readonly<Partial<Record<AdjustableFinancialInput, number>>>;
+  audit: readonly FinancialAssumptionAudit[];
+}>;
+export const EMPTY_FINANCIAL_ASSUMPTIONS: FinancialAssumptionSession = Object.freeze({
+  overrides: Object.freeze({}), audit: Object.freeze([]),
+});
+export function validFinancialAssumption(id: AdjustableFinancialInput, value: number) {
+  if (!Number.isFinite(value)) return false;
+  if (id === "discountRate") return value > -100;
+  if (id === "debtShare") return value >= 0 && value < 100;
+  if (id === "exitCapRate" || id === "costPerMW") return value > 0;
+  return value >= 0;
+}
+export function editFinancialAssumption(session: FinancialAssumptionSession, input: AdjustableFinancialInput,
+  value: number | null, timestamp: string): FinancialAssumptionSession {
+  if (!ADJUSTABLE_FINANCIAL_INPUTS.includes(input) || (value !== null && !validFinancialAssumption(input, value))
+    || !Number.isFinite(Date.parse(timestamp))) throw new Error("Invalid financial assumption or timestamp.");
+  const overrides = { ...session.overrides };
+  if (value === null) delete overrides[input]; else overrides[input] = value;
+  return Object.freeze({
+    overrides: Object.freeze(overrides),
+    audit: Object.freeze([...session.audit, Object.freeze({ input, value, action: value === null ? "reset" as const : "edit" as const, timestamp })]),
+  });
+}
+
+export type FinancialRangeDriver = {
+  id: string; label: string; lowDelta: number | null; highDelta: number | null; magnitude: number;
+  lowReason: string | null; highReason: string | null;
+  lowInput?: number; highInput?: number; unit?: string;
+};
+export type FinancialReturnRange = ReturnType<typeof buildEstimatedFinancialRange>;
+const UNFAVORABLE_HIGH = new Set(["interestRate", "costPerMW", "deliveryDelay", "maintenancePerMW", "laborPerMW",
+  "propertyTaxPerGW", "insuranceRate", "exitCapRate", "discountRate"]);
+
+export function buildEstimatedFinancialRange(args: {
+  evidence: EvidenceRecord; context: FinancialRegistryContext; session?: FinancialAssumptionSession;
+}) {
+  const defaults = inventoryFinancialMethodology(buildFinancialRegistry(args.context), args.evidence);
+  const overrides = args.session?.overrides ?? {};
+  const resolved = Object.fromEntries(Object.entries(defaults).map(([id, entry]) => {
+    const value = overrides[id as AdjustableFinancialInput];
+    return [id, value === undefined ? entry : Object.freeze({
+      ...entry, value, low: value, high: value, type: "user-assumption" as const,
+      applicability: "Your assumption — session only; the retained sourced default is unchanged.",
+    })];
+  }));
+  // Dependent values remain derived, not independently frozen copies of old economics.
+  if (resolved.capacityMW.value !== null && resolved.costPerMW.value !== null) {
+    const directCost = resolved.capacityMW.value * resolved.costPerMW.value;
+    if (overrides.debtShare === undefined && resolved.debtAmount.value !== null && directCost > 0) {
+      const share = resolved.debtAmount.value / directCost * 100;
+      resolved.debtShare = Object.freeze({ ...resolved.debtShare, value: share, low: share, high: share });
+    }
+    if (resolved.leaseRate.value !== null && resolved.leaseRate.low !== null && resolved.leaseRate.high !== null) {
+      const daily = (lease: number) => resolved.capacityMW.value! * 1000 * lease * 12 / 365;
+      resolved.downtimeCost = Object.freeze({ ...resolved.downtimeCost,
+        value: daily(resolved.leaseRate.value), low: daily(resolved.leaseRate.low), high: daily(resolved.leaseRate.high) });
+    }
+  }
+  const active: FinancialRegistry = Object.freeze(resolved);
+  const counts: Record<FinancialInputType, number> = { disclosed: 0, benchmark: 0, derived: 0, "user-assumption": 0, blank: 0 };
+  const publicInputs = Object.values(active).filter(entry => entry.visibility === "public");
+  for (const entry of publicInputs) counts[entry.type]++;
+  const missing = publicInputs.filter(entry => entry.required && (entry.type === "blank" || entry.provisional));
+  const unsourced = publicInputs.filter(entry => entry.type === "blank" || entry.provisional
+    || !entry.sourceUrl || !entry.asOfDate);
+  function valuesFor(caseName: "cautious" | "central" | "favorable", single?: { id: string; value: number }) {
+    const values: Record<string, number | null> = {};
+    for (const entry of Object.values(active)) {
+      values[entry.id] = caseName === "central" ? entry.value
+        : caseName === "cautious" ? UNFAVORABLE_HIGH.has(entry.id) ? entry.high : entry.low
+          : UNFAVORABLE_HIGH.has(entry.id) ? entry.low : entry.high;
+    }
+    if (single) values[single.id] = single.value;
+    const debtShareOverride = overrides.debtShare !== undefined || single?.id === "debtShare";
+    return {
+      ...values,
+      debtAmount: debtShareOverride && values.debtShare !== null && values.capacityMW !== null && values.costPerMW !== null
+        ? values.debtShare * values.capacityMW * values.costPerMW / 100 : values.debtAmount,
+    } as TraceableFinancialValues;
+  }
+  const cases = {
+    cautious: calculateTraceableCashFlowModel(args.evidence, valuesFor("cautious")),
+    central: calculateTraceableCashFlowModel(args.evidence, valuesFor("central")),
+    favorable: calculateTraceableCashFlowModel(args.evidence, valuesFor("favorable")),
+  };
+  const central = cases.central.model?.projectIRR ?? null;
+  const drivers: FinancialRangeDriver[] = publicInputs.filter(entry =>
+    !["buildings", "reportedEquity", "leaseYears", "sofr", "totalCost", "downtimeCost", "utilityPassThrough"].includes(entry.id)
+      && entry.low !== null && entry.high !== null
+      && defaults[entry.id].low !== null && defaults[entry.id].high !== null).map(entry => {
+    const low = calculateTraceableCashFlowModel(args.evidence, valuesFor("central", { id: entry.id, value: defaults[entry.id].low! }));
+    const high = calculateTraceableCashFlowModel(args.evidence, valuesFor("central", { id: entry.id, value: defaults[entry.id].high! }));
+    const lowDelta = central !== null && low.status === "meaningful" ? low.model.projectIRR! - central : null;
+    const highDelta = central !== null && high.status === "meaningful" ? high.model.projectIRR! - central : null;
+    return { id: entry.id, label: entry.label, lowDelta, highDelta, lowReason: low.reason, highReason: high.reason,
+      lowInput: defaults[entry.id].low!, highInput: defaults[entry.id].high!, unit: entry.unit,
+      magnitude: Math.max(Math.abs(lowDelta ?? 0), Math.abs(highDelta ?? 0)) };
+  }).sort((a, b) => b.magnitude - a.magnitude || a.id.localeCompare(b.id)).slice(0, 6);
+  const allMeaningful = Object.values(cases).every(result => result.status === "meaningful");
+  const ordered = allMeaningful && cases.cautious.model!.projectIRR! <= central!
+    && central! <= cases.favorable.model!.projectIRR!;
+  const status = missing.length > 3 ? "insufficient-data" as const
+    : !allMeaningful ? "undefined-return" as const
+      : !ordered ? "unordered-return" as const : "estimated" as const;
+  const label = status === "estimated"
+    ? `Estimated return: roughly ${Math.round(cases.cautious.model!.projectIRR!)}-${Math.round(cases.favorable.model!.projectIRR!)}%`
+    : status === "insufficient-data" ? "Not enough sourced data for an estimate"
+      : "A meaningful return range is unavailable";
+  return { defaults, active, counts, missing, unsourced, cases, drivers, status, label };
+}
 import {
   assertSameProjectScope,
   SAFELOC_PROOF_POLICY_VERSION,

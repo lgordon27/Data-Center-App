@@ -2,6 +2,7 @@ import {
   getEvidenceImpactRole,
   type ImpactRole,
 } from "@/data/evidenceImpactRoles";
+import type { FinancialRegistry, FinancialRegistryEntry } from "./financialInputProvenance";
 import {
   EVIDENCE_SEMANTIC_POLICY_VERSION,
   evaluateEvidenceSourceEligibility,
@@ -165,6 +166,9 @@ export type CashFlowYear = {
   carbonComplianceOpex: number;
   climateDisruptionOpex: number;
   backupPowerOpex: number;
+  propertyTaxOpex?: number;
+  tenantElectricityCost?: number | null;
+  tenantWaterCost?: number | null;
   totalOpex: number;
   noi: number;
   beginningDebt: number;
@@ -296,6 +300,9 @@ export type ModelAssumptions = {
   amortizationYears: number;
   annualPrincipalPayment: number;
   exitMultiple: number;
+  exitCapRate?: number;
+  propertyTaxPerGW?: number;
+  utilityPassThrough?: boolean;
   discountRate: number;
   terminalValue: number;
   terminalDebtRepayment: number;
@@ -415,6 +422,83 @@ export const WATER_CONVERSION_CAPEX_BY_CLASSIFICATION: Record<Classification, nu
   "User Assumption": 135,
   "Missing Evidence": 150,
 };
+
+export type TraceableFinancialValues = {
+  capacityMW: number;
+  costPerMW: number;
+  debtAmount: number;
+  leaseRate: number;
+  electricityPrice: number | null;
+  waterTariff: number | null;
+  deliveredFirstYearMW: number;
+  deliveryDelay: number;
+  interestRate: number;
+  exitCapRate: number;
+  discountRate: number;
+  maintenancePerMW: number;
+  laborPerMW: number;
+  propertyTaxPerGW: number;
+  insuranceRate: number;
+};
+
+/** Traceable economics reuse the existing stress policy without changing canonical evidence. */
+export function calculateTraceableCashFlowModel(evidence: EvidenceRecord, values: TraceableFinancialValues) {
+  const numericInputs: Array<keyof TraceableFinancialValues> = [
+    "capacityMW", "costPerMW", "debtAmount", "leaseRate", "deliveredFirstYearMW", "deliveryDelay",
+    "interestRate", "exitCapRate", "discountRate", "maintenancePerMW", "laborPerMW", "propertyTaxPerGW", "insuranceRate",
+  ];
+  if (numericInputs.some(id => typeof values[id] !== "number" || !Number.isFinite(values[id]))
+    || values.capacityMW <= 0 || values.costPerMW <= 0 || values.exitCapRate <= 0
+    || values.discountRate <= -100 || values.debtAmount < 0
+    || values.debtAmount >= values.capacityMW * values.costPerMW
+    || values.interestRate < 0 || values.leaseRate < 0 || values.deliveryDelay < 0) {
+    return { status: "unavailable" as const, reason: "invalid-input" as const, model: null };
+  }
+  const model = runModel(containEvidenceForModel(evidence).evidence, values.capacityMW, {}, {}, values);
+  return model.projectIRR === null
+    ? { status: "unavailable" as const, reason: model.projectIRRReason ?? "invalid-input", model }
+    : { status: "meaningful" as const, reason: null, model };
+}
+
+/** Retained stress constants and evidence inputs have entries but never become public ordinary drivers. */
+export function inventoryFinancialMethodology(registry: FinancialRegistry, evidence: EvidenceRecord): FinancialRegistry {
+  const entries: Record<string, FinancialRegistryEntry> = { ...registry };
+  function internal(id: string, value: number | null, unit: string, note: string, provisional = true) {
+    entries[id] = Object.freeze({
+      id, label: id, value, low: value, high: value, unit, type: value === null ? "blank" : "user-assumption",
+      sourceTier: null, specificity: null, sourceName: null, sourceUrl: null, asOfDate: null,
+      applicability: note, resolutionRule: "Retained internal methodology; research needed, never a project disclosure.",
+      provisional, visibility: "methodology", required: false,
+    });
+  }
+  for (const [id, item] of Object.entries(evidence)) {
+    internal(`evidence:${id}`, typeof item.numericValue === "number" ? item.numericValue : null,
+      item.unit ?? "qualitative", "Retained evidence treatment; registry status does not reclassify canonical evidence.");
+  }
+  for (const [classification, policy] of Object.entries(QUALITY_POLICY)) {
+    for (const [key, value] of Object.entries(policy)) internal(`quality:${classification}:${key}`, value, "methodology parameter", "Proprietary stress methodology.");
+  }
+  for (const [table, values] of Object.entries({
+    backupPowerCapex: BACKUP_POWER_CAPEX_BY_CLASSIFICATION,
+    waterConversionCapex: WATER_CONVERSION_CAPEX_BY_CLASSIFICATION,
+    climateQuality: CLIMATE_QUALITY_MULTIPLIERS,
+    confidenceWeights: CONFIDENCE_WEIGHTS,
+    hazardProbability: HAZARD_PROBABILITY_BY_LEVEL,
+  })) {
+    for (const [key, value] of Object.entries(values)) internal(`${table}:${key}`, value, "methodology parameter", "Provisional — research needed; retained internal table.");
+  }
+  for (const [key, value] of Object.entries({
+    legacyLeaseRate: LEASE_RATE_PER_KW_MONTH, legacyEntryValue: ENTRY_VALUE, legacyExitMultiple: EXIT_MULTIPLE,
+    legacyDiscountRate: DISCOUNT_RATE, legacyMaintenanceRate: MAINTENANCE_RATE, legacyLabor: ANNUAL_LABOR_AT_FULL_UTILIZATION,
+    legacyDebtLtv: DEBT_LTV, legacyElectricityFallback: 42, legacyWaterTariff: WATER_COST_PER_GALLON,
+    legacyDowntimeFloor: MIN_DOWNTIME_COST_PER_DAY, coolingCapexFallback: 450,
+    waterConsumptionFallback: 23, gridTimelineFallback: 14, permittingFallback: 10,
+    electricityEscalationFallback: 6, waterEscalationFallback: 7, renewableFallback: 25,
+    capacityReference: DEFAULT_CAPACITY_MW, capacityCeiling: MAX_CAPACITY_MW,
+  })) internal(key, value, "legacy/internal parameter", "Compatibility-only synthetic engine or retained internal stress; not a traceable financial default.");
+  MODEL_UTILIZATION_RAMP.forEach((value, index) => internal(`legacyRamp:${index}`, value, "fraction", "Compatibility-only synthetic ramp."));
+  return Object.freeze(entries);
+}
 
 const MIN_DOWNTIME_COST_PER_DAY = 5_000_000;
 
@@ -787,6 +871,7 @@ function runModel(
   capacityMW: number,
   sensitivity: { powerPriceMultiplier?: number; utilizationMultiplier?: number } = {},
   governedOverrides: GovernedFinancialOverrides = {},
+  financial?: TraceableFinancialValues,
 ): CashFlowModel {
   validateGovernedOverrides(governedOverrides);
   const capacityScale = capacityMW / DEFAULT_CAPACITY_MW;
@@ -829,7 +914,7 @@ function runModel(
   const downtimeCostQuality = QUALITY_POLICY[downtimeCostItem.classification];
 
   const electricityRate =
-    finiteNumericValue(electricityItem.numericValue, 42) * electricityQuality.costMultiplier;
+    (financial ? financial.electricityPrice ?? Number.NaN : finiteNumericValue(electricityItem.numericValue, 42)) * electricityQuality.costMultiplier;
   const annualCoolingWaterMgal =
     finiteNumericValue(waterConsumptionItem.numericValue, 23) *
     waterQuality.waterConsumptionMultiplier *
@@ -879,10 +964,10 @@ function runModel(
     Math.max(gridInterconnectionMonths, permittingMonths) + communityDelayMonths,
   );
   const revenueDelayMonths = Math.max(
-    modeledTimelineMonths,
+    financial ? Math.max(gridQuality.timelineAdder, permittingQuality.timelineAdder) : modeledTimelineMonths,
     codMonthsFromStart ?? 0,
     tenantCommencementMonthsFromStart ?? 0,
-  );
+  ) + (financial?.deliveryDelay ?? 0);
   // Customer concentration is a Decision Gate. Preserve the calibrated base
   // utilization assumption without deriving it from gate provenance or value.
   const customerUtilizationMultiplier = 0.9;
@@ -890,7 +975,7 @@ function runModel(
   const syntheticCoolingCapexReference =
     finiteNumericValue(coolingItem.numericValue, 450) *
     (coolingItem.capacityBasis === "facility-absolute" ? 1 : capacityScale);
-  const coolingCapex = documentedDirectProjectCapex === null
+  const coolingCapex = !financial && documentedDirectProjectCapex === null
     ? syntheticCoolingCapexReference
     : 0;
   const communityCapexContingency = 0;
@@ -905,14 +990,16 @@ function runModel(
     0,
     1,
   );
-  const downtimeCostPerDay = finiteNumericValue(
+  const annualRevenueAtFullUtilization =
+    capacityMW * 1_000 * (financial?.leaseRate ?? LEASE_RATE_PER_KW_MONTH) * 12 / 1_000_000;
+  const downtimeCostPerDay = financial ? annualRevenueAtFullUtilization * 1_000_000 / 365 : finiteNumericValue(
     downtimeCostItem.numericValue,
     MIN_DOWNTIME_COST_PER_DAY,
   );
   const qualityAdjustedDowntimeCost =
     downtimeCostPerDay * downtimeCostQuality.climateMultiplier;
   const adjustedDowntimeCostPerDay =
-    downtimeCostItem.classification === "Missing Evidence"
+    !financial && downtimeCostItem.classification === "Missing Evidence"
       ? Math.max(MIN_DOWNTIME_COST_PER_DAY, qualityAdjustedDowntimeCost)
       : qualityAdjustedDowntimeCost;
   const backupPowerHours =
@@ -934,20 +1021,18 @@ function runModel(
   const waterConversionCapex = 80 * capacityScale;
   const climateCapexContingency = backupPowerCapex + waterConversionCapex;
   const capexContingency =
-    coolingCapex * (communityCapexContingency + coolingCapexContingency) +
+    (financial ? syntheticCoolingCapexReference : coolingCapex) * (communityCapexContingency + coolingCapexContingency) +
     climateCapexContingency;
-  const entryValue = ENTRY_VALUE * capacityScale;
+  const entryValue = financial ? financial.costPerMW * capacityMW : ENTRY_VALUE * capacityScale;
   const totalDirectCapex = documentedDirectProjectCapex ?? entryValue + coolingCapex;
   const totalCapex = totalDirectCapex + capexContingency;
   // Debt terms remain the synthetic underwriting assumption, regardless of a
   // documented aggregate CAPEX input.
-  const debtAmount = entryValue * DEBT_LTV;
+  const debtAmount = financial ? financial.debtAmount : entryValue * DEBT_LTV;
   const annualPrincipalPayment = debtAmount / AMORTIZATION_YEARS;
   const annualCarbonCompliance =
     finiteNumericValue(carbonItem.numericValue, 20) * carbonQuality.carbonMultiplier;
   const waterRightsCostMultiplier = 1.5;
-  const annualRevenueAtFullUtilization =
-    capacityMW * 1_000 * LEASE_RATE_PER_KW_MONTH * 12 / 1_000_000;
 
   const adjustedWaterEscalationRate = waterEscalationRate * waterSourceEscalationMultiplier;
   const schedule: CashFlowYear[] = [];
@@ -985,15 +1070,26 @@ function runModel(
     dscr: null,
   });
 
+  // Move the whole reported delivery plan, not merely the first revenue payment.
+  // Overlap both delivery stages with each modeled year, including forward NOI.
+  const deliveredUtilization = (year: number) => {
+    if (!financial) return 0;
+    const start = (year - 1) * 12;
+    const end = year * 12;
+    const firstStage = Math.max(0, Math.min(end, revenueDelayMonths + 12) - Math.max(start, revenueDelayMonths));
+    const fullStage = Math.max(0, end - Math.max(start, revenueDelayMonths + 12));
+    return clamp((firstStage * financial.deliveredFirstYearMW / capacityMW + fullStage) / 12 * utilizationMultiplier, 0, 1);
+  };
   for (let year = 1; year <= 5; year += 1) {
-    const calendarUtilization = clamp((UTILIZATION_RAMP[year - 1] ?? 0.92) * utilizationMultiplier, 0, 1);
+    const calendarUtilization = clamp((financial
+      ? year === 1 ? financial.deliveredFirstYearMW / capacityMW : 1
+      : UTILIZATION_RAMP[year - 1] ?? 0.92) * utilizationMultiplier, 0, 1);
     const monthsBeforeYear = (year - 1) * 12;
     const activeMonths = clamp(12 - Math.max(0, revenueDelayMonths - monthsBeforeYear), 0, 12);
-    const operatingUtilization = calendarUtilization * (activeMonths / 12);
+    const operatingUtilization = financial ? deliveredUtilization(year) : calendarUtilization * (activeMonths / 12);
     const revenue =
       annualRevenueAtFullUtilization *
-      calendarUtilization *
-      (activeMonths / 12) *
+      operatingUtilization *
       customerUtilizationMultiplier;
     const electricityMwh =
       capacityMW * HOURS_PER_YEAR * operatingUtilization;
@@ -1002,24 +1098,27 @@ function runModel(
       (1 + powerCostDifferential) *
         powerPriceMultiplier *
       Math.pow(1 + electricityEscalationRate, year - 1);
-    const electricityOpex = (electricityMwh * powerRate) / 1_000_000;
+    const tenantElectricityCost = financial && financial.electricityPrice === null ? null : (electricityMwh * powerRate) / 1_000_000;
+    const electricityOpex = financial ? 0 : tenantElectricityCost!;
     const waterGallons =
       annualCoolingWaterMgal * 1_000_000 * operatingUtilization;
     const waterRate =
-      WATER_COST_PER_GALLON *
+      (financial ? (financial.waterTariff ?? Number.NaN) / 1000 : WATER_COST_PER_GALLON) *
       waterRightsCostMultiplier *
       Math.pow(1 + adjustedWaterEscalationRate, year - 1);
-    const waterOpex = (waterGallons * waterRate) / 1_000_000;
+    const tenantWaterCost = financial && financial.waterTariff === null ? null : (waterGallons * waterRate) / 1_000_000;
+    const waterOpex = financial ? 0 : tenantWaterCost!;
     const maintenanceOpex =
-      totalDirectCapex * MAINTENANCE_RATE * operatingUtilization;
+      (financial ? financial.maintenancePerMW * capacityMW : totalDirectCapex * MAINTENANCE_RATE) * operatingUtilization;
     const laborOpex =
-      ANNUAL_LABOR_AT_FULL_UTILIZATION * capacityScale * operatingUtilization;
+      (financial ? financial.laborPerMW * capacityMW : ANNUAL_LABOR_AT_FULL_UTILIZATION * capacityScale) * operatingUtilization;
     const insuranceOpex =
-      totalDirectCapex * INSURANCE_RATE * operatingUtilization;
+      totalDirectCapex * (financial ? financial.insuranceRate / 100 : INSURANCE_RATE) * operatingUtilization;
+    const propertyTaxOpex = (financial ? financial.propertyTaxPerGW * capacityMW / 1000 : 0) * operatingUtilization;
     const carbonComplianceOpex = annualCarbonCompliance * capacityScale * operatingUtilization;
     const climateDisruptionOpex =
       (adjustedDowntimeCostPerDay *
-        capacityScale *
+        (financial ? 1 : capacityScale) *
         adjustedHazardProbability *
         365 *
         operatingUtilization) /
@@ -1028,8 +1127,8 @@ function runModel(
       ? 2 * operatingUtilization
       : 0;
     const totalOpex =
-      electricityOpex +
-      waterOpex +
+      (financial ? 0 : electricityOpex + waterOpex) +
+      propertyTaxOpex +
       maintenanceOpex +
       laborOpex +
       insuranceOpex +
@@ -1039,9 +1138,18 @@ function runModel(
     const noi = revenue - totalOpex;
     const beginningDebt = Math.max(0, debtAmount - annualPrincipalPayment * (year - 1));
     const principal = Math.min(beginningDebt, annualPrincipalPayment);
-    const interest = beginningDebt * INTEREST_RATE;
+    const interest = beginningDebt * (financial ? financial.interestRate / 100 : INTEREST_RATE);
     const endingDebt = Math.max(0, beginningDebt - principal);
-    const terminalValue = year === 5 ? Math.max(0, noi * EXIT_MULTIPLE) : 0;
+    // Forward NOI uses year six's delayed delivered capacity, not an unearned stabilized exit.
+    const forwardNoi = financial ? (annualRevenueAtFullUtilization * customerUtilizationMultiplier
+      - financial.maintenancePerMW * capacityMW - financial.laborPerMW * capacityMW
+      - totalDirectCapex * financial.insuranceRate / 100
+      - financial.propertyTaxPerGW * capacityMW / 1000
+      - annualCarbonCompliance * capacityScale
+      - adjustedDowntimeCostPerDay * adjustedHazardProbability * 365 / 1_000_000
+      - (backupPowerContingencyTriggered ? 2 : 0)) * deliveredUtilization(6) : noi;
+    const terminalValue = year === 5 ? Math.max(0, financial
+      ? forwardNoi / (financial.exitCapRate / 100) : noi * EXIT_MULTIPLE) : 0;
     const terminalDebtRepayment = year === 5 ? endingDebt : 0;
     const netEquityCashFlow =
       noi - interest - principal + terminalValue - terminalDebtRepayment;
@@ -1064,6 +1172,7 @@ function runModel(
       carbonComplianceOpex,
       climateDisruptionOpex,
       backupPowerOpex,
+      ...(financial ? { propertyTaxOpex, tenantElectricityCost, tenantWaterCost } : {}),
       totalOpex,
       noi,
       beginningDebt,
@@ -1081,7 +1190,7 @@ function runModel(
 
   const cashFlows = schedule.map((year) => year.netEquityCashFlow);
   const projectIRRResult = calculateIRRResult(cashFlows);
-  const npv = calculateNPV(cashFlows, DISCOUNT_RATE);
+  const npv = calculateNPV(cashFlows, financial ? financial.discountRate / 100 : DISCOUNT_RATE);
   const totalDistributions = cashFlows
     .slice(1)
     .filter((cashFlow) => cashFlow > 0)
@@ -1127,18 +1236,18 @@ function runModel(
 
   const assumptions: ModelAssumptions = {
     capacityMW,
-    leaseRatePerKwMonth: LEASE_RATE_PER_KW_MONTH,
+    leaseRatePerKwMonth: financial?.leaseRate ?? LEASE_RATE_PER_KW_MONTH,
     annualRevenueAtFullUtilization,
-    utilizationRamp: [...UTILIZATION_RAMP],
+    utilizationRamp: financial ? [financial.deliveredFirstYearMW / capacityMW, 1, 1, 1, 1] : [...UTILIZATION_RAMP],
     electricityRate,
     electricityEscalationRate,
     annualCoolingWaterMgal,
-    waterCostPerGallon: WATER_COST_PER_GALLON,
+    waterCostPerGallon: financial ? (financial.waterTariff ?? Number.NaN) / 1000 : WATER_COST_PER_GALLON,
     waterEscalationRate: adjustedWaterEscalationRate,
     waterRightsCostMultiplier,
-    maintenanceRate: MAINTENANCE_RATE,
-    annualLaborAtFullUtilization: ANNUAL_LABOR_AT_FULL_UTILIZATION * capacityScale,
-    insuranceRate: INSURANCE_RATE,
+    maintenanceRate: financial ? financial.maintenancePerMW * capacityMW / totalDirectCapex : MAINTENANCE_RATE,
+    annualLaborAtFullUtilization: financial ? financial.laborPerMW * capacityMW : ANNUAL_LABOR_AT_FULL_UTILIZATION * capacityScale,
+    insuranceRate: financial ? financial.insuranceRate / 100 : INSURANCE_RATE,
     annualCarbonCompliance,
     siteHazardExposure,
     hazardProbability: baseHazardProbability,
@@ -1165,8 +1274,9 @@ function runModel(
     coolingCapexContingencyRate: coolingCapexContingency,
     communityCapexContingencyRate: communityCapexContingency,
     syntheticCoolingCapexReference,
-    capexContingencyBasis:
-      "Documented direct CAPEX excludes contingency and replaces synthetic cooling CAPEX; climate contingency remains synthetic.",
+    capexContingencyBasis: financial
+      ? "Reported direct cost includes the buildout; retained internal incremental contingencies applied once, no separate cooling cost addition."
+      : "Documented direct CAPEX excludes contingency and replaces synthetic cooling CAPEX; climate contingency remains synthetic.",
     backupPowerContingencyTriggered,
     entryValue,
     coolingCapex,
@@ -1175,13 +1285,16 @@ function runModel(
     documentedDirectCapex: documentedDirectProjectCapex,
     directCapexScope: governedOverrides.directCapex?.scope ?? null,
     debtAmount,
-    debtBasis: "Synthetic entry value multiplied by synthetic debt LTV; documented CAPEX does not rebase debt.",
-    debtLtv: DEBT_LTV,
-    interestRate: INTEREST_RATE,
+    debtBasis: financial ? "Reported debt amount; personal debt-share override sizes debt against direct cost only." : "Synthetic entry value multiplied by synthetic debt LTV; documented CAPEX does not rebase debt.",
+    debtLtv: financial ? debtAmount / totalDirectCapex : DEBT_LTV,
+    interestRate: financial ? financial.interestRate / 100 : INTEREST_RATE,
     amortizationYears: AMORTIZATION_YEARS,
     annualPrincipalPayment,
     exitMultiple: EXIT_MULTIPLE,
-    discountRate: DISCOUNT_RATE,
+    exitCapRate: financial ? financial.exitCapRate / 100 : undefined,
+    propertyTaxPerGW: financial?.propertyTaxPerGW,
+    utilityPassThrough: financial ? true : undefined,
+    discountRate: financial ? financial.discountRate / 100 : DISCOUNT_RATE,
     terminalValue: yearFive?.terminalValue ?? 0,
     terminalDebtRepayment: yearFive?.terminalDebtRepayment ?? 0,
     initialInvestedEquity,
@@ -1195,7 +1308,7 @@ function runModel(
         total: totalCapex,
       },
     },
-    terminalFormula: "Terminal value = max(0, Year 5 NOI × synthetic exit multiple); terminal debt repayment = Year 5 ending debt.",
+    terminalFormula: financial ? "Terminal value = max(0, forward year NOI / exit capitalization rate); repay ending debt once." : "Terminal value = max(0, Year 5 NOI × synthetic exit multiple); terminal debt repayment = Year 5 ending debt.",
   };
 
   const createLineItem = (id: string, driver: string, value: number, unit: string): ModelLineItem => {

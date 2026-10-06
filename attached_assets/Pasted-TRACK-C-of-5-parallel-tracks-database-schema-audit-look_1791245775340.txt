@@ -1,0 +1,27 @@
+TRACK C of 5 parallel tracks: database schema, audit lookup and cold start for artifacts/safeloc-diligence-workbench. Work fast with tight scope: fix exactly what is listed, and do not wait for other tracks. LeAndrew has authorized a schema migration for this track. Apply it and verify it in DEVELOPMENT only; do not run anything against the production database and do not publish. No live research. Report your starting HEAD.
+
+FILE OWNERSHIP: you own the database schema/migration files, server/db.ts, server/databaseResilience.mjs, the research-audit repository and its read path (GET /api/research-audits/:runId), proof-ledger/user-decision persistence modules, the startup, health and audit-route parts of server/index.ts, and tests for these. Do NOT edit server/researchProjectProxy.mjs, the claim verifier or identity modules (Track A), UI components or src/services (Track B), home/showcase/dossier files (Track E), or the three known-failing tests (Track D). Before pushing, pull latest main and rebase; if a conflict touches a file you don't own, stop and report.
+
+PROBLEMS:
+1. Startup in development and production logs missing proof-ledger/user-decision tables or columns.
+2. In production, GET /api/research-audits/1791211785381-cqnc9h returned 500 Internal Server Error.
+3. Right after a publish, the first page load returned a bare "Internal Server Error" before the app was ready; logs also showed transient startup health failures.
+
+DO:
+1. Find exactly which tables/columns are missing by comparing the code's expectations with the actual schema. Write an additive, idempotent migration using the project's existing schema tooling: create missing tables and add missing columns with safe defaults, never dropping or rewriting data. Apply it in development and confirm the warning is gone and proof-ledger and user-decision paths work.
+2. State precisely how the migration reaches production on the next publish (automatic, startup migration, or a manual step). If manual, write exact steps for LeAndrew. If migrations run at startup, make them safe under concurrent starts.
+3. Audit lookup:
+   - Validate the run ID format.
+   - Return 404 JSON for unknown or malformed IDs.
+   - Return 503 JSON (no stack trace or SQL) when the database is unavailable.
+   - Find and fix the actual cause of the 500, and describe it.
+4. Cold start: requests arriving before the server is ready get a brief "Starting up, retry shortly" response (503 with Retry-After, minimal styling on the HTML route) instead of a bare 500. The health check reports not-ready until the database and routes are initialized. Do not hide genuine errors after startup.
+5. Keep the dropped-connection resilience from commit ac75596 intact, and confirm the startup interruption sweep still runs.
+
+TESTS:
+- The migration is idempotent and adds the expected tables and columns.
+- The audit route returns 404 for unknown and malformed IDs, 503 when the database is unavailable, and 200 for a known run.
+- Pre-ready requests get 503, not 500.
+- The startup sweep still marks stale running audits as interrupted.
+
+Run test and typecheck. Expected failures: only the three known baseline tests, unless Track D already fixed them. Report counts, the exact missing tables/columns, the migration path to production, the cause of the audit 500, diff summary and commit SHA. Commit "Database: additive proof-ledger migration, safe audit lookup, clean cold start" and push to GitHub.

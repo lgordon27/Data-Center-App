@@ -1,0 +1,37 @@
+TRACK B of 5 parallel tracks: findings display for artifacts/safeloc-diligence-workbench. UI only. Work fast with tight scope: build exactly what is listed, no extra features, and do not wait for other tracks. No server changes, live research, publishing or schema changes. Report your starting HEAD.
+
+FILE OWNERSHIP: you own a new file src/types/researchFindings.ts, src/services/researchProjectService.ts (client response types and mapping only), ProjectReality.tsx, AdvisorBrief.tsx, RetainedResearchFindings.tsx, the analysis-section presentation helpers they use, and their tests. Do NOT edit any server/ files, src/data/researchClaimVerifier.mjs or researchIdentity.mjs (Track A), FinancialTransmission.tsx, home/showcase/dossier files (Track E), database files (Track C), or the three known-failing tests (Track D). Before pushing, pull latest main and rebase; if a conflict touches a file you don't own, stop and report.
+
+CONTRACT (Track A's server will produce exactly this; build against fixtures now). Research responses gain:
+findings: array of { findingId, statement, exactQuotation, quotationVerified: true, topic: identity|capacity|power|grid|water|permitting|community|construction|financing|tenant|hazard|other, kind: reported|plan|estimate|disputed, source: { url, title, publisher, publishedAt, retrievedAt } (nulls allowed), scope: { entityRoles: array of { name, role: owner|developer|operator|offtaker|contractor|utility|other }, facility, phase, timeframe } (strings or null), projectMatch: "matches-requested-project" | "scope-unconfirmed", proposedModelMapping: null | { evidenceId, proposedValue, status: "proposed-not-accepted" } }
+topicCoverage: object keyed by topic, each { state: "analyzed-findings" | "analyzed-nothing-found" | "not-analyzed", reason: string | null }
+Both are optional (older saved results lack them). The existing reportedFindings field stays.
+
+BUILD:
+1. Define these types in src/types/researchFindings.ts. Add optional findings and topicCoverage to the client research response type. Pass them through mapping, session restore and retained/registry results without dropping them.
+2. In Project Reality, add a "Findings" section as the primary content, above unresolved items and retained reporting. Group findings by topic in this order: identity, capacity, power, grid, water, permitting, community, construction, financing, tenant, hazard, other. Each finding card shows:
+   - The statement.
+   - A kind badge (Reported / Plan / Estimate / Disputed).
+   - A match badge ("Matches requested project" or "Facility scope unconfirmed").
+   - The source title linked to its URL, with publisher and date (or "date unavailable").
+   - Scope details only when present (entity roles as "Chevron · developer", facility, phase, timeframe).
+   - The exact quotation in a collapsed "Exact source passage" disclosure.
+   - A footer line: "Not used in the financial model", or, when proposedModelMapping exists, "Proposed model input — not accepted" plus the evidence variable label.
+   No accept button in this task.
+3. Coverage strip at the top of the section: compact chips per topic showing Found / Nothing found / Not analyzed. Not analyzed must read as incomplete, never as a negative result; show the reason on hover or in an expandable line.
+4. Advisor Brief: a short "What public sources say" list of up to 5 findings, preferring matches-requested-project and reported kind, each with its source link and badge, plus a link to the full Findings section.
+5. Fallbacks: if findings is absent, keep today's Reported findings and retained reporting unchanged. If findings is an empty array, show "No verified findings in this run" with the coverage strip.
+6. Simple default view for a conference audience: collapsed details, no technical jargon, readable on mobile, accessible labels on badges and links.
+
+TESTS: rendering fixtures for
+- a matches-requested-project finding;
+- a scope-unconfirmed finding with entity roles;
+- a plan-kind finding;
+- one with a proposed mapping;
+- missing date and publisher;
+- empty findings;
+- absent findings (legacy fallback);
+- coverage with all three states.
+Also mapping and session-restore tests confirming the fields survive. Check desktop and mobile in the dev preview using fixtures only.
+
+Run test and typecheck. Expected failures: only the three known baseline tests, unless Track D already fixed them. Report counts, a description of the preview check, diff summary and commit SHA. Commit "UI: findings-first display with topic coverage" and push to GitHub.

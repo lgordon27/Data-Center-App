@@ -1,0 +1,15 @@
+TRACK D of 5 parallel tracks: resolve the three long-standing test failures in artifacts/safeloc-diligence-workbench without hiding lost coverage. Tests only. Work fast with tight scope, and do not wait for other tracks. No live research, publishing or schema changes. Report your starting HEAD.
+
+FILE OWNERSHIP: you own only these test files: src/data/researchClaimVerifier.test.mjs, server/googleGroundedDiscovery.test.mjs and src/services/publicPresentationRendering.test.ts, plus any new fixture under a clearly named test-fixtures path. Do NOT edit production code: not server/researchProjectProxy.mjs, the claim verifier or identity modules (Track A), UI components or presentation helpers (Track B), database files (Track C), or home/showcase/dossier files (Track E). If a failure's real cause is in production code, do not fix it; report the cause and the exact proposed change for the owning track. Before pushing, pull latest main and rebase; if a conflict touches a file you don't own, stop and report.
+
+THE THREE FAILURES:
+1. "resolves the exact saved Red Oak announcement excerpt through shared identity policy" reads diagnostics/red-oak-retrieval-canary-2026-10-01.json, which is missing.
+   - Search git history across all branches (git log --all -- that path) and the workspace for the authentic file. If found, restore it unchanged.
+   - If not found, do NOT recreate, approximate or reconstruct it. Rewrite the test to use a clearly labeled synthetic fixture: the file name contains "synthetic" and a header comment says it is not a captured passage. Rename the test so it does not claim to use the saved excerpt.
+   - State in your report that historical-capture coverage was lost.
+2. "keeps unlabeled grounded passages in the audit without sending them to every category" in server/googleGroundedDiscovery.test.mjs. Its main assertion (unrouted passages are not sent to every category) passes; a later bookkeeping assertion fails. Decide whether that assertion is outdated relative to a deliberate later change, or whether the code is wrong. If outdated, update it with a comment naming the change. If the code is wrong, report it for Track A.
+3. "older retained findings fall back to unresolved presentation without crashing or inventing dates" in src/services/publicPresentationRendering.test.ts. Same approach: if the assertion is outdated, update it with an explanation; if it's a real bug, report it for Track B.
+
+Do not weaken assertions just to pass, and do not mark tests skip or todo.
+
+Run test and typecheck. Report before/after counts, the cause of each failure, what you changed or deferred and why, diff summary and commit SHA. Commit "Tests: resolve baseline failures without fabricated fixtures" and push to GitHub.

@@ -1,0 +1,17 @@
+TRACK E of 5 parallel tracks: conference demo readiness for artifacts/safeloc-diligence-workbench (GFI panel, November 10). Work fast with tight scope: fix exactly what is listed, no extra features, and do not wait for other tracks. No live research, publishing or schema changes. Report your starting HEAD.
+
+FILE OWNERSHIP: you own the home page components, the showcase/dossier endpoints and data (handlers behind /api/showcase and /api/dossiers and the reviewed catalog), the curated Stargate Abilene dossier data, company/stock-picker data (NVIDIA and others), FinancialTransmission.tsx, the analysis page header component (not ProjectReality.tsx or AdvisorBrief.tsx), and tests for these. Do NOT edit server/researchProjectProxy.mjs, the claim verifier or identity modules (Track A), ProjectReality.tsx, AdvisorBrief.tsx, RetainedResearchFindings.tsx or src/services (Track B), database files (Track C), or the three known-failing tests (Track D). If a fix needs a file you don't own, report it instead. Before pushing, pull latest main and rebase; if a conflict touches a file you don't own, stop and report.
+
+FIX:
+1. The home page "Reviewed examples" panel says "No reviewed examples are available" because GET /api/showcase returns an empty list, even though the curated Stargate Abilene dossier exists and opens from the NVIDIA card. Find why the showcase is empty (empty catalog, an approval flag, a filter). Restore Stargate Abilene as a reviewed example if it meets the app's own review criteria. Do not mark anything reviewed that has not been. If approval is a deliberate human step, tell LeAndrew exactly what to set or click.
+2. Make the analysis header and the project card agree. The header shows "Stargate Abilene · Crusoe" while the card shows "OpenAI / Oracle / Crusoe". Use one consistent counterparty string sourced from the dossier.
+3. Electricity: the model uses $44.1/MWh as its primary electricity input while the page also shows the EIA rate of $70.7/MWh. Find where $44.1 comes from in the code and data.
+   - Show a short, plain explanation next to the input saying what each number is, plus its source and date.
+   - If $44.1 has no documented source, label it an illustrative assumption.
+   - Do not change the IRR calculation; report what baseline and stress IRR would be if aligned to the EIA rate.
+4. The NVIDIA page shows only 1 connected project (Stargate Abilene), where earlier versions showed more Texas projects. Check whether the others were removed on purpose. Restore only source-backed connections, and report what you found.
+5. Small polish if encountered: singular/plural counts (for example "1 material items"), and the Illustrative Project Stress Test section not opening reliably on a mouse click.
+
+TESTS: the showcase returns the reviewed example; the header and card counterparties match; the electricity basis text renders with its source; any restored NVIDIA connections carry sources. Check desktop and mobile in the dev preview.
+
+Run test and typecheck. Expected failures: only the three known baseline tests, unless Track D already fixed them. Report counts, what you found for each item, diff summary and commit SHA. Commit "Demo readiness: reviewed showcase, consistent counterparties, electricity basis" and push to GitHub.

@@ -18,6 +18,7 @@ export type PublicResearchState =
   | "not-assessed"
   | "research-failed-safely"
   | "research-interrupted"
+  | "time-limit-reached"
   | "ready";
 
 export type PublicResearchPresentation = {
@@ -39,6 +40,11 @@ export type PublicResearchInput = {
 };
 
 const STATE_COPY: Record<PublicResearchState, Omit<PublicResearchPresentation, "state">> = {
+  "time-limit-reached": {
+    label: "Research incomplete: time limit reached",
+    explanation: "Research reached its time limit. Completed findings and retrieved sources remain available; unassessed topics are not negative findings.",
+    incomplete: true,
+  },
   researching: {
     label: "Researching",
     explanation: "Bounded public-source research is in progress. Current findings are not accepted into the financial model.",
@@ -164,6 +170,9 @@ export function getPublicResearchPresentation(input: PublicResearchInput): Publi
   if (input.researchStatus === "researching") {
     return { state: "researching", ...STATE_COPY.researching };
   }
+  if (input.researchStatus === "timed-out" || ["timeout", "deadline", "expected-latency-exceeds-deadline"].includes(knownErrorType ?? "")) {
+    return { state: "time-limit-reached", ...STATE_COPY["time-limit-reached"] };
+  }
   if (knownErrorType === "interrupted") {
     return { state: "research-interrupted", ...STATE_COPY["research-interrupted"] };
   }
@@ -254,6 +263,9 @@ export function getPublicResearchFailure(error: unknown): {
 } {
   if (error instanceof PublicResearchRequestError) {
     return { message: error.message, kind: error.kind, retryAfterSeconds: error.retryAfterSeconds };
+  }
+  if (error instanceof Error && error.name === "ResearchTimeoutError") {
+    return { message: STATE_COPY["time-limit-reached"].label, kind: null, retryAfterSeconds: null };
   }
   if (error instanceof Error && (error.name === "ResearchCancelledError" || error.name === "AbortError")) {
     return { message: "Research was cancelled. Previously retained evidence remains available.", kind: null, retryAfterSeconds: null };

@@ -219,6 +219,7 @@ export type CustomResearchResponse = {
   };
   researchCache?: ResearchCacheMetadata;
   auditPersistence?: { state: "persisted" | "persistence-incomplete" | "not-configured"; reasonCodes: string[]; runId: string };
+  registryRetention?: { state: "retained" | "not-retained" | "failed"; scope: "local-server" };
   semanticPolicyVersion?: number;
   sourceValidationPolicyVersion?: number;
   sourceLedger?: Array<Record<string, unknown>>;
@@ -403,6 +404,9 @@ export function getResearchStatusPresentation({
   fallbackIncomplete?: boolean;
 }): ResearchStatusPresentation {
   const state = outcome?.state ?? null;
+  if (researchStatus === "timed-out") {
+    return { state, label: "Research incomplete: time limit reached", proposalReview: false, mode: "research-incomplete" };
+  }
   const hasVisibleProposal = Number.isFinite(eligibleProposalCount) && eligibleProposalCount > 0;
   const proposalReview = state === "complete-with-eligible-evidence" && hasVisibleProposal;
 
@@ -877,7 +881,18 @@ export type KnownProjectData = {
   knownOfficialEndpoints?: string[];
   aliases?: string[];
 };
-export type ResearchProgress = "researching" | "retrying";
+export type ResearchProgress = "researching" | "retrying" | {
+  stage: "finding-sources" | "reading-sources" | "extracting-findings" | "verifying-quotes";
+  sourceCount: number;
+};
+const progressListeners = new Set<() => void>();
+const activeProgress = new Map<string, { requestId: string; progress: ResearchProgress; controller: AbortController }>();
+export const subscribeResearchProgress = (listener: () => void) => {
+  progressListeners.add(listener);
+  return () => { progressListeners.delete(listener); };
+};
+export const getResearchProgress = (name: string, location: string): ResearchProgress | null =>
+  activeProgress.get(JSON.stringify([name, location]))?.progress ?? null;
 export type ResearchProjectOptions = {
   knownData?: KnownProjectData;
   projectIdentity?: Pick<ResearchProjectIdentity, "projectId" | "providerId" | "operator">;
@@ -2202,9 +2217,11 @@ function parseResponse(
     ...(isRecord(value.researchError) && isNonEmptyString(value.researchError.message)
       ? {
         researchError: {
-          type: value.researchError.type === "timeout" || value.researchError.type === "cancelled" || value.researchError.type === "upstream" || value.researchError.type === "interrupted"
+          type: value.researchStatus === "timed-out" || ["timeout", "deadline", "expected-latency-exceeds-deadline"].includes(String(value.researchError.type))
+            ? "timeout"
+            : value.researchError.type === "cancelled" || value.researchError.type === "upstream" || value.researchError.type === "interrupted" || value.researchError.type === "malformed-response"
             ? value.researchError.type
-            : "malformed-response",
+            : "upstream",
           message: value.researchError.message.trim().slice(0, 500),
         },
       }
@@ -2233,6 +2250,8 @@ function parseResponse(
         : SOURCE_VALIDATION_POLICY_VERSION,
       ...(Array.isArray(value.sourceLedger) ? { sourceLedger: value.sourceLedger } : {}),
      ...(parseResearchAudit(value.researchAudit) ? { researchAudit: parseResearchAudit(value.researchAudit) } : {}),
+    ...(isRecord(value.registryRetention) && ["retained", "not-retained", "failed"].includes(String(value.registryRetention.state))
+      ? { registryRetention: { state: value.registryRetention.state as "retained" | "not-retained" | "failed", scope: "local-server" as const } } : {}),
     ...(isRecord(value.auditPersistence)
       && ["persisted", "persistence-incomplete", "not-configured"].includes(String(value.auditPersistence.state))
       && typeof value.auditPersistence.runId === "string" ? {
@@ -2431,7 +2450,7 @@ export function createProvisionalResearch(
 }
 
 class ResearchTimeoutError extends Error {
-  constructor(message = "Project research timed out. Try again or use the curated case.") {
+  constructor(message = "Research incomplete: time limit reached") {
     super(message);
     this.name = "ResearchTimeoutError";
   }
@@ -2441,6 +2460,55 @@ class ResearchCancelledError extends Error {
   constructor() {
     super("Project research was cancelled.");
     this.name = "ResearchCancelledError";
+  }
+}
+
+async function pollFindingsRun(
+  initial: Record<string, unknown>,
+  signal: AbortSignal,
+  onProgress: ResearchProjectOptions["onProgress"],
+  fetchImpl: typeof fetch,
+): Promise<unknown> {
+  const runId = initial.runId;
+  const requestId = initial.requestId;
+  const projectCacheKey = initial.projectCacheKey;
+  if (typeof runId !== "string" || !/^[a-f0-9-]{36}$/i.test(runId)
+    || typeof requestId !== "string" || typeof projectCacheKey !== "string") {
+    throw new PublicResearchRequestError("failed");
+  }
+  const deadline = Date.parse(String(initial.deadlineAt));
+  if (!Number.isFinite(deadline)) throw new PublicResearchRequestError("failed");
+  const until = Math.min(deadline + 30_000, Date.now() + 24 * 60 * 60 * 1000);
+  let run = initial;
+  while (true) {
+    if (signal.aborted) throw new ResearchCancelledError();
+    if (run.runId !== runId || run.requestId !== requestId || run.projectCacheKey !== projectCacheKey) {
+      throw new PublicResearchRequestError("interrupted");
+    }
+    if (run.state === "completed" && isRecord(run.result)) return run.result;
+    if (run.state !== "running") {
+      if (run.errorType === "timeout" || run.errorType === "deadline") throw new ResearchTimeoutError();
+      throw new PublicResearchRequestError(run.state === "interrupted" ? "interrupted" : "failed");
+    }
+    if (["finding-sources", "reading-sources", "extracting-findings", "verifying-quotes"].includes(String(run.stage))) {
+      onProgress?.({ stage: run.stage as Exclude<ResearchProgress, string>["stage"],
+        sourceCount: typeof run.sourceCount === "number" ? Math.max(0, run.sourceCount) : 0 });
+    }
+    if (Date.now() >= until) throw new PublicResearchRequestError("interrupted");
+    await new Promise<void>((resolve, reject) => {
+      const abort = () => { clearTimeout(timer); reject(new ResearchCancelledError()); };
+      const timer = setTimeout(() => { signal.removeEventListener("abort", abort); resolve(); }, 2_500);
+      signal.addEventListener("abort", abort, { once: true });
+    });
+    if (signal.aborted) throw new ResearchCancelledError();
+    const response = await fetchImpl(`${RESEARCH_PROJECT_ENDPOINT}?runId=${encodeURIComponent(runId)}`, {
+      headers: { accept: "application/json" }, signal,
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok || !isRecord(body) || !isRecord(body.researchRun)) {
+      throw new PublicResearchRequestError(response.status === 404 ? "interrupted" : "failed");
+    }
+    run = body.researchRun;
   }
 }
 
@@ -2459,12 +2527,21 @@ async function requestResearchProject(
   fetchImpl: typeof fetch,
 ) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), RESEARCH_PROJECT_TIMEOUT_MS);
+  const progressKey = JSON.stringify([name, location]);
+  activeProgress.get(progressKey)?.controller.abort();
+  activeProgress.set(progressKey, { requestId, progress: "researching", controller });
+  const emitProgress = (progress: ResearchProgress) => {
+    if (activeProgress.get(progressKey)?.requestId !== requestId || controller.signal.aborted) return;
+    activeProgress.set(progressKey, { requestId, progress, controller });
+    progressListeners.forEach((listener) => listener());
+    onProgress?.(progress);
+  };
+  let timeout = setTimeout(() => controller.abort(), RESEARCH_PROJECT_TIMEOUT_MS);
   const abortFromCaller = () => controller.abort();
   signal?.addEventListener("abort", abortFromCaller, { once: true });
   let transportCompleted = false;
   try {
-    onProgress?.("researching");
+    emitProgress("researching");
     const response = await fetchImpl(RESEARCH_PROJECT_ENDPOINT, {
       method: "POST",
       headers: {
@@ -2522,6 +2599,17 @@ async function requestResearchProject(
         capacityRejection ? parseBoundedRetryAfter(response.headers.get("retry-after")) : null,
       );
     }
+    if (isRecord(body) && isRecord(body.researchRun)) {
+      if (body.researchRun.requestId !== requestId) throw new PublicResearchRequestError("interrupted");
+      const deadline = Date.parse(String(body.researchRun.deadlineAt));
+      if (!Number.isFinite(deadline)) throw new PublicResearchRequestError("failed");
+      clearTimeout(timeout);
+      timeout = setTimeout(() => controller.abort(), Math.max(1, Math.min(
+        deadline + 30_000 - Date.now(), 24 * 60 * 60 * 1000,
+      )));
+      body = await pollFindingsRun(body.researchRun, controller.signal, emitProgress, fetchImpl);
+    }
+    if (signal?.aborted) throw new ResearchCancelledError();
     return parseResponse(body, { name, location, knownData, projectIdentity });
   } catch (error) {
     if (signal?.aborted) throw new ResearchCancelledError();
@@ -2532,6 +2620,10 @@ async function requestResearchProject(
   } finally {
     clearTimeout(timeout);
     signal?.removeEventListener("abort", abortFromCaller);
+    if (activeProgress.get(progressKey)?.requestId === requestId) {
+      activeProgress.delete(progressKey);
+      progressListeners.forEach((listener) => listener());
+    }
   }
 }
 
@@ -2563,7 +2655,9 @@ export async function researchProject(
     forceRefresh,
   }));
   const explicitRetry = forceRefresh || initiator === "user-retry";
-  const existing = explicitRetry ? undefined : inFlightProjectRequests.get(requestSignature);
+  // A cancellable UI owns its polling lifetime; never inherit another screen's
+  // abort signal or callbacks. Server request IDs remain idempotent.
+  const existing = explicitRetry || options.signal ? undefined : inFlightProjectRequests.get(requestSignature);
   if (existing) return existing;
   const pending = requestResearchProject(
     name,
@@ -2579,7 +2673,7 @@ export async function researchProject(
     options.onProgress,
     fetchImpl,
   );
-  if (explicitRetry) return pending;
+  if (explicitRetry || options.signal) return pending;
   inFlightProjectRequests.set(requestSignature, pending);
   try {
     return await pending;

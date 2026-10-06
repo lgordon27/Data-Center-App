@@ -1,3 +1,4 @@
+import { ResearchRunProgress } from "@/components/ResearchRunProgress";
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -562,9 +563,7 @@ export function CustomProjectForm({ onRequestStart, onRequestFailure, onStart, o
             ? "rounded-md border border-[#8dc8e8]/30 bg-[#0d2b3d] px-3 py-2.5 text-[10px] leading-4 text-[#b9e1f2]"
             : "rounded-md bg-[#eef5ff] px-3 py-2.5 text-[10px] text-[#255bb7]"}
         >
-           {progress === "retrying"
-             ? "A provider attempt timed out; retrying within the research deadline."
-             : "Searching public sources within the research deadline."}
+          <ResearchRunProgress progress={progress} />
           <button
             data-testid={compact ? "home-custom-analysis-cancel" : "custom-project-cancel"}
             type="button"
@@ -1038,7 +1037,7 @@ function DirectoryCard({
       </div>
       {researchState.busy && (
         <div data-testid={`compute-atlas-research-status-${facility.id}`} role="status" aria-live="polite" className="mt-2 rounded border border-[#8dc8e8]/35 bg-[#0d2b3d] px-2.5 py-2 text-[10px] leading-4 text-[#b9e1f2]">
-          {researchState.progress === "retrying" ? "Research taking longer than expected, retrying..." : "Researching public sources. This can take up to 90 seconds."}
+          <ResearchRunProgress progress={researchState.progress} />
         </div>
       )}
       {researchState.error && (

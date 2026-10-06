@@ -159,11 +159,14 @@ function researchSnapshot(result) {
     researchOutcome: result?.researchOutcome ?? null,
     researchStatus: result?.researchStatus ?? "completed",
     researchError: result?.researchError ?? null,
+    findings: Array.isArray(result?.findings) ? result.findings : [],
+    topicCoverage: result?.topicCoverage ?? null,
   };
 }
 
 function hasUsefulResearch(result) {
   if (!result || ["failed", "cancelled"].includes(result.researchStatus)) return false;
+  if (Array.isArray(result.findings) && result.findings.length > 0) return true;
   if ([
     "complete-with-eligible-evidence",
     "complete-no-eligible-evidence",
@@ -213,11 +216,11 @@ export function createProjectResearchRegistry({
   }
 
   async function persist(next) {
-    document = next;
     await mkdir(directory, { recursive: true });
     const temporary = `${registryFile(directory)}.${process.pid}.${randomUUID()}.tmp`;
     await writeFile(temporary, JSON.stringify(next), { encoding: "utf8", mode: 0o600 });
     await rename(temporary, registryFile(directory));
+    document = next;
   }
 
   async function retain(project, result, { runId = null } = {}) {

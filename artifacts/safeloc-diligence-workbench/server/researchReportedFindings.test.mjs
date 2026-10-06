@@ -13,6 +13,53 @@ import {
 } from "./researchFindings.mjs";
 import { assessResearchFindingProjectMatch, extractResearchEntityRoles } from "../src/data/researchIdentity.mjs";
 import { containResearchResult } from "./researchProjectProxy.mjs";
+import { assessFindingsPassageAdmission } from "../src/data/researchIdentity.mjs";
+
+test("A2 findings admission accepts Kilby or operator plus state/city/county without granting identity", () => {
+  const identity = { name: "Project Kilby", location: "Pecos, Reeves County, Texas",
+    knownData: { operator: "Chevron", city: "Pecos", county: "Reeves County", state: "Texas" } };
+  for (const passage of [
+    "Project Kilby will be developed in West Texas.",
+    "Chevron plans a power campus in Texas.",
+    "Chevron plans a power campus near Pecos.",
+    "Chevron plans a power campus in Reeves County.",
+  ]) assert.equal(assessFindingsPassageAdmission(passage, identity).eligible, true, passage);
+  for (const passage of [
+    "Chevron plans Project Other in Texas.",
+    "Project Kilby is located in Phoenix, Arizona.",
+    "A power campus is planned in Texas.",
+  ]) assert.equal(assessFindingsPassageAdmission(passage, identity).eligible, false, passage);
+  assert.equal(assessResearchFindingProjectMatch("Project Kilby will be developed in West Texas.", identity).matches, false);
+});
+
+test("A2 extraction enforces configured model, output cap, measured latency and actual usage", async () => {
+  const previous = process.env.OPENAI_RESEARCH_MODEL;
+  process.env.OPENAI_RESEARCH_MODEL = "fixture-configured-model";
+  let clock = 10;
+  const budget = createFindingsTokenBudget().begin();
+  try {
+    const result = await extractResearchFindings({
+      project: kilbyProject, sources: [gasSource], apiKey: "fixture", signal: new AbortController().signal,
+      deadlineAt: 100_000, now: () => clock, runBudget: budget,
+      providerGate: { run: (fn) => fn() },
+      fetchImpl: async (_url, init) => {
+        const body = JSON.parse(init.body);
+        assert.equal(body.model, "fixture-configured-model");
+        assert.equal(body.max_output_tokens, 8000);
+        assert.equal(body.text.format.schema.properties.findings.maxItems, 25);
+        assert.equal(body.text.format.schema.properties.findings.items.properties.statement.maxLength, 300);
+        clock += 123;
+        return { ok: true, json: async () => ({ output_text: JSON.stringify(extractionResponse()), usage: { total_tokens: 456 } }) };
+      },
+    });
+    assert.equal(result.audit.extractionLatencyMs, 123);
+    assert.deepEqual(result.audit.usage, { total_tokens: 456 });
+  } finally {
+    budget.finish();
+    if (previous === undefined) delete process.env.OPENAI_RESEARCH_MODEL;
+    else process.env.OPENAI_RESEARCH_MODEL = previous;
+  }
+});
 
 // All findings-first controls below are synthetic, not live research captures.
 const kilbyProject = {

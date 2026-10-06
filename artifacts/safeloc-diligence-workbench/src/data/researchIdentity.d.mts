@@ -1,3 +1,7 @@
+export function assessFindingsPassageAdmission(
+  passage: unknown, identity?: Record<string, any>,
+): { eligible: boolean; basis: string[]; reason: string };
+
 export function assessResearchPassageExaminationEligibility(
   passage: unknown,
   identity?: Record<string, unknown>,

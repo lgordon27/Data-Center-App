@@ -108,6 +108,29 @@ const response = JSON.parse(readFileSync(
   new URL("../../tests/fixtures/research-project-synthetic.json", import.meta.url),
   "utf8",
 ));
+
+test("A2 polls the accepted run and rejects a superseding run ID", async (t) => {
+  const run = { runId: "12345678-1234-1234-1234-123456789abc", requestId: "poll-fixture",
+    projectCacheKey: "c".repeat(64), state: "running", stage: "finding-sources",
+    deadlineAt: new Date(Date.now() + 150_000).toISOString() };
+  let calls = 0;
+  const fetchImpl = (async (_url: unknown, init: RequestInit) => {
+    calls++;
+    assert.ok(init.signal);
+    return new Response(JSON.stringify({ researchRun: calls === 1 ? run
+      : { ...run, state: "completed", result: { ...response, projectIdentity: {
+        projectId: null, providerId: null, name: "Poll fixture", location: "Texas", operator: null,
+      } } } }), { status: calls === 1 ? 202 : 200 });
+  }) as typeof fetch;
+  const result = await researchProject("Poll fixture", "Texas", fetchImpl, { requestId: run.requestId });
+  assert.equal(calls, 2);
+  assert.equal(result.projectSummary.name, "Poll fixture");
+  calls = 0;
+  const badFetch = (async () => new Response(JSON.stringify({ researchRun: ++calls === 1 ? run
+    : { ...run, runId: "87654321-1234-1234-1234-123456789abc", state: "completed", result: response } }),
+  { status: calls === 1 ? 202 : 200 })) as typeof fetch;
+  await assert.rejects(researchProject("Poll fixture", "Texas", badFetch, { requestId: run.requestId }), /restarted|lost connection/);
+});
 const redOakQualityFixtures = JSON.parse(readFileSync(
   new URL("../../server/fixtures/red-oak-quality.json", import.meta.url),
   "utf8",

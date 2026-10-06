@@ -61,6 +61,28 @@ function responseStub() {
   };
 }
 
+test("A2 admission never releases running findings on the legacy timer and releases on settlement", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const fake = createFakePool();
+  let finish!: () => void;
+  const work = new Promise<void>((resolve) => { finish = resolve; });
+  const handler = createResearchAdmissionHandler(createExclusiveResearchAdmission(fake.pool as never),
+    async (request, response) => {
+      (request as unknown as Record<symbol, unknown>)[Symbol.for("safeloc.findings-background")] = true;
+      response.json({ researchRun: { state: "running" } });
+      await work;
+    });
+  const response = responseStub();
+  const pending = handler({ method: "POST" } as Request, response as unknown as Response);
+  for (let i = 0; i < 10 && !response.headersSent; i++) await Promise.resolve();
+  t.mock.timers.tick(200_000);
+  assert.equal(fake.locked, true);
+  finish();
+  await pending;
+  assert.equal(fake.locked, false);
+  assert.equal(fake.unlockQueries, 1);
+});
+
 function productionResponseStub() {
   return {
     statusCode: 200,
@@ -360,7 +382,7 @@ test("production stale-cache POST retains shared admission through a held refres
     assert.equal(fake.locked, true);
     assert.equal(fake.unlockQueries, 0);
 
-    t.mock.timers.tick(RESEARCH_PROJECT_TIMEOUT_MS - 1);
+    t.mock.timers.tick(75_000 - 1);
     assert.equal(providerAborted, false);
     assert.equal(fake.locked, true);
     assert.equal(fake.unlockQueries, 0);
@@ -373,7 +395,7 @@ test("production stale-cache POST retains shared admission through a held refres
     assert.equal(providerInvocations, 1);
     assert.equal(fetchInvocations, 0);
 
-    t.mock.timers.tick(110_000 - RESEARCH_PROJECT_TIMEOUT_MS - 1);
+    t.mock.timers.tick(110_000 - 75_000 - 1);
     assert.equal(fake.locked, true);
     assert.equal(fake.unlockQueries, 0);
     assert.equal(handlerInvocations, 1);

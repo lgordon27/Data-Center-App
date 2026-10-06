@@ -11,6 +11,19 @@ import {
   projectResearchIdentity,
 } from "./projectResearchRegistry.mjs";
 
+test("A2 findings-only results and topic coverage survive a fresh registry instance", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "a2-retention-"));
+  const registry = createProjectResearchRegistry({ directory });
+  const project = { name: "Project Kilby", location: "Texas" };
+  const findings = [{ findingId: "fixture", statement: "A synthetic retained finding." }];
+  const topicCoverage = { power: { state: "analyzed-findings", reason: null } };
+  const saved = await registry.retain(project, { findings, topicCoverage, researchStatus: "completed" });
+  assert.ok(saved);
+  const reopened = await createProjectResearchRegistry({ directory }).read(saved.projectIdentity.id);
+  assert.deepEqual(reopened.research.findings, findings);
+  assert.deepEqual(reopened.research.topicCoverage, topicCoverage);
+});
+
 function responseRecorder() {
   const headers = {};
   return {

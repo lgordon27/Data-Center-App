@@ -215,7 +215,12 @@ export function createResearchAdmissionHandler(
         console.error("SafeLoc research admission lock release failed.");
       }
     };
-    const releaseTimer = setTimeout(() => { void release(); }, MAX_RESEARCH_ADMISSION_LEASE_MS);
+    const ownsFindingsWork = () => (request as unknown as Record<symbol, unknown>)[Symbol.for("safeloc.findings-background")] === true;
+    const releaseTimer = setTimeout(() => {
+      // Findings handlers return HTTP acceptance early but settle only after
+      // provider work and retention. Never unlock running work on a timer.
+      if (!ownsFindingsWork()) void release();
+    }, MAX_RESEARCH_ADMISSION_LEASE_MS);
     releaseTimer.unref?.();
     const observeResponseBody = (body: unknown) => {
       if (
@@ -259,7 +264,7 @@ export function createResearchAdmissionHandler(
     } finally {
       response.json = originalJson;
       if (typeof originalEnd === "function") response.end = originalEnd;
-      if (!backgroundRefresh) {
+      if (ownsFindingsWork() || !backgroundRefresh) {
         clearTimeout(releaseTimer);
         await release();
       }

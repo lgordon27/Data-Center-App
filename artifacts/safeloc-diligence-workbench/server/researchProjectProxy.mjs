@@ -66,6 +66,17 @@ const RESEARCH_RUN_INITIATORS = new Set([
   "api-client",
 ]);
 const researchRunRequests = new Map();
+// Reserved-VM run observation, scoped to the cache owner. Not restart durability:
+// a lost/evicted run returns 404 rather than borrowing the latest project's run.
+const findingsRunsByCache = new WeakMap();
+function findingsRuns(cache) {
+  if (!findingsRunsByCache.has(cache)) findingsRunsByCache.set(cache, new Map());
+  const runs = findingsRunsByCache.get(cache);
+  for (const [id, run] of runs) {
+    if (Date.now() - Date.parse(run.deadlineAt) > RESEARCH_REQUEST_IDEMPOTENCY_TTL_MS) runs.delete(id);
+  }
+  return runs;
+}
 
 function parseResearchRequestIdentity(body) {
   const requestId = body.requestId === undefined ? randomUUID() : body.requestId;
@@ -125,14 +136,15 @@ const RESEARCH_CATEGORY_ORDER = Object.freeze([
   "climate-operational-hazard",
 ]);
 const RESEARCH_PROVIDER_MAX_CONCURRENCY = 1;
-// The browser retains its 90s limit; leave room for partial serialization and delivery.
-const RESEARCH_PROJECT_TIMEOUT_MS = 75_000;
+const TARGETED_RESEARCH_TIMEOUT_MS = 75_000;
+// Exported maximum also informs startup stale-run handling.
+const RESEARCH_PROJECT_TIMEOUT_MS = Math.max(TARGETED_RESEARCH_TIMEOUT_MS, findingsConfig().timeoutMs);
 const DEFAULT_PROVIDER_RATE_LIMIT_PRESSURE_MS = 1_000;
 const RESEARCH_PROJECT_MAX_TOOL_CALLS = 32;
 const RESEARCH_POLICY_VERSION = 2;
 const RESEARCH_CATEGORY_AUDIT_VERSION = 3;
 const RESEARCH_RUN_BUDGET = Object.freeze({
-  deadlineMs: RESEARCH_PROJECT_TIMEOUT_MS,
+  deadlineMs: TARGETED_RESEARCH_TIMEOUT_MS,
   maxProviderRequests: 16,
   maxFollowUps: 8,
   maxFollowUpsPerCategory: 1,
@@ -7552,7 +7564,7 @@ async function runValidatedResearch(project, {
   ocrImpl,
   signal,
   categoryIds = null,
-  researchTimeoutMs = RESEARCH_PROJECT_TIMEOUT_MS,
+  researchTimeoutMs = null,
   documentTimeoutMs = RESEARCH_DOCUMENT_TIMEOUT_MS,
   analysisReserveMs = RESEARCH_DOCUMENT_ANALYSIS_RESERVE_MS,
   maxConcurrentDocumentOpens = RESEARCH_DOCUMENT_MAX_CONCURRENCY,
@@ -7570,11 +7582,14 @@ async function runValidatedResearch(project, {
   findingsOptions = {},
 }) {
   const researchBudget = boundedResearchBudget(researchBudgetOverrides);
-  researchTimeoutMs = Math.min(RESEARCH_PROJECT_TIMEOUT_MS, Math.max(1,
-    Number.isFinite(researchTimeoutMs) ? researchTimeoutMs : RESEARCH_PROJECT_TIMEOUT_MS));
+  const defaultTimeoutMs = findingsFirst && !retrievalOnly
+    ? findingsConfig().timeoutMs : TARGETED_RESEARCH_TIMEOUT_MS;
+  researchTimeoutMs = Math.min(defaultTimeoutMs, Math.max(1,
+    Number.isFinite(researchTimeoutMs) ? researchTimeoutMs : defaultTimeoutMs));
+  researchBudget.deadlineMs = researchTimeoutMs;
   documentTimeoutMs = Math.min(RESEARCH_DOCUMENT_TIMEOUT_MS, Math.max(1,
     Number.isFinite(documentTimeoutMs) ? documentTimeoutMs : RESEARCH_DOCUMENT_TIMEOUT_MS));
-  analysisReserveMs = researchTimeoutMs < RESEARCH_PROJECT_TIMEOUT_MS
+  analysisReserveMs = researchTimeoutMs < TARGETED_RESEARCH_TIMEOUT_MS
     ? Math.min(RESEARCH_DOCUMENT_ANALYSIS_RESERVE_MS, Math.max(0,
       Number.isFinite(analysisReserveMs) ? analysisReserveMs : RESEARCH_DOCUMENT_ANALYSIS_RESERVE_MS))
     : RESEARCH_DOCUMENT_ANALYSIS_RESERVE_MS;
@@ -7777,6 +7792,7 @@ async function runValidatedResearch(project, {
   const retainedDocumentReceipts = [];
   const documentAuditReceipts = [];
   const prefetchGoogleGroundedSources = async (candidates) => {
+    if (findingsFirst) findingsOptions.onProgress?.({ stage: "reading-sources", sourceCount: 0 });
     const rankedCandidates = rankAcquisitionCandidates(
       Array.isArray(candidates) ? candidates : [],
       project,
@@ -7963,6 +7979,9 @@ async function runValidatedResearch(project, {
       };
       openedSource.retainedPassageOutcome = discoveryCandidateRetentionOutcome(openedSource);
       documentAuditReceipts.push(openedSource);
+      if (findingsFirst) findingsOptions.onProgress?.({
+        stage: "reading-sources", sourceCount: documentAuditReceipts.length,
+      });
       if (hasRetrievedPassage(openedSource)) retainedDocumentReceipts.push(openedSource);
       canaryDiagnosticCollector?.recordPhysicalReceipt?.({
         phase: "grounded-discovery-prefetch",
@@ -8116,11 +8135,13 @@ async function runValidatedResearch(project, {
   };
   try {
     if (findingsFirst && !retrievalOnly) {
+      findingsOptions.onProgress?.({ stage: "extracting-findings", sourceCount: documentAuditReceipts.length });
       const extracted = await extractResearchFindings({
         project, sources: googleDiscovery.candidates, apiKey, fetchImpl,
         signal: controller.signal, deadlineAt: runStartedAtMs + researchTimeoutMs,
         providerGate, runBudget: extractionRunBudget, config: extractionConfig,
         evidenceIds: RESEARCH_EVIDENCE_IDS,
+        onProgress: findingsOptions.onProgress,
       });
       const financialExecutions = Object.fromEntries(buildResearchCategoryPlan(project).categories.map((category) => [
         category.categoryId, {
@@ -8139,7 +8160,8 @@ async function runValidatedResearch(project, {
       if (externalSignal?.aborted === true) reasons.push("requesting-client-cancelled");
       if (googleDiscovery.status === "technical-failure") reasons.push("discovery-failed");
       const coverage = {
-        provider: "findings-first", model: "gpt-6.1-sol", reasoningEffort: "low",
+        provider: "findings-first", model: resolveResearchModelConfig().model,
+        reasoningEffort: resolveResearchModelConfig().reasoningEffort,
         runtime: releaseIdentity, runCorrelationId,
         startedAt: new Date(runStartedAtMs).toISOString(), finishedAt: new Date().toISOString(),
         elapsedMs: Math.max(0, Date.now() - runStartedAtMs),
@@ -8173,7 +8195,18 @@ async function runValidatedResearch(project, {
       parsed.researchAudit.terminalState = coverage.terminalState;
       parsed.researchOutcome = { state: coverage.terminalState, eligibleEvidenceCount: 0,
         reportedFindingCount: extracted.findings.length, reasonCodes: reasons };
-      parsed.researchStatus = reasons.length ? "partial" : "completed";
+      const timedOut = deadlineState.expired || reasons.some((reason) =>
+        ["deadline", "expected-latency-exceeds-deadline"].includes(reason));
+      const cancelled = externalSignal?.aborted === true && !timedOut;
+      parsed.researchStatus = timedOut ? "timed-out" : cancelled ? "cancelled" : reasons.length ? "partial" : "completed";
+      // The partial financial skeleton is not a provider response. Its inherited
+      // financial-category error must not mislabel a findings deadline.
+      delete parsed.researchError;
+      if (timedOut) parsed.researchError = { type: "timeout", message: "Research incomplete: time limit reached" };
+      else if (cancelled) parsed.researchError = { type: "cancelled", message: "Research was cancelled." };
+      else if (reasons.some((reason) => ["discovery-failed", "extraction-error", "provider-failure"].includes(reason))) {
+        parsed.researchError = { type: "upstream", message: "Research extraction did not complete. Retrieved sources are retained." };
+      }
       parsed.providerAttempts = attempts;
       return markFinancialMappingNotRun(parsed);
     }
@@ -9448,7 +9481,7 @@ export async function handleResearchProjectRequest(
     registry = defaultProjectResearchRegistry,
     auditRepository = null,
     categoryIds = null,
-    researchTimeoutMs = RESEARCH_PROJECT_TIMEOUT_MS,
+    researchTimeoutMs = null,
     documentTimeoutMs = RESEARCH_DOCUMENT_TIMEOUT_MS,
     analysisReserveMs = RESEARCH_DOCUMENT_ANALYSIS_RESERVE_MS,
     maxConcurrentDocumentOpens = RESEARCH_DOCUMENT_MAX_CONCURRENCY,
@@ -9470,6 +9503,20 @@ export async function handleResearchProjectRequest(
   const auditStore = /** @type {ResearchAuditRepository | null} */ (auditRepository);
   if (req.method === "GET") {
     const requestUrl = new URL(req.url ?? "/api/research-project", "http://localhost");
+    const runId = req.query?.runId ?? requestUrl.searchParams.get("runId");
+    if (runId !== null && runId !== undefined) {
+      const run = typeof runId === "string" ? findingsRuns(cache).get(runId) : null;
+      if (!run) {
+        sendJson(res, 404, { errorType: "interrupted", error: "Research run unavailable; it may have been interrupted or expired." });
+        return;
+      }
+      if (run.state === "running" && Date.now() > Date.parse(run.deadlineAt) + 30_000) {
+        sendJson(res, 200, { researchRun: { ...run, state: "interrupted", errorType: "interrupted" } });
+        return;
+      }
+      sendJson(res, 200, { researchRun: run });
+      return;
+    }
     const key = req.query?.cacheKey ?? requestUrl.searchParams.get("cacheKey");
     if (typeof key !== "string" || !/^[a-f0-9]{64}$/.test(key)) {
       sendJson(res, 400, { error: "A valid research cache key is required." });
@@ -9514,9 +9561,20 @@ export async function handleResearchProjectRequest(
   }
 
   const key = cache.keyFor(project);
+  const useFindingsBackground = (findingsFirst ?? (categoryIds === null && !project.focusIds?.length))
+    && !retrievalOnlyRequest;
   const requestKey = researchRunRequestKey(key, requestIdentity);
   const existingRequest = findResearchRunRequest(requestKey);
   if (existingRequest) {
+    if (useFindingsBackground) {
+      const run = findingsRuns(cache).get(existingRequest.runId);
+      if (run) {
+        sendJson(res, 202, { researchRun: run });
+      } else {
+        sendJson(res, 404, { errorType: "interrupted", error: "The original run is no longer available. Retry explicitly to start a new run." });
+      }
+      return;
+    }
     try {
       const entry = await existingRequest.promise;
       const contained = { ...entry, result: containResearchResult(entry.result) };
@@ -9560,10 +9618,13 @@ export async function handleResearchProjectRequest(
     return;
   }
 
-  const boundedResearchTimeoutMs = Math.min(
-    RESEARCH_PROJECT_TIMEOUT_MS,
-    Math.max(1, Number.isFinite(researchTimeoutMs) ? researchTimeoutMs : RESEARCH_PROJECT_TIMEOUT_MS),
-  );
+  const defaultTimeoutMs = useFindingsBackground ? findingsConfig().timeoutMs : TARGETED_RESEARCH_TIMEOUT_MS;
+  const boundedResearchTimeoutMs = Math.min(defaultTimeoutMs,
+    Math.max(1, Number.isFinite(researchTimeoutMs) ? researchTimeoutMs : defaultTimeoutMs));
+  requestBudget.deadlineMs = boundedResearchTimeoutMs;
+  // The production admission wrapper must hold the lock until this handler's
+  // work settles, not until HTTP finish or a lease timer.
+  if (useFindingsBackground) req[Symbol.for("safeloc.findings-background")] = true;
   const requestController = new AbortController();
   const abortFromExternalSignal = () => requestController.abort();
   if (signal?.aborted) requestController.abort();
@@ -9572,7 +9633,7 @@ export async function handleResearchProjectRequest(
     ? req.get("x-safeloc-research-policy")
     : req.headers?.["x-safeloc-research-policy"];
   const singleShotRun = runPolicyHeader === "single-shot";
-  const onRequestAborted = () => requestController.abort();
+  const onRequestAborted = () => { if (!useFindingsBackground) requestController.abort(); };
   req.once?.("aborted", onRequestAborted);
   const responseDelivery = {
     responseStartedAt: null,
@@ -9593,7 +9654,7 @@ export async function handleResearchProjectRequest(
     if (!res.writableFinished) {
       responseDelivery.browserDisconnectedBeforeFinish = true;
       responseDelivery.clientDisconnectedAt = new Date().toISOString();
-      requestController.abort();
+      if (!useFindingsBackground) requestController.abort();
     } else if (!responseDelivery.responseFinishedAt) {
       responseDelivery.responseFinishedAt = new Date().toISOString();
     }
@@ -9660,6 +9721,12 @@ export async function handleResearchProjectRequest(
       resolveStartReady,
       rejectStartReady,
     };
+    if (useFindingsBackground) {
+      findingsRuns(cache).set(runId, {
+        runId, requestId, projectCacheKey: key, state: "running",
+        stage: "finding-sources", sourceCount: 0, deadlineAt: context.deadlineAt,
+      });
+    }
     const initialAudit = {
       version: RESEARCH_CATEGORY_AUDIT_VERSION,
       policyVersion: RESEARCH_POLICY_VERSION,
@@ -9736,7 +9803,14 @@ export async function handleResearchProjectRequest(
       await launchGate;
       const researchResult = await runValidatedResearch(project, {
         findingsFirst: findingsFirst ?? (categoryIds === null && !project.focusIds?.length),
-        findingsOptions,
+        findingsOptions: {
+          ...findingsOptions,
+          onProgress: (progress) => {
+            findingsOptions.onProgress?.(progress);
+            const run = findingsRuns(cache).get(runId);
+            if (run?.state === "running") Object.assign(run, progress);
+          },
+        },
         apiKey,
         googleApiKey,
         googleDiscoveryImpl,
@@ -9762,7 +9836,7 @@ export async function handleResearchProjectRequest(
         retrievalOnly: retrievalOnlyRequest,
         canaryGridIdentityGate,
         dnsLookup,
-        signal: foreground ? requestController.signal : undefined,
+        signal: useFindingsBackground ? signal : foreground ? requestController.signal : undefined,
         runCorrelationId: runId,
         auditStartedAt: startedAt,
         auditDeadlineAt: context.deadlineAt,
@@ -9842,8 +9916,13 @@ export async function handleResearchProjectRequest(
       capacityProvenance: capacityMW === null ? "unknown" : "directory-reported",
     };
     if (result) {
-      void Promise.resolve().then(() => registry.retain(project, result, { runId: audit.runCorrelationId }))
-        .catch((failure) => console.warn("[research-project] Registry retention failed:", failure instanceof Error ? failure.message : "unknown error"));
+      try {
+        const retainedRecord = await registry.retain(project, result, { runId: audit.runCorrelationId });
+        result.registryRetention = { state: retainedRecord ? "retained" : "not-retained", scope: "local-server" };
+      } catch {
+        result.registryRetention = { state: "failed", scope: "local-server" };
+        console.warn("[research-project] Registry retention failed.", { runId: audit.runCorrelationId });
+      }
     }
     const canFinishStartedRow = Boolean(context?.auditRowPersisted && auditStore?.finishRun);
     const canUseLegacySave = Boolean(auditStore?.save && !canFinishStartedRow);
@@ -9937,6 +10016,36 @@ export async function handleResearchProjectRequest(
       if (result) result.auditPersistence = { ...context.auditPersistence, reasonCodes: [...context.auditPersistence.reasonCodes] };
     }
   };
+  if (useFindingsBackground) {
+    const isStaleRefresh = !project.forceRefresh && containedRetained && !retainedNeedsRevalidation && retainedState === "stale";
+    const background = refresh(false, {
+      deferRunUntilResponse: true,
+      initiator: isStaleRefresh ? "background-refresh" : requestIdentity.initiator,
+    });
+    if (isStaleRefresh) rememberResearchRunRequest(requestKey, {
+      promise: background.promise, runId: background.context.runId,
+      requestId: requestIdentity.requestId, initiator: background.context.initiator,
+    });
+    const run = findingsRuns(cache).get(background.context.runId);
+    try {
+      await background.startReady;
+      if (!res.destroyed && !res.writableEnded) sendTrackedJson(202, { researchRun: run });
+      background.launch();
+      const entry = await background.promise;
+      if (background.started) await retainRun(entry.result);
+      Object.assign(run, { state: "completed", result: containResearchResult(entry.result) });
+    } catch (error) {
+      background.launch();
+      if (background.started) await retainRun(null, error);
+      const failure = classifyResearchFailure(error);
+      Object.assign(run, { state: "failed", errorType: failure.type });
+      if (!res.destroyed && !res.writableEnded) sendTrackedJson(failure.status, { errorType: failure.type, error: failure.message });
+    } finally {
+      req.removeListener?.("aborted", onRequestAborted);
+      signal?.removeEventListener("abort", abortFromExternalSignal);
+    }
+    return;
+  }
   if (!retrievalOnlyRequest && !project.forceRefresh && containedRetained && !retainedNeedsRevalidation && retainedState === "stale") {
     const background = refresh(false, {
       deferRunUntilResponse: true,

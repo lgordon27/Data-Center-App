@@ -1,3 +1,8 @@
+test("A2 deadlines take precedence over inherited malformed errors and blocked-source labels", () => {
+  const result = getPublicResearchPresentation({ researchStatus: "timed-out", errorType: "malformed-response", hasRetainedEvidence: true });
+  assert.equal(result.label, "Research incomplete: time limit reached");
+  assert.equal(result.state, "time-limit-reached");
+});
 import test from "node:test";
 import assert from "node:assert/strict";
 import {

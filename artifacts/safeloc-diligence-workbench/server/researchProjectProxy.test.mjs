@@ -79,6 +79,53 @@ import { parseGoogleGroundedDiscoveryResponse } from "./googleGroundedDiscovery.
 
 const OFFLINE_PROVIDER_TOKEN_WINDOW_MS = 10;
 
+test("A2 returns acceptance before discovery finishes, polls by run, reuses IDs and survives response close", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "a2-background-"));
+  const cache = createResearchProjectCache({ directory });
+  let release;
+  let calls = 0;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const options = {
+    findingsFirst: true, cache, apiKey: "fixture", googleApiKey: null,
+    registry: { retain: async () => ({}) },
+    rateLimiter: { allow: () => ({ allowed: true }) },
+    useDefaultSecConnector: false,
+    googleDiscoveryImpl: async () => { calls++; await gate; return { candidates: [], queries: [], status: "completed" }; },
+    fetchImpl: async () => { throw new Error("No provider network allowed"); },
+  };
+  const body = { name: "Project Kilby", location: "Reeves County, Texas", requestId: "a2-synthetic", forceRefresh: true };
+  const response = responseRecorder();
+  const pending = handleResearchProjectRequestWithTestGate(request(body), response, options);
+  try {
+    for (let count = 0; count < 100 && response.statusCode !== 202; count++) await new Promise((r) => setTimeout(r, 2));
+    assert.equal(response.statusCode, 202);
+    const run = response.json().researchRun;
+    assert.equal(run.stage, "finding-sources");
+    const duplicate = responseRecorder();
+    await handleResearchProjectRequestWithTestGate(request(body), duplicate, options);
+    assert.equal(duplicate.json().researchRun.runId, run.runId);
+    assert.equal(calls, 1);
+    const status = responseRecorder();
+    await handleResearchProjectRequestWithTestGate({ method: "GET", url: `/api/research-project?runId=${run.runId}` }, status, options);
+    assert.equal(status.json().researchRun.state, "running");
+    release();
+    await pending;
+    const done = responseRecorder();
+    await handleResearchProjectRequestWithTestGate({ method: "GET", url: `/api/research-project?runId=${run.runId}` }, done, options);
+    assert.equal(done.json().researchRun.state, "completed");
+    assert.ok(Array.isArray(done.json().researchRun.result.findings));
+    assert.equal(done.json().researchRun.result.registryRetention.state, "retained");
+    const lost = responseRecorder();
+    await handleResearchProjectRequestWithTestGate({ method: "GET", url: `/api/research-project?runId=${run.runId}` }, lost,
+      { ...options, cache: createResearchProjectCache({ directory }) });
+    assert.equal(lost.statusCode, 404);
+  } finally {
+    release();
+    await pending;
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 // Isolate offline runs while keeping the production-default TPM ceiling.
 // Shared-gate behavior is covered directly with simulated-clock tests.
 function runValidatedResearch(project, options = {}) {
@@ -452,8 +499,9 @@ function substantiveHtmlResponse(body, url = "offline-fixture") {
   return htmlDocumentResponse(`${body} ${substantiveHtmlPassage} ${distinctRecordDetails}`);
 }
 
-test("reserves fifteen seconds between the server and browser deadlines", () => {
-  assert.equal(RESEARCH_PROJECT_TIMEOUT_MS, 75_000);
+test("findings startup ceiling is 150 seconds while targeted budget stays 75 seconds", () => {
+  assert.equal(RESEARCH_PROJECT_TIMEOUT_MS, 150_000);
+  assert.equal(RESEARCH_RUN_BUDGET.deadlineMs, 75_000);
 });
 
 test("excludes old saved CivicEngage and corrupted passages before structured analysis without changing receipts", () => {

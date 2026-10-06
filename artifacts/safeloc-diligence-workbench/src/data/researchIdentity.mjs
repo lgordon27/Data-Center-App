@@ -7,6 +7,29 @@ import {
 
 export { extractResearchEntityRoles };
 
+/** Extraction admission only. Never use this as identity or quote proof. */
+export function assessFindingsPassageAdmission(passage, identity = {}) {
+  const text = typeof passage === "string" ? passage : "";
+  const match = assessResearchFindingProjectMatch(text, identity);
+  const examination = assessResearchPassageExaminationEligibility(text, identity);
+  const words = ` ${normalize(text)} `;
+  const contains = (value) => Boolean(normalize(value) && words.includes(` ${normalize(value)} `));
+  const basis = [...examination.basis];
+  const requestedStates = statesIn(String(identity.location ?? ""));
+  const explicitState = stateIn(identity.state ?? identity.knownData?.state ?? "");
+  if (explicitState) requestedStates.push(explicitState);
+  if (statesIn(text).some((state) => requestedStates.includes(state))) basis.push("requested-state");
+  const named = basis.includes("distinctive-project-name");
+  const otherNamedProject = !named && /\bProject\s+(?!Name\b)[A-Z][A-Za-z0-9'-]+\b/.test(text)
+    && ![identity.name, ...(identity.knownData?.aliases ?? [])].some(contains);
+  if (match.conflict || otherNamedProject) {
+    return { eligible: false, basis, reason: "explicit-conflict" };
+  }
+  const eligible = named || (basis.includes("requested-operator")
+    && basis.some((item) => ["requested-state", "requested-city", "requested-county"].includes(item)));
+  return { eligible, basis, reason: eligible ? "admitted" : "insufficient-project-operator-location-signals" };
+}
+
 const STATES = [
   ["Alabama", "AL"], ["Alaska", "AK"], ["Arizona", "AZ"], ["Arkansas", "AR"],
   ["California", "CA"], ["Colorado", "CO"], ["Connecticut", "CT"], ["Delaware", "DE"],

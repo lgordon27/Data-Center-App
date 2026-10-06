@@ -1,3 +1,4 @@
+import { ActiveResearchRunProgress, ResearchRunProgress } from "@/components/ResearchRunProgress";
 import {
   Fragment,
   useMemo,
@@ -1565,6 +1566,12 @@ export function EvidenceRoom({ onNavigate, showModelConfidence = true }: { onNav
                 >
                   <RefreshCw aria-hidden="true" className="h-3 w-3" /> Force provider refresh
                 </button>
+              )}
+              {customProject && !sourceResearchProgress && (
+                <ActiveResearchRunProgress name={project.name} location={project.location} />
+              )}
+              {customProject && sourceResearchProgress && (
+                <ResearchRunProgress progress={sourceResearchProgress} />
               )}
               {customProject && sourceResearchProgress && (
                 <button
